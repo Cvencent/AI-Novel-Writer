@@ -1,4 +1,4 @@
-import { useEffect, useId } from 'react'
+import { useEffect } from 'react'
 import { useProjectStore } from '../../stores/project-store'
 import { useEditorStore, type EditorTab } from '../../stores/editor-store'
 import { useLayoutStore } from '../../stores/layout-store'
@@ -15,7 +15,7 @@ import { EmptyState } from '../ui/EmptyState'
 import { DangerConfirm } from '../ui/DangerConfirm'
 import StageRunSheet from './StageRunSheet'
 import StageTabs from './StageTabs'
-import { cancelCloseTab, confirmCloseTab, requestCloseTab } from './tab-close'
+import { cancelCloseTab, confirmCloseTab, requestCloseTab, STAGE_CONTENT_ID } from './tab-close'
 
 /** 角色在 RD-6 并入架构阶段之前，标签里并排放旧的角色列表与角色档案。 */
 function TabContent({ tab, project }: { tab: EditorTab; project: ProjectData }) {
@@ -36,8 +36,7 @@ export default function StageWorkspace({ library, focus }: { library: boolean; f
   const tabs = useEditorStore(s => s.tabs)
   const activeTabId = useEditorStore(s => s.activeTabId)
   const sheet = useStageStore(s => s.sheet)
-  const panelId = useId()
-  const tabDomId = (tabId: string) => `${panelId}-tab-${tabId.replace(/[^\w-]/g, '_')}`
+  const tabDomId = (tabId: string) => `${STAGE_CONTENT_ID}-tab-${tabId.replace(/[^\w-]/g, '_')}`
   const closingTabId = useStageStore(s => s.closingTabId)
   const pending = tabs.find(tab => tab.id === closingTabId) ?? null
 
@@ -66,13 +65,14 @@ export default function StageWorkspace({ library, focus }: { library: boolean; f
           onSelect={tabId => useEditorStore.getState().setActiveTab(tabId)}
           onClose={requestCloseTab}
           tabDomId={tabDomId}
-          panelId={panelId}
+          panelId={STAGE_CONTENT_ID}
         />
       )}
       <div className="stage-body">
         <div
           className="stage-content"
-          id={panelId}
+          id={STAGE_CONTENT_ID}
+          tabIndex={-1}
           role={showTabs ? 'tabpanel' : undefined}
           aria-labelledby={showTabs && activeTab ? tabDomId(activeTab.id) : undefined}
         >

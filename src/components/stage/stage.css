@@ -676,6 +676,10 @@
   overflow: hidden;
 }
 
+.stage-content:focus {
+  outline: none;
+}
+
 .stage-content > *,
 .stage-library > * {
   flex: 1;

@@ -442,11 +442,15 @@ export const STAGE_SCENARIOS = {
     await stage.waitForProse(page, firstLine(FIXTURE_PROSE))
   } },
   'stage-settings-switch': { model: false, setup: seedWithDraft, run: async ({ page }) => {
+    await openLatestDraft(page)
     await settings.open(page)
     await settings.chooseShell(page, '创作流程（预览）')
     await stage.root(page).waitFor({ state: 'visible' })
     await settings.close(page)
     await stage.spine(page).waitFor({ state: 'visible' })
+    await stage.waitForProse(page, FIXTURE_PROSE.slice(0, 12))
+    assert.deepEqual(await page.getByRole('navigation', { name: '位置' }).locator('span').allInnerTexts(), ['正文', '第 1 章'],
+      '切换外壳后停在原来打开的草稿，不跳到落点页')
   } },
   'stage-migrate': { model: false, run: async ({ page, reload }) => {
     const key = 'ai-novel-writer-appearance'
