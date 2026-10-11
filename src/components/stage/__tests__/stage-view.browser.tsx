@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { act } from 'react'
+import { act, useEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import type { StoreApi } from 'zustand'
 
@@ -30,8 +30,11 @@ let renders = 0
 let latest: StageView | undefined
 
 function Probe() {
-  renders++
-  latest = useStageView()
+  const view = useStageView()
+  useEffect(() => {
+    renders++
+    latest = view
+  })
   return null
 }
 
