@@ -285,6 +285,7 @@ async function runSession(sessionName, names, options) {
     if (sessionName === 'startup-timing') await prepareProfile({ roots, appRoot: options.appRoot, diagnostics }, { theme: options.theme, shell })
     launched = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics })
     shared.timing = launched.timing
+    shared.shell = await launched.page.locator('[data-shell-presentation]').first().getAttribute('data-shell-presentation')
     if (sessionName !== 'startup-timing') {
       const { page } = launched
       await applyAppearance(page, { theme: options.theme, shell })
