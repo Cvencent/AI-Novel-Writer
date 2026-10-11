@@ -110,29 +110,41 @@ export interface StageView {
   settled: boolean
 }
 
+/** 这部作品正在生成的章号，排好序拼成字符串：运行进度每跳一次，只要涉及的章没变，键就不变。 */
+function runningKey(runs: readonly WorkflowRun[], projectPath: string | undefined): string {
+  if (!projectPath) return ''
+  return [...runningChapters(runs.filter(run => sameProjectPathKey(run.projectPath, projectPath)))].sort((a, b) => a - b).join(',')
+}
+
+/** 当前标签所在的位置。只订阅类型、章号与所属项目这几个原始值，正文每敲一个字外壳不跟着重渲染。 */
+function useActiveLocation(projectPath: string | undefined): StageLocation | null {
+  const type = useEditorStore(s => s.tabs.find(tab => tab.id === s.activeTabId)?.type)
+  const chapterNumber = useEditorStore(s => s.tabs.find(tab => tab.id === s.activeTabId)?.chapterNumber)
+  const projectKey = useEditorStore(s => s.tabs.find(tab => tab.id === s.activeTabId)?.projectKey)
+  return useMemo(() => projectPath && type && projectKey === projectPath ? locate({ type, chapterNumber }) : null,
+    [projectPath, type, chapterNumber, projectKey])
+}
+
 export function useStageView(): StageView {
   const project = useProjectStore(s => s.currentProject)
   const work = useStageStore(s => s.work)
   const draftsByChapter = useDraftStore(s => s.draftsByChapter)
   const draftSession = useDraftStore(s => s.dataProjectSession)
   const draftsLoading = useDraftStore(s => s.loading)
-  const activeRuns = useWorkflowStore(s => s.activeRuns)
-  const activeTab = useEditorStore(s => s.tabs.find(tab => tab.id === s.activeTabId))
+  const running = useWorkflowStore(s => runningKey(s.activeRuns, project?.path))
+  const location = useActiveLocation(project?.path)
   const session = captureProjectSession(project)
 
   const currentWork = session && work && sameProjectSessionContext(work.session, session) ? work : null
   const drafts = session && sameProjectSessionContext(draftSession, session) ? draftsByChapter : null
-  const running = useMemo(() => runningChapters(project
-    ? activeRuns.filter(run => sameProjectPathKey(run.projectPath, project.path))
-    : []), [activeRuns, project])
+  const runningChapterSet = useMemo(() => new Set(running ? running.split(',').map(Number) : []), [running])
 
   const chapters = useMemo(() => currentWork && drafts
-    ? deriveChapters({ blueprints: currentWork.blueprints, drafts, runningChapters: running })
-    : [], [currentWork, drafts, running])
+    ? deriveChapters({ blueprints: currentWork.blueprints, drafts, runningChapters: runningChapterSet })
+    : [], [currentWork, drafts, runningChapterSet])
   const stages = useMemo(() => project && currentWork && drafts
-    ? deriveStages({ config: project.novelConfig, architecture: currentWork.architecture, blueprints: currentWork.blueprints, drafts, runningChapters: running }, chapters)
-    : [], [project, currentWork, drafts, running, chapters])
-  const location = project && activeTab?.projectKey === project.path ? locate(activeTab) : null
+    ? deriveStages({ config: project.novelConfig, architecture: currentWork.architecture, blueprints: currentWork.blueprints, drafts, runningChapters: runningChapterSet }, chapters)
+    : [], [project, currentWork, drafts, runningChapterSet, chapters])
   return { stages, chapters, location, settled: Boolean(currentWork && drafts && !draftsLoading) }
 }
 
