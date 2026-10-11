@@ -17,7 +17,7 @@ import StageSpine from './StageSpine'
 import StageTopBar from './StageTopBar'
 import StageWorkspace from './StageWorkspace'
 import { inkTheme } from './ink-theme'
-import { RESOURCE_NAMES, STAGE_NAMES } from './stage-text'
+import { RESOURCE_NAMES, STAGE_NAMES, stageTabName } from './stage-text'
 import { refreshStageWork, useLandingPage, useStageView, useStageWorkRefresh, type StageView } from './use-stage-work'
 import { useStageShortcuts } from './use-stage-shortcuts'
 import '../../styles/paper-ink/index.css'
@@ -41,7 +41,7 @@ function crumbsFor(view: StageView, library: boolean, activeName: string | undef
   if (location.kind === 'resource') return [text('作品资料', 'Reference'), text(...RESOURCE_NAMES[location.page])]
   const stage = text(...STAGE_NAMES[location.stage])
   if (location.stage === 'manuscript' && location.chapter !== undefined) return [stage, chapterLabel(location.chapter, text)]
-  if (location.stage === 'architecture' && activeName) return [stage, activeName]
+  if (location.stage === 'architecture' && activeName && activeName !== stage) return [stage, activeName]
   return [stage]
 }
 
@@ -52,7 +52,10 @@ export default function StageShell({ theme }: { theme: Theme }) {
   const library = !hasProject || home
   const focus = useStageStore(s => s.focus) && !library
   const palette = useStageStore(s => s.palette)
-  const activeName = useEditorStore(s => s.tabs.find(tab => tab.id === s.activeTabId)?.name)
+  const activeName = useEditorStore(s => {
+    const tab = s.tabs.find(candidate => candidate.id === s.activeTabId)
+    return tab ? stageTabName(tab, text) : undefined
+  })
   const [root, setRoot] = useState<HTMLDivElement | null>(null)
   const [clearOpen, setClearOpen] = useState(false)
   const view = useStageView()

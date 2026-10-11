@@ -82,12 +82,13 @@
   color: var(--ink-2);
 }
 
-/* 未开始的阶段整行退后，说明文字较长，放到名称下一行 */
+/* 未开始的阶段整行退后；名称是正文类文字，取 ink-2 保证 4.5:1（画板的 ink-3 在外框上只有 3.16:1） */
 .stage-row[data-state='todo'] {
-  color: var(--ink-3);
+  color: var(--ink-2);
 }
 
-.stage-row[data-state='todo'] .stage-row-meta {
+/* 说明放到名称下一行：未开始时说明较长，设定进行中时写「还差 N 项」，与设定画板一致 */
+.stage-row:is([data-state='todo'], [data-stage='setup'][data-state='active']) .stage-row-meta {
   grid-column: 2 / 4;
   white-space: normal;
   line-height: 1.4;
@@ -128,7 +129,6 @@
 
 .stage-row-icon {
   justify-self: center;
-  color: var(--ink-3);
 }
 
 .stage-resources .stage-row,
@@ -141,10 +141,6 @@
 }
 
 .stage-resources .stage-row[aria-current='page'] {
-  color: var(--accent);
-}
-
-.stage-resources .stage-row[aria-current='page'] .stage-row-icon {
   color: var(--accent);
 }
 

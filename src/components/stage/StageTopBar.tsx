@@ -5,6 +5,7 @@ import { countUnsavedEditorItems } from '../../stores/editor-unsaved'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useStageStore } from '../../stores/navigation/stage-store'
 import { useProjectStore } from '../../stores/project-store'
+import { Button } from '../ui/Button'
 import { Menu, type MenuGroupSpec } from '../ui/Menu'
 import RunCapsule from './RunCapsule'
 import { commandLabel } from './shortcut-keys'
@@ -51,11 +52,11 @@ export default function StageTopBar({ crumbs, library, focus, focusTitle, workMe
         {focusTitle.chapter !== undefined && <span className="stage-focus-no">{focusTitle.chapter}</span>}
         <span className="stage-focus-title">{focusTitle.title}</span>
         <span className="stage-topbar-gap" />
-        <button type="button" className="stage-focus-exit" aria-label={text('退出沉浸写作', 'Exit focus mode')} onClick={onToggleFocus}>
+        <Button variant="secondary" size="sm" aria-label={text('退出沉浸写作', 'Exit focus mode')} onClick={onToggleFocus}>
           <Minimize2 size={13} aria-hidden="true" />
           {text('退出沉浸', 'Exit focus')}
           <kbd>Esc</kbd>
-        </button>
+        </Button>
         <WindowControls />
       </header>
     )
@@ -97,9 +98,9 @@ export default function StageTopBar({ crumbs, library, focus, focusTitle, workMe
         </span>
       )}
       {!library && (
-        <button type="button" className="stage-icon-button" aria-label={text('进入沉浸写作', 'Enter focus mode')} aria-pressed={false} onClick={onToggleFocus}>
+        <Button variant="icon" size="sm" aria-label={text('进入沉浸写作', 'Enter focus mode')} onClick={onToggleFocus}>
           <Maximize2 size={15} aria-hidden="true" />
-        </button>
+        </Button>
       )}
       <WindowControls />
     </header>

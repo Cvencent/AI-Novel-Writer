@@ -53,7 +53,7 @@ export default function RunCapsule() {
   if (runs.length > 1) {
     return (
       <button type="button" className="stage-capsule" aria-expanded={sheetOpen} onClick={() => toggle()}>
-        <ProgressRing size={18} stroke={2.5} ratio={runs.reduce((sum, run) => sum + runProgress(run), 0) / runs.length} />
+        <ProgressRing size={18} stroke={2} ratio={runs.reduce((sum, run) => sum + runProgress(run), 0) / runs.length} />
         {waiting > 0
           ? text(`${runs.length} 项运行中 · ${waiting} 项等你确认`, `${runs.length} running · ${waiting} need you`)
           : text(`${runs.length} 项运行中`, `${runs.length} running`)}
@@ -66,7 +66,7 @@ export default function RunCapsule() {
   const percent = Math.round(runProgress(run) * 100)
   return (
     <button type="button" className="stage-capsule" data-tone={waiting ? 'warn' : undefined} aria-expanded={sheetOpen} onClick={() => toggle(run.id)}>
-      <ProgressRing size={18} stroke={2.5} ratio={percent / 100} />
+      <ProgressRing size={18} stroke={2} ratio={percent / 100} />
       <span className="stage-capsule-label">{waiting ? text(`${run.title} · 等你确认`, `${run.title} · needs you`) : step && !run.title.includes(step.name) ? `${run.title} · ${step.name}` : run.title}</span>
       <b className="stage-capsule-value">{percent}%</b>
     </button>

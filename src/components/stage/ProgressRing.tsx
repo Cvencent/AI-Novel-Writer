@@ -8,10 +8,10 @@ interface ProgressRingProps {
   className?: string
 }
 
-/** 进度环：一条底轨加按比例填充的弧，从十二点钟方向顺时针增长。是状态指示，不是图标。 */
+/** 进度环：一条底轨加按比例填充的弧，从十二点钟方向顺时针增长。半径按画板取 size / 2 - stroke，环比完成态的实心圆略小。是状态指示，不是图标。 */
 export function ProgressRing({ size, stroke, ratio, className }: ProgressRingProps) {
   const center = size / 2
-  const radius = (size - stroke) / 2
+  const radius = size / 2 - stroke
   const circumference = 2 * Math.PI * radius
   const filled = Math.min(1, Math.max(0, ratio)) * circumference
   return (

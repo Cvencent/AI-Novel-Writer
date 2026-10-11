@@ -175,24 +175,6 @@
   color: var(--warn);
 }
 
-.stage-icon-button {
-  width: 30px;
-  height: 30px;
-  flex: none;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--ink-2);
-  cursor: pointer;
-}
-
-.stage-icon-button:hover {
-  background: var(--sunken);
-  color: var(--ink);
-}
-
 .stage-window-controls {
   flex: none;
   display: flex;
@@ -232,24 +214,4 @@
   color: var(--ink-2);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.stage-focus-exit {
-  flex: none;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 6px 0 10px;
-  border: 1px solid var(--rule);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--ink-2);
-  font: 400 12px/1 var(--font-ui);
-  cursor: pointer;
-}
-
-.stage-focus-exit:hover {
-  border-color: var(--rule-strong);
-  color: var(--ink);
 }

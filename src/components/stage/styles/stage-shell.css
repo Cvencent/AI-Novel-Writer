@@ -19,7 +19,8 @@
   overflow: hidden;
 }
 
-.stage-shell :where(button) {
+/* 只重置外壳自己的按钮；纸墨按钮与内容区里旧按钮的字号、字重各由自己的样式决定 */
+:where(.stage-row, .stage-chapter, .stage-tab-label, .stage-tab-close, .stage-window-controls button) {
   font: inherit;
 }
 

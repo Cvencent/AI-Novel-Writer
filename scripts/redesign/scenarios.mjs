@@ -364,13 +364,13 @@ export const STAGE_SCENARIOS = {
     await stage.stageButton(page, '设定').click()
     await stage.tabList(page).waitFor({ state: 'visible' })
     await stage.stageButton(page, '蓝图').click()
-    await stage.tab(page, '章节蓝图').waitFor({ state: 'visible' })
+    await stage.tab(page, '蓝图').waitFor({ state: 'visible' })
     assert.equal(await stage.tabList(page).getByRole('tab').count(), 3)
-    await stage.closeTabButton(page, '小说配置').click()
-    await stage.tab(page, '小说配置').waitFor({ state: 'detached' })
+    await stage.closeTabButton(page, '设定').click()
+    await stage.tab(page, '设定').waitFor({ state: 'detached' })
     assert.equal(await stage.tabList(page).getByRole('tab').count(), 2, '关掉一个后还剩两个，标签条仍在')
   }, after: async ({ page }) => {
-    await stage.closeTabButton(page, '章节蓝图').click()
+    await stage.closeTabButton(page, '蓝图').click()
     await stage.tabList(page).waitFor({ state: 'detached' })
   } },
   'stage-dirty-close': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
@@ -378,12 +378,12 @@ export const STAGE_SCENARIOS = {
     const field = page.getByPlaceholder('如：修仙/重生/末世')
     await field.fill('海港悬疑')
     await stage.saveStatus(page).filter({ hasText: '未保存' }).waitFor({ state: 'visible' })
-    await stage.closeTabButton(page, '小说配置').click()
+    await stage.closeTabButton(page, '设定').click()
     await page.getByRole('dialog', { name: '放弃未保存的修改？' }).waitFor({ state: 'visible' })
   }, after: async ({ page }) => {
     await page.getByRole('button', { name: '继续编辑', exact: true }).click()
     await page.getByRole('dialog', { name: '放弃未保存的修改？' }).waitFor({ state: 'hidden' })
-    assert.equal(await stage.tab(page, '小说配置').getAttribute('aria-selected'), 'true', '取消后标签仍在')
+    assert.equal(await stage.tab(page, '设定').getAttribute('aria-selected'), 'true', '取消后标签仍在')
     assert.equal(await page.getByPlaceholder('如：修仙/重生/末世').inputValue(), '海港悬疑', '取消后修改保留')
   } },
   'stage-save': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
@@ -395,7 +395,7 @@ export const STAGE_SCENARIOS = {
   } },
   'stage-find-chapter': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
     await stage.stageButton(page, '蓝图').click()
-    await stage.tab(page, '章节蓝图').waitFor({ state: 'visible' })
+    await stage.tab(page, '蓝图').waitFor({ state: 'visible' })
     await stage.stageButton(page, '设定').click()
     await stage.findChapter(page, '4')
     await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[4].text))

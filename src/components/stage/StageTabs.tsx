@@ -2,6 +2,7 @@ import { useRef, type KeyboardEvent } from 'react'
 import { X } from 'lucide-react'
 import type { EditorTab } from '../../stores/editor-store'
 import { useLocaleStore } from '../../stores/locale-store'
+import { stageTabName } from './stage-text'
 
 interface StageTabsProps {
   tabs: readonly EditorTab[]
@@ -37,6 +38,7 @@ export default function StageTabs({ tabs, activeTabId, onSelect, onClose, tabDom
     <div className="stage-tabs" role="tablist" aria-label={text('已打开的页面', 'Open pages')} ref={list}>
       {tabs.map((tab, index) => {
         const active = tab.id === activeTabId
+        const name = stageTabName(tab, text)
         return (
           <div key={tab.id} className="stage-tab" role="presentation" data-active={active || undefined} data-dirty={tab.dirty || undefined}>
             <button
@@ -50,15 +52,15 @@ export default function StageTabs({ tabs, activeTabId, onSelect, onClose, tabDom
               onClick={() => onSelect(tab.id)}
               onKeyDown={event => onKeyDown(event, index)}
             >
-              {tab.name}
+              {name}
             </button>
             <button
               type="button"
               className="stage-tab-close"
               tabIndex={-1}
               aria-label={tab.dirty
-                ? text(`关闭「${tab.name}」，有未保存的修改`, `Close “${tab.name}” (unsaved changes)`)
-                : text(`关闭「${tab.name}」`, `Close “${tab.name}”`)}
+                ? text(`关闭「${name}」，有未保存的修改`, `Close “${name}” (unsaved changes)`)
+                : text(`关闭「${name}」`, `Close “${name}”`)}
               onClick={() => onClose(tab.id)}
             >
               <span className="stage-tab-dirty" aria-hidden="true" />
