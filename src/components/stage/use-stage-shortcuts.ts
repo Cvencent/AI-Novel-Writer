@@ -1,11 +1,8 @@
 import { useEffect } from 'react'
 import { editorSaveHandler, useEditorStore } from '../../stores/editor-store'
 import { useStageStore } from '../../stores/navigation/stage-store'
+import { IS_MAC, isCommand, isComposing, isModalOpen } from './shortcut-keys'
 import { requestCloseTab } from './tab-close'
-
-/** 焦点在对话框里时（设置、确认等）快捷键交给对话框自己处理。 */
-const insideDialog = (target: EventTarget | null) =>
-  target instanceof Element && target.closest('[role="dialog"], [role="alertdialog"]') !== null
 
 function saveActiveTab(): void {
   const { tabs, activeTabId } = useEditorStore.getState()
@@ -15,46 +12,54 @@ function saveActiveTab(): void {
 }
 
 /**
- * 新外壳的全局快捷键：Ctrl K 搜索与跳转，Ctrl P 查找章节，Ctrl W 关闭当前标签，Ctrl S 保存当前页，Esc 退出沉浸写作。
- * Ctrl S 在 CodeMirror 里已由编辑器自己保存（事件已 preventDefault），这里只补上表单页。
- * 捕获阶段监听，这样 Esc 先于 Radix 对话框的关闭处理读到「搜索是否开着」。
+ * 新外壳的全局快捷键（macOS 用 ⌘，其余平台用 Ctrl）：K 搜索与跳转，P 查找章节，W 关闭当前标签，S 保存当前页；Esc 退出沉浸写作。
+ * W 一律拦下：应用菜单的「关闭」绑了 CommandOrControl+W，页面不拦就会关窗。
+ * Esc 与 S 在冒泡阶段处理并尊重 defaultPrevented：编辑器的搜索框、补全与 Radix 对话框先用掉 Esc，CodeMirror 自己保存时 S 已被拦下。
  */
-export function useStageShortcuts({ library, focus }: { library: boolean; focus: boolean }): void {
+export function useStageShortcuts({ library, focus, mac = IS_MAC }: { library: boolean; focus: boolean; mac?: boolean }): void {
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        if (focus && !useStageStore.getState().palette && !insideDialog(event.target)) {
+    const onCommand = (event: KeyboardEvent) => {
+      if (isComposing(event)) return
+      const close = isCommand(event, 'w', mac)
+      const commands = isCommand(event, 'k', mac)
+      const chapters = isCommand(event, 'p', mac)
+      if (close) event.preventDefault()
+      if (!close && !commands && !chapters) return
+      if (useStageStore.getState().palette) {
+        if (commands) {
           event.preventDefault()
-          useStageStore.setState({ focus: false })
+          useStageStore.setState({ palette: null })
         }
         return
       }
-      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return
-      const key = event.key.toLowerCase()
-      const { palette } = useStageStore.getState()
-      if (insideDialog(event.target) && !(key === 'k' && palette)) return
-      if (key === 'k') {
+      if (isModalOpen()) return
+      if (commands) {
         event.preventDefault()
-        useStageStore.setState({ palette: palette === 'commands' ? null : 'commands' })
-      } else if (key === 'p' && !library) {
+        useStageStore.setState({ palette: 'commands' })
+      } else if (chapters && !library) {
         event.preventDefault()
         useStageStore.setState({ palette: 'chapters' })
-      } else if (key === 'w' && !library) {
-        event.preventDefault()
+      } else if (close && !library) {
         const { activeTabId } = useEditorStore.getState()
         if (activeTabId) requestCloseTab(activeTabId)
       }
     }
-    const onSave = (event: KeyboardEvent) => {
-      if (library || event.defaultPrevented || !(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 's' || event.altKey || event.shiftKey) return
-      event.preventDefault()
-      saveActiveTab()
+    const onUnhandled = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || isComposing(event)) return
+      if (event.key === 'Escape') {
+        if (!focus || useStageStore.getState().palette || isModalOpen()) return
+        event.preventDefault()
+        useStageStore.setState({ focus: false })
+      } else if (!library && isCommand(event, 's', mac) && !isModalOpen()) {
+        event.preventDefault()
+        saveActiveTab()
+      }
     }
-    window.addEventListener('keydown', onKeyDown, true)
-    window.addEventListener('keydown', onSave)
+    window.addEventListener('keydown', onCommand, true)
+    window.addEventListener('keydown', onUnhandled)
     return () => {
-      window.removeEventListener('keydown', onKeyDown, true)
-      window.removeEventListener('keydown', onSave)
+      window.removeEventListener('keydown', onCommand, true)
+      window.removeEventListener('keydown', onUnhandled)
     }
-  }, [library, focus])
+  }, [library, focus, mac])
 }

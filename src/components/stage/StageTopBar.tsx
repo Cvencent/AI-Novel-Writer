@@ -7,6 +7,7 @@ import { useStageStore } from '../../stores/navigation/stage-store'
 import { useProjectStore } from '../../stores/project-store'
 import { Menu, type MenuGroupSpec } from '../ui/Menu'
 import RunCapsule from './RunCapsule'
+import { commandLabel } from './shortcut-keys'
 
 /** 纸墨的字标，与画板一致；是标识，不随界面语言变化。 */
 const BRAND_MARK = '墨'
@@ -85,7 +86,7 @@ export default function StageTopBar({ crumbs, library, focus, focusTitle, workMe
           <span className="stage-search-hint">{library
             ? text('新建、打开作品，或打开设置', 'New or open a book, or open settings')
             : text('搜索章节、角色，或跳转到任意阶段', 'Search chapters and characters, or jump to any stage')}</span>
-          <kbd>Ctrl K</kbd>
+          <kbd>{commandLabel('k')}</kbd>
         </button>
       </div>
       <RunCapsule />

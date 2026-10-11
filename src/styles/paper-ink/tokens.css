@@ -64,6 +64,10 @@
   --ease: cubic-bezier(.2, .8, .2, 1);
   --dur-fast: 140ms; --dur: 220ms;
 
+  /* 层级刻度。旧外壳的全屏层从 z 50（设置、旧对话框）到 10000（错误提示），纸墨的模态层画在它们之上：
+     旧弹窗开着时关窗，退出确认必须看得见、点得到。弹层与菜单只需在外壳内容之上。 */
+  --z-popover: 15; --z-scrim: 10010; --z-dialog: 10011;
+
   background: var(--frame);
   color: var(--ink);
   font: 400 var(--fs-13)/1.55 var(--font-ui);

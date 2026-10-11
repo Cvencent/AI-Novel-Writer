@@ -4,7 +4,7 @@ import type { RunPaneFacet } from './navigation-intents'
 /** 内容区右侧的按需侧页。RD-3 只有运行侧页；审稿、版本对比等侧页由后续 PR 加入。 */
 export type StageSheet = { kind: 'run'; facet: RunPaneFacet }
 
-/** Ctrl K 搜索与跳转，⌘P 只查章节。 */
+/** 命令面板：commands 是搜索与跳转（⌘K / Ctrl K），chapters 只查章节（⌘P / Ctrl P）。 */
 export type StagePalette = 'commands' | 'chapters'
 
 /** 流程脊从项目数据派生状态时用到、而 project-store 与 draft-store 里没有的两项。 */

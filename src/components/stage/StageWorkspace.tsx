@@ -15,6 +15,7 @@ import { EmptyState } from '../ui/EmptyState'
 import { DangerConfirm } from '../ui/DangerConfirm'
 import StageRunSheet from './StageRunSheet'
 import StageTabs from './StageTabs'
+import { commandLabel } from './shortcut-keys'
 import { cancelCloseTab, confirmCloseTab, requestCloseTab, STAGE_CONTENT_ID } from './tab-close'
 
 /** 角色在 RD-6 并入架构阶段之前，标签里并排放旧的角色列表与角色档案。 */
@@ -103,7 +104,7 @@ export default function StageWorkspace({ library, focus }: { library: boolean; f
         onOpenChange={open => { if (!open) cancelCloseTab() }}
         title={text('放弃未保存的修改？', 'Discard unsaved changes?')}
         consequence={text(`「${pending?.name ?? ''}」有未保存的修改，关闭后这些修改会丢失。`, `“${pending?.name ?? ''}” has unsaved changes. Closing it discards them.`)}
-        recoverability={text('丢弃后无法恢复。想保留就选「继续编辑」，再按 Ctrl S 保存。', 'This cannot be undone. Choose “Keep editing” and press Ctrl S to keep them.')}
+        recoverability={text(`丢弃后无法恢复。想保留就选「继续编辑」，再按 ${commandLabel('s')} 保存。`, `This cannot be undone. Choose “Keep editing” and press ${commandLabel('s')} to keep them.`)}
         confirmLabel={text('放弃并关闭', 'Discard and close')}
         cancelLabel={text('继续编辑', 'Keep editing')}
         onConfirm={confirmCloseTab}

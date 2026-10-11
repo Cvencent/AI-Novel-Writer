@@ -93,6 +93,9 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={text('设置', 'Settings')}
         className="relative flex w-[880px] h-[600px] rounded-2xl overflow-hidden shadow-2xl"
         style={{
           backgroundColor: 'var(--color-editor-bg)',

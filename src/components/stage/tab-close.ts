@@ -11,7 +11,7 @@ function focusContent(): void {
   requestAnimationFrame(() => document.getElementById(STAGE_CONTENT_ID)?.focus({ preventScroll: true }))
 }
 
-/** 关闭标签：没有未保存修改就直接关；有修改时先请作者确认放弃。标签条与 Ctrl W 都走这里。 */
+/** 关闭标签：没有未保存修改就直接关；有修改时先请作者确认放弃。标签条与 ⌘W / Ctrl W 都走这里。 */
 export function requestCloseTab(tabId: string): void {
   const tab = useEditorStore.getState().tabs.find(candidate => candidate.id === tabId)
   if (!tab || tab.pinned) return

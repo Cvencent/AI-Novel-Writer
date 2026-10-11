@@ -4,6 +4,7 @@ import { ArrowUpDown, CornerDownLeft, Search } from 'lucide-react'
 import { useLocaleStore } from '../../stores/locale-store'
 import type { StagePalette as PaletteMode } from '../../stores/navigation/stage-store'
 import { filterPalette, GROUP_LABELS, GROUP_ORDER, type PaletteItem } from './palette-filter'
+import { commandLabel, isComposing } from './shortcut-keys'
 
 interface StagePaletteProps {
   mode: PaletteMode | null
@@ -28,6 +29,7 @@ function PaletteBody({ mode, items, onClose }: { mode: PaletteMode; items: reado
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (isComposing({ isComposing: event.nativeEvent.isComposing, keyCode: event.keyCode })) return
     const last = results.length - 1
     const next = event.key === 'ArrowDown' ? (current >= last ? 0 : current + 1)
       : event.key === 'ArrowUp' ? (current <= 0 ? last : current - 1)
@@ -69,7 +71,7 @@ function PaletteBody({ mode, items, onClose }: { mode: PaletteMode; items: reado
           spellCheck={false}
           autoComplete="off"
         />
-        <kbd>{mode === 'chapters' ? 'Ctrl P' : 'Ctrl K'}</kbd>
+        <kbd>{commandLabel(mode === 'chapters' ? 'p' : 'k')}</kbd>
       </div>
       <div className="stage-palette-list" id={listId} role="listbox" aria-label={text('结果', 'Results')}>
         {results.length === 0 && <p className="stage-palette-empty">{text('没有找到匹配的内容', 'No matches')}</p>}
