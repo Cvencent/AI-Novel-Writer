@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { _electron as electron } from 'playwright'
 
 import { startFakeModel } from './fake-model.mjs'
-import { BASELINE_SESSIONS, PERF_SCENARIOS, SCENARIOS as BASELINE_SCENARIOS } from './scenarios.mjs'
+import { BASELINE_SESSIONS, EXTRA_SCENARIOS, SCENARIOS as BASELINE_SCENARIOS } from './scenarios.mjs'
 import { dismissCompletionToasts, dismissStartupNotice, firstInteractiveControl, waitForShell } from './pages/shell.mjs'
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -18,7 +18,7 @@ const TIMEOUT = 60_000
 const VIEWPORT = { width: 1440, height: 900 }
 const THEMES = ['light', 'dark']
 const ROOT_NAMES = ['legacy', 'canonical', 'userData', 'home', 'appData', 'localAppData', 'temp', 'projects']
-const SCENARIOS = { ...BASELINE_SCENARIOS, ...PERF_SCENARIOS }
+const SCENARIOS = { ...BASELINE_SCENARIOS, ...EXTRA_SCENARIOS }
 const ALL_SCENARIOS = [...Object.keys(SCENARIOS), 'baseline-all', 'startup-timing']
 const USAGE = `用法: node scripts/redesign/drive.mjs --scenario <名称> [--theme light|dark] [--out <目录>] [--dump-dom] [--console] [--app-root <目录>]
 场景: ${ALL_SCENARIOS.join(', ')}`
@@ -220,7 +220,7 @@ async function runSession(sessionName, names, options) {
     if (sessionName !== 'startup-timing') {
       const { page } = launched
       await applyTheme(page, options.theme)
-      const context = { ...launched, roots, invoke, reload: () => page.reload().then(() => waitForShell(page, TIMEOUT)) }
+      const context = { ...launched, roots, invoke, fake, reload: () => page.reload().then(() => waitForShell(page, TIMEOUT)) }
       current = 0
       await SCENARIOS[names[0]].setup?.(context)
       for (const [index, name] of names.entries()) {

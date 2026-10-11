@@ -39,3 +39,12 @@ export async function finalize(page, chapterNumber) {
     .getByRole('button', { name: '确认定稿', exact: true }).click()
   await page.getByText('已定稿（只读）', { exact: true }).waitFor({ state: 'visible', timeout: 60_000 })
 }
+
+export async function startBatch(page, modelId, targetWords) {
+  await page.getByRole('button', { name: '批量创作' }).click()
+  const dialog = page.getByRole('dialog').filter({ has: page.getByRole('button', { name: '启动批量创作' }) })
+  await dialog.locator('#batch-chapter-count').fill('1')
+  await dialog.locator('#batch-chapter-words-target').fill(String(targetWords))
+  await dialog.locator('#batch-writing-model').selectOption(modelId)
+  await dialog.getByRole('button', { name: '启动批量创作' }).click()
+}

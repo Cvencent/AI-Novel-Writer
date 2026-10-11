@@ -10,3 +10,7 @@ export async function close(page) {
   await button.click()
   await button.waitFor({ state: 'hidden' })
 }
+
+export async function waitForSection(page, title) {
+  await page.getByRole('heading', { name: title, level: 2, exact: true }).waitFor({ state: 'visible' })
+}

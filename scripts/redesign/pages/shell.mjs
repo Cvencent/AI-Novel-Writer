@@ -31,3 +31,47 @@ export async function dismissCompletionToasts(page) {
 export function firstInteractiveControl(page) {
   return page.getByRole('button', { name: '新建作品', exact: true })
 }
+
+const LEFT_RAIL = '.writer-left-rail'
+const PANELS = { sidebar: '#writer-sidebar', assistant: '#writer-assistant', bottom: '#writer-bottom' }
+
+export async function clickRail(page, label) {
+  await page.locator(LEFT_RAIL).getByRole('button', { name: label }).click()
+}
+
+/** 旧外壳三块可收起面板当前是否显示。 */
+export function panels(page) {
+  return page.evaluate(ids => Object.fromEntries(Object.entries(ids)
+    .map(([name, selector]) => [name, !document.querySelector(selector)?.hasAttribute('hidden')])), PANELS)
+}
+
+export async function isImmersive(page) {
+  return await page.locator('[data-writer-immersive="true"]').count() > 0
+}
+
+export async function toggleImmersion(page) {
+  await page.getByRole('button', { name: /^(进入|退出)沉浸写作$/ }).click()
+}
+
+export async function closeBottomPanel(page) {
+  await page.locator(PANELS.bottom).getByTitle('关闭面板', { exact: true }).click()
+  await page.locator(PANELS.bottom).waitFor({ state: 'hidden' })
+}
+
+/** 标题栏当前作品名按钮，点开系统选文件夹对话框。 */
+export async function switchProject(page) {
+  await page.locator('button[title="切换项目"]').click()
+}
+
+export async function openBackupSettings(page) {
+  await page.getByRole('button', { name: '备份', exact: true }).click()
+}
+
+export async function clickStatusBarModel(page) {
+  await page.locator('[title^="当前模型："]').click()
+}
+
+/** 右侧工具栏的写作助手按钮；用来把右侧面板从 AI 输出切走。 */
+export async function showAssistant(page) {
+  await page.getByRole('button', { name: 'AI Agent 面板' }).click()
+}

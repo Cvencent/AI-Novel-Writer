@@ -103,8 +103,26 @@ node scripts/redesign/drive.mjs --scenario startup-timing --app-root <trunk 工�
 node scripts/redesign/drive.mjs --scenario startup-timing --out <目录>
 ```
 
+## 不进 baseline-all 的场景
+
+`scenarios.mjs` 的 `EXTRA_SCENARIOS` 只能单跑，不进 `baseline-all`。`run` 的返回值写进结果的 `measured`。需要卡住模型调用时，场景从上下文的 `fake.gate` 调 `hold()`，在 `after` 里 `release()`。
+
+| 名称 | 检查 | 单跑时截图停在 | 用夹具模型 |
+|---|---|---|---|
+| `write-latency` | 在渲染进程里计时：点击写作此章弹窗的「开始创作」到 AI 输出标题可见，写进 `measured.writeToOutputMs` | 写作完成 | 是 |
+| `nav-switch-project` | 角色视图加沉浸写作时从标题栏切换到另一部作品，断言退出沉浸、侧栏显示项目树 | 新作品的小说配置页 | 否 |
+| `nav-toast-open` | 写作完成后把右侧切到写作助手，点完成提示「打开查看」，断言 AI 输出重新出现 | AI 输出里的「第1章候选」 | 是 |
+| `nav-status-capsule` | 卡住模型让写作停在运行中，切到写作助手后点状态栏任务胶囊，断言 AI 输出出现 | 运行中的 AI 输出 | 是 |
+| `nav-settings-model` | 先从标题栏「备份」打开设置并关闭，再点状态栏模型，断言落在「AI 生成模型」 | 设置弹窗的模型分组 | 是 |
+| `nav-kb-import` | 关掉底部面板后在「小说」视图导入创作资料并确认发送，断言底部面板打开 | 知识库页与任务面板 | 是 |
+| `nav-card-import` | 关掉底部面板后在「角色」视图粘贴角色卡并确认发送，断言底部面板打开 | 角色页与任务面板 | 是 |
+| `nav-batch` | 关掉底部面板后从章节蓝图启动 1 章批量创作，断言底部面板打开 | 批量创作运行中 | 是 |
+| `nav-immersive-twice` | 关掉底部面板后两次切换沉浸写作，断言三块面板恢复到切换前 | 恢复后的工作台 | 否 |
+
+`nav-` 场景对 trunk（`--app-root`）与 head 各跑一次，两边都通过即行为一致。`write-latency` 与 `startup-timing` 一样交替各跑 5 次取中位数。
+
 ## 改外壳时
 
-类名选择器只出现在 `scripts/redesign/pages/`，按任务域分文件：`shell`（启动与外壳就绪）、`bookshelf`（书房）、`project`（项目树）、`chapter`（单章写作、审稿、修稿合并、定稿）、`run-panel`（运行面板）、`settings`（设置）。外壳替换后只改这些页面对象，场景 `scripts/redesign/scenarios.mjs` 不动。
+类名选择器只出现在 `scripts/redesign/pages/`，按任务域分文件：`shell`（启动、外壳就绪、标题栏、状态栏、左右栏与可收起面板）、`bookshelf`（书房）、`project`（项目树）、`chapter`（单章写作、审稿、修稿合并、定稿）、`run-panel`（运行面板）、`settings`（设置）、`materials`（知识库与角色卡导入）。外壳替换后只改这些页面对象，场景 `scripts/redesign/scenarios.mjs` 不动。
 
 `/.claude/` 在 `.gitignore` 里，提交本文件的改动要用 `git add -f .claude/skills/verify/SKILL.md`（或 `git add -u`）。假模型在 `scripts/redesign/fake-model.mjs`，按提示词特征返回正文、审稿 JSON、修稿正文或角色状态 JSON。

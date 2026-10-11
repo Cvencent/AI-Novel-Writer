@@ -45,3 +45,23 @@ export async function msFromClickToOpen(page, buttonName, trigger) {
   await trigger()
   return page.evaluate(() => window.__driveOpenLatency)
 }
+
+export const isOpen = page => panel(page).getByText('AI 输出', { exact: true }).isVisible()
+
+export async function waitUntilOpen(page) {
+  await panel(page).getByText('AI 输出', { exact: true }).waitFor({ state: 'visible' })
+}
+
+export async function openFromCompletionToast(page) {
+  await page.getByRole('button', { name: '打开查看', exact: true }).first().click()
+}
+
+const CAPSULE = '.ai-task-capsule'
+
+export async function openFromStatusCapsule(page) {
+  await page.locator(CAPSULE).first().click()
+}
+
+export async function waitForStatusCapsule(page) {
+  await page.locator(CAPSULE).first().waitFor({ state: 'visible' })
+}
