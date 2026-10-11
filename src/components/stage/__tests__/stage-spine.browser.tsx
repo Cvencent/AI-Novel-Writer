@@ -23,8 +23,9 @@ afterEach(async () => {
   host = undefined
 })
 
-const draft = (chapterNumber: number, version: number, status: DraftMeta['status']): DraftMeta => ({
-  id: chapterNumber * 10 + version, chapterNumber, version, status, createdAt: '2026-10-12T00:00:00Z', source: 'write',
+/** 时间取数据库 datetime('now') 的写法；不给时按版本号排在同一天里。 */
+const draft = (chapterNumber: number, version: number, status: DraftMeta['status'], createdAt = `2026-10-12 0${version}:00:00`, updatedAt = createdAt): DraftMeta => ({
+  id: chapterNumber * 10 + version, chapterNumber, version, status, createdAt, updatedAt, source: 'write',
   filePath: `ai-novel://draft/${chapterNumber * 10 + version}`, fileName: `draft_v${version}.md`,
 })
 
@@ -94,6 +95,16 @@ describe('四个阶段的状态由项目数据派生', () => {
     expect([rows[0].phase, rows[0].draft?.version, rows[1].phase, rows[1].draft?.version]).toEqual(['draft', 3, 'final', 2])
     expect(deriveStages(reverted)[3]).toMatchObject({ finalized: 1 })
     expect(focusChapter(rows)?.number).toBe(1)
+  })
+
+  it('三稿里给较旧的第 2 稿定稿：定稿前就有的第 3 稿不算定稿后的草稿，整章仍是定稿；定稿后才建的稿才算', () => {
+    const olderFinalized = facts({ drafts: {
+      1: [draft(1, 3, 'draft', '2026-10-12 03:00:00'), draft(1, 2, 'finalized', '2026-10-12 02:00:00', '2026-10-12 05:00:00'), draft(1, 1, 'draft')],
+      2: [draft(2, 4, 'draft', '2026-10-12 06:00:00'), draft(2, 3, 'reviewed', '2026-10-12 03:00:00'), draft(2, 2, 'finalized', '2026-10-12 02:00:00', '2026-10-12 05:00:00')],
+    } })
+    const rows = deriveChapters(olderFinalized)
+    expect([rows[0].phase, rows[0].draft?.version, rows[1].phase, rows[1].draft?.version]).toEqual(['final', 2, 'draft', 4])
+    expect(deriveStages(olderFinalized)[3]).toMatchObject({ finalized: 1 })
   })
 
   it('开始写作后正文按定稿比例进行中；全部定稿后四步都完成', () => {

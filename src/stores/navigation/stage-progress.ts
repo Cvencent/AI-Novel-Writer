@@ -5,8 +5,6 @@ import type { WorkflowRun } from '../workflow-store'
 import type { ResourcePage, WorkStage } from './navigation-intents'
 import type { StageWork } from './stage-store'
 
-export const STAGE_ORDER: readonly WorkStage[] = ['setup', 'architecture', 'blueprint', 'manuscript']
-
 /** 设定的必填项，与设定画板一致：一段核心大纲，加类型、篇幅、目标读者三项。 */
 export type SetupField = 'coreOutline' | 'genre' | 'length' | 'targetAudience'
 export const SETUP_FIELDS: readonly SetupField[] = ['coreOutline', 'genre', 'length', 'targetAudience']
@@ -40,7 +38,7 @@ export interface ChapterRow {
   phase: ChapterPhase
   /** 有工作流正在写这一章。 */
   running: boolean
-  /** 打开这一章时载入的稿：有比定稿更新的未归档草稿时取它，否则取定稿，再否则取最新的未归档草稿；待写章为空。 */
+  /** 打开这一章时载入的稿：有定稿之后才建的未归档草稿时取它，否则取定稿，再否则取最新的未归档草稿；待写章为空。 */
   draft: DraftMeta | null
 }
 
@@ -70,7 +68,7 @@ export function missingSetup(config: WorkFacts['config']): SetupField[] {
 /**
  * 四个阶段的状态，顺序固定为设定、架构、蓝图、正文。完成判定按 ia.md：设定必填项齐全，架构四节都有内容，
  * 蓝图至少 1 章（分批规划的作品不会因为没规划完就一直停在蓝图），正文按章统计。
- * 定稿章数与章节列表同源：定稿后又有更新草稿的章按草稿算，不计入定稿。
+ * 定稿章数与章节列表同源：定稿之后又建了草稿的章按草稿算，不计入定稿。
  */
 export function deriveStages(facts: WorkFacts, chapters: readonly ChapterRow[] = deriveChapters(facts)): StageStatus[] {
   const missing = missingSetup(facts.config)
@@ -91,6 +89,17 @@ export function deriveStages(facts: WorkFacts, chapters: readonly ChapterRow[] =
 
 const IN_PROGRESS: Partial<Record<DraftMeta['status'], ChapterPhase>> = { draft: 'draft', reviewed: 'reviewed', revised: 'revised' }
 
+/**
+ * 这份稿在定稿之后才建（版本历史「回退到此版本」会在定稿章上新建草稿）。草稿箱允许给较旧的版本定稿，
+ * 所以不能按版本号比：定稿前就有的更高版本不算。定稿时间取定稿稿的 updated_at（定稿后不可再改）；
+ * 两者同为数据库 datetime('now') 的写法，可直接按字符串比；同一秒内分不出先后时退回按版本号。
+ */
+function createdAfterFinal(draft: DraftMeta, final: DraftMeta): boolean {
+  const finalizedAt = final.updatedAt
+  if (!finalizedAt || draft.createdAt === finalizedAt) return draft.version > final.version
+  return draft.createdAt > finalizedAt
+}
+
 /** 正文阶段的章节列表：蓝图章与已有稿的章取并集，按章号排序。 */
 export function deriveChapters(facts: Pick<WorkFacts, 'blueprints' | 'drafts' | 'runningChapters'>): ChapterRow[] {
   const titles = new Map(facts.blueprints.map(blueprint => [blueprint.chapterNumber, blueprint.title]))
@@ -99,8 +108,7 @@ export function deriveChapters(facts: Pick<WorkFacts, 'blueprints' | 'drafts' | 
     const drafts = facts.drafts[number] ?? []
     const final = drafts.find(draft => draft.status === 'finalized') ?? null
     const latest = drafts.filter(draft => IN_PROGRESS[draft.status]).sort((a, b) => b.version - a.version)[0] ?? null
-    // 版本历史「回退到此版本」会在定稿章上新建草稿，作者接着改的是它
-    const working = latest && (!final || latest.version > final.version) ? latest : null
+    const working = latest && (!final || createdAfterFinal(latest, final)) ? latest : null
     return {
       number,
       title: titles.get(number) || final?.chapterTitle || '',
