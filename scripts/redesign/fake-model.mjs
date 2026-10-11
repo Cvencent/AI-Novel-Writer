@@ -7,7 +7,7 @@ export const FAKE_MODEL = Object.freeze({ id: 'redesign-drive-fixture', name: '�
   maxTokens: 4096, temperature: 0.7, purposes: ['generation'] })
 
 export const FIXTURE_PROSE = '林岚沿着旧港的石阶往下走，潮水刚退，青石上还留着一层薄薄的盐霜。她把父亲留下的地图摊在膝头，对照远处灯塔的位置，一格一格数过去。守塔人站在塔下朝她招手，说昨夜的钟声比往常早了一刻。'
-export const FIXTURE_REVISED = `${FIXTURE_PROSE}林岚把这句话记进日志，又核对了一遍潮位表。`
+const FIXTURE_REVISED = `${FIXTURE_PROSE}林岚把这句话记进日志，又核对了一遍潮位表。`
 const REVIEW = JSON.stringify({ summary: '时间线需要核对。', items: [
   { category: '连续性', severity: 'warning', description: '核对钟声提前一刻与潮位的关系。', quote: '昨夜的钟声比往常早了一刻' },
 ], goalReviews: [] })
@@ -21,6 +21,10 @@ function responseFor(prompt) {
 
 export async function startFakeModel(diagnostics) {
   const requests = []
+  const record = (kind, detail) => {
+    requests.push(kind)
+    diagnostics.push(`[fake-model] ${kind} <- ${detail}`)
+  }
   const server = createServer(async (request, response) => {
     if (request.method !== 'POST' || request.headers.authorization !== `Bearer ${FAKE_MODEL.apiKey}`) {
       response.writeHead(403).end(); return
@@ -28,7 +32,7 @@ export async function startFakeModel(diagnostics) {
     const body = JSON.parse(Buffer.concat(await Array.fromAsync(request)).toString('utf8'))
     if (request.url === '/v1/embeddings') {
       const input = Array.isArray(body.input) ? body.input : [body.input]
-      requests.push({ route: request.url, kind: 'embedding' })
+      record('embedding', `${input.length} 条`)
       response.writeHead(200, { 'Content-Type': 'application/json' })
         .end(JSON.stringify({ data: input.map((_, index) => ({ index, embedding: [0.1, 0.2, 0.3] })) }))
       return
@@ -36,8 +40,7 @@ export async function startFakeModel(diagnostics) {
     if (request.url !== '/v1/chat/completions') { response.writeHead(404).end(); return }
     const prompt = (body.messages ?? []).map(message => typeof message.content === 'string' ? message.content : JSON.stringify(message.content)).join('\n')
     const { kind, content } = responseFor(prompt)
-    requests.push({ route: request.url, kind })
-    diagnostics.push(`[fake-model] ${kind} <- ${prompt.slice(0, 120).replace(/\s+/g, ' ')}`)
+    record(kind, prompt.slice(0, 120).replace(/\s+/g, ' '))
     response.writeHead(200, { 'Content-Type': 'text/event-stream' })
     response.write(`data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: 'stop' }] })}\n\n`)
     response.write('data: {"choices":[],"usage":{"prompt_tokens":400,"completion_tokens":200,"total_tokens":600}}\n\n')

@@ -54,7 +54,7 @@ node scripts/redesign/drive.mjs --scenario <名称> ...
 在 `--out` 目录下：
 
 - `<场景>-<主题>.png`：场景截图，1440×900。
-- `<场景>-<主题>.json`：本次运行的结果数组。每项含 `screenshot`、`timing`、`modelRequests`、`externalRequests`、`residualProcesses`、`externalWrites`、`isolationRoot`，失败时含 `error`。
+- `<场景>-<主题>.json`：本次运行的结果数组。每项含 `screenshot`、`timing`、`externalRequests`、`residualProcesses`、`externalWrites`、`isolationRoot`，用夹具模型的场景另含 `modelRequests`（假服务收到的全部请求数，嵌入请求也计入，与 `--console` 里的 `[fake-model]` 行一一对应），失败时含 `error`。
 - 失败时额外写 `<场景>-<主题>.failure.png`、`.dom.html`、`.aria.yml`、`.console.log`，隔离目录保留以便排查。
 
 每个场景结束后，驱动会检查三件事：以 `--user-data-dir` 匹配不到任何存活进程（`residualProcesses` 为空）；`~/.vela`、`%APPDATA%\ai-novel-writer`、`%APPDATA%\AI小说作家` 的最新修改时间不变（`externalWrites` 为空）；主进程 `fetch` 没有访问 `https://api.openai.com/v1/*` 以外的地址（`externalRequests` 为空）。
@@ -66,7 +66,7 @@ node scripts/redesign/drive.mjs --scenario open-sample --dump-dom --console --ou
 ```
 
 - `--dump-dom` 写 `<场景>-<主题>.dom.html`（`page.content()`）和 `.aria.yml`（Playwright 无障碍快照）。改页面对象前先看 `.aria.yml`，选择器优先用其中的角色与可访问名称。
-- `--console` 写 `<场景>-<主题>.console.log`：渲染进程控制台、页面异常、主进程 stdout/stderr，以及假模型每次请求的分类（`[fake-model] prose|review|revision|character-state`）。
+- `--console` 写 `<场景>-<主题>.console.log`：渲染进程控制台、页面异常、主进程 stdout/stderr，以及假模型每次请求的分类（`[fake-model] prose|review|revision|character-state|embedding`）。
 
 ## 截图可重复性
 
