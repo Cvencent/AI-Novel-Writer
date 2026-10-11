@@ -9,11 +9,11 @@ export async function waitForShell(page, timeout) {
 }
 
 export async function dismissStartupNotice(page) {
-  const notice = page.locator(STARTUP_NOTICE)
-  if (await notice.isVisible()) await notice.getByRole('button', { name: '知道了', exact: true }).click()
+  const acknowledge = page.locator(STARTUP_NOTICE).getByRole('button', { name: '知道了', exact: true })
+  if (await acknowledge.isVisible()) await acknowledge.click()
 }
 
 /** 首个可点击控件：书房的「新建作品」。startup-timing 以它出现为可交互时刻。 */
 export function firstInteractiveControl(page) {
-  return page.getByRole('button', { name: '新建作品' }).first()
+  return page.getByRole('button', { name: '新建作品', exact: true })
 }

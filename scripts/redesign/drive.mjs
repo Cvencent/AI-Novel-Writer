@@ -214,10 +214,13 @@ async function runScenario(name, options) {
         navigationToInteractiveMs: Math.round(interactiveAt - timeOrigin) })
     } else {
       await applyTheme(session.page, options.theme)
-      const context = { ...session, roots, fake, invoke, reload: () => session.page.reload().then(() => waitForShell(session.page, TIMEOUT)) }
-      const mask = await SCENARIOS[name].run(context)
       result.screenshot = `${base}.png`
-      await shoot(session.page, result.screenshot, mask ?? [])
+      let shot = false
+      const context = { ...session, roots, fake, invoke,
+        reload: () => session.page.reload().then(() => waitForShell(session.page, TIMEOUT)),
+        shoot: async (mask = []) => { await shoot(session.page, result.screenshot, mask); shot = true } }
+      await SCENARIOS[name].run(context)
+      if (!shot) await context.shoot()
     }
     if (fake) {
       result.modelRequests = fake.requests.length
