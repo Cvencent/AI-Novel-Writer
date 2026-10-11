@@ -33,6 +33,8 @@ const START: LayoutFields = {
 
 const EXITED = { immersive: false, preImmersivePanels: null }
 
+const WRITE = { title: '夜雨', role: '发展', purpose: '交代来信', keyEvents: '收到密信', characters: '林岚', userGuidance: '' }
+
 function layoutFields(): Partial<LayoutFields> {
   const state = useLayoutStore.getState()
   return Object.fromEntries(Object.keys(START).map(key => [key, state[key as keyof LayoutFields]]))
@@ -70,8 +72,8 @@ describe('旧外壳下每种意图映射到原字段组合', () => {
     ['运行模型调用', { kind: 'run', facet: 'models' }, { bottomPanelOpen: true, bottomTab: 'models', activeRailItem: 'models', ...EXITED }],
     ['设置分组不退出沉浸', { kind: 'settings', section: 'backup' }, { settingsOpen: true, settingsSection: 'backup', activeRailItem: 'settings' }],
     ['打开章节', { kind: 'chapter', chapterNumber: 3 }, { sidebarView: 'project', activeRailItem: 'project', sidebarOpen: true, ...EXITED }],
-    ['写作此章只开创作弹窗', { kind: 'chapter', chapterNumber: 3, write: { chapterNumber: 3, title: '夜雨' } },
-      { chapterCreationOpen: true, chapterCreationPrefill: { chapterNumber: 3, title: '夜雨' } }],
+    ['写作此章只开创作弹窗', { kind: 'chapter', chapterNumber: 3, write: WRITE },
+      { chapterCreationOpen: true, chapterCreationPrefill: { chapterNumber: 3, ...WRITE } }],
   ]
 
   it.each(cases)('%s', (_name, intent, changed) => {
@@ -93,6 +95,13 @@ describe('旧外壳下每种意图映射到原字段组合', () => {
       ...EXITED,
       ...changed,
     })
+  })
+
+  it('写作参数里不能再带一个章号', () => {
+    // @ts-expect-error 章号只由意图的 chapterNumber 给出
+    const intent: NavigationIntent = { kind: 'chapter', chapterNumber: 3, write: { ...WRITE, chapterNumber: 4 } }
+    navigate(intent)
+    expect(useLayoutStore.getState().chapterCreationPrefill?.chapterNumber).toBe(3)
   })
 })
 

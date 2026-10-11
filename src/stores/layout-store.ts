@@ -16,8 +16,18 @@ export type LeftRailItem = SidebarView | 'blueprint' | 'world' | 'plot-tree' | B
 /** 设置弹窗分类 */
 export type SettingsSection = 'llm' | 'embedding' | 'proxy' | 'editor' | 'prompts' | 'skills' | 'backup' | 'about'
 
+/** 写作此章时预填到章节创作弹窗的参数，章号由 chapter 意图给出。 */
+export type ChapterWritePrefill = {
+  title: string
+  role: string
+  purpose: string
+  keyEvents: string
+  characters: string
+  userGuidance: string
+}
+
 /** 章节创建对话框的预填参数 */
-export type ChapterCreationPrefill = Record<string, unknown> | null
+export type ChapterCreationPrefill = (ChapterWritePrefill & { chapterNumber: number }) | null
 
 /** 旧外壳读取的布局字段。跨层导航经 `navigate` 写入，见 `navigation/legacy-layout.ts`。 */
 export interface LayoutFields {

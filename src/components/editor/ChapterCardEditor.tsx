@@ -777,7 +777,6 @@ function ChapterCardEditorSession({
       || !sameProjectSessionContext(dataProjectSessionRef.current, projectSession)
     ) return
     navigate({ kind: 'chapter', chapterNumber: bp.chapterNumber, write: {
-      chapterNumber: bp.chapterNumber,
       title: bp.title,
       role: bp.role,
       purpose: bp.purpose,

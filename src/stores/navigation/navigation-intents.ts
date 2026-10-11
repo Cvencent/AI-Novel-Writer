@@ -1,6 +1,6 @@
 import { openBuiltinEditor } from '../../components/panels/sidebar/sidebar-file-openers'
 import { useEditorStore } from '../editor-store'
-import { useLayoutStore, type ChapterCreationPrefill, type SettingsSection } from '../layout-store'
+import { useLayoutStore, type ChapterWritePrefill, type SettingsSection } from '../layout-store'
 import { useLocaleStore } from '../locale-store'
 import { useProjectStore } from '../project-store'
 import { legacyLayoutPatch } from './legacy-layout'
@@ -25,7 +25,7 @@ export type NavigationIntent =
   | { kind: 'run'; facet: RunPaneFacet; runId?: string }
   | { kind: 'settings'; section: SettingsSection }
   /** 带 write 时同时展开写作此章的参数，即旧外壳的章节创作弹窗。 */
-  | { kind: 'chapter'; chapterNumber: number; write?: NonNullable<ChapterCreationPrefill> }
+  | { kind: 'chapter'; chapterNumber: number; write?: ChapterWritePrefill }
 
 const LEGACY_PAGE_TABS: Partial<Record<WorkStage | ResourcePage, (text: (zh: string, en: string) => string) => void>> = {
   architecture: text => openBuiltinEditor('world-building-editor', text('故事架构', 'Story architecture'), 'world-building'),

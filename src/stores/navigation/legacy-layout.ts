@@ -39,7 +39,7 @@ export function legacyLayoutPatch(state: Pick<LayoutFields, 'sidebarView'>, inte
       return { settingsOpen: true, settingsSection: intent.section, activeRailItem: 'settings' }
     case 'chapter':
       return intent.write
-        ? { chapterCreationOpen: true, chapterCreationPrefill: intent.write }
+        ? { chapterCreationOpen: true, chapterCreationPrefill: { ...intent.write, chapterNumber: intent.chapterNumber } }
         : { sidebarView: 'project', activeRailItem: 'project', sidebarOpen: true, ...EXIT_IMMERSION }
   }
 }
