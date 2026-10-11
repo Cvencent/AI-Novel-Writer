@@ -31,7 +31,7 @@ import { APP_BRAND } from '../../shared/brand'
 import { ipc } from '../../services/ipc-client'
 import { useLocaleStore } from '../../stores/locale-store'
 import type { MessageKey } from '../../i18n/core'
-import { useWindowCloseGuard } from './use-window-close-guard'
+import type { WindowCloseGuard } from './use-window-close-guard'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '../ui/Dialog'
@@ -53,7 +53,8 @@ const themeLabelKeys: Record<Theme, MessageKey> = {
   dark: 'theme.dark',
 }
 
-export default function TitleBar() {
+/** 关窗守卫由 App 在外壳之外持有，这里只呈现确认对话框。 */
+export default function TitleBar({ exitGuard }: { exitGuard: WindowCloseGuard }) {
   const currentProject = useProjectStore((s) => s.currentProject)
   const openProject = useProjectStore((s) => s.openProject)
   const { theme, setTheme } = useThemeStore()
@@ -65,7 +66,7 @@ export default function TitleBar() {
   const immersive = useLayoutStore(s => s.immersive)
   const toggleImmersion = useLayoutStore(s => s.toggleImmersion)
   const { locale, toggleLocale, t, text } = useLocaleStore()
-  const { exitRequest, exitBusy, exitError, cancelExit, discardAndExit, saveAndExit } = useWindowCloseGuard()
+  const { exitRequest, exitBusy, exitError, cancelExit, discardAndExit, saveAndExit } = exitGuard
 
   const ThemeIcon = themeIcons[theme] || Sun
   const cycleTheme = (e: MouseEvent) => {

@@ -3,7 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import ShellV2 from '../ShellV2'
-import TitleBar from '../../TitleBar'
+import { GuardedTitleBar } from '../../__tests__/guarded-title-bar'
 import LeftToolWindowBar from '../../LeftToolWindowBar'
 import WelcomePageV2 from '../../../pages/v2/WelcomePageV2'
 import { vi } from 'vitest'
@@ -85,7 +85,7 @@ it.each([
   useAppearanceStore.setState({ resolvedShell: 'writer' })
   useProjectStore.setState({ currentProject: { id: 'narrow', name: projectName, path: 'C:/narrow', sessionLease: 'narrow', novelConfig: {} } as never })
   await act(async () => root.render(<ShellV2 theme="paper"
-    titleBar={<TitleBar />} rail={<span>书脊</span>} sidebar={<span>目录</span>}
+    titleBar={<GuardedTitleBar />} rail={<span>书脊</span>} sidebar={<span>目录</span>}
     editor={<span>正文</span>} aiPanel={<span>助手</span>} bottom={<span>任务</span>} statusBar={<span>页脚</span>} />))
 
   // Exercise both reserved system-button widths even on a single host OS.

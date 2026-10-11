@@ -1,12 +1,10 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { useLocaleStore } from '../../stores/locale-store'
 import { Button } from '../ui/Button'
-import type { useWindowCloseGuard } from '../layout/use-window-close-guard'
-
-type Guard = ReturnType<typeof useWindowCloseGuard>
+import type { WindowCloseGuard } from '../layout/use-window-close-guard'
 
 /** 关窗时还有未保存内容或运行中的任务。判定与处理在 useWindowCloseGuard，这里只是新外壳的呈现。 */
-export default function ExitGuardDialog({ guard, container }: { guard: Guard; container: HTMLElement | null }) {
+export default function ExitGuardDialog({ guard, container }: { guard: WindowCloseGuard; container: HTMLElement | null }) {
   const text = useLocaleStore(s => s.text)
   const { exitRequest, exitBusy, exitError, cancelExit, discardAndExit, saveAndExit } = guard
   const blocked = Boolean(exitRequest?.workflowBlocked)

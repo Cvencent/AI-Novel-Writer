@@ -15,7 +15,7 @@ export interface ExitRequest {
 
 /**
  * 主进程关窗前发来 window:close-requested，渲染端必须回复，否则窗口关不掉。
- * 两种外壳各自渲染确认对话框，判定与保存、放弃、取消的处理只有这一份。
+ * App 在两种外壳之外调用一次，外壳渲染出错时也照样回复；两种外壳只负责呈现确认对话框。
  */
 export function useWindowCloseGuard() {
   const text = useLocaleStore(s => s.text)
@@ -36,8 +36,8 @@ export function useWindowCloseGuard() {
     const editor = useEditorStore.getState()
     if (countUnsavedEditorItems(editor.tabs, editor.draftLedgers) === 0) {
       void ipc.invoke('window:resolve-close', requestId, 'proceed').then(result => {
-        if (!result.success) console.error('[TitleBar] 退出请求已失效')
-      }).catch(error => console.error('[TitleBar] 退出请求失败:', error))
+        if (!result.success) console.error('[WindowCloseGuard] 退出请求已失效')
+      }).catch(error => console.error('[WindowCloseGuard] 退出请求失败:', error))
       return
     }
     setExitError(null)
@@ -95,3 +95,5 @@ export function useWindowCloseGuard() {
 
   return { exitRequest, exitBusy, exitError, cancelExit, discardAndExit, saveAndExit }
 }
+
+export type WindowCloseGuard = ReturnType<typeof useWindowCloseGuard>

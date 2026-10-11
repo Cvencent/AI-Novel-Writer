@@ -3,6 +3,17 @@
  * 顶栏与流程脊直接放在外框上，内容在 14px 圆角的悬浮面板里，层次靠阴影区分。
  * 只引用纸墨令牌；画板里令牌之间的过渡色用 color-mix 从令牌调出，不写颜色字面量。
  */
+.stage-root {
+  width: 100%;
+  height: 100%;
+}
+
+.stage-fallback {
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+
 .stage-shell {
   position: relative;
   display: flex;

@@ -9,15 +9,14 @@ import { openBuiltinEditor } from '../../stores/open-builtin-editor'
 import { chapterLabel } from '../../stores/navigation/stage-navigation'
 import type { Theme } from '../../stores/theme-store'
 import { ipc } from '../../services/ipc-client'
-import { useWindowCloseGuard } from '../layout/use-window-close-guard'
 import ClearProjectDataDialog from '../dialogs/ClearProjectDataDialog'
 import type { MenuGroupSpec } from '../ui/Menu'
-import ExitGuardDialog from './ExitGuardDialog'
 import StagePalette from './StagePalette'
 import type { PaletteItem } from './palette-filter'
 import StageSpine from './StageSpine'
 import StageTopBar from './StageTopBar'
 import StageWorkspace from './StageWorkspace'
+import { inkTheme } from './ink-theme'
 import { RESOURCE_NAMES, STAGE_NAMES } from './stage-text'
 import { refreshStageWork, useLandingPage, useStageView, useStageWorkRefresh, type StageView } from './use-stage-work'
 import { useStageShortcuts } from './use-stage-shortcuts'
@@ -56,7 +55,6 @@ export default function StageShell({ theme }: { theme: Theme }) {
   const activeName = useEditorStore(s => s.tabs.find(tab => tab.id === s.activeTabId)?.name)
   const [root, setRoot] = useState<HTMLDivElement | null>(null)
   const [clearOpen, setClearOpen] = useState(false)
-  const guard = useWindowCloseGuard()
   const view = useStageView()
 
   useStageWorkRefresh()
@@ -131,7 +129,7 @@ export default function StageShell({ theme }: { theme: Theme }) {
     <div
       ref={setRoot}
       className="paper-ink stage-shell"
-      data-theme={theme === 'dark' || theme === 'galaxy' ? 'dark' : 'light'}
+      data-theme={inkTheme(theme)}
       data-shell-presentation="stage"
       data-focus={focus || undefined}
       data-library={library || undefined}
@@ -159,7 +157,6 @@ export default function StageShell({ theme }: { theme: Theme }) {
         <StageWorkspace library={library} focus={focus} />
       </div>
       <StagePalette mode={palette} items={paletteItems} container={root} onClose={() => useStageStore.setState({ palette: null })} />
-      <ExitGuardDialog guard={guard} container={root} />
       <ClearProjectDataDialog open={clearOpen} onClose={() => setClearOpen(false)} onCleared={() => refreshStageWork(text)} />
     </div>
   )

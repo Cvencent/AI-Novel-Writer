@@ -11,6 +11,7 @@ import { useLocaleStore } from './stores/locale-store'
 import { useSkinStore } from './stores/skin-store'
 import { ipc } from './services/ipc-client'
 import TitleBar from './components/layout/TitleBar'
+import { useWindowCloseGuard } from './components/layout/use-window-close-guard'
 import StatusBar from './components/layout/StatusBar'
 import LeftToolWindowBar from './components/layout/LeftToolWindowBar'
 import RightToolWindowBar from './components/layout/RightToolWindowBar'
@@ -27,6 +28,7 @@ import ExportDialog from './components/dialogs/ExportDialog'
 import SettingsModal from './components/settings/SettingsModal'
 import { ANIME_SKIN_URL } from './components/settings/AppearanceSettings'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import StageRoot from './components/stage/StageRoot'
 import StageShell from './components/stage/StageShell'
 import { actionToast } from './components/ui/ActionToast'
 import { UpdateNotifier } from './components/updates/UpdateNotifier'
@@ -124,6 +126,7 @@ export default function App() {
   const disposeSkin = useSkinStore((s) => s.dispose)
   const recoverFromImageFailure = useSkinStore((s) => s.recoverFromImageFailure)
   const shell = useAppearanceStore((s) => s.resolvedShell)
+  const exitGuard = useWindowCloseGuard()
 
   // 初始化：主题 + LLM 模型 + 最近项目 + 缩放级别
   useEffect(() => {
@@ -288,7 +291,9 @@ export default function App() {
   if (shell === 'stage') {
     return (
       <>
-        <StageShell theme={resolvedTheme} />
+        <StageRoot theme={resolvedTheme} exitGuard={exitGuard}>
+          <StageShell theme={resolvedTheme} />
+        </StageRoot>
         <UpdateNotifier />
         {globalDialogs}
       </>
@@ -306,7 +311,7 @@ export default function App() {
       <ShellV2
         home={!currentProject || sidebarView === 'home'}
         theme={resolvedTheme}
-        titleBar={<TitleBar />}
+        titleBar={<TitleBar exitGuard={exitGuard} />}
         rail={<LeftToolWindowBar />}
         sidebar={(
           <ErrorBoundary fallbackLabel={text('侧边栏渲染失败', 'Sidebar failed to render')}>

@@ -3,7 +3,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import TitleBar from '../../layout/TitleBar'
+import { GuardedTitleBar } from '../../layout/__tests__/guarded-title-bar'
 import { WriterWelcomePage } from '../../pages/v2/use-project-overview'
 import SettingsModal from '../../settings/SettingsModal'
 import { useLayoutStore } from '../../../stores/layout-store'
@@ -64,7 +64,7 @@ afterEach(async () => {
 
 describe('backup production entries', () => {
   it('keeps both settings entries on llm and opens backup from the TitleBar', async () => {
-    await act(async () => root.render(<TitleBar />))
+    await act(async () => root.render(<GuardedTitleBar />))
     const settingsButtons = [...container.querySelectorAll<HTMLButtonElement>('[title="设置"]')]
     expect(settingsButtons).toHaveLength(2)
 
@@ -96,7 +96,7 @@ describe('backup production entries', () => {
   })
 
   it('defaults both settings entries to llm, syncs external sections, and reopens on a new request', async () => {
-    await act(async () => root.render(<><TitleBar /><SettingsHarness /></>))
+    await act(async () => root.render(<><GuardedTitleBar /><SettingsHarness /></>))
     const settingsButtons = [...container.querySelectorAll<HTMLButtonElement>('[title="设置"]')]
 
     await act(async () => settingsButtons[0]?.click())
