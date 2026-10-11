@@ -60,6 +60,10 @@ export async function openSettings(page) {
   await page.getByRole('button', { name: '关闭设置' }).waitFor({ state: 'visible' })
 }
 
+export function removeFromLibraryButton(page, name) {
+  return page.locator('.writer-shelf').getByRole('button', { name: `从最近项目移除《${name}》` })
+}
+
 export async function backToLibrary(page, name) {
   await root(page).getByRole('banner').getByRole('button', { name: `《${name}》作品菜单` }).click()
   await page.getByRole('menuitem', { name: '回到书房' }).click()

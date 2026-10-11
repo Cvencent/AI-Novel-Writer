@@ -378,6 +378,7 @@ async function chromeContrastFailures(page) {
       ['.stage-row-name', 4.5], ['.stage-row-label', 4.5], ['.stage-chapter:not([data-phase="todo"]) .stage-chapter-title', 4.5],
       ['.stage-work-title', 4.5], ['.stage-row-meta', 3], ['.stage-chapter-status', 3], ['.stage-chapter[data-phase="todo"] .stage-chapter-title', 3],
       ['.stage-crumb', 3], ['.stage-search-hint', 3], ['.stage-saved', 3], ['.stage-spine-label', 3], ['.stage-chapter-no', 3],
+      ['.writer-shelf li > button', 4.5],
     ]
     return checks.flatMap(([selector, minimum]) => [...document.querySelectorAll(`[data-shell-presentation="stage"] ${selector}`)].map(element => {
       const value = ratio(parse(getComputedStyle(element).color), backdrop(element))
@@ -479,6 +480,16 @@ export const STAGE_SCENARIOS = {
   'stage-library': { model: false, shell: 'stage', run: async ({ page }) => {
     await shell.firstInteractiveControl(page).waitFor({ state: 'visible' })
     assert.equal(await stage.spine(page).count(), 0, '书房没有流程脊')
+  } },
+  'stage-library-recent': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+    await stage.backToLibrary(page, STAGE_SAMPLE.name)
+    await stage.removeFromLibraryButton(page, STAGE_SAMPLE.name).scrollIntoViewIfNeeded()
+    assert.deepEqual(await chromeContrastFailures(page), [], '书房书架按钮文字对比度不足')
+  }, after: async ({ page }) => {
+    await stage.removeFromLibraryButton(page, STAGE_SAMPLE.name).click()
+    const dialog = page.getByRole('dialog').filter({ hasText: '这只会移除列表记录' })
+    await dialog.getByRole('button', { name: '移除记录', exact: true }).click()
+    await stage.removeFromLibraryButton(page, STAGE_SAMPLE.name).waitFor({ state: 'detached' })
   } },
   'stage-run': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page, fake }) => {
     fake.gate.hold()
