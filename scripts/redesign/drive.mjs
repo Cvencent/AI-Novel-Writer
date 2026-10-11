@@ -120,17 +120,28 @@ async function residualProcesses(userData) {
   }
 }
 
-async function quit(app) {
+function isAlive(pid) {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) { return error.code === 'EPERM' }
+}
+
+/** close 失败时进程可能已自行退出，这时 taskkill 报「not found」；进程已不存在即视为已退出，不算强杀。 */
+export async function quit(app, graceMs = 10_000) {
   const pid = app.process().pid
   let timer
   const closed = await Promise.race([app.close().then(() => true).catch(() => false),
-    new Promise(resolve => { timer = setTimeout(() => resolve(false), 10_000) })])
+    new Promise(resolve => { timer = setTimeout(() => resolve(false), graceMs) })])
   clearTimeout(timer)
-  if (!closed && pid) {
-    if (process.platform === 'win32') execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true })
+  if (closed || !pid || !isAlive(pid)) return { forced: false }
+  try {
+    if (process.platform === 'win32') execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
     else process.kill(pid, 'SIGKILL')
+  } catch (error) {
+    if (isAlive(pid)) throw error
   }
-  return { forced: !closed }
+  return { forced: true }
 }
 
 async function launch({ roots, appRoot, fakeModelPort, diagnostics }) {
