@@ -51,6 +51,7 @@
 .pi-sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-3);
   padding: var(--s-4) var(--s-4) var(--s-3); border-bottom: 1px solid var(--rule); }
 .pi-sheet-title { margin: 0; font: 600 var(--fs-14)/1.4 var(--font-ui); }
+.pi-sheet-title:focus { outline: none; }
 .pi-sheet-sub { margin: 2px 0 0; color: var(--ink-3); font-size: var(--fs-12); }
 .pi-sheet-tabs { display: flex; gap: var(--s-4); padding: 0 var(--s-4); border-bottom: 1px solid var(--rule); }
 .pi-sheet-tab { padding: 10px 0; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; background: none;

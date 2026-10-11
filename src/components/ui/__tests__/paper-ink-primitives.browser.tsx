@@ -152,17 +152,22 @@ describe('Button 纸墨六种', () => {
 })
 
 describe('Sheet', () => {
-  function Harness({ onClose }: { onClose: () => void }) {
+  function Harness({ onClose = () => {}, initiallyOpen = false }: { onClose?: () => void; initiallyOpen?: boolean }) {
+    const [open, setOpen] = useState(initiallyOpen)
     const [tab, setTab] = useState('a')
     return (
-      <div style={{ display: 'flex', height: 400 }}>
+      <div style={{ display: 'flex', gap: 16, height: 400, alignItems: 'flex-start' }}>
+        <Button variant="secondary" onClick={() => setOpen(true)}>打开蓝图</Button>
         <Sheet
-          open
+          open={open}
           title="第 4 章"
           subtitle="蓝图"
           closeLabel="关闭侧页"
-          onClose={onClose}
-          tabs={{ items: [{ id: 'a', label: '蓝图' }, { id: 'b', label: '要求' }], active: tab, onChange: setTab }}
+          onClose={() => {
+            onClose()
+            setOpen(false)
+          }}
+          tabs={{ items: [{ id: 'a', label: '蓝图' }, { id: 'b', label: '要求' }, { id: 'c', label: '设定' }], active: tab, onChange: setTab }}
         >
           正文
         </Sheet>
@@ -170,30 +175,68 @@ describe('Sheet', () => {
     )
   }
 
-  it('以标题命名，关闭按钮与分页可键盘到达，Esc 关闭', async () => {
+  it('打开时焦点移到标题，Esc 或关闭按钮关闭后焦点回到打开它的按钮', async () => {
     const onClose = vi.fn()
     const container = await mount(<Harness onClose={onClose} />)
-    const sheet = container.querySelector('aside')!
-    expect(sheet.getAttribute('aria-labelledby')).toBe(container.querySelector('h2')!.id)
+    const trigger = container.querySelector('button')!
 
+    await userEvent.click(trigger)
+    const sheet = container.querySelector('aside')!
+    const heading = container.querySelector('h2')!
+    expect(sheet.getAttribute('aria-labelledby')).toBe(heading.id)
+    expect(focused()).toBe(heading)
+    await userEvent.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('aside')).toBeNull()
+    expect(focused()).toBe(trigger)
+
+    await userEvent.keyboard('{Enter}')
+    expect(focused()).toBe(container.querySelector('h2'))
     await userEvent.tab()
     expect(focused().getAttribute('aria-label')).toBe('关闭侧页')
     expectFocusRing(focused())
-    await userEvent.tab()
-    expect(focused().getAttribute('role')).toBe('tab')
-    expectFocusRing(focused())
-    await userEvent.tab()
     await userEvent.keyboard('{Enter}')
-    expect(container.querySelectorAll('[role="tab"]')[1].getAttribute('aria-selected')).toBe('true')
-    expect(container.querySelector('[role="tabpanel"]')!.id).toBe(focused().getAttribute('aria-controls'))
-    await shot('rd1-sheet')
+    expect(onClose).toHaveBeenCalledTimes(2)
+    expect(focused()).toBe(trigger)
+  })
 
-    await userEvent.keyboard('{Escape}')
-    expect(onClose).toHaveBeenCalledTimes(1)
+  it('分页用方向键切换，只有当前分页在 Tab 顺序里，面板以当前分页命名', async () => {
+    const container = await mount(<Harness initiallyOpen />)
+    const tabs = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+    const panel = container.querySelector('[role="tabpanel"]')!
+    const expectActive = (index: number) => {
+      expect(focused()).toBe(tabs[index])
+      expect(tabs.map((tab) => tab.getAttribute('aria-selected'))).toEqual(tabs.map((_, i) => String(i === index)))
+      expect(tabs.map((tab) => tab.tabIndex)).toEqual(tabs.map((_, i) => (i === index ? 0 : -1)))
+      expect(panel.getAttribute('aria-labelledby')).toBe(tabs[index].id)
+      expect(tabs[index].getAttribute('aria-controls')).toBe(panel.id)
+    }
+
+    await userEvent.tab()
+    await userEvent.tab()
+    expect(focused()).toBe(tabs[0])
+    expectFocusRing(tabs[0])
+    await userEvent.tab()
+    expect(tabs).not.toContain(focused())
+    await userEvent.tab({ shift: true })
+    expectActive(0)
+
+    await userEvent.keyboard('{ArrowRight}')
+    expectActive(1)
+    await userEvent.keyboard('{End}')
+    expectActive(2)
+    await userEvent.keyboard('{ArrowRight}')
+    expectActive(0)
+    await userEvent.keyboard('{ArrowLeft}')
+    expectActive(2)
+    await userEvent.keyboard('{Home}')
+    expectActive(0)
+    await userEvent.keyboard('{ArrowRight}')
+    await shot('rd1-sheet')
   })
 
   it('滑入动画只在状态变化时出现，并在减少动态效果设置下关闭', async () => {
-    const container = await mount(<Harness onClose={() => {}} />)
+    const container = await mount(<Harness initiallyOpen />)
     expect(getComputedStyle(container.querySelector('aside')!).animationName).toBe('pi-sheet-in')
     const reducedRules = [...document.styleSheets].flatMap((sheet) => {
       try {
