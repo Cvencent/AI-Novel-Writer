@@ -83,7 +83,6 @@ interface LayoutState extends LayoutFields {
   closeExport: () => void
   openImportNovel: () => void
   closeImportNovel: () => void
-  openChapterCreation: (prefill?: ChapterCreationPrefill) => void
   closeChapterCreation: () => void
 }
 
@@ -186,6 +185,5 @@ export const useLayoutStore = create<LayoutState>()((set, get) => ({
   closeExport: () => set({ exportOpen: false }),
   openImportNovel: () => set({ importNovelOpen: true }),
   closeImportNovel: () => set({ importNovelOpen: false }),
-  openChapterCreation: (prefill = null) => set({ chapterCreationOpen: true, chapterCreationPrefill: prefill }),
   closeChapterCreation: () => set({ chapterCreationOpen: false, chapterCreationPrefill: null }),
 }))
