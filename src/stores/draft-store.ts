@@ -48,7 +48,6 @@ function isDraftProjectSessionCurrent(projectSession: ProjectSessionContext): bo
   )
 }
 
-/** 数据库草稿记录换成界面用的草稿元数据，按版本号从新到旧排。 */
 function toDraftMetas(list: AllInvokeChannels['db:draft-list']['return']): DraftMeta[] {
   return list.map((m) => ({
     ...m,

@@ -14,7 +14,7 @@ export interface PaletteItem {
   run: () => void
 }
 
-/** 按分组构造面板项：分组由参数给出，调用处不必为字面量写 as const。 */
+/** 调用处不必为分组字面量写 as const。 */
 export function paletteItem(group: PaletteGroup, item: Omit<PaletteItem, 'group'>): PaletteItem {
   return { ...item, group }
 }

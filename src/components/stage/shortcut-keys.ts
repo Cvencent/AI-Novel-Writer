@@ -1,6 +1,6 @@
 import { useLayoutStore } from '../../stores/layout-store'
 
-export const IS_MAC = typeof navigator !== 'undefined' && navigator.userAgent.includes('Mac')
+export const IS_MAC = navigator.userAgent.includes('Mac')
 
 /** 拉丁布局按 key 判断（Dvorak 等布局字母位置不同），非拉丁布局（俄文、希腊文等）按物理键位 code 判断。 */
 function isLetter(event: Pick<KeyboardEvent, 'key' | 'code'>, letter: string): boolean {
@@ -17,7 +17,6 @@ export function isCommand(event: Pick<KeyboardEvent, 'key' | 'code' | 'metaKey' 
   return modifier && !event.altKey && !event.shiftKey && isLetter(event, letter)
 }
 
-/** 快捷键提示：macOS 写 ⌘K，其余平台写 Ctrl K。 */
 export function commandLabel(letter: string, mac = IS_MAC): string {
   return mac ? `⌘${letter.toUpperCase()}` : `Ctrl ${letter.toUpperCase()}`
 }
