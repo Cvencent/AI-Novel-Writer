@@ -31,7 +31,8 @@ const TAB_KEYS: Record<string, (index: number, count: number) => number> = {
 
 /**
  * 内容区右侧的按需侧页。由所在布局决定位置，侧页本身不遮挡正文。
- * 非模态：打开时焦点移到标题，Tab 可以离开侧页；关闭时若焦点随侧页一起消失，就还给打开前的元素。
+ * 非模态：打开时焦点移到标题，Tab 可以离开侧页；点在侧页空白处时焦点落在侧页自身（tabIndex=-1），Esc 仍然有效。
+ * 关闭时若焦点随侧页一起消失，就还给打开前的元素。
  */
 export function Sheet({ open, title, subtitle, closeLabel, onClose, tabs, footer, wide, children }: SheetProps) {
   const titleId = useId()
@@ -69,7 +70,7 @@ export function Sheet({ open, title, subtitle, closeLabel, onClose, tabs, footer
   }
 
   return (
-    <aside className={clsx('pi-sheet', wide && 'pi-sheet--wide')} aria-labelledby={titleId} onKeyDown={onKeyDown}>
+    <aside className={clsx('pi-sheet', wide && 'pi-sheet--wide')} aria-labelledby={titleId} tabIndex={-1} onKeyDown={onKeyDown}>
       <header className="pi-sheet-head">
         <div>
           <h2 id={titleId} ref={titleRef} tabIndex={-1} className="pi-sheet-title">{title}</h2>

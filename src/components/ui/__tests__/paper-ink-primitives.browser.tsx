@@ -199,6 +199,12 @@ describe('Sheet', () => {
     await userEvent.keyboard('{Enter}')
     expect(onClose).toHaveBeenCalledTimes(2)
     expect(focused()).toBe(trigger)
+
+    await userEvent.click(trigger)
+    await userEvent.click(page.getByText('正文'))
+    await userEvent.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalledTimes(3)
+    expect(focused()).toBe(trigger)
   })
 
   it('分页用方向键切换，只有当前分页在 Tab 顺序里，面板以当前分页命名', async () => {
