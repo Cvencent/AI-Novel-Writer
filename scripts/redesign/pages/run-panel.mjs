@@ -3,7 +3,7 @@ import { waitForCompletionToast } from './shell.mjs'
 
 const PANEL = '.writer-ai-panel'
 
-export const panel = page => page.locator(PANEL)
+const panel = page => page.locator(PANEL)
 
 export async function open(page) {
   const header = panel(page).getByText('AI 输出', { exact: true })

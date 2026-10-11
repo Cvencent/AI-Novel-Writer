@@ -9,7 +9,7 @@ import * as project from './pages/project.mjs'
 import * as runPanel from './pages/run-panel.mjs'
 import * as settings from './pages/settings.mjs'
 
-export const SAMPLE = Object.freeze({ name: '灯塔', chapterTitle: '旧港', chapterNumber: 1 })
+const SAMPLE = Object.freeze({ name: '灯塔', chapterTitle: '旧港', chapterNumber: 1 })
 
 async function stubFolderPicker(app, directory) {
   await app.evaluate(({ dialog }, selected) => {

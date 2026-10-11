@@ -1,5 +1,5 @@
-// 外壳级选择器。RD-3 替换外壳时只改本目录。
-export const SHELL_READY = '[data-shell-presentation="writer"][data-shell-variant="v3"]'
+// 外壳级选择器。替换外壳时只改本目录。
+const SHELL_READY = '[data-shell-presentation="writer"][data-shell-variant="v3"]'
 const SKIN_ROOT = '.app-skin-root'
 const STARTUP_NOTICE = '[role="status"].fixed.inset-x-0.top-10'
 
