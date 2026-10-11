@@ -95,7 +95,10 @@ export const SCENARIOS = {
   } },
   'run-panel': { model: true, run: async context => {
     await writeSample(context)
+    await context.reload()
+    await bookshelf.openProject(context.page, SAMPLE.name)
     await runPanel.open(context.page)
+    await runPanel.waitForPersistedRun(context.page, `第${SAMPLE.chapterNumber}章候选`)
   } },
   settings: { model: false, run: async ({ page }) => { await settings.open(page) } },
 }
