@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { legacyLayoutPatch } from './navigation/legacy-layout'
 
 /** 左侧活动栏的视图类型 */
 export type SidebarView = 'home' | 'project' | 'knowledge' | 'characters' | 'settings'
@@ -18,7 +19,8 @@ export type SettingsSection = 'llm' | 'embedding' | 'proxy' | 'editor' | 'prompt
 /** 章节创建对话框的预填参数 */
 export type ChapterCreationPrefill = Record<string, unknown> | null
 
-interface LayoutState {
+/** 旧外壳读取的布局字段。跨层导航经 `navigate` 写入，见 `navigation/legacy-layout.ts`。 */
+export interface LayoutFields {
   // ===== 侧边栏 =====
   sidebarOpen: boolean
   sidebarView: SidebarView
@@ -56,8 +58,9 @@ interface LayoutState {
   chapterCreationOpen: boolean
   /** 章节创建对话框的预填参数 */
   chapterCreationPrefill: ChapterCreationPrefill
+}
 
-  // ===== Actions =====
+interface LayoutState extends LayoutFields {
   toggleSidebar: () => void
   setSidebarView: (view: SidebarView, activeRailItem?: LeftRailItem) => void
   setSidebarWidth: (width: number) => void
@@ -66,15 +69,13 @@ interface LayoutState {
   setAIPanelWidth: (width: number) => void
   setRightView: (view: RightView) => void
   /** 打开右侧面板并切换到指定视图 */
-  openRightPanel: (view: RightView, runId?: string) => void
+  openRightPanel: (view: RightView) => void
   toggleBottomPanel: () => void
   setBottomTab: (tab: BottomTab) => void
   setBottomPanelHeight: (height: number) => void
-  openBottomTab: (tab: BottomTab) => void
   toggleImmersion: () => void
 
   // ===== 全局弹窗 Actions =====
-  openSettings: (section?: SettingsSection, activeRailItem?: LeftRailItem) => void
   closeSettings: () => void
   openNewProject: () => void
   closeNewProject: () => void
@@ -139,9 +140,13 @@ export const useLayoutStore = create<LayoutState>()((set, get) => ({
   setAIPanelOpen: (open) => set({ aiPanelOpen: open, ...(open ? { immersive: false, preImmersivePanels: null } : {}) }),
   setAIPanelWidth: (width) => set({ aiPanelWidth: Math.max(260, Math.min(600, width)) }),
   setRightView: (view) => set({ rightView: view }),
-  openRightPanel: (view, runId) => {
+  openRightPanel: (view) => {
+    if (view === 'ai-output') {
+      set(s => legacyLayoutPatch(s, { kind: 'run', facet: 'output' }))
+      return
+    }
     if (get().sidebarView === 'home') get().setSidebarView('project')
-    set({ aiPanelOpen: true, rightView: view, rightPanelRunId: view === 'ai-output' ? runId ?? null : null, immersive: false, preImmersivePanels: null })
+    set({ aiPanelOpen: true, rightView: view, rightPanelRunId: null, immersive: false, preImmersivePanels: null })
   },
 
   toggleBottomPanel: () => set((s) => ({ bottomPanelOpen: !s.bottomPanelOpen, immersive: false, preImmersivePanels: null })),
@@ -159,10 +164,6 @@ export const useLayoutStore = create<LayoutState>()((set, get) => ({
     })
   },
   setBottomPanelHeight: (height) => set({ bottomPanelHeight: Math.max(100, Math.min(500, height)) }),
-  openBottomTab: (tab) => {
-    if (get().sidebarView === 'home') get().setSidebarView('project')
-    set({ bottomPanelOpen: true, bottomTab: tab, activeRailItem: tab, immersive: false, preImmersivePanels: null })
-  },
   toggleImmersion: () => set((s) => s.immersive
     ? { ...s.preImmersivePanels, immersive: false, preImmersivePanels: null }
     : {
@@ -178,8 +179,6 @@ export const useLayoutStore = create<LayoutState>()((set, get) => ({
     }),
 
   // 全局弹窗 Actions
-  openSettings: (section = 'llm', activeRailItem = 'settings') =>
-    set({ settingsOpen: true, settingsSection: section, activeRailItem }),
   closeSettings: () => set({ settingsOpen: false }),
   openNewProject: () => set({ newProjectOpen: true }),
   closeNewProject: () => set({ newProjectOpen: false }),

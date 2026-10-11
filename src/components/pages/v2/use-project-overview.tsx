@@ -4,6 +4,7 @@ import { Archive } from 'lucide-react'
 import { ipc } from '../../../services/ipc-client'
 import type { ProjectOverview } from '../../../shared/project-overview'
 import { useLayoutStore } from '../../../stores/layout-store'
+import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { captureProjectSession, isProjectSessionCurrent } from '../../project-session-gate'
@@ -121,9 +122,9 @@ export function WriterWelcomePage({ onNewProject }: { onNewProject: () => void }
     legacyImportNotice={legacyImportNotice}
     legacyImportBusy={legacyImportBusy}
     onImportNovel={() => useLayoutStore.getState().openImportNovel()}
-    onContinue={hasCurrentProject ? () => useLayoutStore.getState().setSidebarView('project') : undefined}
+    onContinue={hasCurrentProject ? () => navigate({ kind: 'stage' }) : undefined}
     onDeleteCurrentProject={deletableCurrentProject ? () => void confirmDeleteCurrentProject(deletableCurrentProject) : undefined}
-    backup={<button type="button" onClick={() => useLayoutStore.getState().openSettings('backup')}>
+    backup={<button type="button" onClick={() => navigate({ kind: 'settings', section: 'backup' })}>
       <Archive size={17} />
       {text('项目备份', 'Project backup')}
     </button>}

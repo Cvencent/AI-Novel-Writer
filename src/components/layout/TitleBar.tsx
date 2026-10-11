@@ -29,6 +29,7 @@ import { saveDirtyEditorChangesForExit } from '../../stores/editor-store'
 import { countUnsavedEditorItems } from '../../stores/editor-unsaved'
 import { discardAllEditorChanges } from '../../stores/editor-discard'
 import { useLayoutStore } from '../../stores/layout-store'
+import { navigate } from '../../stores/navigation/navigation-intents'
 import { APP_BRAND } from '../../shared/brand'
 import { ipc } from '../../services/ipc-client'
 import { useLocaleStore } from '../../stores/locale-store'
@@ -61,7 +62,6 @@ export default function TitleBar() {
   const { theme, setTheme } = useThemeStore()
   const { zoom, zoomIn, zoomOut, zoomReset } = useThemeStore()
   const hasDirty = useEditorStore((s) => countUnsavedEditorItems(s.tabs, s.draftLedgers) > 0)
-  const openSettings = useLayoutStore(s => s.openSettings)
   const openNewProject = useLayoutStore(s => s.openNewProject)
   const openExport = useLayoutStore(s => s.openExport)
   const openImportNovel = useLayoutStore(s => s.openImportNovel)
@@ -236,7 +236,7 @@ export default function TitleBar() {
       </div>
 
       <div className="flex items-center gap-2 min-w-0 flex-1">
-        <button className="writer-command-button" title={t('common.settings')} onClick={() => openSettings()}>
+        <button className="writer-command-button" title={t('common.settings')} onClick={() => navigate({ kind: 'settings', section: 'llm' })}>
           <Menu size={17} strokeWidth={1.8} />
         </button>
 
@@ -260,7 +260,7 @@ export default function TitleBar() {
 
         <div className="writer-command-divider h-5 w-px" />
 
-        <button className="writer-command-button writer-topbar-action" title={t('common.backup')} aria-label={t('common.backup')} onClick={() => openSettings('backup')}>
+        <button className="writer-command-button writer-topbar-action" title={t('common.backup')} aria-label={t('common.backup')} onClick={() => navigate({ kind: 'settings', section: 'backup' })}>
           <Archive size={14} strokeWidth={1.75} />
           <span className="writer-topbar-action-label">{t('common.backup')}</span>
         </button>
@@ -335,7 +335,7 @@ export default function TitleBar() {
           <span>{locale === 'zh-CN' ? 'EN' : '中文'}</span>
         </button>
         <button
-          onClick={() => openSettings()}
+          onClick={() => navigate({ kind: 'settings', section: 'llm' })}
           title={t('common.settings')}
           className="writer-command-button"
           style={{ minHeight: 24, padding: '0 7px' }}

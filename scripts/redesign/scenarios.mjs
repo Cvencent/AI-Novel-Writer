@@ -111,6 +111,16 @@ export const SCENARIOS = {
   settings: { model: false, run: ({ page }) => settings.open(page), after: ({ page }) => settings.close(page) },
 }
 
+/** 只测性能、不进 baseline-all 的场景。run 的返回值写进结果的 measured。 */
+export const PERF_SCENARIOS = {
+  'write-latency': { model: true, setup: seedWithoutDraft, run: async ({ page }) => {
+    await project.openBlueprints(page)
+    const writeToOutputMs = await runPanel.msFromClickToOpen(page, '开始创作', () => chapter.writeThisChapter(page, 100))
+    await runPanel.waitForWorkflowDone(page)
+    return { writeToOutputMs }
+  } },
+}
+
 /** new-project 与示例作品都建「灯塔」，同一项目目录里不能共存，所以分两个会话。 */
 export const BASELINE_SESSIONS = {
   shelf: ['settings', 'new-project'],

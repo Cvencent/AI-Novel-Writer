@@ -12,6 +12,7 @@ import { useAppearanceStore } from '../../../../stores/appearance-bootstrap'
 import { useAgentStore } from '../../../../stores/agent-store'
 import { useEditorStore } from '../../../../stores/editor-store'
 import { useLayoutStore } from '../../../../stores/layout-store'
+import { navigate } from '../../../../stores/navigation/navigation-intents'
 import { useLLMStore } from '../../../../stores/llm-store'
 import { useLocaleStore } from '../../../../stores/locale-store'
 import { useProjectStore } from '../../../../stores/project-store'
@@ -129,7 +130,7 @@ it('reveals explicitly opened panels from the bookshelf', async () => {
     expect(useLayoutStore.getState()).toMatchObject({ sidebarView: 'project', bottomTab: tab, bottomPanelOpen: true })
   }
   await act(async () => useLayoutStore.getState().setSidebarView('home'))
-  await act(async () => useLayoutStore.getState().openBottomTab('tasks'))
+  await act(async () => navigate({ kind: 'run', facet: 'tasks' }))
   expect(host.querySelector('#writer-bottom')?.hasAttribute('hidden')).toBe(false)
   expect(useLayoutStore.getState().sidebarView).toBe('project')
   await act(async () => useLayoutStore.getState().setSidebarView('home'))

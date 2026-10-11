@@ -1,4 +1,9 @@
-import type { ChapterCreationPrefill, SettingsSection } from '../layout-store'
+import { openBuiltinEditor } from '../../components/panels/sidebar/sidebar-file-openers'
+import { useEditorStore } from '../editor-store'
+import { useLayoutStore, type ChapterCreationPrefill, type SettingsSection } from '../layout-store'
+import { useLocaleStore } from '../locale-store'
+import { useProjectStore } from '../project-store'
+import { legacyLayoutPatch } from './legacy-layout'
 
 /** 作品流程脊的四个阶段，顺序即创作顺序。 */
 export type WorkStage = 'setup' | 'architecture' | 'blueprint' | 'manuscript'
@@ -21,3 +26,21 @@ export type NavigationIntent =
   | { kind: 'settings'; section: SettingsSection }
   /** 带 write 时同时展开写作此章的参数，即旧外壳的章节创作弹窗。 */
   | { kind: 'chapter'; chapterNumber: number; write?: NonNullable<ChapterCreationPrefill> }
+
+const LEGACY_PAGE_TABS: Partial<Record<WorkStage | ResourcePage, (text: (zh: string, en: string) => string) => void>> = {
+  architecture: text => openBuiltinEditor('world-building-editor', text('故事架构', 'Story architecture'), 'world-building'),
+  blueprint: text => openBuiltinEditor('chapter-card-editor', text('章节蓝图', 'Chapter blueprint'), 'chapter-card'),
+  plot: text => openBuiltinEditor('narrative-thread-editor', text('剧情树与叙事线索', 'Plot tree & narrative threads'), 'narrative-thread', 'plot-tree'),
+  history: text => openBuiltinEditor('version-history', text('版本历史', 'Version history'), 'version-history'),
+  setup: text => {
+    const projectKey = useProjectStore.getState().currentProject?.path
+    if (projectKey) useEditorStore.getState().openFile({ id: 'config', name: text('小说配置', 'Novel configuration'), type: 'config', projectKey })
+  },
+}
+
+/** 唯一的跨层导航入口。 */
+export function navigate(intent: NavigationIntent): void {
+  useLayoutStore.setState(state => legacyLayoutPatch(state, intent))
+  const page = intent.kind === 'stage' ? intent.stage : intent.kind === 'resource' ? intent.page : undefined
+  if (page) LEGACY_PAGE_TABS[page]?.(useLocaleStore.getState().text)
+}
