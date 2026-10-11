@@ -119,6 +119,24 @@ describe('appearance bootstrap in real browser storage', () => {
     expect(parseAppearanceProfileV1(back)).toEqual(JSON.parse(back))
   })
 
+  it.each(['已确认', '存储里更新'] as const)('%s的新外壳 v2 配置重置后写成 v1，revision 递增，RD-3 之前的解析器能读', async source => {
+    const store = createAppearanceStore()
+    await store.getState().bootstrap(dependencies())
+    expect(store.getState().update({ shellPreference: 'stage' })).toBe(true)
+    let revision = store.getState().profile!.revision
+    if (source === '存储里更新') {
+      localStorage.setItem(KEY, JSON.stringify({ ...JSON.parse(localStorage.getItem(KEY)!), revision: revision + 5 }))
+      revision += 5
+    }
+    expect(JSON.parse(localStorage.getItem(KEY)!)).toMatchObject({ schemaVersion: 2, shellPreference: 'stage' })
+    expect(store.getState().resetAppearance()).toBe(true)
+    const reset = localStorage.getItem(KEY)!
+    expect(JSON.parse(reset)).toMatchObject({ schemaVersion: 1, shellPreference: 'unset', revision: revision + 1, origin: 'author' })
+    expect(parseAppearanceProfileV1(reset)).toEqual(JSON.parse(reset))
+    expect(await store.getState().bootstrap(dependencies())).toBe(true)
+    expect(store.getState()).toMatchObject({ phase: 'migrated', resolvedShell: 'writer' })
+  })
+
   it.each(['legacy-json', 'canonical-json', 'unknown-shell'] as const)('preserves %s and blocks without writing defaults', async kind => {
     seed()
     if (kind === 'legacy-json') localStorage.setItem(THEME, '{broken')

@@ -105,8 +105,7 @@ export function createAppearanceStore(releaseDefault: Shell = RELEASE_DEFAULT_SH
             try { revision = Math.max(revision, parseAppearanceProfile(existing).revision) }
             catch (error) { if (!(error instanceof AppearanceProfileError)) throw error }
           }
-          const next = parseAppearanceProfile(JSON.stringify({ ...INITIAL_APPEARANCE, revision: revision + 1, origin: 'author' }))
-          const serialized = JSON.stringify(next)
+          const serialized = serializeAppearanceProfile({ ...INITIAL_APPEARANCE, revision: revision + 1, origin: 'author' })
           target.setItem(APPEARANCE_STORAGE_KEY, serialized)
           if (target.getItem(APPEARANCE_STORAGE_KEY) !== serialized) throw new AppearanceProfileError('APPEARANCE_READBACK_FAILED')
           set({ phase: 'pending', profile: null, snapshot: null, resolvedShell: 'classic', notice: null, failureCode: null })
