@@ -87,7 +87,7 @@
   color: var(--ink-2); font: inherit; font-size: var(--fs-12); cursor: pointer; }
 .pi-seg-item[aria-pressed="true"] { background: var(--paper); color: var(--ink); box-shadow: var(--shadow-seg); font-weight: 500; }
 
-.pi-check { display: inline-flex; align-items: center; gap: var(--s-2); cursor: pointer; color: var(--ink); }
+.pi-check { position: relative; display: inline-flex; align-items: center; gap: var(--s-2); cursor: pointer; color: var(--ink); }
 .pi-check-input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
 .pi-check-box { position: relative; display: grid; place-items: center; flex: none; width: 16px; height: 16px;
   border: 1.5px solid var(--rule-strong); border-radius: var(--radius-sm); background: var(--paper); color: var(--accent-ink); }
