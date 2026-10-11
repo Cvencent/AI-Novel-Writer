@@ -1,0 +1,128 @@
+import { Fragment, useEffect, useRef, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { clsx } from 'clsx'
+import { Button } from './Button'
+import { useAnchoredLayer } from './use-anchored-layer'
+import '../../styles/paper-ink/index.css'
+
+export interface MenuItemSpec {
+  id: string
+  label: string
+  onSelect: () => void
+  disabled?: boolean
+}
+
+export interface MenuGroupSpec {
+  id: string
+  label?: string
+  /** 危险分组放在最后，与普通分组之间有分隔线，项目为危险色。 */
+  tone?: 'danger'
+  items: readonly MenuItemSpec[]
+}
+
+interface MenuProps {
+  /** 触发按钮的可访问名称；只给图标时也作为 aria-label。 */
+  label: string
+  icon?: ReactNode
+  groups: readonly MenuGroupSpec[]
+  align?: 'start' | 'end'
+}
+
+const enabledItems = (menu: HTMLElement | null) =>
+  Array.from(menu?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? [])
+
+export function Menu({ label, icon, groups, align = 'start' }: MenuProps) {
+  const { open, layerId, anchorRef, triggerRef, show, toggle, close } = useAnchoredLayer()
+  const menuRef = useRef<HTMLDivElement>(null)
+  const focusFirstOnOpen = useRef(false)
+
+  const items = () => enabledItems(menuRef.current)
+
+  useEffect(() => {
+    if (open && focusFirstOnOpen.current) enabledItems(menuRef.current)[0]?.focus()
+  }, [open])
+
+  const openWithKeyboard = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      focusFirstOnOpen.current = true
+      if (open) items()[0]?.focus()
+      else show()
+    }
+  }
+
+  const moveFocus = (event: KeyboardEvent<HTMLDivElement>) => {
+    const list = items()
+    const index = list.indexOf(document.activeElement as HTMLButtonElement)
+    const target = {
+      ArrowDown: list[(index + 1) % list.length],
+      ArrowUp: list[(index - 1 + list.length) % list.length],
+      Home: list[0],
+      End: list[list.length - 1],
+    }[event.key]
+    if (target) {
+      event.preventDefault()
+      target.focus()
+    } else if (event.key === 'Tab') {
+      close(false)
+    }
+  }
+
+  const select = (item: MenuItemSpec) => {
+    close(true)
+    item.onSelect()
+  }
+
+  const triggerProps = {
+    ref: triggerRef,
+    'aria-haspopup': 'menu' as const,
+    'aria-expanded': open,
+    'aria-controls': open ? layerId : undefined,
+    // 键盘触发的 click（Enter、空格）detail 为 0，此时打开后把焦点移到第一项。
+    onClick: (event: MouseEvent<HTMLButtonElement>) => {
+      focusFirstOnOpen.current = event.detail === 0
+      toggle()
+    },
+    onKeyDown: openWithKeyboard,
+  }
+
+  return (
+    <div className="pi-anchor" ref={anchorRef}>
+      {icon
+        ? <Button variant="icon" aria-label={label} {...triggerProps}>{icon}</Button>
+        : <Button variant="secondary" {...triggerProps}>{label}</Button>}
+      {open && (
+        <div
+          id={layerId}
+          ref={menuRef}
+          role="menu"
+          aria-label={label}
+          className={clsx('pi-menu', align === 'end' && 'pi-menu--end')}
+          onKeyDown={moveFocus}
+        >
+          {groups.map((group, index) => (
+            <Fragment key={group.id}>
+              {index > 0 && <div role="separator" className="pi-menu-sep" />}
+              <div role="group" aria-label={group.label}>
+                {group.label && <div className="pi-menu-label" aria-hidden>{group.label}</div>}
+                {group.items.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="menuitem"
+                    tabIndex={-1}
+                    className="pi-menu-item"
+                    data-tone={group.tone}
+                    disabled={item.disabled}
+                    onClick={() => select(item)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </Fragment>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}

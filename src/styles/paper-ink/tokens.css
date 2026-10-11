@@ -8,14 +8,14 @@
   color-scheme: light;
 
   --frame: #EEEDE8;
-  --sunken: #F2F0EB;
+  --sunken: rgba(23, 23, 26, .05);
   --surface: #F7F6F2;
   --surface-2: #F1F0EC;
   --paper: #FFFEFB;
 
   --ink: #17171A;
   --ink-2: #55555E;
-  --ink-3: #8A8A93;
+  --ink-3: #84848D;
   --ink-4: #A1A1A8;
   --rule: rgba(23, 23, 26, .07);
   --rule-strong: rgba(23, 23, 26, .14);
@@ -74,14 +74,14 @@
   color-scheme: dark;
 
   --frame: #111113;
-  --sunken: #151518;
+  --sunken: rgba(0, 0, 0, .25);
   --surface: #18181C;
   --surface-2: #222228;
   --paper: #1D1D22;
 
   --ink: #E6E4DF;
   --ink-2: #A3A2AB;
-  --ink-3: #8B8A93;
+  --ink-3: #77767F;
   --ink-4: #5E5D66;
   --rule: rgba(255, 255, 255, .08);
   --rule-strong: rgba(255, 255, 255, .16);
