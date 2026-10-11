@@ -68,7 +68,8 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 Each live lane runs in its own worktree at the PR head. Drive through the skill path or exact commands recorded in this boot recipe.
 
 - [ ] `git fetch origin <head-branch> && git checkout <head SHA>`.
-- [ ] 安装与构建，依次运行 `pnpm install --frozen-lockfile`、`pnpm rebuild:electron`、`pnpm build`。若 `pnpm add` 类操作卡住，改用全局较新的 pnpm（见项目记忆）。
+- [ ] 安装与构建，依次运行 `pnpm install --frozen-lockfile --ignore-scripts`、`node node_modules/electron/install.js`、`pnpm rebuild:electron`、`pnpm build`。本机 Node 26 从源码编译 `better-sqlite3` 会失败（LNK1117），所以安装时跳过脚本，再单独装 Electron 并按 Electron ABI 重建。若 `pnpm add` 类操作卡住，改用全局较新的 pnpm（见项目记忆）。
+- [ ] 驱动每次运行都用 `mkdtemp` 新建隔离目录，所以同一 PR 的实机 lane 可以共用主 Agent 预先构建好的 head 检出，各用独立的 `--out`。性能 lane 等其他 lane 全部结束后单独运行。
 - [ ] 只通过 `.claude/skills/verify/SKILL.md` 的命令驱动应用，即 `node scripts/redesign/drive.mjs --scenario <名称> --theme <light|dark> --out <目录>`；它用隔离配置目录和临时项目启动 Electron。只读诊断用 `--dump-dom` 与 `--console`。
 - [ ] Save every screenshot to `/tmp/swarm-<pr-id>/worker-<n>/<slug>.png` and return the paths with the report.
 
