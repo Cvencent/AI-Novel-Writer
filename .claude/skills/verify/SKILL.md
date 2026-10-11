@@ -134,7 +134,7 @@ node scripts/redesign/drive.mjs --scenario startup-timing --out <目录>
 |---|---|---|---|---|
 | `stage-open-sample` | 流程脊四个阶段的状态（设定、架构、蓝图完成，正文进行中）、章节阶段、当前章为 3、只有一个标签时标签条收起、外壳文字对比度（名称 4.5:1，说明 3:1，底色沿祖先叠加求出） | 第 3 章正文 | 否 | lane 1 的新外壳部分、lane 2（浅色）、lane 3（`--theme dark`） |
 | `stage-tabs` | 依次打开设定与蓝图共三个标签，关掉一个后还剩两个且标签条仍在；`after` 再关一个，标签条收起 | 两个标签 | 否 | lane 4 |
-| `stage-dirty-close` | 改小说配置后关它的标签，出现危险确认；`after` 点「继续编辑」，标签与修改都在 | 危险确认对话框 | 否 | lane 5 |
+| `stage-dirty-close` | 改设定页后关「设定」标签，出现危险确认；`after` 点「继续编辑」，标签与修改都在 | 危险确认对话框 | 否 | lane 5 |
 | `stage-save` | 改小说配置，顶栏变「未保存」，Ctrl S 后变「已保存」 | 已保存 | 否 | lane 6 |
 | `stage-find-chapter` | Ctrl P 输入「4」回车打开第 4 章，再输入「第3章」打开第 3 章，流程脊当前章随之变化 | 第 3 章正文 | 否 | lane 7 |
 | `stage-focus` | 沉浸写作后流程脊与标签条消失，正文与章节动作条（AI 审稿等）在；`after` 按 Esc 恢复 | 沉浸写作 | 否 | lane 8 |
@@ -148,7 +148,7 @@ node scripts/redesign/drive.mjs --scenario startup-timing --out <目录>
 | `stage-close-key` | 书房里、搜索框里各按一次 Ctrl W，页面都拦下（`defaultPrevented`），应用仍在。应用菜单有 CommandOrControl+W 的「关闭」，但驱动注入的按键到不了菜单快捷键，所以断言的是拦截 | 搜索框 | 否 | 第 4 条 |
 | `stage-reopen` | 从作品菜单回到书房再打开同一部作品，再次落到第 3 章 | 第 3 章正文 | 否 | 第 8 条 |
 | `stage-partial-blueprint` | 规划 100 章、只有 12 章蓝图：蓝图算完成，落点仍是第 3 章 | 第 3 章正文 | 否 | 第 6 条 |
-| `stage-revert-after-final` | 第 1 章定稿后再建一份新草稿（版本历史「回退到此版本」的效果）：章节列表按草稿显示，打开的是新草稿 | 第 1 章新草稿 | 否 | 第 7 条 |
+| `stage-revert-after-final` | 第 1 章定稿后再建一份新草稿（版本历史「回退到此版本」的效果）：第 1 章成了最早写到一半的章，打开作品即落在它上面；章节列表按草稿显示，点它打开的是新草稿 | 第 1 章新草稿 | 否 | 第 7 条 |
 | `stage-new-project` | 新外壳里新建作品：设定进行中、其余未开始；外壳文字对比度、进度环半径 8.5、设定说明在名字下一行、作品资料图标跟随行文字色 | 新作品首屏 | 否 | 第 20、23、24 条 |
 | `stage-focus-search` | 沉浸写作里 Ctrl F 打开正文搜索，Esc 只关搜索框、不退出沉浸；`after` 再按 Esc 退出沉浸 | 沉浸写作 | 否 | 第 10 条 |
 | `stage-tour` | 30–60 秒的导览：四个阶段、Ctrl K、Ctrl P、关标签、沉浸写作、写一章看运行胶囊与侧页。配 `--video` 录评审视频 | 写完一章 | 是 | Review gate |
