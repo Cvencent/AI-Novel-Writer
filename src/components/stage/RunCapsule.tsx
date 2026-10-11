@@ -23,16 +23,6 @@ export default function RunCapsule() {
   const sheetOpen = useStageStore(s => s.sheet?.kind === 'run')
   const runs = projectPath ? allRuns.filter(run => sameProjectPathKey(run.projectPath, projectPath)) : []
   const doneUntil = lastEnded?.status === 'completed' && lastEnded.completedAt ? Date.parse(lastEnded.completedAt) + DONE_VISIBLE_MS : 0
-  const [now, setNow] = useState(() => Date.now())
-
-  useEffect(() => {
-    const remaining = doneUntil - Date.now()
-    if (remaining <= 0) return
-    const timer = setTimeout(() => setNow(Date.now()), remaining)
-    return () => clearTimeout(timer)
-  }, [doneUntil])
-
-  const finished = runs.length === 0 && doneUntil > now
 
   const toggle = (runId?: string) => {
     if (sheetOpen) useStageStore.setState({ sheet: null })
@@ -40,13 +30,7 @@ export default function RunCapsule() {
   }
 
   if (runs.length === 0) {
-    if (!finished) return null
-    return (
-      <button type="button" className="stage-capsule" data-tone="ok" aria-expanded={sheetOpen} onClick={() => toggle()}>
-        <Check size={14} aria-hidden="true" />
-        {text('运行已完成', 'Run complete')}
-      </button>
-    )
+    return doneUntil ? <DoneCapsule key={doneUntil} until={doneUntil} expanded={sheetOpen} onToggle={() => toggle()} /> : null
   }
 
   const waiting = runs.filter(run => run.status === 'waiting').length
@@ -69,6 +53,26 @@ export default function RunCapsule() {
       <ProgressRing size={18} stroke={2} ratio={percent / 100} />
       <span className="stage-capsule-label">{waiting ? text(`${run.title} · 等你确认`, `${run.title} · needs you`) : step && !run.title.includes(step.name) ? `${run.title} · ${step.name}` : run.title}</span>
       <b className="stage-capsule-value">{percent}%</b>
+    </button>
+  )
+}
+
+/** 按 until 重新挂载：挂载时已过期（这条完成运行进入历史时就晚了）直接不显示，否则到点收起。 */
+function DoneCapsule({ until, expanded, onToggle }: { until: number; expanded: boolean; onToggle: () => void }) {
+  const text = useLocaleStore(s => s.text)
+  const [visible, setVisible] = useState(() => until > Date.now())
+
+  useEffect(() => {
+    if (!visible) return
+    const timer = setTimeout(() => setVisible(false), until - Date.now())
+    return () => clearTimeout(timer)
+  }, [until, visible])
+
+  if (!visible) return null
+  return (
+    <button type="button" className="stage-capsule" data-tone="ok" aria-expanded={expanded} onClick={onToggle}>
+      <Check size={14} aria-hidden="true" />
+      {text('运行已完成', 'Run complete')}
     </button>
   )
 }

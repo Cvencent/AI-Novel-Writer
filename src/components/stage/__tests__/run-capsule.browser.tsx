@@ -76,6 +76,14 @@ describe('运行胶囊', () => {
     expect(capsule()).toBeNull()
   })
 
+  it('历史里出现一条结束已超过 1.8 秒的完成运行时不显示完成提示', async () => {
+    await act(async () => vi.advanceTimersByTime(10_000))
+    const late = { ...run('z', 'completed'), completedAt: new Date(Date.now() - 5000).toISOString() } as WorkflowRun
+    await set({ activeRuns: [], history: [late] })
+    await act(async () => vi.advanceTimersByTime(60_000))
+    expect(capsule()).toBeNull()
+  })
+
   it('别的作品的运行完成不显示在这部作品的胶囊上，换作品时也不会把别处的完成带过来', async () => {
     await set({ activeRuns: [run('a', 'running'), run('x', 'running', ELSEWHERE)] })
     await set({ activeRuns: [run('a', 'running')], history: [run('x', 'completed', ELSEWHERE)] })
