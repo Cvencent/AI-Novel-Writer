@@ -7,6 +7,6 @@ New-Item -ItemType Directory -Force $out | Out-Null
 if (-not $Pages) { $Pages = Get-ChildItem $PSScriptRoot -Filter *.html | Where-Object Name -ne 'index.html' | ForEach-Object BaseName }
 $h = [int]($Width * 0.625)
 foreach ($p in $Pages) { foreach ($t in 'light','dark') {
-  & $edge --headless=new --disable-gpu --hide-scrollbars --window-size="$Width,$h" --virtual-time-budget=10000 --screenshot="$out\$p-$t.png" "http://127.0.0.1:4780/prototype/$p.html?theme=$t&clean" 2>$null | Out-Null
+  & $edge --headless=new --disable-gpu --hide-scrollbars --window-size="$Width,$h" --virtual-time-budget=16000 --screenshot="$out\$p-$t.png" "http://127.0.0.1:4780/prototype/$p.html?theme=$t&clean" 2>$null | Out-Null
 } }
 Get-ChildItem $out | Where-Object { $Pages -contains ($_.BaseName -replace '-(light|dark)$','') } | Select-Object Name, Length

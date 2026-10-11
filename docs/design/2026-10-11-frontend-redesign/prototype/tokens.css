@@ -56,7 +56,7 @@
   --radius-sm: 4px; --radius: 6px; --radius-lg: 10px; --radius-pill: 999px;
 
   /* 布局 */
-  --title-h: 48px; --spine-w: 264px; --sheet-w: 380px; --tabs-h: 36px;
+  --title-h: 48px; --spine-w: 264px; --sheet-w: 380px; --sheet-w-wide: 620px; --tabs-h: 36px;
 
   /* 动效：只在状态变化时出现 */
   --ease: cubic-bezier(.2, .8, .2, 1);

@@ -42,7 +42,8 @@ const Shell = {
 
     const chaptersHtml = showChapters ? `<div class="spine-chapters">
         <div class="spine-search">${icon('search', 'i-sm')}查找章节<span class="kbd" style="margin-left:auto">⌘P</span></div>
-        <ol class="chapter-list">${SAMPLE.chapters.map(([n, t, s]) => {
+        <ol class="chapter-list">${SAMPLE.chapters.map(([n, t, s0]) => {
+          const s = (o.chapterStatus && o.chapterStatus[n]) || s0;
           const [tone, label] = CHAPTER_STATUS[s];
           return `<li class="chapter" data-status="${s}" ${o.chapter === n ? 'aria-current="page"' : ''}>
             <span class="chapter-no">${String(n).padStart(2, '0')}</span><span class="chapter-title">${t}</span>
@@ -89,7 +90,7 @@ const Shell = {
         ${spine}
         <div class="content">
           ${tabsHtml}
-          <div class="workspace" data-sheet="${sheet ? 'open' : 'closed'}">
+          <div class="workspace" data-sheet="${sheet ? (o.sheetWide ? 'wide' : 'open') : 'closed'}">
             <main class="main" id="main"></main>
             ${sheet ? '<aside class="sheet" id="sheet-slot"></aside>' : ''}
           </div>

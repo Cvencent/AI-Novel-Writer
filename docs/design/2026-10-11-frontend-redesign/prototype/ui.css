@@ -57,6 +57,7 @@ h1, h2, h3, h4, p { margin: 0; }
 .content { display: grid; grid-template-rows: auto 1fr; min-width: 0; min-height: 0; }
 .workspace { display: grid; grid-template-columns: 1fr; min-height: 0; }
 .workspace[data-sheet="open"] { grid-template-columns: 1fr var(--sheet-w); }
+.workspace[data-sheet="wide"] { grid-template-columns: 1fr var(--sheet-w-wide); }
 .main { min-width: 0; min-height: 0; overflow: auto; position: relative; }
 
 /* ---------- 流程脊 ---------- */
@@ -300,7 +301,7 @@ h1, h2, h3, h4, p { margin: 0; }
 /* ================= 空状态 ================= */
 .empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--s-3); padding: var(--s-12) var(--s-6); color: var(--ink-3); }
 .empty-title { font: 500 var(--fs-16)/1.5 var(--font-display); color: var(--ink-2); }
-.empty .i { width: 28px; height: 28px; color: var(--ink-4); }
+.empty > .i { width: 28px; height: 28px; color: var(--ink-4); }
 
 /* ================= 危险区 ================= */
 .danger-zone { border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--rule)); border-radius: var(--radius-lg); }
