@@ -9,7 +9,7 @@ import * as project from './pages/project.mjs'
 import * as runPanel from './pages/run-panel.mjs'
 import * as settings from './pages/settings.mjs'
 
-const SAMPLE = Object.freeze({ name: '灯塔', chapterTitle: '旧港', chapterNumber: 1 })
+const SAMPLE = Object.freeze({ name: '灯塔', chapterNumber: 1, blueprints: [[1, '旧港'], [2, '北堤']] })
 
 async function stubFolderPicker(app, directory) {
   await app.evaluate(({ dialog }, selected) => {
@@ -33,7 +33,7 @@ async function seedSample({ app, page, roots, invoke, reload }, { withDraft }) {
     entries: [{ characterId: `draft:${randomUUID()}`, name: '林岚', role: 'protagonist', gender: '', age: '', appearance: '',
       personality: '', background: '旧港潮汐记录的测绘师。', abilities: '', motivation: '查明失踪地图的来源。',
       relationships: [], arc: '', notes: '' }] }, created.projectPath, session)).success, true)
-  for (const [chapterNumber, title] of [[1, SAMPLE.chapterTitle], [2, '北堤']]) {
+  for (const [chapterNumber, title] of SAMPLE.blueprints) {
     assert.equal((await invoke(page, 'db:blueprint-upsert', { chapterNumber, title, role: '发展', purpose: '核对地图与潮位',
       keyEvents: '林岚在灯塔下见到守塔人', characters: [] }, created.projectPath, session)).success, true)
   }
@@ -43,62 +43,76 @@ async function seedSample({ app, page, roots, invoke, reload }, { withDraft }) {
     assert.equal(draft.success, true, draft.error)
   }
   await reload()
+  await openSample(page)
+}
+
+/** 从书房打开示例作品，等项目树的统一刷新结束；之前的画面随刷新进度变化。 */
+async function openSample(page) {
   await bookshelf.openProject(page, SAMPLE.name)
+  await project.waitForTreeRefreshed(page, SAMPLE.blueprints.length)
 }
 
-async function openSampleDraft(context) {
-  await seedSample(context, { withDraft: true })
-  await project.openNode(context.page, '草稿_v1')
-  await chapter.editor(context.page).getByText(FIXTURE_PROSE.slice(0, 12)).waitFor({ state: 'visible' })
+const seedWithDraft = context => seedSample(context, { withDraft: true })
+const seedWithoutDraft = context => seedSample(context, { withDraft: false })
+
+async function openLatestDraft(page) {
+  await project.openLatestDraft(page)
+  await chapter.editor(page).getByText(FIXTURE_PROSE.slice(0, 12)).waitFor({ state: 'visible' })
 }
 
-async function reviewSample(context) {
-  await openSampleDraft(context)
-  await chapter.review(context.page)
-  await runPanel.waitForWorkflowDone(context.page)
-}
-
-async function writeSample(context) {
-  const { page } = context
-  await seedSample(context, { withDraft: false })
+async function writeChapter({ page }) {
   await project.openBlueprints(page)
   await chapter.writeThisChapter(page, 100)
   await runPanel.waitForWorkflowDone(page)
+  await chapter.editor(page).getByText(FIXTURE_PROSE.slice(0, 12)).waitFor({ state: 'visible' })
 }
 
+async function reviewLatestDraft({ page }) {
+  await openLatestDraft(page)
+  await chapter.review(page)
+  await runPanel.waitForWorkflowDone(page)
+}
+
+/**
+ * setup 是单跑该场景时的前置；run 从前置状态走到截图状态；after 在截图后执行。
+ * baseline-all 按 BASELINE_SESSIONS 串联：只跑首个场景的 setup，之后每个场景的 run 接着上一个截图点的状态。
+ */
 export const SCENARIOS = {
   'new-project': { model: false, run: async ({ app, page, roots }) => {
     await stubFolderPicker(app, roots.projects)
     await bookshelf.createProject(page, SAMPLE.name)
     await page.getByText('小说配置', { exact: true }).first().waitFor({ state: 'visible' })
   } },
-  'open-sample': { model: false, run: async context => {
-    await seedSample(context, { withDraft: true })
-    await project.tree(context.page).getByText('草稿_v1', { exact: true }).waitFor({ state: 'visible' })
+  'open-sample': { model: false, setup: seedWithDraft, run: async ({ page }) => {
+    await project.tree(page).getByText('草稿_v1', { exact: true }).waitFor({ state: 'visible' })
   } },
-  'write-chapter': { model: true, run: async context => {
-    await writeSample(context)
-    await chapter.editor(context.page).getByText(FIXTURE_PROSE.slice(0, 12)).waitFor({ state: 'visible' })
+  'write-chapter': { model: true, setup: seedWithoutDraft, run: writeChapter },
+  review: { model: true, setup: seedWithDraft, run: reviewLatestDraft },
+  'revise-merge': { model: true,
+    setup: async context => { await seedWithDraft(context); await reviewLatestDraft(context) },
+    run: async ({ page }) => {
+      await chapter.reviseFromReview(page, FAKE_MODEL.id)
+      await chapter.mergeDialog(page).waitFor({ state: 'visible', timeout: 60_000 })
+    },
+    after: ({ page }) => chapter.completeMerge(page) },
+  finalize: { model: true, setup: seedWithDraft, run: async ({ page }) => {
+    await openLatestDraft(page)
+    await chapter.finalize(page, SAMPLE.chapterNumber)
+    await runPanel.waitForWorkflowDone(page)
   } },
-  review: { model: true, run: reviewSample },
-  'revise-merge': { model: true, run: async context => {
-    await reviewSample(context)
-    await chapter.reviseFromReview(context.page, FAKE_MODEL.id)
-    await chapter.mergeDialog(context.page).waitFor({ state: 'visible', timeout: 60_000 })
-    await context.shoot()
-    await chapter.completeMerge(context.page)
-  } },
-  finalize: { model: true, run: async context => {
-    await openSampleDraft(context)
-    await chapter.finalize(context.page, SAMPLE.chapterNumber)
-    await runPanel.waitForWorkflowDone(context.page)
-  } },
-  'run-panel': { model: true, run: async context => {
-    await writeSample(context)
-    await context.reload()
-    await bookshelf.openProject(context.page, SAMPLE.name)
-    await runPanel.open(context.page)
-    await runPanel.waitForPersistedRun(context.page, `第${SAMPLE.chapterNumber}章候选`)
-  } },
-  settings: { model: false, run: async ({ page }) => { await settings.open(page) } },
+  'run-panel': { model: true,
+    setup: async context => { await seedWithoutDraft(context); await writeChapter(context) },
+    run: async ({ page, reload }) => {
+      await reload()
+      await openSample(page)
+      await runPanel.open(page)
+      await runPanel.waitForPersistedRun(page, `第${SAMPLE.chapterNumber}章候选`)
+    } },
+  settings: { model: false, run: ({ page }) => settings.open(page), after: ({ page }) => settings.close(page) },
+}
+
+/** new-project 与示例作品都建「灯塔」，同一项目目录里不能共存，所以分两个会话。 */
+export const BASELINE_SESSIONS = {
+  shelf: ['settings', 'new-project'],
+  sample: ['open-sample', 'write-chapter', 'run-panel', 'review', 'revise-merge', 'finalize'],
 }

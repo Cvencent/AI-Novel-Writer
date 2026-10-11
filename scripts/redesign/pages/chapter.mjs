@@ -5,7 +5,7 @@ export const editor = page => page.locator(EDITOR)
 
 export async function writeThisChapter(page, targetWords) {
   await page.getByRole('button', { name: '写作此章' }).click()
-  const dialog = page.getByRole('dialog')
+  const dialog = page.getByRole('dialog').filter({ has: page.getByRole('button', { name: '开始创作' }) })
   await dialog.getByPlaceholder('3000').fill(String(targetWords))
   await dialog.getByRole('button', { name: '开始创作' }).click()
 }

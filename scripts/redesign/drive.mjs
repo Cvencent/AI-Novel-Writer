@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { _electron as electron } from 'playwright'
 
 import { startFakeModel } from './fake-model.mjs'
-import { SCENARIOS } from './scenarios.mjs'
+import { BASELINE_SESSIONS, SCENARIOS } from './scenarios.mjs'
 import { dismissCompletionToasts, dismissStartupNotice, firstInteractiveControl, waitForShell } from './pages/shell.mjs'
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -166,6 +166,7 @@ async function launch({ roots, appRoot, fakeModelPort, diagnostics }) {
     await page.setViewportSize(VIEWPORT)
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await waitForShell(page, TIMEOUT)
+    await dismissStartupNotice(page)
     assert.equal((await invoke(page, 'startup:get-state')).state, 'ready')
     return { app, page, timing }
   } catch (error) { await quit(app); throw error }
@@ -185,68 +186,84 @@ async function applyTheme(page, theme) {
   await waitForShell(page, TIMEOUT)
 }
 
-async function settle(page) {
-  await page.evaluate(() => document.fonts.ready)
-  await dismissStartupNotice(page)
-  await dismissCompletionToasts(page)
-}
-
 async function shoot(page, file) {
-  await settle(page)
+  await page.evaluate(() => document.fonts.ready)
+  await dismissCompletionToasts(page)
   assert.equal(await page.evaluate(() => document.visibilityState), 'visible', '屏幕外窗口的页面被当作隐藏，截图会停帧')
   await page.screenshot({ path: file, animations: 'disabled', caret: 'hide' })
 }
 
-async function writeDiagnostics(page, base, options, diagnostics) {
-  if (options.dumpDom && page && !page.isClosed()) {
-    fs.writeFileSync(`${base}.dom.html`, await page.content())
-    fs.writeFileSync(`${base}.aria.yml`, await page.locator('body').ariaSnapshot())
-  }
-  if (options.console) fs.writeFileSync(`${base}.console.log`, `${diagnostics.join('\n')}\n`)
+async function dumpDom(page, base) {
+  fs.writeFileSync(`${base}.dom.html`, await page.content())
+  fs.writeFileSync(`${base}.aria.yml`, await page.locator('body').ariaSnapshot())
 }
 
-async function runScenario(name, options) {
+const messageOf = error => error instanceof Error ? error.message : String(error)
+
+/** 一个会话一次冷启动：先跑首个截图点的 setup，再依次 run、截图、after。隔离与进程检查按会话做，结果抄进每一项。 */
+async function runSession(sessionName, names, options) {
   const roots = createIsolatedRoots(scratchParent())
   const before = snapshotRealProfiles()
   const diagnostics = []
-  const fake = SCENARIOS[name]?.model ? await startFakeModel(diagnostics) : null
-  const base = path.join(options.out, `${name}-${options.theme}`)
-  const result = { scenario: name, theme: options.theme, isolationRoot: roots.root }
-  const fail = error => { result.error = [result.error, error instanceof Error ? error.message : String(error)].filter(Boolean).join('\n') }
-  let session
+  const fake = names.some(name => SCENARIOS[name]?.model) ? await startFakeModel(diagnostics) : null
+  const base = name => path.join(options.out, `${name}-${options.theme}`)
+  const results = names.map(scenario => ({ scenario, theme: options.theme }))
+  const shared = { session: sessionName, isolationRoot: roots.root }
+  const sessionErrors = []
+  let failedAt = null
+  let current = null
+  let launched
   try {
-    session = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics })
-    result.timing = session.timing
-    if (name !== 'startup-timing') {
-      await applyTheme(session.page, options.theme)
-      result.screenshot = `${base}.png`
-      let shot = false
-      const context = { ...session, roots, invoke,
-        reload: () => session.page.reload().then(() => waitForShell(session.page, TIMEOUT)),
-        shoot: async () => { await shoot(session.page, result.screenshot); shot = true } }
-      await SCENARIOS[name].run(context)
-      if (!shot) await context.shoot()
+    launched = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics })
+    shared.timing = launched.timing
+    if (sessionName !== 'startup-timing') {
+      const { page } = launched
+      await applyTheme(page, options.theme)
+      const context = { ...launched, roots, invoke, reload: () => page.reload().then(() => waitForShell(page, TIMEOUT)) }
+      current = 0
+      await SCENARIOS[names[0]].setup?.(context)
+      for (const [index, name] of names.entries()) {
+        current = index
+        results[index].screenshot = `${base(name)}.png`
+        await SCENARIOS[name].run(context)
+        await shoot(page, results[index].screenshot)
+        if (options.dumpDom) await dumpDom(page, base(name))
+        await SCENARIOS[name].after?.(context)
+      }
+      current = null
     }
-    if (fake) result.modelRequests = fake.requests.length
-    result.externalRequests = await session.app.evaluate(() => globalThis.__driveExternalRequests)
-    assert.deepEqual(result.externalRequests, [], fake ? 'fetch 越过夹具访问外部网络' : '无夹具场景发出了 fetch')
+    shared.externalRequests = await launched.app.evaluate(() => globalThis.__driveExternalRequests)
+    assert.deepEqual(shared.externalRequests, [], fake ? 'fetch 越过夹具访问外部网络' : '无夹具场景发出了 fetch')
   } catch (error) {
-    fail(error)
-    if (session?.page && !session.page.isClosed()) {
-      await session.page.screenshot({ path: `${base}.failure.png` }).catch(() => {})
-      options = { ...options, dumpDom: true, console: true }
+    if (current === null) sessionErrors.push(messageOf(error))
+    else {
+      failedAt = current
+      results[current].error = messageOf(error)
     }
+    const page = launched?.page
+    if (page && !page.isClosed()) {
+      const failureBase = base(current === null ? sessionName : names[current])
+      await page.screenshot({ path: `${failureBase}.failure.png` }).catch(() => {})
+      await dumpDom(page, failureBase).catch(() => {})
+    }
+    options = { ...options, console: true }
   } finally {
-    await writeDiagnostics(session?.page, base, options, diagnostics).catch(() => {})
-    if (session) result.quit = await quit(session.app).catch(error => { fail(error); return null })
+    if (options.console) fs.writeFileSync(`${base(sessionName)}.console.log`, `${diagnostics.join('\n')}\n`)
+    if (launched) shared.quit = await quit(launched.app).catch(error => { sessionErrors.push(messageOf(error)); return null })
     await fake?.close()
+    if (fake) shared.modelRequests = fake.requests.length
   }
   try {
-    result.residualProcesses = await residualProcesses(roots.userData)
-    result.externalWrites = externalWrites(before)
-  } catch (error) { fail(error) }
-  if (!result.error && result.residualProcesses.length === 0) fs.rmSync(roots.root, { recursive: true, force: true })
-  return result
+    shared.residualProcesses = await residualProcesses(roots.userData)
+    shared.externalWrites = externalWrites(before)
+  } catch (error) { sessionErrors.push(messageOf(error)) }
+  const clean = failedAt === null && sessionErrors.length === 0 && shared.residualProcesses?.length === 0
+  if (clean) fs.rmSync(roots.root, { recursive: true, force: true })
+  return results.map((result, index) => {
+    const errors = [result.error, failedAt !== null && index > failedAt ? `未运行：本会话的 ${names[failedAt]} 先失败` : null, ...sessionErrors]
+    const error = errors.filter(Boolean).join('\n')
+    return { ...result, ...shared, ...(error ? { error } : {}) }
+  })
 }
 
 async function main() {
@@ -256,14 +273,17 @@ async function main() {
     process.exit(2)
   }
   fs.mkdirSync(options.out, { recursive: true })
-  const names = options.scenario === 'baseline-all' ? Object.keys(SCENARIOS) : [options.scenario]
+  const sessions = options.scenario === 'baseline-all'
+    ? Object.entries(BASELINE_SESSIONS).map(([name, scenarios]) => [`baseline-${name}`, scenarios])
+    : [[options.scenario, [options.scenario]]]
   const results = []
-  for (const name of names) {
-    const result = await runScenario(name, options)
-    results.push(result)
-    process.stdout.write(`${JSON.stringify(result)}\n`)
+  for (const [sessionName, names] of sessions) {
+    for (const result of await runSession(sessionName, names, options)) {
+      results.push(result)
+      process.stdout.write(`${JSON.stringify(result)}\n`)
+    }
   }
-  const failed = results.filter(result => result.error || result.residualProcesses.length || result.externalWrites.length)
+  const failed = results.filter(result => result.error || result.residualProcesses?.length !== 0 || result.externalWrites?.length !== 0)
   fs.writeFileSync(path.join(options.out, `${options.scenario}-${options.theme}.json`), JSON.stringify(results, null, 2))
   process.exitCode = failed.length ? 1 : 0
 }

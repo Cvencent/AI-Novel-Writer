@@ -5,7 +5,7 @@ description: 在真实 Electron 中驱动 AI 小说作家，按场景截图、�
 
 # verify
 
-驱动脚本是 `scripts/redesign/drive.mjs`。它用 Playwright 的 `_electron` 启动当前工作树的构建产物（`electron .`），每个场景一个全新的隔离目录，模型调用全部走本机假服务，不调用真实模型。
+驱动脚本是 `scripts/redesign/drive.mjs`。它用 Playwright 的 `_electron` 启动当前工作树的构建产物（`electron .`），每个会话（一次冷启动）一个全新的隔离目录，模型调用全部走本机假服务，不调用真实模型。单跑一个场景就是只含这个场景的会话。
 
 应用窗口不出现在屏幕上。驱动用 `electron -r scripts/redesign/offscreen-window.cjs` 在应用主进程脚本之前挂上 `browser-window-created` 监听：窗口一创建就移到所有显示器右侧之外，去掉任务栏按钮，设为不可激活并交还焦点，不打扰正在用电脑的人。截图走页面视口，与窗口位置无关；页面焦点由 Playwright 的焦点模拟提供，`document.hasFocus()` 仍为 true。每次截图前断言 `document.visibilityState` 为 `visible`，防止屏幕外窗口被当作隐藏而停帧。
 
@@ -36,36 +36,43 @@ node scripts/redesign/drive.mjs --scenario <名称> ...
 
 ## 场景
 
-| 名称 | 对应流程 | 截图停在 | 用夹具模型 |
-|---|---|---|---|
-| `new-project` | 新建作品 | 新作品的小说配置页 | 否 |
-| `open-sample` | 打开示例作品 | 项目树显示第 1 章与草稿_v1 | 否 |
-| `write-chapter` | 写作此章 | 草稿标签已打开，正文非空 | 是 |
-| `review` | AI 审稿 | 审稿报告标签 | 是 |
-| `revise-merge` | 按确认意见修稿并合并 | 修稿合并对话框；截图后点完成合并，等对话框关闭 | 是 |
-| `finalize` | 定稿 | 已定稿（只读），AI 输出显示后处理完成 | 是 |
-| `run-panel` | 打开运行面板（现为 AI 输出） | 重开作品后从右侧栏打开 AI 输出，显示一条持久运行 | 是 |
-| `settings` | 打开设置 | 设置弹窗 | 否 |
-| `baseline-all` | 依次跑上面 8 个场景 | 8 张截图 | |
-| `startup-timing` | 只启动 | 不截图，输出启动耗时 | 否 |
+| 名称 | 对应流程 | 单跑时截图停在 | `baseline-all` 里的不同 | 用夹具模型 |
+|---|---|---|---|---|
+| `new-project` | 新建作品 | 新作品的小说配置页 | 无 | 否 |
+| `open-sample` | 打开示例作品 | 项目树刷新完成（蓝图 2/100 章、角色图谱已生成），显示第 1 章与草稿_v1 | 无 | 否 |
+| `write-chapter` | 写作此章 | 草稿标签已打开，正文非空 | 已有预置的草稿_v1，写出的是草稿_v2 | 是 |
+| `review` | AI 审稿 | 审稿报告标签 | 审的是最新一稿草稿_v2 | 是 |
+| `revise-merge` | 按确认意见修稿并合并 | 修稿合并对话框；截图后点完成合并，等对话框关闭 | 修的是草稿_v2 | 是 |
+| `finalize` | 定稿 | 已定稿（只读），AI 输出显示后处理完成 | 定稿的是合并后的草稿_v2，不是草稿_v1 | 是 |
+| `run-panel` | 打开运行面板（现为 AI 输出） | 重开作品后从右侧栏打开 AI 输出，显示一条持久运行「第1章候选」 | 无；它排在审稿之前，因为草稿被修稿改动后这条记录变成「第1章生成记录」 | 是 |
+| `settings` | 打开设置 | 设置弹窗 | 截图后关闭设置，接着跑 new-project | 否 |
+| `baseline-all` | 按共享前置串成 2 个会话跑上面 8 个场景 | 8 张截图 | | |
+| `startup-timing` | 只启动 | 不截图，输出启动耗时 | | 否 |
 
-示例作品名为「灯塔」，第 1 章「旧港」，由公开 IPC 预置后从书房打开。
+示例作品名为「灯塔」，第 1 章「旧港」，由公开 IPC 预置后从书房打开；打开后等项目树统一刷新结束再继续，之前的画面随刷新进度变化。
+
+`scripts/redesign/scenarios.mjs` 里每个场景分三段：`setup` 是单跑时的前置（预置作品、写一章、审稿等），`run` 从前置状态走到截图状态，`after` 在截图后执行。一个会话只跑首个场景的 `setup`，然后依次 `run`、截图、`after`。`baseline-all` 的会话在 `BASELINE_SESSIONS`：
+
+- `baseline-shelf`：`settings` → `new-project`。不预置作品，`new-project` 要在空项目目录里建「灯塔」，与示例作品不能共存。
+- `baseline-sample`：`open-sample` → `write-chapter` → `run-panel` → `review` → `revise-merge` → `finalize`。预置一次带草稿_v1 的示例作品，后面每步接着上一步的状态。
+
+改动前 `baseline-all` 每个场景各冷启动一次（8 次）；现在 2 次。
 
 ## 输出
 
 在 `--out` 目录下：
 
 - `<场景>-<主题>.png`：场景截图，1440×900。
-- `<场景>-<主题>.json`：本次运行的结果数组。每项含 `screenshot`、`timing`、`externalRequests`、`residualProcesses`、`externalWrites`、`isolationRoot`，用夹具模型的场景另含 `modelRequests`（假服务收到的全部请求数，嵌入请求也计入，与 `--console` 里的 `[fake-model]` 行一一对应），失败时含 `error`。
-- 失败时额外写 `<场景>-<主题>.failure.png`、`.dom.html`、`.aria.yml`、`.console.log`，隔离目录保留以便排查。
+- `<场景>-<主题>.json`：本次运行的结果数组，每个截图点一项。`scenario`、`screenshot` 属于这个截图点；`session`（会话名，单跑时等于场景名）、`timing`、`externalRequests`、`residualProcesses`、`externalWrites`、`quit`、`isolationRoot` 属于整个会话，会话里每一项都抄一份；会话用了夹具模型时另含 `modelRequests`（整个会话里假服务收到的全部请求数，嵌入请求也计入，与 `--console` 里的 `[fake-model]` 行一一对应）。失败时含 `error`：截图点自己的失败写在该项；同一会话里排在失败点之后的截图点不再运行，`error` 写明是被哪个场景拖住；会话级失败（启动、外部请求、退出、进程枚举）写进该会话的每一项。
+- 失败时额外写 `<失败场景>-<主题>.failure.png`、`.dom.html`、`.aria.yml` 和 `<会话>-<主题>.console.log`，隔离目录保留以便排查。
 
-每个场景结束后，驱动会检查三件事，任一不满足即退出码 1：
+每个会话结束后，驱动检查三件事，任一不满足即退出码 1：
 
-- `externalRequests` 为空。每个场景都在 Electron 启动后替换主进程的 `globalThis.fetch`：用夹具模型的场景只放行 `https://api.openai.com/v1/*` 并改道到本机假服务，其余场景一律不放行。被拒的请求记下来源并抛错。检查范围只有主进程 `fetch`，且从 `electron.launch` 返回后才生效；更早的请求、渲染进程的请求和 Electron `net` 模块的请求都不在内。
+- `externalRequests` 为空。每个会话都在 Electron 启动后替换主进程的 `globalThis.fetch`：用夹具模型的会话只放行 `https://api.openai.com/v1/*` 并改道到本机假服务，其余会话一律不放行。被拒的请求记下来源并抛错。检查范围只有主进程 `fetch`，且从 `electron.launch` 返回后才生效；更早的请求、渲染进程的请求和 Electron `net` 模块的请求都不在内。
 - `residualProcesses` 为空：应用关闭后，以 `--user-data-dir` 匹配不到存活进程。子进程退出需要时间，驱动最多查 10 次、间隔 300 ms。
 - `externalWrites` 为空：`~/.vela`、`%APPDATA%\ai-novel-writer`、`%APPDATA%\AI小说作家` 的最新修改时间不变。
 
-枚举或结束进程本身失败时，原因写进该场景的 `error`，结果 JSON 照常写出。
+枚举或结束进程本身失败时，原因写进该会话每一项的 `error`，结果 JSON 照常写出。
 
 ## 只读诊断
 
@@ -73,8 +80,8 @@ node scripts/redesign/drive.mjs --scenario <名称> ...
 node scripts/redesign/drive.mjs --scenario open-sample --dump-dom --console --out <目录>
 ```
 
-- `--dump-dom` 写 `<场景>-<主题>.dom.html`（`page.content()`）和 `.aria.yml`（Playwright 无障碍快照）。改页面对象前先看 `.aria.yml`，选择器优先用其中的角色与可访问名称。
-- `--console` 写 `<场景>-<主题>.console.log`：渲染进程控制台、页面异常、主进程 stdout/stderr，以及假模型每次请求的分类（`[fake-model] prose|review|revision|character-state|embedding`）。
+- `--dump-dom` 在每个截图点截图后写 `<场景>-<主题>.dom.html`（`page.content()`）和 `.aria.yml`（Playwright 无障碍快照）。改页面对象前先看 `.aria.yml`，选择器优先用其中的角色与可访问名称。
+- `--console` 每个会话写一份 `<会话>-<主题>.console.log`（单跑时会话名就是场景名，`baseline-all` 为 `baseline-shelf`、`baseline-sample`）：渲染进程控制台、页面异常、主进程 stdout/stderr，以及假模型每次请求的分类（`[fake-model] prose|review|revision|character-state|embedding`）。
 
 ## 截图可重复性
 

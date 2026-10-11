@@ -5,6 +5,7 @@ import path from 'node:path'
 import { afterEach, it, vi } from 'vitest'
 vi.mock('playwright', () => ({ _electron: { launch: () => { throw new Error('UNIT_TEST_MUST_NOT_LAUNCH_ELECTRON') } } }))
 import { createIsolatedRoots, isolatedEnvironment, parseArgs } from '../drive.mjs'
+import { BASELINE_SESSIONS, SCENARIOS } from '../scenarios.mjs'
 
 const parents = []
 afterEach(() => { for (const parent of parents.splice(0)) fs.rmSync(parent, { recursive: true, force: true }) })
@@ -60,4 +61,8 @@ it('子进程环境的全部可写根都指向隔离目录', () => {
   }
   assert.equal(env.PATH, 'p')
   for (const name of ['ELECTRON_RUN_AS_NODE', 'VITE_DEV_SERVER_URL', 'AI_NOVEL_SMOKE_OPEN_PROJECT']) assert.equal(env[name], undefined)
+})
+
+it('baseline-all 的会话恰好覆盖每个场景一次', () => {
+  assert.deepEqual(Object.values(BASELINE_SESSIONS).flat().sort(), Object.keys(SCENARIOS).sort())
 })
