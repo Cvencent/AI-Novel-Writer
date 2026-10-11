@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { useLocaleStore } from './locale-store'
 import {
   APPEARANCE_STORAGE_KEY, LEGACY_THEME_STORAGE_KEY, LEGACY_UI_STORAGE_KEY, INITIAL_APPEARANCE,
-  AppearanceProfileError, migrateLegacyAppearance, parseAppearanceProfile, resolveShell, RELEASE_DEFAULT_SHELL,
+  AppearanceProfileError, migrateLegacyAppearance, parseAppearanceProfile, readAppearanceProfile, resolveShell, RELEASE_DEFAULT_SHELL,
   type AppearancePatch, type CanonicalAppearanceProfile, type Shell,
 } from '../shared/appearance-profile'
 import { mayHydrateAppearance, type MainReady } from '../shared/project-storage'
@@ -58,14 +58,14 @@ export function createAppearanceStore(releaseDefault: Shell = RELEASE_DEFAULT_SH
               || !['classic', 'anime', 'custom'].includes(skin.backgroundSkin)) throw new AppearanceProfileError('SKIN_SNAPSHOT_NOT_READY')
             storage = (dependencies.storage ?? (() => window.localStorage))()
             const existing = storage.getItem(APPEARANCE_STORAGE_KEY)
-            const imported = existing === null
-              ? migrateLegacyAppearance(storage.getItem(LEGACY_THEME_STORAGE_KEY), storage.getItem(LEGACY_UI_STORAGE_KEY),
-                (dependencies.systemTheme ?? (() => window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'))())
-              : parseAppearanceProfile(existing)
+            const { profile: imported, upgraded } = existing === null
+              ? { profile: migrateLegacyAppearance(storage.getItem(LEGACY_THEME_STORAGE_KEY), storage.getItem(LEGACY_UI_STORAGE_KEY),
+                (dependencies.systemTheme ?? (() => window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'))()), upgraded: false }
+              : readAppearanceProfile(existing)
             const profile = existing !== null && releaseDefault === 'writer' && imported.shellPreference === 'classic'
               ? parseAppearanceProfile(JSON.stringify({ ...imported, shellPreference: 'writer', revision: imported.revision + 1 }))
               : imported
-            const serialized = profile === imported && existing !== null ? existing : JSON.stringify(profile)
+            const serialized = profile === imported && !upgraded && existing !== null ? existing : JSON.stringify(profile)
             if (serialized !== existing) storage.setItem(APPEARANCE_STORAGE_KEY, serialized)
             if (storage.getItem(APPEARANCE_STORAGE_KEY) !== serialized) throw new AppearanceProfileError('APPEARANCE_READBACK_FAILED')
             const accepted = await dependencies.acknowledgeReadback({ storageKey: APPEARANCE_STORAGE_KEY,

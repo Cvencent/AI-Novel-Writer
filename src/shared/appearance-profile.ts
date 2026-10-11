@@ -3,14 +3,16 @@ import type { AppearanceProfile } from './project-storage'
 export const APPEARANCE_STORAGE_KEY = 'ai-novel-writer-appearance'
 export const LEGACY_THEME_STORAGE_KEY = 'ai-novel-writer-theme'
 export const LEGACY_UI_STORAGE_KEY = 'ai-novel-writer-ui-version'
+export const APPEARANCE_SCHEMA_VERSION = 2
 export const RELEASE_DEFAULT_SHELL: Shell = 'writer'
-export type Shell = 'classic' | 'writer'
+/** stage 是 RD-3 起的流程脊新外壳，schemaVersion 2 才允许。 */
+export type Shell = 'classic' | 'writer' | 'stage'
 export type ShellPreference = Shell | 'unset'
 export type ColorTheme = 'light' | 'galaxy' | 'paper' | 'dark'
 export type AppearanceFont = 'inter' | 'noto-sans-sc' | 'lxgw-wenkai' | 'noto-serif-sc' | 'system'
 
 export interface CanonicalAppearanceProfile extends AppearanceProfile {
-  schemaVersion: 1
+  schemaVersion: typeof APPEARANCE_SCHEMA_VERSION
   shellPreference: ShellPreference
   colorTheme: ColorTheme
   writingFont: AppearanceFont
@@ -20,12 +22,18 @@ export interface CanonicalAppearanceProfile extends AppearanceProfile {
 }
 
 export const INITIAL_APPEARANCE: Readonly<CanonicalAppearanceProfile> = Object.freeze({
-  schemaVersion: 1, revision: 1, shellPreference: 'unset', colorTheme: 'paper', zoom: 1,
+  schemaVersion: APPEARANCE_SCHEMA_VERSION, revision: 1, shellPreference: 'unset', colorTheme: 'paper', zoom: 1,
   writingFont: 'lxgw-wenkai', uiFont: 'noto-sans-sc', origin: 'legacy-import', legacyImportCompleted: true,
 })
 
 const THEMES = ['light', 'galaxy', 'paper', 'dark']
 const FONTS = ['inter', 'noto-sans-sc', 'lxgw-wenkai', 'noto-serif-sc', 'system']
+const SHELL_PREFERENCES: Record<1 | typeof APPEARANCE_SCHEMA_VERSION, readonly string[]> = {
+  1: ['unset', 'classic', 'writer'],
+  2: ['unset', 'classic', 'writer', 'stage'],
+}
+const FIELDS = ['schemaVersion', 'revision', 'shellPreference', 'colorTheme', 'zoom', 'writingFont', 'uiFont', 'origin', 'legacyImportCompleted', 'legacyFontDefaultsVersion']
+
 function record(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
@@ -38,11 +46,13 @@ export function resolveShell(preference: ShellPreference, releaseDefault: Shell 
   return preference === 'unset' ? releaseDefault : preference
 }
 
-export function parseAppearanceProfile(raw: string): CanonicalAppearanceProfile {
-  let value: unknown
-  try { value = JSON.parse(raw) } catch { throw new AppearanceProfileError('APPEARANCE_JSON_INVALID') }
-  if (!record(value) || value.schemaVersion !== 1 || !Number.isSafeInteger(value.revision) || Number(value.revision) < 1
-    || typeof value.shellPreference !== 'string' || !['unset', 'classic', 'writer'].includes(value.shellPreference)
+function parseJson(raw: string): unknown {
+  try { return JSON.parse(raw) } catch { throw new AppearanceProfileError('APPEARANCE_JSON_INVALID') }
+}
+
+function assertProfile(value: unknown, schemaVersion: keyof typeof SHELL_PREFERENCES): asserts value is Record<string, unknown> {
+  if (!record(value) || value.schemaVersion !== schemaVersion || !Number.isSafeInteger(value.revision) || Number(value.revision) < 1
+    || typeof value.shellPreference !== 'string' || !SHELL_PREFERENCES[schemaVersion].includes(value.shellPreference)
     || typeof value.colorTheme !== 'string' || !THEMES.includes(value.colorTheme) || typeof value.zoom !== 'number' || !Number.isFinite(value.zoom)
     || value.zoom < 0.7 || value.zoom > 1.5 || typeof value.writingFont !== 'string' || !FONTS.includes(value.writingFont)
     || typeof value.uiFont !== 'string' || !FONTS.includes(value.uiFont)
@@ -50,9 +60,28 @@ export function parseAppearanceProfile(raw: string): CanonicalAppearanceProfile 
     || (value.legacyFontDefaultsVersion !== undefined && (!Number.isSafeInteger(value.legacyFontDefaultsVersion) || Number(value.legacyFontDefaultsVersion) < 0))) {
     throw new AppearanceProfileError('APPEARANCE_PROFILE_INVALID')
   }
-  const allowed = ['schemaVersion', 'revision', 'shellPreference', 'colorTheme', 'zoom', 'writingFont', 'uiFont', 'origin', 'legacyImportCompleted', 'legacyFontDefaultsVersion']
-  if (Object.keys(value).some(key => !allowed.includes(key))) throw new AppearanceProfileError('APPEARANCE_UNKNOWN_FIELDS')
+  if (Object.keys(value).some(key => !FIELDS.includes(key))) throw new AppearanceProfileError('APPEARANCE_UNKNOWN_FIELDS')
+}
+
+/** 只接受当前版本；写入前的校验都走这里，旧版本不会被写回。 */
+export function parseAppearanceProfile(raw: string): CanonicalAppearanceProfile {
+  const value = parseJson(raw)
+  assertProfile(value, APPEARANCE_SCHEMA_VERSION)
   return value as unknown as CanonicalAppearanceProfile
+}
+
+/**
+ * 读取已保存的配置。v1 按 v1 的规则严格校验后升级：只把 schemaVersion 改为 2，
+ * 其余字段、取值与键的顺序原样保留，revision 不变；更高或未知的版本拒绝。
+ */
+export function readAppearanceProfile(raw: string): { profile: CanonicalAppearanceProfile; upgraded: boolean } {
+  const value = parseJson(raw)
+  if (record(value) && value.schemaVersion === 1) {
+    assertProfile(value, 1)
+    return { profile: { ...value, schemaVersion: APPEARANCE_SCHEMA_VERSION } as unknown as CanonicalAppearanceProfile, upgraded: true }
+  }
+  assertProfile(value, APPEARANCE_SCHEMA_VERSION)
+  return { profile: value as unknown as CanonicalAppearanceProfile, upgraded: false }
 }
 
 /** Pure conversion. Legacy bytes stay in their original keys, including unknown/corrupt values. */

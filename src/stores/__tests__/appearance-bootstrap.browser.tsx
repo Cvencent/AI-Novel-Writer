@@ -86,6 +86,35 @@ describe('appearance bootstrap in real browser storage', () => {
     expect(localStorage.getItem(SHELL)).toBe('v1')
   })
 
+  it('启动时把已保存的 v1 配置升级写回为 v2，revision 不变，确认后才进入工作台', async () => {
+    const v1 = JSON.stringify({ schemaVersion: 1, revision: 5, shellPreference: 'writer', colorTheme: 'dark', zoom: 1.1,
+      writingFont: 'noto-serif-sc', uiFont: 'inter', origin: 'author', legacyImportCompleted: true, legacyFontDefaultsVersion: 1 })
+    localStorage.setItem(KEY, v1)
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+    const ack = vi.fn(async () => true)
+    const store = createAppearanceStore()
+    expect(await store.getState().bootstrap(dependencies({ acknowledgeReadback: ack }))).toBe(true)
+    const upgraded = v1.replace('"schemaVersion":1', '"schemaVersion":2')
+    expect(localStorage.getItem(KEY)).toBe(upgraded)
+    expect(setItem.mock.calls.filter(([key]) => key === KEY)).toEqual([[KEY, upgraded]])
+    expect(ack).toHaveBeenCalledWith(expect.objectContaining({ profileRevision: 5 }))
+    expect(store.getState()).toMatchObject({ phase: 'migrated', resolvedShell: 'writer' })
+    setItem.mockClear()
+    const reopened = createAppearanceStore()
+    expect(await reopened.getState().bootstrap(dependencies())).toBe(true)
+    expect(setItem).not.toHaveBeenCalled()
+  })
+
+  it('选择新外壳后持久为 stage，重开仍解析为 stage', async () => {
+    const store = createAppearanceStore()
+    await store.getState().bootstrap(dependencies())
+    expect(store.getState().update({ shellPreference: 'stage' })).toBe(true)
+    expect(store.getState().resolvedShell).toBe('stage')
+    const reopened = createAppearanceStore()
+    await reopened.getState().bootstrap(dependencies())
+    expect(reopened.getState()).toMatchObject({ resolvedShell: 'stage', profile: expect.objectContaining({ schemaVersion: 2, shellPreference: 'stage' }) })
+  })
+
   it.each(['legacy-json', 'canonical-json', 'unknown-shell'] as const)('preserves %s and blocks without writing defaults', async kind => {
     seed()
     if (kind === 'legacy-json') localStorage.setItem(THEME, '{broken')
