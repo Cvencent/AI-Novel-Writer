@@ -1,7 +1,7 @@
-import { openBuiltinEditor } from '../../components/panels/sidebar/sidebar-file-openers'
 import { useEditorStore } from '../editor-store'
 import { useLayoutStore, type ChapterWritePrefill, type SettingsSection } from '../layout-store'
 import { useLocaleStore } from '../locale-store'
+import { openBuiltinEditor } from '../open-builtin-editor'
 import { useProjectStore } from '../project-store'
 import { legacyLayoutPatch } from './legacy-layout'
 

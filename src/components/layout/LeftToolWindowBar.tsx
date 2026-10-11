@@ -16,7 +16,7 @@ import { useLayoutStore, type SidebarView, type BottomTab } from '../../stores/l
 import { navigate } from '../../stores/navigation/navigation-intents'
 import { useWorkflowStore } from '../../stores/workflow-store'
 import { useProjectStore } from '../../stores/project-store'
-import { openBuiltinEditor } from '../panels/sidebar/sidebar-file-openers'
+import { openBuiltinEditor } from '../../stores/open-builtin-editor'
 import { useLocaleStore } from '../../stores/locale-store'
 
 /** 左侧侧边栏视图按钮配置（不含 Home，它单独渲染） */
