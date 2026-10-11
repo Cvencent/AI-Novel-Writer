@@ -45,7 +45,7 @@
 |---|---|---|
 | 表面 | `--frame` `--sunken` `--surface` `--surface-2` `--paper` | 应用底、凹陷输入、面板、悬停与选中、正文纸面 |
 | 墨色 | `--ink` `--ink-2` `--ink-3` `--ink-4` | 正文与标题、次要文字、说明、禁用与占位 |
-| 线 | `--rule` `--rule-strong` | 分隔线、控件边框 |
+| 线 | `--rule` `--rule-strong` `--track` | 分隔线、控件边框、进度轨道（如章节生命周期的未开始段） |
 | 强调 | `--accent` `--accent-hover` `--accent-ink` `--accent-soft` `--accent-line` | 主操作、当前位置、焦点 |
 | 语义 | `--danger` `--ok` `--warn` 及各自 `-soft` | 危险、完成、提醒。与强调色色相不同 |
 | 字体 | `--font-ui` `--font-display` `--font-prose` `--font-num` `--font-mono` | 界面无衬线、标题衬线、正文衬线、旧式数字、诊断等宽 |
@@ -58,11 +58,11 @@
 
 ## 字体
 
-- 界面：Noto Sans SC，13px 为基准。不随安装包内置（体积超出字体预算），按 Noto Sans SC、Microsoft YaHei UI、PingFang SC、system-ui 的顺序回退。
+- 界面：Noto Sans SC，13px 为基准，已随安装包内置，声明目前在旧样式 `src/index.css` 中。RD-10 删除旧样式前，须把它移入 `src/styles/paper-ink/fonts.css`。回退顺序为 Microsoft YaHei UI、PingFang SC、system-ui。
 - 标题与阶段名：Noto Serif SC 600。
 - 正文：Noto Serif SC 18px，行高 2.05，首行缩进两字。
 - 数字：Instrument Serif 斜体，用于阶段编号、章节号、统计数字。
-- 衬线与数字字体随安装包内置（均为 OFL 许可），不依赖联网加载。
+- 字体均随安装包内置（均为 OFL 许可），不依赖联网加载。
 
 ## 组件
 
