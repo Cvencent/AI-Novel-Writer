@@ -38,13 +38,18 @@ export function Sheet({ open, title, subtitle, closeLabel, onClose, tabs, footer
   const titleId = useId()
   const panelId = useId()
   const titleRef = useRef<HTMLHeadingElement>(null)
+  const openerRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
-    if (!open) return
-    const opener = document.activeElement as HTMLElement | null
+    if (!open) {
+      openerRef.current = null
+      return
+    }
+    // StrictMode 会重跑 effect，那时焦点已在标题上；只记录本次打开前的元素。
+    openerRef.current ??= document.activeElement as HTMLElement | null
     titleRef.current?.focus()
     return () => {
-      if (document.activeElement === document.body || document.activeElement === null) opener?.focus()
+      if (document.activeElement === document.body || document.activeElement === null) openerRef.current?.focus()
     }
   }, [open])
 

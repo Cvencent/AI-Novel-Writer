@@ -10,7 +10,7 @@ interface LifecycleProps {
   current: number
 }
 
-/** 章节生命周期：已完成为墨色，当前为黛蓝并标 aria-current，未开始为浅线。 */
+/** 章节生命周期：已完成为墨色，当前为黛蓝并标 aria-current，未开始为浅线与说明色文字。 */
 export function Lifecycle({ label, steps, current }: LifecycleProps) {
   return (
     <ol className="pi-life" aria-label={label} style={{ '--pi-life-steps': steps.length } as CSSProperties}>

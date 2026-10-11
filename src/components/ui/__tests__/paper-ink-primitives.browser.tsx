@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, useState, type ReactNode } from 'react'
+import { act, StrictMode, useState, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { page, userEvent } from 'vitest/browser'
 import { Ellipsis } from 'lucide-react'
@@ -205,6 +205,22 @@ describe('Sheet', () => {
     await userEvent.keyboard('{Escape}')
     expect(onClose).toHaveBeenCalledTimes(3)
     expect(focused()).toBe(trigger)
+  })
+
+  it('StrictMode 下以打开状态挂载，关闭后焦点回到挂载前的元素', async () => {
+    const outside = document.createElement('button')
+    outside.textContent = '挂载前'
+    document.body.append(outside)
+    outside.focus()
+    try {
+      const container = await mount(<StrictMode><Harness initiallyOpen /></StrictMode>)
+      expect(focused()).toBe(container.querySelector('h2'))
+      await userEvent.keyboard('{Escape}')
+      expect(container.querySelector('aside')).toBeNull()
+      expect(focused()).toBe(outside)
+    } finally {
+      outside.remove()
+    }
   })
 
   it('分页用方向键切换，只有当前分页在 Tab 顺序里，面板以当前分页命名', async () => {
@@ -545,11 +561,13 @@ describe('StatGrid、Notice、Lifecycle', () => {
     expect(getComputedStyle(steps[2]).color).toBe(ACCENT.light)
   })
 
-  it.each(['light', 'dark'] as const)('%s 主题未开始步骤与画板一致：轨道色条、--ink-4 标签', async (theme) => {
+  it.each(['light', 'dark'] as const)('%s 主题未开始步骤为轨道色条，标签对纸面、面板、外框对比度不低于 3:1', async (theme) => {
     const container = await mount(<Lifecycle label="第 4 章进度" steps={['写作', '审稿', '修稿', '定稿']} current={2} />, theme)
     const todo = container.querySelectorAll('li')[3]
-    const expected = { light: ['rgba(23, 23, 26, 0.1)', 'rgb(161, 161, 168)'], dark: ['rgba(255, 255, 255, 0.1)', 'rgb(94, 93, 102)'] }[theme]
-    expect([getComputedStyle(todo.querySelector('.pi-life-bar')!).backgroundColor, getComputedStyle(todo).color]).toEqual(expected)
+    expect(getComputedStyle(todo.querySelector('.pi-life-bar')!).backgroundColor).toBe(tokenColor(container, '--track'))
+    for (const surface of ['--paper', '--surface', '--frame']) {
+      expect(contrast(getComputedStyle(todo).color, tokenColor(container, surface))).toBeGreaterThanOrEqual(3)
+    }
     await shot(`rd1-lifecycle-${theme}`)
   })
 })

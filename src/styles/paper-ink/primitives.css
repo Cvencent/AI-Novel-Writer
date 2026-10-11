@@ -162,7 +162,7 @@
 .pi-life-bar { height: 3px; border-radius: 3px; background: var(--ink); }
 .pi-life-step[data-state="current"] { color: var(--accent); font-weight: 600; }
 .pi-life-step[data-state="current"] .pi-life-bar { background: var(--accent); }
-.pi-life-step[data-state="todo"] { color: var(--ink-4); }
+.pi-life-step[data-state="todo"] { color: var(--ink-3); }
 .pi-life-step[data-state="todo"] .pi-life-bar { background: var(--track); }
 
 @keyframes pi-sheet-in { from { transform: translateX(12px); opacity: 0; } }
