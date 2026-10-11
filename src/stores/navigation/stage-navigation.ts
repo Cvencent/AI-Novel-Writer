@@ -124,7 +124,7 @@ export function stageNavigate(intent: NavigationIntent): void {
       useStageStore.setState({ sheet: { kind: 'run', facet: intent.facet } })
       // 运行侧页在 RD-4 之前沿用旧的 AI 输出与任务面板，它们读这几个布局字段。
       useLayoutStore.setState(intent.facet === 'output'
-        ? { rightView: 'ai-output', rightPanelRunId: intent.runId ?? null }
+        ? { rightPanelRunId: intent.runId ?? null }
         : { bottomTab: intent.facet, bottomPanelOpen: true })
       return
     case 'chapter':

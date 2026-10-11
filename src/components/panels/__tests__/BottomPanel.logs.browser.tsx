@@ -94,7 +94,7 @@ describe('workflow logs', () => {
     const open = container.querySelector<HTMLButtonElement>('[data-testid="workflow-confirmation-open"]')
     expect(open?.textContent).toContain('Confirm in AI output')
     await act(async () => open?.click())
-    expect(useLayoutStore.getState()).toMatchObject({ aiPanelOpen: true, rightView: 'ai-output', rightPanelRunId: 'planning-candidates' })
+    expect(useLayoutStore.getState()).toMatchObject({ aiPanelOpen: true, rightPanelRunId: 'planning-candidates' })
     expect(confirmContinue).not.toHaveBeenCalled()
     expect(cancelWorkflow).not.toHaveBeenCalled()
   })

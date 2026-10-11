@@ -23,7 +23,7 @@ let root: Root, container: HTMLDivElement
 let invoke: ReturnType<typeof vi.fn<(channel: string, ...args: unknown[]) => Promise<unknown>>>
 beforeEach(() => {
  useProjectStore.setState({ currentProject: { id: session.projectId, path: session.projectPath, sessionLease: session.leaseId, novelConfig: {} } as never }); setActiveProjectSessionContext(session)
- useWorkflowStore.setState({ activeRuns: [], history: [], waitingRuns: {} }); useLayoutStore.setState({ bottomPanelOpen: false, bottomTab: 'tasks', aiPanelOpen: true, rightView: 'ai-output', rightPanelRunId: null }); useLocaleStore.setState({ locale: 'zh-CN' })
+ useWorkflowStore.setState({ activeRuns: [], history: [], waitingRuns: {} }); useLayoutStore.setState({ bottomPanelOpen: false, bottomTab: 'tasks', aiPanelOpen: true, rightPanelRunId: null }); useLocaleStore.setState({ locale: 'zh-CN' })
  invoke = vi.fn(async (channel: string) => {
   if (['skills:list-user', 'db:recovery-candidate-list', 'generation:list', 'generation:list-batches'].includes(channel)) return []
   if (channel === 'fs:check-exists') return false
@@ -148,12 +148,12 @@ it('底部入口定位指定等待任务，消费后保留选择并允许切换�
  const waitingRun = useWorkflowStore.getState().activeRuns[0]
  await act(async () => {
    useWorkflowStore.setState({ activeRuns: [{ ...waitingRun, id: '另一个任务', title: '另一个任务', status: 'running', characterProposalBatch: undefined, characterProposalChoices: undefined }, waitingRun] })
-   useLayoutStore.setState({ bottomPanelOpen: true, aiPanelOpen: false, rightView: 'agent' })
+   useLayoutStore.setState({ bottomPanelOpen: true, aiPanelOpen: false })
    root.render(<BottomPanel />)
  })
  const openConfirmation = () => container.querySelector<HTMLButtonElement>('[data-testid="workflow-confirmation-open"]')!
  await act(async () => openConfirmation().click())
- expect(useLayoutStore.getState()).toMatchObject({ rightPanelRunId: runId, aiPanelOpen: true, rightView: 'ai-output' })
+ expect(useLayoutStore.getState()).toMatchObject({ rightPanelRunId: runId, aiPanelOpen: true })
  await act(async () => root.render(<><BottomPanel /><AIOutputPanel /></>))
  await vi.waitFor(() => expect(useLayoutStore.getState().rightPanelRunId).toBeNull())
  await vi.waitFor(() => expect(container.querySelector<HTMLButtonElement>('[data-testid="workflow-confirmation-confirm"]')?.disabled).toBe(false))

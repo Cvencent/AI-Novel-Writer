@@ -15,7 +15,6 @@ const START: LayoutFields = {
   activeRailItem: 'characters',
   aiPanelOpen: false,
   aiPanelWidth: 320,
-  rightView: 'agent',
   rightPanelRunId: null,
   bottomPanelOpen: false,
   bottomTab: 'log',
@@ -66,7 +65,7 @@ describe('旧外壳下每种意图映射到原字段组合', () => {
     ['剧情资料', { kind: 'resource', page: 'plot' }, { sidebarView: 'project', activeRailItem: 'plot-tree', sidebarOpen: true, ...EXITED }],
     ['知识库资料', { kind: 'resource', page: 'knowledge' }, { sidebarView: 'knowledge', activeRailItem: 'knowledge', sidebarOpen: true, ...EXITED }],
     ['历史资料', { kind: 'resource', page: 'history' }, { sidebarView: 'project', activeRailItem: 'project', sidebarOpen: true, ...EXITED }],
-    ['运行输出并定位运行', { kind: 'run', facet: 'output', runId: 'run-7' }, { aiPanelOpen: true, rightView: 'ai-output', rightPanelRunId: 'run-7', ...EXITED }],
+    ['运行输出并定位运行', { kind: 'run', facet: 'output', runId: 'run-7' }, { aiPanelOpen: true, rightPanelRunId: 'run-7', ...EXITED }],
     ['运行任务', { kind: 'run', facet: 'tasks' }, { bottomPanelOpen: true, bottomTab: 'tasks', activeRailItem: 'tasks', ...EXITED }],
     ['运行日志', { kind: 'run', facet: 'log' }, { bottomPanelOpen: true, bottomTab: 'log', activeRailItem: 'log', ...EXITED }],
     ['运行模型调用', { kind: 'run', facet: 'models' }, { bottomPanelOpen: true, bottomTab: 'models', activeRailItem: 'models', ...EXITED }],
@@ -82,7 +81,7 @@ describe('旧外壳下每种意图映射到原字段组合', () => {
   })
 
   it.each([
-    ['运行输出', { kind: 'run', facet: 'output' }, { aiPanelOpen: true, rightView: 'ai-output', rightPanelRunId: null }],
+    ['运行输出', { kind: 'run', facet: 'output' }, { aiPanelOpen: true, rightPanelRunId: null }],
     ['运行任务', { kind: 'run', facet: 'tasks' }, { bottomPanelOpen: true, bottomTab: 'tasks', activeRailItem: 'tasks' }],
   ] as Array<[string, NavigationIntent, Partial<LayoutFields>]>)('从首页打开%s时先回到项目视图', (_name, intent, changed) => {
     useLayoutStore.setState({ sidebarView: 'home', activeRailItem: 'home', immersive: false, preImmersivePanels: null })

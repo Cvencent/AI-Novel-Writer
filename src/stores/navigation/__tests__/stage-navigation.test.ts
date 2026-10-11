@@ -20,7 +20,7 @@ const originalStage = useStageStore.getState()
 beforeEach(() => {
   useAppearanceStore.setState({ resolvedShell: 'stage' })
   useLayoutStore.setState({ sidebarView: 'home', activeRailItem: 'home', settingsOpen: false, chapterCreationOpen: false,
-    chapterCreationPrefill: null, immersive: false, bottomPanelOpen: false, rightView: 'agent' })
+    chapterCreationPrefill: null, immersive: false, bottomPanelOpen: false })
   useEditorStore.setState({ tabs: [], activeTabId: null })
   useProjectStore.setState({ currentProject: { id: 'stage', name: '灯塔', path: PROJECT_PATH } as ProjectData })
   useStageStore.setState({ sheet: { kind: 'run', facet: 'log' }, focus: true, palette: 'commands', work: null, closingTabId: null })
@@ -60,7 +60,7 @@ describe('新外壳下 navigate 的落点，调用方与旧外壳相同', () => 
   it('运行意图打开运行侧页并定位到请求的分页', () => {
     navigate({ kind: 'run', facet: 'output', runId: 'run-7' })
     expect(useStageStore.getState().sheet).toEqual({ kind: 'run', facet: 'output' })
-    expect(useLayoutStore.getState()).toMatchObject({ rightView: 'ai-output', rightPanelRunId: 'run-7' })
+    expect(useLayoutStore.getState()).toMatchObject({ rightPanelRunId: 'run-7' })
     navigate({ kind: 'run', facet: 'models' })
     expect(useStageStore.getState().sheet).toEqual({ kind: 'run', facet: 'models' })
     expect(useLayoutStore.getState()).toMatchObject({ bottomTab: 'models', bottomPanelOpen: true })

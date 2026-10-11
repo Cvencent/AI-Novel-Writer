@@ -208,14 +208,14 @@ async function main() {
       currentStep = 'U07-liveness-candidate'
       await page.getByRole('button', { name: 'AI 输出', exact: true }).click()
       await startChapter(page)
-      await page.locator('aside[aria-label="写作助手"]').getByText('工作流未完成', { exact: true }).waitFor({ state: 'visible', timeout: 30_000 })
+      await page.locator('aside[aria-label="AI 输出"]').getByText('工作流未完成', { exact: true }).waitFor({ state: 'visible', timeout: 30_000 })
       assert.equal(fixture.requests, 1, 'first request must end without [DONE]')
       await page.reload()
       await waitHome(page)
       await page.locator('.writer-shelf').getByRole('button', { name: '打开《U07-dirty-tabs》' }).click()
       await page.locator('.writer-project-tree').getByText('U07-dirty-tabs', { exact: true }).waitFor({ state: 'visible' })
       await page.getByRole('button', { name: 'AI 输出', exact: true }).click()
-      const assistant = page.locator('aside[aria-label="写作助手"]')
+      const assistant = page.locator('aside[aria-label="AI 输出"]')
       await assistant.locator('section[aria-label="持久正文候选"]').getByText(candidateBody.slice(0, 180), { exact: true }).waitFor({ state: 'visible' })
       await startChapter(page)
       await assistant.getByRole('button', { name: /中止生成|Stop generation/ }).waitFor({ state: 'visible' })
@@ -353,7 +353,7 @@ async function main() {
     await assertWriter(page, 'U07.A07')
     const shell = writer(page)
     const sidebar = page.locator('aside[aria-label="作品资料"]')
-    const assistant = page.locator('aside[aria-label="写作助手"]')
+    const assistant = page.locator('aside[aria-label="AI 输出"]')
     const bottom = page.locator('section[aria-label="任务与日志"]')
     const assistantInput = page.getByPlaceholder('输入消息，@ 提及，/ 使用工作流...')
     const inputMarker = `未发送助手输入 ${runId}`
@@ -441,7 +441,7 @@ async function main() {
       ]) {
         currentStep = `U07.A01-${id}`
         await page.locator(`.writer-rail-host button[title="${title}"]`).click()
-        const visible = page.locator('aside[aria-label="写作助手"]').getByText(visibleText, { exact: true }).first()
+        const visible = page.locator('aside[aria-label="AI 输出"]').getByText(visibleText, { exact: true }).first()
         await visible.waitFor({ state: 'visible' })
         pass(currentStep, 'U07.A01', `Clicked ${title}; visible result: ${(await visible.textContent()).trim()}`)
       }

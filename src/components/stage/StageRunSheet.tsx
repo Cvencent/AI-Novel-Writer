@@ -20,13 +20,12 @@ const FACETS: { id: RunPaneFacet; label: [string, string] }[] = [
  */
 export default function StageRunSheet({ facet }: { facet: RunPaneFacet }) {
   const text = useLocaleStore(s => s.text)
-  const rightView = useLayoutStore(s => s.rightView)
   const bottomOpen = useLayoutStore(s => s.bottomPanelOpen)
   const close = () => useStageStore.setState({ sheet: null })
 
   useEffect(() => {
-    if (facet === 'output' ? rightView !== 'ai-output' : !bottomOpen) useStageStore.setState({ sheet: null })
-  }, [facet, rightView, bottomOpen])
+    if (facet !== 'output' && !bottomOpen) useStageStore.setState({ sheet: null })
+  }, [facet, bottomOpen])
 
   return (
     <Sheet

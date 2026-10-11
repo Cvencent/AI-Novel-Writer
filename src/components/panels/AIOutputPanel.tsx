@@ -251,8 +251,8 @@ export default function AIOutputPanel() {
           {runText(visibleLocale, 'AI 输出', 'AI output')}
         </span>
         <button
-          onClick={() => useLayoutStore.getState().setRightView('agent')}
-          title={runText(visibleLocale, '切换回 Agent', 'Switch back to Agent')}
+          onClick={() => useLayoutStore.getState().setAIPanelOpen(false)}
+          title={runText(visibleLocale, '收起 AI 输出', 'Close AI output')}
           className="icon-btn"
           style={{ width: 20, height: 20 }}
         >
@@ -294,7 +294,6 @@ function MainDraftRecoverySection({ session, locale, refreshKey }: {
   const [planningRuns, setPlanningRuns] = useState<GenerationRecoveryContext[]>([])
   const [batches, setBatches] = useState<GenerationBatchHistory[]>([])
   const [reviewRuns, setReviewRuns] = useState<Array<{ view: MainGenerationRunView; recovery: ReviewRevisionRecovery }>>([])
-  const [agentRuns, setAgentRuns] = useState<import('../../shared/agent-generation').AgentGenerationRecovery[]>([])
   const [editorRuns, setEditorRuns] = useState<EditorInlineRecovery[]>([])
   const [generationRefresh, setGenerationRefresh] = useState(0)
   const [selection, setSelection] = useState<Record<string, string[]>>({})
@@ -323,22 +322,19 @@ function MainDraftRecoverySection({ session, locale, refreshKey }: {
       })))
       const reviewContexts = await Promise.allSettled(contexts.filter(item => ['review-chapter', 'refine-draft', 'refine-from-review'].includes(item.recovery.operation))
         .map(async ({ view }) => ({ view, recovery: await ipc.invokeWithProjectSession(session, 'review-revision:read-recovery', { handle: view.handle }) })))
-      const agentRoots = new Map(contexts.filter(item => item.recovery.operation === 'agent-round').map(item => [item.view.handle.rootActionId, item.view.handle]))
-      const agentContexts = await Promise.allSettled([...agentRoots.values()].map(handle => ipc.invokeWithProjectSession(session, 'agent-generation:read', { handle })))
       const editorContexts = await Promise.allSettled(contexts.filter(item => item.recovery.operation === 'editor-inline')
         .map(({ view }) => ipc.invokeWithProjectSession(session, 'editor-inline:read-recovery', { handle: view.handle })))
       if (!active) return
       setPlanningRuns(contexts.flatMap(item => (item.recovery.plotOutlineRecovery || item.recovery.blueprintRecovery)
         && item.recovery.planningContinuation?.state !== 'complete' ? [item.recovery] : []))
       setReviewRuns(reviewContexts.flatMap(result => result.status === 'fulfilled' ? [result.value] : []))
-      setAgentRuns(agentContexts.flatMap(result => result.status === 'fulfilled' ? [result.value] : []))
       setEditorRuns(editorContexts.flatMap(result => result.status === 'fulfilled' ? [result.value] : []))
       setRuns(contexts.filter(item => item.recovery.operation === 'chapter-draft' && !item.recovery.batchId
         && (item.recovery.composition || item.recovery.draftShortOutline?.completedOutput || item.recovery.draftShortOutline?.retry?.kind === 'available'
           || withoutDraftReconciliationArtifacts([...item.view.artifacts, ...(item.view.candidates ?? [])], item.recovery).length
           || item.view.unsavedTails?.length)))
       setBatches(progress.filter(item => item.nextChapterNumber !== null))
-      setError([...reviewContexts, ...agentContexts, ...editorContexts].some(result => result.status === 'rejected') ? runText(locale, '部分任务暂时无法读取，其他候选仍可恢复。', 'Some tasks could not be loaded; the other candidates remain available.') : '')
+      setError([...reviewContexts, ...editorContexts].some(result => result.status === 'rejected') ? runText(locale, '部分任务暂时无法读取，其他候选仍可恢复。', 'Some tasks could not be loaded; the other candidates remain available.') : '')
     })().catch(reason => { if (active) setError(reason instanceof Error ? reason.message : String(reason)) })
     return () => { active = false }
   }, [session, refreshKey, locale, generationRefresh])
@@ -353,9 +349,8 @@ function MainDraftRecoverySection({ session, locale, refreshKey }: {
   const visiblePlanning = planningRuns.filter(item => item.handle.projectId === session.projectId)
   const visibleBatches = batches.filter(item => item.rootHandle.projectId === session.projectId)
   const visibleReviews = reviewRuns.filter(item => item.view.handle.projectId === session.projectId)
-  const visibleAgents = agentRuns.filter(item => item.handle.projectId === session.projectId)
   const visibleEditors = editorRuns.filter(item => item.view.handle.projectId === session.projectId)
-  if (!visibleRuns.length && !visibleBatches.length && !visibleReviews.length && !visibleAgents.length && !visibleEditors.length && !visiblePlanning.length && !error) return null
+  if (!visibleRuns.length && !visibleBatches.length && !visibleReviews.length && !visibleEditors.length && !visiblePlanning.length && !error) return null
   return <section className="max-h-80 overflow-y-auto border-b p-3 text-xs" aria-label={runText(locale, '持久正文候选', 'Saved draft candidates')}>
     {error && <p role="alert">{error}</p>}
     {visiblePlanning.map(recovery => <article key={recovery.handle.runId} className="mb-3">
@@ -389,22 +384,6 @@ function MainDraftRecoverySection({ session, locale, refreshKey }: {
           await ipc.invokeWithProjectSession(session, 'editor-inline:execute', { handle: recovery.view.handle })
           if (sameProjectSessionContext(session, projectSessionContextFromProject(useProjectStore.getState().currentProject))) setGenerationRefresh(value => value + 1)
         }) }}>{runText(locale, '继续原选区任务', 'Continue original selection task')}</button>
-    </article>)}
-    {visibleAgents.map(recovery => <article key={recovery.handle.rootActionId} className="mb-3">
-      <p>{runText(locale, '助手任务', 'Assistant task')}：{recovery.context.input.userMessage.slice(0, 80)}</p>
-      <GenerationBudgetDiagnostics diagnostics={recovery.run.budgetDiagnostics} locale={locale} />
-      {recovery.run.ledger && <p>{runText(locale, `已用 ${recovery.run.ledger.physicalRequests} 次请求`, `${recovery.run.ledger.physicalRequests} requests used`)}</p>}
-      <p className="whitespace-pre-wrap">{recovery.rounds.map(round => round.visibleText).join('\n').slice(0, 180)}</p>
-      {recovery.rounds.some(round => round.status === 'unknown' || round.actions.some(action => ['unknown', 'running'].includes(action.status)))
-        && <p>{runText(locale, '部分操作结果待确认，恢复时不会自动重做。', 'Some operation results are unknown and will not be repeated automatically.')}</p>}
-      {recovery.sourceStatus === 'conflict' && <p>{runText(locale, '来源已变化；保留的回复仍可复制。', 'Sources changed; the saved reply can still be copied.')}</p>}
-      {recovery.run.status === 'cancelled' && <p>{runText(locale, '此助手任务已取消；保留的回复仍可复制。', 'This assistant task was cancelled; the saved reply can still be copied.')}</p>}
-      <button type="button" className="icon-btn px-2" style={candidateTextButtonStyle} onClick={() => { void act(() => navigator.clipboard.writeText(recovery.rounds.map(round => round.visibleText).join('\n'))) }}>{runText(locale, '复制回复', 'Copy reply')}</button>
-      <button type="button" className="icon-btn px-2" style={candidateTextButtonStyle} disabled={busy || recovery.sourceStatus !== 'current' || recovery.run.status === 'cancelled'} onClick={() => { void act(async () => {
-        const { useAgentStore } = await import('../../stores/agent-store')
-        useLayoutStore.getState().setRightView('agent')
-        await useAgentStore.getState().resumeGeneration(recovery.handle)
-      }) }}>{runText(locale, '恢复此助手任务', 'Recover this assistant task')}</button>
     </article>)}
     {visibleReviews.map(({ view, recovery }) => {
       const requestsReview = recovery.context.operation === 'review-chapter' && !recovery.saved && !canCommitRecoveredReview(recovery)
