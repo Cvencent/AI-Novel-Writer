@@ -446,6 +446,10 @@ export const STAGE_SCENARIOS = {
     await page.getByRole('heading', { name: '运行', exact: true }).waitFor({ state: 'visible' })
     await stage.root(page).getByRole('button', { expanded: true }).filter({ hasText: '%' }).waitFor({ state: 'visible' })
   }, after: async ({ page, fake }) => {
+    await page.keyboard.press('Control+K')
+    await stage.paletteInput(page).waitFor({ state: 'visible' })
+    await page.keyboard.press('Escape')
+    await stage.palette(page).waitFor({ state: 'hidden' })
     fake.gate.release()
     await runPanel.waitForWorkflowDone(page)
     await stage.waitForProse(page, firstLine(FIXTURE_PROSE))

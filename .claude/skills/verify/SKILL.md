@@ -142,7 +142,7 @@ node scripts/redesign/drive.mjs --scenario startup-timing --out <目录>
 | `stage-migrate` | 写入一份 v1 外观配置后重载：进入工作台、不出现启动阻塞，存储逐字节不变（只有选新外壳时才写成 v2） | 工作台（旧外壳，v1 没有 stage） | 否 | lane 10 |
 | `stage-settings-switch` | 从旧外壳打开设置 → 外观 → 界面布局选「创作流程（预览）」，新外壳出现，设置仍停在「外观」 | 新外壳 | 否 | You see |
 | `stage-palette` | Ctrl K 输入「灯」，结果里有第 6 章；`after` 按 Esc 关闭 | Ctrl K 结果 | 否 | |
-| `stage-run` | 卡住模型后从章节蓝图写下一章：运行侧页自动打开，顶栏胶囊展开并显示进度；`after` 放行后等工作流完成、新草稿打开 | 运行侧页与胶囊 | 是 | |
+| `stage-run` | 卡住模型后从章节蓝图写下一章：运行侧页自动打开，顶栏胶囊展开并显示进度；`after` 先确认侧页开着时 Ctrl K 仍能打开搜索（侧页不是模态层），再放行、等工作流完成、新草稿打开 | 运行侧页与胶囊 | 是 | |
 | `stage-library` | 没有打开作品时是书房，没有流程脊 | 书房 | 否 | |
 | `stage-modal-layers` | 改小说配置后打开设置：Ctrl K 不开搜索、Ctrl W 不弹放弃确认；从主进程关窗，退出确认画在设置之上（`isTopmost` 让所有元素参与命中测试后取中心点最上层元素）；`after` 取消退出并关设置 | 退出确认 | 否 | 第 3 条 |
 | `stage-close-key` | 书房里、搜索框里各按一次 Ctrl W，页面都拦下（`defaultPrevented`），应用仍在。应用菜单有 CommandOrControl+W 的「关闭」，但驱动注入的按键到不了菜单快捷键，所以断言的是拦截 | 搜索框 | 否 | 第 4 条 |
