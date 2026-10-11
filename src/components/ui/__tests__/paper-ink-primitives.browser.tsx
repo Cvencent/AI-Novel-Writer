@@ -42,9 +42,11 @@ const settle = () => act(async () => {})
 const shot = (name: string) => page.screenshot({ path: `${SHOTS}/${name}.png`, element: host! })
 const focused = () => document.activeElement as HTMLElement
 
+const channels = (color: string) => color.match(/[\d.]+/g)!.map(Number)
+
 function luminance(color: string) {
-  const [r, g, b] = color.match(/[\d.]+/g)!.slice(0, 3).map((value) => {
-    const channel = Number(value) / 255
+  const [r, g, b] = channels(color).slice(0, 3).map((value) => {
+    const channel = value / 255
     return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
   })
   return 0.2126 * r + 0.7152 * g + 0.0722 * b
@@ -53,6 +55,22 @@ function luminance(color: string) {
 function contrast(foreground: string, background: string) {
   const [high, low] = [luminance(foreground), luminance(background)].sort((a, b) => b - a)
   return (high + 0.05) / (low + 0.05)
+}
+
+/** 半透明前景色叠在不透明底色上的实际颜色。 */
+function composite(over: string, under: string) {
+  const [r, g, b, a = 1] = channels(over)
+  const base = channels(under)
+  return `rgb(${[r, g, b].map((value, i) => Math.round(value * a + base[i] * (1 - a))).join(', ')})`
+}
+
+function tokenColor(scope: HTMLElement, name: string) {
+  const probe = document.createElement('span')
+  probe.style.color = `var(${name})`
+  scope.append(probe)
+  const color = getComputedStyle(probe).color
+  probe.remove()
+  return color
 }
 
 /** 焦点环由令牌 --focus-ring 绘制：外圈为强调色。 */
@@ -114,14 +132,7 @@ describe('Button 纸墨六种', () => {
   it.each(['light', 'dark'] as const)('%s 主题正文对比度不低于 4.5:1，说明文字不低于 3:1', async (theme) => {
     const container = await mount(<p>正文</p>, theme)
     const tokens = getComputedStyle(container)
-    const value = (name: string) => {
-      const probe = document.createElement('span')
-      probe.style.color = `var(${name})`
-      container.append(probe)
-      const color = getComputedStyle(probe).color
-      probe.remove()
-      return color
-    }
+    const value = (name: string) => tokenColor(container, name)
     for (const surface of ['--paper', '--surface', '--frame']) {
       expect(contrast(value('--ink'), value(surface))).toBeGreaterThanOrEqual(4.5)
       expect(contrast(value('--ink-2'), value(surface))).toBeGreaterThanOrEqual(4.5)
@@ -294,6 +305,17 @@ describe('SegmentedControl 与 Check', () => {
       </div>
     )
   }
+
+  it.each(['light', 'dark'] as const)('%s 主题未选中项在凹陷底叠加到各表面后对比度不低于 3:1', async (theme) => {
+    const container = await mount(<Harness />, theme)
+    const seg = container.querySelector<HTMLElement>('.pi-seg')!
+    const unpressed = seg.querySelector('[aria-pressed="false"]')!
+    expect(getComputedStyle(seg).backgroundColor).toBe(tokenColor(container, '--sunken'))
+    for (const surface of ['--frame', '--surface', '--paper']) {
+      const background = composite(getComputedStyle(seg).backgroundColor, tokenColor(container, surface))
+      expect(contrast(getComputedStyle(unpressed).color, background)).toBeGreaterThanOrEqual(3)
+    }
+  })
 
   it('选中态与 aria-pressed、checked 一致，全部键盘可达且焦点环可见', async () => {
     const container = await mount(<Harness />)
