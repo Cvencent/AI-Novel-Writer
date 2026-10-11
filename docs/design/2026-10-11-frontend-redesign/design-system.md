@@ -13,7 +13,7 @@
 | `--surface`（悬浮面板） | #F7F6F2 | #18181C |
 | `--paper`（纸面） | #FFFEFB | #1D1D22 |
 | `--ink` | #17171A | #E6E4DF |
-| `--ink-2` / `--ink-3` | #55555E / #8A8A93 | #A3A2AB / #77767F |
+| `--ink-2` / `--ink-3` | #55555E / #84848D | #A3A2AB / #77767F |
 | `--rule` | rgba(23,23,26,.07) | rgba(255,255,255,.08) |
 | `--accent`（黛蓝） | #2C4A8C | #A9BEF0 |
 | `--ok` | #2F6B4F | #8CC3A2 |
@@ -21,7 +21,8 @@
 | `--danger` | #B42318 | #F08A7E |
 
 - 外壳：外框色铺满窗口，流程脊直接放在外框上；内容区是 14px 圆角的悬浮面板，用阴影而不是分隔线区分层次。
-- 数字：阶段号与章节号用 Instrument Serif 斜体（取代 EB Garamond）。
+- 数字：阶段号与章节号用 Instrument Serif 斜体。
+- `--ink-3` 浅色由画板的 #8A8A93 调为 #84848D：原值在外框上只有 2.92 比 1，达不到说明文字 3 比 1 的要求（RD-1 实测）。
 - 流程脊状态：完成为实心勾选圆，进行中为按比例填充的进度环，未开始为虚线圆。
 - 顶栏：作品名下拉、位置、Ctrl K 搜索与跳转、运行胶囊、保存状态、沉浸写作、窗口按钮。
 - 设定页：一段核心大纲加三项必填即可继续，其余设定为标签按钮。
@@ -38,11 +39,11 @@
 
 ## 令牌
 
-令牌定义在 `prototype/tokens.css`，实施时迁入渲染进程唯一的令牌层。组件只引用令牌。
+令牌的实现在 `src/styles/paper-ink/tokens.css`，挂在 `.paper-ink` 作用域上，是渲染进程里唯一允许写颜色值的文件。组件只引用令牌。`prototype/tokens.css` 是原型用的旧命名，以实现为准。
 
 | 类别 | 令牌 | 用途 |
 |---|---|---|
-| 表面 | `--bg` `--sunken` `--surface` `--surface-2` `--paper` | 应用底、凹陷输入、面板、悬停与选中、正文纸面 |
+| 表面 | `--frame` `--sunken` `--surface` `--surface-2` `--paper` | 应用底、凹陷输入、面板、悬停与选中、正文纸面 |
 | 墨色 | `--ink` `--ink-2` `--ink-3` `--ink-4` | 正文与标题、次要文字、说明、禁用与占位 |
 | 线 | `--rule` `--rule-strong` | 分隔线、控件边框 |
 | 强调 | `--accent` `--accent-hover` `--accent-ink` `--accent-soft` `--accent-line` | 主操作、当前位置、焦点 |
@@ -57,11 +58,11 @@
 
 ## 字体
 
-- 界面：Noto Sans SC。13px 为基准。
+- 界面：Noto Sans SC，13px 为基准。不随安装包内置（体积超出字体预算），按 Noto Sans SC、Microsoft YaHei UI、PingFang SC、system-ui 的顺序回退。
 - 标题与阶段名：Noto Serif SC 600。
 - 正文：Noto Serif SC 18px，行高 2.05，首行缩进两字。
-- 数字：EB Garamond 旧式数字，用于阶段编号、章节号、统计数字。
-- 字体随安装包内置（均为 OFL 许可），不依赖联网加载。
+- 数字：Instrument Serif 斜体，用于阶段编号、章节号、统计数字。
+- 衬线与数字字体随安装包内置（均为 OFL 许可），不依赖联网加载。
 
 ## 组件
 

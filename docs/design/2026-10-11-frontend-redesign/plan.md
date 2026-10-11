@@ -140,7 +140,7 @@ Each live lane runs in its own worktree at the PR head. Drive through the skill 
 
 **Build.**
 
-- [ ] 原语只引用 `--bg`、`--ink`、`--accent` 等纸墨令牌，并在 `src/stories` 增加对应故事。
+- [ ] 原语只引用 `--frame`、`--ink`、`--accent` 等纸墨令牌，并在 `src/stories` 增加对应故事。
 - [ ] 颜色字面量检查先以允许清单记录现有 25 个旧文件，新目录 `src/components/stage/**` 与 `src/components/ui/**` 零容忍。
 
 **You see.**
