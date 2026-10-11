@@ -45,6 +45,16 @@ export function panels(page) {
     .map(([name, selector]) => [name, !document.querySelector(selector)?.hasAttribute('hidden')])), PANELS)
 }
 
+/** 底部面板标题头显示的当前分页名。 */
+export function bottomTabLabel(page, label) {
+  return page.locator(PANELS.bottom).getByText(label, { exact: true })
+}
+
+/** 首页的最近作品书架；只在首页渲染。 */
+export function shelf(page) {
+  return page.locator('.writer-shelf')
+}
+
 export async function isImmersive(page) {
   return await page.locator('[data-writer-immersive="true"]').count() > 0
 }

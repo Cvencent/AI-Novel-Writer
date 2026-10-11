@@ -70,6 +70,10 @@ export async function cancelActiveRuns(page) {
     await page.locator(CANCEL).first().click()
     await page.waitForFunction(([selector, before]) => document.querySelectorAll(selector).length < before, [CANCEL, remaining])
   }
+  await waitForStatusCapsuleGone(page)
+}
+
+export async function waitForStatusCapsuleGone(page) {
   await page.locator(CAPSULE).first().waitFor({ state: 'detached', timeout: 30_000 })
 }
 

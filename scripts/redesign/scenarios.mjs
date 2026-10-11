@@ -15,10 +15,11 @@ import * as shell from './pages/shell.mjs'
 
 const SAMPLE = Object.freeze({ name: '灯塔', chapterNumber: 1, blueprints: [[1, '旧港'], [2, '北堤']] })
 
-async function stubFolderPicker(app, directory) {
+/** 系统打开对话框直接返回 selected，文件夹与文件通用。 */
+async function stubOpenDialog(app, selected) {
   await app.evaluate(({ dialog }, selected) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] })
-  }, directory)
+  }, selected)
 }
 
 /** 用公开 IPC 预置示例作品，然后重载，让界面从书房重新打开它。 */
@@ -83,7 +84,7 @@ async function reviewLatestDraft({ page }) {
  */
 export const SCENARIOS = {
   'new-project': { model: false, run: async ({ app, page, roots }) => {
-    await stubFolderPicker(app, roots.projects)
+    await stubOpenDialog(app, roots.projects)
     await bookshelf.createProject(page, SAMPLE.name)
     await page.getByText('小说配置', { exact: true }).first().waitFor({ state: 'visible' })
   } },
@@ -126,6 +127,7 @@ async function assertBottomOpensOn(page, start) {
   await shell.closeBottomPanel(page)
   await start()
   await page.waitForFunction(() => !document.querySelector('#writer-bottom')?.hasAttribute('hidden'))
+  await shell.bottomTabLabel(page, '任务').waitFor({ state: 'visible', timeout: 5_000 })
 }
 
 /**
@@ -146,7 +148,7 @@ export const EXTRA_SCENARIOS = {
     await shell.clickRail(page, '角色')
     await shell.toggleImmersion(page)
     assert.equal(await shell.isImmersive(page), true)
-    await stubFolderPicker(app, other.projectPath)
+    await stubOpenDialog(app, other.projectPath)
     await shell.switchProject(page)
     await project.tree(page).getByText('雾岛', { exact: true }).waitFor({ state: 'visible' })
     assert.equal(await shell.isImmersive(page), false, '切换项目后应退出沉浸')
@@ -180,9 +182,7 @@ export const EXTRA_SCENARIOS = {
   'nav-kb-import': { model: true, setup: seedWithoutDraft, run: async ({ app, page, roots }) => {
     const file = path.join(roots.temp, '灯塔资料.txt')
     fs.writeFileSync(file, '林岚：旧港潮汐记录的测绘师，追查失踪地图的来源。')
-    await app.evaluate(({ dialog }, selected) => {
-      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] })
-    }, file)
+    await stubOpenDialog(app, file)
     await shell.clickRail(page, '小说')
     await assertBottomOpensOn(page, () => materials.importPlanningMaterial(page))
   }, after: ({ page }) => runPanel.cancelActiveRuns(page) },
@@ -194,6 +194,23 @@ export const EXTRA_SCENARIOS = {
     await project.openBlueprints(page)
     await assertBottomOpensOn(page, () => chapter.startBatch(page, FAKE_MODEL.id, 100))
   }, after: ({ page }) => runPanel.waitForWorkflowDone(page) },
+  'nav-home-import': { model: true, setup: seedWithoutDraft, run: async ({ app, page, roots, fake }) => {
+    const file = path.join(roots.temp, '参考小说.txt')
+    fs.writeFileSync(file, `第1章 旧港\n${FIXTURE_PROSE}\n\n第2章 北堤\n${FIXTURE_PROSE}\n`)
+    await stubOpenDialog(app, file)
+    await shell.clickRail(page, '首页')
+    await shell.shelf(page).waitFor({ state: 'visible' })
+    assert.equal(await project.tree(page).isVisible(), false, '首页不显示项目树')
+    assert.equal(await runPanel.isOpen(page), false, '首页不显示 AI 输出')
+    fake.gate.hold()
+    await materials.importReferenceNovelIntoCurrentProject(page, 2)
+    await project.tree(page).waitFor({ state: 'visible' })
+    await runPanel.waitUntilOpen(page)
+    assert.equal(await shell.shelf(page).isVisible(), false, '启动导入后应离开首页')
+  }, after: async ({ page, fake }) => {
+    fake.gate.release()
+    await runPanel.waitForStatusCapsuleGone(page)
+  } },
   'nav-immersive-twice': { model: false, setup: seedWithDraft, run: async ({ page }) => {
     await shell.closeBottomPanel(page)
     const before = await shell.panels(page)
