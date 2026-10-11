@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { _electron as electron } from 'playwright'
 
@@ -97,7 +98,7 @@ function externalWrites(before) {
 }
 
 /** 以 --user-data-dir 匹配仍存活的 Electron 主进程与子进程。 */
-function residualProcesses(userData) {
+function liveProcesses(userData) {
   const needle = userData.toLowerCase()
   if (process.platform === 'win32') {
     const script = "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine } | ForEach-Object { \"$($_.ProcessId)`t$($_.CommandLine)\" }"
@@ -106,6 +107,15 @@ function residualProcesses(userData) {
   }
   const output = execFileSync('ps', ['-eo', 'pid=,args='], { encoding: 'utf8' })
   return output.split('\n').filter(line => line.toLowerCase().includes(needle)).map(line => Number(line.trim().split(/\s+/)[0]))
+}
+
+/** close 返回时 GPU、渲染等子进程可能还在退出，给它们约 3 秒。 */
+async function residualProcesses(userData) {
+  for (let attempt = 1; ; attempt++) {
+    const pids = liveProcesses(userData)
+    if (pids.length === 0 || attempt === 10) return pids
+    await delay(300)
+  }
 }
 
 async function quit(app) {
@@ -134,18 +144,18 @@ async function launch({ roots, appRoot, fakeModelPort, diagnostics }) {
       electronApp.on('browser-window-created', (_, window) => watch(window))
       return { windowsAtAttach: existing.length }
     })
-    if (fakeModelPort) await app.evaluate((_, port) => {
+    await app.evaluate((_, port) => {
       const originalFetch = globalThis.fetch
       globalThis.__driveExternalRequests = []
-      globalThis.fetch = (input, options) => {
+      globalThis.fetch = async (input, options) => {
         const url = new URL(String(input instanceof Request ? input.url : input))
-        if (url.origin !== 'https://api.openai.com' || !url.pathname.startsWith('/v1/')) {
+        if (port === null || url.origin !== 'https://api.openai.com' || !url.pathname.startsWith('/v1/')) {
           globalThis.__driveExternalRequests.push(url.origin)
           throw new Error('DRIVE_EXTERNAL_FETCH_REFUSED')
         }
         return originalFetch(`http://127.0.0.1:${port}${url.pathname}`, options)
       }
-    }, fakeModelPort)
+    }, fakeModelPort ?? null)
     app.process().stdout?.on('data', chunk => diagnostics.push(`[main:stdout] ${String(chunk).trimEnd()}`))
     app.process().stderr?.on('data', chunk => diagnostics.push(`[main:stderr] ${String(chunk).trimEnd()}`))
     const page = await app.firstWindow({ timeout: TIMEOUT })
@@ -208,6 +218,7 @@ async function runScenario(name, options) {
   const fake = SCENARIOS[name]?.model ? await startFakeModel(diagnostics) : null
   const base = path.join(options.out, `${name}-${options.theme}`)
   const result = { scenario: name, theme: options.theme, isolationRoot: roots.root }
+  const fail = error => { result.error = [result.error, error instanceof Error ? error.message : String(error)].filter(Boolean).join('\n') }
   let session
   try {
     session = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics })
@@ -222,24 +233,24 @@ async function runScenario(name, options) {
       await SCENARIOS[name].run(context)
       if (!shot) await context.shoot()
     }
-    if (fake) {
-      result.modelRequests = fake.requests.length
-      result.externalRequests = await session.app.evaluate(() => globalThis.__driveExternalRequests ?? [])
-      assert.deepEqual(result.externalRequests, [], 'fetch 越过夹具访问外部网络')
-    }
+    if (fake) result.modelRequests = fake.requests.length
+    result.externalRequests = await session.app.evaluate(() => globalThis.__driveExternalRequests)
+    assert.deepEqual(result.externalRequests, [], fake ? 'fetch 越过夹具访问外部网络' : '无夹具场景发出了 fetch')
   } catch (error) {
-    result.error = error instanceof Error ? error.message : String(error)
+    fail(error)
     if (session?.page && !session.page.isClosed()) {
       await session.page.screenshot({ path: `${base}.failure.png` }).catch(() => {})
       options = { ...options, dumpDom: true, console: true }
     }
   } finally {
     await writeDiagnostics(session?.page, base, options, diagnostics).catch(() => {})
-    if (session) result.quit = await quit(session.app)
+    if (session) result.quit = await quit(session.app).catch(error => { fail(error); return null })
     await fake?.close()
   }
-  result.residualProcesses = residualProcesses(roots.userData)
-  result.externalWrites = externalWrites(before)
+  try {
+    result.residualProcesses = await residualProcesses(roots.userData)
+    result.externalWrites = externalWrites(before)
+  } catch (error) { fail(error) }
   if (!result.error && result.residualProcesses.length === 0) fs.rmSync(roots.root, { recursive: true, force: true })
   return result
 }

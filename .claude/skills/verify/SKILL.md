@@ -57,7 +57,13 @@ node scripts/redesign/drive.mjs --scenario <名称> ...
 - `<场景>-<主题>.json`：本次运行的结果数组。每项含 `screenshot`、`timing`、`externalRequests`、`residualProcesses`、`externalWrites`、`isolationRoot`，用夹具模型的场景另含 `modelRequests`（假服务收到的全部请求数，嵌入请求也计入，与 `--console` 里的 `[fake-model]` 行一一对应），失败时含 `error`。
 - 失败时额外写 `<场景>-<主题>.failure.png`、`.dom.html`、`.aria.yml`、`.console.log`，隔离目录保留以便排查。
 
-每个场景结束后，驱动会检查三件事：以 `--user-data-dir` 匹配不到任何存活进程（`residualProcesses` 为空）；`~/.vela`、`%APPDATA%\ai-novel-writer`、`%APPDATA%\AI小说作家` 的最新修改时间不变（`externalWrites` 为空）；主进程 `fetch` 没有访问 `https://api.openai.com/v1/*` 以外的地址（`externalRequests` 为空）。
+每个场景结束后，驱动会检查三件事，任一不满足即退出码 1：
+
+- `externalRequests` 为空。每个场景都在 Electron 启动后替换主进程的 `globalThis.fetch`：用夹具模型的场景只放行 `https://api.openai.com/v1/*` 并改道到本机假服务，其余场景一律不放行。被拒的请求记下来源并抛错。检查范围只有主进程 `fetch`，且从 `electron.launch` 返回后才生效；更早的请求、渲染进程的请求和 Electron `net` 模块的请求都不在内。
+- `residualProcesses` 为空：应用关闭后，以 `--user-data-dir` 匹配不到存活进程。子进程退出需要时间，驱动最多查 10 次、间隔 300 ms。
+- `externalWrites` 为空：`~/.vela`、`%APPDATA%\ai-novel-writer`、`%APPDATA%\AI小说作家` 的最新修改时间不变。
+
+枚举或结束进程本身失败时，原因写进该场景的 `error`，结果 JSON 照常写出。
 
 ## 只读诊断
 
