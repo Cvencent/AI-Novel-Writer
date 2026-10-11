@@ -7,6 +7,8 @@ import { inflateSync } from 'node:zlib'
 
 const SIGNATURE = '89504e470d0a1a0a'
 const CHANNELS = { 2: 3, 6: 4 }
+/** 同一状态连续截图，渲染器在模糊与渐变上会有 ±1～2 级抖动，肉眼不可见；超过 2 级才算不同像素。 */
+export const CHANNEL_TOLERANCE = 2
 
 /** 只解码截图实际产出的格式：8 位 RGB 或 RGBA、非隔行。返回 RGBA 像素。 */
 export function decodePng(buffer) {
@@ -51,8 +53,8 @@ export function decodePng(buffer) {
   return { width, height, pixels }
 }
 
-/** 不同像素占比，0 到 1。任一通道差值超过 threshold 即算不同。 */
-export function diffRatio(first, second, threshold = 0) {
+/** 不同像素占比，0 到 1。任一通道差值超过 threshold 即算不同；threshold 为 0 即逐字节比较。 */
+export function diffRatio(first, second, threshold = CHANNEL_TOLERANCE) {
   assert.deepEqual([first.width, first.height], [second.width, second.height], '截图尺寸不同')
   let different = 0
   for (let index = 0; index < first.pixels.length; index += 4) {
@@ -70,8 +72,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exit(2)
   }
   const [reference, ...others] = files.map(file => decodePng(fs.readFileSync(file)))
-  const ratios = others.map((image, index) => ({ file: files[index + 1], ratio: diffRatio(reference, image) }))
+  const ratios = others.map((image, index) => ({ file: files[index + 1], ratio: diffRatio(reference, image),
+    strictRatio: diffRatio(reference, image, 0) }))
   const maxRatio = Math.max(...ratios.map(item => item.ratio))
-  process.stdout.write(`${JSON.stringify({ reference: files[0], ratios, maxRatio, pass: maxRatio < 0.005 })}\n`)
+  process.stdout.write(`${JSON.stringify({ reference: files[0], channelTolerance: CHANNEL_TOLERANCE, ratios, maxRatio,
+    pass: maxRatio < 0.005 })}\n`)
   process.exitCode = maxRatio < 0.005 ? 0 : 1
 }
