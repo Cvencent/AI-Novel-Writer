@@ -185,11 +185,11 @@ export const EXTRA_SCENARIOS = {
     }, file)
     await shell.clickRail(page, '小说')
     await assertBottomOpensOn(page, () => materials.importPlanningMaterial(page))
-  } },
+  }, after: ({ page }) => runPanel.cancelActiveRuns(page) },
   'nav-card-import': { model: true, setup: seedWithoutDraft, run: async ({ page }) => {
     await shell.clickRail(page, '角色')
     await assertBottomOpensOn(page, () => materials.importCharacterCards(page, '姓名：守塔人\n身份：灯塔看守，记得每一次钟声。'))
-  } },
+  }, after: ({ page }) => runPanel.cancelActiveRuns(page) },
   'nav-batch': { model: true, setup: seedWithoutDraft, run: async ({ page }) => {
     await project.openBlueprints(page)
     await assertBottomOpensOn(page, () => chapter.startBatch(page, FAKE_MODEL.id, 100))

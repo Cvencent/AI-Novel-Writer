@@ -20,11 +20,11 @@ export async function waitForWorkflowDone(page) {
   await waitForCompletionToast(page)
 }
 
-/** 在渲染进程里计时：从点击名为 buttonName 的按钮到运行面板标题可见，单位毫秒，帧粒度。 */
-export async function msFromClickToOpen(page, buttonName, trigger) {
+/** 在渲染进程里计时：从点击名为 buttonName 的按钮到运行面板标题可见，单位毫秒，帧粒度。超过 deadlineMs 未出现即失败。 */
+export async function msFromClickToOpen(page, buttonName, trigger, deadlineMs = 30_000) {
   const header = panel(page).getByText('AI 输出', { exact: true })
   if (await header.isVisible()) throw new Error('运行面板在计时前已经可见')
-  await page.evaluate(({ selector, buttonName }) => {
+  await page.evaluate(({ selector, buttonName, deadlineMs }) => {
     let clickedAt = null
     const onClick = event => {
       if (event.target instanceof Element && event.target.closest('button')?.textContent?.trim() === buttonName) clickedAt = performance.now()
@@ -32,7 +32,8 @@ export async function msFromClickToOpen(page, buttonName, trigger) {
     document.addEventListener('click', onClick, { capture: true })
     const opened = () => [...document.querySelectorAll(`${selector} *`)]
       .some(node => node.childElementCount === 0 && node.textContent === 'AI 输出' && node.getClientRects().length > 0)
-    window.__driveOpenLatency = new Promise(resolve => {
+    window.__driveOpenLatency = new Promise((resolve, reject) => {
+      setTimeout(() => reject(new Error(`运行面板在 ${deadlineMs} ms 内未出现`)), deadlineMs)
       const tick = () => {
         if (clickedAt !== null && opened()) {
           document.removeEventListener('click', onClick, { capture: true })
@@ -41,7 +42,7 @@ export async function msFromClickToOpen(page, buttonName, trigger) {
       }
       requestAnimationFrame(tick)
     })
-  }, { selector: PANEL, buttonName })
+  }, { selector: PANEL, buttonName, deadlineMs })
   await trigger()
   return page.evaluate(() => window.__driveOpenLatency)
 }
@@ -60,6 +61,16 @@ const CAPSULE = '.ai-task-capsule'
 
 export async function openFromStatusCapsule(page) {
   await page.locator(CAPSULE).first().click()
+}
+
+/** 取消底部任务面板里所有仍在运行的任务，等到状态栏胶囊消失，退出时不必强杀。 */
+export async function cancelActiveRuns(page) {
+  const CANCEL = '#writer-bottom button[title="取消任务"]'
+  for (let remaining = await page.locator(CANCEL).count(); remaining > 0; remaining = await page.locator(CANCEL).count()) {
+    await page.locator(CANCEL).first().click()
+    await page.waitForFunction(([selector, before]) => document.querySelectorAll(selector).length < before, [CANCEL, remaining])
+  }
+  await page.locator(CAPSULE).first().waitFor({ state: 'detached', timeout: 30_000 })
 }
 
 export async function waitForStatusCapsule(page) {
