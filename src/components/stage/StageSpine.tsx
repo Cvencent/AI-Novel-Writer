@@ -2,9 +2,10 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { Check, CircleDashed, GitBranch, History, Library, Settings, type LucideIcon } from 'lucide-react'
 import { useLocaleStore } from '../../stores/locale-store'
 import type { ResourcePage, WorkStage } from '../../stores/navigation/navigation-intents'
-import type { ChapterPhase, ChapterRow, StageLocation, StageProgress, StageStatus } from '../../stores/navigation/stage-progress'
+import { chapterLabel } from '../../shared/chapter-label'
+import type { ChapterRow, StageLocation, StageProgress, StageStatus } from '../../stores/navigation/stage-progress'
 import { ProgressRing } from './ProgressRing'
-import { RESOURCE_NAMES, STAGE_NAMES } from './stage-text'
+import { CHAPTER_PHASE_TEXT, CHAPTER_RUNNING_TEXT, RESOURCE_NAMES, STAGE_NAMES } from './stage-text'
 
 type Text = (zh: string, en: string) => string
 
@@ -24,7 +25,10 @@ function stageMeta(status: StageStatus, text: Text): string {
         ? text(`${status.planned} / ${status.total} 章`, `${status.planned} / ${status.total} chapters`)
         : text(`${status.planned} 章`, `${status.planned} chapters`)
     case 'manuscript':
-      return todo ? text('写作、审稿、修稿、定稿', 'Write, review, revise, finalize') : text(`${status.finalized} / ${status.total} 定稿`, `${status.finalized} / ${status.total} final`)
+      if (todo) return text('写作、审稿、修稿、定稿', 'Write, review, revise, finalize')
+      return status.total > 0
+        ? text(`${status.finalized} / ${status.total} 定稿`, `${status.finalized} / ${status.total} final`)
+        : text(`${status.finalized} 章定稿`, `${status.finalized} final`)
   }
 }
 
@@ -34,17 +38,11 @@ export function StageMark({ progress }: { progress: StageProgress }) {
   return <ProgressRing className="stage-mark" size={22} stroke={2.5} ratio={progress.ratio} />
 }
 
-const PHASE_LABELS: Record<Exclude<ChapterPhase, 'todo' | 'final'>, [string, string]> = {
-  draft: ['待审稿', 'To review'],
-  reviewed: ['待修稿', 'To revise'],
-  revised: ['待定稿', 'To finalize'],
-}
-
 function ChapterStatus({ row, text }: { row: ChapterRow; text: Text }) {
-  if (row.running) return <span className="stage-chapter-status" data-tone="accent">{text('生成中', 'Writing')}</span>
-  if (row.phase === 'final') return <span className="stage-chapter-dot" role="img" aria-label={text('定稿', 'Final')} />
+  if (row.running) return <span className="stage-chapter-status" data-tone="accent">{text(...CHAPTER_RUNNING_TEXT)}</span>
+  if (row.phase === 'final') return <span className="stage-chapter-dot" role="img" aria-label={text(...CHAPTER_PHASE_TEXT.final)} />
   if (row.phase === 'todo') return null
-  return <span className="stage-chapter-status">{text(...PHASE_LABELS[row.phase])}</span>
+  return <span className="stage-chapter-status">{text(...CHAPTER_PHASE_TEXT[row.phase])}</span>
 }
 
 interface StageSpineProps {
@@ -101,7 +99,7 @@ export default function StageSpine({ stages, chapters, location, onStage, onChap
                   onClick={() => onChapter(chapter.number)}
                 >
                   <span className="stage-chapter-no">{chapter.number}</span>
-                  <span className="stage-chapter-title">{chapter.title || text(`第 ${chapter.number} 章`, `Chapter ${chapter.number}`)}</span>
+                  <span className="stage-chapter-title">{chapter.title || chapterLabel(chapter.number, text)}</span>
                   <ChapterStatus row={chapter} text={text} />
                 </button>
               </li>

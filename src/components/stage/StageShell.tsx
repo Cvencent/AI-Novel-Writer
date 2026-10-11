@@ -12,22 +12,18 @@ import { ipc } from '../../services/ipc-client'
 import ClearProjectDataDialog from '../dialogs/ClearProjectDataDialog'
 import type { MenuGroupSpec } from '../ui/Menu'
 import StagePalette from './StagePalette'
-import type { PaletteItem } from './palette-filter'
+import { paletteItem, type PaletteItem } from './palette-filter'
 import StageSpine from './StageSpine'
 import StageTopBar from './StageTopBar'
 import StageWorkspace from './StageWorkspace'
 import { inkTheme } from './ink-theme'
-import { RESOURCE_NAMES, STAGE_NAMES, stageTabName } from './stage-text'
+import { CHAPTER_PHASE_TEXT, CHAPTER_RUNNING_TEXT, RESOURCE_NAMES, STAGE_NAMES, stageTabName } from './stage-text'
 import { refreshStageWork, useLandingPage, useStageView, useStageWorkRefresh, type StageView } from './use-stage-work'
 import { useStageShortcuts } from './use-stage-shortcuts'
 import '../../styles/paper-ink/index.css'
 import './stage.css'
 
 type Text = (zh: string, en: string) => string
-
-const PHASE_META: Record<string, [string, string]> = {
-  todo: ['待写', 'To write'], draft: ['待审稿', 'To review'], reviewed: ['待修稿', 'To revise'], revised: ['待定稿', 'To finalize'], final: ['定稿', 'Final'],
-}
 
 async function openProjectFolder(): Promise<void> {
   const folder = await ipc.invoke('dialog:select-folder', 'project-open')
@@ -87,38 +83,36 @@ export default function StageShell({ theme }: { theme: Theme }) {
   ], [text])
 
   const paletteItems = useMemo<PaletteItem[]>(() => {
-    const go: PaletteItem[] = view.stages.map(status => ({
-      id: `stage-${status.stage}`, group: 'stage', label: text(...STAGE_NAMES[status.stage]),
+    const go = view.stages.map(status => paletteItem('stage', {
+      id: `stage-${status.stage}`, label: text(...STAGE_NAMES[status.stage]),
       run: () => navigate({ kind: 'stage', stage: status.stage }),
     }))
-    const chapters: PaletteItem[] = view.chapters.map(row => ({
-      id: `chapter-${row.number}`, group: 'chapter', chapter: row.number,
+    const chapters = view.chapters.map(row => paletteItem('chapter', {
+      id: `chapter-${row.number}`, chapter: row.number,
       label: row.title ? `${chapterLabel(row.number, text)} · ${row.title}` : chapterLabel(row.number, text),
-      meta: row.running ? text('生成中', 'Writing') : text(...PHASE_META[row.phase]),
+      meta: text(...(row.running ? CHAPTER_RUNNING_TEXT : CHAPTER_PHASE_TEXT[row.phase])),
       run: () => navigate({ kind: 'chapter', chapterNumber: row.number }),
     }))
-    const references: PaletteItem[] = hasProject && !library ? [
-      ...(Object.keys(RESOURCE_NAMES) as (keyof typeof RESOURCE_NAMES)[]).map(page => ({
-        id: `resource-${page}`, group: 'reference' as const, label: text(...RESOURCE_NAMES[page]),
+    const references = hasProject && !library ? [
+      ...(Object.keys(RESOURCE_NAMES) as (keyof typeof RESOURCE_NAMES)[]).map(page => paletteItem('reference', {
+        id: `resource-${page}`, label: text(...RESOURCE_NAMES[page]),
         run: () => navigate({ kind: 'resource', page }),
       })),
-      { id: 'characters', group: 'reference', label: text('角色', 'Characters'), keywords: 'roster 名单',
-        run: () => openBuiltinEditor('character-editor', text('角色', 'Characters'), 'character') },
+      paletteItem('reference', { id: 'characters', label: text('角色', 'Characters'), keywords: 'roster 名单',
+        run: () => openBuiltinEditor('character-editor', text('角色', 'Characters'), 'character') }),
     ] : []
-    const actions: PaletteItem[] = [
-      { id: 'new', group: 'action', label: text('新建作品', 'New book'), run: () => useLayoutStore.getState().openNewProject() },
-      { id: 'open', group: 'action', label: text('打开作品', 'Open a book'), run: () => void openProjectFolder() },
-      { id: 'import', group: 'action', label: text('小说拆解与仿写', 'Novel breakdown & imitation'), run: () => useLayoutStore.getState().openImportNovel() },
+    const actions = [
+      paletteItem('action', { id: 'new', label: text('新建作品', 'New book'), run: () => useLayoutStore.getState().openNewProject() }),
+      paletteItem('action', { id: 'open', label: text('打开作品', 'Open a book'), run: () => void openProjectFolder() }),
+      paletteItem('action', { id: 'import', label: text('小说拆解与仿写', 'Novel breakdown & imitation'), run: () => useLayoutStore.getState().openImportNovel() }),
       ...(hasProject ? [
-        { id: 'library', group: 'action' as const, label: text('回到书房', 'Back to library'), run: () => useLayoutStore.getState().setSidebarView('home') },
-        { id: 'run', group: 'action' as const, label: text('运行侧页', 'Run sheet'), keywords: 'AI 输出 任务 日志', run: () => navigate({ kind: 'run', facet: 'output' }) },
-        { id: 'export', group: 'action' as const, label: text('导出', 'Export'), run: () => useLayoutStore.getState().openExport() },
-        { id: 'backup', group: 'action' as const, label: text('项目备份', 'Project backup'), run: () => navigate({ kind: 'settings', section: 'backup' }) },
+        paletteItem('action', { id: 'library', label: text('回到书房', 'Back to library'), run: () => useLayoutStore.getState().setSidebarView('home') }),
+        paletteItem('action', { id: 'run', label: text('运行侧页', 'Run sheet'), keywords: 'AI 输出 任务 日志', run: () => navigate({ kind: 'run', facet: 'output' }) }),
+        paletteItem('action', { id: 'export', label: text('导出', 'Export'), run: () => useLayoutStore.getState().openExport() }),
+        paletteItem('action', { id: 'backup', label: text('项目备份', 'Project backup'), run: () => navigate({ kind: 'settings', section: 'backup' }) }),
       ] : []),
-      ...(hasProject && !library ? [
-        { id: 'focus', group: 'action' as const, label: text('沉浸写作', 'Focus mode'), run: toggleFocus },
-      ] : []),
-      { id: 'settings', group: 'action', label: text('设置', 'Settings'), run: () => navigate({ kind: 'settings', section: 'llm' }) },
+      ...(hasProject && !library ? [paletteItem('action', { id: 'focus', label: text('沉浸写作', 'Focus mode'), run: toggleFocus })] : []),
+      paletteItem('action', { id: 'settings', label: text('设置', 'Settings'), run: () => navigate({ kind: 'settings', section: 'llm' }) }),
     ]
     return [...go, ...chapters, ...references, ...actions]
   }, [view.stages, view.chapters, hasProject, library, text, toggleFocus])

@@ -1,5 +1,7 @@
 // 新外壳场景用的示例作品「灯塔」：12 章全部有蓝图，1、2 章定稿，3 章已审稿待修稿，4 章是草稿，其余待写。
 // 与旧外壳基线的 SAMPLE 分开，基线截图不受影响。
+import { countDraftUnits } from '../../src/shared/draft-units.ts'
+
 export const STAGE_SAMPLE = Object.freeze({
   name: '灯塔',
   totalChapters: 12,
@@ -35,13 +37,5 @@ export const STAGE_SAMPLE = Object.freeze({
 
 export const stageChapterTitle = number => STAGE_SAMPLE.titles[number - 1]
 
-/** 与 src/shared/draft-units.ts 的 countDraftUnits 相同的计数；定稿导入会核对字数，不一致就拒绝。 */
-export function countUnits(text) {
-  const normalized = text.normalize('NFC')
-  const han = normalized.match(/\p{Script=Han}/gu)?.length ?? 0
-  const rest = normalized.replace(/\p{Script=Han}/gu, ' ')
-  const word = /\p{L}[\p{L}\p{M}]*(?:['’]\p{L}[\p{L}\p{M}]*)*/gu
-  const words = rest.match(word)?.length ?? 0
-  const other = [...rest.replace(word, '').replace(/[\s\p{P}\p{S}]/gu, '')].length
-  return han + words + other
-}
+/** 定稿导入会用 countDraftUnits 核对字数，不一致就拒绝，所以预置数据直接用同一个函数计数。 */
+export const countUnits = countDraftUnits

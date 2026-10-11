@@ -1,5 +1,6 @@
 import type { EditorTab } from '../../stores/editor-store'
 import type { ResourcePage, WorkStage } from '../../stores/navigation/navigation-intents'
+import type { ChapterPhase } from '../../stores/navigation/stage-progress'
 
 type Text = (zh: string, en: string) => string
 
@@ -9,6 +10,17 @@ export const STAGE_NAMES: Record<WorkStage, [string, string]> = {
   blueprint: ['蓝图', 'Blueprint'],
   manuscript: ['正文', 'Manuscript'],
 }
+
+/** 章节状态在流程脊与 Ctrl K 里的说明：写出下一步，定稿章写「定稿」。 */
+export const CHAPTER_PHASE_TEXT: Record<ChapterPhase, [string, string]> = {
+  todo: ['待写', 'To write'],
+  draft: ['待审稿', 'To review'],
+  reviewed: ['待修稿', 'To revise'],
+  revised: ['待定稿', 'To finalize'],
+  final: ['定稿', 'Final'],
+}
+
+export const CHAPTER_RUNNING_TEXT: [string, string] = ['生成中', 'Writing']
 
 export const RESOURCE_NAMES: Record<ResourcePage, [string, string]> = {
   plot: ['剧情与伏笔', 'Plot & threads'],

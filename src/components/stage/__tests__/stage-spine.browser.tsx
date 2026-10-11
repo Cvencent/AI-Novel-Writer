@@ -177,6 +177,20 @@ describe('流程脊', () => {
     expect([blueprint.getAttribute('data-state'), blueprint.querySelector('.stage-row-meta')?.textContent]).toEqual(['done', '20 / 100 章'])
   })
 
+  it('没设规划章数时正文说明写已定稿章数，不写 0 / 0；没有章名的章用「第 N 章」', async () => {
+    host = document.createElement('div')
+    host.className = 'paper-ink stage-shell'
+    document.body.append(host)
+    root = createRoot(host)
+    const unplanned = facts({ config: { ...READY_CONFIG, totalChapters: 0 }, blueprints: [], drafts: { 1: [draft(1, 1, 'finalized')], 2: [draft(2, 1, 'draft')] } })
+    await act(async () => root!.render(
+      <StageSpine stages={deriveStages(unplanned)} chapters={deriveChapters(unplanned)} location={{ kind: 'stage', stage: 'manuscript', chapter: 2 }}
+        onStage={() => undefined} onChapter={() => undefined} onResource={() => undefined} onSettings={() => undefined} />,
+    ))
+    expect(host.querySelector('[data-stage="manuscript"] .stage-row-meta')?.textContent).toBe('1 章定稿')
+    expect([...host.querySelectorAll('.stage-chapter-title')].map(node => node.textContent)).toEqual(['第 1 章', '第 2 章'])
+  })
+
   it('不在正文阶段时不展开章节列表', async () => {
     const container = await mount({ kind: 'stage', stage: 'blueprint' })
     expect(container.querySelector('[aria-label="章节"]')).toBeNull()

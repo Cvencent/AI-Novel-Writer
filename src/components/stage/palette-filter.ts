@@ -14,6 +14,11 @@ export interface PaletteItem {
   run: () => void
 }
 
+/** 按分组构造面板项：分组由参数给出，调用处不必为字面量写 as const。 */
+export function paletteItem(group: PaletteGroup, item: Omit<PaletteItem, 'group'>): PaletteItem {
+  return { ...item, group }
+}
+
 export const GROUP_ORDER: readonly PaletteGroup[] = ['stage', 'chapter', 'reference', 'action']
 export const GROUP_LABELS: Record<PaletteGroup, [string, string]> = {
   stage: ['阶段', 'Stages'],
@@ -30,16 +35,18 @@ export function chapterQuery(query: string): number | null {
   return match ? Number(match[1]) : null
 }
 
-/** 按输入过滤并排序：章号完全相同的章排最前，其次是标签以输入开头的项，其余保持分组顺序。 */
+/**
+ * 按输入过滤并排序。结果按分组顺序排列，与面板的分组显示一致，上下键才按看到的顺序移动；
+ * 组内章号完全相同的章排最前，其次是标签以输入开头的项。
+ */
 export function filterPalette(items: readonly PaletteItem[], query: string, mode: PaletteMode): PaletteItem[] {
   const pool = mode === 'chapters' ? items.filter(item => item.group === 'chapter') : items
   const needle = squash(query)
-  if (!needle) return [...pool]
   const number = chapterQuery(query)
   const rank = (item: PaletteItem) => item.chapter !== undefined && item.chapter === number ? 0 : squash(item.label).startsWith(needle) ? 1 : 2
   return pool
-    .filter(item => (number !== null && item.chapter === number) || squash(`${item.label}${item.keywords ?? ''}`).includes(needle))
+    .filter(item => !needle || (number !== null && item.chapter === number) || squash(`${item.label}${item.keywords ?? ''}`).includes(needle))
     .map((item, index) => ({ item, index }))
-    .sort((a, b) => rank(a.item) - rank(b.item) || a.index - b.index)
+    .sort((a, b) => GROUP_ORDER.indexOf(a.item.group) - GROUP_ORDER.indexOf(b.item.group) || rank(a.item) - rank(b.item) || a.index - b.index)
     .map(({ item }) => item)
 }
