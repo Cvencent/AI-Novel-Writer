@@ -17,7 +17,7 @@ const sessionGatedAsyncFiles = [
   'src/components/editor/DraftEditor.tsx',
   'src/components/editor/VersionHistory.tsx',
   'src/components/editor/WorldBuildingEditor.tsx',
-  'src/components/editor/NovelConfigEditor.tsx',
+  'src/components/editor/use-novel-config-form.ts',
   'src/components/dialogs/ExportDialog.tsx',
   'src/components/dialogs/ClearProjectDataDialog.tsx',
 ]
