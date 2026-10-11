@@ -84,3 +84,8 @@ export async function clickStatusBarModel(page) {
 export async function showAssistant(page) {
   await page.getByRole('button', { name: 'AI Agent 面板' }).click()
 }
+
+/** 像点窗口关闭按钮或按 Alt F4 一样从主进程关窗，渲染端的关窗守卫会收到请求。 */
+export async function requestWindowClose(app) {
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close())
+}

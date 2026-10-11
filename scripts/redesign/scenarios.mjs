@@ -213,6 +213,10 @@ export const EXTRA_SCENARIOS = {
     fake.gate.release()
     await runPanel.waitForStatusCapsuleGone(page)
   } },
+  'settings-appearance': { model: false, run: async ({ page }) => {
+    await settings.open(page)
+    await settings.showSection(page, '外观')
+  }, after: ({ page }) => settings.close(page) },
   'nav-immersive-twice': { model: false, setup: seedWithDraft, run: async ({ page }) => {
     await shell.closeBottomPanel(page)
     const before = await shell.panels(page)
@@ -226,8 +230,12 @@ export const EXTRA_SCENARIOS = {
 
 const firstLine = text => text.split('\n')[0].slice(0, 16)
 
-/** 用公开 IPC 预置新外壳示例作品：12 章蓝图，1、2 章定稿，3 章已审稿，4 章草稿；架构四节齐全。 */
-async function seedStageSample({ app, page, roots, invoke, reload }) {
+/**
+ * 用公开 IPC 预置新外壳示例作品：12 章蓝图，1、2 章定稿，3 章已审稿，4 章草稿；架构四节齐全。
+ * totalChapters 改规划总章数；beforeReload 在重载前再写入数据；landOnChapter3 为 false 时只等流程脊，落点由场景自己断言。
+ */
+async function seedStageSample({ app, page, roots, invoke, reload },
+  { totalChapters = STAGE_SAMPLE.totalChapters, beforeReload, landOnChapter3 = true } = {}) {
   const created = await invoke(page, 'project:create', { parentGrantId: (await chooseProjectDirectoryGrant(app, page, roots.projects)).grantId,
     name: STAGE_SAMPLE.name, genre: '悬疑', targetAudience: '成年读者', writingLanguage: 'zh-CN' }, randomUUID(), null)
   assert.equal(created.success, true, created.error)
@@ -243,7 +251,7 @@ async function seedStageSample({ app, page, roots, invoke, reload }) {
     entries: [{ characterId: `draft:${randomUUID()}`, name: '林岚', role: 'protagonist', gender: '', age: '', appearance: '',
       personality: '', background: '旧港潮汐记录的测绘师。', abilities: '', motivation: '查明失踪地图的来源。',
       relationships: [], arc: '', notes: '' }] }, path, session)).success, true)
-  const core = await invoke(page, 'db:project-core-update', { ...STAGE_SAMPLE.core, totalChapters: STAGE_SAMPLE.totalChapters,
+  const core = await invoke(page, 'db:project-core-update', { ...STAGE_SAMPLE.core, totalChapters,
     wordsPerChapter: STAGE_SAMPLE.wordsPerChapter }, path, session)
   assert.equal(core.success, true, core.error)
   for (const [index, title] of STAGE_SAMPLE.titles.entries()) {
@@ -260,10 +268,11 @@ async function seedStageSample({ app, page, roots, invoke, reload }) {
     assert.equal(draft.success, true, draft.error)
     if (status !== 'draft') assert.equal((await invoke(page, 'db:draft-update-status', draft.id, status, undefined, path, session)).success, true)
   }
+  await beforeReload?.({ page, invoke, path, session })
   await reload()
   if (await stage.root(page).count() > 0) {
     await stage.openFromLibrary(page, STAGE_SAMPLE.name)
-    await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
+    if (landOnChapter3) await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
     return
   }
   await bookshelf.openProject(page, STAGE_SAMPLE.name)
@@ -446,6 +455,7 @@ export const STAGE_SCENARIOS = {
     await settings.open(page)
     await settings.chooseShell(page, '创作流程（预览）')
     await stage.root(page).waitFor({ state: 'visible' })
+    assert.equal(await settings.currentSection(page), '外观', '切换外壳后设置仍停在外观')
     await settings.close(page)
     await stage.spine(page).waitFor({ state: 'visible' })
     await stage.waitForProse(page, FIXTURE_PROSE.slice(0, 12))
@@ -460,8 +470,106 @@ export const STAGE_SCENARIOS = {
     await page.evaluate(([storageKey, raw]) => localStorage.setItem(storageKey, raw), [key, v1])
     await reload()
     await shell.firstInteractiveControl(page).waitFor({ state: 'visible' })
-    assert.equal(await page.evaluate(storageKey => localStorage.getItem(storageKey), key), v1.replace('"schemaVersion":1', '"schemaVersion":2'),
-      'v1 配置应只升级 schemaVersion，其余字段原样')
+    assert.equal(await page.evaluate(storageKey => localStorage.getItem(storageKey), key), v1, '启动不改写 v1 配置，旧版本仍能读')
+  } },
+  'stage-modal-layers': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ app, page }) => {
+    await stage.stageButton(page, '设定').click()
+    await page.getByPlaceholder('如：修仙/重生/末世').fill('海港悬疑')
+    await stage.saveStatus(page).filter({ hasText: '未保存' }).waitFor({ state: 'visible' })
+    await stage.openSettings(page)
+    const discard = page.getByRole('dialog', { name: '放弃未保存的修改？' })
+    const observed = {}
+    await page.keyboard.press('Control+K')
+    await page.waitForTimeout(300)
+    observed.paletteUnderSettings = await stage.palette(page).count() > 0
+    if (observed.paletteUnderSettings) await page.keyboard.press('Escape')
+    await page.keyboard.press('Control+W')
+    await page.waitForTimeout(300)
+    observed.discardUnderSettings = await discard.count() > 0
+    if (observed.discardUnderSettings) await page.keyboard.press('Escape')
+    await shell.requestWindowClose(app)
+    const exit = page.getByRole('dialog', { name: '退出前处理未保存的内容' })
+    await exit.waitFor({ state: 'visible' })
+    observed.exitOnTop = await stage.isTopmost(exit)
+    assert.deepEqual(observed, { paletteUnderSettings: false, discardUnderSettings: false, exitOnTop: true },
+      '设置开着时 Ctrl K、Ctrl W 不在设置下面开层，关窗时退出确认盖在设置之上')
+  }, after: async ({ page }) => {
+    await page.getByRole('dialog', { name: '退出前处理未保存的内容' }).getByRole('button', { name: '取消', exact: true }).click()
+    await settings.close(page)
+  } },
+  /**
+   * 应用菜单里有 CommandOrControl+W 的「关闭」，页面没拦下的 Ctrl W 会关窗。驱动注入的按键到不了菜单快捷键，
+   * 所以这里断言页面把 Ctrl W 拦下了（defaultPrevented），并确认应用仍在。
+   */
+  'stage-close-key': { model: false, shell: 'stage', run: async ({ app, page }) => {
+    await shell.firstInteractiveControl(page).waitFor({ state: 'visible' })
+    await page.evaluate(() => {
+      window.__driveCloseKey = []
+      window.addEventListener('keydown', event => { if (event.code === 'KeyW') window.__driveCloseKey.push(event.defaultPrevented) })
+    })
+    const pressCloseKey = async () => {
+      await page.keyboard.press('Control+W')
+      return page.evaluate(() => window.__driveCloseKey.at(-1))
+    }
+    const observed = { library: await pressCloseKey() }
+    await page.keyboard.press('Control+K')
+    await stage.paletteInput(page).waitFor({ state: 'visible' })
+    observed.palette = await pressCloseKey()
+    observed.alive = !page.isClosed() && app.windows().length > 0
+    assert.deepEqual(observed, { library: true, palette: true, alive: true }, 'Ctrl W 在书房与对话框里都由页面拦下，不落到菜单的「关闭」')
+  }, after: async ({ page }) => {
+    await page.keyboard.press('Escape')
+    await stage.palette(page).waitFor({ state: 'hidden' })
+  } },
+  'stage-reopen': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+    await stage.backToLibrary(page, STAGE_SAMPLE.name)
+    await stage.openFromLibrary(page, STAGE_SAMPLE.name)
+    await stage.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text)).first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
+    assert.deepEqual(await stage.landing(page), { crumbs: ['正文', '第 3 章'], empty: false }, '重开同一部作品再次落到第 3 章')
+  } },
+  'stage-partial-blueprint': { model: false, shell: 'stage',
+    setup: context => seedStageSample(context, { totalChapters: 100, landOnChapter3: false }),
+    run: async ({ page }) => {
+      await stage.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text)).first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
+      assert.deepEqual({ ...(await stage.landing(page)), blueprint: (await stage.stageStates(page)).blueprint },
+        { crumbs: ['正文', '第 3 章'], empty: false, blueprint: 'done' }, '规划 100 章只写了 12 章蓝图时，蓝图已完成，落点仍是正文第 3 章')
+    } },
+  'stage-revert-after-final': { model: false, shell: 'stage',
+    setup: context => seedStageSample(context, { beforeReload: async ({ page, invoke, path, session }) => {
+      const version = await invoke(page, 'db:draft-next-version', 1, path, session)
+      const created = await invoke(page, 'db:draft-create', { chapterNumber: 1, version, source: 'rewrite',
+        content: STAGE_SAMPLE.reverted, wordCount: countUnits(STAGE_SAMPLE.reverted) }, path, session)
+      assert.equal(created.success, true, created.error)
+    } }),
+    run: async ({ page }) => {
+      await stage.chapterButton(page, 1).click()
+      const reverted = stage.prose(page).getByText(firstLine(STAGE_SAMPLE.reverted)).first()
+      await reverted.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
+      const row = (await stage.chapterRows(page)).find(candidate => candidate.number === 1)
+      assert.deepEqual({ phase: row.phase, opened: await reverted.isVisible() }, { phase: 'draft', opened: true },
+        '定稿后回退出的新草稿按草稿显示，打开的是这份草稿')
+    } },
+  'stage-new-project': { model: false, shell: 'stage', run: async ({ app, page, roots }) => {
+    await stubOpenDialog(app, roots.projects)
+    await bookshelf.createProject(page, '雾岛')
+    await stage.stageButton(page, '正文').waitFor({ state: 'visible' })
+    assert.deepEqual(await stage.stageStates(page), { setup: 'active', architecture: 'todo', blueprint: 'todo', manuscript: 'todo' })
+    assert.deepEqual(await chromeContrastFailures(page), [], '新作品首屏外壳文字对比度不足')
+    assert.deepEqual(await stage.spineLayout(page), { ringRadius: '8.5', setupMetaBelowName: true, resourceIconsFollowRow: true })
+  } },
+  'stage-focus-search': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+    await stage.focusToggle(page).click()
+    await stage.spine(page).waitFor({ state: 'detached' })
+    await stage.prose(page).click()
+    await page.keyboard.press('Control+F')
+    await stage.proseSearch(page).waitFor({ state: 'visible' })
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(300)
+    assert.deepEqual({ searchOpen: await stage.proseSearch(page).count() > 0, focus: await stage.spine(page).count() === 0 },
+      { searchOpen: false, focus: true }, '沉浸写作里 Esc 先关正文搜索框，不退出沉浸')
+  }, after: async ({ page }) => {
+    await page.keyboard.press('Escape')
+    await stage.spine(page).waitFor({ state: 'visible' })
   } },
   'stage-tour': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page, fake }) => {
     const pause = ms => page.waitForTimeout(ms)

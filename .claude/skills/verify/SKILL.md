@@ -121,6 +121,7 @@ node scripts/redesign/drive.mjs --scenario startup-timing --out <目录>
 | `nav-card-import` | 关掉底部面板后在「角色」视图粘贴角色卡并确认发送，断言底部面板打开且停在「任务」 | 角色页与任务面板 | 是 |
 | `nav-batch` | 关掉底部面板后从章节蓝图启动 1 章批量创作，断言底部面板打开且停在「任务」 | 批量创作运行中 | 是 |
 | `nav-home-import` | 回到首页，点「小说拆解」把参考小说导入当前作品，卡住模型，断言离开首页、项目树与 AI 输出出现 | 项目视图与运行中的 AI 输出 | 是 |
+| `settings-appearance` | 旧外壳打开设置并切到「外观」。head 比 trunk 多「界面布局」一组，两边截图不同是预期 | 设置的外观分区 | 否 |
 | `nav-immersive-twice` | 关掉底部面板后两次切换沉浸写作，断言三块面板恢复到切换前 | 恢复后的工作台 | 否 |
 
 `nav-` 场景对 trunk（`--app-root`）与 head 各跑一次，两边都通过即行为一致。`write-latency` 与 `startup-timing` 一样交替各跑 5 次取中位数。
@@ -138,11 +139,18 @@ node scripts/redesign/drive.mjs --scenario startup-timing --out <目录>
 | `stage-find-chapter` | Ctrl P 输入「4」回车打开第 4 章，再输入「第3章」打开第 3 章，流程脊当前章随之变化 | 第 3 章正文 | 否 | lane 7 |
 | `stage-focus` | 沉浸写作后流程脊与标签条消失，正文与章节动作条（AI 审稿等）在；`after` 按 Esc 恢复 | 沉浸写作 | 否 | lane 8 |
 | `stage-1280` | 视口 1280×900：页面无横向滚动，外壳里的名称、章名、位置、搜索提示、保存状态都没有被截断或折行 | 1280 宽 | 否 | lane 9 |
-| `stage-migrate` | 写入一份 v1 外观配置后重载：进入工作台、不出现启动阻塞，存储里只把 schemaVersion 升到 2，其余字节不变 | 工作台（旧外壳，v1 没有 stage） | 否 | lane 10 |
-| `stage-settings-switch` | 从旧外壳打开设置 → 外观 → 界面布局选「创作流程（预览）」，新外壳出现 | 新外壳 | 否 | You see |
+| `stage-migrate` | 写入一份 v1 外观配置后重载：进入工作台、不出现启动阻塞，存储逐字节不变（只有选新外壳时才写成 v2） | 工作台（旧外壳，v1 没有 stage） | 否 | lane 10 |
+| `stage-settings-switch` | 从旧外壳打开设置 → 外观 → 界面布局选「创作流程（预览）」，新外壳出现，设置仍停在「外观」 | 新外壳 | 否 | You see |
 | `stage-palette` | Ctrl K 输入「灯」，结果里有第 6 章；`after` 按 Esc 关闭 | Ctrl K 结果 | 否 | |
 | `stage-run` | 卡住模型后从章节蓝图写下一章：运行侧页自动打开，顶栏胶囊展开并显示进度；`after` 放行后等工作流完成、新草稿打开 | 运行侧页与胶囊 | 是 | |
 | `stage-library` | 没有打开作品时是书房，没有流程脊 | 书房 | 否 | |
+| `stage-modal-layers` | 改小说配置后打开设置：Ctrl K 不开搜索、Ctrl W 不弹放弃确认；从主进程关窗，退出确认画在设置之上（`isTopmost` 让所有元素参与命中测试后取中心点最上层元素）；`after` 取消退出并关设置 | 退出确认 | 否 | 第 3 条 |
+| `stage-close-key` | 书房里、搜索框里各按一次 Ctrl W，页面都拦下（`defaultPrevented`），应用仍在。应用菜单有 CommandOrControl+W 的「关闭」，但驱动注入的按键到不了菜单快捷键，所以断言的是拦截 | 搜索框 | 否 | 第 4 条 |
+| `stage-reopen` | 从作品菜单回到书房再打开同一部作品，再次落到第 3 章 | 第 3 章正文 | 否 | 第 8 条 |
+| `stage-partial-blueprint` | 规划 100 章、只有 12 章蓝图：蓝图算完成，落点仍是第 3 章 | 第 3 章正文 | 否 | 第 6 条 |
+| `stage-revert-after-final` | 第 1 章定稿后再建一份新草稿（版本历史「回退到此版本」的效果）：章节列表按草稿显示，打开的是新草稿 | 第 1 章新草稿 | 否 | 第 7 条 |
+| `stage-new-project` | 新外壳里新建作品：设定进行中、其余未开始；外壳文字对比度、进度环半径 8.5、设定说明在名字下一行、作品资料图标跟随行文字色 | 新作品首屏 | 否 | 第 20、23、24 条 |
+| `stage-focus-search` | 沉浸写作里 Ctrl F 打开正文搜索，Esc 只关搜索框、不退出沉浸；`after` 再按 Esc 退出沉浸 | 沉浸写作 | 否 | 第 10 条 |
 | `stage-tour` | 30–60 秒的导览：四个阶段、Ctrl K、Ctrl P、关标签、沉浸写作、写一章看运行胶囊与侧页。配 `--video` 录评审视频 | 写完一章 | 是 | Review gate |
 | `chapter-switch` | 打开第 3 章后，从点击第 4 章到它的正文在编辑器里可见，渲染进程内按帧计时，写进 `measured.chapterSwitchMs`。旧外壳点草稿箱里的草稿，新外壳点流程脊里的章 | 第 4 章正文 | 否 | perf |
 

@@ -29,6 +29,8 @@ export const STAGE_SAMPLE = Object.freeze({
       '「你父亲也问过钟的事。」他说完这句话，就再也没有开口。',
     ].join('\n\n') },
   },
+  /** 第 1 章定稿后从版本历史回退出的新草稿。 */
+  reverted: '林岚第二次走下旧港的石阶时，潮水还没有退。她把地图折起来塞进口袋，决定先去找那个守塔人。',
 })
 
 export const stageChapterTitle = number => STAGE_SAMPLE.titles[number - 1]

@@ -54,3 +54,55 @@ export async function findChapter(page, query) {
 }
 
 export const capsule = page => root(page).getByRole('button', { expanded: false }).filter({ hasText: /运行中|%|等你确认/ }).first()
+
+export async function openSettings(page) {
+  await spine(page).getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '关闭设置' }).waitFor({ state: 'visible' })
+}
+
+export async function backToLibrary(page, name) {
+  await root(page).getByRole('banner').getByRole('button', { name: `《${name}》作品菜单` }).click()
+  await page.getByRole('menuitem', { name: '回到书房' }).click()
+  await page.locator('.writer-shelf').waitFor({ state: 'visible' })
+}
+
+/**
+ * 元素中心点上画在最上面的是否是它：被别的层盖住时为 false。
+ * Radix 模态打开时 body 是 pointer-events: none，elementFromPoint 会跳过这些元素，所以临时让所有元素都参与命中测试。
+ */
+export function isTopmost(locator) {
+  return locator.evaluate(element => {
+    const probe = document.createElement('style')
+    probe.textContent = '* { pointer-events: auto !important; }'
+    document.head.append(probe)
+    try {
+      const box = element.getBoundingClientRect()
+      return element.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2))
+    } finally { probe.remove() }
+  })
+}
+
+/** 落点停在哪：正文章号、其他页面的位置面包屑，或空状态。 */
+export async function landing(page) {
+  const crumbs = await page.getByRole('navigation', { name: '位置' }).locator('span').allInnerTexts().catch(() => [])
+  const empty = await root(page).getByRole('heading', { name: '从流程脊选一步开始' }).count()
+  return { crumbs, empty: empty > 0 }
+}
+
+/** 正文编辑区里 CodeMirror 的搜索面板。 */
+export const proseSearch = page => root(page).locator('.stage-content .cm-search')
+
+/** 新作品首屏的版式检查：进度环半径、设定进行中时说明在名字下一行、作品资料图标跟随行文字色。 */
+export function spineLayout(page) {
+  return spine(page).evaluate(nav => {
+    const setup = nav.querySelector('[data-stage="setup"]')
+    const name = setup.querySelector('.stage-row-name').getBoundingClientRect()
+    const meta = setup.querySelector('.stage-row-meta').getBoundingClientRect()
+    return {
+      ringRadius: setup.querySelector('.stage-ring circle')?.getAttribute('r') ?? null,
+      setupMetaBelowName: meta.top >= name.bottom - 1,
+      resourceIconsFollowRow: [...nav.querySelectorAll('[data-resource]')]
+        .every(row => getComputedStyle(row.querySelector('svg')).color === getComputedStyle(row).color),
+    }
+  })
+}
