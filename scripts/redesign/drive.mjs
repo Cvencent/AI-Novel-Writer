@@ -192,14 +192,18 @@ async function launch({ roots, appRoot, fakeModelPort, diagnostics }) {
 const invoke = (page, channel, ...args) =>
   page.evaluate(({ channel, args }) => window.aiNovelAPI.invoke(channel, ...args), { channel, args })
 
-/** 主题与外壳在同一次写入里改，只重载一次。shell 为 null 时不碰外壳偏好，旧外壳场景写入的内容与改动前相同。 */
+/**
+ * 主题与外壳在同一次写入里改，只重载一次。shell 为 null 时不碰外壳偏好，旧外壳场景写入的内容与改动前相同。
+ * 版本号与应用的 serializeAppearanceProfile 一致：只有新外壳写 v2，其余写 v1，trunk 也能读。
+ */
 async function applyAppearance(page, { theme, shell }) {
   await page.waitForFunction(() => localStorage.getItem('ai-novel-writer-appearance') !== null, null, { timeout: TIMEOUT })
   await page.evaluate(({ colorTheme, shellPreference }) => {
     const key = 'ai-novel-writer-appearance'
     const current = JSON.parse(localStorage.getItem(key))
-    localStorage.setItem(key, JSON.stringify({ ...current, colorTheme, ...(shellPreference ? { shellPreference } : {}),
-      revision: current.revision + 1, origin: 'author' }))
+    const next = { ...current, colorTheme, ...(shellPreference ? { shellPreference } : {}), revision: current.revision + 1, origin: 'author' }
+    next.schemaVersion = next.shellPreference === 'stage' ? 2 : 1
+    localStorage.setItem(key, JSON.stringify(next))
   }, { colorTheme: theme, shellPreference: shell })
   await page.reload()
   await waitForShell(page, TIMEOUT)
