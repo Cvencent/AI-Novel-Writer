@@ -228,6 +228,36 @@ export const EXTRA_SCENARIOS = {
     assert.deepEqual(await shell.panels(page), before, '两次切换后面板应恢复到切换前')
     assert.equal(await shell.isImmersive(page), false)
   } },
+  'nav-plot-blueprint-source': { model: true, setup: seedWithoutDraft, run: async ({ page }) => {
+    const title = page.getByPlaceholder('引人入胜的章节标题')
+    const selectedChapter = () => page.locator('input[type="number"][aria-readonly="true"]').inputValue()
+    const openSourceOf = async chapterNumber => {
+      await project.openNode(page, '伏笔与叙事线索')
+      await page.getByRole('tab', { name: '剧情树' }).click()
+      await page.getByRole('button', { name: /^已计划/ }).nth(chapterNumber - 1).click()
+      await page.getByText(`第 ${chapterNumber} 章 · 已计划`).waitFor({ state: 'visible' })
+      await page.getByRole('button', { name: `第 ${chapterNumber} 章蓝图` }).click()
+      await title.waitFor({ state: 'visible' })
+    }
+    await project.openNode(page, '伏笔与叙事线索')
+    await page.getByRole('tab', { name: '剧情树' }).click()
+    await page.getByRole('button', { name: '生成剧情树' }).click()
+    await page.getByRole('button', { name: /^已计划/ }).nth(SAMPLE.blueprints.length - 1).waitFor({ state: 'visible', timeout: 60_000 })
+
+    await openSourceOf(1)
+    assert.equal(await selectedChapter(), '1')
+    await title.fill('旧港（未保存的改动）')
+    await openSourceOf(2)
+    assert.equal(await selectedChapter(), '2', '从剧情树打开第 2 章蓝图应选中第 2 章')
+    await openSourceOf(1)
+    assert.equal(await selectedChapter(), '1')
+    assert.equal(await title.inputValue(), '旧港（未保存的改动）', '切换选中后第 1 章未保存的改动仍在')
+    await page.getByText('北堤', { exact: true }).click()
+    assert.equal(await selectedChapter(), '2')
+    await openSourceOf(1)
+    assert.equal(await selectedChapter(), '1', '再次打开同一来源应重新选中第 1 章')
+    assert.equal(await title.inputValue(), '旧港（未保存的改动）')
+  } },
 }
 
 const firstLine = text => text.split('\n')[0].slice(0, 16)

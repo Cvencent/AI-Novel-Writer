@@ -123,6 +123,7 @@ node scripts/redesign/drive.mjs --scenario startup-timing --out <目录>
 | `nav-home-import` | 回到首页，点「小说拆解」把参考小说导入当前作品，连嵌入一起卡住模型，断言离开首页、项目树与 AI 输出出现 | 项目树刷新完成，第 1 步「导入参考文本与构建知识库」卡在第一个嵌入请求上 | 是 |
 | `settings-appearance` | 旧外壳打开设置并切到「外观」。head 比 trunk 多「界面布局」一组，两边截图不同是预期 | 设置的外观分区 | 否 |
 | `nav-immersive-twice` | 关掉底部面板后两次切换沉浸写作，断言三块面板恢复到切换前 | 恢复后的工作台 | 否 |
+| `nav-plot-blueprint-source` | 生成剧情树（假模型回复不是 JSON，落到按蓝图的确定性剧情树），从事件来源打开第 1、2 章蓝图；第 1 章标题改了不保存，断言切换选中后改动仍在，手动选第 2 章后再点第 1 章来源会重新选中第 1 章 | 章节蓝图选中第 1 章、标题有未保存改动 | 是 |
 
 `nav-` 场景对 trunk（`--app-root`）与 head 各跑一次，两边都通过即行为一致。`write-latency` 与 `startup-timing` 一样交替各跑 5 次取中位数。
 
