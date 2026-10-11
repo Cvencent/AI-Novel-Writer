@@ -38,7 +38,7 @@
     "smoke:mac-dmg": "bash scripts/smoke-macos-dmg.sh",
     "rebuild": "pnpm run rebuild:electron",
     "rebuild:electron": "node scripts/prepare-native-for-electron.mjs",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0 && node scripts/check-color-literals.mjs",
     "preview": "vite preview",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
