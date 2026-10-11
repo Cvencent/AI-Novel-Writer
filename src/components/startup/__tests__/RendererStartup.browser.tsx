@@ -7,7 +7,8 @@ import RendererStartup from '../RendererStartup'
 import { useLocaleStore } from '../../../stores/locale-store'
 const originalLocale = useLocaleStore.getState()
 import { useAppearanceStore, type AppearanceBootstrapDependencies } from '../../../stores/appearance-bootstrap'
-import { APPEARANCE_STORAGE_KEY, LEGACY_THEME_STORAGE_KEY, LEGACY_UI_STORAGE_KEY } from '../../../shared/appearance-profile'
+import { APPEARANCE_STORAGE_KEY, LEGACY_THEME_STORAGE_KEY, LEGACY_UI_STORAGE_KEY, INITIAL_APPEARANCE } from '../../../shared/appearance-profile'
+import { registerStartupController, type StartupEvent } from '../../../../electron/controllers/startup-controller'
 import { ipc } from '../../../services/ipc-client'
 
 let host: HTMLDivElement
@@ -67,6 +68,141 @@ it('写入后 main 拒绝确认也不加载工作台或删除迁入值', async (
   await vi.waitFor(() => expect(useAppearanceStore.getState().phase).toBe('blocked'))
   expect(load).not.toHaveBeenCalled()
   expect(localStorage.getItem(APPEARANCE_STORAGE_KEY)).not.toBeNull()
+})
+
+it('无效旧字体由作者重置后仍等待原启动确认，并保留旧键及无关配置', async () => {
+  const legacy = JSON.stringify({ state: { writingFont: 'retired-font' }, version: 1 })
+  localStorage.setItem(LEGACY_THEME_STORAGE_KEY, legacy)
+  localStorage.setItem(LEGACY_UI_STORAGE_KEY, 'v1')
+  localStorage.setItem('startup-unrelated-model', '合成模型选择')
+  let release!: (accepted: boolean) => void
+  const confirmation = new Promise<boolean>(resolve => { release = resolve })
+  const acknowledgeReadback = vi.fn(() => confirmation)
+  const load = vi.fn(async () => ({ default: () => <p>恢复后的工作台</p> }))
+  const dep = dependencies({ acknowledgeReadback })
+  await act(async () => root.render(<RendererStartup dependencies={dep} loadWorkspace={load} />))
+  await vi.waitFor(() => expect(useAppearanceStore.getState().phase).toBe('blocked'))
+  expect(localStorage.getItem(APPEARANCE_STORAGE_KEY)).toBeNull()
+  expect(acknowledgeReadback).not.toHaveBeenCalled()
+  await act(async () => page.getByRole('button', { name: '重置外观偏好为默认（不影响其它配置）', exact: true }).click())
+  await vi.waitFor(() => expect(acknowledgeReadback).toHaveBeenCalledOnce())
+  expect(useAppearanceStore.getState().phase).toBe('pending')
+  expect(load).not.toHaveBeenCalled()
+  await act(async () => { release(true); await confirmation })
+  await vi.waitFor(() => expect(host.textContent).toContain('恢复后的工作台'))
+  expect(useAppearanceStore.getState().profile).toMatchObject({ writingFont: 'lxgw-wenkai', uiFont: 'noto-sans-sc', origin: 'author' })
+  expect(localStorage.getItem(LEGACY_THEME_STORAGE_KEY)).toBe(legacy)
+  expect(localStorage.getItem(LEGACY_UI_STORAGE_KEY)).toBe('v1')
+  expect(localStorage.getItem('startup-unrelated-model')).toBe('合成模型选择')
+})
+
+it.each(['saved', 'newer', 'corrupt', 'removed'])('已确认高版本后工作台加载失败，重置 %s 外观可在同窗口恢复', async stored => {
+  localStorage.setItem(APPEARANCE_STORAGE_KEY, JSON.stringify({ ...INITIAL_APPEARANCE, revision: 7, colorTheme: 'dark' }))
+  const sender = { id: 1, mainFrame: { url: 'file:///startup/index.html' }, isDestroyed: () => false }
+  const event = { sender, senderFrame: sender.mainFrame }
+  const handlers = new Map<string, (event: StartupEvent, input?: unknown) => unknown>()
+  registerStartupController({
+    ipc: { handle: (channel, handler) => { handlers.set(channel, handler) } },
+    getTrustedSender: () => sender, rendererUrl: sender.mainFrame.url,
+    getSnapshot: () => ({ globalGeneration: '启动世代', skinRevision: 0, backgroundSkin: 'classic' }),
+    getBlockedCode: () => undefined,
+  })
+  const acknowledgeReadback = vi.fn<AppearanceBootstrapDependencies['acknowledgeReadback']>(async ack =>
+    handlers.get('startup:appearance-ack')!(event, ack) === true)
+  const dep = dependencies({ acknowledgeReadback })
+  const load = vi.fn(async () => ({ default: () => <p>同窗口恢复的工作台</p> }))
+    .mockRejectedValueOnce(new Error('fixture workspace module unavailable'))
+  await act(async () => root.render(<RendererStartup dependencies={dep} loadWorkspace={load} />))
+  await vi.waitFor(() => expect(host.textContent).toContain('工作台暂时无法加载'))
+  expect(acknowledgeReadback).toHaveBeenCalledExactlyOnceWith({
+    storageKey: APPEARANCE_STORAGE_KEY, profileRevision: 7, globalGeneration: '启动世代', skinRevision: 0,
+  })
+  if (stored === 'newer') localStorage.setItem(APPEARANCE_STORAGE_KEY, JSON.stringify({ ...INITIAL_APPEARANCE, revision: 9 }))
+  if (stored === 'corrupt') localStorage.setItem(APPEARANCE_STORAGE_KEY, '{corrupt')
+  if (stored === 'removed') localStorage.removeItem(APPEARANCE_STORAGE_KEY)
+  await act(async () => page.getByRole('button', { name: '重置外观偏好为默认（不影响其它配置）', exact: true }).click())
+  await vi.waitFor(() => expect(host.textContent).toContain('同窗口恢复的工作台'))
+  expect(useAppearanceStore.getState().profile).toMatchObject({ revision: stored === 'newer' ? 10 : 8, colorTheme: 'paper', origin: 'author' })
+  expect(acknowledgeReadback).toHaveBeenCalledTimes(2)
+  expect(load).toHaveBeenCalledTimes(2)
+})
+
+it('重置写入失败保留原字节与加载失败页面', async () => {
+  const original = JSON.stringify({ ...INITIAL_APPEARANCE, revision: 7, colorTheme: 'dark' })
+  localStorage.setItem(APPEARANCE_STORAGE_KEY, original)
+  const load = vi.fn(async () => ({ default: () => <p>工作台不应加载</p> }))
+    .mockRejectedValueOnce(new Error('fixture workspace module unavailable'))
+  await act(async () => root.render(<RendererStartup dependencies={dependencies()} loadWorkspace={load} />))
+  await vi.waitFor(() => expect(host.textContent).toContain('工作台暂时无法加载'))
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('fixture quota', 'QuotaExceededError') })
+  await act(async () => page.getByRole('button', { name: '重置外观偏好为默认（不影响其它配置）', exact: true }).click())
+  expect(host.textContent).toContain('工作台暂时无法加载')
+  expect(localStorage.getItem(APPEARANCE_STORAGE_KEY)).toBe(original)
+  expect(load).toHaveBeenCalledOnce()
+})
+
+it.each([
+  ['corrupt', 'none'], ['removed', 'none'], ['removed', 'write'], ['corrupt', 'readback'],
+] as const)('ACK8 后存储 %s 且重置故障为 %s，再次重置保留已接受版本并恢复工作台', async (stored, fault) => {
+  localStorage.setItem(APPEARANCE_STORAGE_KEY, JSON.stringify({ ...INITIAL_APPEARANCE, revision: 7 }))
+  const sender = { id: 1, mainFrame: { url: 'file:///startup/index.html' }, isDestroyed: () => false }
+  const event = { sender, senderFrame: sender.mainFrame }
+  const handlers = new Map<string, (event: StartupEvent, input?: unknown) => unknown>()
+  registerStartupController({
+    ipc: { handle: (channel, handler) => { handlers.set(channel, handler) } },
+    getTrustedSender: () => sender, rendererUrl: sender.mainFrame.url,
+    getSnapshot: () => ({ globalGeneration: '启动世代', skinRevision: 0, backgroundSkin: 'classic' }),
+    getBlockedCode: () => undefined,
+  })
+  const acknowledgements: { revision: number; accepted: boolean }[] = []
+  let failReset = false
+  const dep = dependencies({
+    storage: () => ({
+      getItem: key => localStorage.getItem(key),
+      setItem: (key, value) => {
+        if (failReset && fault === 'write') throw new DOMException('fixture quota', 'QuotaExceededError')
+        localStorage.setItem(key, value)
+        if (failReset && fault === 'readback') localStorage.removeItem(key)
+      },
+    }),
+    acknowledgeReadback: async ack => {
+      const accepted = handlers.get('startup:appearance-ack')!(event, ack) === true
+      acknowledgements.push({ revision: ack.profileRevision, accepted })
+      expect(useAppearanceStore.getState().update({ colorTheme: 'dark' })).toBe(false)
+      if (ack.profileRevision === 8 && accepted) {
+        if (stored === 'corrupt') localStorage.setItem(APPEARANCE_STORAGE_KEY, '{corrupt')
+        else localStorage.removeItem(APPEARANCE_STORAGE_KEY)
+      }
+      return accepted
+    },
+  })
+  const load = vi.fn(async () => ({ default: () => <p>再次重置恢复的工作台</p> }))
+    .mockRejectedValueOnce(new Error('fixture workspace module unavailable'))
+  await act(async () => root.render(<RendererStartup dependencies={dep} loadWorkspace={load} />))
+  await vi.waitFor(() => expect(host.textContent).toContain('工作台暂时无法加载'))
+  await act(async () => page.getByRole('button', { name: '重置外观偏好为默认（不影响其它配置）', exact: true }).click())
+  await vi.waitFor(() => expect(useAppearanceStore.getState()).toMatchObject({
+    phase: 'blocked', profile: null, failureCode: 'APPEARANCE_CHANGED_DURING_ACK',
+  }))
+  expect(acknowledgements).toEqual([{ revision: 7, accepted: true }, { revision: 8, accepted: true }])
+  expect(load).toHaveBeenCalledOnce()
+  if (fault !== 'none') {
+    failReset = true
+    await act(async () => page.getByRole('button', { name: '重置外观偏好为默认（不影响其它配置）', exact: true }).click())
+    expect(useAppearanceStore.getState()).toMatchObject({ phase: 'blocked', profile: null })
+    expect(acknowledgements).toHaveLength(2)
+    expect(load).toHaveBeenCalledOnce()
+    expect(host.querySelector('[role="alert"]')).not.toBeNull()
+    failReset = false
+  }
+  await act(async () => page.getByRole('button', { name: '重置外观偏好为默认（不影响其它配置）', exact: true }).click())
+  await vi.waitFor(() => expect(useAppearanceStore.getState().phase).not.toBe('pending'))
+  expect(acknowledgements).toEqual([
+    { revision: 7, accepted: true }, { revision: 8, accepted: true }, { revision: 9, accepted: true },
+  ])
+  await vi.waitFor(() => expect(host.textContent).toContain('再次重置恢复的工作台'))
+  expect(useAppearanceStore.getState().profile).toMatchObject({ revision: 9, origin: 'author' })
+  expect(load).toHaveBeenCalledTimes(2)
 })
 
 it('启动后偏好写入失败保留已挂载编辑器及其未保存正文', async () => {

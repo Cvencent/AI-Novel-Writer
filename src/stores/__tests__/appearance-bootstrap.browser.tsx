@@ -124,6 +124,30 @@ describe('appearance bootstrap in real browser storage', () => {
     expect(localStorage.getItem(KEY)).toBeNull()
   })
 
+  it.each([
+    ['main-not-ready', 'MAIN_NOT_READY'],
+    ['stale-generation', 'SKIN_SNAPSHOT_NOT_READY'],
+    ['readback', 'APPEARANCE_READBACK_FAILED'],
+    ['ack', 'MAIN_ACK_REJECTED'],
+    ['changed-during-ack', 'APPEARANCE_CHANGED_DURING_ACK'],
+  ])('keeps %s blocked after an explicit appearance reset', async (fault, failureCode) => {
+    localStorage.setItem(THEME, JSON.stringify({ state: { writingFont: 'retired-font' } }))
+    const store = createAppearanceStore()
+    expect(await store.getState().bootstrap(dependencies())).toBe(false)
+    expect(store.getState().resetAppearance()).toBe(true)
+    const dep = dependencies()
+    if (fault === 'main-not-ready') dep.waitForMainReady = async () => ({ state: 'pending' })
+    if (fault === 'stale-generation') dep.readSkinSnapshot = async () => ({ globalGeneration: 'expired', skinRevision: 7, backgroundSkin: 'classic' })
+    if (fault === 'readback') {
+      let reads = 0
+      dep.storage = () => ({ getItem: key => ++reads === 2 ? null : localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) })
+    }
+    if (fault === 'ack') dep.acknowledgeReadback = async () => false
+    if (fault === 'changed-during-ack') dep.acknowledgeReadback = async () => { localStorage.setItem(KEY, '{changed'); return true }
+    expect(await store.getState().bootstrap(dep)).toBe(false)
+    expect(store.getState()).toMatchObject({ phase: 'blocked', profile: null, failureCode })
+  })
+
   it.each(['before-write', 'after-write', 'ack'] as const)('recovers %s interruption without rewriting a durable canonical record', async fault => {
     const original = seed('dark')
     let writes = 0
@@ -159,6 +183,9 @@ describe('appearance bootstrap in real browser storage', () => {
       return true
     } }))).toBe(false)
     expect(store.getState().failureCode).toBe('APPEARANCE_CHANGED_DURING_ACK')
+    const changed = localStorage.getItem(KEY)
+    expect(store.getState().update({ colorTheme: 'light' })).toBe(false)
+    expect(localStorage.getItem(KEY)).toBe(changed)
     expect(JSON.parse(localStorage.getItem(KEY)!).colorTheme).toBe('dark')
   })
 
