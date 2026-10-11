@@ -12,6 +12,8 @@ import * as project from './pages/project.mjs'
 import * as runPanel from './pages/run-panel.mjs'
 import * as settings from './pages/settings.mjs'
 import * as shell from './pages/shell.mjs'
+import * as stage from './pages/stage.mjs'
+import { countUnits, STAGE_SAMPLE, stageChapterTitle } from './stage-sample.mjs'
 
 const SAMPLE = Object.freeze({ name: '灯塔', chapterNumber: 1, blueprints: [[1, '旧港'], [2, '北堤']] })
 
@@ -219,6 +221,166 @@ export const EXTRA_SCENARIOS = {
     await shell.toggleImmersion(page)
     assert.deepEqual(await shell.panels(page), before, '两次切换后面板应恢复到切换前')
     assert.equal(await shell.isImmersive(page), false)
+  } },
+}
+
+const firstLine = text => text.split('\n')[0].slice(0, 16)
+
+/** 用公开 IPC 预置新外壳示例作品：12 章蓝图，1、2 章定稿，3 章已审稿，4 章草稿；架构四节齐全。 */
+async function seedStageSample({ app, page, roots, invoke, reload }) {
+  const created = await invoke(page, 'project:create', { parentGrantId: (await chooseProjectDirectoryGrant(app, page, roots.projects)).grantId,
+    name: STAGE_SAMPLE.name, genre: '悬疑', targetAudience: '成年读者', writingLanguage: 'zh-CN' }, randomUUID(), null)
+  assert.equal(created.success, true, created.error)
+  const opened = await invoke(page, 'project:open', created.projectPath, randomUUID(), null)
+  assert.equal(opened.success, true, opened.error)
+  const path = created.projectPath
+  const session = { projectId: created.projectId, projectPath: path, leaseId: opened.project.sessionLease }
+  assert.equal((await invoke(page, 'llm:save-model', FAKE_MODEL)).success, true)
+  assert.equal((await invoke(page, 'llm:set-default-model', FAKE_MODEL.id)).success, true)
+  const roster = await invoke(page, 'db:character-roster-read', path, session)
+  assert.equal((await invoke(page, 'db:character-roster-commit', { operationId: randomUUID(), expectedRevision: roster.revision,
+    expectedIdentityRevision: roster.identityRevision, schemaVersion: 1, intent: 'manual_edit',
+    entries: [{ characterId: `draft:${randomUUID()}`, name: '林岚', role: 'protagonist', gender: '', age: '', appearance: '',
+      personality: '', background: '旧港潮汐记录的测绘师。', abilities: '', motivation: '查明失踪地图的来源。',
+      relationships: [], arc: '', notes: '' }] }, path, session)).success, true)
+  const core = await invoke(page, 'db:project-core-update', { ...STAGE_SAMPLE.core, totalChapters: STAGE_SAMPLE.totalChapters,
+    wordsPerChapter: STAGE_SAMPLE.wordsPerChapter }, path, session)
+  assert.equal(core.success, true, core.error)
+  for (const [index, title] of STAGE_SAMPLE.titles.entries()) {
+    assert.equal((await invoke(page, 'db:blueprint-upsert', { chapterNumber: index + 1, title, role: '发展', purpose: '推进灯塔与沉船的线索',
+      keyEvents: '林岚在灯塔里找到新的线索', characters: [] }, path, session)).success, true)
+  }
+  const imported = await invoke(page, 'db:draft-import-finalized-batch', { operationId: randomUUID(),
+    chapters: Object.entries(STAGE_SAMPLE.finalized).map(([number, content]) => ({ chapterNumber: Number(number),
+      title: stageChapterTitle(Number(number)), content, wordCount: countUnits(content) })) }, path, session)
+  assert.equal(imported.success, true, imported.error)
+  for (const [number, { status, text }] of Object.entries(STAGE_SAMPLE.drafts)) {
+    const draft = await invoke(page, 'db:draft-create', { chapterNumber: Number(number), version: 1, source: 'write',
+      content: text, wordCount: countUnits(text) }, path, session)
+    assert.equal(draft.success, true, draft.error)
+    if (status !== 'draft') assert.equal((await invoke(page, 'db:draft-update-status', draft.id, status, undefined, path, session)).success, true)
+  }
+  await reload()
+  if (await stage.root(page).count() > 0) {
+    await stage.openFromLibrary(page, STAGE_SAMPLE.name)
+    await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
+    return
+  }
+  await bookshelf.openProject(page, STAGE_SAMPLE.name)
+  await project.waitForTreeRefreshed(page, STAGE_SAMPLE.titles.length)
+  await project.draftOfChapter(page, 3).click()
+  await chapter.editor(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text)).waitFor({ state: 'visible' })
+}
+
+/** 在渲染进程里计时：从点击 trigger 指向的元素到正文编辑区出现 text，单位毫秒，帧粒度。 */
+async function msFromClickToProse(page, target, proseSelector, text, deadlineMs = 20_000) {
+  const handle = await target.elementHandle()
+  await page.evaluate(({ element, proseSelector, text, deadlineMs }) => {
+    let clickedAt = null
+    element.addEventListener('click', () => { clickedAt ??= performance.now() }, { capture: true, once: true })
+    window.__driveProseLatency = new Promise((resolve, reject) => {
+      const deadline = setTimeout(() => reject(new Error(`正文在 ${deadlineMs} ms 内未出现`)), deadlineMs)
+      const tick = () => {
+        const shown = [...document.querySelectorAll(proseSelector)].some(node => node.textContent.includes(text) && node.getClientRects().length > 0)
+        if (clickedAt !== null && shown) {
+          clearTimeout(deadline)
+          resolve(Math.round(performance.now() - clickedAt))
+        } else requestAnimationFrame(tick)
+      }
+      requestAnimationFrame(tick)
+    })
+  }, { element: handle, proseSelector, text, deadlineMs })
+  await target.click()
+  return page.evaluate(() => window.__driveProseLatency)
+}
+
+async function assertSpineMatchesSample(page) {
+  assert.deepEqual(await stage.stageStates(page), { setup: 'done', architecture: 'done', blueprint: 'done', manuscript: 'active' })
+  const rows = await stage.chapterRows(page)
+  assert.deepEqual(rows.map(row => row.number), STAGE_SAMPLE.titles.map((_, index) => index + 1))
+  assert.deepEqual(rows.slice(0, 5).map(row => row.phase), ['final', 'final', 'reviewed', 'draft', 'todo'])
+  assert.deepEqual(rows.filter(row => row.current).map(row => row.number), [3], '落点应是第一章写到一半的第 3 章')
+}
+
+/** 新外壳场景只在 head 上跑（trunk 没有新外壳）；chapter-switch 两种外壳都能跑，用于性能对照。 */
+export const STAGE_SCENARIOS = {
+  'stage-open-sample': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+    await assertSpineMatchesSample(page)
+    assert.equal(await stage.tabList(page).count(), 0, '只有一个标签时标签条收起')
+  } },
+  'stage-tabs': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+    await stage.stageButton(page, '设定').click()
+    await stage.tabList(page).waitFor({ state: 'visible' })
+    await stage.stageButton(page, '蓝图').click()
+    await stage.tab(page, '章节蓝图').waitFor({ state: 'visible' })
+    assert.equal(await stage.tabList(page).getByRole('tab').count(), 3)
+    await stage.closeTabButton(page, '小说配置').click()
+    await stage.tab(page, '小说配置').waitFor({ state: 'detached' })
+    assert.equal(await stage.tabList(page).getByRole('tab').count(), 2, '关掉一个后还剩两个，标签条仍在')
+  }, after: async ({ page }) => {
+    await stage.closeTabButton(page, '章节蓝图').click()
+    await stage.tabList(page).waitFor({ state: 'detached' })
+  } },
+  'stage-dirty-close': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+    await stage.stageButton(page, '设定').click()
+    const field = page.getByPlaceholder('如：修仙/重生/末世')
+    await field.fill('海港悬疑')
+    await stage.saveStatus(page).filter({ hasText: '未保存' }).waitFor({ state: 'visible' })
+    await stage.closeTabButton(page, '小说配置').click()
+    await page.getByRole('dialog', { name: '放弃未保存的修改？' }).waitFor({ state: 'visible' })
+  }, after: async ({ page }) => {
+    await page.getByRole('button', { name: '继续编辑', exact: true }).click()
+    await page.getByRole('dialog', { name: '放弃未保存的修改？' }).waitFor({ state: 'hidden' })
+    assert.equal(await stage.tab(page, '小说配置').getAttribute('aria-selected'), 'true', '取消后标签仍在')
+    assert.equal(await page.getByPlaceholder('如：修仙/重生/末世').inputValue(), '海港悬疑', '取消后修改保留')
+  } },
+  'stage-save': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+    await stage.stageButton(page, '设定').click()
+    await page.getByPlaceholder('如：修仙/重生/末世').fill('海港悬疑')
+    await stage.saveStatus(page).filter({ hasText: '未保存' }).waitFor({ state: 'visible' })
+    await page.keyboard.press('Control+S')
+    await stage.saveStatus(page).filter({ hasText: '已保存' }).waitFor({ state: 'visible' })
+  } },
+  'stage-find-chapter': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+    await stage.stageButton(page, '蓝图').click()
+    await stage.tab(page, '章节蓝图').waitFor({ state: 'visible' })
+    await stage.stageButton(page, '设定').click()
+    await stage.findChapter(page, '4')
+    await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[4].text))
+    assert.deepEqual((await stage.chapterRows(page)).filter(row => row.current).map(row => row.number), [4])
+    await stage.findChapter(page, '第3章')
+    await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
+    assert.deepEqual((await stage.chapterRows(page)).filter(row => row.current).map(row => row.number), [3])
+  } },
+  'stage-focus': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+    await stage.focusToggle(page).click()
+    await stage.spine(page).waitFor({ state: 'detached' })
+    assert.equal(await stage.tabList(page).count(), 0)
+    await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
+    await page.getByRole('button', { name: 'AI 审稿', exact: true }).waitFor({ state: 'visible' })
+  }, after: async ({ page }) => {
+    await page.keyboard.press('Escape')
+    await stage.spine(page).waitFor({ state: 'visible' })
+  } },
+  'stage-1280': { model: false, shell: 'stage', setup: async context => {
+    await context.page.setViewportSize({ width: 1280, height: 900 })
+    await seedStageSample(context)
+  }, run: async ({ page }) => {
+    const overflow = await page.evaluate(() => {
+      const scroller = document.scrollingElement
+      const clipped = [...document.querySelectorAll('.stage-row-name, .stage-chapter-title, .stage-crumb, .stage-work-title, .stage-search-hint, .stage-saved')]
+        .filter(node => node.scrollWidth > node.clientWidth + 1 || node.getClientRects().length > 1)
+        .map(node => node.textContent)
+      return { horizontal: scroller.scrollWidth - scroller.clientWidth, clipped }
+    })
+    assert.deepEqual(overflow, { horizontal: 0, clipped: [] })
+  } },
+  'chapter-switch': { model: false, setup: seedStageSample, run: async ({ page }) => {
+    const target = firstLine(STAGE_SAMPLE.drafts[4].text)
+    if (await stage.root(page).count() > 0) {
+      return { chapterSwitchMs: await msFromClickToProse(page, stage.chapterButton(page, 4), '.stage-content .cm-content', target) }
+    }
+    return { chapterSwitchMs: await msFromClickToProse(page, project.draftOfChapter(page, 4), chapter.EDITOR, target) }
   } },
 }
 

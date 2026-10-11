@@ -1,5 +1,5 @@
 // 单章流程：写作、审稿、修稿合并、定稿。
-const EDITOR = '.writer-editor-content .cm-content'
+export const EDITOR = '.writer-editor-content .cm-content'
 
 export const editor = page => page.locator(EDITOR)
 

@@ -1,0 +1,106 @@
+import { Check, ChevronDown, CircleDashed, Maximize2, Minimize2, Minus, Search, Square, X } from 'lucide-react'
+import { ipc } from '../../services/ipc-client'
+import { useEditorStore } from '../../stores/editor-store'
+import { countUnsavedEditorItems } from '../../stores/editor-unsaved'
+import { useLocaleStore } from '../../stores/locale-store'
+import { useStageStore } from '../../stores/navigation/stage-store'
+import { useProjectStore } from '../../stores/project-store'
+import { Menu, type MenuGroupSpec } from '../ui/Menu'
+import RunCapsule from './RunCapsule'
+
+/** 纸墨的字标，与画板一致；是标识，不随界面语言变化。 */
+const BRAND_MARK = '墨'
+
+interface StageTopBarProps {
+  /** 位置面包屑，最后一项为当前页。 */
+  crumbs: readonly string[]
+  library: boolean
+  focus: boolean
+  /** 沉浸写作时左侧显示的当前页名。 */
+  focusTitle: string
+  workMenu: readonly MenuGroupSpec[]
+  onToggleFocus: () => void
+}
+
+function WindowControls() {
+  const text = useLocaleStore(s => s.text)
+  return (
+    <div className="stage-window-controls">
+      <button type="button" aria-label={text('最小化', 'Minimize')} onClick={() => void ipc.invoke('window:minimize')}>
+        <Minus size={14} aria-hidden="true" />
+      </button>
+      <button type="button" aria-label={text('最大化', 'Maximize')} onClick={() => void ipc.invoke('window:toggle-maximize')}>
+        <Square size={12} aria-hidden="true" />
+      </button>
+      <button type="button" className="stage-window-close" aria-label={text('关闭', 'Close')} onClick={() => void ipc.invoke('window:close')}>
+        <X size={14} aria-hidden="true" />
+      </button>
+    </div>
+  )
+}
+
+/** 顶栏：作品名与作品菜单、位置、Ctrl K 搜索与跳转、运行胶囊、保存状态、沉浸写作、窗口按钮。整条可拖动窗口。 */
+export default function StageTopBar({ crumbs, library, focus, focusTitle, workMenu, onToggleFocus }: StageTopBarProps) {
+  const text = useLocaleStore(s => s.text)
+  const projectName = useProjectStore(s => s.currentProject?.name)
+  const dirty = useEditorStore(s => countUnsavedEditorItems(s.tabs, s.draftLedgers) > 0)
+
+  if (focus) {
+    return (
+      <header className="stage-topbar" data-focus="true">
+        <span className="stage-focus-title">{focusTitle}</span>
+        <span className="stage-topbar-gap" />
+        <button type="button" className="stage-focus-exit" aria-label={text('退出沉浸写作', 'Exit focus mode')} onClick={onToggleFocus}>
+          <Minimize2 size={13} aria-hidden="true" />
+          {text('退出沉浸', 'Exit focus')}
+          <kbd>Esc</kbd>
+        </button>
+        <WindowControls />
+      </header>
+    )
+  }
+
+  return (
+    <header className="stage-topbar">
+      <span className="stage-brand" aria-hidden="true">{BRAND_MARK}</span>
+      {library || !projectName
+        ? <span className="stage-work-title">{text('书房', 'Library')}</span>
+        : (
+          <Menu
+            label={text(`《${projectName}》作品菜单`, `“${projectName}” menu`)}
+            trigger={{ className: 'stage-work-title', content: <>{projectName}<ChevronDown size={14} aria-hidden="true" /></> }}
+            groups={workMenu}
+          />
+        )}
+      {crumbs.length > 0 && (
+        <nav className="stage-crumbs" aria-label={text('位置', 'Location')}>
+          {crumbs.map((crumb, index) => (
+            <span key={`${index}-${crumb}`} className="stage-crumb" aria-current={index === crumbs.length - 1 ? 'page' : undefined}>{crumb}</span>
+          ))}
+        </nav>
+      )}
+      <div className="stage-topbar-center">
+        <button type="button" className="stage-search" onClick={() => useStageStore.setState({ palette: 'commands' })}>
+          <Search size={14} aria-hidden="true" />
+          <span className="stage-search-hint">{library
+            ? text('新建、打开作品，或打开设置', 'New or open a book, or open settings')
+            : text('搜索章节、角色，或跳转到任意阶段', 'Search chapters and characters, or jump to any stage')}</span>
+          <kbd>Ctrl K</kbd>
+        </button>
+      </div>
+      <RunCapsule />
+      {!library && (
+        <span className="stage-saved" data-dirty={dirty || undefined} role="status">
+          {dirty ? <CircleDashed size={13} aria-hidden="true" /> : <Check size={13} aria-hidden="true" />}
+          {dirty ? text('未保存', 'Unsaved') : text('已保存', 'Saved')}
+        </span>
+      )}
+      {!library && (
+        <button type="button" className="stage-icon-button" aria-label={text('进入沉浸写作', 'Enter focus mode')} aria-pressed={false} onClick={onToggleFocus}>
+          <Maximize2 size={15} aria-hidden="true" />
+        </button>
+      )}
+      <WindowControls />
+    </header>
+  )
+}

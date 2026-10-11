@@ -14,6 +14,7 @@ import DraftEditor from '../editor/DraftEditor'
 import VersionHistory from '../editor/VersionHistory'
 import ReviewReport from '../editor/ReviewReport'
 import NarrativeThreadEditor from '../editor/NarrativeThreadEditor'
+import KnowledgeOverview from '../pages/KnowledgeOverview'
 import ThreeWayMerge from '../editor/ThreeWayMerge'
 import { registerEditorExitSaveHandler, useEditorStore, type EditorTab } from '../../stores/editor-store'
 import { useLocaleStore } from '../../stores/locale-store'
@@ -280,6 +281,9 @@ export default function EditorTabContent({ activeTab, currentProject }: { active
       )}
       {activeTab?.type === 'version-history' && activeTab.projectKey === currentProject.path && (
         <VersionHistory projectKey={activeTab.projectKey} />
+      )}
+      {activeTab?.type === 'knowledge' && activeTab.projectKey === currentProject.path && (
+        <KnowledgeOverview />
       )}
       {activeTab?.type === 'review-report' && activeTab.projectKey === currentProject.path && activeTab.content && (
         <ReviewReport

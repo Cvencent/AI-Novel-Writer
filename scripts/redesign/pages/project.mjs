@@ -22,3 +22,9 @@ export async function waitForTreeRefreshed(page, blueprintCount) {
 export async function openLatestDraft(page) {
   await tree(page).getByText(/^草稿_v[0-9]+$/).first().click()
 }
+
+/** 草稿箱里第 n 章的最新一稿：章节行的 title 以「第n章」开头，草稿按版本倒序排在紧随其后的列表里。 */
+export function draftOfChapter(page, chapterNumber) {
+  return tree(page).getByTitle(new RegExp(`^第${chapterNumber}章`)).first()
+    .locator('xpath=following-sibling::div[1]').getByText(/^草稿_v[0-9]+$/).first()
+}

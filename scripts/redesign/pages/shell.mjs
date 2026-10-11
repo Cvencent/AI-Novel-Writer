@@ -1,11 +1,10 @@
 // 外壳级选择器。替换外壳时只改本目录。
-const SHELL_READY = '[data-shell-presentation="writer"][data-shell-variant="v3"]'
-const SKIN_ROOT = '.app-skin-root'
+const SHELL_READY = '.app-skin-root [data-shell-presentation="writer"][data-shell-variant="v3"], [data-shell-presentation="stage"]'
 const STARTUP_NOTICE = '[role="status"].fixed.inset-x-0.top-10'
 
+/** 旧外壳（ShellV2）或新外壳（流程脊）任一渲染出来即就绪。 */
 export async function waitForShell(page, timeout) {
-  await page.locator(SKIN_ROOT).waitFor({ state: 'visible', timeout })
-  await page.locator(SHELL_READY).waitFor({ state: 'visible', timeout })
+  await page.locator(SHELL_READY).first().waitFor({ state: 'visible', timeout })
 }
 
 export async function dismissStartupNotice(page) {

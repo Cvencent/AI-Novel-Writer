@@ -1,5 +1,6 @@
 /* global process */
 import assert from 'node:assert/strict'
+import { Buffer } from 'node:buffer'
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -9,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { _electron as electron } from 'playwright'
 
 import { startFakeModel } from './fake-model.mjs'
-import { BASELINE_SESSIONS, EXTRA_SCENARIOS, SCENARIOS as BASELINE_SCENARIOS } from './scenarios.mjs'
+import { BASELINE_SESSIONS, EXTRA_SCENARIOS, SCENARIOS as BASELINE_SCENARIOS, STAGE_SCENARIOS } from './scenarios.mjs'
 import { dismissCompletionToasts, dismissStartupNotice, firstInteractiveControl, waitForShell } from './pages/shell.mjs'
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -17,15 +18,16 @@ const OFFSCREEN_WINDOW = fileURLToPath(new URL('./offscreen-window.cjs', import.
 const TIMEOUT = 60_000
 const VIEWPORT = { width: 1440, height: 900 }
 const THEMES = ['light', 'dark']
+const SHELLS = ['writer', 'stage']
 const ROOT_NAMES = ['legacy', 'canonical', 'userData', 'home', 'appData', 'localAppData', 'temp', 'projects']
-const SCENARIOS = { ...BASELINE_SCENARIOS, ...EXTRA_SCENARIOS }
+const SCENARIOS = { ...BASELINE_SCENARIOS, ...EXTRA_SCENARIOS, ...STAGE_SCENARIOS }
 const ALL_SCENARIOS = [...Object.keys(SCENARIOS), 'baseline-all', 'startup-timing']
-const USAGE = `用法: node scripts/redesign/drive.mjs --scenario <名称> [--theme light|dark] [--out <目录>] [--dump-dom] [--console] [--app-root <目录>]
+const USAGE = `用法: node scripts/redesign/drive.mjs --scenario <名称> [--theme light|dark] [--shell writer|stage] [--out <目录>] [--dump-dom] [--console] [--video] [--app-root <目录>]
 场景: ${ALL_SCENARIOS.join(', ')}`
 
 export function parseArgs(argv) {
-  const options = { scenario: null, theme: 'light', out: path.join(repository, '.runtime', 'redesign-baseline'),
-    dumpDom: false, console: false, appRoot: repository }
+  const options = { scenario: null, theme: 'light', shell: null, out: path.join(repository, '.runtime', 'redesign-baseline'),
+    dumpDom: false, console: false, video: false, appRoot: repository }
   const valueOf = (flag, index) => {
     const value = argv[index + 1]
     if (value === undefined || value.startsWith('--')) throw new Error(`${flag} 缺少取值\n${USAGE}`)
@@ -36,14 +38,17 @@ export function parseArgs(argv) {
     if (arg === '--') continue
     else if (arg === '--scenario') options.scenario = valueOf(arg, index++)
     else if (arg === '--theme') options.theme = valueOf(arg, index++)
+    else if (arg === '--shell') options.shell = valueOf(arg, index++)
     else if (arg === '--out') options.out = path.resolve(valueOf(arg, index++))
     else if (arg === '--app-root') options.appRoot = path.resolve(valueOf(arg, index++))
     else if (arg === '--dump-dom') options.dumpDom = true
     else if (arg === '--console') options.console = true
+    else if (arg === '--video') options.video = true
     else throw new Error(`未知参数 ${arg}\n${USAGE}`)
   }
   if (!ALL_SCENARIOS.includes(options.scenario)) throw new Error(`未知或缺少场景 ${options.scenario}\n${USAGE}`)
   if (!THEMES.includes(options.theme)) throw new Error(`--theme 只接受 ${THEMES.join('|')}`)
+  if (options.shell !== null && !SHELLS.includes(options.shell)) throw new Error(`--shell 只接受 ${SHELLS.join('|')}`)
   return options
 }
 
@@ -187,15 +192,58 @@ async function launch({ roots, appRoot, fakeModelPort, diagnostics }) {
 const invoke = (page, channel, ...args) =>
   page.evaluate(({ channel, args }) => window.aiNovelAPI.invoke(channel, ...args), { channel, args })
 
-async function applyTheme(page, theme) {
+/** 主题与外壳在同一次写入里改，只重载一次。shell 为 null 时不碰外壳偏好，旧外壳场景写入的内容与改动前相同。 */
+async function applyAppearance(page, { theme, shell }) {
   await page.waitForFunction(() => localStorage.getItem('ai-novel-writer-appearance') !== null, null, { timeout: TIMEOUT })
-  await page.evaluate(colorTheme => {
+  await page.evaluate(({ colorTheme, shellPreference }) => {
     const key = 'ai-novel-writer-appearance'
     const current = JSON.parse(localStorage.getItem(key))
-    localStorage.setItem(key, JSON.stringify({ ...current, colorTheme, revision: current.revision + 1, origin: 'author' }))
-  }, theme)
+    localStorage.setItem(key, JSON.stringify({ ...current, colorTheme, ...(shellPreference ? { shellPreference } : {}),
+      revision: current.revision + 1, origin: 'author' }))
+  }, { colorTheme: theme, shellPreference: shell })
   await page.reload()
   await waitForShell(page, TIMEOUT)
+}
+
+/** 启动计时量的是冷启动，外壳偏好要在计时那次启动之前写好：先启动一次写入，再退出。 */
+async function prepareProfile({ roots, appRoot, diagnostics }, appearance) {
+  const prepared = await launch({ roots, appRoot, fakeModelPort: null, diagnostics })
+  try { await applyAppearance(prepared.page, appearance) } finally { await quit(prepared.app) }
+}
+
+/**
+ * 录屏：用 CDP 的 Page.startScreencast 收集画面变化时的帧，按帧时间戳交给本机 ffmpeg 编成 H.264 mp4。
+ * Playwright 的 recordVideo 需要另外下载它自带的 ffmpeg，这里不依赖它。
+ */
+async function startScreencast(page) {
+  const session = await page.context().newCDPSession(page)
+  const frames = []
+  session.on('Page.screencastFrame', ({ data, metadata, sessionId }) => {
+    frames.push({ data, time: metadata.timestamp })
+    session.send('Page.screencastFrameAck', { sessionId }).catch(() => {})
+  })
+  await session.send('Page.startScreencast', { format: 'jpeg', quality: 92, maxWidth: VIEWPORT.width, maxHeight: VIEWPORT.height })
+  return {
+    async stop(file, scratch) {
+      await session.send('Page.stopScreencast')
+      await session.detach().catch(() => {})
+      assert.ok(frames.length > 1, '录屏没有收到画面')
+      const directory = fs.mkdtempSync(path.join(scratch, 'frames-'))
+      const lines = ['ffconcat version 1.0']
+      frames.forEach((frame, index) => {
+        const name = `${String(index).padStart(5, '0')}.jpg`
+        fs.writeFileSync(path.join(directory, name), Buffer.from(frame.data, 'base64'))
+        const next = frames[index + 1]?.time ?? frame.time + 1
+        lines.push(`file '${name}'`, `duration ${Math.max(0.001, next - frame.time).toFixed(4)}`)
+      })
+      lines.push(`file '${String(frames.length - 1).padStart(5, '0')}.jpg'`)
+      fs.writeFileSync(path.join(directory, 'frames.ffconcat'), lines.map(line => `${line}\n`).join(''))
+      execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', path.join(directory, 'frames.ffconcat'),
+        '-vf', 'fps=30,scale=trunc(iw/2)*2:trunc(ih/2)*2', '-c:v', 'libx264', '-preset', 'slow', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', file],
+      { windowsHide: true })
+      return file
+    },
+  }
 }
 
 async function shoot(page, file) {
@@ -225,19 +273,23 @@ async function runSession(sessionName, names, options) {
   let failedAt = null
   let current = null
   let launched
+  const shell = names.map(name => SCENARIOS[name]?.shell).find(Boolean) ?? options.shell
   try {
+    if (sessionName === 'startup-timing' && shell) await prepareProfile({ roots, appRoot: options.appRoot, diagnostics }, { theme: options.theme, shell })
     launched = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics })
     shared.timing = launched.timing
     if (sessionName !== 'startup-timing') {
       const { page } = launched
-      await applyTheme(page, options.theme)
+      await applyAppearance(page, { theme: options.theme, shell })
       const context = { ...launched, roots, invoke, fake, reload: () => page.reload().then(() => waitForShell(page, TIMEOUT)) }
       current = 0
       await SCENARIOS[names[0]].setup?.(context)
       for (const [index, name] of names.entries()) {
         current = index
         results[index].screenshot = `${base(name)}.png`
+        const recording = options.video ? await startScreencast(page) : null
         const measured = await SCENARIOS[name].run(context)
+        if (recording) results[index].video = await recording.stop(`${base(name)}.mp4`, roots.temp)
         if (measured) results[index].measured = measured
         await shoot(page, results[index].screenshot)
         if (options.dumpDom) await dumpDom(page, base(name))
