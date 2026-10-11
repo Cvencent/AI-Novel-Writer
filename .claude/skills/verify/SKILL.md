@@ -24,12 +24,14 @@ pnpm build
 ## 命令
 
 ```bash
-pnpm verify:drive -- --scenario <名称> [--theme light|dark] [--out <目录>] [--dump-dom] [--console] [--app-root <目录>]
+pnpm verify:drive -- --scenario <名称> [--theme light|dark] [--shell writer|stage] [--out <目录>] [--dump-dom] [--console] [--video] [--app-root <目录>]
 # 等价于
 node scripts/redesign/drive.mjs --scenario <名称> ...
 ```
 
 - `--theme` 默认 `light`，即外观里的「浅色」；`dark` 为「深色」。
+- `--shell` 不给时不碰外观里的外壳偏好（旧外壳）；`stage` 为 RD-3 起的新外壳（流程脊）。与主题在同一次写入里改，只重载一次。新外壳场景自己声明 `shell: 'stage'`，不必再传；`startup-timing` 与 `chapter-switch` 两种外壳都能跑，用 `--shell stage` 选新外壳。trunk（RD-2 及以前）不认识 `stage`，对 trunk 不要传。
+- `--video` 在每个截图点的 `run` 期间录屏：CDP `Page.startScreencast` 收帧，按帧时间戳交给本机 `ffmpeg` 编成 H.264 mp4，写到 `<场景>-<主题>.mp4`。不需要 Playwright 自带的 ffmpeg。
 - `--out` 默认 `.runtime/redesign-baseline/`（已被 git 忽略）。
 - `--app-root` 默认当前工作树。性能对照时指向 trunk 的工作树，用同一个驱动测两边；目标工作树也要先跑完上面三条命令，它加载的是自己的 `dist-electron/` 和 `better-sqlite3`。
 - 退出码：0 全部通过；1 有场景失败、残留进程或隔离目录外写入；2 参数错误。
@@ -62,7 +64,8 @@ node scripts/redesign/drive.mjs --scenario <名称> ...
 
 在 `--out` 目录下：
 
-- `<场景>-<主题>.png`：场景截图，1440×900。
+- `<场景>-<主题>.png`：场景截图，1440×900（`stage-1280` 为 1280×900）。
+- `--video` 时另有 `<场景>-<主题>.mp4`，结果项的 `video` 字段指向它。
 - `<场景>-<主题>.json`：本次运行的结果数组，每个截图点一项。`scenario`、`screenshot` 属于这个截图点；`session`（会话名，单跑时等于场景名）、`timing`、`externalRequests`、`residualProcesses`、`externalWrites`、`quit`、`isolationRoot` 属于整个会话，会话里每一项都抄一份；会话用了夹具模型时另含 `modelRequests`（整个会话里假服务收到的全部请求数，嵌入请求也计入，与 `--console` 里的 `[fake-model]` 行一一对应）。失败时含 `error`：截图点自己的失败写在该项；同一会话里排在失败点之后的截图点不再运行，`error` 写明是被哪个场景拖住；会话级失败（启动、外部请求、退出、进程枚举）写进该会话的每一项。
 - 失败时额外写 `<失败场景>-<主题>.failure.png`、`.dom.html`、`.aria.yml` 和 `<会话>-<主题>.console.log`，隔离目录保留以便排查。
 
@@ -122,8 +125,42 @@ node scripts/redesign/drive.mjs --scenario startup-timing --out <目录>
 
 `nav-` 场景对 trunk（`--app-root`）与 head 各跑一次，两边都通过即行为一致。`write-latency` 与 `startup-timing` 一样交替各跑 5 次取中位数。
 
+## 新外壳（RD-3 起）
+
+页面对象在 `scripts/redesign/pages/stage.mjs`，选择器用角色与可访问名称（流程脊是 `navigation`「创作流程」，章节是其中的列表「章节」，标签条是 `tablist`「已打开的页面」，顶栏是 `banner`）。示例作品在 `scripts/redesign/stage-sample.mjs`：「灯塔」12 章全有蓝图，架构四节齐全，1、2 章定稿，3 章已审稿，4 章草稿，其余待写；与旧外壳基线的 SAMPLE 分开，基线截图不受影响。打开后落在第 3 章（第一章写到一半的）。两种外壳都能用这份示例：新外壳从书房打开，旧外壳从项目树打开第 3 章草稿。
+
+| 名称 | 检查 | 截图停在 | 夹具模型 | 对应计划 |
+|---|---|---|---|---|
+| `stage-open-sample` | 流程脊四个阶段的状态（设定、架构、蓝图完成，正文进行中）、章节阶段、当前章为 3、只有一个标签时标签条收起、外壳文字对比度（名称 4.5:1，说明 3:1，底色沿祖先叠加求出） | 第 3 章正文 | 否 | lane 1 的新外壳部分、lane 2（浅色）、lane 3（`--theme dark`） |
+| `stage-tabs` | 依次打开设定与蓝图共三个标签，关掉一个后还剩两个且标签条仍在；`after` 再关一个，标签条收起 | 两个标签 | 否 | lane 4 |
+| `stage-dirty-close` | 改小说配置后关它的标签，出现危险确认；`after` 点「继续编辑」，标签与修改都在 | 危险确认对话框 | 否 | lane 5 |
+| `stage-save` | 改小说配置，顶栏变「未保存」，Ctrl S 后变「已保存」 | 已保存 | 否 | lane 6 |
+| `stage-find-chapter` | Ctrl P 输入「4」回车打开第 4 章，再输入「第3章」打开第 3 章，流程脊当前章随之变化 | 第 3 章正文 | 否 | lane 7 |
+| `stage-focus` | 沉浸写作后流程脊与标签条消失，正文与章节动作条（AI 审稿等）在；`after` 按 Esc 恢复 | 沉浸写作 | 否 | lane 8 |
+| `stage-1280` | 视口 1280×900：页面无横向滚动，外壳里的名称、章名、位置、搜索提示、保存状态都没有被截断或折行 | 1280 宽 | 否 | lane 9 |
+| `stage-migrate` | 写入一份 v1 外观配置后重载：进入工作台、不出现启动阻塞，存储里只把 schemaVersion 升到 2，其余字节不变 | 工作台（旧外壳，v1 没有 stage） | 否 | lane 10 |
+| `stage-settings-switch` | 从旧外壳打开设置 → 外观 → 界面布局选「创作流程（预览）」，新外壳出现 | 新外壳 | 否 | You see |
+| `stage-palette` | Ctrl K 输入「灯」，结果里有第 6 章；`after` 按 Esc 关闭 | Ctrl K 结果 | 否 | |
+| `stage-run` | 卡住模型后从章节蓝图写下一章：运行侧页自动打开，顶栏胶囊展开并显示进度；`after` 放行后等工作流完成、新草稿打开 | 运行侧页与胶囊 | 是 | |
+| `stage-library` | 没有打开作品时是书房，没有流程脊 | 书房 | 否 | |
+| `stage-tour` | 30–60 秒的导览：四个阶段、Ctrl K、Ctrl P、关标签、沉浸写作、写一章看运行胶囊与侧页。配 `--video` 录评审视频 | 写完一章 | 是 | Review gate |
+| `chapter-switch` | 打开第 3 章后，从点击第 4 章到它的正文在编辑器里可见，渲染进程内按帧计时，写进 `measured.chapterSwitchMs`。旧外壳点草稿箱里的草稿，新外壳点流程脊里的章 | 第 4 章正文 | 否 | perf |
+
+lane 1 的旧外壳部分：head 与 trunk 各跑一次 `baseline-all`，逐张 `pixel-diff.mjs`，`maxRatio` 小于 0.005。
+
+perf：trunk 旧外壳与 head 新外壳交替各 5 次。
+
+```bash
+node scripts/redesign/drive.mjs --scenario startup-timing --app-root <trunk 工作树> --out <目录>
+node scripts/redesign/drive.mjs --scenario startup-timing --shell stage --out <目录>
+node scripts/redesign/drive.mjs --scenario chapter-switch --app-root <trunk 工作树> --out <目录>
+node scripts/redesign/drive.mjs --scenario chapter-switch --shell stage --out <目录>
+```
+
+新外壳的 `startup-timing` 先启动一次写入外壳偏好再退出，计时的是之后那次冷启动。启动计时以驱动发现「新建作品」可见为准，Playwright 的轮询间隔随等待时间变长，所以晚出现的界面会被多计一些。
+
 ## 改外壳时
 
-类名选择器只出现在 `scripts/redesign/pages/`，按任务域分文件：`shell`（启动、外壳就绪、标题栏、状态栏、左右栏与可收起面板）、`bookshelf`（书房）、`project`（项目树）、`chapter`（单章写作、审稿、修稿合并、定稿）、`run-panel`（运行面板）、`settings`（设置）、`materials`（知识库与角色卡导入）。外壳替换后只改这些页面对象，场景 `scripts/redesign/scenarios.mjs` 不动。
+类名选择器只出现在 `scripts/redesign/pages/`，按任务域分文件：`shell`（启动、外壳就绪、标题栏、状态栏、左右栏与可收起面板）、`bookshelf`（书房）、`project`（项目树）、`chapter`（单章写作、审稿、修稿合并、定稿）、`run-panel`（运行面板）、`settings`（设置，含外观里切换界面布局）、`materials`（知识库与角色卡导入）、`stage`（新外壳：流程脊、章节列表、标签条、Ctrl K 与 Ctrl P、保存状态、沉浸写作）。`shell.waitForShell` 对两种外壳都成立。外壳替换后只改这些页面对象，场景 `scripts/redesign/scenarios.mjs` 不动。
 
 `/.claude/` 在 `.gitignore` 里，提交本文件的改动要用 `git add -f .claude/skills/verify/SKILL.md`（或 `git add -u`）。假模型在 `scripts/redesign/fake-model.mjs`，按提示词特征返回正文、审稿 JSON、修稿正文或角色状态 JSON。

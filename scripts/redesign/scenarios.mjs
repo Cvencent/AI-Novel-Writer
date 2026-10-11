@@ -294,6 +294,48 @@ async function msFromClickToProse(page, target, proseSelector, text, deadlineMs 
   return page.evaluate(() => window.__driveProseLatency)
 }
 
+/**
+ * 外壳文字与它实际落在的底色之间的对比度：名称与正文类文字至少 4.5:1，说明文字至少 3:1。
+ * 底色沿祖先逐层叠加半透明背景求出，与画面上的颜色一致。
+ */
+async function chromeContrastFailures(page) {
+  return page.evaluate(() => {
+    // color-mix 的结果以 color(srgb r g b / a) 给出，通道是 0–1；rgb()/rgba() 是 0–255
+    const parse = value => {
+      const numbers = value.match(/[\d.]+/g).map(Number)
+      const [r, g, b] = value.startsWith('color(') ? numbers.slice(0, 3).map(channel => channel * 255) : numbers.slice(0, 3)
+      return { r, g, b, a: numbers[3] ?? 1 }
+    }
+    const over = (top, bottom) => ({ r: top.r * top.a + bottom.r * (1 - top.a), g: top.g * top.a + bottom.g * (1 - top.a),
+      b: top.b * top.a + bottom.b * (1 - top.a), a: 1 })
+    const backdrop = element => {
+      const layers = []
+      for (let node = element; node; node = node.parentElement) {
+        const color = parse(getComputedStyle(node).backgroundColor)
+        if (color.a > 0) layers.push(color)
+        if (color.a === 1) break
+      }
+      return layers.reverse().reduce((bottom, top) => over(top, bottom), { r: 255, g: 255, b: 255, a: 1 })
+    }
+    const luminance = ({ r, g, b }) => [r, g, b].map(value => value / 255)
+      .map(value => value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4)
+      .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0)
+    const ratio = (a, b) => {
+      const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+      return (high + 0.05) / (low + 0.05)
+    }
+    const checks = [
+      ['.stage-row-name', 4.5], ['.stage-row-label', 4.5], ['.stage-chapter:not([data-phase="todo"]) .stage-chapter-title', 4.5],
+      ['.stage-work-title', 4.5], ['.stage-row-meta', 3], ['.stage-chapter-status', 3], ['.stage-chapter[data-phase="todo"] .stage-chapter-title', 3],
+      ['.stage-crumb', 3], ['.stage-search-hint', 3], ['.stage-saved', 3], ['.stage-spine-label', 3], ['.stage-chapter-no', 3],
+    ]
+    return checks.flatMap(([selector, minimum]) => [...document.querySelectorAll(`[data-shell-presentation="stage"] ${selector}`)].map(element => {
+      const value = ratio(parse(getComputedStyle(element).color), backdrop(element))
+      return { selector, text: element.textContent, ratio: Math.round(value * 100) / 100, minimum }
+    }).filter(result => result.ratio < result.minimum))
+  })
+}
+
 async function assertSpineMatchesSample(page) {
   assert.deepEqual(await stage.stageStates(page), { setup: 'done', architecture: 'done', blueprint: 'done', manuscript: 'active' })
   const rows = await stage.chapterRows(page)
@@ -307,6 +349,7 @@ export const STAGE_SCENARIOS = {
   'stage-open-sample': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
     await assertSpineMatchesSample(page)
     assert.equal(await stage.tabList(page).count(), 0, '只有一个标签时标签条收起')
+    assert.deepEqual(await chromeContrastFailures(page), [], '外壳文字对比度不足')
   } },
   'stage-tabs': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
     await stage.stageButton(page, '设定').click()
