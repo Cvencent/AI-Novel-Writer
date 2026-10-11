@@ -519,11 +519,9 @@ async function main() {
     try { await candidateSection.getByText('第1章候选', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 }) }
     catch (error) {
       const aiButton = page.getByTitle('AI 输出', { exact: true })
-      const agentButton = page.getByTitle('AI Agent 面板', { exact: true })
       const state = { panelCount: await output.count(), panelVisible: await output.isVisible(),
         sectionCount: await candidateSection.count(), sectionVisible: await candidateSection.isVisible(),
         aiButtonCount: await aiButton.count(), aiButtonShadow: await aiButton.first().evaluate(node => node.style.boxShadow),
-        agentButtonShadow: await agentButton.first().evaluate(node => node.style.boxShadow),
         projectTree: (await page.locator('.writer-project-tree').innerText()).slice(0, 300) }
       throw new Error(`Candidate UI did not appear after project open; state=${JSON.stringify(state)}; cause=${String(error)}`)
     }

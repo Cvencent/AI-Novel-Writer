@@ -119,8 +119,9 @@ export const SCENARIOS = {
 }
 
 async function assertRunPanelHiddenThenOpens(page, open) {
-  await shell.showAssistant(page)
-  assert.equal(await runPanel.isOpen(page), false, '切到写作助手后 AI 输出应隐藏')
+  await runPanel.waitUntilOpen(page)
+  await shell.hideRunPanel(page)
+  assert.equal(await runPanel.isOpen(page), false, '收起后 AI 输出应隐藏')
   await open()
   await runPanel.waitUntilOpen(page)
 }
