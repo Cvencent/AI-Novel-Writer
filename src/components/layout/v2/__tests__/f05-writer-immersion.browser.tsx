@@ -134,7 +134,7 @@ it('reveals explicitly opened panels from the bookshelf', async () => {
   expect(host.querySelector('#writer-bottom')?.hasAttribute('hidden')).toBe(false)
   expect(useLayoutStore.getState().sidebarView).toBe('project')
   await act(async () => useLayoutStore.getState().setSidebarView('home'))
-  await act(async () => useLayoutStore.getState().openRightPanel('ai-output'))
+  await act(async () => navigate({ kind: 'run', facet: 'output' }))
   expect(host.querySelector('#writer-assistant')?.hasAttribute('hidden')).toBe(false)
   expect(useLayoutStore.getState()).toMatchObject({ sidebarView: 'project', rightView: 'ai-output', aiPanelOpen: true })
   await act(async () => useLayoutStore.getState().setSidebarView('home'))

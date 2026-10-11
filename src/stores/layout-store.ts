@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import { legacyLayoutPatch } from './navigation/legacy-layout'
 
 /** 左侧活动栏的视图类型 */
 export type SidebarView = 'home' | 'project' | 'knowledge' | 'characters' | 'settings'
@@ -78,8 +77,8 @@ interface LayoutState extends LayoutFields {
   setAIPanelOpen: (open: boolean) => void
   setAIPanelWidth: (width: number) => void
   setRightView: (view: RightView) => void
-  /** 打开右侧面板并切换到指定视图 */
-  openRightPanel: (view: RightView) => void
+  /** 打开右侧面板并切到写作助手；AI 输出经 `navigate` 打开。 */
+  openAgentPanel: () => void
   toggleBottomPanel: () => void
   setBottomTab: (tab: BottomTab) => void
   setBottomPanelHeight: (height: number) => void
@@ -139,23 +138,13 @@ export const useLayoutStore = create<LayoutState>()((set, get) => ({
     }),
   setSidebarWidth: (width) => set({ sidebarWidth: Math.max(200, Math.min(500, width)) }),
 
-  toggleAIPanel: () => {
-    if (get().sidebarView === 'home') {
-      get().openRightPanel(get().rightView)
-      return
-    }
-    set((s) => ({ aiPanelOpen: !s.aiPanelOpen, immersive: false, preImmersivePanels: null }))
-  },
+  toggleAIPanel: () => set((s) => ({ aiPanelOpen: !s.aiPanelOpen, immersive: false, preImmersivePanels: null })),
   setAIPanelOpen: (open) => set({ aiPanelOpen: open, ...(open ? { immersive: false, preImmersivePanels: null } : {}) }),
   setAIPanelWidth: (width) => set({ aiPanelWidth: Math.max(260, Math.min(600, width)) }),
   setRightView: (view) => set({ rightView: view }),
-  openRightPanel: (view) => {
-    if (view === 'ai-output') {
-      set(s => legacyLayoutPatch(s, { kind: 'run', facet: 'output' }))
-      return
-    }
+  openAgentPanel: () => {
     if (get().sidebarView === 'home') get().setSidebarView('project')
-    set({ aiPanelOpen: true, rightView: view, rightPanelRunId: null, immersive: false, preImmersivePanels: null })
+    set({ aiPanelOpen: true, rightView: 'agent', rightPanelRunId: null, immersive: false, preImmersivePanels: null })
   },
 
   toggleBottomPanel: () => set((s) => ({ bottomPanelOpen: !s.bottomPanelOpen, immersive: false, preImmersivePanels: null })),
