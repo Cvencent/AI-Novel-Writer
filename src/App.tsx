@@ -1,4 +1,4 @@
-import { lazy, type ReactNode, Suspense, useEffect } from 'react'
+import { type ReactNode, useEffect } from 'react'
 import { type Theme, useThemeStore } from './stores/theme-store'
 import { useLayoutStore } from './stores/layout-store'
 import { useAppearanceStore } from './stores/appearance-bootstrap'
@@ -27,6 +27,7 @@ import ExportDialog from './components/dialogs/ExportDialog'
 import SettingsModal from './components/settings/SettingsModal'
 import { ANIME_SKIN_URL } from './components/settings/AppearanceSettings'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import StageShell from './components/stage/StageShell'
 import { actionToast } from './components/ui/ActionToast'
 import { UpdateNotifier } from './components/updates/UpdateNotifier'
 import { globalEventBus } from './shared/event-bus'
@@ -36,9 +37,6 @@ import {
 } from './shared/project-session-context'
 import { getAutoNextChapterPrefill, type NextChapterBlueprint } from './services/auto-next-chapter'
 import type { SkinId } from './shared/skin-types'
-
-/** 新外壳单独成块：仍用旧外壳的用户启动时不加载它。 */
-const StageShell = lazy(() => import('./components/stage/StageShell'))
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function resolveSkinBackgroundUrl(skinId: SkinId, customUrl: string | null): string | null {
@@ -290,9 +288,7 @@ export default function App() {
   if (shell === 'stage') {
     return (
       <>
-        <Suspense fallback={null}>
-          <StageShell theme={resolvedTheme} />
-        </Suspense>
+        <StageShell theme={resolvedTheme} />
         <UpdateNotifier />
         {globalDialogs}
       </>
