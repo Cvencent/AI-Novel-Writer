@@ -1,7 +1,7 @@
 import { Check, ChevronDown, CircleDashed, Maximize2, Minimize2, Minus, Search, Square, X } from 'lucide-react'
 import { ipc } from '../../services/ipc-client'
 import { useEditorStore } from '../../stores/editor-store'
-import { countUnsavedEditorItems } from '../../stores/editor-unsaved'
+import { countUnsavedEditorItemsForProject } from '../../stores/editor-unsaved'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useStageStore } from '../../stores/navigation/stage-store'
 import { useProjectStore } from '../../stores/project-store'
@@ -44,7 +44,8 @@ function WindowControls() {
 export default function StageTopBar({ crumbs, library, focus, focusTitle, workMenu, onToggleFocus }: StageTopBarProps) {
   const text = useLocaleStore(s => s.text)
   const projectName = useProjectStore(s => s.currentProject?.name)
-  const dirty = useEditorStore(s => countUnsavedEditorItems(s.tabs, s.draftLedgers) > 0)
+  const projectPath = useProjectStore(s => s.currentProject?.path)
+  const dirty = useEditorStore(s => Boolean(projectPath) && countUnsavedEditorItemsForProject(s.tabs, s.draftLedgers, projectPath!) > 0)
 
   if (focus) {
     return (

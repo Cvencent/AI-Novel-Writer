@@ -5,7 +5,9 @@ import { createRoot, type Root } from 'react-dom/client'
 import '../../../index.css'
 import '../../../styles/paper-ink/index.css'
 import '../stage.css'
-import type { EditorTab } from '../../../stores/editor-store'
+import type { ProjectData } from '../../../shared/ipc-channels'
+import { useEditorStore, type EditorTab } from '../../../stores/editor-store'
+import { useProjectStore } from '../../../stores/project-store'
 import { Button } from '../../ui/Button'
 import { ProgressRing } from '../ProgressRing'
 import StageTabs from '../StageTabs'
@@ -62,6 +64,19 @@ describe('新外壳的外观细节', () => {
     expect(container.querySelector('[aria-label="进入沉浸写作"]')?.className).toContain('pi-btn--icon')
     await act(async () => root!.render(<StageTopBar crumbs={[]} library={false} focus focusTitle={{ chapter: 3, title: '雾钟' }} workMenu={[]} onToggleFocus={() => undefined} />))
     expect(container.querySelector('[aria-label="退出沉浸写作"]')?.className).toContain('pi-btn--secondary')
+  })
+
+  it('顶栏的保存状态只看这部作品：别的作品留着的未保存草稿不算', async () => {
+    const restore = [useEditorStore.getState(), useProjectStore.getState()] as const
+    const here = 'C:\\novels\\here'
+    useProjectStore.setState({ currentProject: { id: 'here', sessionLease: 'l', name: '这里', path: here, novelConfig: {} } as unknown as ProjectData })
+    useEditorStore.setState({ draftLedgers: {}, activeTabId: null, tabs: [tab({ id: 'other', type: 'chapter', name: '别处', projectKey: 'C:\\novels\\elsewhere', dirty: true })] })
+    const container = await mount(<StageTopBar crumbs={[]} library={false} focus={false} focusTitle={{ title: '' }} workMenu={[]} onToggleFocus={() => undefined} />)
+    expect(container.querySelector('[role="status"]')?.textContent).toBe('已保存')
+    await act(async () => useEditorStore.setState(state => ({ tabs: [...state.tabs, tab({ id: 'mine', type: 'chapter', name: '这里', projectKey: here, dirty: true })] })))
+    expect(container.querySelector('[role="status"]')?.textContent).toBe('未保存')
+    useEditorStore.setState(restore[0], true)
+    useProjectStore.setState(restore[1], true)
   })
 
   it('进度环半径按画板取 size / 2 - stroke：流程脊 22 / 2.5 为 8.5，运行胶囊 18 / 2 为 7', async () => {
