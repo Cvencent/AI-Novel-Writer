@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url'
 import { _electron as electron } from 'playwright'
 
 import { startFakeModel } from './fake-model.mjs'
-import { SCENARIOS, SCREENSHOT_SCENARIOS } from './scenarios.mjs'
-import { dismissStartupNotice, firstInteractiveControl, waitForShell } from './pages/shell.mjs'
+import { SCENARIOS } from './scenarios.mjs'
+import { dismissCompletionToasts, dismissStartupNotice, firstInteractiveControl, waitForShell } from './pages/shell.mjs'
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const TIMEOUT = 60_000
@@ -97,7 +97,7 @@ function externalWrites(before) {
 }
 
 /** 以 --user-data-dir 匹配仍存活的 Electron 主进程与子进程。 */
-export function residualProcesses(userData) {
+function residualProcesses(userData) {
   const needle = userData.toLowerCase()
   if (process.platform === 'win32') {
     const script = "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine } | ForEach-Object { \"$($_.ProcessId)`t$($_.CommandLine)\" }"
@@ -121,7 +121,7 @@ async function quit(app) {
   return { forced: !closed }
 }
 
-export async function launch({ roots, appRoot, fakeModelPort, diagnostics }) {
+async function launch({ roots, appRoot, fakeModelPort, diagnostics }) {
   const launchedAt = Date.now()
   const app = await electron.launch({ cwd: appRoot, args: ['.', `--user-data-dir=${roots.userData}`],
     env: isolatedEnvironment(roots), timeout: TIMEOUT })
@@ -132,7 +132,7 @@ export async function launch({ roots, appRoot, fakeModelPort, diagnostics }) {
       const existing = BrowserWindow.getAllWindows()
       existing.forEach(watch)
       electronApp.on('browser-window-created', (_, window) => watch(window))
-      return { windowsAtAttach: existing.length, visibleAtAttach: existing.some(window => window.isVisible()) }
+      return { windowsAtAttach: existing.length }
     })
     if (fakeModelPort) await app.evaluate((_, port) => {
       const originalFetch = globalThis.fetch
@@ -151,27 +151,33 @@ export async function launch({ roots, appRoot, fakeModelPort, diagnostics }) {
     const page = await app.firstWindow({ timeout: TIMEOUT })
     page.on('console', message => diagnostics.push(`[renderer:${message.type()}] ${message.text()}`))
     page.on('pageerror', error => diagnostics.push(`[renderer:pageerror] ${error.stack ?? error.message}`))
+    await firstInteractiveControl(page).waitFor({ state: 'visible', timeout: TIMEOUT })
+    const interactiveAt = Date.now()
+    const { readyToShow } = await app.evaluate(() => globalThis.__driveTiming)
+    const timeOrigin = await page.evaluate(() => performance.timeOrigin)
+    const timing = { ...startup, launchToInteractiveMs: interactiveAt - launchedAt,
+      readyToShowToInteractiveMs: readyToShow === null ? null : interactiveAt - readyToShow,
+      navigationToInteractiveMs: Math.round(interactiveAt - timeOrigin) }
     page.setDefaultTimeout(20_000)
     assert.equal(path.resolve(await app.evaluate(({ app: electronApp }) => electronApp.getPath('userData'))), roots.userData)
     await page.setViewportSize(VIEWPORT)
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await waitForShell(page, TIMEOUT)
     assert.equal((await invoke(page, 'startup:get-state')).state, 'ready')
-    return { app, page, launchedAt, startup }
+    return { app, page, timing }
   } catch (error) { await quit(app); throw error }
 }
 
-export const invoke = (page, channel, ...args) =>
+const invoke = (page, channel, ...args) =>
   page.evaluate(({ channel, args }) => window.aiNovelAPI.invoke(channel, ...args), { channel, args })
 
-const COLOR_THEMES = { light: 'light', dark: 'dark' }
 async function applyTheme(page, theme) {
   await page.waitForFunction(() => localStorage.getItem('ai-novel-writer-appearance') !== null, null, { timeout: TIMEOUT })
   await page.evaluate(colorTheme => {
     const key = 'ai-novel-writer-appearance'
     const current = JSON.parse(localStorage.getItem(key))
     localStorage.setItem(key, JSON.stringify({ ...current, colorTheme, revision: current.revision + 1, origin: 'author' }))
-  }, COLOR_THEMES[theme])
+  }, theme)
   await page.reload()
   await waitForShell(page, TIMEOUT)
 }
@@ -179,11 +185,12 @@ async function applyTheme(page, theme) {
 async function settle(page) {
   await page.evaluate(() => document.fonts.ready)
   await dismissStartupNotice(page)
+  await dismissCompletionToasts(page)
 }
 
-async function shoot(page, file, mask = []) {
+async function shoot(page, file) {
   await settle(page)
-  await page.screenshot({ path: file, animations: 'disabled', caret: 'hide', mask })
+  await page.screenshot({ path: file, animations: 'disabled', caret: 'hide' })
 }
 
 async function writeDiagnostics(page, base, options, diagnostics) {
@@ -204,21 +211,14 @@ async function runScenario(name, options) {
   let session
   try {
     session = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics })
-    if (name === 'startup-timing') {
-      await firstInteractiveControl(session.page).waitFor({ state: 'visible', timeout: TIMEOUT })
-      const interactiveAt = Date.now()
-      const { readyToShow } = await session.app.evaluate(() => globalThis.__driveTiming)
-      const timeOrigin = await session.page.evaluate(() => performance.timeOrigin)
-      Object.assign(result, { startup: session.startup, launchToInteractiveMs: interactiveAt - session.launchedAt,
-        readyToShowToInteractiveMs: readyToShow === null ? null : interactiveAt - readyToShow,
-        navigationToInteractiveMs: Math.round(interactiveAt - timeOrigin) })
-    } else {
+    result.timing = session.timing
+    if (name !== 'startup-timing') {
       await applyTheme(session.page, options.theme)
       result.screenshot = `${base}.png`
       let shot = false
-      const context = { ...session, roots, fake, invoke,
+      const context = { ...session, roots, invoke,
         reload: () => session.page.reload().then(() => waitForShell(session.page, TIMEOUT)),
-        shoot: async (mask = []) => { await shoot(session.page, result.screenshot, mask); shot = true } }
+        shoot: async () => { await shoot(session.page, result.screenshot); shot = true } }
       await SCENARIOS[name].run(context)
       if (!shot) await context.shoot()
     }
@@ -251,7 +251,7 @@ async function main() {
     process.exit(2)
   }
   fs.mkdirSync(options.out, { recursive: true })
-  const names = options.scenario === 'baseline-all' ? SCREENSHOT_SCENARIOS : [options.scenario]
+  const names = options.scenario === 'baseline-all' ? Object.keys(SCENARIOS) : [options.scenario]
   const results = []
   for (const name of names) {
     const result = await runScenario(name, options)

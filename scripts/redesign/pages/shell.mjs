@@ -13,6 +13,20 @@ export async function dismissStartupNotice(page) {
   if (await acknowledge.isVisible()) await acknowledge.click()
 }
 
+/** 工作流完成提示没有角色或类名，只能从「打开查看」找到同卡片的「忽略」。审稿报告里也有「忽略」按钮，不能按名字直接点。 */
+const completionToastIgnore = page =>
+  page.getByRole('button', { name: '打开查看', exact: true }).locator('xpath=following-sibling::button[1]')
+
+export async function waitForCompletionToast(page) {
+  await completionToastIgnore(page).first().waitFor({ state: 'visible', timeout: 5_000 }).catch(() => {})
+}
+
+/** 提示出现与自动消失的时机不固定，留着会让截图不可重复。 */
+export async function dismissCompletionToasts(page) {
+  for (const button of await completionToastIgnore(page).all()) await button.click()
+  await completionToastIgnore(page).last().waitFor({ state: 'detached' })
+}
+
 /** 首个可点击控件：书房的「新建作品」。startup-timing 以它出现为可交互时刻。 */
 export function firstInteractiveControl(page) {
   return page.getByRole('button', { name: '新建作品', exact: true })
