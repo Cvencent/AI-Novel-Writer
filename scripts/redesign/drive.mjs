@@ -209,7 +209,10 @@ async function applyAppearance(page, { theme, shell }) {
   await waitForShell(page, TIMEOUT)
 }
 
-/** 启动计时量的是冷启动，外壳偏好要在计时那次启动之前写好：先启动一次写入，再退出。 */
+/**
+ * 启动计时量的是同一配置目录里的第二次冷启动：先启动一次写好主题（与外壳偏好）再退出，两侧都这样做。
+ * 首次启动还要迁移旧配置、建库，与之后的启动不可比。
+ */
 async function prepareProfile({ roots, appRoot, diagnostics }, appearance) {
   const prepared = await launch({ roots, appRoot, fakeModelPort: null, diagnostics })
   try { await applyAppearance(prepared.page, appearance) } finally { await quit(prepared.app) }
@@ -279,7 +282,7 @@ async function runSession(sessionName, names, options) {
   let launched
   const shell = names.map(name => SCENARIOS[name]?.shell).find(Boolean) ?? options.shell
   try {
-    if (sessionName === 'startup-timing' && shell) await prepareProfile({ roots, appRoot: options.appRoot, diagnostics }, { theme: options.theme, shell })
+    if (sessionName === 'startup-timing') await prepareProfile({ roots, appRoot: options.appRoot, diagnostics }, { theme: options.theme, shell })
     launched = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics })
     shared.timing = launched.timing
     if (sessionName !== 'startup-timing') {

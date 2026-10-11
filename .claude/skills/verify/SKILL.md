@@ -156,16 +156,17 @@ node scripts/redesign/drive.mjs --scenario startup-timing --out <目录>
 
 lane 1 的旧外壳部分：head 与 trunk 各跑一次 `baseline-all`，逐张 `pixel-diff.mjs`，`maxRatio` 小于 0.005。
 
-perf：trunk 旧外壳与 head 新外壳交替各 5 次。
+perf：三组交替，各预热 2 次不计，再各计 5 次：trunk 旧外壳、head 旧外壳、head 新外壳。head 旧外壳对 trunk 旧外壳量的是新外壳模块被 `App.tsx` 静态引入后旧外壳用户付出的启动代价。
 
 ```bash
 node scripts/redesign/drive.mjs --scenario startup-timing --app-root <trunk 工作树> --out <目录>
+node scripts/redesign/drive.mjs --scenario startup-timing --out <目录>
 node scripts/redesign/drive.mjs --scenario startup-timing --shell stage --out <目录>
 node scripts/redesign/drive.mjs --scenario chapter-switch --app-root <trunk 工作树> --out <目录>
 node scripts/redesign/drive.mjs --scenario chapter-switch --shell stage --out <目录>
 ```
 
-新外壳的 `startup-timing` 先启动一次写入外壳偏好再退出，计时的是之后那次冷启动。启动计时以驱动发现「新建作品」可见为准，Playwright 的轮询间隔随等待时间变长，所以晚出现的界面会被多计一些。
+`startup-timing` 三组都先在同一隔离目录启动一次写好主题（新外壳另写外壳偏好）再退出，计时的是之后那次冷启动；首次启动还要迁移旧配置、建库，与之后的启动不可比，所以两侧都不计首次。启动计时以驱动发现「新建作品」可见为准，Playwright 的轮询间隔随等待时间变长，所以晚出现的界面会被多计一些。
 
 ## 改外壳时
 
