@@ -383,6 +383,14 @@ describe('StatGrid、Notice、Lifecycle', () => {
     expect(steps.map((li) => li.getAttribute('aria-current'))).toEqual([null, null, 'step', null])
     expect(getComputedStyle(steps[2]).color).toBe(ACCENT.light)
   })
+
+  it.each(['light', 'dark'] as const)('%s 主题未开始步骤与画板一致：轨道色条、--ink-4 标签', async (theme) => {
+    const container = await mount(<Lifecycle label="第 4 章进度" steps={['写作', '审稿', '修稿', '定稿']} current={2} />, theme)
+    const todo = container.querySelectorAll('li')[3]
+    const expected = { light: ['rgba(23, 23, 26, 0.1)', 'rgb(161, 161, 168)'], dark: ['rgba(255, 255, 255, 0.1)', 'rgb(94, 93, 102)'] }[theme]
+    expect([getComputedStyle(todo.querySelector('.pi-life-bar')!).backgroundColor, getComputedStyle(todo).color]).toEqual(expected)
+    await shot(`rd1-lifecycle-${theme}`)
+  })
 })
 
 describe('InlineConfirm', () => {
