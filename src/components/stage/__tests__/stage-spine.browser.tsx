@@ -65,13 +65,35 @@ describe('四个阶段的状态由项目数据派生', () => {
     expect(setup).toMatchObject({ missing: ['length'], progress: { state: 'active', ratio: 0.75 } })
   })
 
-  it('架构按已生成的节数计进度，蓝图按已规划章数计进度', () => {
+  it('架构按已有内容的节数计进度；蓝图按 ia.md 至少 1 章即完成', () => {
     const stages = deriveStages(facts({ architecture: { premise: true, characters: true }, blueprints: blueprints(3) }))
     expect(stages[0].progress).toEqual({ state: 'done' })
-    expect(stages[1]).toMatchObject({ generated: 2, total: 4, progress: { state: 'active', ratio: 0.5 } })
-    expect(stages[2]).toMatchObject({ planned: 3, total: 12, progress: { state: 'active', ratio: 0.25 } })
+    expect(stages[1]).toMatchObject({ filled: 2, total: 4, progress: { state: 'active', ratio: 0.5 } })
+    expect(stages[2]).toMatchObject({ planned: 3, total: 12, progress: { state: 'done' } })
     expect(stages[3].progress).toEqual({ state: 'todo' })
     expect(landingStage(stages)).toBe('architecture')
+    expect(deriveStages(facts({ blueprints: [] }))[2].progress).toEqual({ state: 'todo' })
+  })
+
+  it('分批规划的作品（100 章规划了 20 章）写到第 5 章时，蓝图已完成，落点是正文', () => {
+    const partial = facts({ config: { ...READY_CONFIG, totalChapters: 100 }, blueprints: blueprints(20),
+      drafts: { 1: [draft(1, 1, 'finalized')], 5: [draft(5, 1, 'draft')] } })
+    const stages = deriveStages(partial)
+    expect(stages[2]).toMatchObject({ planned: 20, total: 100, progress: { state: 'done' } })
+    expect(stages[3]).toMatchObject({ finalized: 1, total: 100, progress: { state: 'active', ratio: 0.01 } })
+    expect(landingStage(stages)).toBe('manuscript')
+    expect(focusChapter(deriveChapters(partial))?.number).toBe(5)
+  })
+
+  it('定稿之后又有更新的未归档草稿（版本历史回退）：按草稿显示、打开这份草稿、不计入定稿；定稿之前的旧草稿不影响', () => {
+    const reverted = facts({ drafts: {
+      1: [draft(1, 3, 'draft'), draft(1, 2, 'finalized'), draft(1, 1, 'draft')],
+      2: [draft(2, 2, 'finalized'), draft(2, 1, 'reviewed')],
+    } })
+    const rows = deriveChapters(reverted)
+    expect([rows[0].phase, rows[0].draft?.version, rows[1].phase, rows[1].draft?.version]).toEqual(['draft', 3, 'final', 2])
+    expect(deriveStages(reverted)[3]).toMatchObject({ finalized: 1 })
+    expect(focusChapter(rows)?.number).toBe(1)
   })
 
   it('开始写作后正文按定稿比例进行中；全部定稿后四步都完成', () => {
@@ -139,6 +161,20 @@ describe('流程脊', () => {
     ])
     expect(chapters[0].querySelector('[role="img"]')?.getAttribute('aria-label')).toBe('定稿')
     expect(chapters.map(row => row.getAttribute('aria-current'))).toEqual([null, null, 'page', ...Array(9).fill(null)])
+  })
+
+  it('蓝图已完成但没规划完时，说明写已规划与规划总章数', async () => {
+    host = document.createElement('div')
+    host.className = 'paper-ink stage-shell'
+    document.body.append(host)
+    root = createRoot(host)
+    const partial = facts({ config: { ...READY_CONFIG, totalChapters: 100 }, blueprints: blueprints(20) })
+    await act(async () => root!.render(
+      <StageSpine stages={deriveStages(partial)} chapters={deriveChapters(partial)} location={null}
+        onStage={() => undefined} onChapter={() => undefined} onResource={() => undefined} onSettings={() => undefined} />,
+    ))
+    const blueprint = host.querySelector('[data-stage="blueprint"]')!
+    expect([blueprint.getAttribute('data-state'), blueprint.querySelector('.stage-row-meta')?.textContent]).toEqual(['done', '20 / 100 章'])
   })
 
   it('不在正文阶段时不展开章节列表', async () => {

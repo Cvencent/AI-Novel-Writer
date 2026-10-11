@@ -1,28 +1,20 @@
+import { toast } from '../../components/ui/Toast'
 import type { DraftMeta } from '../../services/draft-index'
+import { chapterTabName } from '../../shared/chapter-label'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
-import { canonicalResourceUri } from '../../shared/project-paths'
 import { projectSessionContextFromProject, sameProjectSessionContext } from '../../shared/project-session-context'
-import { readDraftBody, useDraftStore } from '../draft-store'
+import { fetchChapterDrafts, useDraftStore } from '../draft-store'
 import { useEditorStore } from '../editor-store'
 import { useLayoutStore } from '../layout-store'
 import { useLocaleStore } from '../locale-store'
 import { openBuiltinEditor } from '../open-builtin-editor'
+import { openDraftTab } from '../open-draft-tab'
 import { useProjectStore } from '../project-store'
+import { chapterWritePrefill } from './legacy-layout'
 import type { NavigationIntent } from './navigation-intents'
 import { openPageTab } from './page-tabs'
 import { deriveChapters, focusChapter } from './stage-progress'
 import { useStageStore } from './stage-store'
-
-type Text = (zh: string, en: string) => string
-
-export function chapterLabel(chapterNumber: number, text: Text): string {
-  return text(`第 ${chapterNumber} 章`, `Chapter ${chapterNumber}`)
-}
-
-export function chapterTabName(chapterNumber: number, title: string, text: Text): string {
-  const label = chapterLabel(chapterNumber, text)
-  return title ? `${label} · ${title}` : label
-}
 
 /** 回到作品：离开书房、退出沉浸、收起搜索。 */
 function enterWork(): void {
@@ -34,57 +26,52 @@ function currentSession(): ProjectSessionContext | null {
   return projectSessionContextFromProject(useProjectStore.getState().currentProject)
 }
 
+/** 草稿 store 已按这次会话完整载入时直接用它；否则单独读这一章，不依赖可能被新一轮 loadAllDrafts 作废的载入。 */
 async function chapterDrafts(chapterNumber: number, session: ProjectSessionContext): Promise<readonly DraftMeta[]> {
   const loaded = useDraftStore.getState()
-  if (!sameProjectSessionContext(loaded.dataProjectSession, session) || !loaded.draftsByChapter[chapterNumber]) {
-    await loaded.loadChapterDrafts(chapterNumber, session.projectPath, session)
-  }
-  return useDraftStore.getState().draftsByChapter[chapterNumber] ?? []
+  if (sameProjectSessionContext(loaded.dataProjectSession, session) && !loaded.loading) return loaded.draftsByChapter[chapterNumber] ?? []
+  return fetchChapterDrafts(chapterNumber, session)
 }
 
+let openChapterRequest = 0
+
 /**
- * 打开一章：已有这一稿的标签就直接切过去；否则读出正文开新标签，与项目树打开草稿走同一条读取路径。
- * 待写的章还没有正文，落到章节蓝图并选中这一章，那里有「写作此章」。
+ * 打开一章：已有这一稿的标签就直接切过去；否则读出正文开新标签。待写的章还没有正文，落到蓝图并选中这一章，那里有「写作此章」。
+ * 连续点几章时只有最后一次生效；读取失败时提示作者，而不是点了没反应。
  */
 export async function openChapter(chapterNumber: number): Promise<void> {
+  const request = ++openChapterRequest
   const session = currentSession()
   if (!session) return
   const text = useLocaleStore.getState().text
-  const drafts = await chapterDrafts(chapterNumber, session)
-  if (!sameProjectSessionContext(session, currentSession())) return
-  const work = useStageStore.getState().work
-  const [row] = deriveChapters({
-    blueprints: (work?.projectKey === session.projectPath ? work.blueprints : []).filter(blueprint => blueprint.chapterNumber === chapterNumber),
-    drafts: { [chapterNumber]: drafts },
-    runningChapters: new Set(),
-  })
-  const draft = row?.draft
-  if (!draft) {
-    openBuiltinEditor('chapter-card-editor', text('章节蓝图', 'Chapter blueprint'), 'chapter-card', undefined, chapterNumber)
-    return
+  const stillWanted = () => request === openChapterRequest && sameProjectSessionContext(session, currentSession())
+  try {
+    const drafts = await chapterDrafts(chapterNumber, session)
+    if (!stillWanted()) return
+    const work = useStageStore.getState().work
+    const [row] = deriveChapters({
+      blueprints: (work && sameProjectSessionContext(work.session, session) ? work.blueprints : [])
+        .filter(blueprint => blueprint.chapterNumber === chapterNumber),
+      drafts: { [chapterNumber]: drafts },
+      runningChapters: new Set(),
+    })
+    const draft = row?.draft
+    if (!draft) {
+      openBuiltinEditor('chapter-card-editor', text('章节蓝图', 'Chapter blueprint'), 'chapter-card', undefined, chapterNumber)
+      return
+    }
+    const editor = useEditorStore.getState()
+    const open = editor.tabs.find(tab => tab.type === 'chapter' && tab.projectKey === session.projectPath && tab.filePath === draft.filePath)
+    if (open) {
+      editor.setActiveTab(open.id)
+      return
+    }
+    await openDraftTab(draft, chapterTabName(chapterNumber, row.title, text), session, stillWanted)
+  } catch (error) {
+    if (!stillWanted()) return
+    const reason = error instanceof Error ? error.message : String(error)
+    toast.error(text(`打开第 ${chapterNumber} 章失败：${reason}`, `Could not open chapter ${chapterNumber}: ${reason}`))
   }
-  const filePath = canonicalResourceUri(draft.filePath) ?? draft.filePath
-  const editor = useEditorStore.getState()
-  const open = editor.tabs.find(tab => tab.type === 'chapter' && tab.projectKey === session.projectPath && tab.filePath === filePath)
-  if (open) {
-    editor.setActiveTab(open.id)
-    return
-  }
-  const content = await readDraftBody(filePath, session.projectPath, session)
-  if (!sameProjectSessionContext(session, currentSession())) return
-  useEditorStore.getState().openFile({
-    id: filePath,
-    name: chapterTabName(chapterNumber, row.title, text),
-    type: 'chapter',
-    filePath,
-    content,
-    savedContent: content,
-    draftId: draft.id,
-    chapterNumber,
-    draftStatus: draft.status,
-    projectKey: session.projectPath,
-    projectSessionLease: session.leaseId,
-  })
 }
 
 function openKnowledge(): void {
@@ -98,7 +85,7 @@ function openKnowledge(): void {
 async function openManuscript(): Promise<void> {
   const session = currentSession()
   const work = useStageStore.getState().work
-  if (!session || work?.projectKey !== session.projectPath) {
+  if (!session || !work || !sameProjectSessionContext(work.session, session)) {
     openPageTab('blueprint')
     return
   }
@@ -119,7 +106,7 @@ export function stageNavigate(intent: NavigationIntent): void {
     return
   }
   if (intent.kind === 'chapter' && intent.write) {
-    useLayoutStore.setState({ chapterCreationOpen: true, chapterCreationPrefill: { ...intent.write, chapterNumber: intent.chapterNumber } })
+    useLayoutStore.setState(chapterWritePrefill(intent.chapterNumber, intent.write))
     return
   }
   enterWork()

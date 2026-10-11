@@ -95,7 +95,7 @@ function isCurrentProjectSession(projectSession: ProjectSessionContext): boolean
 }
 
 /** 章节蓝图编辑器 — 读写 directory.json */
-export default function ChapterCardEditor(props: { projectKey: string; initialChapterNumber?: number; tabId?: string }) {
+export default function ChapterCardEditor(props: { projectKey: string; initialChapterNumber?: number; selectRequest?: number; tabId?: string }) {
   const recoveryTab = useEditorStore(state => state.tabs.find(tab => tab.id === props.tabId && tab.planningRecovery))
   const currentLease = useProjectStore(state => state.currentProject?.sessionLease)
   return recoveryTab ? <BlueprintRecoveryEditor key={`${recoveryTab.id}:${currentLease}`} tab={recoveryTab} projectKey={props.projectKey} /> : <ChapterCardEditorSession {...props} />
@@ -219,9 +219,12 @@ function BlueprintRecoveryEditor({ tab, projectKey }: { tab: EditorTab; projectK
 function ChapterCardEditorSession({
   projectKey,
   initialChapterNumber,
+  selectRequest,
 }: {
   projectKey: string
   initialChapterNumber?: number
+  /** 再次请求选中同一章时递增，选中才会重新生效。 */
+  selectRequest?: number
 }) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
@@ -283,7 +286,7 @@ function ChapterCardEditorSession({
       blueprint => blueprint.chapterNumber === initialChapterNumber,
     )
     if (targetIndex >= 0) setSelectedIdx(targetIndex)
-  }, [initialChapterNumber, loading])
+  }, [initialChapterNumber, selectRequest, loading])
 
   const roleLabel = (role: string) => {
     const labels = getChapterRoleLabels(role)

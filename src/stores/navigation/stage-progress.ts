@@ -11,7 +11,11 @@ export const STAGE_ORDER: readonly WorkStage[] = ['setup', 'architecture', 'blue
 export type SetupField = 'coreOutline' | 'genre' | 'length' | 'targetAudience'
 export const SETUP_FIELDS: readonly SetupField[] = ['coreOutline', 'genre', 'length', 'targetAudience']
 
-/** 架构的四节：故事前提、角色名单、世界观、情节大纲。 */
+/**
+ * 架构的四节：故事前提、角色名单、世界观、情节大纲。
+ * ia.md 写的是「4 节均已确认」，但产品里各节没有确认状态（ArchitectureConfirmDialog 只是生成前勾选步骤），
+ * 所以取旧外壳侧栏与架构页同一个判定：这一节已有内容（checkArchStatus）。
+ */
 export const ARCHITECTURE_SECTIONS = ['premise', 'characters', 'worldbuilding', 'synopsis'] as const
 
 /** 完成为实心勾选圆，进行中为按比例填充的进度环，未开始为虚线圆。 */
@@ -22,7 +26,8 @@ export type StageProgress =
 
 export type StageStatus =
   | { stage: 'setup'; progress: StageProgress; missing: readonly SetupField[] }
-  | { stage: 'architecture'; progress: StageProgress; generated: number; total: number }
+  | { stage: 'architecture'; progress: StageProgress; filled: number; total: number }
+  /** total 是设定里的规划章数；至少 1 章蓝图即完成，planned / total 只作进度说明。 */
   | { stage: 'blueprint'; progress: StageProgress; planned: number; total: number }
   | { stage: 'manuscript'; progress: StageProgress; finalized: number; total: number }
 
@@ -35,7 +40,7 @@ export interface ChapterRow {
   phase: ChapterPhase
   /** 有工作流正在写这一章。 */
   running: boolean
-  /** 打开这一章时载入的稿：定稿章取定稿，其余取最新的未归档草稿；待写章为空。 */
+  /** 打开这一章时载入的稿：有比定稿更新的未归档草稿时取它，否则取定稿，再否则取最新的未归档草稿；待写章为空。 */
   draft: DraftMeta | null
 }
 
@@ -62,20 +67,23 @@ export function missingSetup(config: WorkFacts['config']): SetupField[] {
     : blank(config[field]))
 }
 
-/** 四个阶段的状态，顺序固定为设定、架构、蓝图、正文。 */
-export function deriveStages(facts: WorkFacts): StageStatus[] {
+/**
+ * 四个阶段的状态，顺序固定为设定、架构、蓝图、正文。完成判定按 ia.md：设定必填项齐全，架构四节都有内容，
+ * 蓝图至少 1 章（分批规划的作品不会因为没规划完就一直停在蓝图），正文按章统计。
+ * 定稿章数与章节列表同源：定稿后又有更新草稿的章按草稿算，不计入定稿。
+ */
+export function deriveStages(facts: WorkFacts, chapters: readonly ChapterRow[] = deriveChapters(facts)): StageStatus[] {
   const missing = missingSetup(facts.config)
-  const generated = ARCHITECTURE_SECTIONS.filter(section => facts.architecture[section]).length
+  const filled = ARCHITECTURE_SECTIONS.filter(section => facts.architecture[section]).length
   const total = Math.max(0, facts.config.totalChapters || 0)
   const planned = facts.blueprints.length
-  const chapterDrafts = Object.values(facts.drafts)
-  const finalized = chapterDrafts.filter(drafts => drafts.some(draft => draft.status === 'finalized')).length
-  const started = chapterDrafts.some(drafts => drafts.some(draft => draft.status !== 'archived'))
+  const finalized = chapters.filter(row => row.phase === 'final').length
+  const started = chapters.some(row => row.phase !== 'todo')
   return [
     { stage: 'setup', missing,
       progress: missing.length === 0 ? DONE : { state: 'active', ratio: (SETUP_FIELDS.length - missing.length) / SETUP_FIELDS.length } },
-    { stage: 'architecture', generated, total: ARCHITECTURE_SECTIONS.length, progress: fraction(generated, ARCHITECTURE_SECTIONS.length) },
-    { stage: 'blueprint', planned, total, progress: fraction(planned, total) },
+    { stage: 'architecture', filled, total: ARCHITECTURE_SECTIONS.length, progress: fraction(filled, ARCHITECTURE_SECTIONS.length) },
+    { stage: 'blueprint', planned, total, progress: planned > 0 ? DONE : TODO },
     { stage: 'manuscript', finalized, total,
       progress: total > 0 && finalized >= total ? DONE : started ? { state: 'active', ratio: total > 0 ? finalized / total : 0 } : TODO },
   ]
@@ -91,12 +99,14 @@ export function deriveChapters(facts: Pick<WorkFacts, 'blueprints' | 'drafts' | 
     const drafts = facts.drafts[number] ?? []
     const final = drafts.find(draft => draft.status === 'finalized') ?? null
     const latest = drafts.filter(draft => IN_PROGRESS[draft.status]).sort((a, b) => b.version - a.version)[0] ?? null
+    // 版本历史「回退到此版本」会在定稿章上新建草稿，作者接着改的是它
+    const working = latest && (!final || latest.version > final.version) ? latest : null
     return {
       number,
       title: titles.get(number) || final?.chapterTitle || '',
-      phase: final ? 'final' : latest ? IN_PROGRESS[latest.status]! : 'todo',
+      phase: working ? IN_PROGRESS[working.status]! : final ? 'final' : 'todo',
       running: facts.runningChapters.has(number),
-      draft: final ?? latest,
+      draft: working ?? final,
     }
   })
 }

@@ -256,6 +256,7 @@ export default function EditorTabContent({ activeTab, currentProject }: { active
           tabId={activeTab.id}
           projectKey={activeTab.projectKey}
           initialChapterNumber={activeTab.chapterNumber}
+          selectRequest={activeTab.chapterSelectRequest}
         />
       )}
       {activeTab?.type === 'world-building' && activeTab.projectKey && (

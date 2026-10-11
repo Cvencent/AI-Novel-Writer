@@ -75,6 +75,8 @@ export interface EditorTab {
   narrativeThreadView?: 'plot-tree' | 'plans'
   /** 重复打开同一叙事线 Tab 时递增，确保本次视图请求生效。 */
   narrativeThreadViewRequest?: number
+  /** 章节蓝图页按 chapterNumber 选中一章的请求次数；只有带章号打开时才递增，重复打开同一章也会重新选中。 */
+  chapterSelectRequest?: number
   planningRecovery?: GenerationRecoveryContext
   planningSaveOperationId?: string
   planningSaveEnd?: string
@@ -311,6 +313,9 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
                 ...(tabWithDraftState.chapterNumber === undefined
                   ? {}
                   : { chapterNumber: tabWithDraftState.chapterNumber }),
+                ...(tabWithDraftState.type === 'chapter-card' && tabWithDraftState.chapterNumber !== undefined
+                  ? { chapterSelectRequest: (t.chapterSelectRequest ?? 0) + 1 }
+                  : {}),
                 ...(tabWithDraftState.draftStatus === undefined
                   ? {}
                   : { draftStatus: tabWithDraftState.draftStatus }),
@@ -333,7 +338,9 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
           tabWithDraftState.type === 'narrative-thread'
             && tabWithDraftState.narrativeThreadView !== undefined
             ? { ...tabWithDraftState, narrativeThreadViewRequest: 1 }
-            : tabWithDraftState,
+            : tabWithDraftState.type === 'chapter-card' && tabWithDraftState.chapterNumber !== undefined
+              ? { ...tabWithDraftState, chapterSelectRequest: 1 }
+              : tabWithDraftState,
         ],
         activeTabId: tabWithDraftState.id,
       }))

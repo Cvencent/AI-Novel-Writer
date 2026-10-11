@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { ProjectSessionContext } from '../../shared/ipc-channels'
 import type { RunPaneFacet } from './navigation-intents'
 
 /** 内容区右侧的按需侧页。RD-3 只有运行侧页；审稿、版本对比等侧页由后续 PR 加入。 */
@@ -9,8 +10,9 @@ export type StagePalette = 'commands' | 'chapters'
 
 /** 流程脊从项目数据派生状态时用到、而 project-store 与 draft-store 里没有的两项。 */
 export interface StageWork {
-  projectKey: string
-  /** 故事前提、角色名单、世界观、情节大纲是否已生成。 */
+  /** 这份数据属于哪次打开；同一路径重新打开是新的会话，旧数据不能当新的用。 */
+  session: ProjectSessionContext
+  /** 故事前提、角色名单、世界观、情节大纲是否已有内容（与旧外壳侧栏同一判定）。 */
   architecture: Readonly<Record<string, boolean>>
   blueprints: readonly { chapterNumber: number; title: string }[]
 }

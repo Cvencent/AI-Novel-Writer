@@ -17,12 +17,12 @@ function stageMeta(status: StageStatus, text: Text): string {
     case 'setup':
       return status.missing.length === 0 ? text('完成', 'Done') : text(`还差 ${status.missing.length} 项`, `${status.missing.length} left`)
     case 'architecture':
-      return todo ? text('前提、角色、世界观、大纲', 'Premise, cast, world, outline') : `${status.generated} / ${status.total}`
+      return todo ? text('前提、角色、世界观、大纲', 'Premise, cast, world, outline') : `${status.filled} / ${status.total}`
     case 'blueprint':
       if (todo) return text('逐章规划', 'Plan each chapter')
-      return status.progress.state === 'done'
-        ? text(`${status.planned} 章`, `${status.planned} chapters`)
-        : text(`${status.planned} / ${status.total} 章`, `${status.planned} / ${status.total} chapters`)
+      return status.total > status.planned
+        ? text(`${status.planned} / ${status.total} 章`, `${status.planned} / ${status.total} chapters`)
+        : text(`${status.planned} 章`, `${status.planned} chapters`)
     case 'manuscript':
       return todo ? text('写作、审稿、修稿、定稿', 'Write, review, revise, finalize') : text(`${status.finalized} / ${status.total} 定稿`, `${status.finalized} / ${status.total} final`)
   }

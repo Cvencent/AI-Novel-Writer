@@ -13,45 +13,59 @@ import {
 import { useStageStore } from '../../stores/navigation/stage-store'
 import { navigate } from '../../stores/navigation/navigation-intents'
 import { useProjectStore } from '../../stores/project-store'
-import { useWorkflowStore } from '../../stores/workflow-store'
+import { useWorkflowStore, type WorkflowRun } from '../../stores/workflow-store'
+import { shouldRefreshBlueprints } from '../editor/blueprint-refresh'
 import { captureProjectSession, isProjectSessionCurrent } from '../project-session-gate'
 import { toast } from '../ui/Toast'
 
 let refreshSequence = 0
 
-/** 读一次流程脊需要而 project-store、draft-store 里没有的数据：架构四节是否已生成、蓝图章号与标题；草稿顺带刷新。 */
+/**
+ * 读一次流程脊需要而 project-store、draft-store 里没有的数据：架构四节是否已有内容、蓝图章号与标题；草稿顺带刷新。
+ * 守卫与项目树的刷新相同：只认最后一次请求，项目会话或会话代数变了就丢弃结果。
+ */
 export async function refreshStageWork(text: (zh: string, en: string) => string): Promise<void> {
-  const session = captureProjectSession(useProjectStore.getState().currentProject)
+  const { currentProject, projectSessionEpoch } = useProjectStore.getState()
+  const session = captureProjectSession(currentProject)
   const request = ++refreshSequence
   if (!session) {
     useStageStore.setState({ work: null })
     return
   }
+  const current = () => request === refreshSequence && isProjectSessionCurrent(session)
+    && useProjectStore.getState().projectSessionEpoch === projectSessionEpoch
   try {
     const [architecture, blueprints] = await Promise.all([
       checkArchStatus(session),
       ipc.invokeWithProjectSession(session, 'db:blueprint-get-all', session.projectPath),
       useDraftStore.getState().loadAllDrafts(session.projectPath, session),
     ])
-    if (request !== refreshSequence || !isProjectSessionCurrent(session)) return
+    if (!current()) return
     useStageStore.setState({ work: {
-      projectKey: session.projectPath,
+      session,
       architecture,
       blueprints: blueprints.map(({ chapterNumber, title }) => ({ chapterNumber, title })),
     } })
   } catch (error) {
-    if (request === refreshSequence && isProjectSessionCurrent(session)) {
-      toast.error(text(`项目资源刷新失败：${String(error)}`, `Could not refresh project resources: ${String(error)}`))
-    }
+    if (current()) toast.error(text(`项目资源刷新失败：${String(error)}`, `Could not refresh project resources: ${String(error)}`))
   }
 }
 
-/** 与项目树相同的刷新时机：换项目、架构或资源变化、工作流步骤推进；连续触发合并成一次。 */
+/** 与项目树同一个键：任一运行的状态或步骤状态变化都要重新读。 */
+function workflowRefreshKey(runs: readonly WorkflowRun[]): string {
+  return runs.map(run => `${run.id}:${run.status}|${run.steps.map(step => step.status).join(',')}`).join(';')
+}
+
+/**
+ * 刷新时机与过滤和项目树相同：换项目或会话代数变化时立即刷新；工作流步骤推进、架构更新、蓝图资源变化时合并成一次。
+ * 项目身份与工作流共用一个 effect，打开作品时只刷新一次。
+ */
 export function useStageWorkRefresh(): void {
   const projectPath = useProjectStore(s => s.currentProject?.path)
   const epoch = useProjectStore(s => s.projectSessionEpoch)
-  const workflowKey = useWorkflowStore(s => s.activeRuns
-    .map(run => `${run.id}:${run.status}|${run.steps.map(step => step.status).join(',')}`).join(';'))
+  const workflowKey = useWorkflowStore(s => workflowRefreshKey(s.activeRuns))
+  const identity = projectPath === undefined ? null : `${projectPath}\n${epoch}`
+  const refreshedIdentity = useRef<string | null | undefined>(undefined)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const schedule = useRef(() => {
@@ -63,19 +77,23 @@ export function useStageWorkRefresh(): void {
   })
 
   useEffect(() => {
-    void refreshStageWork(useLocaleStore.getState().text)
-  }, [projectPath, epoch])
-
-  useEffect(() => {
-    if (projectPath) schedule.current()
-  }, [workflowKey, projectPath])
-
-  useEffect(() => {
-    const onChange = ({ projectSession }: { projectSession: Parameters<typeof isProjectSessionCurrent>[0] }) => {
-      if (isProjectSessionCurrent(projectSession)) schedule.current()
+    if (refreshedIdentity.current !== identity) {
+      refreshedIdentity.current = identity
+      if (timer.current) clearTimeout(timer.current)
+      timer.current = null
+      void refreshStageWork(useLocaleStore.getState().text)
+      return
     }
-    const offArch = globalEventBus.on('ARCH_FILE_UPDATED', onChange)
-    const offResource = globalEventBus.on('REFRESH_RESOURCE', onChange)
+    if (identity !== null) schedule.current()
+  }, [identity, workflowKey])
+
+  useEffect(() => {
+    const offArch = globalEventBus.on('ARCH_FILE_UPDATED', ({ projectSession }) => {
+      if (isProjectSessionCurrent(projectSession)) schedule.current()
+    })
+    const offResource = globalEventBus.on('REFRESH_RESOURCE', ({ projectSession, resources }) => {
+      if (isProjectSessionCurrent(projectSession) && shouldRefreshBlueprints(resources)) schedule.current()
+    })
     return () => {
       offArch()
       offResource()
@@ -88,8 +106,8 @@ export interface StageView {
   stages: StageStatus[]
   chapters: ChapterRow[]
   location: StageLocation | null
-  /** 流程脊数据已按当前项目载入。 */
-  ready: boolean
+  /** 架构、蓝图与草稿都已按当前项目会话载入，且草稿不在重新载入中；落点只在此时计算。 */
+  settled: boolean
 }
 
 export function useStageView(): StageView {
@@ -97,37 +115,40 @@ export function useStageView(): StageView {
   const work = useStageStore(s => s.work)
   const draftsByChapter = useDraftStore(s => s.draftsByChapter)
   const draftSession = useDraftStore(s => s.dataProjectSession)
+  const draftsLoading = useDraftStore(s => s.loading)
   const activeRuns = useWorkflowStore(s => s.activeRuns)
   const activeTab = useEditorStore(s => s.tabs.find(tab => tab.id === s.activeTabId))
   const session = captureProjectSession(project)
 
-  const ready = Boolean(project && work?.projectKey === project.path)
+  const currentWork = session && work && sameProjectSessionContext(work.session, session) ? work : null
   const drafts = session && sameProjectSessionContext(draftSession, session) ? draftsByChapter : null
   const running = useMemo(() => runningChapters(project
     ? activeRuns.filter(run => sameProjectPathKey(run.projectPath, project.path))
     : []), [activeRuns, project])
 
-  const stages = useMemo(() => project && ready && work
-    ? deriveStages({ config: project.novelConfig, architecture: work.architecture, blueprints: work.blueprints, drafts: drafts ?? {}, runningChapters: running })
-    : [], [project, ready, work, drafts, running])
-  const chapters = useMemo(() => ready && work
-    ? deriveChapters({ blueprints: work.blueprints, drafts: drafts ?? {}, runningChapters: running })
-    : [], [ready, work, drafts, running])
+  const chapters = useMemo(() => currentWork && drafts
+    ? deriveChapters({ blueprints: currentWork.blueprints, drafts, runningChapters: running })
+    : [], [currentWork, drafts, running])
+  const stages = useMemo(() => project && currentWork && drafts
+    ? deriveStages({ config: project.novelConfig, architecture: currentWork.architecture, blueprints: currentWork.blueprints, drafts, runningChapters: running }, chapters)
+    : [], [project, currentWork, drafts, running, chapters])
   const location = project && activeTab?.projectKey === project.path ? locate(activeTab) : null
-  return { stages, chapters, location, ready }
+  return { stages, chapters, location, settled: Boolean(currentWork && drafts && !draftsLoading) }
 }
 
 /**
  * 打开作品时把内容区放到下一步：设定没填完就停在设定，否则等流程脊数据到了再落到第一个未完成的阶段。
- * 这部作品已有打开的标签时保持原样（例如从旧外壳切过来）。
+ * 每次打开（项目会话）只落一次；这次打开已有标签时保持原样（例如从旧外壳切过来）。
  */
 export function useLandingPage(view: StageView): void {
   const project = useProjectStore(s => s.currentProject)
   const landed = useRef<string | null>(null)
   useEffect(() => {
-    const key = project?.path
-    if (!project || !key || landed.current === key) return
-    if (useEditorStore.getState().tabs.some(tab => tab.projectKey === key)) {
+    const session = captureProjectSession(project)
+    if (!project || !session) return
+    const key = `${session.projectId}\n${session.leaseId}`
+    if (landed.current === key) return
+    if (useEditorStore.getState().tabs.some(tab => tab.projectKey === session.projectPath)) {
       landed.current = key
       return
     }
@@ -136,8 +157,8 @@ export function useLandingPage(view: StageView): void {
       navigate({ kind: 'stage', stage: 'setup' })
       return
     }
-    if (!view.ready) return
+    if (!view.settled) return
     landed.current = key
     navigate({ kind: 'stage', stage: landingStage(view.stages) })
-  }, [project, view.ready, view.stages])
+  }, [project, view.settled, view.stages])
 }
