@@ -108,7 +108,7 @@ node scripts/redesign/drive.mjs --scenario startup-timing --out <目录>
 
 ## 不进 baseline-all 的场景
 
-`scenarios.mjs` 的 `EXTRA_SCENARIOS` 只能单跑，不进 `baseline-all`。`run` 的返回值写进结果的 `measured`。需要卡住模型调用时，场景从上下文的 `fake.gate` 调 `hold()`，在 `after` 里 `release()`。
+`scenarios.mjs` 的 `EXTRA_SCENARIOS` 只能单跑，不进 `baseline-all`。`run` 的返回值写进结果的 `measured`。需要卡住模型调用时，场景从上下文的 `fake.gate` 调 `hold()`，在 `after` 里 `release()`。`hold()` 只卡对话请求；只走嵌入的步骤（参考文本入库）用 `hold({ embeddings: true })` 连嵌入一起卡。`fake.gate.waiting` 是正卡在门上的请求数，截图前等它大于 0，画面才停在确定的那一步。
 
 | 名称 | 检查 | 单跑时截图停在 | 用夹具模型 |
 |---|---|---|---|
@@ -120,7 +120,7 @@ node scripts/redesign/drive.mjs --scenario startup-timing --out <目录>
 | `nav-kb-import` | 关掉底部面板后在「小说」视图导入创作资料并确认发送，断言底部面板打开且停在「任务」 | 知识库页与任务面板 | 是 |
 | `nav-card-import` | 关掉底部面板后在「角色」视图粘贴角色卡并确认发送，断言底部面板打开且停在「任务」 | 角色页与任务面板 | 是 |
 | `nav-batch` | 关掉底部面板后从章节蓝图启动 1 章批量创作，断言底部面板打开且停在「任务」 | 批量创作运行中 | 是 |
-| `nav-home-import` | 回到首页，点「小说拆解」把参考小说导入当前作品，卡住模型，断言离开首页、项目树与 AI 输出出现 | 项目视图与运行中的 AI 输出 | 是 |
+| `nav-home-import` | 回到首页，点「小说拆解」把参考小说导入当前作品，连嵌入一起卡住模型，断言离开首页、项目树与 AI 输出出现 | 项目树刷新完成，第 1 步「导入参考文本与构建知识库」卡在第一个嵌入请求上 | 是 |
 | `settings-appearance` | 旧外壳打开设置并切到「外观」。head 比 trunk 多「界面布局」一组，两边截图不同是预期 | 设置的外观分区 | 否 |
 | `nav-immersive-twice` | 关掉底部面板后两次切换沉浸写作，断言三块面板恢复到切换前 | 恢复后的工作台 | 否 |
 

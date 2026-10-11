@@ -204,11 +204,13 @@ export const EXTRA_SCENARIOS = {
     await shell.shelf(page).waitFor({ state: 'visible' })
     assert.equal(await project.tree(page).isVisible(), false, '首页不显示项目树')
     assert.equal(await runPanel.isOpen(page), false, '首页不显示 AI 输出')
-    fake.gate.hold()
+    fake.gate.hold({ embeddings: true })
     await materials.importReferenceNovelIntoCurrentProject(page, 2)
     await project.tree(page).waitFor({ state: 'visible' })
     await runPanel.waitUntilOpen(page)
     assert.equal(await shell.shelf(page).isVisible(), false, '启动导入后应离开首页')
+    await project.waitForTreeRefreshed(page, SAMPLE.blueprints.length)
+    await untilGateHolds(fake.gate)
   }, after: async ({ page, fake }) => {
     fake.gate.release()
     await runPanel.waitForStatusCapsuleGone(page)
@@ -229,6 +231,15 @@ export const EXTRA_SCENARIOS = {
 }
 
 const firstLine = text => text.split('\n')[0].slice(0, 16)
+
+/** 等到有请求卡在假模型的门上：截图停在运行卡住的那一步，而不是它前后某个随机时刻。 */
+async function untilGateHolds(gate, timeoutMs = 15_000) {
+  const deadline = Date.now() + timeoutMs
+  while (gate.waiting === 0) {
+    assert.ok(Date.now() < deadline, `${timeoutMs} ms 内没有请求卡在假模型的门上`)
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+}
 
 /**
  * 用公开 IPC 预置新外壳示例作品：12 章蓝图，1、2 章定稿，3 章已审稿，4 章草稿；架构四节齐全。
