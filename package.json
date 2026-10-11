@@ -20,6 +20,7 @@
     "test": "vitest run",
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "test:renderer-surface:e2e": "node scripts/renderer-surface-e2e.mjs",
+    "verify:drive": "node scripts/redesign/drive.mjs",
     "build": "tsc && vite build",
     "build:win": "pnpm run release:win:verify",
     "build:win:artifacts": "node scripts/require-release-gate.mjs && pnpm run rebuild:electron && tsc && vite build && electron-builder --win --x64 --publish never",
