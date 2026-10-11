@@ -13,7 +13,7 @@ export type RightView = 'agent' | 'ai-output'
 export type LeftRailItem = SidebarView | 'blueprint' | 'world' | 'plot-tree' | BottomTab
 
 /** 设置弹窗分类 */
-export type SettingsSection = 'llm' | 'embedding' | 'proxy' | 'editor' | 'prompts' | 'skills' | 'backup' | 'about'
+export type SettingsSection = 'appearance' | 'llm' | 'embedding' | 'proxy' | 'editor' | 'prompts' | 'skills' | 'backup' | 'about'
 
 /** 写作此章时预填到章节创作弹窗的参数，章号由 chapter 意图给出。 */
 export type ChapterWritePrefill = {
@@ -55,7 +55,7 @@ export interface LayoutFields {
   // ===== 全局弹窗状态（替代 window.dispatchEvent 事件总线）=====
   /** 设置弹窗是否打开 */
   settingsOpen: boolean
-  /** 设置弹窗打开时默认定位的分类 */
+  /** 设置弹窗当前的分类：打开时由入口指定，作者点左侧分类时更新；切换外壳重挂弹窗后仍停在这里。 */
   settingsSection: SettingsSection
   /** 新建项目对话框是否打开 */
   newProjectOpen: boolean
