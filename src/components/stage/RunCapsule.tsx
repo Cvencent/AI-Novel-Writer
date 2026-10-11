@@ -71,7 +71,7 @@ export default function RunCapsule() {
   return (
     <button type="button" className="stage-capsule" data-tone={waiting ? 'warn' : undefined} aria-expanded={sheetOpen} onClick={() => toggle(run.id)}>
       <ProgressRing size={18} stroke={2.5} ratio={percent / 100} />
-      <span className="stage-capsule-label">{waiting ? text(`${run.title} · 等你确认`, `${run.title} · needs you`) : step ? `${run.title} · ${step.name}` : run.title}</span>
+      <span className="stage-capsule-label">{waiting ? text(`${run.title} · 等你确认`, `${run.title} · needs you`) : step && !run.title.includes(step.name) ? `${run.title} · ${step.name}` : run.title}</span>
       <b className="stage-capsule-value">{percent}%</b>
     </button>
   )

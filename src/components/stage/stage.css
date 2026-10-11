@@ -270,6 +270,12 @@
   color: var(--danger-ink);
 }
 
+.stage-focus-no {
+  flex: none;
+  font: italic 18px/1 var(--font-num);
+  color: var(--accent);
+}
+
 .stage-focus-title {
   min-width: 0;
   overflow: hidden;
@@ -307,7 +313,7 @@
 }
 
 .stage-spine {
-  width: 252px;
+  width: 276px;
   flex: none;
   min-height: 0;
   display: flex;
@@ -365,7 +371,7 @@
 }
 
 .stage-row-name {
-  font: 500 14.5px/1.45 var(--font-display);
+  font: 500 14.5px/1.55 var(--font-display);
 }
 
 .stage-row-meta {
@@ -928,4 +934,34 @@
   --color-focus-ring: var(--accent-line);
   --color-badge-bg: var(--accent-soft);
   --color-badge-text: var(--accent);
+}
+
+/* 旧外壳的 --writer-* 在根上已按旧配色算好，这里按上面改过的 --color-* 重新声明一遍，旧面板才会跟着换色 */
+.stage-shell :where(.stage-content, .stage-library, .stage-sheet-slot) {
+  --writer-surface-project-tree: var(--color-sidebar);
+  --writer-surface-ai-panel: var(--color-panel);
+  --writer-surface-task-table: var(--color-panel);
+  --writer-surface-shell: var(--color-bg);
+  --writer-surface-card: var(--color-raised);
+  --writer-text-primary: var(--color-text);
+  --writer-text-muted: var(--color-text-muted);
+  --writer-panel-border: var(--color-border);
+  --writer-task-border: var(--color-border);
+  --writer-card-border: var(--color-border);
+  --writer-input-surface: var(--color-raised);
+  --writer-input-border: var(--color-border);
+  --writer-icon-muted: var(--color-text-muted);
+  --writer-item-hover: var(--color-hover);
+  --writer-item-active: var(--color-active);
+  --writer-item-indicator: var(--color-accent);
+  --writer-task-header: var(--color-hover);
+  --writer-task-row-border: var(--color-border);
+  --writer-primary-surface: var(--color-accent);
+}
+
+.stage-shell .stage-sheet-slot {
+  --writer-surface-ai-panel: transparent;
+  --writer-surface-task-table: transparent;
+  --writer-panel-border: transparent;
+  --writer-task-border: transparent;
 }

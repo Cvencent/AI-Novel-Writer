@@ -3,11 +3,21 @@ export const EDITOR = '.writer-editor-content .cm-content'
 
 export const editor = page => page.locator(EDITOR)
 
-export async function writeThisChapter(page, targetWords) {
-  await page.getByRole('button', { name: '写作此章' }).click()
+async function startWriting(page, targetWords) {
   const dialog = page.getByRole('dialog').filter({ has: page.getByRole('button', { name: '开始创作' }) })
   await dialog.getByPlaceholder('3000').fill(String(targetWords))
   await dialog.getByRole('button', { name: '开始创作' }).click()
+}
+
+export async function writeThisChapter(page, targetWords) {
+  await page.getByRole('button', { name: '写作此章' }).click()
+  await startWriting(page, targetWords)
+}
+
+/** 章节蓝图顶部的「写作第 N 章」：按顺序写下一章。 */
+export async function writeNextChapter(page, targetWords) {
+  await page.getByRole('button', { name: /^写作第\d+章$/ }).click()
+  await startWriting(page, targetWords)
 }
 
 export async function review(page) {

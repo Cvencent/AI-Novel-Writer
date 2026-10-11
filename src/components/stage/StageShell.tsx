@@ -124,6 +124,9 @@ export default function StageShell({ theme }: { theme: Theme }) {
   }, [view.stages, view.chapters, hasProject, library, text, toggleFocus])
 
   const crumbs = crumbsFor(view, library, activeName, text)
+  const focusChapter = view.location?.kind === 'stage' ? view.location.chapter : undefined
+  const focusRow = view.chapters.find(row => row.number === focusChapter)
+  const focusTitle = focusRow ? { chapter: focusRow.number, title: focusRow.title || chapterLabel(focusRow.number, text) } : { title: activeName ?? '' }
 
   return (
     <div
@@ -138,7 +141,7 @@ export default function StageShell({ theme }: { theme: Theme }) {
         crumbs={crumbs}
         library={library}
         focus={focus}
-        focusTitle={activeName ?? ''}
+        focusTitle={focusTitle}
         workMenu={workMenu}
         onToggleFocus={toggleFocus}
       />

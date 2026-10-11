@@ -375,6 +375,89 @@ export const STAGE_SCENARIOS = {
     })
     assert.deepEqual(overflow, { horizontal: 0, clipped: [] })
   } },
+  'stage-palette': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+    await page.keyboard.press('Control+K')
+    await stage.paletteInput(page).fill('灯')
+    await stage.palette(page).getByRole('option', { name: /第二盏灯/ }).waitFor({ state: 'visible' })
+  }, after: async ({ page }) => {
+    await page.keyboard.press('Escape')
+    await stage.palette(page).waitFor({ state: 'hidden' })
+  } },
+  'stage-library': { model: false, shell: 'stage', run: async ({ page }) => {
+    await shell.firstInteractiveControl(page).waitFor({ state: 'visible' })
+    assert.equal(await stage.spine(page).count(), 0, '书房没有流程脊')
+  } },
+  'stage-run': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page, fake }) => {
+    fake.gate.hold()
+    await stage.stageButton(page, '蓝图').click()
+    await chapter.writeNextChapter(page, 100)
+    await page.getByRole('heading', { name: '运行', exact: true }).waitFor({ state: 'visible' })
+    await stage.root(page).getByRole('button', { expanded: true }).filter({ hasText: '%' }).waitFor({ state: 'visible' })
+  }, after: async ({ page, fake }) => {
+    fake.gate.release()
+    await runPanel.waitForWorkflowDone(page)
+    await stage.waitForProse(page, firstLine(FIXTURE_PROSE))
+  } },
+  'stage-settings-switch': { model: false, setup: seedWithDraft, run: async ({ page }) => {
+    await settings.open(page)
+    await settings.chooseShell(page, '创作流程（预览）')
+    await stage.root(page).waitFor({ state: 'visible' })
+    await settings.close(page)
+    await stage.spine(page).waitFor({ state: 'visible' })
+  } },
+  'stage-migrate': { model: false, run: async ({ page, reload }) => {
+    const key = 'ai-novel-writer-appearance'
+    const current = JSON.parse(await page.evaluate(storageKey => localStorage.getItem(storageKey), key))
+    const v1 = JSON.stringify({ schemaVersion: 1, revision: current.revision + 1, shellPreference: 'writer', colorTheme: 'paper', zoom: 1.1,
+      writingFont: 'noto-serif-sc', uiFont: 'inter', origin: 'author', legacyImportCompleted: true, legacyFontDefaultsVersion: 1 })
+    await page.evaluate(([storageKey, raw]) => localStorage.setItem(storageKey, raw), [key, v1])
+    await reload()
+    await shell.firstInteractiveControl(page).waitFor({ state: 'visible' })
+    assert.equal(await page.evaluate(storageKey => localStorage.getItem(storageKey), key), v1.replace('"schemaVersion":1', '"schemaVersion":2'),
+      'v1 配置应只升级 schemaVersion，其余字段原样')
+  } },
+  'stage-tour': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page, fake }) => {
+    const pause = ms => page.waitForTimeout(ms)
+    await pause(1500)
+    for (const name of ['设定', '架构', '蓝图']) {
+      await stage.stageButton(page, name).click()
+      await pause(1500)
+    }
+    await stage.stageButton(page, '正文').click()
+    await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
+    await pause(1500)
+    await page.keyboard.press('Control+K')
+    await stage.paletteInput(page).waitFor({ state: 'visible' })
+    await pause(700)
+    await stage.paletteInput(page).pressSequentially('守塔', { delay: 220 })
+    await pause(900)
+    await page.keyboard.press('Enter')
+    await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[4].text))
+    await pause(1500)
+    await page.keyboard.press('Control+P')
+    await stage.paletteInput(page).waitFor({ state: 'visible' })
+    await pause(500)
+    await stage.paletteInput(page).pressSequentially('1', { delay: 200 })
+    await pause(700)
+    await page.keyboard.press('Enter')
+    await stage.waitForProse(page, firstLine(STAGE_SAMPLE.finalized[1]))
+    await pause(1500)
+    await stage.closeTabButton(page, `第 1 章 · ${stageChapterTitle(1)}`).click()
+    await pause(1000)
+    await stage.focusToggle(page).click()
+    await pause(2500)
+    await page.keyboard.press('Escape')
+    await pause(1200)
+    fake.gate.hold()
+    await stage.stageButton(page, '蓝图').click()
+    await pause(1200)
+    await chapter.writeNextChapter(page, 100)
+    await page.getByRole('heading', { name: '运行', exact: true }).waitFor({ state: 'visible' })
+    await pause(3000)
+    fake.gate.release()
+    await runPanel.waitForWorkflowDone(page)
+    await pause(2000)
+  } },
   'chapter-switch': { model: false, setup: seedStageSample, run: async ({ page }) => {
     const target = firstLine(STAGE_SAMPLE.drafts[4].text)
     if (await stage.root(page).count() > 0) {

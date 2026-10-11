@@ -16,8 +16,8 @@ interface StageTopBarProps {
   crumbs: readonly string[]
   library: boolean
   focus: boolean
-  /** 沉浸写作时左侧显示的当前页名。 */
-  focusTitle: string
+  /** 沉浸写作时左侧显示的当前页：正文章节显示章号与章名，其余显示标签名。 */
+  focusTitle: { chapter?: number; title: string }
   workMenu: readonly MenuGroupSpec[]
   onToggleFocus: () => void
 }
@@ -48,7 +48,8 @@ export default function StageTopBar({ crumbs, library, focus, focusTitle, workMe
   if (focus) {
     return (
       <header className="stage-topbar" data-focus="true">
-        <span className="stage-focus-title">{focusTitle}</span>
+        {focusTitle.chapter !== undefined && <span className="stage-focus-no">{focusTitle.chapter}</span>}
+        <span className="stage-focus-title">{focusTitle.title}</span>
         <span className="stage-topbar-gap" />
         <button type="button" className="stage-focus-exit" aria-label={text('退出沉浸写作', 'Exit focus mode')} onClick={onToggleFocus}>
           <Minimize2 size={13} aria-hidden="true" />
