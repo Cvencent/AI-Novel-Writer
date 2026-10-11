@@ -13,6 +13,7 @@ import { SCENARIOS } from './scenarios.mjs'
 import { dismissCompletionToasts, dismissStartupNotice, firstInteractiveControl, waitForShell } from './pages/shell.mjs'
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+const OFFSCREEN_WINDOW = fileURLToPath(new URL('./offscreen-window.cjs', import.meta.url))
 const TIMEOUT = 60_000
 const VIEWPORT = { width: 1440, height: 900 }
 const THEMES = ['light', 'dark']
@@ -133,17 +134,9 @@ async function quit(app) {
 
 async function launch({ roots, appRoot, fakeModelPort, diagnostics }) {
   const launchedAt = Date.now()
-  const app = await electron.launch({ cwd: appRoot, args: ['.', `--user-data-dir=${roots.userData}`],
+  const app = await electron.launch({ cwd: appRoot, args: ['-r', OFFSCREEN_WINDOW, '.', `--user-data-dir=${roots.userData}`],
     env: isolatedEnvironment(roots), timeout: TIMEOUT })
   try {
-    const startup = await app.evaluate(({ app: electronApp, BrowserWindow }) => {
-      const timing = globalThis.__driveTiming = { readyToShow: null }
-      const watch = window => window.once('ready-to-show', () => { timing.readyToShow ??= Date.now() })
-      const existing = BrowserWindow.getAllWindows()
-      existing.forEach(watch)
-      electronApp.on('browser-window-created', (_, window) => watch(window))
-      return { windowsAtAttach: existing.length }
-    })
     await app.evaluate((_, port) => {
       const originalFetch = globalThis.fetch
       globalThis.__driveExternalRequests = []
@@ -165,7 +158,7 @@ async function launch({ roots, appRoot, fakeModelPort, diagnostics }) {
     const interactiveAt = Date.now()
     const { readyToShow } = await app.evaluate(() => globalThis.__driveTiming)
     const timeOrigin = await page.evaluate(() => performance.timeOrigin)
-    const timing = { ...startup, launchToInteractiveMs: interactiveAt - launchedAt,
+    const timing = { launchToInteractiveMs: interactiveAt - launchedAt,
       readyToShowToInteractiveMs: readyToShow === null ? null : interactiveAt - readyToShow,
       navigationToInteractiveMs: Math.round(interactiveAt - timeOrigin) }
     page.setDefaultTimeout(20_000)
@@ -200,6 +193,7 @@ async function settle(page) {
 
 async function shoot(page, file) {
   await settle(page)
+  assert.equal(await page.evaluate(() => document.visibilityState), 'visible', '屏幕外窗口的页面被当作隐藏，截图会停帧')
   await page.screenshot({ path: file, animations: 'disabled', caret: 'hide' })
 }
 
