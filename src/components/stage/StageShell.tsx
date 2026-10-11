@@ -46,7 +46,6 @@ function crumbsFor(view: StageView, library: boolean, activeName: string | undef
   return [stage]
 }
 
-/** 新外壳：外框上是顶栏与流程脊，内容在悬浮面板里；没有打开作品或回到书房时显示书房。 */
 export default function StageShell({ theme }: { theme: Theme }) {
   const text = useLocaleStore(s => s.text)
   const hasProject = useProjectStore(s => Boolean(s.currentProject))

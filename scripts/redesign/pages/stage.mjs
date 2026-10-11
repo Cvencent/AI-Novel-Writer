@@ -12,14 +12,12 @@ const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 /** 阶段行的可访问名称以阶段名开头，后面是状态说明。 */
 export const stageButton = (page, name) => spine(page).getByRole('button', { name: new RegExp(`^${escape(name)}`) })
 
-/** 阶段行上的状态：done、active 或 todo。 */
 export async function stageStates(page) {
   return spine(page).locator('[data-stage]').evaluateAll(rows => Object.fromEntries(rows.map(row => [row.dataset.stage, row.dataset.state])))
 }
 
 export const chapterButton = (page, number) => chapterList(page).getByRole('button', { name: new RegExp(`^${number}\\D`) })
 
-/** 章节列表每行的章号、所处阶段与是否为当前章。 */
 export async function chapterRows(page) {
   return chapterList(page).getByRole('button').evaluateAll(rows => rows.map(row => ({
     number: Number(row.querySelector('.stage-chapter-no')?.textContent),
@@ -28,7 +26,6 @@ export async function chapterRows(page) {
   })))
 }
 
-/** 从书房打开作品，等流程脊与落点页出现。 */
 export async function openFromLibrary(page, name) {
   await page.locator('.writer-shelf').getByRole('button', { name: `打开《${name}》` }).click()
   await spine(page).waitFor({ state: 'visible' })

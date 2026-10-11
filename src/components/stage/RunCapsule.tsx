@@ -11,7 +11,6 @@ import { ProgressRing } from './ProgressRing'
 
 const DONE_VISIBLE_MS = 1800
 
-/** 顶栏的运行胶囊：有运行时显示进度，点开运行侧页；全部结束后短暂显示完成。 */
 export default function RunCapsule() {
   const text = useLocaleStore(s => s.text)
   const projectPath = useProjectStore(s => s.currentProject?.path)

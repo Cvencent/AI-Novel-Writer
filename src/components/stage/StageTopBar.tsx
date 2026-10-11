@@ -39,7 +39,6 @@ function WindowControls() {
   )
 }
 
-/** 顶栏：作品名与作品菜单、位置、Ctrl K 搜索与跳转、运行胶囊、保存状态、沉浸写作、窗口按钮。整条可拖动窗口。 */
 export default function StageTopBar({ crumbs, library, focus, focusTitle, workMenu, onToggleFocus }: StageTopBarProps) {
   const text = useLocaleStore(s => s.text)
   const projectName = useProjectStore(s => s.currentProject?.name)

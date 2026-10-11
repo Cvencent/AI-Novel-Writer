@@ -57,7 +57,6 @@ interface StageSpineProps {
   onSettings: () => void
 }
 
-/** 流程脊：四个创作阶段按顺序排列并显示各自状态；正文阶段展开章节列表；下方是作品资料与设置。 */
 export default function StageSpine({ stages, chapters, location, onStage, onChapter, onResource, onSettings }: StageSpineProps) {
   const text = useLocaleStore(s => s.text)
   const currentStage = location?.kind === 'stage' ? location.stage : null

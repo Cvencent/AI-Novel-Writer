@@ -15,7 +15,6 @@ export async function waitForSection(page, title) {
   await page.getByRole('heading', { name: title, level: 2, exact: true }).waitFor({ state: 'visible' })
 }
 
-/** 外观里的「界面布局」：工作台或创作流程（预览）。 */
 export async function chooseShell(page, label) {
   await page.getByRole('button', { name: '外观', exact: true }).click()
   await page.getByRole('group', { name: '界面布局' }).getByRole('button', { name: label }).click()

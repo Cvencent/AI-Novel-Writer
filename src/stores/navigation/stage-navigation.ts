@@ -19,7 +19,6 @@ export function chapterLabel(chapterNumber: number, text: Text): string {
   return text(`第 ${chapterNumber} 章`, `Chapter ${chapterNumber}`)
 }
 
-/** 标签名：第 3 章 · 雨夜车站。 */
 export function chapterTabName(chapterNumber: number, title: string, text: Text): string {
   const label = chapterLabel(chapterNumber, text)
   return title ? `${label} · ${title}` : label

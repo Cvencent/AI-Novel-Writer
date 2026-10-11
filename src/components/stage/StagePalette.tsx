@@ -110,7 +110,6 @@ function PaletteBody({ mode, items, onClose }: { mode: PaletteMode; items: reado
   )
 }
 
-/** Ctrl K 搜索与跳转；⌘P 只查章节。结果按 阶段、章节、作品资料、操作 分组，键盘可完成全部选择。 */
 export default function StagePalette({ mode, items, container, onClose }: StagePaletteProps) {
   const text = useLocaleStore(s => s.text)
   return (

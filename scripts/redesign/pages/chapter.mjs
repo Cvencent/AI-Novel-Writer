@@ -14,7 +14,6 @@ export async function writeThisChapter(page, targetWords) {
   await startWriting(page, targetWords)
 }
 
-/** 章节蓝图顶部的「写作第 N 章」：按顺序写下一章。 */
 export async function writeNextChapter(page, targetWords) {
   await page.getByRole('button', { name: /^写作第\d+章$/ }).click()
   await startWriting(page, targetWords)

@@ -92,7 +92,6 @@ export interface StageView {
   ready: boolean
 }
 
-/** 由项目配置、架构与蓝图、草稿、运行中的工作流和当前标签派生流程脊要显示的一切。 */
 export function useStageView(): StageView {
   const project = useProjectStore(s => s.currentProject)
   const work = useStageStore(s => s.work)

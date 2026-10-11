@@ -6,6 +6,7 @@ import { useLocaleStore } from '../../stores/locale-store'
 import { navigate } from '../../stores/navigation/navigation-intents'
 import { useStageStore } from '../../stores/navigation/stage-store'
 import type { ProjectData } from '../../shared/ipc-channels'
+import { ErrorBoundary } from '../ErrorBoundary'
 import EditorTabContent from '../panels/EditorTabContent'
 import CharactersView from '../panels/sidebar/CharactersView'
 import { WriterWelcomePage } from '../pages/v2/use-project-overview'
@@ -29,7 +30,6 @@ function TabContent({ tab, project }: { tab: EditorTab; project: ProjectData }) 
   return <EditorTabContent activeTab={tab} currentProject={project} />
 }
 
-/** 悬浮内容面板：书房，或作品的标签条、当前页与右侧按需侧页。 */
 export default function StageWorkspace({ library, focus }: { library: boolean; focus: boolean }) {
   const text = useLocaleStore(s => s.text)
   const project = useProjectStore(s => s.currentProject)
@@ -77,7 +77,11 @@ export default function StageWorkspace({ library, focus }: { library: boolean; f
           aria-labelledby={showTabs && activeTab ? tabDomId(activeTab.id) : undefined}
         >
           {activeTab
-            ? <TabContent tab={activeTab} project={project} />
+            ? (
+              <ErrorBoundary key={activeTab.id} fallbackLabel={text('编辑区渲染失败', 'Editor failed to render')}>
+                <TabContent tab={activeTab} project={project} />
+              </ErrorBoundary>
+            )
             : (
               <EmptyState
                 heading={text('从流程脊选一步开始', 'Pick a step in the flow to begin')}
@@ -86,7 +90,13 @@ export default function StageWorkspace({ library, focus }: { library: boolean; f
               />
             )}
         </div>
-        {sheet && !focus && <div className="stage-sheet-slot" data-wide={sheet.facet === 'log' || sheet.facet === 'models' || undefined}><StageRunSheet facet={sheet.facet} /></div>}
+        {sheet && !focus && (
+          <div className="stage-sheet-slot" data-wide={sheet.facet === 'log' || sheet.facet === 'models' || undefined}>
+            <ErrorBoundary fallbackLabel={text('AI 面板渲染失败', 'AI panel failed to render')}>
+              <StageRunSheet facet={sheet.facet} />
+            </ErrorBoundary>
+          </div>
+        )}
       </div>
       <DangerConfirm
         open={pending !== null}
