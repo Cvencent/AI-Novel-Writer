@@ -275,7 +275,7 @@ Each live lane runs in its own worktree at the PR head. Drive through the skill 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
 - [ ] Metric. 启动到可交互毫秒数；新外壳下切换章节到正文可见的毫秒数。
-- [ ] Probe. trunk 旧外壳与 head 新外壳交替各 5 次 `startup-timing` 与 `chapter-switch`。
+- [ ] Probe. trunk 旧外壳与 head 新外壳交替各 5 次 `startup-timing` 与 `chapter-switch`，两侧都先在同一隔离目录预启动一次写好外观再计时；另测 head 旧外壳对 trunk 旧外壳的启动，覆盖新外壳模块对旧外壳的加载代价。构建后先预热，机器空闲时测。
 - [ ] Baseline. Record the trunk 两项中位数 first.
 - [ ] Rule. 启动中位数不超过 trunk 的 105%；章节切换中位数不超过 trunk 的 100%，绝对值不超过 150 毫秒。
 
@@ -711,7 +711,7 @@ Each live lane runs in its own worktree at the PR head. Drive through the skill 
 - 已由原型回答的问题。章节列表嵌入流程脊可让正文在 1440 宽度下保持约 34 字一行；运行诊断需要宽版侧页；写作此章只需模型、指导与检索关键词三项。
 - 尚未证明的问题。新外壳在 Electron 中的真实性能、旧配置迁移、34 个旅程脚本迁移的工作量，都要在 RD-0 与 RD-3 中实测。
 - 原型与 `ia.md` 不一致的地方以 `ia.md` 为准。一是「AI 审稿」应为拆分按钮，下拉弹层勾选检查维度，`chapter-draft.html` 画成了普通按钮。二是书房的设置入口应在书房顶栏，`library.html` 画在右栏底部。三是顶栏作品名下拉菜单（回到书房、切换作品、导出、项目备份、清除生成内容）是 F-011、F-151、F-152、F-012 的规范入口，原型没有画出展开状态。
-- 原型未覆盖、由对应 PR 负责人按 `design-system.md` 补设计的状态。未配置任何模型时的首次使用（各 AI 按钮的禁用说明与去设置的入口，归 RD-5），沉浸写作（F-173，归 RD-3），角色名单修复与旧修复恢复（F-033 至 F-035，归 RD-6），删除此章与清除误导入正文（F-051、F-052，归 RD-7），定稿后的角色状态建议（F-118，归 RD-6），重建检索索引（F-124，归 RD-9），失败提示（F-134，归 RD-4），其余四种恢复类型（F-136 至 F-139，归 RD-4），设置中检索模型、网络代理、提示词模板、写作 Skills、关于与更新各页（F-163 至 F-171，归 RD-5）。
+- 原型未覆盖、由对应 PR 负责人按 `design-system.md` 补设计的状态。未配置任何模型时的首次使用（各 AI 按钮的禁用说明与去设置的入口，归 RD-5），沉浸写作（F-173，外壳部分归 RD-3；`claude-design/Focus.dc.html` 的全出血深色纸面与底部字数进度条归 RD-8），角色名单修复与旧修复恢复（F-033 至 F-035，归 RD-6），删除此章与清除误导入正文（F-051、F-052，归 RD-7），定稿后的角色状态建议（F-118，归 RD-6），重建检索索引（F-124，归 RD-9），失败提示（F-134，归 RD-4），其余四种恢复类型（F-136 至 F-139，归 RD-4），设置中检索模型、网络代理、提示词模板、写作 Skills、关于与更新各页（F-163 至 F-171，归 RD-5）。
 
 ## Appendix B. Alternatives rejected
 
