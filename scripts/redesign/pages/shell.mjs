@@ -23,7 +23,7 @@ export async function waitForCompletionToast(page) {
 
 /** 提示出现与自动消失的时机不固定，留着会让截图不可重复。 */
 export async function dismissCompletionToasts(page) {
-  for (const button of await completionToastIgnore(page).all()) await button.click()
+  for (const button of await completionToastIgnore(page).all()) await button.click().catch(() => {})
   await completionToastIgnore(page).last().waitFor({ state: 'detached' })
 }
 

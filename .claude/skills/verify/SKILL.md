@@ -29,7 +29,7 @@ node scripts/redesign/drive.mjs --scenario <名称> ...
 
 - `--theme` 默认 `light`，即外观里的「浅色」；`dark` 为「深色」。
 - `--out` 默认 `.runtime/redesign-baseline/`（已被 git 忽略）。
-- `--app-root` 默认当前工作树。性能对照时指向 trunk 的工作树，用同一个驱动测两边。
+- `--app-root` 默认当前工作树。性能对照时指向 trunk 的工作树，用同一个驱动测两边；目标工作树也要先跑完上面三条命令，它加载的是自己的 `dist-electron/` 和 `better-sqlite3`。
 - 退出码：0 全部通过；1 有场景失败、残留进程或隔离目录外写入；2 参数错误。
 
 ## 场景
@@ -90,4 +90,6 @@ node scripts/redesign/drive.mjs --scenario startup-timing --out <目录>
 
 ## 改外壳时
 
-类名选择器只出现在 `scripts/redesign/pages/`，按任务域分文件：`shell`（启动与外壳就绪）、`bookshelf`（书房）、`project`（项目树）、`chapter`（单章写作、审稿、修稿合并、定稿）、`run-panel`（运行面板）、`settings`（设置）。外壳替换后只改这些页面对象，场景 `scripts/redesign/scenarios.mjs` 不动。假模型在 `scripts/redesign/fake-model.mjs`，按提示词特征返回正文、审稿 JSON、修稿正文或角色状态 JSON。
+类名选择器只出现在 `scripts/redesign/pages/`，按任务域分文件：`shell`（启动与外壳就绪）、`bookshelf`（书房）、`project`（项目树）、`chapter`（单章写作、审稿、修稿合并、定稿）、`run-panel`（运行面板）、`settings`（设置）。外壳替换后只改这些页面对象，场景 `scripts/redesign/scenarios.mjs` 不动。
+
+`/.claude/` 在 `.gitignore` 里，提交本文件的改动要用 `git add -f .claude/skills/verify/SKILL.md`（或 `git add -u`）。假模型在 `scripts/redesign/fake-model.mjs`，按提示词特征返回正文、审稿 JSON、修稿正文或角色状态 JSON。
