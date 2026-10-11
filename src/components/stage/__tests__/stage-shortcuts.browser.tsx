@@ -159,6 +159,17 @@ describe('新外壳快捷键', () => {
     expect(useStageStore.getState()).toMatchObject({ palette: null, focus: true })
   })
 
+  it('输入法组字时按 Ctrl W、⌘W 仍拦下关窗，但不关标签', async () => {
+    await mount(<Shortcuts library={false} focus={false} />)
+    openTab('config')
+    expect(press(document.body, { ...ctrl('w'), isComposing: true }).defaultPrevented).toBe(true)
+    expect(press(document.body, { ...ctrl('w'), key: 'Process', keyCode: 229 }).defaultPrevented).toBe(true)
+    await act(async () => root!.render(<Shortcuts library={false} focus={false} mac />))
+    expect(press(document.body, { ...meta('w'), isComposing: true }).defaultPrevented).toBe(true)
+    expect(useStageStore.getState().closingTabId).toBeNull()
+    expect(useEditorStore.getState().tabs).toHaveLength(1)
+  })
+
   it('沉浸写作里，编辑器已处理的 Esc（关搜索框、收起补全）不退出沉浸；没人处理的 Esc 才退出', async () => {
     await mount(<Shortcuts library={false} focus />)
     useStageStore.setState({ focus: true })
