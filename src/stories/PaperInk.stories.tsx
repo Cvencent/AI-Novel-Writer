@@ -126,7 +126,7 @@ function ControlsDemo() {
   const [checked, setChecked] = useState(true)
   const [autoSave, setAutoSave] = useState(false)
   return (
-    <div style={column}>
+    <div style={{ ...column, alignItems: 'flex-start' }}>
       <SegmentedControl
         label="审稿范围"
         options={[{ value: 'chapter', label: '本章' }, { value: 'book', label: '全书' }]}
