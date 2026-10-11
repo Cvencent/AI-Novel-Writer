@@ -131,10 +131,10 @@ Each live lane runs in its own worktree at the PR head. Drive through the skill 
 
 **Files.**
 
-- [ ] Create `src/styles/paper-ink/tokens.css`，内容来自 `prototype/tokens.css`，浅色与深色两套。
+- [ ] Create `src/styles/paper-ink/tokens.css`，色值取自 `design-system.md` 的「视觉基准」表（来源 `claude-design/Language.dc.html`），浅色与深色两套。
 - [ ] Create `src/components/ui/` 下的 Sheet、Menu、Popover、SegmentedControl、Check、StatGrid、Notice、InlineConfirm、DangerConfirm、EmptyState、Lifecycle 原语。
 - [ ] Edit `src/components/ui/Button.tsx`，按 `design-system.md` 收敛为主、次、幽灵、危险描边、危险实心与图标六种。
-- [ ] Edit `public/fonts/`，增加 EB Garamond 与授权说明。
+- [ ] Edit `public/fonts/`，增加 Instrument Serif（OFL）与授权说明。
 - [ ] Create `scripts/check-color-literals.mjs`，在 `pnpm lint` 中运行。
 
 **Build.**
@@ -162,7 +162,7 @@ Each live lane runs in its own worktree at the PR head. Drive through the skill 
 - [ ] Lane 7. 弹层原语用键盘打开与关闭。Save `rd1-popover.png`. Pass when Esc 关闭且焦点回到触发按钮。
 - [ ] Lane 8. 分段控件与开关。Save `rd1-seg.png`. Pass when 选中态与 `aria-pressed` 一致。
 - [ ] Lane 9. 空状态原语。Save `rd1-empty.png`. Pass when 标题为衬线、包含一个动作按钮。
-- [ ] Lane 10. 字体加载离线进行。Save `rd1-fonts.png`. Pass when 断网启动后标题仍为 Noto Serif SC 与 EB Garamond。
+- [ ] Lane 10. 字体加载离线进行。Save `rd1-fonts.png`. Pass when 断网启动后标题仍为 Noto Serif SC，数字为 Instrument Serif。
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -251,7 +251,7 @@ Each live lane runs in its own worktree at the PR head. Drive through the skill 
 
 **You see.**
 
-- [ ] 在设置里切换为新外壳后，界面与 `prototype/chapter-review.html` 的外壳部分一致。
+- [ ] 在设置里切换为新外壳后，界面与 `claude-design/Main.dc.html` 的外壳部分一致（外框、悬浮面板、进度环流程脊、Ctrl K）。
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -706,6 +706,7 @@ Each live lane runs in its own worktree at the PR head. Drive through the skill 
 
 - 视觉方向。三个方向的原型与截图在 `directions/`，提交 `b97b61bf` 与 `f604a3fc`，用户于 2026-10-11 选定 A 纸墨。
 - 完整原型。`prototype/` 共 33 屏，浅色与深色截图在 `prototype/shots/`，目录页为 `prototype/index.html`。
+- 视觉基准。Claude Design 美化版 7 块画板在 `claude-design/`，用户于 2026-10-11 确认为最终视觉基准；色值、外壳、字体以它为准，`prototype/` 用于状态与功能覆盖。
 - 已由原型回答的问题。章节列表嵌入流程脊可让正文在 1440 宽度下保持约 34 字一行；运行诊断需要宽版侧页；写作此章只需模型、指导与检索关键词三项。
 - 尚未证明的问题。新外壳在 Electron 中的真实性能、旧配置迁移、34 个旅程脚本迁移的工作量，都要在 RD-0 与 RD-3 中实测。
 - 原型与 `ia.md` 不一致的地方以 `ia.md` 为准。一是「AI 审稿」应为拆分按钮，下拉弹层勾选检查维度，`chapter-draft.html` 画成了普通按钮。二是书房的设置入口应在书房顶栏，`library.html` 画在右栏底部。三是顶栏作品名下拉菜单（回到书房、切换作品、导出、项目备份、清除生成内容）是 F-011、F-151、F-152、F-012 的规范入口，原型没有画出展开状态。
