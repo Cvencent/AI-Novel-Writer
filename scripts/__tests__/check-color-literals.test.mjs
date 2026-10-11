@@ -29,14 +29,15 @@ test('新原语与新外壳目录写入色值时检查失败', () => {
   const root = fixture({
     'src/components/ui/Fresh.tsx': "export const style = { color: '#2C4A8C' }\n",
     'src/components/stage/Spine.tsx': "const a = 'rgba(0, 0, 0, .5)'\nconst b = 'hsl(220 50% 40%)'\n",
-    'src/styles/paper-ink/primitives.css': '.pi-x { background: #fff; }\n',
+    'src/styles/paper-ink/primitives.css': '.pi-x { background: #fff; }\n.pi-y { color: RGB(255, 0, 0); }\n',
   })
   const { violations } = checkColorLiterals(root, [])
-  assert.deepEqual(violations.map(({ file, line, literal }) => `${file}:${line}:${literal}`), [
+  assert.deepEqual(violations.map(({ file, line, literal }) => `${file}:${line}:${literal}`).sort(), [
     'src/components/stage/Spine.tsx:1:rgba(',
     'src/components/stage/Spine.tsx:2:hsl(',
     'src/components/ui/Fresh.tsx:1:#2C4A8C',
     'src/styles/paper-ink/primitives.css:1:#fff',
+    'src/styles/paper-ink/primitives.css:2:RGB(',
   ].sort())
 })
 

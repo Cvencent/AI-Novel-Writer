@@ -39,7 +39,7 @@ export const COLOR_LITERAL_ALLOWLIST = Object.freeze([
   'src/components/ui/PostProcessStatusPanel.tsx',
 ])
 
-const COLOR_LITERAL = /(?<![\w&/])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})(?![\w-])|\b(?:rgba?|hsla?)\(/g
+const COLOR_LITERAL = /(?<![\w&/])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})(?![\w-])|\b(?:rgba?|hsla?)\(/gi
 
 const isTestFile = (relative) => relative.split('/').includes('__tests__') || relative.endsWith('.browser.tsx')
 
