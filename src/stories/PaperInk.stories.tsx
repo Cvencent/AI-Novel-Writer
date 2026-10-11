@@ -70,6 +70,30 @@ function SheetDemo() {
 
 export const SheetPrimitive: Story = { name: 'Sheet', render: () => <SheetDemo /> }
 
+export const MenuInSheet: Story = {
+  name: '侧页内的菜单',
+  render: () => (
+    <div style={{ display: 'flex', height: 360 }}>
+      <Sheet open title="第 4 章 · 雨夜车站" subtitle="审稿意见" closeLabel="关闭侧页" onClose={() => {}}>
+        {['人物动机前后不一致。', '车站的雨声出现了三次。', '信纸内容提前泄露了结局。'].map((issue) => (
+          <p key={issue} style={{ margin: 0 }}>{issue}</p>
+        ))}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'auto' }}>
+          <Menu
+            label="意见操作"
+            icon={<Ellipsis size={16} aria-hidden />}
+            align="end"
+            groups={[
+              { id: 'main', items: [{ id: 'apply', label: '按此修稿', onSelect: () => {} }, { id: 'ignore', label: '忽略此条', onSelect: () => {} }] },
+              { id: 'danger', tone: 'danger', items: [{ id: 'delete', label: '删除意见…', onSelect: () => {} }] },
+            ]}
+          />
+        </div>
+      </Sheet>
+    </div>
+  ),
+}
+
 export const MenuPrimitive: Story = {
   name: 'Menu',
   render: () => (

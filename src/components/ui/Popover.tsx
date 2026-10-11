@@ -1,5 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react'
-import { clsx } from 'clsx'
+import { useEffect, useId, type ReactNode } from 'react'
 import { Button, type InkButtonVariant } from './Button'
 import { useAnchoredLayer } from './use-anchored-layer'
 import '../../styles/paper-ink/index.css'
@@ -16,13 +15,12 @@ interface PopoverProps {
 
 /** 锚定在触发按钮下方的非模态弹层，打开时焦点进入弹层，Esc 关闭并回到触发按钮。 */
 export function Popover({ label, title, triggerVariant = 'secondary', align = 'start', children }: PopoverProps) {
-  const { open, layerId, anchorRef, triggerRef, toggle } = useAnchoredLayer()
+  const { open, layerId, anchorRef, triggerRef, layerRef, renderLayer, toggle } = useAnchoredLayer(align)
   const titleId = useId()
-  const layerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (open) layerRef.current?.focus()
-  }, [open])
+  }, [open, layerRef])
 
   return (
     <div className="pi-anchor" ref={anchorRef}>
@@ -36,14 +34,14 @@ export function Popover({ label, title, triggerVariant = 'secondary', align = 's
       >
         {label}
       </Button>
-      {open && (
+      {open && renderLayer(
         <div
           id={layerId}
           ref={layerRef}
           role="dialog"
           aria-labelledby={titleId}
           tabIndex={-1}
-          className={clsx('pi-popover', align === 'end' && 'pi-popover--end')}
+          className="pi-popover"
         >
           <h3 id={titleId} className="pi-popover-title">{title}</h3>
           {children}

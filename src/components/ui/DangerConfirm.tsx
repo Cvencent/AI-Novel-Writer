@@ -1,6 +1,7 @@
-import { useId, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { Button } from './Button'
+import { usePaperInkRoot } from './use-paper-ink-root'
 import '../../styles/paper-ink/index.css'
 
 interface DangerConfirmProps {
@@ -20,7 +21,8 @@ interface DangerConfirmProps {
 
 /**
  * 不可逆、影响作品数据的操作用的危险确认对话框。
- * 不经 Portal 渲染，留在 .paper-ink 作用域内才能取到纸墨令牌与深色主题。
+ * Portal 到最近的 .paper-ink 根而不是 body，才能取到纸墨令牌与深色主题；
+ * 原地的空 span 只用来找到这个根。
  */
 export function DangerConfirm({
   open,
@@ -36,6 +38,8 @@ export function DangerConfirm({
   const [typed, setTyped] = useState('')
   const inputId = useId()
   const confirmable = !typeToConfirm || typed === typeToConfirm.expected
+  const sentinelRef = useRef<HTMLSpanElement>(null)
+  const root = usePaperInkRoot(sentinelRef)
 
   const changeOpen = (next: boolean) => {
     if (!next) setTyped('')
@@ -44,48 +48,53 @@ export function DangerConfirm({
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={changeOpen}>
-      <DialogPrimitive.Overlay className="pi-scrim" />
-      <DialogPrimitive.Content className="pi-dialog">
-        <div className="pi-dialog-head">
-          <DialogPrimitive.Title className="pi-dialog-title">{title}</DialogPrimitive.Title>
-        </div>
-        <div className="pi-dialog-body">
-          <DialogPrimitive.Description asChild>
-            <div className="pi-dialog-text">
-              <p>{consequence}</p>
-              <p>{recoverability}</p>
+      <span ref={sentinelRef} hidden />
+      {root !== undefined && (
+        <DialogPrimitive.Portal container={root}>
+          <DialogPrimitive.Overlay className="pi-scrim" />
+          <DialogPrimitive.Content className="pi-dialog">
+            <div className="pi-dialog-head">
+              <DialogPrimitive.Title className="pi-dialog-title">{title}</DialogPrimitive.Title>
             </div>
-          </DialogPrimitive.Description>
-          {typeToConfirm && (
-            <label className="pi-field" htmlFor={inputId}>
-              {typeToConfirm.label}
-              <input
-                id={inputId}
-                className="pi-input"
-                value={typed}
-                autoComplete="off"
-                spellCheck={false}
-                onChange={(event) => setTyped(event.target.value)}
-              />
-            </label>
-          )}
-        </div>
-        <div className="pi-dialog-foot">
-          <DialogPrimitive.Close asChild>
-            <Button variant="secondary">{cancelLabel}</Button>
-          </DialogPrimitive.Close>
-          <Button
-            variant="danger-solid"
-            disabled={!confirmable}
-            onClick={() => {
-              onConfirm()
-              changeOpen(false)
-            }}
-          >
-            {confirmLabel}
-          </Button>
-        </div>
-      </DialogPrimitive.Content>
+            <div className="pi-dialog-body">
+              <DialogPrimitive.Description asChild>
+                <div className="pi-dialog-text">
+                  <p>{consequence}</p>
+                  <p>{recoverability}</p>
+                </div>
+              </DialogPrimitive.Description>
+              {typeToConfirm && (
+                <label className="pi-field" htmlFor={inputId}>
+                  {typeToConfirm.label}
+                  <input
+                    id={inputId}
+                    className="pi-input"
+                    value={typed}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={(event) => setTyped(event.target.value)}
+                  />
+                </label>
+              )}
+            </div>
+            <div className="pi-dialog-foot">
+              <DialogPrimitive.Close asChild>
+                <Button variant="secondary">{cancelLabel}</Button>
+              </DialogPrimitive.Close>
+              <Button
+                variant="danger-solid"
+                disabled={!confirmable}
+                onClick={() => {
+                  onConfirm()
+                  changeOpen(false)
+                }}
+              >
+                {confirmLabel}
+              </Button>
+            </div>
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      )}
     </DialogPrimitive.Root>
   )
 }

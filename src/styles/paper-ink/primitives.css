@@ -62,13 +62,13 @@
   padding: var(--s-3) var(--s-4); border-top: 1px solid var(--rule); }
 
 /* ================= 弹层与菜单 ================= */
-.pi-anchor { position: relative; display: inline-flex; }
+.pi-anchor { display: inline-flex; }
+/* 浮层 Portal 到 .paper-ink 根，top/left/right 由 use-anchored-layer 按触发按钮写入 */
 .pi-popover, .pi-menu {
-  position: absolute; top: calc(100% + 6px); left: 0; z-index: 15;
+  position: fixed; z-index: 15;
   border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-pop);
   animation: pi-rise var(--dur-fast) var(--ease);
 }
-.pi-popover--end, .pi-menu--end { left: auto; right: 0; }
 .pi-popover:focus { outline: none; }
 .pi-popover { width: 340px; padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-2); }
 .pi-popover-title { margin: 0; font: 600 var(--fs-14)/1.4 var(--font-ui); }

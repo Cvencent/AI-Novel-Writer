@@ -1,5 +1,4 @@
 import { Fragment, useEffect, useRef, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
-import { clsx } from 'clsx'
 import { Button } from './Button'
 import { useAnchoredLayer } from './use-anchored-layer'
 import '../../styles/paper-ink/index.css'
@@ -31,15 +30,14 @@ const enabledItems = (menu: HTMLElement | null) =>
   Array.from(menu?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? [])
 
 export function Menu({ label, icon, groups, align = 'start' }: MenuProps) {
-  const { open, layerId, anchorRef, triggerRef, show, toggle, close } = useAnchoredLayer()
-  const menuRef = useRef<HTMLDivElement>(null)
+  const { open, layerId, anchorRef, triggerRef, layerRef: menuRef, renderLayer, show, toggle, close } = useAnchoredLayer(align)
   const focusFirstOnOpen = useRef(false)
 
   const items = () => enabledItems(menuRef.current)
 
   useEffect(() => {
     if (open && focusFirstOnOpen.current) enabledItems(menuRef.current)[0]?.focus()
-  }, [open])
+  }, [open, menuRef])
 
   const openWithKeyboard = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (event.key === 'ArrowDown') {
@@ -62,8 +60,6 @@ export function Menu({ label, icon, groups, align = 'start' }: MenuProps) {
     if (target) {
       event.preventDefault()
       target.focus()
-    } else if (event.key === 'Tab') {
-      close(false)
     }
   }
 
@@ -90,13 +86,13 @@ export function Menu({ label, icon, groups, align = 'start' }: MenuProps) {
       {icon
         ? <Button variant="icon" aria-label={label} {...triggerProps}>{icon}</Button>
         : <Button variant="secondary" {...triggerProps}>{label}</Button>}
-      {open && (
+      {open && renderLayer(
         <div
           id={layerId}
           ref={menuRef}
           role="menu"
           aria-label={label}
-          className={clsx('pi-menu', align === 'end' && 'pi-menu--end')}
+          className="pi-menu"
           onKeyDown={moveFocus}
         >
           {groups.map((group, index) => (

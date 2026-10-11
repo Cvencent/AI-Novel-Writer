@@ -41,6 +41,7 @@ async function mount(node: ReactNode, theme: 'light' | 'dark' = 'light') {
 const settle = () => act(async () => {})
 const shot = (name: string) => page.screenshot({ path: `${SHOTS}/${name}.png`, element: host! })
 const focused = () => document.activeElement as HTMLElement
+const finishAnimations = (element: Element) => Promise.all(element.getAnimations().map((animation) => animation.finished))
 
 const channels = (color: string) => color.match(/[\d.]+/g)!.map(Number)
 
@@ -302,6 +303,91 @@ describe('Menu', () => {
   })
 })
 
+describe('侧页内的菜单', () => {
+  const onRename = vi.fn()
+  const groups = [
+    { id: 'main', items: [{ id: 'rename', label: '重命名', onSelect: onRename }, { id: 'export', label: '导出…', onSelect: () => {} }] },
+    { id: 'danger', tone: 'danger' as const, label: '危险操作', items: [{ id: 'delete', label: '删除作品…', onSelect: () => {} }] },
+  ]
+
+  function Harness() {
+    return (
+      <div style={{ display: 'flex', height: 360, transform: 'translateZ(0)' }}>
+        <Sheet open title="第 4 章" closeLabel="关闭侧页" onClose={() => {}}>
+          <div style={{ height: 230, flex: 'none' }}>蓝图</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Menu label="段落操作" icon={<Ellipsis size={16} aria-hidden />} groups={groups} align="end" />
+            <Button variant="text" size="sm">下一项</Button>
+          </div>
+          <div style={{ height: 400, flex: 'none' }}>更多内容</div>
+        </Sheet>
+      </div>
+    )
+  }
+
+  async function openMenu(container: HTMLElement) {
+    const trigger = container.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!
+    await finishAnimations(container.querySelector('aside')!)
+    await act(async () => trigger.click())
+    const menu = container.querySelector<HTMLElement>('[role="menu"]')!
+    await finishAnimations(menu)
+    return { trigger, menu }
+  }
+
+  it('祖先带 transform 时菜单越过侧页滚动区下沿仍可见可点，且不撑出滚动条', async () => {
+    const container = await mount(<Harness />)
+    const body = container.querySelector<HTMLElement>('.pi-sheet-body')!
+    const scrollHeight = body.scrollHeight
+    const { trigger, menu } = await openMenu(container)
+
+    const bodyRect = body.getBoundingClientRect()
+    const menuRect = menu.getBoundingClientRect()
+    const triggerRect = trigger.getBoundingClientRect()
+    expect(menuRect.bottom).toBeGreaterThan(bodyRect.bottom)
+    expect(menuRect.top).toBeCloseTo(triggerRect.bottom + 6, 0)
+    expect(menuRect.right).toBeCloseTo(triggerRect.right, 0)
+    const hit = document.elementFromPoint(menuRect.left + menuRect.width / 2, (bodyRect.bottom + menuRect.bottom) / 2)
+    expect(hit?.closest('[role="menuitem"]')).not.toBeNull()
+    expect(body.scrollHeight).toBe(scrollHeight)
+    expect(getComputedStyle(menu).backgroundColor).toBe(tokenColor(container, '--surface'))
+    await shot('rd1-menu-in-sheet')
+
+    await userEvent.click(page.getByRole('menuitem', { name: '重命名' }))
+    expect(onRename).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('[role="menu"]')).toBeNull()
+  })
+
+  it('Esc 只关菜单不关侧页，焦点回到触发按钮；Tab 离开菜单后焦点到触发按钮的下一项', async () => {
+    const container = await mount(<Harness />)
+    const { trigger } = await openMenu(container)
+    ;(container.querySelector('[role="menuitem"]') as HTMLElement).focus()
+    await userEvent.keyboard('{Escape}')
+    expect(container.querySelector('[role="menu"]')).toBeNull()
+    expect(container.querySelector('aside')).not.toBeNull()
+    expect(focused()).toBe(trigger)
+
+    await userEvent.keyboard('{ArrowDown}')
+    await settle()
+    expect(focused().getAttribute('role')).toBe('menuitem')
+    await userEvent.tab()
+    expect(container.querySelector('[role="menu"]')).toBeNull()
+    expect(focused().textContent).toBe('下一项')
+    await userEvent.tab({ shift: true })
+    expect(focused()).toBe(trigger)
+  })
+
+  it('滚动侧页时菜单关闭，不与触发按钮脱节', async () => {
+    const container = await mount(<Harness />)
+    await openMenu(container)
+    const body = container.querySelector<HTMLElement>('.pi-sheet-body')!
+    await act(async () => {
+      body.scrollTop = 80
+      await new Promise((resolve) => body.addEventListener('scroll', resolve, { once: true }))
+    })
+    expect(container.querySelector('[role="menu"]')).toBeNull()
+  })
+})
+
 describe('Popover', () => {
   it('键盘打开后焦点进入弹层，Esc 关闭且焦点回到触发按钮', async () => {
     const container = await mount(
@@ -324,6 +410,32 @@ describe('Popover', () => {
     expect(container.querySelector('[role="dialog"]')).toBeNull()
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
     expect(focused()).toBe(trigger)
+  })
+
+  it('弹层 Portal 到纸墨根后，Tab 顺序仍接在触发按钮之后', async () => {
+    const container = await mount(
+      <div style={{ display: 'flex', gap: 8 }}>
+        <Popover label="版本 v3" title="草稿版本"><Button variant="text" size="sm">恢复此版本</Button></Popover>
+        <Button variant="text">下一项</Button>
+      </div>,
+    )
+    const trigger = container.querySelector<HTMLButtonElement>('button')!
+    await userEvent.tab()
+    await userEvent.keyboard('{Enter}')
+    await settle()
+    expect(focused().getAttribute('role')).toBe('dialog')
+    await userEvent.tab()
+    expect(focused().textContent).toBe('恢复此版本')
+    await userEvent.tab({ shift: true })
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+    expect(focused()).toBe(trigger)
+
+    await userEvent.keyboard('{Enter}')
+    await settle()
+    await userEvent.tab()
+    await userEvent.tab()
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+    expect(focused().textContent).toBe('下一项')
   })
 
   it('点击弹层外部关闭', async () => {
@@ -500,6 +612,22 @@ describe('DangerConfirm', () => {
     await userEvent.keyboard('{Enter}')
     expect(onConfirm).toHaveBeenCalledTimes(1)
     expect(container.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it.each(['light', 'dark'] as const)('%s 主题祖先带 transform 时对话框仍居中于视口，并取到纸墨令牌', async (theme) => {
+    const container = await mount(
+      <div style={{ transform: 'translateX(0)', width: 240, height: 120, overflow: 'hidden', position: 'relative', zIndex: 0 }}>
+        <Harness onConfirm={() => {}} />
+      </div>,
+      theme,
+    )
+    await settle()
+    const dialog = container.querySelector<HTMLElement>('[role="dialog"]')!
+    const rect = dialog.getBoundingClientRect()
+    expect(rect.left + rect.width / 2).toBeCloseTo(document.documentElement.clientWidth / 2, 0)
+    expect(rect.top + rect.height / 2).toBeCloseTo(document.documentElement.clientHeight / 2, 0)
+    expect(document.elementFromPoint(rect.left + rect.width / 2, rect.top + 20)?.closest('[role="dialog"]')).toBe(dialog)
+    expect(getComputedStyle(dialog).backgroundColor).toBe(tokenColor(container, '--surface'))
   })
 
   it('Esc 关闭对话框且不确认', async () => {
