@@ -160,14 +160,19 @@ export function locate(tab: Pick<EditorTab, 'type' | 'chapterNumber'> | undefine
     : location
 }
 
-/** 工作流正在写的章：运行声明的资源里形如 chapter:<章号> 的那些。 */
-export function runningChapters(runs: readonly { resourceKeys?: readonly string[] }[]): Set<number> {
+/**
+ * 工作流正在写的章：运行声明的资源里形如 chapter:<章号> 的那些。
+ * 批量创作一次声明整批章，但按章逐步写（第 i 步写第 i 章），只有当前步骤那一章在写，其余还在排队。
+ */
+export function runningChapters(runs: readonly Pick<WorkflowRun, 'resourceKeys' | 'type' | 'currentStepIndex'>[]): Set<number> {
   const numbers = new Set<number>()
   for (const run of runs) {
-    for (const key of run.resourceKeys ?? []) {
+    const chapters = (run.resourceKeys ?? []).flatMap(key => {
       const match = /^chapter:(\d+)$/.exec(key)
-      if (match) numbers.add(Number(match[1]))
-    }
+      return match ? [Number(match[1])] : []
+    })
+    const writing = run.type === 'batch_generate' ? chapters.slice(run.currentStepIndex, run.currentStepIndex + 1) : chapters
+    for (const number of writing) numbers.add(number)
   }
   return numbers
 }

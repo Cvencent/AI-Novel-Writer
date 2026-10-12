@@ -1,0 +1,236 @@
+/* eslint-disable react-refresh/only-export-components */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import type { StoreApi } from 'zustand'
+
+import '../../../../index.css'
+import '../../../../styles/paper-ink/index.css'
+import '../../stage.css'
+import type { Locale } from '../../../../i18n/types'
+import type { ProjectData } from '../../../../shared/ipc-channels'
+import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
+import type { RecoveryCandidate } from '../../../../shared/recovery-candidate'
+import { useLayoutStore } from '../../../../stores/layout-store'
+import { useLocaleStore } from '../../../../stores/locale-store'
+import { useStageStore, type StageSheet } from '../../../../stores/navigation/stage-store'
+import { useProjectStore } from '../../../../stores/project-store'
+import { useWorkflowStore, type WorkflowRun } from '../../../../stores/workflow-store'
+import RightToolWindowBar from '../../../layout/RightToolWindowBar'
+import RunSheet from '../RunSheet'
+
+;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+const session = { projectId: '灯塔', projectPath: 'C:/novels/lighthouse', leaseId: '本次打开' }
+const CHAT_WORDS = /Agent|助手|聊天|对话|assistant|chat/i
+
+function snapshot<T>(store: StoreApi<T>): () => void {
+  const state = store.getState()
+  return () => store.setState(state, true)
+}
+const restores = [useProjectStore, useWorkflowStore, useStageStore, useLocaleStore, useLayoutStore].map(store => snapshot(store as StoreApi<unknown>))
+
+let root: Root | undefined
+let host: HTMLDivElement | undefined
+let candidates: RecoveryCandidate[]
+let invoke: ReturnType<typeof vi.fn<(channel: string, ...args: unknown[]) => Promise<unknown>>>
+
+function run(id: string, status: WorkflowRun['status'], extra: Partial<WorkflowRun> = {}): WorkflowRun {
+  return {
+    id, projectPath: session.projectPath, projectSession: session, status, title: `写稿 — 第 ${id} 章`, currentStepIndex: 0,
+    uiLocale: 'zh-CN', writingLanguage: 'zh-CN', type: 'chapter_creation', createdAt: '2026-10-12T08:10:00.000Z',
+    steps: [{ id: `${id}-write`, name: '写稿', description: '', status: status === 'completed' ? 'completed' : 'running', progress: 40, logs: [],
+      result: '林岚沿着旧港的石阶往下走。' }],
+    ...extra,
+  } as WorkflowRun
+}
+
+function candidate(): RecoveryCandidate {
+  return { candidateId: '候选甲', runId: '旧运行', stepId: '写稿', projectId: session.projectId, chapterNumber: 3, chapterTitle: '雾钟',
+    sourceHash: 'h', visibleText: '潮水退去，钟声早了一刻。', contentHash: 'c', failureCode: 'timeout', failureReason: '超时',
+    status: 'pending', replacesCandidateId: null, sourceCurrent: true, createdAt: '2026-10-12T07:00:00.000Z', resolvedAt: null } as RecoveryCandidate
+}
+
+async function render(sheet: StageSheet = { kind: 'run', tab: 'active' }) {
+  await act(async () => useStageStore.setState({ sheet }))
+  await act(async () => root!.render(<Sheet />))
+}
+
+function Sheet() {
+  const sheet = useStageStore(s => s.sheet)
+  return sheet ? <RunSheet sheet={sheet} /> : null
+}
+
+const button = (name: string | RegExp) => [...host!.querySelectorAll('button')]
+  .find(candidate => typeof name === 'string' ? candidate.textContent === name || candidate.getAttribute('aria-label') === name : name.test(candidate.textContent ?? ''))
+const click = async (name: string | RegExp) => {
+  const target = button(name)
+  expect(target, String(name)).toBeTruthy()
+  await act(async () => target!.click())
+}
+const selectedTab = () => host!.querySelector('[role="tab"][aria-selected="true"]')?.textContent
+
+beforeEach(() => {
+  candidates = []
+  invoke = vi.fn(async (channel: string) => {
+    if (channel === 'db:recovery-candidate-list') return candidates
+    if (channel === 'generation:list' || channel === 'generation:list-batches' || channel === 'skills:list-user') return []
+    if (channel === 'fs:check-exists') return false
+    if (channel === 'db:recovery-candidate-resolve') return { success: true }
+    if (channel === 'db:get-llm-stats') return { totalCalls: 3, successfulCalls: 2, failedCalls: 1, knownUsageCalls: 3, totalTokens: 21400, totalPromptTokens: 15200, totalCompletionTokens: 6200 }
+    if (channel === 'db:get-llm-history') return [{ id: 1, modelName: '夹具模型', purpose: 'chapter-draft', promptTokens: 8420, completionTokens: 1236, totalTokens: 9656,
+      durationMs: 41000, success: true, createdAt: '2026-10-12T08:31:00.000Z' }]
+    throw new Error(`未配置调用：${channel}`)
+  })
+  Object.defineProperty(window, 'aiNovelAPI', { configurable: true, value: { invoke, on: () => () => {} } })
+  useProjectStore.setState({ currentProject: { id: session.projectId, path: session.projectPath, sessionLease: session.leaseId, name: '灯塔', novelConfig: {} } as unknown as ProjectData })
+  setActiveProjectSessionContext(session)
+  useWorkflowStore.setState({ activeRuns: [], history: [], waitingRuns: {}, globalLogs: [] })
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  host = document.createElement('div')
+  host.className = 'paper-ink stage-shell'
+  host.style.cssText = 'width: 640px; height: 800px; display: flex'
+  document.body.append(host)
+  root = createRoot(host)
+})
+
+afterEach(async () => {
+  await act(async () => root?.unmount())
+  host?.remove()
+  setActiveProjectSessionContext(null)
+  for (const restore of restores) restore()
+  vi.restoreAllMocks()
+})
+
+describe('运行侧页', () => {
+  it('三个分页：进行中看运行，历史列出结束的运行并展开看步骤，诊断是宽版', async () => {
+    useWorkflowStore.setState({ activeRuns: [run('4', 'running')], history: [run('3', 'completed', { completedAt: '2026-10-12T08:00:00.000Z' })] })
+    await render()
+    expect(selectedTab()).toBe('进行中')
+    expect(host!.querySelector('article')?.textContent).toContain('写稿 — 第 4 章')
+    expect(host!.querySelector('.run-output')?.textContent).toContain('林岚沿着旧港的石阶往下走。')
+
+    await click('历史')
+    expect(selectedTab()).toBe('历史')
+    const row = button(/写稿 — 第 3 章/)!
+    expect(row.getAttribute('aria-expanded')).toBe('false')
+    await act(async () => row.click())
+    expect(row.getAttribute('aria-expanded')).toBe('true')
+    expect(host!.querySelector('[aria-label="步骤"]')?.textContent).toContain('写稿')
+
+    await click('诊断')
+    expect(selectedTab()).toBe('诊断')
+    expect(host!.querySelector('aside')!.classList.contains('pi-sheet--wide')).toBe(true)
+    expect(host!.textContent).toContain('AI 调用记录')
+    await vi.waitFor(() => expect(host!.querySelector('table')?.textContent).toContain('夹具模型'))
+    expect(host!.querySelector('[aria-label="调用统计"]')?.textContent).toContain('1.5万')
+    expect(button('复制安全诊断')).toBeTruthy()
+    expect(host!.textContent).not.toMatch(/token/i)
+  })
+
+  it('要看的运行已结束时直接在历史里展开它', async () => {
+    useWorkflowStore.setState({ history: [run('3', 'completed'), run('2', 'completed')] })
+    await render({ kind: 'run', tab: 'active', runId: '3' })
+    expect(selectedTab()).toBe('历史')
+    expect(button(/写稿 — 第 3 章/)!.getAttribute('aria-expanded')).toBe('true')
+    expect(button(/写稿 — 第 2 章/)!.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('取消调用工作流的取消；正在取消时不再给取消按钮', async () => {
+    const cancelWorkflow = vi.fn()
+    useWorkflowStore.setState({ activeRuns: [run('4', 'running')], cancelWorkflow })
+    await render()
+    await click('取消「写稿 — 第 4 章」')
+    expect(cancelWorkflow).toHaveBeenCalledWith('4')
+    await act(async () => useWorkflowStore.setState({ activeRuns: [run('4', 'cancelling')] }))
+    expect(button('取消「写稿 — 第 4 章」')).toBeUndefined()
+    expect(host!.textContent).toContain('正在取消，等当前操作退出')
+  })
+
+  it('批量创作：运行中可暂停，请求暂停后说明本章写完后暂停，暂停后可继续', async () => {
+    const pauseWorkflow = vi.fn()
+    const resumeWorkflow = vi.fn()
+    const batch = (status: WorkflowRun['status'], pauseRequested = false) => run('5', status, { type: 'batch_generate', title: '批量草稿待审 — 第5–6章', pauseRequested })
+    useWorkflowStore.setState({ activeRuns: [batch('running')], pauseWorkflow, resumeWorkflow })
+    await render()
+    await click('暂停批量创作')
+    expect(pauseWorkflow).toHaveBeenCalledWith('5')
+    await act(async () => useWorkflowStore.setState({ activeRuns: [batch('running', true)] }))
+    expect(button('暂停批量创作')).toBeUndefined()
+    expect(host!.textContent).toContain('本章写完后暂停')
+    await act(async () => useWorkflowStore.setState({ activeRuns: [batch('paused')] }))
+    await click('继续批量创作')
+    expect(resumeWorkflow).toHaveBeenCalledWith('5')
+  })
+
+  it('等你确认：显示下一步，确认后工作流继续到完成', async () => {
+    const second = vi.fn(async () => '已写入')
+    const pending = useWorkflowStore.getState().startWorkflow({ type: 'post_process', title: '提取角色', projectPath: session.projectPath, projectSession: session, steps: [
+      { name: '读取正文', description: '', executor: async () => '候选' },
+      { name: '写入角色卡', description: '', requiresConfirmation: true, executor: second },
+    ] })
+    await render()
+    await vi.waitFor(() => expect(button('确认继续')).toBeTruthy())
+    expect(host!.querySelector('article')?.textContent).toContain('等你确认')
+    expect(host!.textContent).toContain('下一步：写入角色卡')
+    expect(second).not.toHaveBeenCalled()
+    await click('确认继续')
+    await act(async () => { await pending })
+    expect(second).toHaveBeenCalledOnce()
+    expect(useWorkflowStore.getState().history[0]?.status).toBe('completed')
+  })
+
+  it('恢复候选：复制；放弃要就地确认，保留不动磁盘，确认后候选消失', async () => {
+    candidates = [candidate()]
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
+    await render()
+    await vi.waitFor(() => expect(host!.textContent).toContain('原始候选 · 第3章 雾钟'))
+    await click('复制')
+    expect(writeText).toHaveBeenCalledWith('潮水退去，钟声早了一刻。')
+
+    await click('放弃…')
+    const confirm = host!.querySelector('[role="group"]')!
+    expect(confirm.textContent).toContain('放弃后这 10 字无法找回。')
+    expect(document.activeElement?.textContent).toBe('保留')
+    await click('保留')
+    expect(host!.querySelector('[role="group"]')).toBeNull()
+    expect(invoke.mock.calls.some(([channel]) => channel === 'db:recovery-candidate-resolve')).toBe(false)
+
+    await click('放弃…')
+    await click('放弃')
+    await vi.waitFor(() => expect(host!.textContent).not.toContain('原始候选 · 第3章 雾钟'))
+    expect(invoke.mock.calls.find(([channel]) => channel === 'db:recovery-candidate-resolve')).toEqual(
+      expect.arrayContaining(['db:recovery-candidate-resolve', '候选甲', 'discarded']))
+  })
+
+  it('清空日志要就地确认，写明行数', async () => {
+    useWorkflowStore.setState({ globalLogs: [
+      { time: '08:10:00', level: 'info', message: '开始' },
+      { time: '08:10:05', level: 'error', message: '超时' },
+    ] })
+    await render({ kind: 'run', tab: 'diagnostics' })
+    await click('清空日志…')
+    expect(host!.querySelector('[role="group"]')?.textContent).toContain('清空后这 2 行日志无法找回。')
+    await click('清空')
+    expect(useWorkflowStore.getState().globalLogs).toEqual([])
+  })
+})
+
+describe('聊天入口不可见', () => {
+  it.each<[Locale, string]>([['zh-CN', 'AI 输出'], ['en-US', 'AI output']])('%s：旧外壳右侧栏只有 AI 输出，运行侧页三个分页都没有聊天', async (locale, outputLabel) => {
+    useLocaleStore.setState({ locale })
+    useLayoutStore.setState({ aiPanelOpen: false, sidebarView: 'project' })
+    useWorkflowStore.setState({ activeRuns: [run('4', 'running')], history: [run('3', 'completed')] })
+    await act(async () => root!.render(<RightToolWindowBar />))
+    const rail = [...host!.querySelectorAll('button')]
+    expect(rail.map(item => item.title)).toEqual([outputLabel])
+    expect(host!.innerHTML).not.toMatch(CHAT_WORDS)
+
+    for (const tab of ['active', 'history', 'diagnostics'] as const) {
+      await render({ kind: 'run', tab })
+      expect(host!.textContent).not.toMatch(CHAT_WORDS)
+      expect([...host!.querySelectorAll('[aria-label],[title]')].map(node => `${node.getAttribute('aria-label')} ${node.getAttribute('title')}`).join(' ')).not.toMatch(CHAT_WORDS)
+    }
+    expect(selectedTab()).toBe(locale === 'en-US' ? 'Diagnostics' : '诊断')
+  })
+})

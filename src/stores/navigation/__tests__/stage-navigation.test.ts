@@ -23,7 +23,7 @@ beforeEach(() => {
     chapterCreationPrefill: null, immersive: false, bottomPanelOpen: false })
   useEditorStore.setState({ tabs: [], activeTabId: null })
   useProjectStore.setState({ currentProject: { id: 'stage', name: '灯塔', path: PROJECT_PATH } as ProjectData })
-  useStageStore.setState({ sheet: { kind: 'run', facet: 'log' }, focus: true, palette: 'commands', work: null, closingTabId: null })
+  useStageStore.setState({ sheet: { kind: 'run', tab: 'diagnostics' }, focus: true, palette: 'commands', work: null, closingTabId: null })
 })
 
 afterEach(() => {
@@ -57,13 +57,21 @@ describe('新外壳下 navigate 的落点，调用方与旧外壳相同', () => 
     expect(useStageStore.getState().focus).toBe(false)
   })
 
-  it('运行意图打开运行侧页并定位到请求的分页', () => {
+  it('运行意图打开运行侧页：输出与任务落到进行中并带上运行，日志与模型调用落到诊断；旧外壳的布局字段不动', () => {
+    const layoutBefore = useLayoutStore.getState()
     navigate({ kind: 'run', facet: 'output', runId: 'run-7' })
-    expect(useStageStore.getState().sheet).toEqual({ kind: 'run', facet: 'output' })
-    expect(useLayoutStore.getState()).toMatchObject({ rightPanelRunId: 'run-7' })
+    expect(useStageStore.getState().sheet).toEqual({ kind: 'run', tab: 'active', runId: 'run-7' })
+    navigate({ kind: 'run', facet: 'tasks' })
+    expect(useStageStore.getState().sheet).toEqual({ kind: 'run', tab: 'active', runId: undefined })
+    navigate({ kind: 'run', facet: 'log' })
+    expect(useStageStore.getState().sheet).toEqual({ kind: 'run', tab: 'diagnostics', runId: undefined })
     navigate({ kind: 'run', facet: 'models' })
-    expect(useStageStore.getState().sheet).toEqual({ kind: 'run', facet: 'models' })
-    expect(useLayoutStore.getState()).toMatchObject({ bottomTab: 'models', bottomPanelOpen: true })
+    expect(useStageStore.getState().sheet).toEqual({ kind: 'run', tab: 'diagnostics', runId: undefined })
+    const { rightPanelRunId, bottomTab, bottomPanelOpen, aiPanelOpen } = useLayoutStore.getState()
+    expect({ rightPanelRunId, bottomTab, bottomPanelOpen, aiPanelOpen }).toEqual({
+      rightPanelRunId: layoutBefore.rightPanelRunId, bottomTab: layoutBefore.bottomTab,
+      bottomPanelOpen: layoutBefore.bottomPanelOpen, aiPanelOpen: layoutBefore.aiPanelOpen,
+    })
   })
 
   it('设置分组与写作此章仍打开原来的对话框，不退出沉浸', () => {
@@ -77,7 +85,7 @@ describe('新外壳下 navigate 的落点，调用方与旧外壳相同', () => 
   it('旧外壳不受影响：同一意图仍写旧布局字段', () => {
     useAppearanceStore.setState({ resolvedShell: 'writer' })
     navigate({ kind: 'run', facet: 'tasks' })
-    expect(useStageStore.getState().sheet).toEqual({ kind: 'run', facet: 'log' })
+    expect(useStageStore.getState().sheet).toEqual({ kind: 'run', tab: 'diagnostics' })
     expect(useLayoutStore.getState()).toMatchObject({ bottomPanelOpen: true, bottomTab: 'tasks', activeRailItem: 'tasks' })
   })
 })
