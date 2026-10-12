@@ -30,7 +30,7 @@ function useFilledSections(): number | null {
   return ARCHITECTURE_SECTIONS.filter(section => work.architecture[section]).length
 }
 
-/** 角色名单一节的摘要；角色卡在打开作品后单独载入，载完之前页面仍算载入中。 */
+/** 角色名单一节的摘要。角色卡在打开作品后单独载入（角色多时要几百毫秒），载完之前只这一节写「正在读取」，其余三节照常可用。 */
 function useCastSummary(projectKey: string): { summary: string; loading: boolean } {
   const text = useLocaleStore(s => s.text)
   const characters = useCharacterStore(s => s.characters)
@@ -101,7 +101,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
   const clearingName = clearing ? text(...SECTION_NAMES[clearing]) : ''
 
   return (
-    <div className="arch-page" data-loading={overview.loading || cast.loading || undefined}>
+    <div className="arch-page" data-loading={overview.loading || undefined} data-cast-loading={cast.loading || undefined}>
       <div className="arch-inner">
         <header className="arch-header">
           <div className="arch-heading">

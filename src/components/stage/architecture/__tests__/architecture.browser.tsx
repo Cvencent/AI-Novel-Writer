@@ -53,7 +53,7 @@ function filledSpine(filled: readonly string[]) {
 
 async function render() {
   await act(async () => root!.render(<StageArchitecture projectKey={session.projectPath} />))
-  await vi.waitFor(() => expect(host!.querySelector('.arch-page[data-loading]')).toBeNull())
+  await vi.waitFor(() => expect(host!.querySelector('.arch-page[data-loading], .arch-page[data-cast-loading]')).toBeNull())
 }
 
 beforeEach(() => {

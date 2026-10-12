@@ -190,7 +190,8 @@
   white-space: pre-wrap;
 }
 
-.arch-page[data-loading] .arch-section-summary {
+.arch-page[data-loading] .arch-section-summary,
+.arch-page[data-cast-loading] [data-section='characters'] .arch-section-summary {
   opacity: 0.6;
 }
 

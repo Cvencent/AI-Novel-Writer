@@ -17,14 +17,14 @@ export const castRoster = page => root(page).getByRole('complementary', { name: 
 export const castRow = (page, name) => castRoster(page).getByRole('button', { name: new RegExp(`^${name}`) })
 export const profileName = page => root(page).locator('.cast-profile-name')
 
-/** 从流程脊进入架构阶段，等四节都读完（页面不在载入中）。 */
+/** 从流程脊进入架构阶段，等四节与角色名单都读完。 */
 export async function open(page) {
   await spine(page).getByRole('button', { name: /^架构/ }).click()
   await waitReady(page)
 }
 
 export async function waitReady(page) {
-  await root(page).locator('.arch-page:not([data-loading])').waitFor({ state: 'visible', timeout: 20_000 })
+  await root(page).locator('.arch-page:not([data-loading]):not([data-cast-loading])').waitFor({ state: 'visible', timeout: 20_000 })
   await root(page).locator('.arch-section').nth(3).waitFor({ state: 'visible' })
 }
 
