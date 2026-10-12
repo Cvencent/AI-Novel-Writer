@@ -23,6 +23,7 @@ import {
   type DirectoryWorkflowParams,
 } from '../../services/workflows/directory-workflow'
 import { launchCreativeWorkflow } from '../../services/workflows/creative-workflow-launcher'
+import { blueprintWritePrefill } from '../../services/workflows/chapter-write-launch'
 import { guardDirectoryGeneration } from '../../services/workflow-guards'
 import DirectoryConfigDialog from '../dialogs/DirectoryConfigDialog'
 import BatchChapterCreationDialog from '../dialogs/BatchChapterCreationDialog'
@@ -779,14 +780,7 @@ function ChapterCardEditorSession({
       !projectSession
       || !sameProjectSessionContext(dataProjectSessionRef.current, projectSession)
     ) return
-    navigate({ kind: 'chapter', chapterNumber: bp.chapterNumber, write: {
-      title: bp.title,
-      role: bp.role,
-      purpose: bp.purpose,
-      keyEvents: bp.keyEvents,
-      characters: bp.characters.join('、'),
-      userGuidance: bp.userGuidance || '',
-    } })
+    navigate({ kind: 'chapter', chapterNumber: bp.chapterNumber, write: blueprintWritePrefill(bp) })
   }
 
   /**

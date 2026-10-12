@@ -10,7 +10,9 @@ import { readConsistencyPreflight, type ConsistencyPreflightResult } from '../co
 import { ipc } from '../ipc-client'
 import { requireIpcSuccess } from '../ipc-result'
 import { guardChapterWriting } from '../workflow-guards'
+import type { ChapterWritePrefill } from '../../stores/layout-store'
 import { createChapterWorkflow } from './chapter-workflow'
+import type { ChapterBlueprint } from './directory-workflow'
 import {
   createChapterInfoFromDialogInput,
   DEFAULT_CHAPTER_WORDS_TARGET,
@@ -54,6 +56,18 @@ export function preferredGenerationModelId(models: ModelProfile[], defaultModelI
 
 export function chapterDefaultWordsTarget(wordsPerChapter: number | undefined): number {
   return normalizeChapterWordsTarget(wordsPerChapter, DEFAULT_CHAPTER_WORDS_TARGET)
+}
+
+/** 蓝图里交给写作的字段；出场人物以顿号连接，启动时再按顿号或逗号拆开。 */
+export function blueprintWritePrefill(blueprint: ChapterBlueprint): ChapterWritePrefill {
+  return {
+    title: blueprint.title,
+    role: blueprint.role,
+    purpose: blueprint.purpose,
+    keyEvents: blueprint.keyEvents,
+    characters: blueprint.characters.join('、'),
+    userGuidance: blueprint.userGuidance || '',
+  }
 }
 
 /** 从章节蓝图「写作此章」带来的预填参数换成表单值；目标字数取设定里的每章字数，检索关键词留空。 */

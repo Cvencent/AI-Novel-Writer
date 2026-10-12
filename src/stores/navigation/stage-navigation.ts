@@ -11,7 +11,6 @@ import { useLocaleStore } from '../locale-store'
 import { openBuiltinEditor } from '../open-builtin-editor'
 import { openDraftTab } from '../open-draft-tab'
 import { useProjectStore } from '../project-store'
-import { chapterWritePrefill } from './legacy-layout'
 import type { NavigationIntent } from './navigation-intents'
 import { openPageTab } from './page-tabs'
 import { deriveChapters, focusChapter } from './stage-progress'
@@ -78,6 +77,13 @@ export async function openChapter(chapterNumber: number): Promise<void> {
   }
 }
 
+/** 写作此章：打开蓝图并选中这一章，由那里的写作按钮弹出写作弹层；参数取自蓝图，不再弹旧的创作对话框。 */
+function requestChapterWrite(chapterNumber: number): void {
+  const text = useLocaleStore.getState().text
+  useStageStore.setState({ focus: false, writeRequest: { chapterNumber } })
+  openBuiltinEditor('chapter-card-editor', text('章节蓝图', 'Chapter blueprint'), 'chapter-card', undefined, chapterNumber)
+}
+
 function openKnowledge(): void {
   const projectKey = useProjectStore.getState().currentProject?.path
   if (!projectKey) return
@@ -110,7 +116,7 @@ export function stageNavigate(intent: NavigationIntent): void {
     return
   }
   if (intent.kind === 'chapter' && intent.write) {
-    useLayoutStore.setState(chapterWritePrefill(intent.chapterNumber, intent.write))
+    requestChapterWrite(intent.chapterNumber)
     return
   }
   // 去具体的阶段、资料页或章节，或从书房进作品，都会收起设置页，有没保存的输入时先确认；

@@ -74,12 +74,17 @@ describe('新外壳下 navigate 的落点，调用方与旧外壳相同', () => 
     })
   })
 
-  it('设置分组与写作此章仍打开原来的对话框，不退出沉浸', () => {
+  it('设置分组仍打开原来的对话框，不退出沉浸', () => {
     navigate({ kind: 'settings', section: 'backup' })
-    navigate({ kind: 'chapter', chapterNumber: 3, write: WRITE })
-    expect(useLayoutStore.getState()).toMatchObject({ settingsOpen: true, settingsSection: 'backup', chapterCreationOpen: true,
-      chapterCreationPrefill: { chapterNumber: 3, ...WRITE } })
+    expect(useLayoutStore.getState()).toMatchObject({ settingsOpen: true, settingsSection: 'backup' })
     expect(useStageStore.getState().focus).toBe(true)
+  })
+
+  it('写作此章不再打开旧的创作对话框：落到蓝图并选中这一章，请蓝图页弹出写作弹层', () => {
+    navigate({ kind: 'chapter', chapterNumber: 3, write: WRITE })
+    expect(useLayoutStore.getState().chapterCreationOpen).toBe(false)
+    expect(useEditorStore.getState().tabs).toMatchObject([{ type: 'chapter-card', chapterNumber: 3 }])
+    expect(useStageStore.getState()).toMatchObject({ focus: false, writeRequest: { chapterNumber: 3 } })
   })
 
   it('旧外壳不受影响：同一意图仍写旧布局字段', () => {
