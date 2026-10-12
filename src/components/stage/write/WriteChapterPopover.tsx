@@ -75,7 +75,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       if (isProjectSessionCurrent(session) && exemptions.some(item => !item.revoked)) {
         setPreflight(current => current ?? { findings: [], exemptions })
       }
-    })
+    }).catch(() => undefined)
   }, [open])
 
   const start = async (ignoreFindingsOnce: boolean) => {
