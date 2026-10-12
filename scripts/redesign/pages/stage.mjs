@@ -28,12 +28,41 @@ export async function chapterRows(page) {
   })))
 }
 
-/** 书房里的书按可访问名称找，英文界面是「Open 灯塔」。 */
-export const shelfButton = (page, name) => page.locator('.writer-shelf').getByRole('button', { name })
+/** 书房的书架与右侧概览。点封面只预览，概览里的主按钮才打开。 */
+export const shelf = page => page.getByRole('list', { name: '最近的作品' })
+export const cover = (page, name) => shelf(page).getByRole('button', { name: `预览《${name}》` })
+export const overview = (page, name) => page.getByRole('region', { name: `《${name}》概览` })
 
+export async function previewBook(page, name) {
+  await cover(page, name).click()
+  await overview(page, name).waitFor({ state: 'visible' })
+}
+
+/** 英文界面的书房：封面是「Preview “书名”」，概览里的主按钮是「Open “书名”」。 */
+export async function openFromLibraryEn(page, name) {
+  await page.getByRole('list', { name: 'Recent books' }).getByRole('button', { name: `Preview “${name}”` }).click()
+  await page.getByRole('region', { name: `“${name}” overview` }).getByRole('button', { name: `Open “${name}”` }).click()
+}
+
+/** 书架上的书还没打开：先点封面预览，再点概览里的「打开《书名》」。 */
 export async function openFromLibrary(page, name) {
-  await page.locator('.writer-shelf').getByRole('button', { name: `打开《${name}》` }).click()
+  await previewBook(page, name)
+  await overview(page, name).getByRole('button', { name: `打开《${name}》` }).click()
   await spine(page).waitFor({ state: 'visible' })
+}
+
+/** 从 Ctrl K 打开书架上的书；同一部作品已打开时也会重新打开（新的项目会话）。 */
+export async function openFromPalette(page, name) {
+  await page.keyboard.press('Control+K')
+  await paletteInput(page).waitFor({ state: 'visible' })
+  await paletteInput(page).fill(name)
+  await palette(page).getByRole('option', { name: new RegExp(`打开《${escape(name)}》`) }).click()
+  await spine(page).waitFor({ state: 'visible' })
+}
+
+export async function bookMenu(page, name, item) {
+  await shelf(page).getByRole('button', { name: `《${name}》更多操作` }).click()
+  await page.getByRole('menuitem', { name: item }).click()
 }
 
 export async function waitForProse(page, text) {
@@ -65,14 +94,10 @@ export async function openSettings(page) {
   await page.getByRole('button', { name: '关闭设置' }).waitFor({ state: 'visible' })
 }
 
-export function removeFromLibraryButton(page, name) {
-  return page.locator('.writer-shelf').getByRole('button', { name: `从最近项目移除《${name}》` })
-}
-
 export async function backToLibrary(page, name) {
   await root(page).getByRole('banner').getByRole('button', { name: `《${name}》作品菜单` }).click()
   await page.getByRole('menuitem', { name: '回到书房' }).click()
-  await page.locator('.writer-shelf').waitFor({ state: 'visible' })
+  await shelf(page).waitFor({ state: 'visible' })
 }
 
 /**
@@ -114,4 +139,27 @@ export function spineLayout(page) {
         .every(row => getComputedStyle(row.querySelector('svg')).color === getComputedStyle(row).color),
     }
   })
+}
+
+/** 外壳里当前可见的主按钮文字；每层只应有一个。 */
+export function primaryButtons(page) {
+  return root(page).locator('.pi-btn--primary').evaluateAll(buttons => buttons
+    .filter(button => button.getClientRects().length > 0)
+    .map(button => button.textContent.trim()))
+}
+
+export const modelMissingNotice = page => root(page).getByRole('status').filter({ hasText: '还没有连接 AI 模型' })
+
+/** 概览卡里四个阶段的进度：done、active 或 todo。 */
+export function overviewBars(page, name) {
+  return overview(page, name).getByRole('list', { name: '阶段进度' }).locator('[data-stage]')
+    .evaluateAll(rows => Object.fromEntries(rows.map(row => [row.dataset.stage, row.dataset.state])))
+}
+
+export const updateCard = page => root(page).getByRole('status', { name: '应用更新' })
+
+/** 在设定页改一项（细分类型），让设定标签变成未保存。 */
+export async function dirtySetup(page, value = '海港悬疑') {
+  await page.getByPlaceholder('如：修仙/重生/末世').fill(value)
+  await saveStatus(page).filter({ hasText: '未保存' }).waitFor({ state: 'visible' })
 }

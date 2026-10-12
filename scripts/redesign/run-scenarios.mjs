@@ -249,7 +249,7 @@ export const RUN_SCENARIOS = {
   'run-en': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page, invoke, reload, fake }) => {
     assert.equal((await invoke(page, 'config:set', { locale: 'en-US' })).success, true)
     await reload()
-    await stage.shelfButton(page, 'Open 灯塔').click()
+    await stage.openFromLibraryEn(page, '灯塔')
     const spine = page.getByRole('navigation', { name: 'Writing flow' })
     await spine.waitFor({ state: 'visible' })
     await page.keyboard.press('Control+K')

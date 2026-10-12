@@ -258,10 +258,6 @@ export default function App() {
   const globalDialogs = (
     <>
       {/* 全局对话框 — 由 layout-store 控制开关，不再依赖 window.dispatchEvent */}
-      <NewProjectDialog
-        open={newProjectOpen}
-        onClose={closeNewProject}
-      />
       <ImportNovelDialog
         open={importNovelOpen}
         onClose={closeImportNovel}
@@ -332,6 +328,11 @@ export default function App() {
         immersive={immersive}
       />
 
+      {/* 新外壳的书房有自己的纸墨新建对话框，这个弹窗只属于旧外壳。 */}
+      <NewProjectDialog
+        open={newProjectOpen}
+        onClose={closeNewProject}
+      />
       {globalDialogs}
     </AppSkinRoot>
   )

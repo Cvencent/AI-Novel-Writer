@@ -277,14 +277,16 @@ export async function untilGateHolds(gate, timeoutMs = 15_000) {
  * 用公开 IPC 预置新外壳示例作品：12 章蓝图，1、2 章定稿，3 章已审稿，4 章草稿；架构四节齐全。
  * totalChapters 改规划总章数；beforeReload 在重载前再写入数据；landOnChapter3 为 false 时只等流程脊，落点由场景自己断言。
  */
-export async function seedStageSample({ app, page, roots, invoke, reload },
-  { totalChapters = STAGE_SAMPLE.totalChapters, beforeReload, landOnChapter3 = true } = {}) {
+export async function seedStageSample(context,
+  { totalChapters = STAGE_SAMPLE.totalChapters, beforeReload, landOnChapter3 = true, open = true } = {}) {
+  const { app, page, roots, invoke, reload } = context
   const created = await invoke(page, 'project:create', { parentGrantId: (await chooseProjectDirectoryGrant(app, page, roots.projects)).grantId,
     name: STAGE_SAMPLE.name, genre: '悬疑', targetAudience: '成年读者', writingLanguage: 'zh-CN' }, randomUUID(), null)
   assert.equal(created.success, true, created.error)
   const opened = await invoke(page, 'project:open', created.projectPath, randomUUID(), null)
   assert.equal(opened.success, true, opened.error)
   const path = created.projectPath
+  context.samplePath = path
   const session = { projectId: created.projectId, projectPath: path, leaseId: opened.project.sessionLease }
   assert.equal((await invoke(page, 'llm:save-model', FAKE_MODEL)).success, true)
   assert.equal((await invoke(page, 'llm:set-default-model', FAKE_MODEL.id)).success, true)
@@ -313,6 +315,7 @@ export async function seedStageSample({ app, page, roots, invoke, reload },
   }
   await beforeReload?.({ page, invoke, path, session })
   await reload()
+  if (!open) return
   if (await stage.root(page).count() > 0) {
     await stage.openFromLibrary(page, STAGE_SAMPLE.name)
     if (landOnChapter3) await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
@@ -322,6 +325,38 @@ export async function seedStageSample({ app, page, roots, invoke, reload },
   await project.waitForTreeRefreshed(page, STAGE_SAMPLE.titles.length)
   await project.draftOfChapter(page, 3).click()
   await chapter.editor(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text)).waitFor({ state: 'visible' })
+}
+
+/**
+ * 夹具更新源：替换主进程的更新 IPC，并推一次「发现 1.2.3」。下载时先推 40% 进度，400 ms 后变为待重启；
+ * 重启安装只记次数，不会真的退出。
+ */
+async function stubUpdates(app) {
+  await app.evaluate(({ ipcMain, BrowserWindow }) => {
+    const base = { currentVersion: '1.2.2', availableVersion: '1.2.3', updateAction: 'download', releaseName: '1.2.3', isReminderDeferred: false }
+    const fixture = globalThis.__driveUpdate = { state: { ...base, status: 'available' }, installs: 0 }
+    const publish = state => {
+      fixture.state = state
+      BrowserWindow.getAllWindows()[0]?.webContents.send('update:state', state)
+    }
+    for (const channel of ['update:get-state', 'update:check', 'update:download', 'update:open-release', 'update:defer-reminder', 'update:quit-and-install']) {
+      ipcMain.removeHandler(channel)
+    }
+    ipcMain.handle('update:get-state', () => fixture.state)
+    ipcMain.handle('update:check', () => ({ success: true, checked: true, updateAvailable: true, state: fixture.state }))
+    ipcMain.handle('update:download', () => {
+      publish({ ...base, status: 'downloading', downloadProgress: { percent: 40, transferred: 40, total: 100, bytesPerSecond: 100 } })
+      setTimeout(() => publish({ ...base, status: 'downloaded' }), 400)
+      return { success: true, state: fixture.state }
+    })
+    ipcMain.handle('update:open-release', () => ({ success: true, state: fixture.state }))
+    ipcMain.handle('update:defer-reminder', () => ({ success: true, state: fixture.state }))
+    ipcMain.handle('update:quit-and-install', () => {
+      fixture.installs += 1
+      return { success: true, state: fixture.state }
+    })
+    publish(fixture.state)
+  })
 }
 
 /** 在渲染进程里计时：从点击 trigger 指向的元素到正文编辑区出现 text，单位毫秒，帧粒度。 */
@@ -380,7 +415,10 @@ async function chromeContrastFailures(page) {
       ['.stage-row-name', 4.5], ['.stage-row-label', 4.5], ['.stage-chapter:not([data-phase="todo"]) .stage-chapter-title', 4.5],
       ['.stage-work-title', 4.5], ['.stage-row-meta', 3], ['.stage-chapter-status', 3], ['.stage-chapter[data-phase="todo"] .stage-chapter-title', 3],
       ['.stage-crumb', 3], ['.stage-search-hint', 3], ['.stage-saved', 3], ['.stage-spine-label', 3], ['.stage-chapter-no', 3],
-      ['.writer-shelf li > button', 4.5],
+      ['.stage-library-title', 4.5], ['.stage-eyebrow', 3], ['.stage-start-text > b', 4.5], ['.stage-start-text > span', 3],
+      ['.stage-shelf-title', 4.5], ['.stage-shelf-hint', 3], ['.stage-book-title', 4.5], ['.stage-book-name', 4.5], ['.stage-book-meta', 3],
+      ['.stage-ov-title', 4.5], ['.stage-ov-meta', 3], ['.stage-ov-bar-label', 3], ['.stage-ov .pi-stat-label', 3],
+      ['.stage-update-title', 4.5], ['.stage-update-text', 3], ['.stage-library .pi-btn:not(.pi-btn--icon)', 4.5], ['.stage-library .pi-btn--icon', 3], ['.pi-notice-title', 4.5], ['.pi-notice-text', 3],
     ]
     return checks.flatMap(([selector, minimum]) => [...document.querySelectorAll(`[data-shell-presentation="stage"] ${selector}`)].map(element => {
       const value = ratio(parse(getComputedStyle(element).color), backdrop(element))
@@ -482,16 +520,55 @@ export const STAGE_SCENARIOS = {
   'stage-library': { model: false, shell: 'stage', run: async ({ page }) => {
     await shell.firstInteractiveControl(page).waitFor({ state: 'visible' })
     assert.equal(await stage.spine(page).count(), 0, '书房没有流程脊')
+    assert.deepEqual(await stage.primaryButtons(page), ['新建作品'], '空书房唯一的主按钮是新建作品')
+    await stage.modelMissingNotice(page).waitFor({ state: 'visible' })
+    assert.deepEqual(await chromeContrastFailures(page), [], '空书房文字对比度不足')
   } },
-  'stage-library-recent': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+  'stage-library-preview': { model: false, shell: 'stage', setup: context => seedStageSample(context, { open: false }), run: async ({ page }) => {
+    await stage.previewBook(page, STAGE_SAMPLE.name)
+    const bars = await stage.overviewBars(page, STAGE_SAMPLE.name)
+    assert.deepEqual({ architecture: bars.architecture, blueprint: bars.blueprint, manuscript: bars.manuscript },
+      { architecture: 'done', blueprint: 'done', manuscript: 'active' }, '预览的概览按阶段显示进度')
+    assert.equal(await stage.spine(page).count(), 0, '预览不会打开作品')
+    assert.deepEqual(await stage.primaryButtons(page), [`打开《${STAGE_SAMPLE.name}》`], '预览时唯一的主按钮是打开这部作品')
+    assert.deepEqual(await chromeContrastFailures(page), [], '书房预览文字对比度不足')
+  } },
+  'stage-library-remove': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
     await stage.backToLibrary(page, STAGE_SAMPLE.name)
-    await stage.removeFromLibraryButton(page, STAGE_SAMPLE.name).scrollIntoViewIfNeeded()
-    assert.deepEqual(await chromeContrastFailures(page), [], '书房书架按钮文字对比度不足')
-  }, after: async ({ page }) => {
-    await stage.removeFromLibraryButton(page, STAGE_SAMPLE.name).click()
-    const dialog = page.getByRole('dialog').filter({ hasText: '这只会移除列表记录' })
-    await dialog.getByRole('button', { name: '移除记录', exact: true }).click()
-    await stage.removeFromLibraryButton(page, STAGE_SAMPLE.name).waitFor({ state: 'detached' })
+    assert.deepEqual(await chromeContrastFailures(page), [], '书房文字对比度不足')
+    await stage.bookMenu(page, STAGE_SAMPLE.name, '从最近项目移除…')
+    await page.getByRole('dialog', { name: `从书架移除《${STAGE_SAMPLE.name}》？` }).waitFor({ state: 'visible' })
+  }, after: async ({ page, samplePath }) => {
+    await page.getByRole('dialog', { name: `从书架移除《${STAGE_SAMPLE.name}》？` }).getByRole('button', { name: '移除记录', exact: true }).click()
+    await stage.cover(page, STAGE_SAMPLE.name).waitFor({ state: 'detached' })
+    assert.equal(fs.existsSync(samplePath), true, '移除书架记录后作品文件夹仍在')
+  } },
+  'stage-library-delete': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+    await stage.backToLibrary(page, STAGE_SAMPLE.name)
+    await stage.bookMenu(page, STAGE_SAMPLE.name, '删除作品…')
+    const dialog = page.getByRole('dialog', { name: `删除《${STAGE_SAMPLE.name}》？` })
+    await dialog.getByRole('textbox').fill('灯')
+    assert.equal(await dialog.getByRole('button', { name: '删除作品', exact: true }).isDisabled(), true, '作品名不一致时删除按钮保持禁用')
+  }, after: async ({ page, samplePath }) => {
+    const dialog = page.getByRole('dialog', { name: `删除《${STAGE_SAMPLE.name}》？` })
+    await dialog.getByRole('textbox').fill(STAGE_SAMPLE.name)
+    assert.equal(await dialog.getByRole('button', { name: '删除作品', exact: true }).isEnabled(), true, '输入完整作品名后才能删除')
+    await dialog.getByRole('button', { name: '取消', exact: true }).click()
+    await dialog.waitFor({ state: 'detached' })
+    assert.equal(fs.existsSync(samplePath), true, '取消删除后作品文件夹仍在')
+  } },
+  'stage-update-card': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ app, page }) => {
+    await stubUpdates(app)
+    await stage.stageButton(page, '设定').click()
+    await stage.dirtySetup(page)
+    await stage.backToLibrary(page, STAGE_SAMPLE.name)
+    const card = stage.updateCard(page)
+    await card.getByRole('button', { name: '下载更新' }).click()
+    await card.getByRole('button', { name: '立即重启更新' }).click()
+    await page.getByRole('dialog', { name: '请先处理未保存的修改' }).getByRole('button', { name: '返回保存' }).waitFor({ state: 'visible' })
+  }, after: async ({ app, page }) => {
+    await page.getByRole('dialog', { name: '请先处理未保存的修改' }).getByRole('button', { name: '返回保存' }).click()
+    assert.equal(await app.evaluate(() => globalThis.__driveUpdate.installs), 0, '有未保存修改时不会重启安装')
   } },
   'stage-run': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page, fake }) => {
     fake.gate.hold()
@@ -581,7 +658,7 @@ export const STAGE_SCENARIOS = {
   } },
   'stage-reopen': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
     await stage.backToLibrary(page, STAGE_SAMPLE.name)
-    await stage.openFromLibrary(page, STAGE_SAMPLE.name)
+    await stage.openFromPalette(page, STAGE_SAMPLE.name)
     await stage.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text)).first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
     assert.deepEqual(await stage.landing(page), { crumbs: ['正文', '第 3 章'], empty: false }, '重开同一部作品再次落到第 3 章')
   } },

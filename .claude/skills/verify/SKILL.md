@@ -144,10 +144,10 @@ node scripts/redesign/drive.mjs --scenario startup-timing --out <目录>
 | `stage-settings-switch` | 从旧外壳打开设置 → 外观 → 界面布局选「创作流程（预览）」，新外壳出现，设置仍停在「外观」 | 新外壳 | 否 | You see |
 | `stage-palette` | Ctrl K 输入「灯」，结果里有第 6 章；`after` 按 Esc 关闭 | Ctrl K 结果 | 否 | |
 | `stage-run` | 卡住模型后从章节蓝图写下一章：运行侧页自动打开，顶栏胶囊展开并显示进度；`after` 先确认侧页开着时 Ctrl K 仍能打开搜索（侧页不是模态层），再放行、等侧页里「上一次运行」显示已完成、新草稿打开 | 运行侧页与胶囊 | 是 | |
-| `stage-library` | 没有打开作品时是书房，没有流程脊 | 书房 | 否 | |
+| `stage-library` | 没有打开作品时是书房，没有流程脊；书架空着时唯一的主按钮是「新建作品」，没有模型时有「还没有连接 AI 模型」引导；书房文字对比度 | 空书房 | 否 | RD-5 lane 2 |
 | `stage-modal-layers` | 改小说配置后打开设置：Ctrl K 不开搜索、Ctrl W 不弹放弃确认；从主进程关窗，退出确认画在设置之上（`isTopmost` 让所有元素参与命中测试后取中心点最上层元素）；`after` 取消退出并关设置 | 退出确认 | 否 | 第 3 条 |
 | `stage-close-key` | 书房里、搜索框里各按一次 Ctrl W，页面都拦下（`defaultPrevented`），应用仍在。应用菜单有 CommandOrControl+W 的「关闭」，但驱动注入的按键到不了菜单快捷键，所以断言的是拦截 | 搜索框 | 否 | 第 4 条 |
-| `stage-reopen` | 从作品菜单回到书房再打开同一部作品，再次落到第 3 章 | 第 3 章正文 | 否 | 第 8 条 |
+| `stage-reopen` | 从作品菜单回到书房，用 Ctrl K「打开《灯塔》」重新打开同一部作品（新的项目会话），再次落到第 3 章 | 第 3 章正文 | 否 | 第 8 条 |
 | `stage-partial-blueprint` | 规划 100 章、只有 12 章蓝图：蓝图算完成，落点仍是第 3 章 | 第 3 章正文 | 否 | 第 6 条 |
 | `stage-revert-after-final` | 第 1 章定稿后再建一份新草稿（版本历史「回退到此版本」的效果）：第 1 章成了最早写到一半的章，打开作品即落在它上面；章节列表按草稿显示，点它打开的是新草稿 | 第 1 章新草稿 | 否 | 第 7 条 |
 | `stage-new-project` | 新外壳里新建作品：设定进行中、其余未开始；外壳文字对比度、进度环半径 8.5、设定说明在名字下一行、作品资料图标跟随行文字色 | 新作品首屏 | 否 | 第 20、23、24 条 |
@@ -190,8 +190,19 @@ node scripts/redesign/drive.mjs --scenario chapter-switch --shell stage --out <�
 
 `run-olddata` 的状态对比只看对话内容：重开作品时主进程会把旧会话里没写完的助手任务登记为暂停、改期限，这是主进程的租约记账，与界面无关。
 
+## 书房、设定与设置（RD-5 起）
+
+书房的页面对象也在 `pages/stage.mjs`：书架是列表「最近的作品」，封面按钮叫「预览《书名》」，右侧概览是区域「《书名》概览」，里面唯一的主按钮是「打开《书名》」（只预览的书）或「继续写作 · 下一步」（当前作品）；每本书的更多操作是「《书名》更多操作」菜单。`openFromLibrary` 先点封面再点「打开《书名》」，`openFromPalette` 从 Ctrl K 打开（同一部作品也会开新的会话）。新建作品的对话框旧外壳叫「新建小说项目」，新外壳叫「新建作品」，`bookshelf.createProject` 两种都认。
+
+| 名称 | 检查 | 截图停在 | 夹具模型 | 对应计划 |
+|---|---|---|---|---|
+| `stage-library-preview` | 预置示例作品但不打开，点封面预览：概览的阶段进度里架构、蓝图完成，正文进行中；没有流程脊（没有打开）；唯一的主按钮是「打开《灯塔》」；文字对比度 | 预览概览 | 否 | lane 3 |
+| `stage-library-remove` | 回到书房，书本菜单「从最近项目移除…」出现确认；`after` 确认后封面消失、作品文件夹仍在 | 移除确认 | 否 | lane 4 |
+| `stage-library-delete` | 当前作品的书本菜单「删除作品…」，输入「灯」时「删除作品」禁用；`after` 输入完整书名后可用，再取消，文件夹仍在 | 删除确认（名字不对） | 否 | lane 5 |
+| `stage-update-card` | 夹具更新源（`stubUpdates` 替换主进程的更新 IPC，安装只计数）；设定页改一项未保存，回书房点「下载更新」再点「立即重启更新」，出现「请先处理未保存的修改」与「返回保存」；`after` 返回保存，安装次数为 0 | 更新拦截 | 否 | lane 10 |
+
 ## 改外壳时
 
-类名选择器只出现在 `scripts/redesign/pages/`，按任务域分文件：`shell`（启动、外壳就绪、标题栏、状态栏、左右栏与可收起面板）、`bookshelf`（书房）、`project`（项目树）、`chapter`（单章写作、审稿、修稿合并、定稿）、`run-panel`（运行面板）、`settings`（设置，含外观里切换界面布局）、`materials`（知识库与角色卡导入）、`stage`（新外壳：流程脊、章节列表、标签条、Ctrl K 与 Ctrl P、保存状态、沉浸写作）、`run-sheet`（新外壳的运行侧页）。`shell.waitForShell` 对两种外壳都成立。外壳替换后只改这些页面对象，场景 `scripts/redesign/scenarios.mjs` 不动。
+类名选择器只出现在 `scripts/redesign/pages/`，按任务域分文件：`shell`（启动、外壳就绪、标题栏、状态栏、左右栏与可收起面板）、`bookshelf`（旧外壳书房与两种外壳的新建作品）、`project`（项目树）、`chapter`（单章写作、审稿、修稿合并、定稿）、`run-panel`（运行面板）、`settings`（设置，含外观里切换界面布局）、`materials`（知识库与角色卡导入）、`stage`（新外壳：流程脊、章节列表、标签条、Ctrl K 与 Ctrl P、保存状态、沉浸写作、书房）、`run-sheet`（新外壳的运行侧页）。`shell.waitForShell` 对两种外壳都成立。外壳替换后只改这些页面对象，场景 `scripts/redesign/scenarios.mjs` 不动。
 
 `/.claude/` 在 `.gitignore` 里，提交本文件的改动要用 `git add -f .claude/skills/verify/SKILL.md`（或 `git add -u`）。假模型在 `scripts/redesign/fake-model.mjs`，按提示词特征返回正文、短细纲（与正文同一段文字，但不参与定速流出）、审稿 JSON、修稿正文、角色状态 JSON 或角色提取 JSON。

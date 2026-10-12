@@ -11,6 +11,7 @@ import type { Theme } from '../../stores/theme-store'
 import { ipc } from '../../services/ipc-client'
 import ClearProjectDataDialog from '../dialogs/ClearProjectDataDialog'
 import type { MenuGroupSpec } from '../ui/Menu'
+import NewWorkDialog from './library/NewWorkDialog'
 import StagePalette from './StagePalette'
 import { paletteItem, type PaletteItem } from './palette-filter'
 import StageSpine from './StageSpine'
@@ -42,6 +43,7 @@ function crumbsFor(view: StageView, library: boolean, activeName: string | undef
 export default function StageShell({ theme }: { theme: Theme }) {
   const text = useLocaleStore(s => s.text)
   const hasProject = useProjectStore(s => Boolean(s.currentProject))
+  const recentProjects = useProjectStore(s => s.recentProjects)
   const home = useLayoutStore(s => s.sidebarView === 'home')
   const library = !hasProject || home
   const focus = useStageStore(s => s.focus) && !library
@@ -99,6 +101,10 @@ export default function StageShell({ theme }: { theme: Theme }) {
       paletteItem('reference', { id: 'characters', label: text('角色', 'Characters'), keywords: 'roster 名单',
         run: () => openBuiltinEditor('character-editor', text('角色', 'Characters'), 'character') }),
     ] : []
+    const books = recentProjects.map(project => paletteItem('action', {
+      id: `book-${project.path}`, label: text(`打开《${project.name}》`, `Open “${project.name}”`), keywords: project.name,
+      run: () => void useProjectStore.getState().openProject(project.path),
+    }))
     const actions = [
       paletteItem('action', { id: 'new', label: text('新建作品', 'New book'), run: () => useLayoutStore.getState().openNewProject() }),
       paletteItem('action', { id: 'open', label: text('打开作品', 'Open a book'), run: () => void openProjectFolder() }),
@@ -112,8 +118,8 @@ export default function StageShell({ theme }: { theme: Theme }) {
       ...(hasProject && !library ? [paletteItem('action', { id: 'focus', label: text('沉浸写作', 'Focus mode'), run: toggleFocus })] : []),
       paletteItem('action', { id: 'settings', label: text('设置', 'Settings'), run: () => navigate({ kind: 'settings', section: 'llm' }) }),
     ]
-    return [...go, ...chapters, ...references, ...actions]
-  }, [view.stages, view.chapters, hasProject, library, text, toggleFocus])
+    return [...go, ...chapters, ...references, ...actions, ...(library ? books : [])]
+  }, [view.stages, view.chapters, hasProject, library, text, toggleFocus, recentProjects])
 
   const crumbs = crumbsFor(view, library, activeName, text)
   const focusChapter = view.location?.kind === 'stage' ? view.location.chapter : undefined
@@ -153,6 +159,7 @@ export default function StageShell({ theme }: { theme: Theme }) {
       </div>
       <StagePalette mode={palette} items={paletteItems} container={root} onClose={() => useStageStore.setState({ palette: null })} />
       <ClearProjectDataDialog open={clearOpen} onClose={() => setClearOpen(false)} onCleared={() => refreshStageWork(text)} />
+      <NewWorkDialog />
     </div>
   )
 }

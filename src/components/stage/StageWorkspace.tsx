@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { useProjectStore } from '../../stores/project-store'
 import { useEditorStore, type EditorTab } from '../../stores/editor-store'
-import { useLayoutStore } from '../../stores/layout-store'
 import { useLocaleStore } from '../../stores/locale-store'
 import { navigate } from '../../stores/navigation/navigation-intents'
 import { useStageStore } from '../../stores/navigation/stage-store'
@@ -9,11 +8,11 @@ import type { ProjectData } from '../../shared/ipc-channels'
 import { ErrorBoundary } from '../ErrorBoundary'
 import EditorTabContent from '../panels/EditorTabContent'
 import CharactersView from '../panels/sidebar/CharactersView'
-import { WriterWelcomePage } from '../pages/v2/use-project-overview'
 import { Button } from '../ui/Button'
 import { EmptyState } from '../ui/EmptyState'
 import { DangerConfirm } from '../ui/DangerConfirm'
 import RunSheet from './run/RunSheet'
+import StageLibrary from './library/StageLibrary'
 import StageTabs from './StageTabs'
 import { commandLabel } from './shortcut-keys'
 import { stageTabName } from './stage-text'
@@ -52,7 +51,7 @@ export default function StageWorkspace({ library, focus }: { library: boolean; f
     return (
       <main className="stage-panel" data-page="library">
         <div className="stage-library">
-          <WriterWelcomePage onNewProject={() => useLayoutStore.getState().openNewProject()} />
+          <StageLibrary />
         </div>
       </main>
     )
