@@ -8,8 +8,6 @@ import { Button } from '../ui/Button'
 import { EmptyState } from '../ui/EmptyState'
 import ExitGuardDialog from './ExitGuardDialog'
 import { inkTheme } from './ink-theme'
-import '../../styles/paper-ink/index.css'
-import './stage.css'
 
 /** 外壳偏好已经保存，外壳出错后重启仍会进新外壳，所以出错界面直接提供切回工作台。 */
 function StageFallback() {

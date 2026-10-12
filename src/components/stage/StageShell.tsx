@@ -20,8 +20,6 @@ import { inkTheme } from './ink-theme'
 import { CHAPTER_PHASE_TEXT, CHAPTER_RUNNING_TEXT, RESOURCE_NAMES, STAGE_NAMES, stageTabName } from './stage-text'
 import { refreshStageWork, useLandingPage, useStageView, useStageWorkRefresh, type StageView } from './use-stage-work'
 import { useStageShortcuts } from './use-stage-shortcuts'
-import '../../styles/paper-ink/index.css'
-import './stage.css'
 
 type Text = (zh: string, en: string) => string
 
