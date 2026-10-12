@@ -60,7 +60,7 @@ export default function StageBlueprint({ projectKey, initialChapterNumber, selec
     setAsk(null)
   }
 
-  // 确认框不叠在生成对话框上：先收起对话框再问；取消或启动失败时重新打开，表单与原因还在。
+  // 确认框不叠在生成对话框上：先收起对话框再问；取消或启动失败时重新打开并写明原因（范围与目标字数会按打开时的规则重新读取）。
   const generate = async (params: DirectoryWorkflowParams) => {
     setGenerateOpen(false)
     try {
@@ -142,6 +142,7 @@ export default function StageBlueprint({ projectKey, initialChapterNumber, selec
           )}
           {next && (
             <WriteChapterPopover
+              key={next.chapterNumber}
               chapterNumber={next.chapterNumber}
               blueprint={blueprintWritePrefill(next)}
               label={text(`写第 ${next.chapterNumber} 章`, `Write chapter ${next.chapterNumber}`)}

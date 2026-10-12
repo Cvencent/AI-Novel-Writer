@@ -228,6 +228,24 @@ describe('写作此章弹层', () => {
     expect(fromDialog.options).toEqual({ generationModelId: 'glm' })
   })
 
+  it('选项只用于这一次：写完后再打开，指导、模型与检索关键词回到蓝图与默认', async () => {
+    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" align="start" />)
+    await act(async () => page.getByRole('button', { name: '本次写作选项' }).click())
+    const popover = page.getByRole('dialog', { name: '本次写作选项' })
+    await act(async () => popover.getByLabelText(/本次模型/).selectOptions('glm'))
+    await act(async () => popover.getByLabelText(/作者微操指导/).fill('只用于第 5 章的指导'))
+    await act(async () => popover.getByText('更多').click())
+    await act(async () => popover.getByLabelText(/知识库检索关键词/).fill('列车时刻表'))
+    await act(async () => page.getByRole('button', { name: '写第 5 章' }).click())
+    await vi.waitFor(() => expect(startWorkflow).toHaveBeenCalledOnce())
+
+    await act(async () => page.getByRole('button', { name: '本次写作选项' }).click())
+    await expect.element(popover.getByLabelText(/作者微操指导/)).toHaveValue(BLUEPRINT.userGuidance)
+    await expect.element(popover.getByLabelText(/本次模型/)).toHaveValue('grok')
+    await act(async () => popover.getByText('更多').click())
+    await expect.element(popover.getByLabelText(/知识库检索关键词/)).toHaveValue('')
+  })
+
   it('弹层只有本次模型、作者微操指导与折叠的更多，不重复蓝图字段', async () => {
     await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" align="start" />)
     await act(async () => page.getByRole('button', { name: '本次写作选项' }).click())

@@ -98,6 +98,10 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
         case 'stale':
           return
         case 'started':
+          // 这些选项只用于本次写作；写完后再打开弹层，回到蓝图里的指导与默认模型。
+          setModelId(null)
+          setGuidance(null)
+          setKnowledgeHint('')
           setPreflight(null)
           setMessage(null)
           close(false)
