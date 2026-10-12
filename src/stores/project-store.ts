@@ -1047,7 +1047,14 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
 
   loadRecentProjects: async () => {
     const requestId = ++recentProjectsRequestSequence
-    const list = await ipc.invoke('project:recent-list')
+    let list: ProjectChannels['project:recent-list']['return']
+    try {
+      list = await ipc.invoke('project:recent-list')
+    } catch (error) {
+      // 读不到也算读过：书房据此显示空书房，而不是一直停在等待里。
+      if (requestId === recentProjectsRequestSequence) set({ recentProjectsLoaded: true })
+      throw error
+    }
     if (requestId !== recentProjectsRequestSequence) return
     const seenProjectPaths = new Set<string>()
     const recentProjects = list.filter((project) => {

@@ -308,6 +308,7 @@ async function runSession(sessionName, names, options) {
   let failedAt = null
   let current = null
   let launched
+  const restartRequests = []
   const shell = names.map(name => SCENARIOS[name]?.shell).find(Boolean) ?? options.shell
   try {
     const shelfBooks = sessionName === 'library-timing' ? SHELF_BOOKS : 0
@@ -317,26 +318,36 @@ async function runSession(sessionName, names, options) {
     const shellShown = page => page.locator('[data-shell-presentation]').first().getAttribute('data-shell-presentation')
     if (TIMED_SESSIONS.has(sessionName)) shared.shell = await shellShown(launched.page)
     else {
-      const { page } = launched
-      await applyAppearance(page, { theme: options.theme, shell })
-      shared.shell = await shellShown(page)
-      const context = { ...launched, roots, invoke, fake, reload: () => page.reload().then(() => waitForShell(page, TIMEOUT)) }
+      await applyAppearance(launched.page, { theme: options.theme, shell })
+      shared.shell = await shellShown(launched.page)
+      const context = {
+        ...launched, roots, invoke, fake,
+        reload: () => context.page.reload().then(() => waitForShell(context.page, TIMEOUT)),
+        /** 退出应用再用同一隔离目录冷启动（真正的重启，不重写外观），context 换成新的 app 与 page。 */
+        restart: async () => {
+          restartRequests.push(...await launched.app.evaluate(() => globalThis.__driveExternalRequests))
+          const exited = await quit(launched.app)
+          assert.equal(exited.forced, false, '重启前应用没有正常退出')
+          launched = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics })
+          Object.assign(context, launched)
+        },
+      }
       current = 0
       await SCENARIOS[names[0]].setup?.(context)
       for (const [index, name] of names.entries()) {
         current = index
         results[index].screenshot = `${base(name)}.png`
-        const recording = options.video ? await startScreencast(page) : null
+        const recording = options.video ? await startScreencast(context.page) : null
         const measured = await SCENARIOS[name].run(context)
         if (recording) results[index].video = await recording.stop(`${base(name)}.mp4`, roots.temp)
         if (measured) results[index].measured = measured
-        await shoot(page, results[index].screenshot)
-        if (options.dumpDom) await dumpDom(page, base(name))
+        await shoot(context.page, results[index].screenshot)
+        if (options.dumpDom) await dumpDom(context.page, base(name))
         await SCENARIOS[name].after?.(context)
       }
       current = null
     }
-    shared.externalRequests = await launched.app.evaluate(() => globalThis.__driveExternalRequests)
+    shared.externalRequests = [...restartRequests, ...await launched.app.evaluate(() => globalThis.__driveExternalRequests)]
     assert.deepEqual(shared.externalRequests, [], fake ? 'fetch 越过夹具访问外部网络' : '无夹具场景发出了 fetch')
   } catch (error) {
     if (current === null) sessionErrors.push(messageOf(error))

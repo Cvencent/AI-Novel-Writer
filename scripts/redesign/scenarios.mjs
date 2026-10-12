@@ -146,6 +146,13 @@ function projectFiles(root) {
     .sort()
 }
 
+/** 去掉每次都不同的取值（标识、时间、路径），只留键与稳定的值，用来比较两边建出的清单。 */
+function stableShape(value, key = '') {
+  if (Array.isArray(value)) return value.map(item => stableShape(item))
+  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(name => [name, stableShape(value[name], name)]))
+  return /(Id|At)$|^(id|path)$|[Tt]ime|[Ll]ease|[Hh]ash/.test(key) ? typeof value : value
+}
+
 export const EXTRA_SCENARIOS = {
   /** 计划 RD-5 lane 1：两种外壳、trunk 与 head 各跑一次新建作品，比较作品文件夹里建出的文件。 */
   'new-project-files': { model: false, run: async ({ app, page, roots }) => {
@@ -158,7 +165,8 @@ export const EXTRA_SCENARIOS = {
       await new Promise(resolve => setTimeout(resolve, 100))
     }
     await page.waitForTimeout(1500)
-    return { files: projectFiles(created) }
+    const manifest = JSON.parse(fs.readFileSync(path.join(created, '.ai-novel', 'project.json'), 'utf8'))
+    return { files: projectFiles(created), manifest: stableShape(manifest) }
   } },
   'write-latency': { model: true, setup: seedWithoutDraft, run: async ({ page }) => {
     await project.openBlueprints(page)
@@ -541,7 +549,7 @@ export const STAGE_SCENARIOS = {
     await stage.palette(page).waitFor({ state: 'hidden' })
   } },
   'stage-library': { model: false, shell: 'stage', run: async ({ page }) => {
-    await shell.firstInteractiveControl(page).waitFor({ state: 'visible' })
+    await page.getByRole('heading', { name: '书架还是空的' }).waitFor({ state: 'visible' })
     assert.equal(await stage.spine(page).count(), 0, '书房没有流程脊')
     assert.deepEqual(await stage.primaryButtons(page), ['新建作品'], '空书房唯一的主按钮是新建作品')
     await stage.modelMissingNotice(page).waitFor({ state: 'visible' })
@@ -647,13 +655,15 @@ export const STAGE_SCENARIOS = {
     await stage.settingsNav(page).waitFor({ state: 'detached' })
     await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
   } },
-  'stage-settings-dark': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page, reload }) => {
-    await stage.openSettings(page)
-    await stage.showSettingsPage(page, '外观')
-    await page.getByRole('radiogroup', { name: '主题' }).getByRole('radio', { name: /^深色/ }).click()
-    await stage.root(page).and(page.locator('[data-theme="dark"]')).waitFor({ state: 'visible' })
-    await reload()
-    assert.equal(await stage.root(page).getAttribute('data-theme'), 'dark', '重新载入后仍是深色')
+  'stage-settings-dark': { model: false, shell: 'stage', setup: seedStageSample, run: async context => {
+    await stage.openSettings(context.page)
+    await stage.showSettingsPage(context.page, '外观')
+    await context.page.getByRole('radiogroup', { name: '主题' }).getByRole('radio', { name: /^深色/ }).click()
+    await stage.root(context.page).and(context.page.locator('[data-theme="dark"]')).waitFor({ state: 'visible' })
+    await context.restart()
+    const { page } = context
+    await stage.root(page).waitFor({ state: 'visible' })
+    assert.equal(await stage.root(page).getAttribute('data-theme'), 'dark', '退出重启后仍是深色')
     await stage.openFromLibrary(page, STAGE_SAMPLE.name)
     await stage.openSettings(page)
     await stage.showSettingsPage(page, '外观')

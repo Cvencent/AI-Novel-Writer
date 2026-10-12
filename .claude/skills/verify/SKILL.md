@@ -53,6 +53,8 @@ node scripts/redesign/drive.mjs --scenario <名称> ...
 
 示例作品名为「灯塔」，第 1 章「旧港」，由公开 IPC 预置后从书房打开；打开后等项目树统一刷新结束再继续，之前的画面随刷新进度变化。
 
+场景的 `run` 可以调 `context.restart()`：退出应用、用同一隔离目录冷启动（不重写外观），context 里的 `app`、`page` 换成新的，用于验证「重启后仍保持」。
+
 `scripts/redesign/scenarios.mjs` 里每个场景分三段：`setup` 是单跑时的前置（预置作品、写一章、审稿等），`run` 从前置状态走到截图状态，`after` 在截图后执行。一个会话只跑首个场景的 `setup`，然后依次 `run`、截图、`after`。`baseline-all` 的会话在 `BASELINE_SESSIONS`：
 
 - `baseline-shelf`：`settings` → `new-project`。不预置作品，`new-project` 要在空项目目录里建「灯塔」，与示例作品不能共存。
@@ -203,12 +205,12 @@ node scripts/redesign/drive.mjs --scenario chapter-switch --shell stage --out <�
 | `stage-setup-required` | 新外壳新建「雾岛」，写核心大纲、选类型，不选目标读者：「下一步：故事架构」禁用，提示「选好目标读者就能继续」并由 `aria-describedby` 关联；设定页唯一的主按钮；对比度；`after` 选目标读者后点下一步，先保存再到架构 | 必填未齐 | 否 | lane 6 |
 | `stage-setup-fill` | 示例作品的设定页点「AI 补全其余设定」，确认扩写已有内容；夹具按配置 JSON 合同返回（`FIXTURE_CONFIG`），世界观被填上、核心大纲保留作者原文；再改世界观，设定变为未保存 | 补全后的世界观 | 是 | lane 7 |
 | `stage-settings-groups` | 从流程脊打开设置：分组为常用（AI 模型、外观）、高级（检索模型、网络代理、提示词模板、写作 Skills）、其他（项目备份、关于与更新），落在 AI 模型，位置为「设置 / AI 模型」；外观里放大到 105% 再还原；外观页没有主按钮；对比度；`after` 按 Esc 回到第 3 章 | 外观 | 否 | You see、缩放移入外观 |
-| `stage-settings-dark` | 设置 → 外观 → 主题选「深色」，外壳变深色；重新载入后仍是深色，外观里「深色」仍选中；深色对比度 | 深色外观 | 否 | lane 8 |
+| `stage-settings-dark` | 设置 → 外观 → 主题选「深色」，外壳变深色；`context.restart()` 退出应用再用同一隔离目录冷启动，仍是深色，外观里「深色」仍选中；深色对比度 | 深色外观 | 否 | lane 8 |
 | `stage-settings-model` | 设置 → AI 模型，夹具模型的更多操作「删除模型…」出现危险确认；`after` 取消，模型还在 | 删除模型确认 | 否 | lane 9 |
 | `stage-first-model` | 全新配置的空书房点「还没有连接 AI 模型」里的「添加模型」，落在设置的 AI 模型，空状态「还没有添加模型」，唯一的主按钮是添加模型 | 首次使用的模型页 | 否 | 附录 A 首次使用 |
 | `stage-rd5-tour` | 30–60 秒的 RD-5 导览：空书房、新建「雾岛」进入设定页、写核心大纲并补齐必填、展开「文风」、下一步到架构、设置的 AI 模型与外观（切深色再切回）、关于与更新、回书房看书架、删除作品确认（名字不对时禁用）。配 `--video` 录评审视频 | 书房 | 否 | Review gate |
 | `library-timing` | 计时会话（与 `startup-timing` 同样先预启动一次，另用公开 IPC 新建 20 部作品）：`readyToShowToInteractiveMs`（书房「新建作品」可见），以及页面里记下的 `renderInteractiveMs`（「新建作品」进入 DOM）与 `renderShelfMs`（20 个「预览《书名》」按钮都进入 DOM），都以导航开始为 0。旧欢迎页与新书房的书本按钮同名，所以对 trunk 也能跑 | 不截图 | 否 | perf |
-| `new-project-files` | 新建作品后列出作品文件夹里建出的文件（`measured.files`）。trunk 与 head、两种外壳（`--shell stage`）各跑一次，文件列表应一致 | 新建作品后 | 否 | RD-5 lane 1 |
+| `new-project-files` | 新建作品后列出作品文件夹里建出的文件（`measured.files`）与 `.ai-novel/project.json` 去掉标识、时间后的形状（`measured.manifest`）。trunk 与 head、两种外壳（`--shell stage`）各跑一次，两项都应一致 | 新建作品后 | 否 | RD-5 lane 1 |
 
 ## 页面内计时
 
