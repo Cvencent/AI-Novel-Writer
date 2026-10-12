@@ -16,6 +16,7 @@ import StageArchitecture from './architecture/StageArchitecture'
 import StageCharacters from './characters/StageCharacters'
 import StageLibrary from './library/StageLibrary'
 import { SettingsPage, SetupPage } from './stage-pages'
+import StageHistory from './history/StageHistory'
 import StageTabs from './StageTabs'
 import { commandLabel } from './shortcut-keys'
 import StageBlueprint from './blueprint/StageBlueprint'
@@ -24,7 +25,7 @@ import { installChapterTabRouting, isChapterViewTab } from './chapter/chapter-ta
 import { stageTabName } from './stage-text'
 import { cancelCloseTab, confirmCloseTab, requestCloseTab, STAGE_CONTENT_ID } from './tab-close'
 
-/** 设定、架构、角色名单、蓝图与单章正文是新外壳的页面，其余标签沿用旧编辑区。 */
+/** 设定、架构、角色名单、蓝图、单章正文与资料页是新外壳的页面，其余标签沿用旧编辑区。 */
 function TabContent({ tab, project }: { tab: EditorTab; project: ProjectData }) {
   if (tab.type === 'config' && tab.projectKey) return <SetupPage projectKey={tab.projectKey} />
   if (tab.type === 'world-building' && tab.projectKey) return <StageArchitecture projectKey={tab.projectKey} />
@@ -33,6 +34,7 @@ function TabContent({ tab, project }: { tab: EditorTab; project: ProjectData }) 
   if (tab.type === 'chapter-card' && tab.projectKey && !tab.planningRecovery) {
     return <StageBlueprint projectKey={tab.projectKey} initialChapterNumber={tab.chapterNumber} selectRequest={tab.chapterSelectRequest} />
   }
+  if (tab.type === 'version-history' && tab.projectKey === project.path) return <StageHistory projectKey={tab.projectKey} />
   return <EditorTabContent activeTab={tab} currentProject={project} />
 }
 
