@@ -22,7 +22,10 @@ interface BlueprintCardProps {
 export default function BlueprintCard({ blueprint, row, saving, onField, onSave, onDelete }: BlueprintCardProps) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
-  const [person, setPerson] = useState('')
+  // 正在输入的人名只属于当前这一章；换章时清空，不重建整张卡片（几百章换章要快）。
+  const [draft, setDraft] = useState({ chapter: blueprint.chapterNumber, name: '' })
+  const person = draft.chapter === blueprint.chapterNumber ? draft.name : ''
+  const setPerson = (name: string) => setDraft({ chapter: blueprint.chapterNumber, name })
   const ids = { purpose: useId(), conflict: useId(), hook: useId(), guide: useId(), notes: useId(), person: useId() }
   const number = blueprint.chapterNumber
 

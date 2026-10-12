@@ -103,6 +103,12 @@
   list-style: none;
 }
 
+/* 几百章时只排版看得见的行：换章与打开蓝图不为屏幕外的行重新排版。 */
+.stage-bp-plan-list > li {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 44px;
+}
+
 .stage-bp-plan-item {
   width: 100%;
   display: grid;
@@ -180,6 +186,7 @@
   flex: 1;
   min-width: 0;
   overflow: auto;
+  contain: content;
   padding: 20px 36px 48px;
 }
 

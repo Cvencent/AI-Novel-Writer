@@ -114,15 +114,19 @@ async function msFromClick(page, target, readySelector, readyText) {
   const handle = await target.elementHandle()
   await page.evaluate(({ element, readySelector, readyText }) => {
     let clickedAt = null
-    element.addEventListener('click', () => { clickedAt ??= performance.now() }, { capture: true, once: true })
+    let handledMs = null
+    window.addEventListener('click', () => { clickedAt ??= performance.now() }, { capture: true, once: true })
+    document.addEventListener('click', () => { handledMs ??= performance.now() - clickedAt }, { once: true })
     window.__driveReady = new Promise((resolve, reject) => {
       const deadline = setTimeout(() => reject(new Error('20 秒内没有出现')), 20_000)
-      const tick = () => {
+      const tick = frameAt => {
+        const checkAt = performance.now()
         const shown = [...document.querySelectorAll(readySelector)].some(node =>
           (readyText === null || (node instanceof HTMLInputElement ? node.value : node.textContent).includes(readyText)) && node.getClientRects().length > 0)
         if (clickedAt !== null && shown) {
           clearTimeout(deadline)
-          resolve(Math.round(performance.now() - clickedAt))
+          const round = value => Math.round(value * 10) / 10
+          resolve({ ms: Math.round(performance.now() - clickedAt), handledMs: round(handledMs), frameMs: round(frameAt - clickedAt), layoutMs: round(performance.now() - checkAt) })
         } else requestAnimationFrame(tick)
       }
       requestAnimationFrame(tick)
@@ -326,17 +330,15 @@ export const BLUEPRINT_SCENARIOS = {
   } },
 
   'blueprint-timing': { model: false, setup: withManyBlueprints, run: async ({ page }) => {
-    if (await stage.root(page).count() > 0) {
-      const openMs = await msFromClick(page, stage.stageButton(page, '蓝图'), '.stage-bp-plan-item', `远航之${TIMING_CHAPTERS}`)
-      const target = blueprint.planItem(page, 150)
-      await target.scrollIntoViewIfNeeded()
-      const switchMs = await msFromClick(page, target, '.stage-bp-title', '远航之150')
-      return { openMs, switchMs, shell: 'stage' }
-    }
-    const openMs = await msFromClick(page, project.tree(page).getByText('章节蓝图', { exact: true }), '.truncate', `远航之${TIMING_CHAPTERS}`)
-    const target = page.getByText('远航之150', { exact: true }).first()
+    const stageShell = await stage.root(page).count() > 0
+    const open = stageShell
+      ? await msFromClick(page, stage.stageButton(page, '蓝图'), '.stage-bp-plan-item', `远航之${TIMING_CHAPTERS}`)
+      : await msFromClick(page, project.tree(page).getByText('章节蓝图', { exact: true }), '.truncate', `远航之${TIMING_CHAPTERS}`)
+    const target = stageShell ? blueprint.planItem(page, 150) : page.getByText('远航之150', { exact: true }).first()
     await target.scrollIntoViewIfNeeded()
-    const switchMs = await msFromClick(page, target, 'h3', '远航之150')
-    return { openMs, switchMs, shell: 'writer' }
+    const change = stageShell
+      ? await msFromClick(page, target, '.stage-bp-title', '远航之150')
+      : await msFromClick(page, target, 'h3', '远航之150')
+    return { openMs: open.ms, switchMs: change.ms, open, switch: change, shell: stageShell ? 'stage' : 'writer' }
   } },
 }

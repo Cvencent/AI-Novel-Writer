@@ -201,7 +201,6 @@ export default function StageBlueprint({ projectKey, initialChapterNumber, selec
           />
           {selected && (
             <BlueprintCard
-              key={selected.chapterNumber}
               blueprint={selected}
               row={rows.get(selected.chapterNumber)}
               saving={plan.saving}
