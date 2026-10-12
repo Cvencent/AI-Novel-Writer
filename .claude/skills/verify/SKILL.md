@@ -241,7 +241,7 @@ node scripts/redesign/drive.mjs --scenario chapter-switch --shell stage --out <�
 | `arch-confirm` | 生成架构对话框：勾选已确认的前提标「将覆盖」，角色名单「保留」，空的两节「新生成」 | 对话框 | 否 | lane 4 |
 | `arch-resume` | 24 章的大纲先生成 1～10 章，从提示条续写 11～16 章，提示条写明第 17～24 章还没有大纲；`after` 续写 17～24 章，1～16 章逐字不变、1～24 章各一次 | 第 17～24 章的续写对话框 | 是 | lane 5 |
 | `arch-clear` | 世界观「清空此节…」出现危险确认；`after` 取消，摘要、徽标与数据库里的世界观都不变 | 危险确认 | 否 | lane 6 |
-| `arch-cast-save` | 新建「守塔人」并保存：名单、名单投影（`db:character-roster-read` 的 renderedMarkdown）、架构页「2 位角色」与「查看名单全文」都有守塔人 | 角色名单 | 否 | lane 7 |
+| `arch-cast-save` | 新建「守塔人」并按 Ctrl S 保存：名单、名单投影（`db:character-roster-read` 的 renderedMarkdown）、架构页「2 位角色」与「查看名单全文」都有守塔人 | 角色名单 | 否 | lane 7 |
 | `arch-graph` | 关系图谱放大、滚轮、拖拽（画面变化）都生效；`after` 点中心节点打开档案 | 关系图谱 | 否 | lane 8 |
 | `arch-cards` | 角色名单里粘贴两张角色卡，运行侧页确认后守塔人进名单、林岚仍只有一个 | 角色名单 | 是 | lane 9 |
 | `arch-dark` | 用 `--theme dark` 跑：架构页文字对比度达标（名称与正文 4.5:1，说明 3:1），分节卡底色等于 `--paper` 的计算值 | 架构页 | 否 | lane 10 |

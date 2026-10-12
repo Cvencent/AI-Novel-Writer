@@ -269,7 +269,7 @@ export const ARCH_SCENARIOS = {
     assert.equal((await readCore(context)).worldbuilding, STAGE_SAMPLE.core.worldbuilding, '取消后世界观没有写入')
   } },
 
-  /** lane 7：在角色名单里新建「守塔人」并保存：名单、角色图谱投影（名单全文）与架构页的角色名单一节同步。 */
+  /** lane 7：在角色名单里新建「守塔人」并按 Ctrl S 保存：名单、角色图谱投影（名单全文）与架构页的角色名单一节同步。 */
   'arch-cast-save': { model: false, shell: 'stage', setup: seedArch(), run: async context => {
     const { page } = context
     await openArchitecture(page)
@@ -278,7 +278,8 @@ export const ARCH_SCENARIOS = {
     const name = page.getByLabel('姓名', { exact: true })
     await name.fill('守塔人')
     await page.getByLabel('动机', { exact: true }).fill('守住雾钟，等一个三十年前没回来的人。')
-    await root(page).getByRole('button', { name: '保存角色' }).click()
+    await root(page).locator('.cast-save-state').filter({ hasText: '未保存' }).waitFor()
+    await page.keyboard.press('Control+S')
     await root(page).locator('.cast-save-state').filter({ hasText: '已保存' }).waitFor({ timeout: 20_000 })
     assert.deepEqual(await arch.castRoster(page).locator('.cast-row-name').allInnerTexts(), ['林岚', '守塔人'])
     const roster = await readRoster(context)
