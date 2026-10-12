@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Cpu, MoreHorizontal, Plus } from 'lucide-react'
 import type { ModelProfile } from '../../../shared/ipc-channels'
 import { BUILTIN_PRESETS } from '../../../shared/provider-presets'
@@ -18,7 +18,7 @@ function providerName(model: ModelProfile): string {
 }
 
 /** 一类模型的列表与编辑：生成用的「AI 模型」或知识库用的「检索模型」。删除要先确认。 */
-export default function ModelsSection({ purposes, header }: { purposes: ModelProfile['purposes']; header: (action: React.ReactNode) => React.ReactNode }) {
+export default function ModelsSection({ purposes, header }: { purposes: ModelProfile['purposes']; header: (action: ReactNode) => ReactNode }) {
   const text = useLocaleStore(s => s.text)
   const section = useModelSection(purposes)
   const [deleting, setDeleting] = useState<ModelProfile | null>(null)

@@ -14,7 +14,6 @@ export interface ShelfBook {
   name: string
   path: string
   updatedAt: string
-  /** 这本书就是当前打开的作品。 */
   current: boolean
   onPreview: () => void
   onOpen: () => void
@@ -106,7 +105,6 @@ export function useShelfOverview() {
     overview,
     /** 正在预览的书；为空时概览显示当前作品。 */
     selectedId: activeSelection?.itemId ?? null,
-    /** 回到当前作品的概览。 */
     clearSelection: () => setSelection(null),
     recentProjects: recentProjects.map((project): ShelfBook => ({
       id: project.previewCapabilityId ?? project.path,

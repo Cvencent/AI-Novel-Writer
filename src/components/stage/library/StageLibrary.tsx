@@ -33,7 +33,6 @@ function heading(now: Date, text: Text): string {
   return hour >= 18 || hour < 5 ? text('今晚写哪一部？', 'What are we writing tonight?') : text('今天写哪一部？', 'What are we writing today?')
 }
 
-/** 「开始」：新建、打开与导入，三者同组。 */
 function StartActions() {
   const text = useLocaleStore(s => s.text)
   const legacyImportBusy = useProjectStore(s => s.legacyImportBusy)

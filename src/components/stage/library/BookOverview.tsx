@@ -7,15 +7,12 @@ import type { StageBar } from './shelf-progress'
 import type { ShelfOverview } from './use-shelf-overview'
 
 interface BookOverviewProps {
-  /** 当前作品是「继续」，只预览的书是「预览」。 */
   mode: 'current' | 'preview'
   name: string
   meta: string
   overview: ShelfOverview
   bars: readonly StageBar[] | null
-  /** 唯一的主操作：继续写作或打开作品。 */
   primary: { label: string; onClick: () => void }
-  /** 预览别的书时回到当前作品。 */
   secondary?: ReactNode
 }
 

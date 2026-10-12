@@ -156,7 +156,6 @@ export function useNovelConfigForm(projectKey: string) {
     updateNovelConfig(parsed, session)
   }
 
-  /** 渲染 GenerateConfigDialog 用的参数。 */
   const generateDialog = {
     isOpen: showGenerateConfig,
     onClose: () => {
