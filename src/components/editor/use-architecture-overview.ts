@@ -230,12 +230,14 @@ export function useArchitectureOverview(projectKey: string) {
     setLoading(false)
   }, [currentProject, projectKey, projectMatches])
 
-  const rosterReady = rosterSnapshot?.status === 'ready'
-  const archStatus = useMemo<Record<string, boolean>>(() => ({ ...coreStatus, characters: rosterReady }), [coreStatus, rosterReady])
+  const archStatus = useMemo<Record<string, boolean>>(() => ({
+    ...coreStatus,
+    characters: rosterSnapshot?.status === 'ready',
+  }), [coreStatus, rosterSnapshot])
   const wordCounts = useMemo<Record<string, number>>(() => ({
     ...coreWordCounts,
-    characters: rosterReady ? rosterSnapshot.renderedMarkdown.length : 0,
-  }), [coreWordCounts, rosterReady, rosterSnapshot])
+    characters: rosterSnapshot?.status === 'ready' ? rosterSnapshot.renderedMarkdown.length : 0,
+  }), [coreWordCounts, rosterSnapshot])
 
   useEffect(() => {
     const timer = setTimeout(() => { void loadStatus() }, 0)

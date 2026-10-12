@@ -189,12 +189,14 @@ describe('架构阶段', () => {
     expect(started).not.toHaveBeenCalled()
   })
 
-  it('清空确认打开期间换了作品，确认时什么也不写', async () => {
+  it.each([
+    { switch: '换成另一部作品', other: { projectId: '另一部', projectPath: 'C:/novels/other', leaseId: '另一次打开' } },
+    { switch: '同一部作品被重新打开', other: { ...session, leaseId: '重新打开' } },
+  ])('清空确认打开期间$switch，确认时什么也不写', async ({ other }) => {
     filledSpine(['premise'])
     await render()
     await click('「故事前提」的更多操作')
     await click('清空此节…')
-    const other = { projectId: '另一部', projectPath: 'C:/novels/other', leaseId: '另一次打开' }
     await act(async () => {
       useProjectStore.setState({ currentProject: { id: other.projectId, path: other.projectPath, sessionLease: other.leaseId, name: '另一部', novelConfig: { totalChapters: 24 } } as unknown as ProjectData })
       setActiveProjectSessionContext(other)
@@ -227,6 +229,10 @@ describe('架构阶段', () => {
     await click('「故事前提」的更多操作')
     await click('AI 重新生成此节…')
     expect(stepChecked('premise')).toBe(true)
+    await click('取消')
+    await vi.waitFor(() => expect(document.querySelector('[data-step="premise"]')).toBeNull())
+    await click('继续生成架构')
+    expect(stepChecked('premise')).toBe(false)
     await click('取消')
     await vi.waitFor(() => expect(document.querySelector('[data-step="premise"]')).toBeNull())
 
