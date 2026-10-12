@@ -4,7 +4,6 @@ import { createRoot, type Root } from 'react-dom/client'
 
 import '../../../index.css'
 import '../../../styles/paper-ink/index.css'
-import '../stage.css'
 import type { ProjectData } from '../../../shared/ipc-channels'
 import { useEditorStore, type EditorTab } from '../../../stores/editor-store'
 import { useProjectStore } from '../../../stores/project-store'

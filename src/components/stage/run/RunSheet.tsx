@@ -13,7 +13,6 @@ import { RunCard, RunDetails } from './RunCard'
 import { RunDiagnostics } from './RunDiagnostics'
 import { RunRecoveryList } from './RunRecoveryList'
 import { clockTime } from './run-format'
-import './run-sheet.css'
 
 type Text = (zh: string, en: string) => string
 

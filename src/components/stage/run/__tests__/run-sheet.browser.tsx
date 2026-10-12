@@ -6,7 +6,6 @@ import type { StoreApi } from 'zustand'
 
 import '../../../../index.css'
 import '../../../../styles/paper-ink/index.css'
-import '../../stage.css'
 import type { Locale } from '../../../../i18n/types'
 import type { ProjectData } from '../../../../shared/ipc-channels'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
