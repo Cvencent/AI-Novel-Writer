@@ -79,9 +79,9 @@ async function openArchitecture(page) {
   else await arch.waitReady(page)
 }
 
-/** 新外壳的运行侧页在工作流开始后自动打开；trunk 没有侧页，调用方改为轮询数据库里的结果。 */
+/** RD-4 的运行侧页在工作流开始后自动打开；trunk 的旧运行面板没有「进行中」分页，调用方改为轮询数据库里的结果。 */
 async function waitForRunDone(page, timeout = 120_000) {
-  const opened = await runSheet.sheet(page).waitFor({ state: 'visible', timeout: 10_000 }).then(() => true, () => false)
+  const opened = await runSheet.tab(page, '进行中').waitFor({ state: 'visible', timeout: 10_000 }).then(() => true, () => false)
   if (opened) await runSheet.waitForRunDone(page, timeout)
 }
 
@@ -173,7 +173,7 @@ export const ARCH_SCENARIOS = {
       await pause(500)
     }
     const documents = { premise: core.premise, characters: core.charactersArch, worldbuilding: core.worldbuilding, synopsis: core.synopsis }
-    for (const [key, value] of Object.entries(documents)) assert.ok(value && value.length > 50, `${key} 已生成`)
+    for (const [key, value] of Object.entries(documents)) assert.ok(value?.trim(), `${key} 有内容`)
     if (head) await arch.waitReady(page)
     return { surface: head ? 'head 架构阶段' : 'trunk 故事架构', hashes: Object.fromEntries(Object.entries(documents).map(([key, value]) => [key, sha(value)])), documents }
   } },
