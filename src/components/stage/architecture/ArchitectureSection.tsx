@@ -119,7 +119,8 @@ function RosterNotice({ overview }: { overview: ArchitectureOverview }) {
           {presentation.description}
         </Notice>
       )}
-      <div className="arch-legacy-roster"><LegacyRosterRecoveryPanel onRecover={repair} busy={repairing} /></div>
+      {/* 旧修复运行要查 generation:list（主进程串行处理，运行多时要几十毫秒），等四节读完再挂，不挡在打开架构的路上。 */}
+      {!overview.loading && <div className="arch-legacy-roster"><LegacyRosterRecoveryPanel onRecover={repair} busy={repairing} /></div>}
     </>
   )
 }

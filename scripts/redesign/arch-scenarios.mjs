@@ -26,6 +26,17 @@ async function trackOpenedSession(app) {
   })
 }
 
+/** 从此刻起按通道数主进程收到的 invoke，用来比较打开架构时两边各读了什么。 */
+async function countIpc(app) {
+  await app.evaluate(({ ipcMain }) => {
+    const counts = {}
+    globalThis.__driveIpcCounts = counts
+    for (const [channel, handler] of ipcMain._invokeHandlers) {
+      ipcMain._invokeHandlers.set(channel, (...args) => { counts[channel] = (counts[channel] ?? 0) + 1; return handler(...args) })
+    }
+  })
+}
+
 async function uiSession(app) {
   const session = await app.evaluate(() => globalThis.__driveOpened)
   assert.ok(session?.leaseId, '记下了界面打开作品的会话')
@@ -391,10 +402,11 @@ export const ARCH_SCENARIOS = {
   } },
 
   /**
-   * perf：从点流程脊「架构」到四节可交互的毫秒数（trunk 是旧故事架构标签，head 是架构阶段），
+   * perf：从点流程脊「架构」到四节可交互的毫秒数（trunk 是旧故事架构标签，head 是架构阶段）：openMs 按动画帧轮询，openDomMs 是 DOM 达到就绪的时刻，
    * 以及 200 位角色时角色列表滚动的帧率（两边都是第 1 页 50 位）。两边都用新外壳跑。
    */
-  'arch-timing': { model: false, shell: 'stage', setup: seedArch({ characters: Array.from({ length: 199 }, (_, index) => `角色${String(index + 2).padStart(3, '0')}`) }), run: async ({ page }) => {
+  'arch-timing': { model: false, shell: 'stage', setup: seedArch({ characters: Array.from({ length: 199 }, (_, index) => `角色${String(index + 2).padStart(3, '0')}`) }), run: async ({ page, app }) => {
+    await countIpc(app)
     const target = stage.stageButton(page, '架构')
     const handle = await target.elementHandle()
     await page.evaluate(element => {
@@ -408,7 +420,13 @@ export const ARCH_SCENARIOS = {
           if (content.querySelector('.arch-page')) return content.querySelectorAll('.arch-section').length === 4 && !content.querySelector('.arch-page[data-loading]')
           return /4\/4\s*已生成/.test(content.textContent ?? '') && !content.querySelector('.animate-spin')
         }
+        const mounted = () => Boolean(document.querySelector('.stage-content .arch-page') || /故事架构/.test(document.querySelector('.stage-content')?.textContent ?? ''))
+        // 屏幕外窗口被系统判为遮挡时 rAF 会被节流，没有画面变化就迟迟不出帧；另用 MutationObserver 记下 DOM 达到就绪的准确时刻。
+        new MutationObserver(() => {
+          if (clickedAt !== null && window.__driveArchDomMs === undefined && ready()) window.__driveArchDomMs = Math.round(performance.now() - clickedAt)
+        }).observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true })
         const tick = () => {
+          if (clickedAt !== null && window.__driveArchMountMs === undefined && mounted()) window.__driveArchMountMs = Math.round(performance.now() - clickedAt)
           if (clickedAt !== null && ready()) { clearTimeout(deadline); resolve(Math.round(performance.now() - clickedAt)) } else requestAnimationFrame(tick)
         }
         requestAnimationFrame(tick)
@@ -416,6 +434,9 @@ export const ARCH_SCENARIOS = {
     }, handle)
     await target.click()
     const openMs = await page.evaluate(() => window.__driveArchReady)
+    const ipcDuringOpen = await app.evaluate(() => globalThis.__driveIpcCounts)
+    const mountMs = await page.evaluate(() => window.__driveArchMountMs)
+    const openDomMs = await page.evaluate(() => window.__driveArchDomMs)
 
     await page.keyboard.press('Control+K')
     await stage.paletteInput(page).fill('角色')
@@ -437,7 +458,7 @@ export const ARCH_SCENARIOS = {
     const frames = await page.evaluate(() => { cancelAnimationFrame(window.__driveFramesId); return window.__driveFrames })
     const seconds = (frames.at(-1) - frames[0]) / 1000
     const rows = await page.locator('.cast-row, .stage-characters-list [data-character-id]').count()
-    return { surface: await page.locator('.arch-page, .cast-page').count() > 0 ? 'head' : 'trunk', openMs, scrollFps: Math.round((frames.length - 1) / seconds * 10) / 10, rowsOnPage: rows }
+    return { surface: await page.locator('.arch-page, .cast-page').count() > 0 ? 'head' : 'trunk', openMs, scrollFps: Math.round((frames.length - 1) / seconds * 10) / 10, rowsOnPage: rows, openDomMs, mountMs, ipcDuringOpen }
   } },
 
   /** 评审视频：架构四节与主按钮、生成对话框的覆盖与保留、大纲提示条、清空此节的危险确认、角色名单保存与关系图谱。配 --video。 */

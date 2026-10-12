@@ -246,7 +246,7 @@ node scripts/redesign/drive.mjs --scenario chapter-switch --shell stage --out <�
 | `arch-cards` | 角色名单里粘贴两张角色卡，运行侧页确认后守塔人进名单、林岚仍只有一个 | 角色名单 | 是 | lane 9 |
 | `arch-import-dialog` | 导入角色卡对话框与外发确认是同一个纸墨对话框的两步（`.pi-dialog`、底色等于 `--surface`，不另弹确认框）；`after` 返回并关闭 | 外发确认 | 是 | lane 9 |
 | `arch-dark` | 用 `--theme dark` 跑：架构页文字对比度达标（名称与正文 4.5:1，说明 3:1），分节卡底色等于 `--paper` 的计算值 | 架构页 | 否 | lane 10 |
-| `arch-timing` | 从点流程脊「架构」到四节可交互的毫秒数（`measured.openMs`），200 位角色时角色列表第 1 页滚动帧率（`measured.scrollFps`）。trunk 是旧故事架构标签与旧角色列表，head 是架构阶段与角色名单 | 角色列表 | 否 | perf |
+| `arch-timing` | 从点流程脊「架构」到四节可交互的毫秒数（`measured.openMs` 按动画帧轮询；`openDomMs` 是 DOM 达到就绪的时刻，屏幕外窗口的动画帧会被节流；`ipcDuringOpen` 是这段时间主进程按通道收到的 invoke 数），200 位角色时角色列表第 1 页滚动帧率（`measured.scrollFps`）。trunk 是旧故事架构标签与旧角色列表，head 是架构阶段与角色名单 | 角色列表 | 否 | perf |
 | `arch-tour` | 30～60 秒的导览：四节与主按钮、对话框的覆盖与保留、清空此节的危险确认、角色名单保存与关系图谱。配 `--video` 录评审视频 | 架构页 | 否 | Review gate |
 
 perf 交替各跑 5 次取中位数：
