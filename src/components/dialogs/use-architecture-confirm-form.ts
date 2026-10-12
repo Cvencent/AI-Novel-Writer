@@ -1,18 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useProjectStore } from '../../stores/project-store'
 import { guardArchitectureGeneration, guardCharacterRegeneration } from '../../services/workflow-guards'
-import { createDefaultArchitectureSelection, type ArchStepKey } from '../../services/architecture-step-selection'
+import { ARCH_STEP_NAMES, createDefaultArchitectureSelection, type ArchStepKey } from '../../services/architecture-step-selection'
 import { toast } from '../ui/Toast'
 import { useLocaleStore } from '../../stores/locale-store'
 import { ipc } from '../../services/ipc-client'
 import { assertPlanningActionRange, DEFAULT_PLANNING_ACTION_CHAPTERS, DEFAULT_PLANNING_TARGET_UNITS, parsePlanningTargetUnits, PLANNING_ACTION_CHAPTER_LIMIT, PLANNING_TARGET_UNITS_LIMIT } from '../../shared/plot-outline-contract'
-
-export const ARCH_STEP_LABELS: Record<ArchStepKey, [string, string]> = {
-  premise: ['故事前提', 'Premise'],
-  characters: ['角色图谱', 'Characters'],
-  worldbuilding: ['世界观', 'World building'],
-  synopsis: ['情节大纲', 'Synopsis'],
-}
 
 /**
  * 每节在本次生成里的结果：已有内容且勾选为覆盖，未勾选为保留，还没有内容为新生成。
@@ -167,7 +160,7 @@ export function useArchitectureConfirmForm({
         return
       }
 
-      // 前置校验 2：如果勾选了角色图谱（意味着将重新生成角色卡），则必须确保蓝图为空
+      // 前置校验 2：如果勾选了角色名单（意味着将重新生成角色卡），则必须确保蓝图为空
       if (selectedSteps.includes('characters') && archStatus.characters) {
         const charGuard = await guardCharacterRegeneration(undefined, locale)
         if (!charGuard.ok) {
@@ -193,7 +186,7 @@ export function useArchitectureConfirmForm({
       }
       await onConfirm(selectedSteps, stepGuidance, resolution.range, target)
       onClose()
-      const stepNames = selectedSteps.map(k => text(...ARCH_STEP_LABELS[k])).join(text('、', ', '))
+      const stepNames = selectedSteps.map(k => text(...ARCH_STEP_NAMES[k])).join(text('、', ', '))
       toast.info(text(`已提交：正在生成${stepNames}...`, `Submitted: generating ${stepNames}...`))
     } catch (error) {
       setGuardError(error instanceof Error ? error.message : String(error))

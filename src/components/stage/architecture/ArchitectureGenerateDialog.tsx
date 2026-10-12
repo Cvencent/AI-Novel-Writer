@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, Sparkles } from 'lucide-react'
-import type { ArchStepKey } from '../../../services/architecture-step-selection'
+import { ARCH_STEP_NAMES, type ArchStepKey } from '../../../services/architecture-step-selection'
 import { resolveWritingLanguage } from '../../../shared/writing-language'
 import { PLANNING_ACTION_CHAPTER_LIMIT, PLANNING_TARGET_UNITS_LIMIT } from '../../../shared/plot-outline-contract'
 import { useLocaleStore } from '../../../stores/locale-store'
@@ -8,7 +8,7 @@ import { Button } from '../../ui/Button'
 import { Check } from '../../ui/Check'
 import { Notice } from '../../ui/Notice'
 import { InkDialog } from '../InkDialog'
-import { SECTION_NAMES, SECTION_ORDER } from './architecture-sections'
+import { SECTION_ORDER } from './architecture-sections'
 
 const MARK_TEXT: Record<ArchStepMark, [string, string]> = {
   overwrite: ['将覆盖', 'Overwrite'],
@@ -65,7 +65,7 @@ export default function ArchitectureGenerateDialog(props: ArchitectureConfirmFor
                   <Check
                     checked={checked[key]}
                     onChange={() => form.toggleStep(key)}
-                    label={<>{text(...SECTION_NAMES[key])}<span className="arch-step-status">{status(key)}</span></>}
+                    label={<>{text(...ARCH_STEP_NAMES[key])}<span className="arch-step-status">{status(key)}</span></>}
                   />
                   <span className="arch-mark" data-mark={mark}>{text(...MARK_TEXT[mark])}</span>
                 </div>
@@ -110,7 +110,7 @@ export default function ArchitectureGenerateDialog(props: ArchitectureConfirmFor
             </Button>
             {form.showGuidance && SECTION_ORDER.filter(key => checked[key]).map(key => (
               <label key={key} className="pi-field">
-                {text(...SECTION_NAMES[key])}
+                {text(...ARCH_STEP_NAMES[key])}
                 <textarea
                   className="pi-input arch-guidance-input"
                   rows={2}

@@ -5,7 +5,7 @@ import { useWorkflowStore } from '../../stores/workflow-store'
 import { useLocaleStore } from '../../stores/locale-store'
 import { ipc } from '../../services/ipc-client'
 import { launchCreativeWorkflow } from '../../services/workflows/creative-workflow-launcher'
-import type { ArchStepKey } from '../../services/architecture-step-selection'
+import { ARCH_STEP_NAMES, type ArchStepKey } from '../../services/architecture-step-selection'
 import { globalEventBus } from '../../shared/event-bus'
 import {
   createProjectArchTabId,
@@ -36,20 +36,18 @@ import {
   isUsableSynopsisCheckpoint,
 } from '../../services/workflows/commands/architecture.command'
 
-/** 架构四节在旧外壳里的名字；新外壳的架构阶段把「角色图谱」叫作「角色名单」。 */
+/** 架构四节的文档与旧外壳总览上的图标、说明；名字取 ARCH_STEP_NAMES。 */
 export const ARCH_FILES: Array<{
   key: ArchStepKey
   fileName: string
-  labelZh: string
-  labelEn: string
   iconName: string
   descZh: string
   descEn: string
 }> = [
-    { key: 'premise', fileName: 'premise.md', labelZh: '故事前提', labelEn: 'Story premise', iconName: 'target', descZh: '故事钩子 · 核心冲突链 · 主角优势 · 悬念骨架', descEn: 'Story hook · core conflict · protagonist edge · suspense structure' },
-    { key: 'characters', fileName: 'characters.md', labelZh: '角色图谱', labelEn: 'Character map', iconName: 'users', descZh: '角色弧光 · 关系网络 · 矛盾交织', descEn: 'Character arcs · relationships · interlocking tensions' },
-    { key: 'worldbuilding', fileName: 'worldbuilding.md', labelZh: '世界观', labelEn: 'Worldbuilding', iconName: 'globe', descZh: '核心规则 · 社会结构 · 深层危机', descEn: 'Core rules · social structure · underlying crisis' },
-    { key: 'synopsis', fileName: 'synopsis.md', labelZh: '情节大纲', labelEn: 'Plot outline', iconName: 'map', descZh: '结构推进 · 转折节奏 · 伏笔闭环', descEn: 'Story progression · turning points · setup and payoff' },
+    { key: 'premise', fileName: 'premise.md', iconName: 'target', descZh: '故事钩子 · 核心冲突链 · 主角优势 · 悬念骨架', descEn: 'Story hook · core conflict · protagonist edge · suspense structure' },
+    { key: 'characters', fileName: 'characters.md', iconName: 'users', descZh: '角色弧光 · 关系网络 · 矛盾交织', descEn: 'Character arcs · relationships · interlocking tensions' },
+    { key: 'worldbuilding', fileName: 'worldbuilding.md', iconName: 'globe', descZh: '核心规则 · 社会结构 · 深层危机', descEn: 'Core rules · social structure · underlying crisis' },
+    { key: 'synopsis', fileName: 'synopsis.md', iconName: 'map', descZh: '结构推进 · 转折节奏 · 伏笔闭环', descEn: 'Story progression · turning points · setup and payoff' },
   ]
 
 interface GenerateIntent {
@@ -311,7 +309,8 @@ export function useArchitectureOverview(projectKey: string) {
     } else {
       store.openFile({
         id: tabId,
-        name: text(f.labelZh, f.labelEn),
+        // 角色名单的文档是名单的只读全文，与名单页标签区分开。
+        name: f.key === 'characters' ? text('角色名单全文', 'Cast as text') : text(...ARCH_STEP_NAMES[f.key]),
         type: 'arch-file',
         filePath,
         content,

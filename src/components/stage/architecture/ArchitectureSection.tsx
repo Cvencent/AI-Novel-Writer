@@ -1,13 +1,13 @@
 import { Copy, Ellipsis, Eye, EyeOff, PenLine, RotateCw, Sparkles, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
-import type { ArchStepKey } from '../../../services/architecture-step-selection'
+import { ARCH_STEP_NAMES, type ArchStepKey } from '../../../services/architecture-step-selection'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { LegacyRosterRecoveryPanel } from '../../editor/LegacyRosterRecoveryPanel'
 import type { ArchitectureOverview } from '../../editor/use-architecture-overview'
 import { Button } from '../../ui/Button'
 import { Menu, type MenuGroupSpec } from '../../ui/Menu'
 import { Notice } from '../../ui/Notice'
-import { badgeText, badgeTone, SECTION_NAMES, SECTION_NUMERALS, type SectionBadge } from './architecture-sections'
+import { badgeText, badgeTone, SECTION_NUMERALS, type SectionBadge } from './architecture-sections'
 
 interface SectionProps {
   sectionKey: ArchStepKey
@@ -128,7 +128,7 @@ export default function ArchitectureSection({ sectionKey, overview, badge, summa
   const text = useLocaleStore(s => s.text)
   const filled = Boolean(overview.archStatus[sectionKey])
   const cast = sectionKey === 'characters'
-  const name = text(...SECTION_NAMES[sectionKey])
+  const name = text(...ARCH_STEP_NAMES[sectionKey])
 
   const groups: MenuGroupSpec[] = [
     { id: 'section', items: [

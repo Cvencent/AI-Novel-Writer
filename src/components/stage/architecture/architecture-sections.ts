@@ -5,13 +5,6 @@ type Text = (zh: string, en: string) => string
 
 export const SECTION_ORDER: readonly ArchStepKey[] = ['premise', 'characters', 'worldbuilding', 'synopsis']
 
-export const SECTION_NAMES: Record<ArchStepKey, [string, string]> = {
-  premise: ['故事前提', 'Premise'],
-  characters: ['角色名单', 'Cast'],
-  worldbuilding: ['世界观', 'World'],
-  synopsis: ['情节大纲', 'Outline'],
-}
-
 export const SECTION_NUMERALS: Record<ArchStepKey, string> = { premise: 'i', characters: 'ii', worldbuilding: 'iii', synopsis: 'iv' }
 
 /**

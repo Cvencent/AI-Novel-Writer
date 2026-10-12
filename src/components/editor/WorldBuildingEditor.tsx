@@ -8,6 +8,7 @@ import ArchitectureConfirmDialog from '../dialogs/ArchitectureConfirmDialog'
 import { Button } from '../ui/Button'
 import { EmptyState } from '../ui/EmptyState'
 import { ARCH_FILES, useArchitectureOverview } from './use-architecture-overview'
+import { ARCH_STEP_NAMES } from '../../services/architecture-step-selection'
 
 /** 故事架构编辑器 — 显示四个架构文件状态，并提供 AI 生成入口 */
 export default function WorldBuildingEditor({ projectKey }: { projectKey: string }) {
@@ -155,7 +156,7 @@ export default function WorldBuildingEditor({ projectKey }: { projectKey: string
                 {/* 标题 + 描述 */}
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
-                    {text(f.labelZh, f.labelEn)}
+                    {text(...ARCH_STEP_NAMES[f.key])}
                   </div>
                   <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
                     {text(f.descZh, f.descEn)}

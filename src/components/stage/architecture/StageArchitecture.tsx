@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ArrowRight, Ellipsis, Sparkles } from 'lucide-react'
-import type { ArchStepKey } from '../../../services/architecture-step-selection'
+import { ARCH_STEP_NAMES, type ArchStepKey } from '../../../services/architecture-step-selection'
 import { useCharacterStore } from '../../../stores/character-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { navigate } from '../../../stores/navigation/navigation-intents'
@@ -17,7 +17,7 @@ import { toast } from '../../ui/Toast'
 import { refreshStageWork } from '../use-stage-work'
 import ArchitectureGenerateDialog from './ArchitectureGenerateDialog'
 import ArchitectureSection from './ArchitectureSection'
-import { excerpt, mainAction, sectionBadge, SECTION_NAMES, SECTION_ORDER } from './architecture-sections'
+import { excerpt, mainAction, sectionBadge, SECTION_ORDER } from './architecture-sections'
 
 /** 角色名单一节的摘要。角色卡在打开作品后单独载入（角色多时要几百毫秒），载完之前只这一节写「正在读取」，其余三节照常可用。 */
 function useCastSummary(projectKey: string): { summary: string; loading: boolean } {
@@ -67,7 +67,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
     const { key, session } = clearing
     setClearing(null)
     if (!isProjectSessionPath(session, projectKey) || !isProjectSessionCurrent(session)) return
-    const name = text(...SECTION_NAMES[key])
+    const name = text(...ARCH_STEP_NAMES[key])
     const cleared = await clearArchSection(`ai-novel://core/${key}`, session)
     if (!isProjectSessionCurrent(session)) return
     if (!cleared) {
@@ -86,7 +86,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
       : text('还没有内容。可以让 AI 按设定生成，也可以自己写。', 'Nothing here yet. Let AI draft it from the setup, or write it yourself.')
   }
 
-  const clearingName = clearing ? text(...SECTION_NAMES[clearing.key]) : ''
+  const clearingName = clearing ? text(...ARCH_STEP_NAMES[clearing.key]) : ''
 
   return (
     <div className="arch-page" data-loading={overview.loading || undefined} data-cast-loading={cast.loading || undefined}>
