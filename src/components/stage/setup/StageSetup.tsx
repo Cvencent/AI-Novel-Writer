@@ -25,8 +25,6 @@ import { InkDialog } from '../InkDialog'
 import ModelMissingNotice from '../ModelMissingNotice'
 import { commandLabel } from '../shortcut-keys'
 import { useModelMissing } from '../use-model-missing'
-import '../styles/stage-forms.css'
-import '../styles/stage-setup.css'
 import { MORE_FIELDS, ONE_MISSING_HINT, POV_OPTIONS, REQUIRED_NAMES, STRUCTURE_OPTIONS, type MoreField } from './setup-fields'
 
 type Form = ReturnType<typeof useNovelConfigForm>

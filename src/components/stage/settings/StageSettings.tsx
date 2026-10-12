@@ -12,8 +12,6 @@ import AboutSection from './AboutSection'
 import AppearanceSection from './AppearanceSection'
 import ModelsSection from './ModelsSection'
 import ProxySection from './ProxySection'
-import '../styles/stage-forms.css'
-import '../styles/stage-settings.css'
 import { SETTINGS_GROUPS, SETTINGS_PAGES, settingsPageOf, type SettingsPage } from './settings-pages'
 
 function PageHeader({ page, action }: { page: SettingsPage; action?: ReactNode }) {
