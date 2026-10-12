@@ -67,10 +67,10 @@ export function mainAction(filled: number, total: number): ArchitectureMainActio
   return filled === 0 ? 'generate' : 'continue'
 }
 
-/** 卡片上的一句摘要：取正文去掉 Markdown 标记后的开头。 */
+/** 卡片上的一句摘要：取正文去掉标题行与 Markdown 标记后的开头；只有标题时退回标题文字。 */
 export function excerpt(markdown: string, limit = 90): string {
-  const plain = markdown
-    .replace(/^#{1,6}\s+/gm, '')
+  const body = markdown.replace(/^#{1,6}\s+.*$/gm, '').trim()
+  const plain = (body || markdown.replace(/^#{1,6}\s+/gm, ''))
     .replace(/[*_`>|]/g, '')
     .replace(/\s+/g, ' ')
     .trim()

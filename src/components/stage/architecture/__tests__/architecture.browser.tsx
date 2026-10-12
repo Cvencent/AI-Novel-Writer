@@ -277,5 +277,21 @@ describe('架构阶段', () => {
     await act(async () => premise.click())
     expect(mark('premise')).toBe('将覆盖')
     expect(button(/开始生成 3 项/)).toBeTruthy()
+
+    const all = document.querySelector<HTMLInputElement>('.arch-step-all input[type="checkbox"]')!
+    await act(async () => all.click())
+    expect(['premise', 'characters', 'worldbuilding', 'synopsis'].map(stepChecked)).toEqual([true, true, true, true])
+    expect(all.checked).toBe(true)
+    await act(async () => all.click())
+    expect(['premise', 'characters', 'worldbuilding', 'synopsis'].map(stepChecked)).toEqual([false, false, false, false])
+    expect(all.checked).toBe(false)
+    expect((button(/开始生成 0 项/) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('分节摘要不带文档的 Markdown 标题行', async () => {
+    core = { ...core, premise: `# 故事前提\n\n## 核心钩子\n\n${PREMISE}` }
+    filledSpine(['premise'])
+    await render()
+    expect(host!.querySelector('[data-section="premise"] .arch-section-summary')?.textContent?.startsWith('收到匿名信的林舟')).toBe(true)
   })
 })
