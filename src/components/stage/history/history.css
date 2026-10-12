@@ -321,8 +321,3 @@
   color: var(--ink-3);
   text-decoration-color: var(--danger);
 }
-
-/* 不丢数据的确认（回退、外发资料）标题不用危险色 */
-.stage-plain-confirm .pi-dialog-title {
-  color: var(--ink);
-}

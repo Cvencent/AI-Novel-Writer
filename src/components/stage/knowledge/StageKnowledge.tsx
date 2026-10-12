@@ -12,7 +12,7 @@ import { DangerConfirm } from '../../ui/DangerConfirm'
 import { EmptyState } from '../../ui/EmptyState'
 import { Notice } from '../../ui/Notice'
 import { SegmentedControl } from '../../ui/SegmentedControl'
-import PlainConfirm from '../PlainConfirm'
+import { InkDialog } from '../InkDialog'
 import { commandLabel, isCommand, isComposing, isModalOpen } from '../shortcut-keys'
 import { highlight } from './search-highlight'
 import { isImportedDocument, useKnowledgeBase } from './use-knowledge-base'
@@ -293,19 +293,23 @@ export default function StageKnowledge() {
             if (session) void kb.clearAll(session)
           }}
         />
-        <PlainConfirm
+        <InkDialog
           open={extraction !== null}
           onOpenChange={open => { if (!open) answerExtraction(false) }}
           title={text('把资料发给模型提取角色卡？', 'Send the material to extract character cards?')}
-          confirmLabel={text('发送并提取', 'Send and extract')}
-          onConfirm={() => answerExtraction(true)}
+          description={text('资料已存进这部作品的本地知识库。', 'The material is now stored in this book’s local knowledge base.')}
+          footer={(
+            <>
+              <Button variant="secondary" onClick={() => answerExtraction(false)}>{text('取消', 'Cancel')}</Button>
+              <Button variant="primary" onClick={() => answerExtraction(true)}>{text('发送并提取', 'Send and extract')}</Button>
+            </>
+          )}
         >
-          <p>{text('资料已存进这部作品的本地知识库。', 'The material is now stored in this book’s local knowledge base.')}</p>
-          <p>{text(
+          <p className="pi-dialog-text">{text(
             `继续的话，本次选中的全部文字会发给「${extraction?.model.name ?? ''}」（${extraction?.model.modelName ?? ''}，${extraction?.model.baseUrl ?? ''}），用来提取可编辑的角色卡。`,
             `If you continue, all selected text is sent to “${extraction?.model.name ?? ''}” (${extraction?.model.modelName ?? ''}, ${extraction?.model.baseUrl ?? ''}) to extract editable character cards.`,
           )}</p>
-        </PlainConfirm>
+        </InkDialog>
       </div>
     </div>
   )

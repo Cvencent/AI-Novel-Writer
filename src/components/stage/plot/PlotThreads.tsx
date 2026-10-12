@@ -6,7 +6,7 @@ import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
 import { Menu } from '../../ui/Menu'
 import { SegmentedControl } from '../../ui/SegmentedControl'
-import PlainConfirm from '../PlainConfirm'
+import { InkDialog } from '../InkDialog'
 import { threadRoute, type RouteStop } from './plot-shape'
 import type { PlotThreads as PlotThreadsData } from './StagePlot'
 import { STATUS_LABELS } from './use-plot-threads'
@@ -228,13 +228,16 @@ export default function PlotThreads({ plot, onDelete }: PlotThreadsProps) {
         </section>
       </aside>
 
-      <PlainConfirm
+      <InkDialog
         open={formOpen}
         onOpenChange={setFormOpen}
         title={plot.editingId === null ? text('新建线索', 'New thread') : text('编辑线索', 'Edit thread')}
-        confirmLabel={text('保存线索', 'Save thread')}
-        disabled={plot.busy || !planValid}
-        onConfirm={() => void savePlan()}
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setFormOpen(false)}>{text('取消', 'Cancel')}</Button>
+            <Button variant="primary" disabled={plot.busy || !planValid} onClick={() => void savePlan()}>{text('保存线索', 'Save thread')}</Button>
+          </>
+        )}
       >
         <div className="stage-threads-plan-form">
           {field('title', text('名称', 'Name'), <input id={`${ids}-title`} className="pi-input" value={plot.plan.title} onChange={event => plot.setPlan({ ...plot.plan, title: event.target.value })} />)}
@@ -243,7 +246,7 @@ export default function PlotThreads({ plot, onDelete }: PlotThreadsProps) {
           {field('end', text('回收章', 'Paid off in chapter'), <input id={`${ids}-end`} className="pi-input" type="number" min={1} value={plot.plan.targetEndChapter} onChange={event => plot.setPlan({ ...plot.plan, targetEndChapter: Number(event.target.value) })} />)}
           {field('intent', text('你的打算', 'Your intent'), <textarea id={`${ids}-intent`} className="pi-input stage-threads-intent" value={plot.plan.authorIntent} onChange={event => plot.setPlan({ ...plot.plan, authorIntent: event.target.value })} />)}
         </div>
-      </PlainConfirm>
+      </InkDialog>
     </div>
   )
 }
