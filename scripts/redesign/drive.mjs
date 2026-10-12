@@ -1,0 +1,291 @@
+/* global process */
+import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
+import { fileURLToPath } from 'node:url'
+import { _electron as electron } from 'playwright'
+
+import { startFakeModel } from './fake-model.mjs'
+import { BASELINE_SESSIONS, SCENARIOS } from './scenarios.mjs'
+import { dismissCompletionToasts, dismissStartupNotice, firstInteractiveControl, waitForShell } from './pages/shell.mjs'
+
+const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+const OFFSCREEN_WINDOW = fileURLToPath(new URL('./offscreen-window.cjs', import.meta.url))
+const TIMEOUT = 60_000
+const VIEWPORT = { width: 1440, height: 900 }
+const THEMES = ['light', 'dark']
+const ROOT_NAMES = ['legacy', 'canonical', 'userData', 'home', 'appData', 'localAppData', 'temp', 'projects']
+const ALL_SCENARIOS = [...Object.keys(SCENARIOS), 'baseline-all', 'startup-timing']
+const USAGE = `用法: node scripts/redesign/drive.mjs --scenario <名称> [--theme light|dark] [--out <目录>] [--dump-dom] [--console] [--app-root <目录>]
+场景: ${ALL_SCENARIOS.join(', ')}`
+
+export function parseArgs(argv) {
+  const options = { scenario: null, theme: 'light', out: path.join(repository, '.runtime', 'redesign-baseline'),
+    dumpDom: false, console: false, appRoot: repository }
+  const valueOf = (flag, index) => {
+    const value = argv[index + 1]
+    if (value === undefined || value.startsWith('--')) throw new Error(`${flag} 缺少取值\n${USAGE}`)
+    return value
+  }
+  for (let index = 0; index < argv.length; index++) {
+    const arg = argv[index]
+    if (arg === '--') continue
+    else if (arg === '--scenario') options.scenario = valueOf(arg, index++)
+    else if (arg === '--theme') options.theme = valueOf(arg, index++)
+    else if (arg === '--out') options.out = path.resolve(valueOf(arg, index++))
+    else if (arg === '--app-root') options.appRoot = path.resolve(valueOf(arg, index++))
+    else if (arg === '--dump-dom') options.dumpDom = true
+    else if (arg === '--console') options.console = true
+    else throw new Error(`未知参数 ${arg}\n${USAGE}`)
+  }
+  if (!ALL_SCENARIOS.includes(options.scenario)) throw new Error(`未知或缺少场景 ${options.scenario}\n${USAGE}`)
+  if (!THEMES.includes(options.theme)) throw new Error(`--theme 只接受 ${THEMES.join('|')}`)
+  return options
+}
+
+/** Electron 的全部可写根都落在 parent 下的一个新目录里；项目路径要短，原生存储有长度上限。 */
+export function createIsolatedRoots(parent) {
+  fs.mkdirSync(parent, { recursive: true })
+  const root = fs.mkdtempSync(path.join(parent, 'd'))
+  const roots = Object.fromEntries(ROOT_NAMES.map(name => [name, path.join(root, name)]))
+  for (const [name, directory] of Object.entries(roots)) if (name !== 'canonical') fs.mkdirSync(directory, { recursive: true })
+  return { root, ...roots }
+}
+
+export function isolatedEnvironment(roots, base = process.env) {
+  const env = { ...base, AI_NOVEL_APP_DATA_HOME: roots.canonical, AI_NOVEL_LEGACY_SOURCE_HOME: roots.legacy,
+    AI_NOVEL_VELA_HOME: roots.legacy, HOME: roots.home, USERPROFILE: roots.home, APPDATA: roots.appData,
+    LOCALAPPDATA: roots.localAppData, TEMP: roots.temp, TMP: roots.temp }
+  for (const name of ['ELECTRON_RUN_AS_NODE', 'VITE_DEV_SERVER_URL', 'AI_NOVEL_SMOKE_OPEN_PROJECT', 'AI_NOVEL_SMOKE_PROJECT_MARKER']) delete env[name]
+  return env
+}
+
+function scratchParent() {
+  const base = process.env.LOCALAPPDATA ?? os.tmpdir()
+  return path.join(base, 'VibeCodingScratch', 'an', 'drive')
+}
+
+/** 用户真实配置目录。运行前后比较最新修改时间，证明隔离目录之外没有写入。 */
+function realProfileDirectories() {
+  const appData = process.env.APPDATA ?? path.join(os.homedir(), 'AppData', 'Roaming')
+  return [path.join(os.homedir(), '.vela'), path.join(appData, 'ai-novel-writer'), path.join(appData, 'AI小说作家')]
+}
+
+function newestWrite(directory, budget = { entries: 50_000 }) {
+  let newest = 0
+  let stat
+  try { stat = fs.lstatSync(directory) } catch { return null }
+  newest = stat.mtimeMs
+  if (!stat.isDirectory()) return newest
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    if (--budget.entries < 0) break
+    const child = path.join(directory, entry.name)
+    const value = entry.isDirectory() ? newestWrite(child, budget) : fs.lstatSync(child).mtimeMs
+    if (value !== null && value > newest) newest = value
+  }
+  return newest
+}
+
+function snapshotRealProfiles() {
+  return Object.fromEntries(realProfileDirectories().map(directory => [directory, newestWrite(directory)]))
+}
+
+function externalWrites(before) {
+  const after = snapshotRealProfiles()
+  return Object.keys(before).filter(directory => before[directory] !== after[directory])
+}
+
+/** 以 --user-data-dir 匹配仍存活的 Electron 主进程与子进程。 */
+function liveProcesses(userData) {
+  const needle = userData.toLowerCase()
+  if (process.platform === 'win32') {
+    const script = "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine } | ForEach-Object { \"$($_.ProcessId)`t$($_.CommandLine)\" }"
+    const output = execFileSync('powershell', ['-NoProfile', '-Command', script], { encoding: 'utf8', windowsHide: true, maxBuffer: 64 * 1024 * 1024 })
+    return output.split(/\r?\n/).filter(line => line.toLowerCase().includes(needle)).map(line => Number(line.split('\t')[0]))
+  }
+  const output = execFileSync('ps', ['-eo', 'pid=,args='], { encoding: 'utf8' })
+  return output.split('\n').filter(line => line.toLowerCase().includes(needle)).map(line => Number(line.trim().split(/\s+/)[0]))
+}
+
+/** close 返回时 GPU、渲染等子进程可能还在退出，给它们约 3 秒。 */
+async function residualProcesses(userData) {
+  for (let attempt = 1; ; attempt++) {
+    const pids = liveProcesses(userData)
+    if (pids.length === 0 || attempt === 10) return pids
+    await delay(300)
+  }
+}
+
+async function quit(app) {
+  const pid = app.process().pid
+  let timer
+  const closed = await Promise.race([app.close().then(() => true).catch(() => false),
+    new Promise(resolve => { timer = setTimeout(() => resolve(false), 10_000) })])
+  clearTimeout(timer)
+  if (!closed && pid) {
+    if (process.platform === 'win32') execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true })
+    else process.kill(pid, 'SIGKILL')
+  }
+  return { forced: !closed }
+}
+
+async function launch({ roots, appRoot, fakeModelPort, diagnostics }) {
+  const launchedAt = Date.now()
+  const app = await electron.launch({ cwd: appRoot, args: ['-r', OFFSCREEN_WINDOW, '.', `--user-data-dir=${roots.userData}`],
+    env: isolatedEnvironment(roots), timeout: TIMEOUT })
+  try {
+    await app.evaluate((_, port) => {
+      const originalFetch = globalThis.fetch
+      globalThis.__driveExternalRequests = []
+      globalThis.fetch = async (input, options) => {
+        const url = new URL(String(input instanceof Request ? input.url : input))
+        if (port === null || url.origin !== 'https://api.openai.com' || !url.pathname.startsWith('/v1/')) {
+          globalThis.__driveExternalRequests.push(url.origin)
+          throw new Error('DRIVE_EXTERNAL_FETCH_REFUSED')
+        }
+        return originalFetch(`http://127.0.0.1:${port}${url.pathname}`, options)
+      }
+    }, fakeModelPort ?? null)
+    app.process().stdout?.on('data', chunk => diagnostics.push(`[main:stdout] ${String(chunk).trimEnd()}`))
+    app.process().stderr?.on('data', chunk => diagnostics.push(`[main:stderr] ${String(chunk).trimEnd()}`))
+    const page = await app.firstWindow({ timeout: TIMEOUT })
+    page.on('console', message => diagnostics.push(`[renderer:${message.type()}] ${message.text()}`))
+    page.on('pageerror', error => diagnostics.push(`[renderer:pageerror] ${error.stack ?? error.message}`))
+    await firstInteractiveControl(page).waitFor({ state: 'visible', timeout: TIMEOUT })
+    const interactiveAt = Date.now()
+    const { readyToShow } = await app.evaluate(() => globalThis.__driveTiming)
+    const timeOrigin = await page.evaluate(() => performance.timeOrigin)
+    const timing = { launchToInteractiveMs: interactiveAt - launchedAt,
+      readyToShowToInteractiveMs: readyToShow === null ? null : interactiveAt - readyToShow,
+      navigationToInteractiveMs: Math.round(interactiveAt - timeOrigin) }
+    page.setDefaultTimeout(20_000)
+    assert.equal(path.resolve(await app.evaluate(({ app: electronApp }) => electronApp.getPath('userData'))), roots.userData)
+    await page.setViewportSize(VIEWPORT)
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await waitForShell(page, TIMEOUT)
+    await dismissStartupNotice(page)
+    assert.equal((await invoke(page, 'startup:get-state')).state, 'ready')
+    return { app, page, timing }
+  } catch (error) { await quit(app); throw error }
+}
+
+const invoke = (page, channel, ...args) =>
+  page.evaluate(({ channel, args }) => window.aiNovelAPI.invoke(channel, ...args), { channel, args })
+
+async function applyTheme(page, theme) {
+  await page.waitForFunction(() => localStorage.getItem('ai-novel-writer-appearance') !== null, null, { timeout: TIMEOUT })
+  await page.evaluate(colorTheme => {
+    const key = 'ai-novel-writer-appearance'
+    const current = JSON.parse(localStorage.getItem(key))
+    localStorage.setItem(key, JSON.stringify({ ...current, colorTheme, revision: current.revision + 1, origin: 'author' }))
+  }, theme)
+  await page.reload()
+  await waitForShell(page, TIMEOUT)
+}
+
+async function shoot(page, file) {
+  await page.evaluate(() => document.fonts.ready)
+  await dismissCompletionToasts(page)
+  assert.equal(await page.evaluate(() => document.visibilityState), 'visible', '屏幕外窗口的页面被当作隐藏，截图会停帧')
+  await page.screenshot({ path: file, animations: 'disabled', caret: 'hide' })
+}
+
+async function dumpDom(page, base) {
+  fs.writeFileSync(`${base}.dom.html`, await page.content())
+  fs.writeFileSync(`${base}.aria.yml`, await page.locator('body').ariaSnapshot())
+}
+
+const messageOf = error => error instanceof Error ? error.message : String(error)
+
+/** 一个会话一次冷启动：先跑首个截图点的 setup，再依次 run、截图、after。隔离与进程检查按会话做，结果抄进每一项。 */
+async function runSession(sessionName, names, options) {
+  const roots = createIsolatedRoots(scratchParent())
+  const before = snapshotRealProfiles()
+  const diagnostics = []
+  const fake = names.some(name => SCENARIOS[name]?.model) ? await startFakeModel(diagnostics) : null
+  const base = name => path.join(options.out, `${name}-${options.theme}`)
+  const results = names.map(scenario => ({ scenario, theme: options.theme }))
+  const shared = { session: sessionName, isolationRoot: roots.root }
+  const sessionErrors = []
+  let failedAt = null
+  let current = null
+  let launched
+  try {
+    launched = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics })
+    shared.timing = launched.timing
+    if (sessionName !== 'startup-timing') {
+      const { page } = launched
+      await applyTheme(page, options.theme)
+      const context = { ...launched, roots, invoke, reload: () => page.reload().then(() => waitForShell(page, TIMEOUT)) }
+      current = 0
+      await SCENARIOS[names[0]].setup?.(context)
+      for (const [index, name] of names.entries()) {
+        current = index
+        results[index].screenshot = `${base(name)}.png`
+        await SCENARIOS[name].run(context)
+        await shoot(page, results[index].screenshot)
+        if (options.dumpDom) await dumpDom(page, base(name))
+        await SCENARIOS[name].after?.(context)
+      }
+      current = null
+    }
+    shared.externalRequests = await launched.app.evaluate(() => globalThis.__driveExternalRequests)
+    assert.deepEqual(shared.externalRequests, [], fake ? 'fetch 越过夹具访问外部网络' : '无夹具场景发出了 fetch')
+  } catch (error) {
+    if (current === null) sessionErrors.push(messageOf(error))
+    else {
+      failedAt = current
+      results[current].error = messageOf(error)
+    }
+    const page = launched?.page
+    if (page && !page.isClosed()) {
+      const failureBase = base(current === null ? sessionName : names[current])
+      await page.screenshot({ path: `${failureBase}.failure.png` }).catch(() => {})
+      await dumpDom(page, failureBase).catch(() => {})
+    }
+    options = { ...options, console: true }
+  } finally {
+    if (options.console) fs.writeFileSync(`${base(sessionName)}.console.log`, `${diagnostics.join('\n')}\n`)
+    if (launched) shared.quit = await quit(launched.app).catch(error => { sessionErrors.push(messageOf(error)); return null })
+    await fake?.close()
+    if (fake) shared.modelRequests = fake.requests.length
+  }
+  try {
+    shared.residualProcesses = await residualProcesses(roots.userData)
+    shared.externalWrites = externalWrites(before)
+  } catch (error) { sessionErrors.push(messageOf(error)) }
+  const clean = failedAt === null && sessionErrors.length === 0 && shared.residualProcesses?.length === 0
+  if (clean) fs.rmSync(roots.root, { recursive: true, force: true })
+  return results.map((result, index) => {
+    const errors = [result.error, failedAt !== null && index > failedAt ? `未运行：本会话的 ${names[failedAt]} 先失败` : null, ...sessionErrors]
+    const error = errors.filter(Boolean).join('\n')
+    return { ...result, ...shared, ...(error ? { error } : {}) }
+  })
+}
+
+async function main() {
+  let options
+  try { options = parseArgs(process.argv.slice(2)) } catch (error) {
+    process.stderr.write(`${error.message}\n`)
+    process.exit(2)
+  }
+  fs.mkdirSync(options.out, { recursive: true })
+  const sessions = options.scenario === 'baseline-all'
+    ? Object.entries(BASELINE_SESSIONS).map(([name, scenarios]) => [`baseline-${name}`, scenarios])
+    : [[options.scenario, [options.scenario]]]
+  const results = []
+  for (const [sessionName, names] of sessions) {
+    for (const result of await runSession(sessionName, names, options)) {
+      results.push(result)
+      process.stdout.write(`${JSON.stringify(result)}\n`)
+    }
+  }
+  const failed = results.filter(result => result.error || result.residualProcesses?.length !== 0 || result.externalWrites?.length !== 0)
+  fs.writeFileSync(path.join(options.out, `${options.scenario}-${options.theme}.json`), JSON.stringify(results, null, 2))
+  process.exitCode = failed.length ? 1 : 0
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main()
