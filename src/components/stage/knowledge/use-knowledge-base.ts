@@ -13,6 +13,7 @@ import {
 import { globalEventBus } from '../../../shared/event-bus'
 import type { ModelProfile, ProjectSessionContext } from '../../../shared/ipc-channels'
 import { sameProjectSessionContext } from '../../../shared/project-session-context'
+import { knowledgeDraftDirty, type KnowledgeDraft } from '../../../stores/editor-store'
 import { useLLMStore } from '../../../stores/llm-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { navigate } from '../../../stores/navigation/navigation-intents'
@@ -22,14 +23,10 @@ import { captureProjectSession, isProjectSessionCurrent } from '../../project-se
 import { toast } from '../../ui/Toast'
 
 const EMPTY_STATS: KBStatsData = { documentCount: 0, totalChunks: 0, vectorDimension: 0 }
+export const EMPTY_DRAFT: KnowledgeDraft = { docId: null, copy: null, content: '' }
 
-export interface DocumentCopy {
-  available: boolean
-  content?: string
-  contentHash?: string
-  edited?: boolean
-  indexStatus: 'current' | 'stale' | 'unavailable'
-}
+/** 所选资料与改动存放的位置：旧外壳放在页面里，新外壳放在知识库标签上。 */
+export type KnowledgeDraftSlot = readonly [KnowledgeDraft, (next: KnowledgeDraft) => void]
 
 /** 定稿章节由定稿自动收入，要改就改正文；其余都是作者导入的资料。 */
 export function isImportedDocument(document: KBDocument): boolean {
@@ -41,7 +38,6 @@ export function isImportedDocument(document: KBDocument): boolean {
  * 状态检查只读本地数据，重建会按当前检索模型补全或重建。
  */
 export function useKnowledgeIndex() {
-  const currentProject = useProjectStore(s => s.currentProject)
   const locale = useLocaleStore(s => s.locale)
   const text = useLocaleStore(s => s.text)
   const [status, setStatus] = useState<VectorRebuildStatus | null>(null)
@@ -49,19 +45,20 @@ export function useKnowledgeIndex() {
   const [backfilling, setBackfilling] = useState(false)
 
   const loadStatus = useCallback(async () => {
-    const projectSession = captureProjectSession(currentProject)
+    const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession) return
     try {
       const result = await ipc.invokeWithProjectSession(projectSession, 'kb:get-vector-rebuild-status', projectSession.projectPath)
       if (!isProjectSessionCurrent(projectSession)) return
       setStatus(unwrapKnowledgeValue(result))
+      setStatusError('')
     } catch (error) {
       if (isProjectSessionCurrent(projectSession)) setStatusError(appErrorMessage(locale, error))
     }
-  }, [currentProject, locale])
+  }, [locale])
 
   const backfill = useCallback(async () => {
-    const projectSession = captureProjectSession(currentProject)
+    const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession) return
     const expectedProjectPath = projectSession.projectPath
     setBackfilling(true)
@@ -84,7 +81,7 @@ export function useKnowledgeIndex() {
         globalEventBus.emit('REFRESH_RESOURCE', { resources: ['all'], projectPath: expectedProjectPath, projectSession })
       }
     }
-  }, [currentProject, locale, text])
+  }, [locale, text])
 
   const reset = useCallback(() => {
     setStatus(null)
@@ -100,8 +97,9 @@ export function useKnowledgeIndex() {
  * 新外壳的知识库页与旧外壳的 KnowledgeOverview 共用。确认（切换时放弃修改、清空、外发提取）由页面各自呈现，
  * 这里只在确认之后执行。
  */
-export function useKnowledgeBase() {
-  const currentProject = useProjectStore(s => s.currentProject)
+export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
+  const projectPath = useProjectStore(s => s.currentProject?.path)
+  const sessionLease = useProjectStore(s => s.currentProject?.sessionLease)
   const locale = useLocaleStore(s => s.locale)
   const text = useLocaleStore(s => s.text)
   const index = useKnowledgeIndex()
@@ -115,14 +113,19 @@ export function useKnowledgeBase() {
   const [clearing, setClearing] = useState(false)
   const [importing, setImporting] = useState(false)
   const [loadError, setLoadError] = useState('')
-  const [selectedDocId, setSelectedDocId] = useState<string | null>(null)
-  const [documentCopy, setDocumentCopy] = useState<DocumentCopy | null>(null)
-  const [draftContent, setDraftContent] = useState('')
+  const localDraft = useState<KnowledgeDraft>(EMPTY_DRAFT)
+  const [draft, setDraft] = draftSlot ?? localDraft
   const [documentBusy, setDocumentBusy] = useState(false)
   const documentRequest = useRef(0)
+  const saving = useRef(false)
+  const openedSession = useRef<string | null>(null)
+  const restoredDraft = useRef<KnowledgeDraft | null>(draft)
+  const selectedDocId = draft.docId
+  const documentCopy = draft.copy
+  const draftContent = draft.content
 
   const loadData = useCallback(async () => {
-    const projectSession = captureProjectSession(currentProject)
+    const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession) return
     const expectedProjectPath = projectSession.projectPath
     try {
@@ -138,38 +141,66 @@ export function useKnowledgeBase() {
       if (!isProjectSessionCurrent(projectSession)) return
       setLoadError(appErrorMessage(locale, error))
     }
-  }, [currentProject, locale])
+  }, [locale])
 
+  /** 打开一份资料的项目副本。有未保存的修改时调用方须先征得作者同意。 */
+  const openDocument = async (docId: string, reload = false) => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session) return
+    if (!reload && docId === selectedDocId) return
+    const request = ++documentRequest.current
+    setDraft({ docId, copy: null, content: '' })
+    try {
+      const result = unwrapKnowledgeValue(await ipc.invokeWithProjectSession(session, 'kb:read-document-copy', docId, session.projectPath))
+      if (!isProjectSessionCurrent(session) || request !== documentRequest.current) return
+      setDraft({ docId, copy: result, content: result.content ?? '' })
+    } catch (error) {
+      if (isProjectSessionCurrent(session) && request === documentRequest.current) toast.error(appErrorMessage(locale, error))
+    }
+  }
+  const openDocumentRef = useRef(openDocument)
+  useEffect(() => { openDocumentRef.current = openDocument })
+
+  // 只在换了作品或重新打开时清空；同一次打开里作品数据换成新对象（后台写回设定）不清，未保存的改动留着。
   useEffect(() => {
+    if (!projectPath || !sessionLease) return
+    const sessionKey = JSON.stringify([projectPath, sessionLease])
+    const switched = openedSession.current !== null && openedSession.current !== sessionKey
+    openedSession.current = sessionKey
     let mounted = true
     Promise.resolve().then(() => {
-      const projectSession = captureProjectSession(currentProject)
-      if (!mounted || !projectSession) return
-      setDocuments([])
-      setStats(EMPTY_STATS)
-      setSearchResults([])
-      setSelectedDocId(null)
-      documentRequest.current++
-      setDocumentCopy(null)
-      setDraftContent('')
-      resetIndex()
-      setLoadError('')
-      setSearching(false)
-      setClearing(false)
-      setDocumentBusy(false)
+      if (!mounted) return
+      if (switched) {
+        setDocuments([])
+        setStats(EMPTY_STATS)
+        setSearchResults([])
+        documentRequest.current++
+        setDraft(EMPTY_DRAFT)
+        resetIndex()
+        setLoadError('')
+        setSearching(false)
+        setClearing(false)
+        setDocumentBusy(false)
+      } else if (restoredDraft.current) {
+        // 标签切回来时重读所选资料，刷新检索状态；有未保存改动就原样留着，保存时由副本校验发现冲突。
+        const restored = restoredDraft.current
+        if (restored.docId && !knowledgeDraftDirty(restored)) void openDocumentRef.current(restored.docId, true)
+      }
+      restoredDraft.current = null
       void loadData()
       void loadStatus()
     })
     return () => { mounted = false }
-  }, [currentProject, loadData, loadStatus, resetIndex])
+  }, [projectPath, sessionLease, loadData, loadStatus, resetIndex, setDraft])
 
   useEffect(() => {
     Promise.resolve().then(() => loadStatus())
   }, [loadStatus, documents])
 
   useEffect(() => {
+    const current = () => captureProjectSession(useProjectStore.getState().currentProject)
     const offRefresh = globalEventBus.on('REFRESH_RESOURCE', (payload) => {
-      const projectSession = captureProjectSession(currentProject)
+      const projectSession = current()
       if (
         projectSession
         && sameProjectSessionContext(projectSession, payload.projectSession)
@@ -180,38 +211,23 @@ export function useKnowledgeBase() {
       }
     })
     const offFinalize = globalEventBus.on('FINALIZE_COMPLETE', ({ projectSession: eventSession }) => {
-      const projectSession = captureProjectSession(currentProject)
+      const projectSession = current()
       if (!projectSession || !sameProjectSessionContext(projectSession, eventSession)) return
       void loadData()
       void loadStatus()
     })
     return () => { offRefresh(); offFinalize() }
-  }, [currentProject, loadData, loadStatus])
+  }, [loadData, loadStatus])
 
   /** 项目副本改过但还没保存。 */
-  const dirty = Boolean(documentCopy?.available && draftContent !== documentCopy.content)
+  const dirty = knowledgeDraftDirty(draft)
+  const setDraftContent = (content: string) => setDraft({ ...draft, content })
 
-  /** 打开一份资料的项目副本。有未保存的修改时调用方须先征得作者同意。 */
-  const openDocument = async (docId: string, reload = false) => {
-    const session = captureProjectSession(currentProject)
-    if (!session) return
-    if (!reload && docId === selectedDocId) return
-    const request = ++documentRequest.current
-    setSelectedDocId(docId)
-    setDocumentCopy(null)
-    try {
-      const result = unwrapKnowledgeValue(await ipc.invokeWithProjectSession(session, 'kb:read-document-copy', docId, session.projectPath))
-      if (!isProjectSessionCurrent(session) || request !== documentRequest.current) return
-      setDocumentCopy(result)
-      setDraftContent(result.content ?? '')
-    } catch (error) {
-      if (isProjectSessionCurrent(session) && request === documentRequest.current) toast.error(appErrorMessage(locale, error))
-    }
-  }
-
+  /** 保存项目副本。新外壳的 Ctrl S 与退出前保存在页面卸载后也会调到这里；正在保存时再调不重复发送。 */
   const saveDocument = async () => {
-    const session = captureProjectSession(currentProject)
-    if (!session || !selectedDocId || !documentCopy?.available || !documentCopy.contentHash) return
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (saving.current || !session || !selectedDocId || !documentCopy?.available || !documentCopy.contentHash) return
+    saving.current = true
     setDocumentBusy(true)
     try {
       const result = unwrapKnowledgeValue(await ipc.invokeWithProjectSession(session, 'kb:save-document-copy', selectedDocId, draftContent, documentCopy.contentHash, session.projectPath))
@@ -219,32 +235,35 @@ export function useKnowledgeBase() {
       if (!result.success) { toast.error(result.error || text('保存失败', 'Save failed')); return }
       await openDocument(selectedDocId, true)
       setSearchResults([])
-      toast.success(text('项目副本已保存，索引待更新', 'Project copy saved; index update needed'))
+      toast.success(text('项目副本已保存；更新检索后，写作时才能查到新内容', 'Project copy saved. Update search so writing can find the new text.'))
     } catch (error) {
       if (isProjectSessionCurrent(session)) toast.error(appErrorMessage(locale, error))
-    } finally { if (isProjectSessionCurrent(session)) setDocumentBusy(false) }
+    } finally {
+      saving.current = false
+      if (isProjectSessionCurrent(session)) setDocumentBusy(false)
+    }
   }
 
   const reindexDocument = async () => {
-    const session = captureProjectSession(currentProject)
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
     if (!session || !selectedDocId) return
     setDocumentBusy(true)
     try {
       const result = unwrapKnowledgeValue(await ipc.invokeWithProjectSession(session, 'kb:reindex-document-copy', selectedDocId, session.projectPath))
       if (!isProjectSessionCurrent(session)) return
-      if (!result.success || !result.docId) { toast.error(result.error || text('重建失败', 'Rebuild failed')); return }
+      if (!result.success || !result.docId) { toast.error(result.error || text('更新检索失败', 'Could not update search')); return }
       await loadData()
       await loadStatus()
       await openDocument(result.docId, true)
       setSearchResults([])
-      toast.success(text('本地全文索引已更新', 'Local text index updated'))
+      toast.success(text('检索已更新，写作时能查到新内容', 'Search updated. Writing can now find the new text.'))
     } catch (error) {
       if (isProjectSessionCurrent(session)) toast.error(appErrorMessage(locale, error))
     } finally { if (isProjectSessionCurrent(session)) setDocumentBusy(false) }
   }
 
   const search = async () => {
-    const projectSession = captureProjectSession(currentProject)
+    const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession) return
     setSearching(true)
     try {
@@ -272,9 +291,7 @@ export function useKnowledgeBase() {
       if (!isProjectSessionCurrent(projectSession)) return
       if (result.success) {
         documentRequest.current++
-        setSelectedDocId(null)
-        setDocumentCopy(null)
-        setDraftContent('')
+        setDraft(EMPTY_DRAFT)
         setDocuments([])
         setStats(EMPTY_STATS)
         setSearchResults([])
@@ -296,7 +313,7 @@ export function useKnowledgeBase() {
    * 导入创作资料：先只存进本地知识库；配置了生成模型时，再经 confirmExtraction 征得同意，把选中的文本发给模型提取角色卡。
    */
   const importPlanningMaterials = async (confirmExtraction: (model: ModelProfile) => Promise<boolean>) => {
-    const projectSession = captureProjectSession(currentProject)
+    const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession || importing) return
     setImporting(true)
     try {

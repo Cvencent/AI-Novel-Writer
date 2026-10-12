@@ -9,9 +9,13 @@ import '../../stage.css'
 import type { Locale } from '../../../../i18n/types'
 import type { ProjectData } from '../../../../shared/ipc-channels'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
+import { saveDirtyEditorChangesForExit, useEditorStore } from '../../../../stores/editor-store'
 import { useLayoutStore } from '../../../../stores/layout-store'
 import { useLocaleStore } from '../../../../stores/locale-store'
+import { useStageStore } from '../../../../stores/navigation/stage-store'
 import { useProjectStore } from '../../../../stores/project-store'
+import StageWorkspace from '../../StageWorkspace'
+import { requestCloseTab } from '../../tab-close'
 import { useStageShortcuts } from '../../use-stage-shortcuts'
 import KnowledgeIndexSection from '../KnowledgeIndexSection'
 import StageKnowledge from '../StageKnowledge'
@@ -19,13 +23,15 @@ import StageKnowledge from '../StageKnowledge'
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const session = { projectId: '雨夜列车', projectPath: 'C:/novels/night-train', leaseId: '本次打开' }
+const KB_TAB = `knowledge-base:${encodeURIComponent(session.projectPath)}`
+const project = (extra: Record<string, unknown> = {}) => ({ id: session.projectId, path: session.projectPath, sessionLease: session.leaseId, name: '雨夜列车', novelConfig: {}, ...extra }) as unknown as ProjectData
 const IMPLEMENTATION_TERMS = /LanceDB|FTS|BM25|Embedding|向量|query|MCP|token/i
 
 function snapshot<T>(store: StoreApi<T>): () => void {
   const state = store.getState()
   return () => store.setState(state, true)
 }
-const restores = [useProjectStore, useLocaleStore, useLayoutStore].map(store => snapshot(store as StoreApi<unknown>))
+const restores = [useProjectStore, useLocaleStore, useLayoutStore, useEditorStore, useStageStore].map(store => snapshot(store as StoreApi<unknown>))
 
 const copies: Record<string, string> = {
   station: '本报讯 三月十二日深夜，北郊车站三号站台发生一起列车事故。',
@@ -60,10 +66,18 @@ beforeEach(() => {
     if (channel === 'kb:clear-all') return { success: true }
     if (channel === 'kb:save-document-copy') return { success: true }
     if (channel === 'kb:backfill-vectors') return { success: true, processed: 4, failed: 0 }
+    if (channel === 'db:blueprint-get-all') return []
     throw new Error(`未配置调用：${channel}`)
   })
   Object.defineProperty(window, 'aiNovelAPI', { configurable: true, value: { invoke, on: () => () => {} } })
-  useProjectStore.setState({ currentProject: { id: session.projectId, path: session.projectPath, sessionLease: session.leaseId, name: '雨夜列车', novelConfig: {} } as unknown as ProjectData })
+  useProjectStore.setState({ currentProject: project() })
+  useEditorStore.setState({
+    tabs: [
+      { id: KB_TAB, name: '知识库', type: 'knowledge', projectKey: session.projectPath },
+      { id: `version-history:${encodeURIComponent(session.projectPath)}`, name: '版本历史', type: 'version-history', projectKey: session.projectPath },
+    ],
+    activeTabId: KB_TAB,
+  })
   setActiveProjectSessionContext(session)
   useLocaleStore.setState({ locale: 'zh-CN' })
   host = document.createElement('div')
@@ -100,8 +114,16 @@ async function type(element: HTMLInputElement | HTMLTextAreaElement, value: stri
   })
 }
 
+async function editorArea() {
+  return vi.waitFor(() => {
+    const textarea = document.querySelector('textarea')
+    expect(textarea).toBeTruthy()
+    return textarea!
+  })
+}
+
 async function renderPage() {
-  await act(async () => root!.render(<StageKnowledge />))
+  await act(async () => root!.render(<StageKnowledge tabId={KB_TAB} />))
   await vi.waitFor(() => expect(button(/车站档案/)).toBeTruthy())
 }
 
@@ -186,7 +208,7 @@ describe('知识库', () => {
   it('外壳快捷键也在时，Ctrl S 保存项目副本', async () => {
     function WithShell() {
       useStageShortcuts({ library: false, focus: false, mac: false })
-      return <StageKnowledge />
+      return <StageKnowledge tabId={KB_TAB} />
     }
     await act(async () => root!.render(<WithShell />))
     await vi.waitFor(() => expect(button(/车站档案/)).toBeTruthy())
@@ -200,6 +222,75 @@ describe('知识库', () => {
     await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, bubbles: true, cancelable: true })) })
     await vi.waitFor(() => expect(invoke.mock.calls.filter(([channel]) => channel === 'kb:save-document-copy').map(([, id, content]) => [id, content]))
       .toEqual([['station', `${copies.station}站台已封闭。`]]))
+  })
+
+  it('Ctrl S 连按两次只保存一次', async () => {
+    let finishSave: (value: unknown) => void = () => {}
+    const plain = invoke.getMockImplementation()!
+    invoke.mockImplementation((channel: string, ...args: unknown[]) => channel === 'kb:save-document-copy'
+      ? new Promise(resolve => { finishSave = resolve })
+      : plain(channel, ...args))
+    function WithShell() {
+      useStageShortcuts({ library: false, focus: false, mac: false })
+      return <StageKnowledge tabId={KB_TAB} />
+    }
+    await act(async () => root!.render(<WithShell />))
+    await vi.waitFor(() => expect(button(/车站档案/)).toBeTruthy())
+    await click(/车站档案/)
+    await type(await editorArea(), `${copies.station}站台已封闭。`)
+    const ctrlS = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, bubbles: true, cancelable: true }))
+    await act(async () => { ctrlS(); ctrlS() })
+    await act(async () => finishSave({ success: true }))
+    await vi.waitFor(() => expect(document.body.textContent).not.toContain('有未保存的修改'))
+    expect(invoke.mock.calls.filter(([channel]) => channel === 'kb:save-document-copy')).toHaveLength(1)
+  })
+
+  describe('新外壳里未保存的项目副本不会悄悄丢掉', () => {
+    async function editStation() {
+      await vi.waitFor(() => expect(button(/车站档案/)).toBeTruthy())
+      await click(/车站档案/)
+      await type(await editorArea(), `${copies.station}站台已封闭。`)
+    }
+
+    it('切到别的标签再切回来，修改还在，标签带着未保存标记', async () => {
+      await act(async () => root!.render(<StageWorkspace library={false} focus={false} />))
+      await editStation()
+      await act(async () => useEditorStore.getState().setActiveTab(`version-history:${encodeURIComponent(session.projectPath)}`))
+      expect(document.querySelector('textarea')).toBeNull()
+      expect(useEditorStore.getState().tabs.find(tab => tab.id === KB_TAB)?.dirty).toBe(true)
+      await act(async () => useEditorStore.getState().setActiveTab(KB_TAB))
+      await vi.waitFor(() => expect(document.querySelector('textarea')?.value).toBe(`${copies.station}站台已封闭。`))
+      expect(document.body.textContent).toContain('有未保存的修改')
+    })
+
+    it('切走标签后退出前保存，仍把改动存进项目副本并清掉未保存标记', async () => {
+      await act(async () => root!.render(<StageWorkspace library={false} focus={false} />))
+      await editStation()
+      await act(async () => useEditorStore.getState().setActiveTab(`version-history:${encodeURIComponent(session.projectPath)}`))
+      await act(async () => saveDirtyEditorChangesForExit(session.projectPath))
+      expect(invoke.mock.calls.filter(([channel]) => channel === 'kb:save-document-copy').map(([, id, content, hash]) => [id, content, hash]))
+        .toEqual([['station', `${copies.station}站台已封闭。`, 'h-station']])
+      expect(useEditorStore.getState().tabs.find(tab => tab.id === KB_TAB)?.dirty).toBe(false)
+    })
+
+    it('关闭标签（含 Ctrl W）先请作者确认', async () => {
+      await act(async () => root!.render(<StageWorkspace library={false} focus={false} />))
+      await editStation()
+      await act(async () => requestCloseTab(KB_TAB))
+      expect(useStageStore.getState().closingTabId).toBe(KB_TAB)
+      expect(useEditorStore.getState().tabs.some(tab => tab.id === KB_TAB)).toBe(true)
+      expect(document.querySelector('[role="dialog"]')?.textContent).toContain('「知识库」有未保存的修改')
+    })
+
+    it('同一次打开里作品数据换成新对象（后台运行写回设定），修改还在', async () => {
+      await renderPage()
+      await click(/车站档案/)
+      await type(await editorArea(), `${copies.station}站台已封闭。`)
+      await act(async () => useProjectStore.setState({ currentProject: project({ novelConfig: { topic: '后台写回' } }) }))
+      await act(async () => { await Promise.resolve() })
+      expect(document.querySelector('textarea')?.value).toBe(`${copies.station}站台已封闭。`)
+      expect(reads()).toEqual(['station'])
+    })
   })
 
   it('没有修改时直接切换，不弹确认', async () => {

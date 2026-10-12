@@ -37,7 +37,7 @@ function TabContent({ tab, project }: { tab: EditorTab; project: ProjectData }) 
     return <StageBlueprint projectKey={tab.projectKey} initialChapterNumber={tab.chapterNumber} selectRequest={tab.chapterSelectRequest} />
   }
   if (tab.type === 'version-history' && tab.projectKey === project.path) return <StageHistory projectKey={tab.projectKey} />
-  if (tab.type === 'knowledge' && tab.projectKey === project.path) return <StageKnowledge />
+  if (tab.type === 'knowledge' && tab.projectKey === project.path) return <StageKnowledge tabId={tab.id} />
   if (tab.type === 'narrative-thread' && tab.projectKey === project.path) {
     return <StagePlot projectKey={tab.projectKey} initialView={tab.narrativeThreadView ?? 'plans'} viewRequest={tab.narrativeThreadViewRequest} />
   }

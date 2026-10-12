@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { BookOpen, FileText, FileUp, RefreshCw, Search, X } from 'lucide-react'
 import type { KBDocument } from '../../../services/knowledge-service'
 import type { ModelProfile } from '../../../shared/ipc-channels'
 import { countDraftUnits } from '../../../shared/draft-units'
+import { registerEditorExitSaveHandler, useEditorStore, type KnowledgeDraft } from '../../../stores/editor-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useProjectStore } from '../../../stores/project-store'
@@ -13,9 +14,9 @@ import { EmptyState } from '../../ui/EmptyState'
 import { Notice } from '../../ui/Notice'
 import { SegmentedControl } from '../../ui/SegmentedControl'
 import { InkDialog } from '../InkDialog'
-import { commandLabel, isCommand, isComposing, isModalOpen } from '../shortcut-keys'
+import { commandLabel } from '../shortcut-keys'
 import { highlight } from './search-highlight'
-import { isImportedDocument, useKnowledgeBase } from './use-knowledge-base'
+import { EMPTY_DRAFT, isImportedDocument, useKnowledgeBase } from './use-knowledge-base'
 
 type Shelf = 'imported' | 'chapters'
 
@@ -33,12 +34,15 @@ interface PendingExtraction {
 /**
  * 知识库：左列资料（导入的与定稿章节分开），中列所选资料的项目副本，右列在资料里查找。
  * 存储与检索方式不在这里出现；检索模型与索引检查在设置的检索模型页。
+ * 所选资料与未保存的改动存在标签上：切走标签不丢，关标签与退出前走外壳统一的确认与保存。
  */
-export default function StageKnowledge() {
+export default function StageKnowledge({ tabId }: { tabId: string }) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
   const project = useProjectStore(s => s.currentProject)
-  const kb = useKnowledgeBase()
+  const tabDraft = useEditorStore(s => s.tabs.find(tab => tab.id === tabId)?.knowledgeDraft)
+  const setTabDraft = useCallback((draft: KnowledgeDraft) => useEditorStore.getState().setKnowledgeDraft(tabId, draft), [tabId])
+  const kb = useKnowledgeBase([tabDraft ?? EMPTY_DRAFT, setTabDraft])
   const { documents, stats, documentCopy, draftContent, dirty, documentBusy, searchResults, index } = kb
   const [shelf, setShelf] = useState<Shelf>('imported')
   const [pendingDocId, setPendingDocId] = useState<string | null>(null)
@@ -47,6 +51,10 @@ export default function StageKnowledge() {
   const [searchedQuery, setSearchedQuery] = useState('')
   const saveRef = useRef(kb.saveDocument)
   useEffect(() => { saveRef.current = kb.saveDocument })
+  // 与正文编辑器一样，注册在页面卸载后仍保留，关标签时由编辑器仓库移除。
+  useEffect(() => {
+    registerEditorExitSaveHandler({ tabId, type: 'knowledge', save: () => saveRef.current() })
+  }, [tabId])
 
   const imported = useMemo(() => documents.filter(isImportedDocument), [documents])
   const chapters = useMemo(() => documents.filter(document => !isImportedDocument(document))
@@ -58,18 +66,6 @@ export default function StageKnowledge() {
   const hasMeaningSearch = stats.vectorDimension > 0
   const vectorless = index.status?.embeddingConfigured ? index.status.vectorlessCount : 0
   const loadError = kb.loadError || index.statusError
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      // 外壳的快捷键先于本页处理 Ctrl S 并已拦下默认行为，所以这里不看 defaultPrevented。
-      if (isComposing(event) || !isCommand(event, 's') || isModalOpen()) return
-      if (!dirty) return
-      event.preventDefault()
-      void saveRef.current()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [dirty])
 
   const pick = (docId: string) => {
     if (docId === kb.selectedDocId) return
