@@ -211,6 +211,14 @@ describe('蓝图阶段', () => {
     await expect.element(dialog.getByRole('button', { name: '继续确认自动定稿' })).toBeVisible()
   })
 
+  it('更多蓝图操作里新建章节：新章接在权威下一章已有蓝图之后并被选中', async () => {
+    await renderPage()
+    await act(async () => page.getByRole('button', { name: '更多蓝图操作' }).click())
+    await act(async () => page.getByRole('menuitem', { name: '新建章节' }).click())
+    await expect.element(page.getByRole('button', { name: /^4\D/ })).toHaveAttribute('aria-current', 'true')
+    await expect.element(page.getByRole('region', { name: '第 4 章蓝图' })).toBeVisible()
+  })
+
   it('写作请求落到这一页：可写的那一章自动弹出写作弹层，写不了的章丢掉请求', async () => {
     useStageStore.setState({ writeRequest: { chapterNumber: 2 } })
     await renderPage()
