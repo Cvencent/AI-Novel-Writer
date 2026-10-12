@@ -318,3 +318,29 @@ node scripts/redesign/drive.mjs --scenario typing-latency --shell stage --out <�
 ```
 
 草稿、审稿、合并、定稿、1280 与沉浸写作各场景都用 `contrastFailures` 核对单章视图的文字对比度（正文与合并栏 4.5，说明文字 3）。屏幕外窗口的动画帧可能被系统节流，`chapter-open` 与 `typing-latency` 都同时报不依赖动画帧的 DOM 口径。打开作品的流程在文件树读完后回到作品页并收起运行侧页，比落点晚约半秒且界面上没有可等的信号，场景要开运行侧页时先等 2 秒（`afterProjectOpenSettles`）；审稿侧页属于单章视图，不随它收起。
+
+## 作品资料页（RD-9 起）
+
+场景在 `scripts/redesign/refs-scenarios.mjs`，页面对象在 `scripts/redesign/pages/refs.mjs`（流程脊「作品资料」里的三个按钮；剧情树是 `table`「剧情树」，线索路线是 `list`「线索路线」，知识库资料是 `navigation`「资料」，版本历史的章节是 `navigation`「章节」、各稿是 `list`「版本时间线」、对比是 `region`「对比」里的 `article`「与当前稿的差异」）。示例作品在 `seedStageSample` 之上加一条伏笔线索「雾钟为何提前」和第 3 章的第二稿。`fake.replyPlotTree()` 之后的剧情树整理回一份两轨 JSON（定稿章与单数位蓝图章进主线「雾钟与沉船」，双数位蓝图章进支线「父亲的地图」），来源取自提示里的资料；不开时假模型回正文，剧情树落到单轨的确定性快照。知识库导入用 `stubOpenFiles` 让系统打开对话框直接返回两份资料，外发提取确认点「取消」。
+
+| 名称 | 检查 | 截图停在 | 夹具模型 | 对应计划 |
+|---|---|---|---|---|
+| `refs-regression` | 生成剧情树后从主进程读出快照，`measured.tracks` 是轨道与事件。head 用 `--shell stage`，trunk 用 `--app-root`，两边 `tracks` 逐字相同即通过 | 剧情树 | 是 | lane 1 |
+| `refs-plot` | 剧情树两行依次是主线、支线，主线有已定稿发生的事件；页面写明只读快照、不参与写作；点事件后出现「打开来源：第 1 章定稿」 | 选中事件的剧情树 | 是 | lane 2 |
+| `refs-clear` | 「更多」里的「清除剧情树…」弹出危险确认；`after` 取消，剧情树仍在 | 危险确认 | 是 | lane 3 |
+| `refs-threads` | 线索路线起初是埋设未到、推进不显示、解决未到；记录第 1 章定稿里的变化后，埋设一站变成已发生 | 推进后的线索 | 否 | lane 4 |
+| `refs-delete` | 线索行「更多」里的「删除线索…」弹出危险确认；`after` 取消，线索仍在 | 危险确认 | 否 | lane 5 |
+| `refs-kb` | 导入两份资料后查「雾钟」，结果片段里标出查找词；整窗文字、可访问名称、提示与占位里没有 LanceDB、FTS、BM25、Embedding、向量、query、MCP、token | 查找结果 | 是 | lane 6 |
+| `refs-kb-dirty` | 改了项目副本不保存就点另一份资料，弹出放弃修改的确认；`after` 选「继续编辑」，修改还在 | 未保存确认 | 是 | lane 7 |
+| `refs-diff` | 第 3 章选草稿 v1：对比是 `aria-readonly` 的差异页，标出新增，区域里没有输入框、可编辑元素或编辑器，没有「完成合并」 | 只读对比 | 否 | lane 8 |
+| `refs-revert` | 回退到草稿 v1：确认里写明新建草稿 v3；确认后时间线依次是草稿 v3、v2、v1，选 v3 显示「与当前稿相同」 | 回退后的时间线 | 否 | lane 9 |
+| `refs-dark` | 用 `--theme dark` 跑：知识库、版本历史、剧情树三页各查一次资料页文字对比度（标题与正文 4.5:1，说明 3:1），最后再查外壳 | 深色剧情树 | 是 | lane 10 |
+| `refs-tour` | 30–60 秒的导览：生成剧情树、选事件、清除确认后取消、伏笔线索、导入资料并查找、版本对比、回退新建 v3。配 `--video` 录评审视频 | 剧情与伏笔标签 | 是 | Review gate |
+| `refs-timing` | 100 章、每章 5 稿，用夹具模型整理好剧情树并停在剧情树页；计时从点版本历史到第 100 章出现在章节列表（`historyOpenMs`），再从点剧情树到第 1 章事件出现在表格里（`plotOpenMs`），渲染进程内按帧计时 | 剧情树 | 是 | perf |
+
+perf：trunk 与 head 交替各跑 5 次，取两项各自的中位数。head 加 `--shell stage`，trunk 用旧外壳的左栏「历史」「剧情」进入。
+
+```bash
+node scripts/redesign/drive.mjs --scenario refs-timing --app-root <trunk 工作树> --out <目录>
+node scripts/redesign/drive.mjs --scenario refs-timing --shell stage --out <目录>
+```
