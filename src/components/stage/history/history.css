@@ -297,7 +297,7 @@
   text-decoration-color: var(--danger);
 }
 
-/* 回退会新建一稿、不丢任何内容，标题不用危险色 */
-.stage-revert .pi-dialog-title {
+/* 不丢数据的确认（回退、外发资料）标题不用危险色 */
+.stage-plain-confirm .pi-dialog-title {
   color: var(--ink);
 }

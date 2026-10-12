@@ -17,6 +17,7 @@ import StageCharacters from './characters/StageCharacters'
 import StageLibrary from './library/StageLibrary'
 import { SettingsPage, SetupPage } from './stage-pages'
 import StageHistory from './history/StageHistory'
+import StageKnowledge from './knowledge/StageKnowledge'
 import StageTabs from './StageTabs'
 import { commandLabel } from './shortcut-keys'
 import StageBlueprint from './blueprint/StageBlueprint'
@@ -35,6 +36,7 @@ function TabContent({ tab, project }: { tab: EditorTab; project: ProjectData }) 
     return <StageBlueprint projectKey={tab.projectKey} initialChapterNumber={tab.chapterNumber} selectRequest={tab.chapterSelectRequest} />
   }
   if (tab.type === 'version-history' && tab.projectKey === project.path) return <StageHistory projectKey={tab.projectKey} />
+  if (tab.type === 'knowledge' && tab.projectKey === project.path) return <StageKnowledge />
   return <EditorTabContent activeTab={tab} currentProject={project} />
 }
 
