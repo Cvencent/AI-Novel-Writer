@@ -30,14 +30,18 @@ function useFilledSections(): number | null {
   return ARCHITECTURE_SECTIONS.filter(section => work.architecture[section]).length
 }
 
-function useCastSummary(projectKey: string): string {
+/** 角色名单一节的摘要；角色卡在打开作品后单独载入，载完之前页面仍算载入中。 */
+function useCastSummary(projectKey: string): { summary: string; loading: boolean } {
   const text = useLocaleStore(s => s.text)
   const characters = useCharacterStore(s => s.characters)
-  const ready = useCharacterStore(s => s.dataProjectKey === projectKey)
-  const names = ready ? characters.map(character => character.name).filter(Boolean) : []
-  if (names.length === 0) return text('还没有角色。可以让 AI 按设定生成，也可以在角色名单里自己添加。', 'No characters yet. Let AI create them from the setup, or add them in the cast.')
+  const loaded = useCharacterStore(s => s.dataProjectKey === projectKey && s.loadingProjectKey === null)
+  const error = useCharacterStore(s => s.lastError)
+  if (!loaded) return { summary: text('正在读取角色名单…', 'Loading the cast…'), loading: true }
+  if (error) return { summary: text(`角色名单读取失败：${error}`, 'Could not load the cast.'), loading: false }
+  const names = characters.map(character => character.name).filter(Boolean)
+  if (names.length === 0) return { summary: text('还没有角色。可以让 AI 按设定生成，也可以在角色名单里自己添加。', 'No characters yet. Let AI create them from the setup, or add them in the cast.'), loading: false }
   const shown = names.slice(0, 5).join(text('、', ', '))
-  return text(`${names.length} 位角色：${shown}${names.length > 5 ? '……' : ''}`, `${names.length} characters: ${shown}${names.length > 5 ? '…' : ''}`)
+  return { summary: text(`${names.length} 位角色：${shown}${names.length > 5 ? '……' : ''}`, `${names.length} characters: ${shown}${names.length > 5 ? '…' : ''}`), loading: false }
 }
 
 const openCast = (text: (zh: string, en: string) => string) => openBuiltinEditor('character-editor', text('角色名单', 'Cast'), 'character')
@@ -50,7 +54,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
   const text = useLocaleStore(s => s.text)
   const overview = useArchitectureOverview(projectKey)
   const filled = useFilledSections()
-  const castSummary = useCastSummary(projectKey)
+  const cast = useCastSummary(projectKey)
   const [focusSteps, setFocusSteps] = useState<ArchStepKey[] | undefined>(undefined)
   const [clearing, setClearing] = useState<ArchStepKey | null>(null)
 
@@ -87,7 +91,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
   }
 
   const summary = (key: ArchStepKey) => {
-    if (key === 'characters') return castSummary
+    if (key === 'characters') return cast.summary
     const content = overview.contents[key] ?? ''
     return overview.archStatus[key] && content
       ? excerpt(content)
@@ -97,7 +101,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
   const clearingName = clearing ? text(...SECTION_NAMES[clearing]) : ''
 
   return (
-    <div className="arch-page" data-loading={overview.loading || undefined}>
+    <div className="arch-page" data-loading={overview.loading || cast.loading || undefined}>
       <div className="arch-inner">
         <header className="arch-header">
           <div className="arch-heading">

@@ -9,6 +9,7 @@ import '../../stage.css'
 import type { ProjectData } from '../../../../shared/ipc-channels'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
 import { synopsisFactsFingerprint } from '../../../../services/workflows/commands/architecture.command'
+import { EMPTY_CARD, useCharacterStore } from '../../../../stores/character-store'
 import { useEditorStore } from '../../../../stores/editor-store'
 import { useLocaleStore } from '../../../../stores/locale-store'
 import { useStageStore } from '../../../../stores/navigation/stage-store'
@@ -25,7 +26,7 @@ function snapshot<T>(store: StoreApi<T>): () => void {
   const state = store.getState()
   return () => store.setState(state, true)
 }
-const restores = [useProjectStore, useWorkflowStore, useStageStore, useLocaleStore, useEditorStore].map(store => snapshot(store as StoreApi<unknown>))
+const restores = [useProjectStore, useWorkflowStore, useStageStore, useLocaleStore, useEditorStore, useCharacterStore].map(store => snapshot(store as StoreApi<unknown>))
 
 let root: Root | undefined
 let host: HTMLDivElement | undefined
@@ -78,6 +79,8 @@ beforeEach(() => {
   setActiveProjectSessionContext(session)
   useWorkflowStore.setState({ activeRuns: [], history: [], waitingRuns: {}, globalLogs: [] })
   useLocaleStore.setState({ locale: 'zh-CN' })
+  useCharacterStore.setState({ characters: [{ ...EMPTY_CARD, characterId: 'c1', name: '林舟' }, { ...EMPTY_CARD, characterId: 'c2', name: '沈砚' }],
+    dataProjectKey: session.projectPath, loadingProjectKey: null, lastError: null })
   host = document.createElement('div')
   host.className = 'paper-ink stage-shell'
   host.style.cssText = 'width: 1100px; height: 900px; display: flex'
@@ -116,6 +119,7 @@ describe('架构阶段', () => {
     const before = summary()
     expect(before).toContain('收到匿名信的林舟')
     expect(host!.querySelector('[data-section="premise"] .arch-badge')?.textContent).toBe('已确认')
+    expect(host!.querySelector('[data-section="characters"] .arch-section-summary')?.textContent).toBe('2 位角色：林舟、沈砚')
 
     await click('「故事前提」的更多操作')
     await click('清空此节…')

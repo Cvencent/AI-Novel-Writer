@@ -5,8 +5,8 @@ export const root = page => page.locator(SHELL)
 export const spine = page => page.getByRole('navigation', { name: '创作流程' })
 export const chapterList = page => spine(page).getByRole('list', { name: '章节' })
 export const tabList = page => page.getByRole('tablist', { name: '已打开的页面' })
-/** 角色标签里左侧的角色列表（RD-6 并入架构阶段之前的过渡排版）。 */
-export const characterList = page => root(page).locator('.stage-characters-list')
+/** 角色名单页左栏的名单（RD-6 起）。 */
+export const characterList = page => root(page).getByRole('complementary', { name: '角色名单' })
 export const prose = page => page.locator(`${SHELL} .stage-content .cm-content`)
 
 const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
