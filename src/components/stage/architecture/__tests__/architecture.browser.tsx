@@ -107,6 +107,9 @@ describe('架构阶段', () => {
     expect(primary()).toBe('继续生成架构')
     expect(host!.querySelector('.arch-eyebrow')?.textContent).toContain('2 / 4 已确认')
 
+    await act(async () => filledSpine(['premise', 'characters', 'worldbuilding']))
+    expect(primary()).toBe('继续生成架构')
+
     await act(async () => filledSpine(['premise', 'characters', 'worldbuilding', 'synopsis']))
     expect(primary()).toBe('下一步：章节蓝图')
     expect(host!.querySelectorAll('.arch-header .pi-btn--primary')).toHaveLength(1)
