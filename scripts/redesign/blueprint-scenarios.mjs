@@ -336,6 +336,9 @@ export const BLUEPRINT_SCENARIOS = {
       : await msFromClick(page, project.tree(page).getByText('章节蓝图', { exact: true }), '.truncate', `远航之${TIMING_CHAPTERS}`)
     const target = stageShell ? blueprint.planItem(page, 150) : page.getByText('远航之150', { exact: true }).first()
     await target.scrollIntoViewIfNeeded()
+    // 先把指针停在目标上：只计点击换章，不计指针移入时的悬停重绘。
+    await target.hover()
+    await page.waitForTimeout(300)
     const change = stageShell
       ? await msFromClick(page, target, '.stage-bp-title', '远航之150')
       : await msFromClick(page, target, 'h3', '远航之150')
