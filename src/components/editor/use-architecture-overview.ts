@@ -31,6 +31,7 @@ import { DEFAULT_PLANNING_ACTION_CHAPTERS } from '../../shared/plot-outline-cont
 import type { GenerationRecoveryContext } from '../../shared/generation-owner-contract'
 import type { ArchitectureConfirmFormOptions } from '../dialogs/use-architecture-confirm-form'
 import { openPlanningRecoveryDraft } from '../../stores/editor-store'
+import { planningTitle } from '../run/run-recovery'
 import {
   hasVisiblePartialSynopsisMarker,
   isUsableSynopsisCheckpoint,
@@ -423,7 +424,7 @@ export function useArchitectureOverview(projectKey: string) {
   const openRecoveryDraft = () => {
     if (!planningRecovery) return
     const session = captureProjectSession(currentProject)
-    if (session && isProjectSessionCurrent(session)) openPlanningRecoveryDraft(planningRecovery, projectKey, text('大纲恢复稿', 'Outline recovery draft'))
+    if (session && isProjectSessionCurrent(session)) openPlanningRecoveryDraft(planningRecovery, projectKey, planningTitle(planningRecovery, useLocaleStore.getState().locale))
   }
 
   const rosterPresentation = getCharacterRosterRepairPresentation(
