@@ -323,10 +323,10 @@ function SetupSession({ projectKey }: { projectKey: string }) {
               <div className="stage-setup-length">
                 <NumberInput value={config.totalChapters as number | ''} fallback={100} min={1} label={text('总章数', 'Total chapters')}
                   onChange={value => form.update('totalChapters', value as number)} />
-                <span>{text('章 · 每章约', 'chapters, about')}</span>
+                <span>{text('章 · 每章约', 'ch. ·')}</span>
                 <NumberInput value={config.wordsPerChapter as number | ''} fallback={3000} min={100} label={text('每章字数', 'Words per chapter')}
                   onChange={value => form.update('wordsPerChapter', value as number)} />
-                <span>{text('字', 'words each')}</span>
+                <span>{text('字', 'words')}</span>
               </div>
             </div>
             <div className="stage-setup-field">

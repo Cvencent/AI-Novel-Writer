@@ -48,7 +48,7 @@ export default function AppearanceSection() {
   const writingFontFamily = FONT_OPTIONS.find(option => option.id === writingFont)?.family
   const themes = [
     { id: 'light', icon: <Sun size={18} aria-hidden="true" />, name: text('浅色', 'Light'), desc: text('纸面与墨色', 'Paper and ink') },
-    { id: 'dark', icon: <Moon size={18} aria-hidden="true" />, name: text('深色', 'Dark'), desc: text('夜里写作', 'For writing at night') },
+    { id: 'dark', icon: <Moon size={18} aria-hidden="true" />, name: text('深色', 'Dark'), desc: text('夜里写作', 'For the night') },
   ] as const
 
   return (

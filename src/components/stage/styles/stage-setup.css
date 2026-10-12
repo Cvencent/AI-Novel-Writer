@@ -202,11 +202,18 @@
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-.stage-setup-num-input {
-  width: 4.2em;
+.stage-setup-length > span {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stage-setup-num-input {
+  flex: none;
+  field-sizing: content;
+  min-width: 3ch;
   height: 28px;
-  padding: 0 4px;
+  padding: 0 6px;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -320,6 +327,7 @@
 }
 
 .stage-setup-adv-ctl .stage-setup-num-input {
+  min-width: 5ch;
   height: 36px;
   border: 1px solid var(--rule-strong);
   border-radius: var(--radius-control);

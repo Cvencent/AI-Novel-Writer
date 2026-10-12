@@ -205,7 +205,7 @@ export default function StageLibrary() {
                   ? manuscript.total > 0 ? `${manuscript.finalized} / ${manuscript.total}` : String(manuscript.finalized)
                   : undefined}
                 caption={book.current
-                  ? text(`当前作品 · ${shelfTime(book.updatedAt, now, text)}`, `Open now · ${shelfTime(book.updatedAt, now, text)}`)
+                  ? text(`当前作品 · ${shelfTime(book.updatedAt, now, text)}`, `Open · ${shelfTime(book.updatedAt, now, text)}`)
                   : shelfTime(book.updatedAt, now, text)}
                 menu={bookMenu(book)}
                 onSelect={() => select(book)}
