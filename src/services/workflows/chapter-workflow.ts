@@ -249,8 +249,8 @@ export function createChapterWorkflow(
     resourceKeys: [workflowResourceKey('chapter', chapterInfo.chapterNumber)],
     readResourceKeys: CHAPTER_CONTEXT_READ_RESOURCE_KEYS,
     title: localize(uiLocale,
-      `写稿 — 第 ${chapterInfo.chapterNumber} 章 · ${chapterInfo.title}`,
-      `Draft — Chapter ${chapterInfo.chapterNumber} · ${chapterInfo.title}`,
+      `第 ${chapterInfo.chapterNumber} 章 · 写稿`,
+      `Chapter ${chapterInfo.chapterNumber} · Draft`,
     ),
     steps: [
       {
@@ -295,8 +295,8 @@ export function createRefineOnlyWorkflow(
     resourceKeys: [workflowResourceKey('chapter', params.chapterNumber)],
     readResourceKeys: CHAPTER_CONTEXT_READ_RESOURCE_KEYS,
     title: localize(uiLocale,
-      `修稿 — 第${params.chapterNumber}章 ${params.chapterTitle}`,
-      `Revise — Chapter ${params.chapterNumber} ${params.chapterTitle}`,
+      `第 ${params.chapterNumber} 章 · 修稿`,
+      `Chapter ${params.chapterNumber} · Revise`,
     ),
     steps: [
       {
@@ -339,8 +339,8 @@ export function createRefineFromReviewWorkflow(
     resourceKeys: [workflowResourceKey('chapter', params.chapterNumber)],
     readResourceKeys: CHAPTER_CONTEXT_READ_RESOURCE_KEYS,
     title: localize(uiLocale,
-      `审稿修复 — 第${params.chapterNumber}章 ${params.chapterTitle}`,
-      `Apply review — Chapter ${params.chapterNumber} ${params.chapterTitle}`,
+      `第 ${params.chapterNumber} 章 · 审稿修复`,
+      `Chapter ${params.chapterNumber} · Apply review`,
     ),
     steps: [
       {
@@ -384,8 +384,8 @@ export function createReviewOnlyWorkflow(
     resourceKeys: [workflowResourceKey('chapter', params.chapterNumber)],
     readResourceKeys: CHAPTER_CONTEXT_READ_RESOURCE_KEYS,
     title: localize(uiLocale,
-      `审稿 — 第${params.chapterNumber}章 ${params.chapterTitle}`,
-      `Review — Chapter ${params.chapterNumber} ${params.chapterTitle}`,
+      `第 ${params.chapterNumber} 章 · 审稿`,
+      `Chapter ${params.chapterNumber} · Review`,
     ),
     steps: [
       {
@@ -435,8 +435,8 @@ export function createFinalizeWorkflow(
     resourceKeys: finalizeWriteResourceKeys(params.chapterNumber),
     readResourceKeys: CHAPTER_CONTEXT_READ_RESOURCE_KEYS,
     title: localize(uiLocale,
-      `定稿 — 第${params.chapterNumber}章 ${params.chapterTitle}`,
-      `Finalize — Chapter ${params.chapterNumber} ${params.chapterTitle}`,
+      `第 ${params.chapterNumber} 章 · 定稿`,
+      `Chapter ${params.chapterNumber} · Finalize`,
     ),
     steps: [
       {
@@ -492,8 +492,8 @@ export function createRepairFinalizeWorkflow(
     resourceKeys: finalizeWriteResourceKeys(chapterNumber),
     readResourceKeys: CHAPTER_CONTEXT_READ_RESOURCE_KEYS,
     title: text(
-      `修复后处理 — 第${chapterNumber}章`,
-      `Repair post-processing — Chapter ${chapterNumber}`,
+      `第 ${chapterNumber} 章 · 修复后处理`,
+      `Chapter ${chapterNumber} · Repair post-processing`,
     ),
     steps: [
       {

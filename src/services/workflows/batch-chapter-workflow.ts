@@ -395,17 +395,11 @@ export function createBatchChapterWorkflow(params: BatchChapterWorkflowParams): 
       workflowResourceKey('blueprints'),
     ],
     completionMode,
-    title: completionMode === 'draft_review'
-      ? localeText(
-        uiLocale,
-        `批量草稿待审 — 第${startChapterNumber}–${endChapterNumber}章`,
-        `Batch review drafts — Chapters ${startChapterNumber}–${endChapterNumber}`,
-      )
-      : localeText(
-        uiLocale,
-        `批量自动定稿 — 第${startChapterNumber}–${endChapterNumber}章`,
-        `Batch auto-finalize — Chapters ${startChapterNumber}–${endChapterNumber}`,
-      ),
+    title: localeText(
+      uiLocale,
+      `${completionMode === 'draft_review' ? '批量草稿待审' : '批量自动定稿'} · ${chapterCount === 1 ? `第 ${startChapterNumber} 章` : `第 ${startChapterNumber} 至 ${endChapterNumber} 章`}`,
+      `${completionMode === 'draft_review' ? 'Batch review drafts' : 'Batch auto-finalize'} · ${chapterCount === 1 ? `Chapter ${startChapterNumber}` : `Chapters ${startChapterNumber}–${endChapterNumber}`}`,
+    ),
     steps: Array.from({ length: chapterCount }, (_, index) => {
       const chapterNumber = startChapterNumber + index
       return {

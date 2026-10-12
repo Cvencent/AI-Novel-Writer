@@ -340,7 +340,7 @@ export const RUN_SCENARIOS = {
     await pause(2500)
     await runSheet.tab(page, '历史').click()
     await pause(1200)
-    await runSheet.sheet(page).getByRole('button', { name: /^写稿/ }).first().click()
+    await runSheet.sheet(page).getByRole('button', { name: /^第 \d+ 章 · 写稿/ }).first().click()
     await pause(2500)
     await runSheet.tab(page, '诊断').click()
     await pause(3500)

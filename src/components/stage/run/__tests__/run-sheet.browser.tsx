@@ -37,7 +37,7 @@ let invoke: ReturnType<typeof vi.fn<(channel: string, ...args: unknown[]) => Pro
 
 function run(id: string, status: WorkflowRun['status'], extra: Partial<WorkflowRun> = {}): WorkflowRun {
   return {
-    id, projectPath: session.projectPath, projectSession: session, status, title: `写稿 — 第 ${id} 章`, currentStepIndex: 0,
+    id, projectPath: session.projectPath, projectSession: session, status, title: `第 ${id} 章 · 写稿`, currentStepIndex: 0,
     uiLocale: 'zh-CN', writingLanguage: 'zh-CN', type: 'chapter_creation', createdAt: '2026-10-12T08:10:00.000Z',
     steps: [{ id: `${id}-write`, name: '写稿', description: '', status: status === 'completed' ? 'completed' : 'running', progress: 40, logs: [],
       result: '林岚沿着旧港的石阶往下走。' }],
@@ -109,12 +109,12 @@ describe('运行侧页', () => {
     useWorkflowStore.setState({ activeRuns: [run('4', 'running')], history: [run('3', 'completed', { completedAt: '2026-10-12T08:00:00.000Z' })] })
     await render()
     expect(selectedTab()).toBe('进行中')
-    expect(host!.querySelector('article')?.textContent).toContain('写稿 — 第 4 章')
+    expect(host!.querySelector('article')?.textContent).toContain('第 4 章 · 写稿')
     expect(host!.querySelector('.run-output')?.textContent).toContain('林岚沿着旧港的石阶往下走。')
 
     await click('历史')
     expect(selectedTab()).toBe('历史')
-    const row = button(/写稿 — 第 3 章/)!
+    const row = button(/第 3 章 · 写稿/)!
     expect(row.getAttribute('aria-expanded')).toBe('false')
     await act(async () => row.click())
     expect(row.getAttribute('aria-expanded')).toBe('true')
@@ -134,25 +134,25 @@ describe('运行侧页', () => {
     useWorkflowStore.setState({ history: [run('3', 'completed'), run('2', 'completed')] })
     await render({ kind: 'run', tab: 'active', runId: '3' })
     expect(selectedTab()).toBe('历史')
-    expect(button(/写稿 — 第 3 章/)!.getAttribute('aria-expanded')).toBe('true')
-    expect(button(/写稿 — 第 2 章/)!.getAttribute('aria-expanded')).toBe('false')
+    expect(button(/第 3 章 · 写稿/)!.getAttribute('aria-expanded')).toBe('true')
+    expect(button(/第 2 章 · 写稿/)!.getAttribute('aria-expanded')).toBe('false')
   })
 
   it('取消调用工作流的取消；正在取消时不再给取消按钮', async () => {
     const cancelWorkflow = vi.fn()
     useWorkflowStore.setState({ activeRuns: [run('4', 'running')], cancelWorkflow })
     await render()
-    await click('取消「写稿 — 第 4 章」')
+    await click('取消「第 4 章 · 写稿」')
     expect(cancelWorkflow).toHaveBeenCalledWith('4')
     await act(async () => useWorkflowStore.setState({ activeRuns: [run('4', 'cancelling')] }))
-    expect(button('取消「写稿 — 第 4 章」')).toBeUndefined()
+    expect(button('取消「第 4 章 · 写稿」')).toBeUndefined()
     expect(host!.textContent).toContain('正在取消，等当前操作退出')
   })
 
   it('批量创作：运行中可暂停，请求暂停后说明本章写完后暂停，暂停后可继续', async () => {
     const pauseWorkflow = vi.fn()
     const resumeWorkflow = vi.fn()
-    const batch = (status: WorkflowRun['status'], pauseRequested = false) => run('5', status, { type: 'batch_generate', title: '批量草稿待审 — 第5–6章', pauseRequested })
+    const batch = (status: WorkflowRun['status'], pauseRequested = false) => run('5', status, { type: 'batch_generate', title: '批量草稿待审 · 第 5 至 6 章', pauseRequested })
     useWorkflowStore.setState({ activeRuns: [batch('running')], pauseWorkflow, resumeWorkflow })
     await render()
     await click('暂停批量创作')
