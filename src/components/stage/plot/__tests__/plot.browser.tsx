@@ -186,6 +186,34 @@ describe('剧情与伏笔', () => {
     expect(modelSelect().value).toBe('m2')
   })
 
+  it('作品重新打开后，上一次打开时迟到的线索列表不会显示出来', async () => {
+    let releaseOld: () => void = () => {}
+    const plain = invoke.getMockImplementation()!
+    let listCalls = 0
+    invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'db:narrative-thread-list') {
+        listCalls++
+        if (listCalls === 1) {
+          const stale = threads
+          await new Promise<void>(resolve => { releaseOld = resolve })
+          return stale
+        }
+        return []
+      }
+      return plain(channel, ...args)
+    })
+    await render('plans')
+    await vi.waitFor(() => expect(listCalls).toBe(1))
+    const reopened = { ...session, leaseId: '再次打开' }
+    await act(async () => {
+      useProjectStore.setState({ currentProject: { id: session.projectId, path: session.projectPath, sessionLease: reopened.leaseId, name: '雨夜列车', novelConfig: { totalChapters: 24 } } as unknown as ProjectData })
+      setActiveProjectSessionContext(reopened)
+    })
+    await vi.waitFor(() => expect(listCalls).toBe(2))
+    await act(async () => { releaseOld(); await new Promise(resolve => setTimeout(resolve, 20)) })
+    expect(document.body.textContent).not.toContain('灰色的信是谁寄的')
+  })
+
   it('确认定稿事件后线索路线推进：埋设一站变成已发生', async () => {
     await render('plans')
     await vi.waitFor(() => expect(document.body.textContent).toContain('灰色的信是谁寄的'))

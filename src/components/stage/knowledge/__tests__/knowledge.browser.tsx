@@ -293,6 +293,23 @@ describe('知识库', () => {
     })
   })
 
+  it('先点的资料读得慢，后点的资料不会被它盖掉', async () => {
+    let releaseStation: () => void = () => {}
+    const plain = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'kb:read-document-copy' && args[0] === 'station') await new Promise<void>(resolve => { releaseStation = resolve })
+      return plain(channel, ...args)
+    })
+    await renderPage()
+    await click(/车站档案/)
+    await click(/林舟人物小传/)
+    await vi.waitFor(() => expect(document.querySelector('textarea')?.value).toBe(copies.people))
+    await act(async () => { releaseStation(); await Promise.resolve() })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    expect(document.querySelector('textarea')?.value).toBe(copies.people)
+    expect(document.querySelector('[aria-current="true"]')?.textContent).toContain('林舟人物小传')
+  })
+
   it('没有修改时直接切换，不弹确认', async () => {
     await renderPage()
     await click(/车站档案/)
