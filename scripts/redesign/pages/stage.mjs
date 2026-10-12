@@ -5,6 +5,8 @@ export const root = page => page.locator(SHELL)
 export const spine = page => page.getByRole('navigation', { name: '创作流程' })
 export const chapterList = page => spine(page).getByRole('list', { name: '章节' })
 export const tabList = page => page.getByRole('tablist', { name: '已打开的页面' })
+/** 角色标签里左侧的角色列表（RD-6 并入架构阶段之前的过渡排版）。 */
+export const characterList = page => root(page).locator('.stage-characters-list')
 export const prose = page => page.locator(`${SHELL} .stage-content .cm-content`)
 
 const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -25,6 +27,9 @@ export async function chapterRows(page) {
     current: row.getAttribute('aria-current') === 'page',
   })))
 }
+
+/** 书房里的书按可访问名称找，英文界面是「Open 灯塔」。 */
+export const shelfButton = (page, name) => page.locator('.writer-shelf').getByRole('button', { name })
 
 export async function openFromLibrary(page, name) {
   await page.locator('.writer-shelf').getByRole('button', { name: `打开《${name}》` }).click()

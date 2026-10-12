@@ -2,7 +2,8 @@ import { useId, useState, type ReactNode } from 'react'
 import { countDraftUnits } from '../../../shared/draft-units'
 import { useLocaleStore } from '../../../stores/locale-store'
 import GenerationBudgetDiagnostics from '../../panels/GenerationBudgetDiagnostics'
-import { canResumeDraft, type CandidateEntry, type DraftEntry, type RecoveryEntry } from '../../run/run-recovery'
+import { useProjectStore } from '../../../stores/project-store'
+import { canResumeDraft, isInFlight, type CandidateEntry, type DraftEntry, type RecoveryEntry } from '../../run/run-recovery'
 import type { RunRecovery } from '../../run/use-run-recovery'
 import { Button } from '../../ui/Button'
 import { Check } from '../../ui/Check'
@@ -13,12 +14,14 @@ type Text = (zh: string, en: string) => string
 /** 运行中断后可以接着做的事：恢复稿、选区建议、审修、批量、单章与旧恢复候选。 */
 export function RunRecoveryList({ recovery }: { recovery: RunRecovery }) {
   const text = useLocaleStore(s => s.text)
+  const leaseId = useProjectStore(s => s.currentProject?.sessionLease)
+  const entries = recovery.entries.filter(entry => !isInFlight(entry, leaseId))
   const errors = [recovery.generationError, recovery.candidateError].filter(Boolean)
-  if (!recovery.entries.length && !errors.length) return null
+  if (!entries.length && !errors.length) return null
   return (
     <section className="run-recovery" aria-label={text('可恢复的内容', 'Recoverable work')}>
       {errors.map(error => <p key={error} className="run-note" data-tone="danger" role="alert">{error}</p>)}
-      {recovery.entries.map(entry => <RecoveryCard key={`${entry.kind}:${entry.key}`} entry={entry} recovery={recovery} text={text} />)}
+      {entries.map(entry => <RecoveryCard key={`${entry.kind}:${entry.key}`} entry={entry} recovery={recovery} text={text} />)}
     </section>
   )
 }

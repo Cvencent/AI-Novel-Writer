@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildRecoveryEntries, canResumeDraft, EMPTY_RECOVERY_SOURCES, type DraftEntry, type RecoverySources, type ReviewEntry } from '../run-recovery'
+import { buildRecoveryEntries, canResumeDraft, EMPTY_RECOVERY_SOURCES, isInFlight, type DraftEntry, type RecoverySources, type ReviewEntry } from '../run-recovery'
 
 const handle = { projectId: '灯塔', epoch: '会话', rootActionId: '预算', runId: '正文' }
 const artifact = (artifactId: string, compositionEligible: boolean) => ({
@@ -47,6 +47,18 @@ describe('单章写作中断', () => {
     expect(retry.actionLabel).toBe('重做一次细纲并继续写稿')
     expect(canResumeDraft(retry, [])).toBe(true)
     expect(draft({ ...outline, draftShortOutline: { completedOutput: '细纲' } }, []).actionLabel).toBe('沿原细纲继续写稿')
+  })
+})
+
+describe('还在写的生成', () => {
+  it('这次打开里正在写的不算可恢复，上次打开时没写完的算', () => {
+    const running = (epoch: string) => buildRecoveryEntries({ ...EMPTY_RECOVERY_SOURCES, drafts: [{
+      view: { ...view('正文', { status: 'running', artifacts: [artifact('甲', true)] }), handle: { ...handle, epoch } } as never,
+      recovery: { handle, operation: 'chapter-draft', chapterNumber: 4, attemptedPurposes: ['chapter-draft'], draftSave: { kind: 'absent' } } as never,
+    }] }, 'zh-CN')[0]
+    expect(isInFlight(running('本次'), '本次')).toBe(true)
+    expect(isInFlight(running('上次'), '本次')).toBe(false)
+    expect(isInFlight(draft({}), '会话')).toBe(false)
   })
 })
 

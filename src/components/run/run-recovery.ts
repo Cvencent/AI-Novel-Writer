@@ -270,6 +270,15 @@ function draftEntry({ view, recovery }: RecoverySources['drafts'][number], local
   }
 }
 
+/**
+ * 这次打开作品后还在写的生成：它的实时输出正显示在运行卡片里，不是中断留下的。
+ * 上次打开时没写完的生成换过会话（epoch 不同），仍算可恢复。
+ */
+export function isInFlight(entry: RecoveryEntry, leaseId: string | undefined): boolean {
+  const view = entry.kind === 'draft' || entry.kind === 'review' ? entry.view : entry.kind === 'editor' ? entry.recovery.view : undefined
+  return view?.status === 'running' && view.handle.epoch === leaseId
+}
+
 /** 单章候选的续写按钮是否可点：没有改过正文，且勾了片段或有已存方案可沿用。 */
 export function canResumeDraft(entry: DraftEntry, picked: readonly string[]): boolean {
   return !entry.changed && (picked.length > 0 || !entry.needsPick)

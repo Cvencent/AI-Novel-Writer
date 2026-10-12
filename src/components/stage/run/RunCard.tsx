@@ -177,7 +177,7 @@ function RunStep({ step, live, reasoning, open, onToggle, text }: {
 }) {
   const output = useMemo(() => splitThinking(step.result), [step.result])
   const thinking = reasoning || output.thinking
-  const hasDetail = Boolean(output.raw || thinking || step.error || step.logs.length)
+  const hasDetail = Boolean(output.raw || thinking || step.error)
   const expanded = hasDetail && open
   const reviewing = live && step.generationActivity?.operation === 'review-chapter'
   const row = (
@@ -204,11 +204,6 @@ function RunStep({ step, live, reasoning, open, onToggle, text }: {
           )}
           {output.content && <StepOutput content={output.content} live={live} text={text} />}
           {step.error && <p className="run-step-error">{step.error}</p>}
-          {step.logs.length > 0 && (
-            <ol className="run-step-logs" aria-label={text('步骤日志', 'Step log')}>
-              {step.logs.slice(-6).map((line, index) => <li key={index}>{line}</li>)}
-            </ol>
-          )}
         </div>
       )}
     </li>

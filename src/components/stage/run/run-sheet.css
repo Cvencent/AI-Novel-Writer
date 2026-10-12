@@ -248,15 +248,6 @@ button.run-step-row:hover {
   overflow-wrap: anywhere;
 }
 
-.run-step-logs {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font: 11px/1.7 var(--font-mono);
-  color: var(--ink-3);
-  overflow-wrap: anywhere;
-}
-
 /* ================= 实时输出 ================= */
 .run-output-frame {
   display: flex;

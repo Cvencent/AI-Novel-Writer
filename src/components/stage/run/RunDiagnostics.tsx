@@ -79,7 +79,7 @@ function RunLog({ text }: { text: Text }) {
 function ModelCallLog({ text }: { text: Text }) {
   const locale = useLocaleStore(s => s.locale)
   const { stats, history, workflowFor } = useModelCalls()
-  const count = (value: number | null) => compactNumber(value, locale, text)
+  const count = (value: number | null) => compactNumber(value, locale)
   const titleId = useId()
   return (
     <section className="run-section" aria-labelledby={titleId}>

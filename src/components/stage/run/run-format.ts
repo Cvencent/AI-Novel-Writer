@@ -16,8 +16,8 @@ export function stepDuration(startedAt: string | undefined, completedAt: string 
   return text(`${minutes} 分 ${seconds % 60} 秒`, `${minutes}m ${seconds % 60}s`)
 }
 
-/** 统计数字：大数按本地习惯缩写（21.4万 / 21.4K），没有上报时写「未知」。 */
-export function compactNumber(value: number | null, locale: Locale, text: Text): string {
-  if (value === null) return text('未知', 'Unknown')
+/** 统计数字：大数按本地习惯缩写（21.4万 / 21.4K），没有上报时写一条短横。 */
+export function compactNumber(value: number | null, locale: Locale): string {
+  if (value === null) return '—'
   return new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }).format(value)
 }

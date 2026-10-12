@@ -162,11 +162,12 @@ export function locate(tab: Pick<EditorTab, 'type' | 'chapterNumber'> | undefine
 
 /**
  * 工作流正在写的章：运行声明的资源里形如 chapter:<章号> 的那些。
- * 批量创作一次声明整批章，但按章逐步写（第 i 步写第 i 章），只有当前步骤那一章在写，其余还在排队。
+ * 批量创作一次声明整批章，但按章逐步写（第 i 步写第 i 章），只有当前步骤那一章在写，其余还在排队；暂停时没有章在写。
  */
-export function runningChapters(runs: readonly Pick<WorkflowRun, 'resourceKeys' | 'type' | 'currentStepIndex'>[]): Set<number> {
+export function runningChapters(runs: readonly Pick<WorkflowRun, 'resourceKeys' | 'type' | 'currentStepIndex' | 'status'>[]): Set<number> {
   const numbers = new Set<number>()
   for (const run of runs) {
+    if (run.status === 'paused') continue
     const chapters = (run.resourceKeys ?? []).flatMap(key => {
       const match = /^chapter:(\d+)$/.exec(key)
       return match ? [Number(match[1])] : []
