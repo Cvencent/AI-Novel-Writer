@@ -165,6 +165,33 @@ describe('剧情与伏笔', () => {
     await vi.waitFor(() => expect(document.body.textContent).not.toContain('灰色的信是谁寄的'))
   })
 
+  it('新建线索：填齐名称、类型与打算才能保存，保存后对话框关闭', async () => {
+    const plain = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel: string, ...args: unknown[]) => channel === 'db:narrative-thread-plan-create'
+      ? { success: true, id: 6 }
+      : plain(channel, ...args))
+    await render('plans')
+    await vi.waitFor(() => expect(document.body.textContent).toContain('灰色的信是谁寄的'))
+    await click('新建线索')
+    const dialog = () => document.querySelector('[role="dialog"]')
+    expect(dialog()?.textContent).toContain('新建线索')
+    const save = () => [...dialog()!.querySelectorAll('button')].find(node => node.textContent === '保存线索')!
+    expect(save().disabled).toBe(true)
+    const fill = async (label: string, value: string) => {
+      const field = [...dialog()!.querySelectorAll('label')].find(node => node.textContent?.startsWith(label))!.querySelector('input, textarea') as HTMLInputElement | HTMLTextAreaElement
+      const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value')!.set!
+      await act(async () => { setter.call(field, value); field.dispatchEvent(new Event('input', { bubbles: true })) })
+    }
+    await fill('名称', '末班车为何停运')
+    await fill('类型', '主线')
+    await fill('你的打算', '停运公告是伪造的')
+    expect(save().disabled).toBe(false)
+    await act(async () => save().click())
+    await vi.waitFor(() => expect(called('db:narrative-thread-plan-create')).toHaveLength(1))
+    expect(called('db:narrative-thread-plan-create')[0][1]).toMatchObject({ title: '末班车为何停运', type: '主线', authorIntent: '停运公告是伪造的' })
+    await vi.waitFor(() => expect(dialog()).toBeNull())
+  })
+
   it('让 AI 识别定稿事件时沿用作者选的模型，不退回默认模型', async () => {
     useLLMStore.setState({ models: [
       { id: 'm1', name: '夹具模型', modelName: 'fixture', purposes: ['generation'] },

@@ -45,3 +45,14 @@ it('在剧情、知识库、版本历史之间来回切换，正文标签与它�
   navigate({ kind: 'resource', page: 'plot' })
   expect(useEditorStore.getState().tabs).toHaveLength(4)
 })
+
+it('知识库标签有未保存的改动时，从流程脊再点「知识库」只是切回去，改动与未保存标记都在', () => {
+  navigate({ kind: 'resource', page: 'knowledge' })
+  const tabId = useEditorStore.getState().activeTabId!
+  const draft = { docId: 'station', copy: { available: true, content: '原文', contentHash: 'h', indexStatus: 'current' as const }, content: '原文，改过' }
+  useEditorStore.getState().setKnowledgeDraft(tabId, draft)
+  navigate({ kind: 'resource', page: 'history' })
+  navigate({ kind: 'resource', page: 'knowledge' })
+  expect(useEditorStore.getState().activeTabId).toBe(tabId)
+  expect(useEditorStore.getState().tabs.find(tab => tab.id === tabId)).toMatchObject({ knowledgeDraft: draft, dirty: true })
+})
