@@ -23,7 +23,7 @@ export default function BlueprintCard({ blueprint, row, saving, onField, onSave,
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
   const [person, setPerson] = useState('')
-  const ids = { purpose: useId(), conflict: useId(), hook: useId(), guide: useId(), notes: useId(), person: useId(), role: useId() }
+  const ids = { purpose: useId(), conflict: useId(), hook: useId(), guide: useId(), notes: useId(), person: useId() }
   const number = blueprint.chapterNumber
 
   const addPeople = () => {
@@ -73,7 +73,7 @@ export default function BlueprintCard({ blueprint, row, saving, onField, onSave,
           />
           <label className="stage-bp-role">
             <span className="stage-bp-sr">{text('章节定位', 'Chapter role')}</span>
-            <select id={ids.role} value={chapterRoleSelectValue(blueprint.role)} onChange={event => onField('role', event.target.value)}>
+            <select value={chapterRoleSelectValue(blueprint.role)} onChange={event => onField('role', event.target.value)}>
               {chapterRoleOptions(blueprint.role).map(({ value, labels }) => (
                 <option key={value} value={value}>{labels ? text(labels.zhCN, labels.enUS) : value}</option>
               ))}
