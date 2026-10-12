@@ -228,3 +228,29 @@ node scripts/redesign/drive.mjs --scenario chapter-switch --shell stage --out <�
 类名选择器只出现在 `scripts/redesign/pages/`，按任务域分文件：`shell`（启动、外壳就绪、标题栏、状态栏、左右栏与可收起面板）、`bookshelf`（旧外壳书房与两种外壳的新建作品）、`project`（项目树）、`chapter`（单章写作、审稿、修稿合并、定稿）、`run-panel`（运行面板）、`settings`（设置，含外观里切换界面布局）、`materials`（知识库与角色卡导入）、`stage`（新外壳：流程脊、章节列表、标签条、Ctrl K 与 Ctrl P、保存状态、沉浸写作、书房）、`run-sheet`（新外壳的运行侧页）。`shell.waitForShell` 对两种外壳都成立。外壳替换后只改这些页面对象，场景 `scripts/redesign/scenarios.mjs` 不动。
 
 `/.claude/` 在 `.gitignore` 里，提交本文件的改动要用 `git add -f .claude/skills/verify/SKILL.md`（或 `git add -u`）。假模型在 `scripts/redesign/fake-model.mjs`，按提示词特征返回正文、短细纲（与正文同一段文字，但不参与定速流出）、审稿 JSON、修稿正文、角色状态 JSON 或角色提取 JSON。
+
+## 架构阶段与角色名单（RD-6 起）
+
+场景在 `scripts/redesign/arch-scenarios.mjs`，页面对象在 `scripts/redesign/pages/architecture.mjs`（四节是 `region`，按节名命名；角色名单左栏是 `complementary`「角色名单」；生成架构对话框是 `dialog`「生成架构」）。示例作品沿用「灯塔」，按场景清空架构的某几节；架构没齐时打开作品落在架构。驱动读库用界面那次打开作品的会话（在主进程里包一层 `project:open` 记下租约），不必重开作品。夹具模型对「本次只写第 N 章」的情节大纲请求回这一章的二级标题与正文。
+
+| 名称 | 检查 | 截图停在 | 夹具模型 | 对应计划 |
+|---|---|---|---|---|
+| `arch-regression` | 清空前提、世界观、大纲后从架构页生成（角色名单已预置），`measured` 记下四份文档与哈希；head 与 trunk（`--app-root`，旧故事架构总览）各跑一次，四份文档逐字相同 | 生成完的架构页 | 是 | lane 1 |
+| `arch-partial` | 两节已确认：主按钮「继续生成架构」且只有一个，四节徽标，流程脊同为 2 / 4，角色名单一节列出林岚 | 架构页 | 否 | lane 2 |
+| `arch-done` | 四节已确认：主按钮「下一步：章节蓝图」；`after` 点它进入蓝图 | 架构页 | 否 | lane 3 |
+| `arch-confirm` | 生成架构对话框：勾选已确认的前提标「将覆盖」，角色名单「保留」，空的两节「新生成」 | 对话框 | 否 | lane 4 |
+| `arch-resume` | 24 章的大纲先生成 1～10 章，从提示条续写 11～16 章，提示条写明第 17～24 章还没有大纲；`after` 续写 17～24 章，1～16 章逐字不变、1～24 章各一次 | 第 17～24 章的续写对话框 | 是 | lane 5 |
+| `arch-clear` | 世界观「清空此节…」出现危险确认；`after` 取消，摘要、徽标与数据库里的世界观都不变 | 危险确认 | 否 | lane 6 |
+| `arch-cast-save` | 新建「守塔人」并保存：名单、名单投影（`db:character-roster-read` 的 renderedMarkdown）、架构页「2 位角色」与「查看名单全文」都有守塔人 | 角色名单 | 否 | lane 7 |
+| `arch-graph` | 关系图谱放大、滚轮、拖拽（画面变化）都生效；`after` 点中心节点打开档案 | 关系图谱 | 否 | lane 8 |
+| `arch-cards` | 角色名单里粘贴两张角色卡，运行侧页确认后守塔人进名单、林岚仍只有一个 | 角色名单 | 是 | lane 9 |
+| `arch-dark` | 用 `--theme dark` 跑：架构页文字对比度达标（名称与正文 4.5:1，说明 3:1），分节卡底色等于 `--paper` 的计算值 | 架构页 | 否 | lane 10 |
+| `arch-timing` | 从点流程脊「架构」到四节可交互的毫秒数（`measured.openMs`），200 位角色时角色列表第 1 页滚动帧率（`measured.scrollFps`）。trunk 是旧故事架构标签与旧角色列表，head 是架构阶段与角色名单 | 角色列表 | 否 | perf |
+| `arch-tour` | 30～60 秒的导览：四节与主按钮、对话框的覆盖与保留、清空此节的危险确认、角色名单保存与关系图谱。配 `--video` 录评审视频 | 架构页 | 否 | Review gate |
+
+perf 交替各跑 5 次取中位数：
+
+```bash
+node scripts/redesign/drive.mjs --scenario arch-timing --app-root <trunk 工作树> --out <目录>
+node scripts/redesign/drive.mjs --scenario arch-timing --out <目录>
+```

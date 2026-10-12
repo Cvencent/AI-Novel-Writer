@@ -112,10 +112,6 @@
   overflow-wrap: anywhere;
 }
 
-.arch-section[data-state='empty'] .arch-section-summary {
-  color: var(--ink-3);
-}
-
 .arch-section-actions {
   display: flex;
   align-items: center;

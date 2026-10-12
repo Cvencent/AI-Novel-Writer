@@ -223,7 +223,6 @@ export function useArchitectureOverview(projectKey: string) {
     setWorldBuildingCandidate(recoveredWorldBuildingCandidate)
     if (!recoveredWorldBuildingCandidate) setShowWorldBuildingCandidate(false)
     setLoading(false)
-    // ✅ 只依赖 path 字符串，避免 novelConfig 等变化导致 loadStatus 重建
   }, [currentProject, projectKey, projectMatches, rosterSnapshot])
 
   useEffect(() => {

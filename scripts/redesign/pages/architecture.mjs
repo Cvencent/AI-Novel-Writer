@@ -10,6 +10,9 @@ export const summary = (page, key) => section(page, key).locator('.arch-section-
 export const primary = page => root(page).locator('.arch-header .pi-btn--primary')
 export const dialog = page => page.getByRole('dialog', { name: '生成架构' })
 export const mark = (page, key) => dialog(page).locator(`[data-step="${key}"] .arch-mark`)
+/** 勾选框是视觉隐藏的原生 checkbox，点它所在的 label。 */
+export const stepCheck = (page, key) => dialog(page).locator(`[data-step="${key}"] label.pi-check`)
+const stepBox = (page, key) => dialog(page).locator(`[data-step="${key}"] input[type="checkbox"]`)
 export const castRoster = page => root(page).getByRole('complementary', { name: '角色名单' })
 export const castRow = (page, name) => castRoster(page).getByRole('button', { name: new RegExp(`^${name}`) })
 export const profileName = page => root(page).locator('.cast-profile-name')
@@ -32,8 +35,7 @@ export async function openSectionMenu(page, key) {
 /** 在生成架构对话框里把勾选改成只有 keys 这几节。 */
 export async function selectOnly(page, keys) {
   for (const key of Object.keys(SECTION_NAMES)) {
-    const box = dialog(page).locator(`[data-step="${key}"] input[type="checkbox"]`)
-    if (await box.isChecked() !== keys.includes(key)) await box.click()
+    if (await stepBox(page, key).isChecked() !== keys.includes(key)) await stepCheck(page, key).click()
   }
 }
 

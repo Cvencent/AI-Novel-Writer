@@ -4,12 +4,12 @@ import { createHash, randomUUID } from 'node:crypto'
 
 import * as arch from './pages/architecture.mjs'
 import * as materials from './pages/materials.mjs'
-import * as runPanel from './pages/run-panel.mjs'
 import * as runSheet from './pages/run-sheet.mjs'
 import * as stage from './pages/stage.mjs'
 import { seedStageSample } from './scenarios.mjs'
 import { STAGE_SAMPLE } from './stage-sample.mjs'
 
+const root = page => stage.root(page)
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
 const sha = text => createHash('sha256').update(text ?? '').digest('hex').slice(0, 16)
 
@@ -79,9 +79,10 @@ async function openArchitecture(page) {
   else await arch.waitReady(page)
 }
 
+/** 新外壳的运行侧页在工作流开始后自动打开；trunk 没有侧页，调用方改为轮询数据库里的结果。 */
 async function waitForRunDone(page, timeout = 120_000) {
-  if (await runSheet.sheet(page).count() > 0) await runSheet.waitForRunDone(page, timeout)
-  else await runPanel.waitForWorkflowDone(page)
+  const opened = await runSheet.sheet(page).waitFor({ state: 'visible', timeout: 10_000 }).then(() => true, () => false)
+  if (opened) await runSheet.waitForRunDone(page, timeout)
 }
 
 async function badges(page) {
@@ -166,7 +167,7 @@ export const ARCH_SCENARIOS = {
     }
     await waitForRunDone(page)
     let core
-    for (let attempt = 0; attempt < 40; attempt++) {
+    for (let attempt = 0; attempt < 240; attempt++) {
       core = await readCore(context)
       if (core?.premise && core?.worldbuilding && core?.synopsis?.includes('第5章')) break
       await pause(500)
@@ -202,7 +203,7 @@ export const ARCH_SCENARIOS = {
     await openArchitecture(page)
     await arch.primary(page).click()
     await arch.dialog(page).waitFor({ state: 'visible' })
-    await arch.dialog(page).locator('[data-step="premise"] input[type="checkbox"]').click()
+    await arch.stepCheck(page, 'premise').click()
     const marks = {}
     for (const key of Object.keys(arch.SECTION_NAMES)) marks[key] = await arch.mark(page, key).innerText()
     assert.deepEqual(marks, { premise: '将覆盖', characters: '保留', worldbuilding: '新生成', synopsis: '新生成' })
@@ -409,7 +410,7 @@ export const ARCH_SCENARIOS = {
     await arch.primary(page).click()
     await arch.dialog(page).waitFor({ state: 'visible' })
     await pause(1500)
-    await arch.dialog(page).locator('[data-step="premise"] input[type="checkbox"]').click()
+    await arch.stepCheck(page, 'premise').click()
     await pause(2000)
     await arch.dialog(page).getByRole('button', { name: '取消' }).click()
     await pause(1000)
@@ -441,4 +442,3 @@ export const ARCH_SCENARIOS = {
   } },
 }
 
-const root = page => stage.root(page)
