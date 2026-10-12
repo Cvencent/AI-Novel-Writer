@@ -57,7 +57,7 @@ export default function CharacterProfile({ projectKey }: { projectKey: string })
   const textArea = (field: TextField, label: string, rows: number, hint?: string) => (
     <Field label={label} hint={hint}>
       {id => (
-        <textarea id={id} className="cast-input cast-textarea" rows={rows}
+        <textarea id={id} className="pi-input cast-input cast-textarea" rows={rows}
           value={card?.[field] ?? ''} onChange={event => profile.updateCurrentField(selectedId!, field, event.target.value)} />
       )}
     </Field>
@@ -163,7 +163,7 @@ export default function CharacterProfile({ projectKey }: { projectKey: string })
                 <Field key={field} label={text(zh, en)} hint={source}>
                   {id => (
                     <>
-                      <textarea id={id} className="cast-input cast-textarea" rows={2} value={state.value}
+                      <textarea id={id} className="pi-input cast-input cast-textarea" rows={2} value={state.value}
                         onChange={event => profile.updateCurrentField(selectedId!, 'currentState', authorStateEdit(card, field, event.target.value))} />
                       {state.history && <p className="cast-field-history">{text('历史记录（来源已失效或未核验）：', 'History (source invalid or unverified): ')}{state.history}</p>}
                     </>
@@ -176,18 +176,18 @@ export default function CharacterProfile({ projectKey }: { projectKey: string })
           <div className="cast-grid">
             <div className="cast-row-fields">
               <Field label={text('姓名', 'Name')}>
-                {id => <input id={id} className="cast-input" value={card.name} disabled={identityBusy}
+                {id => <input id={id} className="pi-input cast-input" value={card.name} disabled={identityBusy}
                   onChange={event => profile.renameCurrentCharacter(selectedId!, event.target.value)} />}
               </Field>
               <Field label={text('性别', 'Gender')}>
-                {id => <input id={id} className="cast-input" value={card.gender} onChange={event => profile.updateCurrentField(selectedId!, 'gender', event.target.value)} />}
+                {id => <input id={id} className="pi-input cast-input" value={card.gender} onChange={event => profile.updateCurrentField(selectedId!, 'gender', event.target.value)} />}
               </Field>
               <Field label={text('年龄', 'Age')}>
-                {id => <input id={id} className="cast-input" value={card.age} onChange={event => profile.updateCurrentField(selectedId!, 'age', event.target.value)} />}
+                {id => <input id={id} className="pi-input cast-input" value={card.age} onChange={event => profile.updateCurrentField(selectedId!, 'age', event.target.value)} />}
               </Field>
               <Field label={text('定位', 'Role')}>
                 {id => (
-                  <select id={id} className="cast-input cast-select" value={card.role}
+                  <select id={id} className="pi-input cast-input cast-select" value={card.role}
                     onChange={event => profile.updateCurrentField(selectedId!, 'role', event.target.value as CharacterCard['role'])}>
                     {CHARACTER_ROLES.map(role => <option key={role} value={role}>{roleText(role)}</option>)}
                   </select>
@@ -201,7 +201,7 @@ export default function CharacterProfile({ projectKey }: { projectKey: string })
             {textArea('abilities', text('能力', 'Abilities'), 3)}
             <Field label={text('关系网', 'Relationships')} hint={text('每行一位', 'One per line')}>
               {id => (
-                <textarea id={id} className="cast-input cast-textarea" rows={3} value={profile.relationshipEditorText}
+                <textarea id={id} className="pi-input cast-input cast-textarea" rows={3} value={profile.relationshipEditorText}
                   placeholder={text('例如：陆云飞：竞争对手（权力斗争）', 'For example: Lu Yunfei: rival (power struggle)')}
                   onChange={event => profile.updateCurrentField(selectedId!, 'relationships', relationshipStorageFromEditor(event.target.value, {
                     identities: characters, selfCharacterId: card.characterId, selfName: card.name, previousStorage: card.relationships,

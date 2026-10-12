@@ -38,7 +38,7 @@
 .arch-title {
   margin: 0;
   color: var(--ink);
-  font: 600 34px/1.2 var(--font-display);
+  font: 600 var(--fs-36)/1.2 var(--font-display);
 }
 
 .arch-lede {
@@ -83,7 +83,7 @@
 .arch-section-num {
   justify-self: center;
   color: var(--ink-3);
-  font: italic 18px/1 var(--font-num);
+  font: italic var(--fs-20)/1 var(--font-num);
 }
 
 .arch-section-heading {
@@ -102,7 +102,7 @@
 .arch-section-title {
   margin: 0;
   color: var(--ink);
-  font: 600 17px/1.3 var(--font-display);
+  font: 600 var(--fs-16)/1.3 var(--font-display);
 }
 
 .arch-section-summary {

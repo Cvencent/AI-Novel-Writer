@@ -112,12 +112,15 @@
   gap: var(--s-2);
   height: 34px;
   padding: 0 var(--s-3);
+  border: 1px solid transparent;
   border-radius: var(--radius-lg);
   background: var(--sunken);
   color: var(--ink-3);
 }
 
-.cast-search:focus-within {
+/* 与 .pi-input 相同的焦点环：描边转强调色，外加柔和光圈。 */
+.cast-search:has(.cast-search-input:focus-visible) {
+  border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
@@ -263,7 +266,7 @@
   background: var(--paper);
   box-shadow: 0 0 0 1px var(--rule-strong);
   color: var(--ink-2);
-  font: 500 28px/1 var(--font-display);
+  font: 500 var(--fs-30)/1 var(--font-display);
 }
 
 .cast-profile-heading {
@@ -286,7 +289,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--ink);
-  font: 600 28px/1.25 var(--font-display);
+  font: 600 var(--fs-30)/1.2 var(--font-display);
 }
 
 .cast-role-badge {
@@ -411,12 +414,6 @@
   min-width: 0;
   box-sizing: border-box;
   height: 40px;
-  padding: 0 12px;
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--radius-lg);
-  background: var(--paper);
-  color: var(--ink);
-  font: 400 var(--fs-13)/1.5 var(--font-ui);
 }
 
 .cast-textarea {
@@ -433,12 +430,6 @@
 .cast-select option {
   background: var(--paper);
   color: var(--ink);
-}
-
-.cast-input:focus-visible {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .cast-input:disabled {
