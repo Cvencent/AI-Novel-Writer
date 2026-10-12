@@ -13,6 +13,7 @@ import ClearProjectDataDialog from '../dialogs/ClearProjectDataDialog'
 import type { MenuGroupSpec } from '../ui/Menu'
 import NewWorkDialog from './library/NewWorkDialog'
 import { SETTINGS_PAGES, settingsPageOf } from './settings/settings-pages'
+import { preloadStagePages } from './stage-pages'
 import StagePalette from './StagePalette'
 import { paletteItem, type PaletteItem } from './palette-filter'
 import StageSpine from './StageSpine'
@@ -64,6 +65,11 @@ export default function StageShell({ theme }: { theme: Theme }) {
   useEffect(() => {
     if (library && useStageStore.getState().focus) useStageStore.setState({ focus: false })
   }, [library])
+
+  useEffect(() => {
+    const handle = requestIdleCallback(preloadStagePages, { timeout: 2000 })
+    return () => cancelIdleCallback(handle)
+  }, [])
 
   // 设置页属于打开它时的书房或作品；在书房与作品之间切换时收起。
   const settingsOpen = useLayoutStore(s => s.settingsOpen)

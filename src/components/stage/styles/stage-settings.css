@@ -7,9 +7,6 @@
   display: flex;
 }
 
-.stage-content[hidden] {
-  display: none;
-}
 
 .stage-set-nav {
   width: 232px;

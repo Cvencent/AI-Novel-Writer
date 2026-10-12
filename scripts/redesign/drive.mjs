@@ -190,7 +190,10 @@ async function launch({ roots, appRoot, fakeModelPort, diagnostics, shelfBooks =
       const read = name => page.waitForFunction(attribute => document.documentElement.getAttribute(attribute), `data-drive-${name}`, { timeout: TIMEOUT })
         .then(handle => handle.jsonValue()).then(Number)
       timing.renderInteractiveMs = await read('interactive')
-      if (shelfBooks > 0) timing.renderShelfMs = await read('shelf')
+      if (shelfBooks > 0) {
+        timing.renderShelfMs = await read('shelf')
+        timing.renderIdleMs = await read('idle')
+      }
     }
     page.setDefaultTimeout(20_000)
     assert.equal(path.resolve(await app.evaluate(({ app: electronApp }) => electronApp.getPath('userData'))), roots.userData)

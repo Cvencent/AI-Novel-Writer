@@ -16,6 +16,8 @@ const observer = new MutationObserver(() => {
   if (interactiveAt !== null && document.querySelectorAll('button[aria-label^="预览《"]').length >= shelfBooks) {
     mark('shelf', performance.now())
     observer.disconnect()
+    // 书架到齐后主线程第一次空下来的时刻：在这之前点击要排队，作者感觉不到「可以点了」。
+    requestIdleCallback(() => mark('idle', performance.now()), { timeout: 5000 })
   }
 })
 observer.observe(document, { childList: true, subtree: true })

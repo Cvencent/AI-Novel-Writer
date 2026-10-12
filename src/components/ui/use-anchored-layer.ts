@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import { usePaperInkRoot } from './use-paper-ink-root'
 
 const GAP = 6
 const TABBABLE = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]'
@@ -26,7 +25,9 @@ export function useAnchoredLayer(align: 'start' | 'end'): {
   const anchorRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const layerRef = useRef<HTMLDivElement>(null)
-  const root = usePaperInkRoot(anchorRef)
+  // 打开时才找 Portal 的根：书架上每本书都有一个菜单，挂载时逐个查找会让每个菜单多渲染一次。
+  const [root, setRoot] = useState<Element | null>(null)
+  const findRoot = useCallback(() => setRoot(anchorRef.current?.closest('.paper-ink') ?? null), [])
 
   const close = useCallback((returnFocus: boolean) => {
     setOpen(false)
@@ -95,8 +96,14 @@ export function useAnchoredLayer(align: 'start' | 'end'): {
     triggerRef,
     layerRef,
     renderLayer: (layer) => (root ? createPortal(layer, root) : layer),
-    show: useCallback(() => setOpen(true), []),
-    toggle: useCallback(() => setOpen((value) => !value), []),
+    show: useCallback(() => {
+      findRoot()
+      setOpen(true)
+    }, [findRoot]),
+    toggle: useCallback(() => {
+      findRoot()
+      setOpen((value) => !value)
+    }, [findRoot]),
     close,
   }
 }
