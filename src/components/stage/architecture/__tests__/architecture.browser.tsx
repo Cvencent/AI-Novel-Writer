@@ -167,6 +167,21 @@ describe('架构阶段', () => {
     await vi.waitFor(() => expect(host!.querySelector('[data-section="premise"] .arch-badge')?.textContent).toBe('待生成'))
   })
 
+  it('角色名单保存后（修订号前进）重读名单状态，不触发修复；角色卡首次载入不多读一次', async () => {
+    const rosterReads = () => invoke.mock.calls.filter(([channel]) => channel === 'db:character-roster-read').length
+    await act(async () => useCharacterStore.setState({ rosterRevision: null }))
+    await render()
+    const afterOpen = rosterReads()
+    await act(async () => useCharacterStore.setState({ rosterRevision: 1 }))
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(rosterReads()).toBe(afterOpen)
+
+    await act(async () => useCharacterStore.setState({ rosterRevision: 2 }))
+    await vi.waitFor(() => expect(rosterReads()).toBe(afterOpen + 1))
+    expect(invoke.mock.calls.some(([channel]) => channel === 'legacy-roster:read-source')).toBe(false)
+    expect(started).not.toHaveBeenCalled()
+  })
+
   it('清空确认打开期间换了作品，确认时什么也不写', async () => {
     filledSpine(['premise'])
     await render()

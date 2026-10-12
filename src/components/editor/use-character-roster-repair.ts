@@ -97,13 +97,15 @@ export function useCharacterRosterRepair({
     }
   }, [controller])
 
-  // 角色名单保存后修订号前进，角色图谱投影与名单状态随之重读；首次读取由上面的 effect 负责。
+  // 角色名单保存后修订号前进，名单全文投影与名单状态随之重读。修订号从无到有是角色卡首次载入，
+  // 首次读取已由上面的 effect 负责，不再多读一次。
   const rosterRevision = useCharacterStore(state => state.dataProjectKey === projectKey ? state.rosterRevision : null)
   const seenRevision = useRef(rosterRevision)
   useEffect(() => {
-    if (rosterRevision === null || rosterRevision === seenRevision.current) return
+    if (rosterRevision === seenRevision.current) return
+    const first = seenRevision.current === null
     seenRevision.current = rosterRevision
-    void controller.load()
+    if (!first && rosterRevision !== null) void controller.load()
   }, [controller, rosterRevision])
 
   // The previous session's state is never rendered during a switch, even in
