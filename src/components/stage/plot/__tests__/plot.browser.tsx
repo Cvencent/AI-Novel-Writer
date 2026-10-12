@@ -165,6 +165,27 @@ describe('剧情与伏笔', () => {
     await vi.waitFor(() => expect(document.body.textContent).not.toContain('灰色的信是谁寄的'))
   })
 
+  it('让 AI 识别定稿事件时沿用作者选的模型，不退回默认模型', async () => {
+    useLLMStore.setState({ models: [
+      { id: 'm1', name: '夹具模型', modelName: 'fixture', purposes: ['generation'] },
+      { id: 'm2', name: '长文模型', modelName: 'fixture-long', purposes: ['generation'] },
+    ] as never })
+    await render('plans')
+    await vi.waitFor(() => expect(document.body.textContent).toContain('灰色的信是谁寄的'))
+    const modelSelect = () => document.querySelector<HTMLSelectElement>('select[aria-label="本次识别用的模型"]')!
+    await act(async () => {
+      modelSelect().value = 'm2'
+      modelSelect().dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    await click('「灰色的信是谁寄的」的更多操作')
+    await click('记录定稿里的变化')
+    await click('让 AI 识别')
+    await vi.waitFor(() => expect(invoke.mock.calls.some(([channel]) => channel === 'graph-generation:begin')).toBe(true))
+    const generationCalls = invoke.mock.calls.filter(([channel]) => channel === 'graph-generation:begin')
+    expect(JSON.stringify(generationCalls)).toContain('"m2"')
+    expect(modelSelect().value).toBe('m2')
+  })
+
   it('确认定稿事件后线索路线推进：埋设一站变成已发生', async () => {
     await render('plans')
     await vi.waitFor(() => expect(document.body.textContent).toContain('灰色的信是谁寄的'))

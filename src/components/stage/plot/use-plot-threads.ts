@@ -606,9 +606,8 @@ export function usePlotThreads(projectKey: string, {
     if (plotBusy || aiBusy) return
     if (mode === 'event' && (eventPlanId === null || eventDraftId === 0)) return
     setAiMode(mode)
-    setAiModelId(generationModels.some(model => model.id === defaultModelId)
-      ? defaultModelId
-      : generationModels[0]?.id ?? null)
+    // 沿用作者已选、仍可用的模型；没有选过或已不可用时才回到默认。
+    setAiModelId(current => generationModels.some(model => model.id === current) ? current : fallbackModelId)
     if (mode === 'plan') setAiBlueprintChapter(blueprints[0]?.chapterNumber ?? 0)
     setPlanCandidates([])
     setEventCandidates([])
