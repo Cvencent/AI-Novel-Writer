@@ -138,7 +138,28 @@ async function assertBottomOpensOn(page, start) {
  * 不进 baseline-all 的场景：性能测量，以及 RD-2 导航意图在旧外壳上的回归。run 的返回值写进结果的 measured。
  * nav- 场景对 trunk 与 head 各跑一次（--app-root 指向 trunk），两边都通过即行为一致。
  */
+/** 作品文件夹里的文件（相对路径），数据库这类每次内容不同的文件只比名字。 */
+function projectFiles(root) {
+  return fs.readdirSync(root, { recursive: true, withFileTypes: true })
+    .filter(entry => entry.isFile())
+    .map(entry => path.relative(root, path.join(entry.parentPath, entry.name)).split(path.sep).join('/'))
+    .sort()
+}
+
 export const EXTRA_SCENARIOS = {
+  /** 计划 RD-5 lane 1：两种外壳、trunk 与 head 各跑一次新建作品，比较作品文件夹里建出的文件。 */
+  'new-project-files': { model: false, run: async ({ app, page, roots }) => {
+    await stubOpenDialog(app, roots.projects)
+    await bookshelf.createProject(page, SAMPLE.name)
+    const created = path.join(roots.projects, SAMPLE.name)
+    const deadline = Date.now() + 10_000
+    while (!fs.existsSync(path.join(created, '.ai-novel', 'project.json'))) {
+      assert.ok(Date.now() < deadline, '新建作品没有建出作品文件夹')
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    await page.waitForTimeout(1500)
+    return { files: projectFiles(created) }
+  } },
   'write-latency': { model: true, setup: seedWithoutDraft, run: async ({ page }) => {
     await project.openBlueprints(page)
     const writeToOutputMs = await runPanel.msFromClickToOpen(page, '开始创作', () => chapter.writeThisChapter(page, 100))

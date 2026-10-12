@@ -207,7 +207,12 @@ node scripts/redesign/drive.mjs --scenario chapter-switch --shell stage --out <�
 | `stage-settings-model` | 设置 → AI 模型，夹具模型的更多操作「删除模型…」出现危险确认；`after` 取消，模型还在 | 删除模型确认 | 否 | lane 9 |
 | `stage-first-model` | 全新配置的空书房点「还没有连接 AI 模型」里的「添加模型」，落在设置的 AI 模型，空状态「还没有添加模型」，唯一的主按钮是添加模型 | 首次使用的模型页 | 否 | 附录 A 首次使用 |
 | `stage-rd5-tour` | 30–60 秒的 RD-5 导览：空书房、新建「雾岛」进入设定页、写核心大纲并补齐必填、展开「文风」、下一步到架构、设置的 AI 模型与外观（切深色再切回）、关于与更新、回书房看书架、删除作品确认（名字不对时禁用）。配 `--video` 录评审视频 | 书房 | 否 | Review gate |
-| `library-timing` | 计时会话（与 `startup-timing` 同样先预启动一次，另用公开 IPC 新建 20 部作品）：`readyToShowToInteractiveMs`（书房「新建作品」可见），`navigationToShelfMs`（导航开始到 20 个「预览《书名》」按钮都在，按帧轮询）。旧欢迎页与新书房的书本按钮同名，所以对 trunk 也能跑 | 不截图 | 否 | perf |
+| `library-timing` | 计时会话（与 `startup-timing` 同样先预启动一次，另用公开 IPC 新建 20 部作品）：`readyToShowToInteractiveMs`（书房「新建作品」可见），以及页面里记下的 `renderInteractiveMs`（「新建作品」进入 DOM）与 `renderShelfMs`（20 个「预览《书名》」按钮都进入 DOM），都以导航开始为 0。旧欢迎页与新书房的书本按钮同名，所以对 trunk 也能跑 | 不截图 | 否 | perf |
+| `new-project-files` | 新建作品后列出作品文件夹里建出的文件（`measured.files`）。trunk 与 head、两种外壳（`--shell stage`）各跑一次，文件列表应一致 | 新建作品后 | 否 | RD-5 lane 1 |
+
+## 页面内计时
+
+计时会话（`startup-timing`、`library-timing`）启动时设环境变量 `DRIVE_RENDER_TIMING`，`offscreen-window.cjs` 据此给默认会话注册页面预加载 `render-timing-preload.cjs`：它在页面脚本之前装好 MutationObserver，把「新建作品」与书架上的书第一次进入 DOM 的时刻（`performance.now()`）写在 `<html>` 的 `data-drive-interactive`、`data-drive-shelf` 上，驱动启动后读出，写进 `timing.renderInteractiveMs`、`timing.renderShelfMs`。它们没有 Playwright 轮询的量化误差。其他场景不注册这个预加载。
 
 ## 改外壳时
 

@@ -107,8 +107,11 @@ export default function StageLibrary() {
   const [removing, setRemoving] = useState<Book | null>(null)
   const [deleting, setDeleting] = useState<{ name: string; path: string } | null>(null)
 
+  // 最近项目读到之前不下「书架是空的」的结论，老用户启动时不会先闪一下空书房。
+  const listed = useProjectStore(s => s.recentProjectsLoaded)
   const books = shelf.recentProjects
-  if (books.length === 0 && !currentProject) return <EmptyLibrary modelMissing={modelMissing} />
+  const waiting = books.length === 0 && !currentProject
+  if (waiting && listed) return <EmptyLibrary modelMissing={modelMissing} />
 
   const selectedBook = shelf.selectedId ? books.find(book => book.id === shelf.selectedId) ?? null : null
   const config = currentProject?.novelConfig
@@ -188,7 +191,7 @@ export default function StageLibrary() {
         </header>
         <StartActions />
         <LegacyImportNotice />
-        <section className="stage-shelf" aria-labelledby="stage-shelf-title">
+        {!waiting && <section className="stage-shelf" aria-labelledby="stage-shelf-title">
           <div className="stage-shelf-head">
             <h2 id="stage-shelf-title" className="stage-shelf-title">{text('书架', 'Shelf')}</h2>
             <span className="stage-shelf-hint">{text('点封面查看概览，不会打开作品', 'Select a cover to preview; nothing is opened')}</span>
@@ -212,13 +215,15 @@ export default function StageLibrary() {
               />
             ))}
           </ul>
-        </section>
+        </section>}
       </section>
-      <aside className="stage-lib-aside" aria-label={text('作品概览', 'Book overview')}>
-        {overviewCard}
-        {modelMissing && <ModelMissingNotice detail={text('写作、审稿、修稿和 AI 填充设定都要用到它。', 'Writing, reviews, revisions and AI setup all need one.')} />}
-        <LibraryUpdateCard />
-      </aside>
+      {!waiting && (
+        <aside className="stage-lib-aside" aria-label={text('作品概览', 'Book overview')}>
+          {overviewCard}
+          {modelMissing && <ModelMissingNotice detail={text('写作、审稿、修稿和 AI 填充设定都要用到它。', 'Writing, reviews, revisions and AI setup all need one.')} />}
+          <LibraryUpdateCard />
+        </aside>
+      )}
 
       <InkDialog
         open={removing !== null}

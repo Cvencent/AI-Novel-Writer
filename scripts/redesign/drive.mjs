@@ -155,10 +155,11 @@ export async function quit(app, graceMs = 10_000) {
   return { forced: true }
 }
 
-async function launch({ roots, appRoot, fakeModelPort, diagnostics, shelfBooks = 0 }) {
+async function launch({ roots, appRoot, fakeModelPort, diagnostics, shelfBooks = 0, renderTiming = false }) {
   const launchedAt = Date.now()
+  const env = { ...isolatedEnvironment(roots), ...(renderTiming ? { DRIVE_RENDER_TIMING: String(shelfBooks || 1) } : {}) }
   const app = await electron.launch({ cwd: appRoot, args: ['-r', OFFSCREEN_WINDOW, '.', `--user-data-dir=${roots.userData}`],
-    env: isolatedEnvironment(roots), timeout: TIMEOUT })
+    env, timeout: TIMEOUT })
   try {
     await app.evaluate((_, port) => {
       const originalFetch = globalThis.fetch
@@ -184,12 +185,12 @@ async function launch({ roots, appRoot, fakeModelPort, diagnostics, shelfBooks =
     const timing = { launchToInteractiveMs: interactiveAt - launchedAt,
       readyToShowToInteractiveMs: readyToShow === null ? null : interactiveAt - readyToShow,
       navigationToInteractiveMs: Math.round(interactiveAt - timeOrigin) }
-    // 书架上每本书都有「预览《书名》」按钮（旧欢迎页与新书房同名），按帧轮询到齐的那一刻，记为导航开始后的毫秒数。
-    if (shelfBooks > 0) {
-      timing.navigationToShelfMs = await (await page.waitForFunction(count => {
-        const shown = document.querySelectorAll('button[aria-label^="预览《"]').length
-        return shown >= count && Math.round(performance.now())
-      }, shelfBooks, { polling: 'raf', timeout: TIMEOUT })).jsonValue()
+    // 页面里记下的时刻（导航开始为 0）：书房「新建作品」进入 DOM，书架上的书（旧欢迎页与新书房都是「预览《书名》」按钮）到齐。
+    if (renderTiming) {
+      const read = name => page.waitForFunction(attribute => document.documentElement.getAttribute(attribute), `data-drive-${name}`, { timeout: TIMEOUT })
+        .then(handle => handle.jsonValue()).then(Number)
+      timing.renderInteractiveMs = await read('interactive')
+      if (shelfBooks > 0) timing.renderShelfMs = await read('shelf')
     }
     page.setDefaultTimeout(20_000)
     assert.equal(path.resolve(await app.evaluate(({ app: electronApp }) => electronApp.getPath('userData'))), roots.userData)
@@ -311,7 +312,7 @@ async function runSession(sessionName, names, options) {
   try {
     const shelfBooks = sessionName === 'library-timing' ? SHELF_BOOKS : 0
     if (TIMED_SESSIONS.has(sessionName)) await prepareProfile({ roots, appRoot: options.appRoot, diagnostics }, { theme: options.theme, shell }, shelfBooks)
-    launched = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics, shelfBooks })
+    launched = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics, shelfBooks, renderTiming: TIMED_SESSIONS.has(sessionName) })
     shared.timing = launched.timing
     const shellShown = page => page.locator('[data-shell-presentation]').first().getAttribute('data-shell-presentation')
     if (TIMED_SESSIONS.has(sessionName)) shared.shell = await shellShown(launched.page)

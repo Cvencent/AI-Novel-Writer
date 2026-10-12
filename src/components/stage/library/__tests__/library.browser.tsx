@@ -96,6 +96,7 @@ beforeEach(() => {
   useProjectStore.setState({
     currentProject: null,
     recentProjects: [],
+    recentProjectsLoaded: true,
     legacyImportBusy: false,
     legacyImportNotice: '',
     openProject: vi.fn(async () => true),
@@ -126,6 +127,17 @@ describe('书房', () => {
     expect(useLayoutStore.getState().newProjectOpen).toBe(true)
     await click(button('添加模型'))
     expect(useLayoutStore.getState()).toMatchObject({ settingsOpen: true, settingsSection: 'llm' })
+  })
+
+  it('最近项目还没读到时不显示空书房，只显示开始；读到空列表才是空书房', async () => {
+    useProjectStore.setState({ recentProjectsLoaded: false })
+    await mount()
+    expect(host!.textContent).not.toContain('书架还是空的')
+    expect(button('新建作品')?.classList.contains('stage-start')).toBe(true)
+    expect(host!.querySelector('[aria-label="最近的作品"]')).toBeNull()
+
+    await act(async () => useProjectStore.setState({ recentProjectsLoaded: true }))
+    expect(host!.querySelector('h1')?.textContent).toBe('书架还是空的')
   })
 
   it('点封面只预览不打开，概览里的主按钮才打开这部作品', async () => {
