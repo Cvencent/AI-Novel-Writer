@@ -30,6 +30,7 @@ const restores = [useProjectStore, useLocaleStore, useLayoutStore].map(store => 
 const copies: Record<string, string> = {
   station: '本报讯 三月十二日深夜，北郊车站三号站台发生一起列车事故。',
   people: '林舟，二十九岁，铁路调度员。',
+  ch2: '林舟在抽屉底下翻出一张旧照片。',
 }
 
 let root: Root | undefined
@@ -41,9 +42,12 @@ beforeEach(() => {
     if (channel === 'kb:list-documents') return [
       { id: 'station', fileName: '车站档案.md', importedAt: '', chunkCount: 3, filePath: 'knowledge-copy:station' },
       { id: 'people', fileName: '林舟人物小传.txt', importedAt: '', chunkCount: 2, filePath: 'knowledge-copy:people' },
-      { id: 'ch2', fileName: '第2章 母亲的旧照片.md', importedAt: '', chunkCount: 4, filePath: 'chapters/2.md' },
+      // 定稿经 kb:import-text 收入，和导入资料一样有项目副本；只有定稿登记里的章号能把它认出来。
+      { id: 'ch2', fileName: '第2章 母亲的旧照片.txt', importedAt: '', chunkCount: 4, filePath: 'knowledge-copy:ch2', finalizedChapter: 2 },
+      // 旧版导入、没有项目副本的资料。
+      { id: 'legacy', fileName: '旧版地名表.txt', importedAt: '', chunkCount: 1, filePath: '' },
     ]
-    if (channel === 'kb:stats') return { documentCount: 3, totalChunks: 9, vectorDimension: 0 }
+    if (channel === 'kb:stats') return { documentCount: 4, totalChunks: 9, vectorDimension: 0 }
     if (channel === 'kb:get-vector-rebuild-status') return { embeddingConfigured: true, canRebuild: true, totalChunks: 9, vectorlessCount: 4, activeVectorDimension: 0 }
     if (channel === 'kb:read-document-copy') {
       const content = copies[args[0] as string]
@@ -132,8 +136,20 @@ describe('知识库', () => {
     expect([...document.querySelectorAll('mark')].map(node => node.textContent)).toEqual(expect.arrayContaining(['三号站台', '失踪']))
     expect(invoke.mock.calls.find(([channel]) => channel === 'kb:search')?.slice(1, 3)).toEqual(['三号站台 失踪', 10])
 
+  })
+
+  it('定稿章节按定稿登记分架：有项目副本也不进「我导入的」，旧版无副本的导入资料不算定稿', async () => {
+    await renderPage()
+    expect(button(/我导入的 3/)).toBeTruthy()
+    expect(button(/旧版地名表/)).toBeTruthy()
     expect(button(/母亲的旧照片/)).toBeUndefined()
+
+    await click(/旧版地名表/)
+    await vi.waitFor(() => expect(document.body.textContent).toContain('完整原文不可用'))
+    expect(document.body.textContent).not.toContain('这一章由定稿自动收入')
+
     await click(/定稿章节 1/)
+    expect(button(/车站档案/)).toBeUndefined()
     await click(/母亲的旧照片/)
     await vi.waitFor(() => expect(document.body.textContent).toContain('这一章由定稿自动收入'))
     expect(document.querySelector('textarea')).toBeNull()

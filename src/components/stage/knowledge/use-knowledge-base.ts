@@ -31,9 +31,9 @@ export interface DocumentCopy {
   indexStatus: 'current' | 'stale' | 'unavailable'
 }
 
-/** 导入的资料在项目里有一份可编辑的副本；定稿章节由定稿自动收入，没有副本。 */
+/** 定稿章节由定稿自动收入，要改就改正文；其余都是作者导入的资料。 */
 export function isImportedDocument(document: KBDocument): boolean {
-  return document.filePath.startsWith('knowledge-copy:')
+  return document.finalizedChapter === undefined
 }
 
 /**

@@ -49,9 +49,11 @@ export default function StageKnowledge() {
   useEffect(() => { saveRef.current = kb.saveDocument })
 
   const imported = useMemo(() => documents.filter(isImportedDocument), [documents])
-  const chapters = useMemo(() => documents.filter(document => !isImportedDocument(document)), [documents])
+  const chapters = useMemo(() => documents.filter(document => !isImportedDocument(document))
+    .sort((left, right) => (left.finalizedChapter ?? 0) - (right.finalizedChapter ?? 0)), [documents])
   const listed = shelf === 'imported' ? imported : chapters
   const selected = documents.find(document => document.id === kb.selectedDocId) ?? null
+  const selectedImported = selected !== null && isImportedDocument(selected)
   const pendingName = documents.find(document => document.id === pendingDocId)
   const hasMeaningSearch = stats.vectorDimension > 0
   const vectorless = index.status?.embeddingConfigured ? index.status.vectorlessCount : 0
@@ -162,7 +164,7 @@ export default function StageKnowledge() {
             <>
               <header className="stage-kb-reader-head">
                 <div className="stage-kb-eyebrow">{text('作品资料 · 知识库', 'Reference · Knowledge base')}</div>
-                {documentCopy?.available && (
+                {selectedImported && documentCopy?.available && (
                   <div className="stage-kb-save">
                     {dirty && <span className="stage-kb-dirty">{text('有未保存的修改', 'Unsaved changes')}</span>}
                     <Button variant="primary" disabled={documentBusy || !dirty} onClick={() => void kb.saveDocument()} title={commandLabel('s')}>
@@ -172,15 +174,14 @@ export default function StageKnowledge() {
                 )}
               </header>
               <h2 className="stage-kb-doc-title">{documentName(selected)}</h2>
-              {!documentCopy ? <p className="stage-kb-help">{text('正在读取…', 'Loading…')}</p>
+              {!selectedImported ? (
+                <Notice title={text('这一章由定稿自动收入', 'Added automatically when finalized')}>
+                  {text('要修改，请到正文里改这一章，重新定稿后会自动更新。', 'To change it, edit the chapter in the manuscript and finalize it again.')}
+                </Notice>
+              ) : !documentCopy ? <p className="stage-kb-help">{text('正在读取…', 'Loading…')}</p>
                 : !documentCopy.available ? (
-                  <Notice title={isImportedDocument(selected)
-                    ? text('完整原文不可用', 'The full text is unavailable')
-                    : text('这一章由定稿自动收入', 'Added automatically when finalized')}
-                  >
-                    {isImportedDocument(selected)
-                      ? text('请重新导入这份资料。', 'Import this material again.')
-                      : text('要修改，请到正文里改这一章，重新定稿后会自动更新。', 'To change it, edit the chapter in the manuscript and finalize it again.')}
+                  <Notice title={text('完整原文不可用', 'The full text is unavailable')}>
+                    {text('请重新导入这份资料。', 'Import this material again.')}
                   </Notice>
                 ) : <>
                   <p className="stage-kb-meta">
