@@ -265,7 +265,8 @@
   color: var(--ink-2);
 }
 
-.arch-mark[data-mark='new'] {
+.arch-mark[data-mark='new'],
+.arch-mark[data-mark='continue'] {
   background: var(--accent-soft);
   color: var(--accent);
 }

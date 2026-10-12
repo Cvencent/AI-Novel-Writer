@@ -159,6 +159,7 @@ describe('架构阶段', () => {
     expect(from?.value).toBe('17')
     expect(Number(to?.value)).toBeGreaterThanOrEqual(17)
     expect(Number(to?.value)).toBeLessThanOrEqual(24)
+    expect(document.querySelector('[data-step="synopsis"] .arch-mark')?.textContent).toBe('续写')
   })
 
   it('生成架构对话框按新样式标出已确认的节是覆盖还是保留', async () => {

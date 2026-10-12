@@ -14,6 +14,7 @@ const MARK_TEXT: Record<ArchStepMark, [string, string]> = {
   overwrite: ['将覆盖', 'Overwrite'],
   keep: ['保留', 'Keep'],
   new: ['新生成', 'New'],
+  continue: ['续写', 'Continue'],
 }
 
 /** 生成架构的确认对话框。表单与校验沿用 ArchitectureConfirmDialog 的 useArchitectureConfirmForm，这里只换成纸墨样式。 */

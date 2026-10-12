@@ -14,8 +14,11 @@ export const ARCH_STEP_LABELS: Record<ArchStepKey, [string, string]> = {
   synopsis: ['情节大纲', 'Synopsis'],
 }
 
-/** 每节在本次生成里的结果：已有内容且勾选为覆盖，未勾选为保留，还没有内容为新生成。 */
-export type ArchStepMark = 'overwrite' | 'keep' | 'new'
+/**
+ * 每节在本次生成里的结果：已有内容且勾选为覆盖，未勾选为保留，还没有内容为新生成。
+ * 已有大纲时从第 2 章以后起生成是分批续写，起始章之前的章保留，标为续写。
+ */
+export type ArchStepMark = 'overwrite' | 'keep' | 'new' | 'continue'
 
 export interface ArchitectureConfirmFormOptions {
   isOpen: boolean
@@ -93,7 +96,11 @@ export function useArchitectureConfirmForm({
 
   const selectedSteps = (Object.keys(checked) as ArchStepKey[]).filter(k => checked[k])
   const noneSelected = selectedSteps.length === 0
-  const stepMark = (key: ArchStepKey): ArchStepMark => archStatus[key] ? (checked[key] ? 'overwrite' : 'keep') : 'new'
+  const stepMark = (key: ArchStepKey): ArchStepMark => {
+    if (!archStatus[key]) return 'new'
+    if (!checked[key]) return 'keep'
+    return key === 'synopsis' && Number(synopsisFrom) > 1 ? 'continue' : 'overwrite'
+  }
 
   const config = currentProject?.novelConfig
   const totalChapters = Number(config?.totalChapters) > 0 ? Number(config?.totalChapters) : 0
