@@ -84,6 +84,7 @@ function installIpc() {
     if (channel === 'db:blueprint-get') return BLUEPRINT
     if (channel === 'db:character-get-all') return [{ id: 1 }]
     if (channel === 'db:draft-get-finalized') return { chapterNumber: Number(args[0]) }
+    if (channel === 'db:post-process-get-latest-run') return null
     if (channel === 'db:continuity-list-before') return continuityProjections
     if (channel === 'db:consistency-exemption-list') return exemptions
     if (channel === 'db:consistency-exemption-save') {
@@ -133,7 +134,8 @@ function reset() {
   writtenLogs = []
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await page.viewport(1280, 900)
   createChapterWorkflow.mockClear()
   writtenLogs = []
   continuityProjections = []
@@ -201,9 +203,9 @@ describe('写作此章弹层', () => {
     const prefill = blueprintWritePrefill(BLUEPRINT)
     await render(<ChapterCreationDialog isOpen onClose={vi.fn()} prefill={{ ...prefill, chapterNumber: BLUEPRINT.chapterNumber }} />)
     await expect.element(page.getByRole('button', { name: '开始创作' })).toBeEnabled()
-    await page.getByLabelText('本次创作模型').selectOptions('glm')
-    await page.getByPlaceholder(/特殊要求/).fill('结尾停在回头之前。')
-    await page.getByPlaceholder(/剑法传承/).fill('列车时刻表')
+    await act(async () => page.getByLabelText('本次创作模型').selectOptions('glm'))
+    await act(async () => page.getByPlaceholder(/特殊要求/).fill('结尾停在回头之前。'))
+    await act(async () => page.getByPlaceholder(/剑法传承/).fill('列车时刻表'))
     await act(async () => page.getByRole('button', { name: '开始创作' }).click())
     await vi.waitFor(() => expect(startWorkflow).toHaveBeenCalledOnce())
     const fromDialog = launched()
@@ -214,10 +216,10 @@ describe('写作此章弹层', () => {
     await act(async () => page.getByRole('button', { name: '本次写作选项' }).click())
     const popover = page.getByRole('dialog', { name: '本次写作选项' })
     await expect.element(popover.getByLabelText(/作者微操指导/)).toHaveValue('母亲的声音只出现一次，不要解释来源。')
-    await popover.getByLabelText(/本次模型/).selectOptions('glm')
-    await popover.getByLabelText(/作者微操指导/).fill('结尾停在回头之前。')
+    await act(async () => popover.getByLabelText(/本次模型/).selectOptions('glm'))
+    await act(async () => popover.getByLabelText(/作者微操指导/).fill('结尾停在回头之前。'))
     await popover.getByText('更多').click()
-    await popover.getByLabelText(/知识库检索关键词/).fill('列车时刻表')
+    await act(async () => popover.getByLabelText(/知识库检索关键词/).fill('列车时刻表'))
     await act(async () => page.getByRole('button', { name: '写第 5 章' }).click())
     await vi.waitFor(() => expect(startWorkflow).toHaveBeenCalledOnce())
 
@@ -270,7 +272,7 @@ describe('写作此章弹层', () => {
     await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" align="start" />)
     await act(async () => page.getByRole('button', { name: '写第 5 章' }).click())
     const popover = page.getByRole('dialog', { name: '本次写作选项' })
-    await popover.getByLabelText('安排说明').fill('老周以幽灵身份出现，是刻意安排。')
+    await act(async () => popover.getByLabelText('安排说明').fill('老周以幽灵身份出现，是刻意安排。'))
     await act(async () => popover.getByRole('button', { name: '保存安排' }).click())
     await vi.waitFor(() => expect(startWorkflow).toHaveBeenCalledOnce())
     expect(exemptions).toMatchObject([{ reason: '老周以幽灵身份出现，是刻意安排。', revoked: false }])
