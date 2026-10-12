@@ -272,6 +272,23 @@ export const RUN_SCENARIOS = {
     await runSheet.anyCard(page).filter({ hasText: /^Last run/ }).getByText(/Complete/).waitFor({ state: 'visible', timeout: 90_000 })
   } },
 
+  'palette-no-chat': { model: false, shell: 'stage', setup: context => seedStageSample(context, { landOnChapter3: false }), run: async ({ page }) => {
+    await page.keyboard.press('Control+K')
+    const input = stage.paletteInput(page)
+    await input.waitFor({ state: 'visible' })
+    for (const query of ['聊天', '对话', 'Agent', '助手']) {
+      await input.fill(query)
+      await page.waitForTimeout(600)
+      assert.equal(await stage.palette(page).isVisible(), true, `Ctrl K 输入「${query}」后搜索仍开着，打开作品后的落点没有关掉它`)
+      assert.equal(await stage.palette(page).getByRole('option').count(), 0, `Ctrl K「${query}」没有结果`)
+    }
+    await page.waitForFunction(() => [...document.querySelectorAll('nav[aria-label="位置"] span')].map(node => node.textContent).join('/') === '正文/第 3 章')
+    assert.equal(await stage.palette(page).isVisible(), true, '落点在搜索后面照常打开，搜索仍开着')
+  }, after: async ({ page }) => {
+    await page.keyboard.press('Escape')
+    await stage.palette(page).waitFor({ state: 'hidden' })
+  } },
+
   'legacy-no-chat': { model: false, setup: seedWithoutDraft, run: async ({ page }) => {
     assert.equal(await page.getByRole('button', { name: 'AI 输出', exact: true }).count(), 1, '右侧栏只有 AI 输出')
     assert.equal(await page.getByRole('button', { name: /Agent/ }).count(), 0, '没有 Agent 按钮')

@@ -37,9 +37,9 @@ afterEach(() => {
 const tabTypes = () => useEditorStore.getState().tabs.map(tab => tab.type)
 
 describe('新外壳下 navigate 的落点，调用方与旧外壳相同', () => {
-  it('回到流程脊：离开书房、退出沉浸、收起搜索与侧页，不打开页面', () => {
+  it('回到流程脊：离开书房、退出沉浸、收起侧页，不打开页面；作者开着的搜索不动', () => {
     navigate({ kind: 'stage' })
-    expect(useStageStore.getState()).toMatchObject({ sheet: null, focus: false, palette: null })
+    expect(useStageStore.getState()).toMatchObject({ sheet: null, focus: false, palette: 'commands' })
     expect(useLayoutStore.getState().sidebarView).toBe('project')
     expect(tabTypes()).toEqual([])
   })
