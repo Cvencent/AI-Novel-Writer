@@ -242,7 +242,7 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
               <span>{text(`找到 ${searchResults.length} 条`, `${searchResults.length} found`)}</span>
               <label>
                 {text('最多显示', 'Show up to')}
-                <select className="stage-kb-topk" value={kb.topK} onChange={event => kb.setTopK(Number(event.target.value))}>
+                <select className="pi-input stage-kb-topk" value={kb.topK} onChange={event => kb.setTopK(Number(event.target.value))}>
                   {TOP_K_OPTIONS.map(value => <option key={value} value={value}>{text(`${value} 条`, `${value}`)}</option>)}
                 </select>
               </label>

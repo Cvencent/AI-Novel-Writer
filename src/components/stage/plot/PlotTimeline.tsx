@@ -82,33 +82,34 @@ export default function PlotTimeline({ plot, onShowRecords, onClear }: { plot: P
             <span><i data-state="planned" />{text('蓝图计划', 'Planned in the blueprint')}</span>
           </div>
         )}
-        <span className="stage-plot-gap" />
-        {snapshot && (
-          <span className="stage-plot-stamp">
-            {text(`${new Date(snapshot.generatedAt).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })} 整理`, `Built ${new Date(snapshot.generatedAt).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}`)}
-            {stale && text(' · 之后资料有更新', ' · sources changed since')}
-          </span>
-        )}
-        <select
-          className="stage-plot-model"
-          aria-label={text('本次整理用的模型', 'Model for this build')}
-          value={plot.selectedPlotModel?.id ?? ''}
-          disabled={busy || plot.generationModels.length === 0}
-          onChange={event => plot.setPlotModelId(event.target.value)}
-        >
-          <option value="" disabled>{text('选择模型', 'Choose a model')}</option>
-          {plot.generationModels.map(model => <option key={model.id} value={model.id}>{model.name || model.modelName}</option>)}
-        </select>
-        {snapshot && generateButton}
-        <Menu
-          label={text('剧情树的更多操作', 'More plot tree actions')}
-          icon={<MoreHorizontal size={16} aria-hidden="true" />}
-          align="end"
-          groups={[
-            { id: 'records', items: [{ id: 'records', label: text('查看整理记录', 'View build records'), onSelect: onShowRecords }] },
-            ...(snapshot ? [{ id: 'danger', tone: 'danger' as const, items: [{ id: 'clear', label: text('清除剧情树…', 'Clear plot tree…'), onSelect: onClear, disabled: busy }] }] : []),
-          ]}
-        />
+        <div className="stage-plot-actions">
+          {snapshot && (
+            <span className="stage-plot-stamp">
+              {text(`${new Date(snapshot.generatedAt).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })} 整理`, `Built ${new Date(snapshot.generatedAt).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}`)}
+              {stale && text(' · 之后资料有更新', ' · sources changed since')}
+            </span>
+          )}
+          <select
+            className="pi-input stage-plot-model"
+            aria-label={text('本次整理用的模型', 'Model for this build')}
+            value={plot.selectedPlotModel?.id ?? ''}
+            disabled={busy || plot.generationModels.length === 0}
+            onChange={event => plot.setPlotModelId(event.target.value)}
+          >
+            <option value="" disabled>{text('选择模型', 'Choose a model')}</option>
+            {plot.generationModels.map(model => <option key={model.id} value={model.id}>{model.name || model.modelName}</option>)}
+          </select>
+          {snapshot && generateButton}
+          <Menu
+            label={text('剧情树的更多操作', 'More plot tree actions')}
+            icon={<MoreHorizontal size={16} aria-hidden="true" />}
+            align="end"
+            groups={[
+              { id: 'records', items: [{ id: 'records', label: text('查看整理记录', 'View build records'), onSelect: onShowRecords }] },
+              ...(snapshot ? [{ id: 'danger', tone: 'danger' as const, items: [{ id: 'clear', label: text('清除剧情树…', 'Clear plot tree…'), onSelect: onClear, disabled: busy }] }] : []),
+            ]}
+          />
+        </div>
       </div>
 
       {error && <Notice tone="danger" title={error} />}
@@ -129,13 +130,13 @@ export default function PlotTimeline({ plot, onShowRecords, onClear }: { plot: P
         />
       ) : (
         <div className="stage-plot-grid-wrap">
-          <table className="stage-plot-grid" aria-label={text('剧情树', 'Plot tree')} style={{ minWidth: 120 + visible.length * 150 }}>
+          <table className="stage-plot-grid" aria-label={text('剧情树', 'Plot tree')}>
             <thead>
               <tr>
                 <th scope="col" className="stage-plot-corner">{text('轨道', 'Track')}</th>
                 {visible.map(chapter => (
                   <th key={chapter} scope="col" className="stage-plot-chapter" data-final={finalized.has(chapter) || undefined}>
-                    {text(`第 ${chapter} 章`, `Chapter ${chapter}`)}
+                    {text('第 ', 'Chapter ')}<span className="stage-plot-chapter-no">{chapter}</span>{text(' 章', '')}
                     <b>{titles.get(chapter) ?? ''}{finalized.has(chapter) && <small>{text(' · 已定稿', ' · final')}</small>}</b>
                   </th>
                 ))}

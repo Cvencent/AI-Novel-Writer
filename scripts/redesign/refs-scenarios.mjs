@@ -3,7 +3,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 
+import * as chapter from './pages/chapter.mjs'
 import * as refs from './pages/refs.mjs'
+import * as runSheet from './pages/run-sheet.mjs'
 import * as shell from './pages/shell.mjs'
 import * as stage from './pages/stage.mjs'
 import { chromeContrastFailures, msFromClickToProse, seedStageSample } from './scenarios.mjs'
@@ -17,13 +19,18 @@ const MATERIALS = Object.freeze({
   '沉船名录.txt': '三十年前北堤外沉没的货船名叫启明号，船上的测绘员姓林。',
 })
 
-/** 资料页的文字与它实际落在的底色之间的对比度：标题与正文 4.5:1，说明 3:1。 */
+/**
+ * 资料页的文字与它实际落在的底色之间的对比度：标题与正文 4.5:1，说明 3:1。
+ * 选中行的底色更深，选中章的序号与选中稿的说明是小字，按 4.5:1 查；对比里删去的字与正文同字号，也按 4.5:1。
+ */
 const REFS_CONTRAST = [
   ['.stage-plot-title', 4.5], ['.stage-plot-note', 4.5], ['.stage-plot-lane b', 4.5], ['.stage-plot-event[data-state="occurred"]', 4.5],
   ['.stage-plot-event[data-state="planned"]', 3], ['.stage-plot-chapter', 3], ['.stage-plot-help', 3], ['.stage-plot-stamp', 3],
   ['.stage-kb-title', 4.5], ['.stage-kb-doc', 4.5], ['.stage-kb-help', 3], ['.stage-kb-result p', 4.5], ['.stage-kb-result-source', 3],
   ['.stage-hist-title', 4.5], ['.stage-hist-name', 4.5], ['.stage-hist-chapter small', 3], ['.stage-hist-version-name', 4.5],
-  ['.stage-hist-meta', 3], ['.stage-hist-page span', 4.5], ['.stage-hist-page ins', 4.5], ['.stage-hist-page del', 3],
+  ['.stage-hist-meta', 3], ['.stage-hist-page span', 4.5], ['.stage-hist-page ins', 4.5], ['.stage-hist-page del', 4.5],
+  ['.stage-hist-chapter[aria-current="true"] .stage-hist-no', 4.5], ['.stage-hist-chapter[aria-current="true"] small', 4.5],
+  ['.stage-hist-version[aria-pressed="true"] .stage-hist-meta', 4.5],
 ]
 
 /** 示例作品加一条伏笔线索与第 3 章的第二稿（v1 已审稿，v2 是新草稿）。 */
@@ -127,7 +134,75 @@ const seedHundredChapters = context => seedStageSample(context, { totalChapters:
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
 
+/** 元素里的文字排成了几行；标签与标题在窄宽度下不该逐字折行。 */
+function lineCount(locator) {
+  return locator.evaluate(node => {
+    const range = document.createRange()
+    range.selectNodeContents(node)
+    return new Set([...range.getClientRects()].map(rect => Math.round(rect.top))).size
+  })
+}
+
+/**
+ * 运行侧页开着时资料页的布局（计划 RD-9 的窄内容宽度）：1440 宽时内容区约 770px，1280 宽时约 620px。
+ * 导入资料会让侧页自动展开；之后确认侧页仍开着，再看各页有没有被挤坏。
+ */
+const narrowSetup = width => async context => {
+  await context.page.setViewportSize({ width, height: 900 })
+  await seedRefs(context)
+  await importMaterials(context)
+  await runSheet.openFromPalette(context.page)
+}
+
+const NARROW = Object.fromEntries([1280, 1440].flatMap(width => [
+  [`refs-narrow-plot-${width}`, { model: true, shell: 'stage', setup: narrowSetup(width), run: async ({ page, fake }) => {
+    fake.replyPlotTree()
+    await refs.open(page, 'plot')
+    await refs.buildPlotTree(page)
+    const tops = await page.locator('.stage-plot-actions').evaluate(group => [...group.children].map(child => Math.round(child.getBoundingClientRect().top + child.getBoundingClientRect().height / 2)))
+    assert.equal(new Set(tops).size, 1, `模型、生成与「更多」在同一行：${tops}`)
+    await refs.plotView(page, '伏笔线索').click()
+    assert.equal(await lineCount(page.locator('.stage-thread-name b').filter({ hasText: THREAD.title })), 1, '线索名称不折行')
+    const route = await refs.threadRoute(page, THREAD.title).boundingBox()
+    const more = await refs.threadMore(page, THREAD.title).boundingBox()
+    assert.ok(Math.abs((route.y + route.height / 2) - (more.y + more.height / 2)) < route.height, '「更多」与线索路线在同一行')
+    return { contentWidth: await page.locator('.stage-content').evaluate(node => node.clientWidth) }
+  } }],
+  [`refs-narrow-kb-${width}`, { model: true, shell: 'stage', setup: narrowSetup(width), run: async ({ page }) => {
+    await refs.open(page, 'knowledge')
+    await refs.materialButton(page, '守塔人小传').click()
+    await refs.copyEditor(page).waitFor({ state: 'visible' })
+    await refs.search(page, '雾钟')
+    const editor = await refs.copyEditor(page).boundingBox()
+    assert.ok(editor.width >= 300, `原文编辑区有可读的宽度：${editor.width}`)
+    return { contentWidth: await page.locator('.stage-content').evaluate(node => node.clientWidth), editorWidth: Math.round(editor.width) }
+  } }],
+  [`refs-narrow-history-${width}`, { model: true, shell: 'stage', setup: narrowSetup(width), run: async ({ page }) => {
+    await openChapterThreeVersions(page)
+    await refs.versionButton(page, '草稿 v1').click()
+    await refs.diffPage(page).waitFor({ state: 'visible' })
+    for (const tag of await page.locator('.stage-hist-tag').all()) assert.equal(await lineCount(tag), 1, `对比头的标签不折行：${await tag.innerText()}`)
+    const diff = await refs.diffPage(page).boundingBox()
+    assert.ok(diff.width >= 420, `对比正文有可读的宽度：${diff.width}`)
+    return { contentWidth: await page.locator('.stage-content').evaluate(node => node.clientWidth), diffWidth: Math.round(diff.width) }
+  } }],
+]))
+
 export const REFS_SCENARIOS = {
+  ...NARROW,
+  'refs-kb-finalized': { model: true, shell: 'stage', setup: seedRefs, run: async ({ page }) => {
+    await page.getByRole('button', { name: '定稿', exact: true }).click()
+    await refs.dialog(page).getByRole('button', { name: '确认定稿', exact: true }).click()
+    await runSheet.waitForRunDone(page)
+    await refs.open(page, 'knowledge')
+    const shelves = page.getByRole('group', { name: '资料来源' })
+    await shelves.getByRole('button', { name: '定稿章节 1' }).waitFor({ state: 'visible', timeout: 30_000 })
+    assert.equal(await shelves.getByRole('button', { name: /^我导入的/ }).innerText(), '我导入的 0', '定稿章节不进「我导入的」')
+    await shelves.getByRole('button', { name: '定稿章节 1' }).click()
+    await refs.materialButton(page, /雾钟/).click()
+    await page.getByText('这一章由定稿自动收入').waitFor({ state: 'visible' })
+    assert.equal(await refs.copyEditor(page).count(), 0, '定稿章节在知识库里只读')
+  } },
   'refs-regression': { model: true, setup: seedRefs, run: async ({ app, page, fake, invoke }) => {
     fake.replyPlotTree()
     await watchSession(app)

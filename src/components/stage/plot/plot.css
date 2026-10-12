@@ -1,5 +1,6 @@
 /* ================= 剧情与伏笔 ================= */
 .stage-plot {
+  container-type: inline-size;
   overflow: auto;
   padding: var(--s-8) var(--s-12) var(--s-12);
   display: flex;
@@ -52,10 +53,6 @@
   margin: 0;
   font-size: var(--fs-12);
   color: var(--danger);
-}
-
-.stage-plot-gap {
-  flex: 1;
 }
 
 .stage-plot-note {
@@ -137,15 +134,17 @@
   color: var(--ink-3);
 }
 
+/* 模型、生成与更多操作是一组，窄宽度下整组换到下一行，不把「更多」单独挤下去 */
+.stage-plot-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  margin-left: auto;
+}
+
 .stage-plot-model {
   height: 34px;
   max-width: 200px;
-  padding: 0 8px;
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--radius);
-  background: var(--paper);
-  color: var(--ink-2);
-  font: inherit;
   font-size: var(--fs-12);
 }
 
@@ -189,8 +188,14 @@
   width: 120px;
 }
 
+/* 表格按固定列宽排：章节一多就比容器宽，横向滚动 */
 .stage-plot-chapter {
+  width: 150px;
   border-left: 1px solid var(--rule);
+}
+
+.stage-plot-chapter-no {
+  font: italic var(--fs-13)/1 var(--font-num);
 }
 
 .stage-plot-chapter b {
@@ -364,6 +369,19 @@ tr[data-role='subplot'] .stage-plot-cell[data-inside]::before {
   grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
   gap: var(--s-6);
   align-items: start;
+}
+
+/* 运行侧页开着时内容区变窄：线索列表占满一行，定稿变化与 AI 建议排到下面 */
+@container (max-width: 880px) {
+  .stage-threads {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container (max-width: 1040px) {
+  .stage-plot {
+    padding: var(--s-6) var(--s-6) var(--s-10);
+  }
 }
 
 .stage-threads-plans,
@@ -561,7 +579,7 @@ tr[data-role='subplot'] .stage-plot-cell[data-inside]::before {
   margin: 10px 0 8px;
   padding-left: 10px;
   border-left: 2px solid var(--rule-strong);
-  font: 13.5px/1.8 var(--font-prose);
+  font: var(--fs-14)/1.8 var(--font-prose);
   color: var(--ink-2);
 }
 

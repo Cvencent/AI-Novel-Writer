@@ -11,21 +11,6 @@
   min-height: 0;
 }
 
-/* 运行侧页展开后内容区变窄：章节与版本两列收窄，对比仍有可读的宽度 */
-@container (max-width: 1040px) {
-  .stage-hist {
-    grid-template-columns: 180px 240px minmax(0, 1fr);
-  }
-
-  .stage-hist-diff {
-    padding: var(--s-5) var(--s-4) var(--s-8);
-  }
-
-  .stage-hist-page {
-    padding: var(--s-5) var(--s-5);
-  }
-}
-
 .stage-hist--empty {
   display: flex;
   align-items: center;
@@ -71,15 +56,15 @@
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px;
+  gap: var(--s-2);
   width: 100%;
-  padding: 7px 8px;
+  padding: var(--s-2);
   border: 0;
   border-radius: var(--radius);
   background: none;
   color: var(--ink);
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--fs-13);
   text-align: left;
   cursor: pointer;
 }
@@ -120,7 +105,8 @@
   color: var(--ink-3);
 }
 
-/* 选中行的底色比面板深，说明文字提一级墨色才够 3:1 */
+/* 选中行的底色比面板深，序号与说明是小字，提一级墨色才够 4.5:1 */
+.stage-hist-chapter[aria-current='true'] .stage-hist-no,
 .stage-hist-chapter[aria-current='true'] small {
   color: var(--ink-2);
 }
@@ -162,10 +148,10 @@
   position: relative;
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr);
-  column-gap: 12px;
+  column-gap: var(--s-3);
   width: 100%;
   margin: 2px 0;
-  padding: 8px;
+  padding: var(--s-2);
   border: 1px solid transparent;
   border-radius: var(--radius);
   background: none;
@@ -202,6 +188,10 @@
   background: var(--ok);
 }
 
+.stage-hist-version[aria-pressed='true'] .stage-hist-meta {
+  color: var(--ink-2);
+}
+
 .stage-hist-version[aria-pressed='true'] .stage-hist-node {
   border-color: var(--accent);
   background: var(--accent);
@@ -211,7 +201,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: var(--s-2);
   font-weight: 600;
 }
 
@@ -226,7 +216,7 @@
   display: inline-flex;
   align-items: center;
   height: 20px;
-  padding: 0 8px;
+  padding: 0 var(--s-2);
   border-radius: var(--radius-pill);
   background: var(--accent-soft);
   color: var(--accent);
@@ -250,21 +240,25 @@
 
 .stage-hist-diff-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--s-4);
+  gap: var(--s-2) var(--s-4);
 }
 
 .stage-hist-pair {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--s-1) var(--s-2);
+  min-width: 0;
   font-size: var(--fs-13);
   color: var(--ink-3);
 }
 
 .stage-hist-tag {
-  padding: 3px 8px;
+  white-space: nowrap;
+  padding: 3px var(--s-2);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
   color: var(--ink);
@@ -292,7 +286,7 @@
 .stage-hist-readonly {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--s-1);
 }
 
 .stage-hist-page {
@@ -301,7 +295,7 @@
   border-radius: 2px;
   background: var(--paper);
   box-shadow: var(--shadow-panel);
-  font: 16.5px/2 var(--font-prose);
+  font: var(--fs-16)/2 var(--font-prose);
   color: var(--ink);
   user-select: text;
 }
@@ -318,6 +312,49 @@
 }
 
 .stage-hist-page del {
-  color: var(--ink-3);
+  color: var(--ink-2);
   text-decoration-color: var(--danger);
+}
+
+/* 运行侧页展开后内容区变窄：章节与版本两列收窄，对比仍有可读的宽度 */
+@container (max-width: 1040px) {
+  .stage-hist {
+    grid-template-columns: 180px 240px minmax(0, 1fr);
+  }
+
+  .stage-hist-diff {
+    padding: var(--s-5) var(--s-4) var(--s-8);
+  }
+
+  .stage-hist-page {
+    padding: var(--s-5) var(--s-5);
+  }
+}
+
+/* 运行侧页开着时（1440 宽内容区约 770px，1280 宽约 610px）改两栏：章节一栏，各稿在上、对比在下。放在文件末尾，覆盖上面的基础样式 */
+@container (max-width: 880px) {
+  .stage-hist {
+    grid-template-columns: 168px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .stage-hist-chapters {
+    grid-row: 1 / span 2;
+  }
+
+  .stage-hist-versions {
+    max-height: 36cqh;
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+}
+
+@container (max-width: 680px) {
+  .stage-hist {
+    grid-template-columns: 148px minmax(0, 1fr);
+  }
+
+  .stage-hist-diff {
+    padding: var(--s-4) var(--s-3) var(--s-8);
+  }
 }

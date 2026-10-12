@@ -11,25 +11,6 @@
   min-height: 0;
 }
 
-/* 运行侧页展开后内容区变窄：查找挪到原文下方，原文保持可读的宽度 */
-@container (max-width: 1040px) {
-  .stage-kb {
-    grid-template-columns: 240px minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) auto;
-  }
-
-  .stage-kb-docs {
-    grid-row: 1 / span 2;
-  }
-
-  .stage-kb-search {
-    max-height: 45cqh;
-    overflow: auto;
-    border-left: 0;
-    border-top: 1px solid var(--rule);
-  }
-}
-
 .stage-kb-col {
   display: flex;
   flex-direction: column;
@@ -271,12 +252,8 @@
 
 .stage-kb-topk {
   height: 26px;
-  padding: 0 4px;
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--radius-sm);
-  background: var(--paper);
-  color: var(--ink);
-  font: inherit;
+  padding: 0 var(--s-1);
+  font-size: var(--fs-12);
 }
 
 .stage-kb-results {
@@ -318,4 +295,38 @@
   border-radius: 2px;
   background: var(--accent-soft);
   color: var(--ink);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-underline-offset: 3px;
+}
+
+/* 运行侧页展开后内容区变窄：查找挪到原文下方，原文保持可读的宽度 */
+@container (max-width: 1040px) {
+  .stage-kb {
+    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .stage-kb-docs {
+    grid-row: 1 / span 2;
+  }
+
+  .stage-kb-search {
+    max-height: 45cqh;
+    overflow: auto;
+    border-left: 0;
+    border-top: 1px solid var(--rule);
+  }
+}
+
+/* 1280 宽且运行侧页开着时内容区约 610px：资料列与原文的边距都收一些，原文仍有可读的宽度 */
+@container (max-width: 680px) {
+  .stage-kb {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+
+  .stage-kb-reader {
+    padding: var(--s-5) var(--s-5) var(--s-8);
+  }
 }
