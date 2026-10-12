@@ -22,6 +22,10 @@ import { createRoot } from 'react-dom/client'
 import { useEffect, useState, useCallback } from 'react'
 import { X, CheckCircle2, AlertTriangle, Info, Sparkles } from 'lucide-react'
 import { useLocaleStore } from '../../stores/locale-store'
+import { useAppearanceStore } from '../../stores/appearance-bootstrap'
+import { useThemeStore } from '../../stores/theme-store'
+import { inkTheme } from '../stage/ink-theme'
+import { Button } from './Button'
 
 // ===== 类型定义 =====
 
@@ -183,6 +187,29 @@ function ActionToastCard({ item, onRemove }: { item: ActionToastItem; onRemove: 
   }
 
   const { border, icon } = TYPE_STYLE[item.type || 'info']
+  const ink = useAppearanceStore(s => s.resolvedShell === 'stage')
+  const theme = useThemeStore(s => inkTheme(s.resolvedTheme))
+  const text = useLocaleStore(s => s.text)
+
+  if (ink) {
+    return (
+      <div className="paper-ink pi-toast" data-theme={theme} data-exiting={isExiting || undefined} role="status">
+        <p className="pi-toast-text">{item.message}</p>
+        <Button variant="icon" size="sm" aria-label={text('关闭通知', 'Dismiss notification')} onClick={dismiss}>
+          <X size={14} aria-hidden />
+        </Button>
+        {item.actions && item.actions.length > 0 && (
+          <div className="pi-toast-actions">
+            {item.actions.map(action => (
+              <Button key={action.label} variant={action.variant === 'ghost' ? 'text' : 'secondary'} size="sm" onClick={() => void handleAction(action)}>
+                {action.label}
+              </Button>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div
