@@ -306,9 +306,10 @@ export async function untilGateHolds(gate, timeoutMs = 15_000) {
 /**
  * 用公开 IPC 预置新外壳示例作品：12 章蓝图，1、2 章定稿，3 章已审稿，4 章草稿；架构四节齐全。
  * totalChapters 改规划总章数；beforeReload 在重载前再写入数据；landOnChapter3 为 false 时只等流程脊，落点由场景自己断言。
+ * beforeReload 另写了蓝图时用 blueprintCount 告诉旧外壳要等项目树显示几章。
  */
 export async function seedStageSample(context,
-  { totalChapters = STAGE_SAMPLE.totalChapters, beforeReload, landOnChapter3 = true, open = true } = {}) {
+  { totalChapters = STAGE_SAMPLE.totalChapters, beforeReload, landOnChapter3 = true, open = true, blueprintCount = STAGE_SAMPLE.titles.length } = {}) {
   const { app, page, roots, invoke, reload } = context
   const created = await invoke(page, 'project:create', { parentGrantId: (await chooseProjectDirectoryGrant(app, page, roots.projects)).grantId,
     name: STAGE_SAMPLE.name, genre: '悬疑', targetAudience: '成年读者', writingLanguage: 'zh-CN' }, randomUUID(), null)
@@ -352,7 +353,7 @@ export async function seedStageSample(context,
     return
   }
   await bookshelf.openProject(page, STAGE_SAMPLE.name)
-  await project.waitForTreeRefreshed(page, STAGE_SAMPLE.titles.length)
+  await project.waitForTreeRefreshed(page, blueprintCount)
   await project.draftOfChapter(page, 3).click()
   await chapter.editor(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text)).waitFor({ state: 'visible' })
 }

@@ -119,7 +119,7 @@ async function msFromClick(page, target, readySelector, readyText) {
       const deadline = setTimeout(() => reject(new Error('20 秒内没有出现')), 20_000)
       const tick = () => {
         const shown = [...document.querySelectorAll(readySelector)].some(node =>
-          (readyText === null || (node.value ?? node.textContent).includes(readyText)) && node.getClientRects().length > 0)
+          (readyText === null || (node instanceof HTMLInputElement ? node.value : node.textContent).includes(readyText)) && node.getClientRects().length > 0)
         if (clickedAt !== null && shown) {
           clearTimeout(deadline)
           resolve(Math.round(performance.now() - clickedAt))
@@ -135,7 +135,7 @@ async function msFromClick(page, target, readySelector, readyText) {
 const TIMING_CHAPTERS = 300
 
 /** 300 章蓝图：示例作品的 12 章之外再补到 300 章，标题带章号便于定位。 */
-const withManyBlueprints = context => seedStageSample(context, { totalChapters: TIMING_CHAPTERS, beforeReload: async ({ page, invoke, path, session }) => {
+const withManyBlueprints = context => seedStageSample(context, { totalChapters: TIMING_CHAPTERS, blueprintCount: TIMING_CHAPTERS, beforeReload: async ({ page, invoke, path, session }) => {
   const blueprints = Array.from({ length: TIMING_CHAPTERS - STAGE_SAMPLE.titles.length }, (_, index) => {
     const chapterNumber = STAGE_SAMPLE.titles.length + index + 1
     return { chapterNumber, title: `远航之${chapterNumber}`, role: '发展', purpose: '推进灯塔与沉船的线索',
@@ -283,6 +283,46 @@ export const BLUEPRINT_SCENARIOS = {
       assert.ok(Date.now() < deadline, '继续生成没有发出模型请求')
       await page.waitForTimeout(200)
     }
+  } },
+
+  'blueprint-tour': { model: true, shell: 'stage', setup: withKeeperInChapter3, run: async ({ app, page }) => {
+    const pause = ms => page.waitForTimeout(ms)
+    await pause(1200)
+    await blueprint.open(page)
+    await pause(1800)
+    await blueprint.planItem(page, 6).click()
+    await pause(1200)
+    await blueprint.titleInput(page).fill('第二盏灯亮起')
+    await pause(1200)
+    await page.keyboard.press('Control+S')
+    await stage.saveStatus(page).getByText('已保存').waitFor({ state: 'visible' })
+    await pause(1500)
+    await blueprint.pageMenu(page, '清空全部蓝图…')
+    await pause(2500)
+    await blueprint.confirmDialog(page, '清空全部蓝图？').getByRole('button', { name: '取消' }).click()
+    await pause(1000)
+    await blueprint.openGenerate(page)
+    await pause(2500)
+    await blueprint.generateDialog(page).getByRole('button', { name: '覆盖' }).click()
+    await pause(1500)
+    await blueprint.generateDialog(page).getByRole('button', { name: '取消' }).click()
+    await pause(1000)
+    await page.getByRole('button', { name: '批量创作' }).click()
+    await pause(2500)
+    await blueprint.batchDialog(page).getByRole('button', { name: '取消' }).click()
+    await pause(1000)
+    await blueprint.openWriteOptions(page)
+    await pause(2500)
+    await page.keyboard.press('Escape')
+    await injectDeadKeeper(app)
+    await blueprint.writeNext(page)
+    await blueprint.preflight(page).waitFor({ state: 'visible' })
+    await pause(3500)
+    await restoreContinuity(app)
+    await blueprint.preflight(page).getByRole('button', { name: '仅本次忽略' }).click()
+    await runSheet.waitUntilOpen(page)
+    await runSheet.waitForRunDone(page)
+    await pause(2500)
   } },
 
   'blueprint-timing': { model: false, setup: withManyBlueprints, run: async ({ page }) => {
