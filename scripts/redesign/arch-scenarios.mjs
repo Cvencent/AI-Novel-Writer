@@ -183,6 +183,7 @@ export const ARCH_SCENARIOS = {
     await openArchitecture(page)
     assert.equal(await arch.primary(page).count(), 1, '架构页只有一个主按钮')
     assert.equal(await arch.primary(page).innerText(), '继续生成架构')
+    assert.equal(await arch.next(page).isDisabled(), true, '下一步置灰')
     assert.deepEqual(await badges(page), { premise: '已确认', characters: '已确认', worldbuilding: '待生成', synopsis: '待生成' })
     assert.match(await stage.stageButton(page, '架构').innerText(), /2 \/ 4/, '流程脊与页面同为 2 / 4')
     assert.equal(await arch.summary(page, 'characters').innerText(), '1 位角色：林岚')
@@ -232,6 +233,12 @@ export const ARCH_SCENARIOS = {
     const outline = arch.section(page, 'synopsis')
     assert.match(await outline.innerText(), /第 17～24 章还没有大纲/)
     assert.match(await outline.innerText(), /续写只追加缺少的章节/)
+    assert.equal(await arch.primary(page).innerText(), '继续生成架构', '部分完成不算已确认')
+    assert.equal(await arch.next(page).isDisabled(), true, '下一步置灰')
+    assert.match(await arch.page(page).locator('.arch-eyebrow').innerText(), /3 \/ 4 已确认/)
+    assert.match(await stage.stageButton(page, '架构').innerText(), /3 \/ 4/, '流程脊与页头同为 3 / 4')
+    const drafts = await runSheet.recovery(page).getByRole('article').locator('.run-card-title').allInnerTexts()
+    assert.deepEqual(drafts.filter(title => title.startsWith('大纲恢复稿')).sort(), ['大纲恢复稿 · 第 11～16 章', '大纲恢复稿 · 第 1～10 章'], '两批恢复稿按范围区分')
     context.before16 = (await readCore(context)).synopsis
     assert.deepEqual(Object.keys(outlineChapters(context.before16)).map(Number), Array.from({ length: 16 }, (_, index) => index + 1))
     await outline.getByRole('button', { name: '续写第 17 章起' }).click()
@@ -269,7 +276,35 @@ export const ARCH_SCENARIOS = {
     assert.equal((await readCore(context)).worldbuilding, STAGE_SAMPLE.core.worldbuilding, '取消后世界观没有写入')
   } },
 
-  /** lane 7：在角色名单里新建「守塔人」并按 Ctrl S 保存：名单、角色图谱投影（名单全文）与架构页的角色名单一节同步。 */
+  /** lane 9 补充：导入角色卡对话框与外发确认都是纸墨对话框（同一个对话框的两步），底色来自令牌。停在外发确认一步。 */
+  'arch-import-dialog': { model: true, shell: 'stage', setup: seedArch(), run: async ({ page }) => {
+    await openArchitecture(page)
+    await arch.openCast(page)
+    await page.getByRole('button', { name: '粘贴 / 导入角色卡' }).first().click()
+    const dialog = page.getByRole('dialog', { name: '粘贴 / 导入角色卡' })
+    await dialog.getByLabel('角色卡全文').fill('姓名：守塔人\n身份：灯塔看守，记得每一次钟声。')
+    assert.ok(await dialog.evaluate(element => element.classList.contains('pi-dialog') && Boolean(element.closest('.paper-ink'))), '导入对话框在纸墨根下')
+    await dialog.getByRole('button', { name: 'AI 提取并预览' }).click()
+    const consent = page.getByRole('dialog', { name: 'AI 提取角色卡' })
+    await consent.getByRole('button', { name: '发送并提取' }).waitFor({ state: 'visible' })
+    assert.match(await consent.innerText(), /端点：/)
+    assert.equal(await page.getByRole('dialog').count(), 1, '外发确认是同一个对话框，不另弹旧确认框')
+    const surface = await consent.evaluate(element => {
+      const probe = document.createElement('span')
+      element.append(probe)
+      probe.style.backgroundColor = 'var(--surface)'
+      const surface = getComputedStyle(probe).backgroundColor
+      probe.remove()
+      return { surface, dialog: getComputedStyle(element).backgroundColor }
+    })
+    assert.equal(surface.dialog, surface.surface, '对话框底色是纸墨 --surface')
+  }, after: async ({ page }) => {
+    await page.getByRole('dialog').getByRole('button', { name: '返回' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: '暂不导入' }).click()
+    await page.getByRole('dialog').waitFor({ state: 'hidden' })
+  } },
+
+  /** lane 7：在角色名单里新建「守塔人」并按 Ctrl S 保存：名单、名单全文投影与架构页的角色名单一节同步。 */
   'arch-cast-save': { model: false, shell: 'stage', setup: seedArch(), run: async context => {
     const { page } = context
     await openArchitecture(page)
@@ -284,14 +319,15 @@ export const ARCH_SCENARIOS = {
     assert.deepEqual(await arch.castRoster(page).locator('.cast-row-name').allInnerTexts(), ['林岚', '守塔人'])
     const roster = await readRoster(context)
     assert.equal(roster.status, 'ready')
-    assert.match(roster.renderedMarkdown, /守塔人/, '角色图谱投影里有守塔人')
+    assert.match(roster.renderedMarkdown, /守塔人/, '名单全文投影里有守塔人')
     await stage.tab(page, '架构').click()
     await arch.waitReady(page)
     assert.match(await arch.summary(page, 'characters').innerText(), /2 位角色：林岚、守塔人/)
     await arch.openSectionMenu(page, 'characters')
     await page.getByRole('menuitem', { name: '查看名单全文' }).click()
     await stage.prose(page).getByText('守塔人').first().waitFor({ state: 'visible' })
-    await stage.tab(page, '角色名单').click()
+    await stage.tab(page, '角色名单全文').waitFor({ state: 'visible' })
+    await stage.tabList(page).getByRole('tab', { name: '角色名单', exact: true }).click()
     await arch.castRoster(page).waitFor({ state: 'visible' })
   } },
 

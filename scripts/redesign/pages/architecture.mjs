@@ -8,6 +8,7 @@ export const section = (page, key) => root(page).getByRole('region', { name: SEC
 export const badge = (page, key) => section(page, key).locator('.arch-badge')
 export const summary = (page, key) => section(page, key).locator('.arch-section-summary')
 export const primary = page => root(page).locator('.arch-header .pi-btn--primary')
+export const next = page => root(page).locator('.arch-header').getByRole('button', { name: /^下一步：章节蓝图/ })
 export const dialog = page => page.getByRole('dialog', { name: '生成架构' })
 export const mark = (page, key) => dialog(page).locator(`[data-step="${key}"] .arch-mark`)
 /** 勾选框是视觉隐藏的原生 checkbox，点它所在的 label。 */
