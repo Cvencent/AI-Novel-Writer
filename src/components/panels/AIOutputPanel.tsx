@@ -336,7 +336,7 @@ function ActiveRunView({
                 color: r.id === run.id ? 'var(--color-text)' : 'var(--color-text-muted)',
               }}
             >
-              {r.title.replace(/^[^\s]+\s/, '')}
+              {r.title}
             </button>
           ))}
         </div>
@@ -769,7 +769,7 @@ function HistoryList({ items, onSelect, locale }: { items: WorkflowRun[]; onSele
               : <Circle size={10} style={{ color: 'var(--color-error)', flexShrink: 0, opacity: 0.6 }} />
             }
             <span className="text-xs truncate flex-1" style={{ color: 'var(--color-text-secondary)' }}>
-              {run.title.replace(/^[^\s]+\s/, '')}
+              {run.title}
             </span>
             <span className="text-[0.6rem] flex-shrink-0 font-mono opacity-30">
               {new Date(run.createdAt).toLocaleTimeString(run.uiLocale, { hour: '2-digit', minute: '2-digit' })}
