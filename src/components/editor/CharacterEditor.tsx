@@ -1,13 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Camera, ClipboardList, Network, Save, Trash2, Users, X } from 'lucide-react'
-import { useProjectStore } from '../../stores/project-store'
-import { registerEditorExitSaveHandler, useEditorStore } from '../../stores/editor-store'
-import { CHARACTER_DRAFT_TAB, getProjectEditorDraft, parseProjectEditorDraftLedger } from '../../stores/project-editor-draft-ledger'
-import { useWorkflowStore } from '../../stores/workflow-store'
 import { confirm } from '../ui/Confirm'
 import {
   useCharacterStore,
-  characterSelectionKey,
   EMPTY_STATE,
   type CharacterCard,
   type CharacterCurrentState,
@@ -21,134 +16,45 @@ import { Label } from '../ui/Label'
 import { NativeSelect } from '../ui/NativeSelect'
 import { useLocaleStore } from '../../stores/locale-store'
 import { CHARACTER_ROLES, getCharacterRoleLabels } from '../../shared/character-role'
-import {
-  formatRelationshipsForEditor,
-  relationshipStorageFromEditor,
-} from '../../shared/relationship-presentation'
-import {
-  captureProjectSession,
-  isProjectSessionCurrent,
-  isProjectSessionPath,
-} from '../project-session-gate'
-import { SaveFeedback, type SaveOutcome } from './save-feedback'
+import { relationshipStorageFromEditor } from '../../shared/relationship-presentation'
+import { isProjectSessionCurrent } from '../project-session-gate'
+import { SaveFeedback } from './save-feedback'
 import { useCharacterAvatar } from './use-character-avatar'
+import { useCharacterProfile } from './use-character-profile'
 
 /**
  * 角色卡编辑器 — 纯编辑区域（角色列表已移至侧栏）
  * 从 character-store 读取选中角色，仅渲染编辑表单。
  */
 export default function CharacterEditor({ projectKey }: { projectKey: string }) {
-  const currentProject = useProjectStore(s => s.currentProject)
-  const addLog = useWorkflowStore(s => s.addLog)
-  const characters = useCharacterStore(s => s.characters)
+  const profile = useCharacterProfile(projectKey)
+  const {
+    currentProject, projectMatches, dataReady, characters, selectedId, selectedCard, relationshipEditorText, lastError,
+    saving, dirty, identityBusy, saveOutcome, saveError, handleSave, updateCurrentField, renameCurrentCharacter,
+  } = profile
   const currentDerivedFields = useCharacterStore(s => s.currentDerivedFields)
-  const dataProjectKey = useCharacterStore(s => s.dataProjectKey)
-  const loadingProjectKey = useCharacterStore(s => s.loadingProjectKey)
-  const lastError = useCharacterStore(s => s.lastError)
-  const selectedId = useCharacterStore(s => s.selectedId)
-  const saving = useCharacterStore(s => s.saving)
-  const dirty = useEditorStore(state => state.tabs.some(
-    tab => tab.type === 'character' && tab.projectKey === projectKey && tab.dirty,
-  ) || Boolean(getProjectEditorDraft(
-    parseProjectEditorDraftLedger(state.draftLedgers[CHARACTER_DRAFT_TAB.id]), projectKey,
-  )))
-  const [saveOutcome, setSaveOutcome] = useState<SaveOutcome>('idle')
-  const [saveError, setSaveError] = useState('')
-  const identityBusy = useCharacterStore(s => s.identityBusy)
-  const renameCharacter = useCharacterStore(s => s.renameCharacter)
-  const updateField = useCharacterStore(s => s.updateField)
-  const deleteCharacter = useCharacterStore(s => s.deleteCharacter)
-  const clearAllCharacters = useCharacterStore(s => s.clearAllCharacters)
-  const saveAll = useCharacterStore(s => s.saveAll)
   const [viewMode, setViewMode] = useState<'edit' | 'state' | 'graph'>('edit')
   const text = useLocaleStore(s => s.text)
-  const locale = useLocaleStore(s => s.locale)
   const roleLabel = (role: CharacterCard['role']) => {
     const { zhCN, enUS } = getCharacterRoleLabels(role)
     return text(zhCN, enUS)
   }
-  const projectMatches = currentProject?.path === projectKey
-  const dataReady = Boolean(
-    projectMatches
-    && dataProjectKey === projectKey
-    && loadingProjectKey === null
-    && lastError === null,
-  )
-
-  // 数据由 ProjectService 统一加载，组件只消费 store 数据
-
-  const selectedCard = dataReady
-    ? characters.find((c, index) => characterSelectionKey(c, index) === selectedId) || null
-    : null
   const avatar = useCharacterAvatar(selectedCard?.characterId ?? null, dataReady && viewMode === 'edit')
-  const relationshipEditorText = selectedCard
-    ? formatRelationshipsForEditor(selectedCard.relationships, { locale, identities: characters })
-    : ''
 
   const handleDelete = async () => {
-    const projectSession = captureProjectSession(currentProject)
-    if (!selectedCard || !projectMatches || !projectSession || !isProjectSessionPath(projectSession, projectKey)) return
+    const projectSession = profile.beginDelete('selected')
+    if (!projectSession || !selectedCard) return
     const ok = await confirm(
       text(`确定要删除角色「${selectedCard.name || '未命名'}」吗？此操作不可撤销。`, `Delete character “${selectedCard.name || 'Untitled'}”? This cannot be undone.`),
       { title: text('删除角色', 'Delete character'), confirmText: text('删除', 'Delete'), danger: true }
     )
     if (!ok || !isProjectSessionCurrent(projectSession)) return
-    const deleted = await deleteCharacter(selectedId!, projectKey)
-    if (!isProjectSessionCurrent(projectSession)) return
-    if (!deleted) {
-      addLog(
-        'error',
-        text(
-          '角色删除失败：项目可能已切换，请刷新后重试',
-          'Could not delete the character. The project may have changed; refresh and try again.',
-        ),
-      )
-    }
+    await profile.deleteSelected(projectSession)
   }
-
-  const handleSave = async (propagateFailure = false) => {
-    const projectSession = captureProjectSession(currentProject)
-    if (!projectMatches || !projectSession || !isProjectSessionPath(projectSession, projectKey)) return
-    setSaveOutcome('idle')
-    setSaveError('')
-    try {
-      await saveAll(projectKey)
-      if (!isProjectSessionCurrent(projectSession)) return
-      addLog('info', text(`已保存 ${characters.length} 个角色卡`, `Saved ${characters.length} character cards`))
-      const stillDirty = useEditorStore.getState().tabs.some(
-        tab => tab.type === 'character' && tab.projectKey === projectKey && tab.dirty,
-      )
-      setSaveOutcome(stillDirty ? 'idle' : 'saved')
-    } catch (error) {
-      if (isProjectSessionCurrent(projectSession)) {
-        setSaveOutcome('failed')
-        setSaveError(error instanceof Error ? error.message : String(error))
-        addLog('error', text(`角色卡保存失败：${error}`, 'Could not save character cards.'))
-      }
-      if (propagateFailure) throw error
-    }
-  }
-
-  const exitSaveRef = useRef(handleSave)
-  useEffect(() => {
-    exitSaveRef.current = handleSave
-  })
-  useEffect(() => {
-    registerEditorExitSaveHandler({
-      type: 'character',
-      projectKey,
-      save: () => exitSaveRef.current(true),
-    })
-  }, [projectKey])
 
   const handleDeleteAllCharacters = async () => {
-    const projectSession = captureProjectSession(currentProject)
-    if (
-      !dataReady
-      || characters.length === 0
-      || !projectSession
-      || !isProjectSessionPath(projectSession, projectKey)
-    ) return
+    const projectSession = profile.beginDelete('all')
+    if (!projectSession) return
     const ok = await confirm(
       text(
         `确定删除全部 ${characters.length} 个角色及其关系吗？角色图谱是角色名单的投影，无法单独清空。此操作不可撤销。`,
@@ -161,32 +67,7 @@ export default function CharacterEditor({ projectKey }: { projectKey: string }) 
       },
     )
     if (!ok || !isProjectSessionCurrent(projectSession)) return
-    const cleared = await clearAllCharacters(projectKey, projectSession)
-    if (!isProjectSessionCurrent(projectSession)) return
-    addLog(
-      cleared ? 'info' : 'error',
-      cleared
-        ? text('已删除全部角色及关系', 'Deleted all characters and relationships')
-        : text('删除全部角色失败，请刷新后重试', 'Could not delete all characters. Refresh and try again.'),
-    )
-  }
-
-  const updateCurrentField = <K extends Exclude<keyof CharacterCard, 'name' | 'characterId'>>(
-    name: string,
-    key: K,
-    value: CharacterCard[K],
-  ) => {
-    const projectSession = captureProjectSession(currentProject)
-    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
-    setSaveOutcome('idle')
-    updateField(name, key, value)
-  }
-
-  const renameCurrentCharacter = (name: string, nextName: string) => {
-    const projectSession = captureProjectSession(currentProject)
-    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
-    setSaveOutcome('idle')
-    renameCharacter(name, nextName)
+    await profile.deleteAll(projectSession)
   }
 
   // ===== 渲染 =====
