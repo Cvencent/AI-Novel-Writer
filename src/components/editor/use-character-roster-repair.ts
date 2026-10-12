@@ -1,6 +1,7 @@
 import type { MainGenerationRunHandle } from '../../services/generation/generation-runtime'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { useCharacterStore } from '../../stores/character-store'
 import { useProjectStore } from '../../stores/project-store'
 import { ipc } from '../../services/ipc-client'
 import { migrateLegacyCharacterRoster } from '../../services/workflows/architecture-workflow'
@@ -95,6 +96,15 @@ export function useCharacterRosterRepair({
       controller.invalidate()
     }
   }, [controller])
+
+  // 角色名单保存后修订号前进，角色图谱投影与名单状态随之重读；首次读取由上面的 effect 负责。
+  const rosterRevision = useCharacterStore(state => state.dataProjectKey === projectKey ? state.rosterRevision : null)
+  const seenRevision = useRef(rosterRevision)
+  useEffect(() => {
+    if (rosterRevision === null || rosterRevision === seenRevision.current) return
+    seenRevision.current = rosterRevision
+    void controller.load()
+  }, [controller, rosterRevision])
 
   // The previous session's state is never rendered during a switch, even in
   // the small interval before the next read resolves. The old controller is

@@ -15,7 +15,8 @@ import { confirm } from '../ui/Confirm'
 import { toast } from '../ui/Toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui/Dialog'
 
-interface Props { projectKey: string; compact?: boolean; disabled?: boolean }
+/** ink：新外壳角色名单里的纸墨次按钮。 */
+interface Props { projectKey: string; compact?: boolean; disabled?: boolean; ink?: boolean }
 
 interface ImportDraft {
   source: string
@@ -70,7 +71,7 @@ export function CharacterCardImportButton(props: Props) {
   return <SessionImportButton key={JSON.stringify(session)} {...props} session={session} />
 }
 
-function SessionImportButton({ session, compact, disabled }: Props & { session: ProjectSessionContext }) {
+function SessionImportButton({ session, compact, disabled, ink }: Props & { session: ProjectSessionContext }) {
   const { locale, text } = useLocaleStore()
   const sessionKey = importSessionKey(session)
   const draft = useSyncExternalStore(
@@ -161,9 +162,11 @@ function SessionImportButton({ session, compact, disabled }: Props & { session: 
   }
 
   return <>
-    <Button variant="ghost" size={compact ? 'icon' : 'sm'} className={compact ? 'h-6 w-6' : undefined} disabled={disabled || busy} title={label} aria-label={label} onClick={() => setOpen(true)}>
-      <ClipboardPaste size={14} />{!compact && label}
-    </Button>
+    {ink
+      ? <Button variant="secondary" size="sm" disabled={disabled || busy} onClick={() => setOpen(true)}><ClipboardPaste size={14} aria-hidden />{label}</Button>
+      : <Button variant="ghost" size={compact ? 'icon' : 'sm'} className={compact ? 'h-6 w-6' : undefined} disabled={disabled || busy} title={label} aria-label={label} onClick={() => setOpen(true)}>
+        <ClipboardPaste size={14} />{!compact && label}
+      </Button>}
     <Dialog open={open} onOpenChange={value => { if (!busy) setOpen(value) }}>
       <DialogContent>
         <DialogHeader>

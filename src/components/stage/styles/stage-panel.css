@@ -56,29 +56,6 @@
   overflow: auto;
 }
 
-.stage-characters {
-  display: flex;
-}
-
-.stage-characters-list {
-  width: 280px;
-  flex: none;
-  overflow: auto;
-  border-right: 1px solid var(--rule);
-}
-
-.stage-characters-editor {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.stage-characters-editor > * {
-  flex: 1;
-  min-height: 0;
-}
-
 /* 侧页贴在面板右缘，与画板里的审稿、运行侧页一致：不再浮起，用一条分隔线区分 */
 .stage-sheet-slot {
   width: var(--sheet-w);

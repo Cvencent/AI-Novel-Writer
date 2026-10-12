@@ -30,7 +30,7 @@ import {
 import { openBuiltinEditor } from '../../../stores/open-builtin-editor'
 import { renderIcon } from './sidebar-icons'
 import { showSidebarMenu } from './sidebar-menu'
-import { createProjectArchTabId } from '../../editor/arch-file-refresh-policy'
+import { clearArchSection } from '../../editor/clear-arch-section'
 import DraftBoxGroup from './DraftBoxGroup'
 import ManuscriptGroup from './ManuscriptGroup'
 import { useLocaleStore } from '../../../stores/locale-store'
@@ -444,20 +444,12 @@ function ArchFileRow({
       }),
     )
     if (!projectSession) return
-    const projectKey = projectSession.projectPath
-
-    const { writeCoreContent } = await import('../../../services/resource-protocol')
-    const success = await writeCoreContent(filePath, '', projectSession)
+    const success = await clearArchSection(filePath, projectSession)
     if (!isProjectSessionCurrent(projectSession)) return
     if (!success) {
       toast.error(text(`清空「${f.label}」失败`, `Could not clear “${english.label}”`))
       return
     }
-
-    const store = useEditorStore.getState()
-    const tabId = createProjectArchTabId(projectKey, filePath)
-    store.syncTabContent(tabId, '')
-    store.markTabSaved(tabId, '')
     await onCleared()
     if (!isProjectSessionCurrent(projectSession)) return
     toast.success(text(`已清空「${f.label}」`, `Cleared “${english.label}”`))

@@ -15,3 +15,5 @@
 @import './styles/stage-settings.css';
 @import './styles/stage-legacy-bridge.css';
 @import './run/run-sheet.css';
+@import './architecture/architecture.css';
+@import './characters/characters.css';

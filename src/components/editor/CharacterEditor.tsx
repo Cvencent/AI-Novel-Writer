@@ -1,12 +1,8 @@
 import { useState } from 'react'
 import { Camera, ClipboardList, Network, Save, Trash2, Users, X } from 'lucide-react'
 import { confirm } from '../ui/Confirm'
-import {
-  useCharacterStore,
-  EMPTY_STATE,
-  type CharacterCard,
-  type CharacterCurrentState,
-} from '../../stores/character-store'
+import { useCharacterStore, type CharacterCard } from '../../stores/character-store'
+import { authorStateEdit, CHARACTER_STATE_FIELDS, stateFieldView } from './character-state-fields'
 import RelationshipGraph from './RelationshipGraph'
 import { EmptyState as BaseEmptyState } from '../ui/EmptyState'
 import { Button } from '../ui/Button'
@@ -181,52 +177,31 @@ export default function CharacterEditor({ projectKey }: { projectKey: string }) 
               </span>
             </div>
             <div className="space-y-3">
-              {([
-                ['location', text('当前位置/阵营', 'Location / faction')],
-                ['powerLevel', text('修为境界/能力等级', 'Power or ability level')],
-                ['physicalState', text('身体状态（伤势/BUFF/外貌）', 'Physical state (injuries, effects, appearance)')],
-                ['mentalState', text('心理状态（愿望/恐惧/心态）', 'Mental state (goals, fears, mindset)')],
-                ['keyItems', text('关键道具/资源', 'Key items / resources')],
-                ['recentEvents', text('最近重要事件', 'Recent important events')],
-              ] as const).map(([field, label]) => {
-                const provenance = selectedCard.currentState?.provenance?.[field]
-                const historicalDerived = provenance?.kind === 'derived'
-                  && !currentDerivedFields[selectedCard.characterId ?? '']?.includes(field)
+              {CHARACTER_STATE_FIELDS.map(([field, zh, en]) => {
+                const label = text(zh, en)
+                const view = stateFieldView(selectedCard, field, currentDerivedFields)
                 return <div key={field}>
                   <Label>
                     {label}
                     <span className="ml-2 text-[0.65rem] font-normal text-[var(--color-text-secondary)]">
-                      {historicalDerived
+                      {view.source === 'historical'
                         ? text('历史派生（非当前）', 'Historical derived value (not current)')
-                        : provenance?.kind === 'author'
+                        : view.source === 'author'
                         ? text('作者输入', 'Author input')
-                        : provenance?.kind === 'derived'
+                        : view.source === 'derived'
                           ? text('定稿派生', 'Derived from finalized prose')
                           : text('来源未知', 'Unknown source')}
                     </span>
                   </Label>
                   <Textarea
-                    value={historicalDerived ? '' : selectedCard.currentState?.[field]?.toString() ?? ''}
-                    onChange={(e) => {
-                      const cs: CharacterCurrentState = {
-                        ...(selectedCard.currentState ?? EMPTY_STATE),
-                        [field]: e.target.value,
-                        provenance: {
-                          ...selectedCard.currentState?.provenance,
-                          [field]: {
-                            kind: 'author',
-                            chapterNumber: selectedCard.currentState?.updatedAtChapter ?? 0,
-                          },
-                        },
-                      }
-                      updateCurrentField(selectedId!, 'currentState', cs)
-                    }}
+                    value={view.value}
+                    onChange={(e) => updateCurrentField(selectedId!, 'currentState', authorStateEdit(selectedCard, field, e.target.value))}
                     rows={2}
                     placeholder={`${label}...`}
                   />
-                  {historicalDerived && selectedCard.currentState?.[field] && (
+                  {view.history && (
                     <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
-                      {text('历史记录（来源已失效或未核验）：', 'History (source invalid or unverified): ')}{selectedCard.currentState[field]}
+                      {text('历史记录（来源已失效或未核验）：', 'History (source invalid or unverified): ')}{view.history}
                     </p>
                   )}
                 </div>

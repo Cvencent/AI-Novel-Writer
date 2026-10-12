@@ -65,6 +65,7 @@ export function useArchitectureOverview(projectKey: string) {
   const [archStatus, setArchStatus] = useState<Record<string, boolean>>({})
   const [planningRecovery, setPlanningRecovery] = useState<GenerationRecoveryContext | null>(null)
   const [wordCounts, setWordCounts] = useState<Record<string, number>>({})
+  const [contents, setContents] = useState<Record<string, string>>({})
   const [synopsisIncomplete, setSynopsisIncomplete] = useState(false)
   const [synopsisRecoveryFailed, setSynopsisRecoveryFailed] = useState(false)
   const [synopsisCoveredTo, setSynopsisCoveredTo] = useState<number>(0)
@@ -98,6 +99,7 @@ export function useArchitectureOverview(projectKey: string) {
       archStatusRequestGate.current.begin()
       setArchStatus({})
       setWordCounts({})
+      setContents({})
       setSynopsisIncomplete(false)
       setSynopsisRecoveryFailed(false)
       setSynopsisCoveredTo(0)
@@ -208,6 +210,7 @@ export function useArchitectureOverview(projectKey: string) {
     ) return
     setArchStatus(status)
     setWordCounts(counts)
+    setContents({ premise: core?.premise ?? '', worldbuilding: core?.worldbuilding ?? '', synopsis: core?.synopsis ?? '' })
     setSynopsisIncomplete(interrupted)
     setSynopsisRecoveryFailed(recoveryFailed && Boolean(status.synopsis))
     setSynopsisCoveredTo(coveredTo)
@@ -434,6 +437,8 @@ export function useArchitectureOverview(projectKey: string) {
     loading,
     archStatus,
     wordCounts,
+    /** 故事前提、世界观、情节大纲的正式内容；角色名单以角色卡为准，不在这里。 */
+    contents,
     planningRecovery,
     synopsis: {
       incomplete: synopsisIncomplete,
