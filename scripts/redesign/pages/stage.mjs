@@ -89,9 +89,46 @@ export async function findChapter(page, query) {
 
 export const capsule = page => root(page).getByRole('button', { expanded: false }).filter({ hasText: /运行中|%|等你确认/ }).first()
 
+/** 设置在新外壳里是内容面板里的页面：左侧「设置分组」导航，当前一页的标题是一级标题。 */
+export const settingsNav = page => root(page).getByRole('navigation', { name: '设置分组' })
+export const settingsLink = (page, name) => settingsNav(page).getByRole('button', { name, exact: true })
+
 export async function openSettings(page) {
   await spine(page).getByRole('button', { name: '设置', exact: true }).click()
-  await page.getByRole('button', { name: '关闭设置' }).waitFor({ state: 'visible' })
+  await settingsNav(page).waitFor({ state: 'visible' })
+}
+
+export async function showSettingsPage(page, name) {
+  await settingsLink(page, name).click()
+  await root(page).getByRole('heading', { level: 1, name, exact: true }).waitFor({ state: 'visible' })
+}
+
+export function currentSettingsPage(page) {
+  return settingsNav(page).locator('[aria-current="page"]').innerText()
+}
+
+/** 设置分组导航：每组的名字与其中各页。 */
+export function settingsGroups(page) {
+  return settingsNav(page).getByRole('group').evaluateAll(groups => groups.map(group => ({
+    group: group.getAttribute('aria-label'),
+    pages: [...group.querySelectorAll('button')].map(button => button.textContent.trim()),
+  })))
+}
+
+export async function closeSettings(page) {
+  await settingsNav(page).getByRole('button', { name: /^返回(作品|书房)$/ }).click()
+  await settingsNav(page).waitFor({ state: 'detached' })
+}
+
+/**
+ * 关窗时的退出确认。旧外壳的 Radix 对话框开着时会把它之外的节点设为 aria-hidden，后开的退出确认也在其中，
+ * 按角色找不到，所以按类名找。
+ */
+export const exitDialog = page => page.locator('.stage-dialog').filter({ hasText: '退出前处理未保存的内容' })
+
+export async function openWorkMenuItem(page, name, item) {
+  await root(page).getByRole('banner').getByRole('button', { name: `《${name}》作品菜单` }).click()
+  await page.getByRole('menuitem', { name: item }).click()
 }
 
 export async function backToLibrary(page, name) {

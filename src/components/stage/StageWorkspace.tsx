@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useProjectStore } from '../../stores/project-store'
 import { useEditorStore, type EditorTab } from '../../stores/editor-store'
+import { useLayoutStore } from '../../stores/layout-store'
 import { useLocaleStore } from '../../stores/locale-store'
 import { navigate } from '../../stores/navigation/navigation-intents'
 import { useStageStore } from '../../stores/navigation/stage-store'
@@ -14,6 +15,7 @@ import { DangerConfirm } from '../ui/DangerConfirm'
 import RunSheet from './run/RunSheet'
 import StageLibrary from './library/StageLibrary'
 import StageSetup from './setup/StageSetup'
+import StageSettings from './settings/StageSettings'
 import StageTabs from './StageTabs'
 import { commandLabel } from './shortcut-keys'
 import { stageTabName } from './stage-text'
@@ -34,6 +36,7 @@ function TabContent({ tab, project }: { tab: EditorTab; project: ProjectData }) 
 }
 
 export default function StageWorkspace({ library, focus }: { library: boolean; focus: boolean }) {
+  const settingsOpen = useLayoutStore(s => s.settingsOpen)
   const text = useLocaleStore(s => s.text)
   const project = useProjectStore(s => s.currentProject)
   const tabs = useEditorStore(s => s.tabs)
@@ -51,15 +54,14 @@ export default function StageWorkspace({ library, focus }: { library: boolean; f
 
   if (library || !project) {
     return (
-      <main className="stage-panel" data-page="library">
-        <div className="stage-library">
-          <StageLibrary />
-        </div>
+      <main className="stage-panel" data-page={settingsOpen ? 'settings' : 'library'}>
+        {settingsOpen ? <StageSettings library /> : <div className="stage-library"><StageLibrary /></div>}
       </main>
     )
   }
 
-  const showTabs = !focus && tabs.length > 1
+  // 设置页盖在内容区上，标签内容保持挂载（编辑器的撤销历史、滚动位置不丢），运行侧页照常在右侧。
+  const showTabs = !focus && !settingsOpen && tabs.length > 1
   return (
     <main className="stage-panel">
       {showTabs && (
@@ -73,8 +75,10 @@ export default function StageWorkspace({ library, focus }: { library: boolean; f
         />
       )}
       <div className="stage-body">
+        {settingsOpen && <StageSettings library={false} />}
         <div
           className="stage-content"
+          hidden={settingsOpen}
           id={STAGE_CONTENT_ID}
           tabIndex={-1}
           role={showTabs ? 'tabpanel' : undefined}

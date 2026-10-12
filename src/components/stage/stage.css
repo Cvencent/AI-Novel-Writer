@@ -12,5 +12,6 @@
 @import './styles/stage-library.css';
 @import './styles/stage-forms.css';
 @import './styles/stage-setup.css';
+@import './styles/stage-settings.css';
 @import './styles/stage-legacy-bridge.css';
 @import './run/run-sheet.css';

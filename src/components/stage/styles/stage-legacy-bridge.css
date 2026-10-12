@@ -14,7 +14,7 @@
   --stage-legacy-accent-hover: color-mix(in srgb, var(--accent) 50%, var(--frame));
 }
 
-.stage-shell :where(.stage-content, .stage-library, .stage-sheet-slot) {
+.stage-shell :where(.stage-content, .stage-library, .stage-sheet-slot, .stage-set-legacy) {
   --color-bg: var(--surface);
   --color-raised: var(--paper);
   --color-sidebar: var(--surface-2);
@@ -44,7 +44,7 @@
  * 旧外壳的 --writer-* 有两组：派生的一组在根上已按旧配色算好，这里按上面改过的 --color-* 重新声明，旧面板才会跟着换色；
  * 基础的 panel、line、muted、accent 只声明在 .writer-shell 上，新外壳里没有，书房的欢迎页读它们画按钮、概览框与书脊，这里补上。
  */
-.stage-shell :where(.stage-content, .stage-library, .stage-sheet-slot) {
+.stage-shell :where(.stage-content, .stage-library, .stage-sheet-slot, .stage-set-legacy) {
   --writer-panel: var(--color-panel);
   --writer-line: var(--color-border);
   --writer-muted: var(--color-text-muted);

@@ -271,11 +271,6 @@ export default function App() {
         isOpen={exportOpen}
         onClose={closeExport}
       />
-      {/* 全屏设置弹窗 */}
-      <SettingsModal
-        open={settingsOpen}
-        onClose={closeSettings}
-      />
     </>
   )
 
@@ -328,12 +323,17 @@ export default function App() {
         immersive={immersive}
       />
 
-      {/* 新外壳的书房有自己的纸墨新建对话框，这个弹窗只属于旧外壳。 */}
+      {/* 新外壳有自己的纸墨新建对话框与设置页，这两个弹窗只属于旧外壳。 */}
       <NewProjectDialog
         open={newProjectOpen}
         onClose={closeNewProject}
       />
       {globalDialogs}
+      {/* 全屏设置弹窗 */}
+      <SettingsModal
+        open={settingsOpen}
+        onClose={closeSettings}
+      />
     </AppSkinRoot>
   )
 }

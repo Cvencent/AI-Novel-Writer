@@ -420,6 +420,9 @@ async function chromeContrastFailures(page) {
       ['.stage-ov-title', 4.5], ['.stage-ov-meta', 3], ['.stage-ov-bar-label', 3], ['.stage-ov .pi-stat-label', 3],
       ['.stage-setup-title', 4.5], ['.stage-setup-lede', 4.5], ['.stage-setup-label', 4.5], ['.stage-setup-hint', 3], ['.stage-chip', 4.5],
       ['.stage-setup-panel-title', 4.5], ['.stage-setup-panel-desc', 3], ['.stage-setup-outline-foot', 3],
+      ['.stage-set-title', 4.5], ['.stage-set-lede', 4.5], ['.stage-set-link', 4.5], ['.stage-set-group-label', 3], ['.stage-set-row-title', 4.5],
+      ['.stage-set-row-desc', 3], ['.stage-set-model-name', 4.5], ['.stage-set-model-meta', 3], ['.stage-badge', 4.5], ['.stage-set-theme-name', 4.5],
+      ['.stage-set-theme-desc', 3], ['.pi-empty-title', 4.5], ['.pi-empty-text', 3],
       ['.stage-update-title', 4.5], ['.stage-update-text', 3], ['.stage-library .pi-btn:not(.pi-btn--icon)', 4.5], ['.stage-library .pi-btn--icon', 3], ['.pi-notice-title', 4.5], ['.pi-notice-text', 3],
     ]
     return checks.flatMap(([selector, minimum]) => [...document.querySelectorAll(`[data-shell-presentation="stage"] ${selector}`)].map(element => {
@@ -601,6 +604,60 @@ export const STAGE_SCENARIOS = {
     await stage.saveStatus(page).filter({ hasText: '未保存' }).waitFor({ state: 'visible' })
     assert.deepEqual(await chromeContrastFailures(page), [], '设定页文字对比度不足')
   } },
+  'stage-settings-groups': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+    await stage.openSettings(page)
+    assert.deepEqual(await stage.settingsGroups(page), [
+      { group: '常用', pages: ['AI 模型', '外观'] },
+      { group: '高级', pages: ['检索模型', '网络代理', '提示词模板', '写作 Skills'] },
+      { group: '其他', pages: ['项目备份', '关于与更新'] },
+    ], '设置按常用、高级、其他三组')
+    assert.equal(await stage.currentSettingsPage(page), 'AI 模型', '从流程脊打开时落在 AI 模型')
+    assert.deepEqual(await page.getByRole('navigation', { name: '位置' }).locator('span').allInnerTexts(), ['设置', 'AI 模型'])
+    await stage.showSettingsPage(page, '外观')
+    const zoom = page.getByRole('group', { name: '界面缩放' })
+    await zoom.getByRole('button', { name: '放大' }).click()
+    await zoom.getByText('105%').waitFor({ state: 'visible' })
+    await zoom.getByRole('button', { name: '还原' }).click()
+    await zoom.getByText('100%').waitFor({ state: 'visible' })
+    assert.deepEqual(await stage.primaryButtons(page), [], '外观页没有主按钮')
+    assert.deepEqual(await chromeContrastFailures(page), [], '设置页文字对比度不足')
+  }, after: async ({ page }) => {
+    await page.keyboard.press('Escape')
+    await stage.settingsNav(page).waitFor({ state: 'detached' })
+    await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
+  } },
+  'stage-settings-dark': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page, reload }) => {
+    await stage.openSettings(page)
+    await stage.showSettingsPage(page, '外观')
+    await page.getByRole('radiogroup', { name: '主题' }).getByRole('radio', { name: /^深色/ }).click()
+    await stage.root(page).and(page.locator('[data-theme="dark"]')).waitFor({ state: 'visible' })
+    await reload()
+    assert.equal(await stage.root(page).getAttribute('data-theme'), 'dark', '重新载入后仍是深色')
+    await stage.openFromLibrary(page, STAGE_SAMPLE.name)
+    await stage.openSettings(page)
+    await stage.showSettingsPage(page, '外观')
+    assert.equal(await page.getByRole('radio', { name: /^深色/ }).getAttribute('aria-checked'), 'true')
+    assert.deepEqual(await chromeContrastFailures(page), [], '深色设置页文字对比度不足')
+  } },
+  'stage-settings-model': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+    await stage.openSettings(page)
+    const models = page.getByRole('list', { name: 'AI 模型' })
+    await models.getByText(FAKE_MODEL.name, { exact: true }).waitFor({ state: 'visible' })
+    await models.getByRole('button', { name: `「${FAKE_MODEL.name}」更多操作` }).click()
+    await page.getByRole('menuitem', { name: '删除模型…' }).click()
+    await page.getByRole('dialog', { name: `删除「${FAKE_MODEL.name}」？` }).waitFor({ state: 'visible' })
+  }, after: async ({ page }) => {
+    await page.getByRole('dialog', { name: `删除「${FAKE_MODEL.name}」？` }).getByRole('button', { name: '取消', exact: true }).click()
+    await page.getByRole('list', { name: 'AI 模型' }).getByText(FAKE_MODEL.name, { exact: true }).waitFor({ state: 'visible' })
+  } },
+  'stage-first-model': { model: false, shell: 'stage', run: async ({ page }) => {
+    await stage.modelMissingNotice(page).getByRole('button', { name: '添加模型' }).click()
+    await stage.settingsNav(page).waitFor({ state: 'visible' })
+    assert.equal(await stage.currentSettingsPage(page), 'AI 模型')
+    await stage.root(page).getByRole('heading', { name: '还没有添加模型' }).waitFor({ state: 'visible' })
+    assert.deepEqual(await stage.primaryButtons(page), ['添加模型'], '没有模型时设置页唯一的主按钮是添加模型')
+    assert.deepEqual(await chromeContrastFailures(page), [], '首次使用的设置页文字对比度不足')
+  } },
   'stage-run': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page, fake }) => {
     fake.gate.hold()
     await stage.stageButton(page, '蓝图').click()
@@ -621,8 +678,9 @@ export const STAGE_SCENARIOS = {
     await settings.open(page)
     await settings.chooseShell(page, '创作流程（预览）')
     await stage.root(page).waitFor({ state: 'visible' })
-    assert.equal(await settings.currentSection(page), '外观', '切换外壳后设置仍停在外观')
-    await settings.close(page)
+    await stage.settingsNav(page).waitFor({ state: 'visible' })
+    assert.equal(await stage.currentSettingsPage(page), '外观', '切换外壳后设置仍停在外观')
+    await stage.closeSettings(page)
     await stage.spine(page).waitFor({ state: 'visible' })
     await stage.waitForProse(page, FIXTURE_PROSE.slice(0, 12))
     assert.deepEqual(await page.getByRole('navigation', { name: '位置' }).locator('span').allInnerTexts(), ['正文', '第 1 章'],
@@ -640,28 +698,30 @@ export const STAGE_SCENARIOS = {
   } },
   'stage-modal-layers': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ app, page }) => {
     await stage.stageButton(page, '设定').click()
-    await page.getByPlaceholder('如：修仙/重生/末世').fill('海港悬疑')
-    await stage.saveStatus(page).filter({ hasText: '未保存' }).waitFor({ state: 'visible' })
-    await stage.openSettings(page)
+    await stage.dirtySetup(page)
+    await stage.openWorkMenuItem(page, STAGE_SAMPLE.name, '导出…')
+    const exportDialog = page.getByRole('dialog', { name: '导出项目' })
+    await exportDialog.waitFor({ state: 'visible' })
     const discard = page.getByRole('dialog', { name: '放弃未保存的修改？' })
     const observed = {}
     await page.keyboard.press('Control+K')
     await page.waitForTimeout(300)
-    observed.paletteUnderSettings = await stage.palette(page).count() > 0
-    if (observed.paletteUnderSettings) await page.keyboard.press('Escape')
+    observed.paletteUnderDialog = await stage.palette(page).count() > 0
+    if (observed.paletteUnderDialog) await page.keyboard.press('Escape')
     await page.keyboard.press('Control+W')
     await page.waitForTimeout(300)
-    observed.discardUnderSettings = await discard.count() > 0
-    if (observed.discardUnderSettings) await page.keyboard.press('Escape')
+    observed.discardUnderDialog = await discard.count() > 0
+    if (observed.discardUnderDialog) await page.keyboard.press('Escape')
     await shell.requestWindowClose(app)
-    const exit = page.getByRole('dialog', { name: '退出前处理未保存的内容' })
+    const exit = stage.exitDialog(page)
     await exit.waitFor({ state: 'visible' })
     observed.exitOnTop = await stage.isTopmost(exit)
-    assert.deepEqual(observed, { paletteUnderSettings: false, discardUnderSettings: false, exitOnTop: true },
-      '设置开着时 Ctrl K、Ctrl W 不在设置下面开层，关窗时退出确认盖在设置之上')
+    assert.deepEqual(observed, { paletteUnderDialog: false, discardUnderDialog: false, exitOnTop: true },
+      '旧对话框开着时 Ctrl K、Ctrl W 不在它下面开层，关窗时退出确认盖在它之上')
   }, after: async ({ page }) => {
-    await page.getByRole('dialog', { name: '退出前处理未保存的内容' }).getByRole('button', { name: '取消', exact: true }).click()
-    await settings.close(page)
+    await stage.exitDialog(page).getByText('取消', { exact: true }).click()
+    await page.keyboard.press('Escape')
+    await page.getByRole('dialog', { name: '导出项目' }).waitFor({ state: 'hidden' })
   } },
   /**
    * 应用菜单里有 CommandOrControl+W 的「关闭」，页面没拦下的 Ctrl W 会关窗。驱动注入的按键到不了菜单快捷键，

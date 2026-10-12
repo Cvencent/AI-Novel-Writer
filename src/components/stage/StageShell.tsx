@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useProjectStore } from '../../stores/project-store'
 import { useLayoutStore } from '../../stores/layout-store'
 import { useLocaleStore } from '../../stores/locale-store'
@@ -12,6 +12,7 @@ import { ipc } from '../../services/ipc-client'
 import ClearProjectDataDialog from '../dialogs/ClearProjectDataDialog'
 import type { MenuGroupSpec } from '../ui/Menu'
 import NewWorkDialog from './library/NewWorkDialog'
+import { SETTINGS_PAGES, settingsPageOf } from './settings/settings-pages'
 import StagePalette from './StagePalette'
 import { paletteItem, type PaletteItem } from './palette-filter'
 import StageSpine from './StageSpine'
@@ -62,6 +63,15 @@ export default function StageShell({ theme }: { theme: Theme }) {
 
   useEffect(() => {
     if (library && useStageStore.getState().focus) useStageStore.setState({ focus: false })
+  }, [library])
+
+  // 设置页属于打开它时的书房或作品；在书房与作品之间切换时收起。
+  const settingsOpen = useLayoutStore(s => s.settingsOpen)
+  const settingsSection = useLayoutStore(s => s.settingsSection)
+  const wasLibrary = useRef(library)
+  useEffect(() => {
+    if (wasLibrary.current !== library && useLayoutStore.getState().settingsOpen) useLayoutStore.getState().closeSettings()
+    wasLibrary.current = library
   }, [library])
 
   const toggleFocus = useCallback(() => useStageStore.setState(state => ({ focus: !state.focus, palette: null })), [])
@@ -121,7 +131,8 @@ export default function StageShell({ theme }: { theme: Theme }) {
     return [...go, ...chapters, ...references, ...actions, ...(library ? books : [])]
   }, [view.stages, view.chapters, hasProject, library, text, toggleFocus, recentProjects])
 
-  const crumbs = crumbsFor(view, library, activeName, text)
+  const settingsName = SETTINGS_PAGES.find(page => page.id === settingsPageOf(settingsSection))?.name
+  const crumbs = settingsOpen && settingsName ? [text('设置', 'Settings'), text(...settingsName)] : crumbsFor(view, library, activeName, text)
   const focusChapter = view.location?.kind === 'stage' ? view.location.chapter : undefined
   const focusRow = view.chapters.find(row => row.number === focusChapter)
   const focusTitle = focusRow ? { chapter: focusRow.number, title: focusRow.title || chapterLabel(focusRow.number, text) } : { title: activeName ?? '' }
@@ -149,6 +160,7 @@ export default function StageShell({ theme }: { theme: Theme }) {
             stages={view.stages}
             chapters={view.chapters}
             location={view.location}
+            settingsOpen={settingsOpen}
             onStage={stage => navigate({ kind: 'stage', stage })}
             onChapter={chapterNumber => navigate({ kind: 'chapter', chapterNumber })}
             onResource={page => navigate({ kind: 'resource', page })}

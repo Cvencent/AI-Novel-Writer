@@ -11,9 +11,8 @@ import { Button } from '../ui/Button'
 import { Menu, type MenuGroupSpec } from '../ui/Menu'
 import RunCapsule from './RunCapsule'
 import { commandLabel } from './shortcut-keys'
+import { BRAND_MARK } from './stage-text'
 
-/** 纸墨的字标，与画板一致；是标识，不随界面语言变化。 */
-const BRAND_MARK = '墨'
 
 interface StageTopBarProps {
   /** 位置面包屑，最后一项为当前页。 */

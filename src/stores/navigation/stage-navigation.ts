@@ -19,9 +19,12 @@ import { useStageStore } from './stage-store'
 /**
  * 回到作品：离开书房、退出沉浸。不收起搜索：搜索是模态层，作者在里面选中一项时它自己先关；
  * 搜索开着时还能到这里的只有自动跳转（打开作品后的落点、工作流开始时打开运行侧页），它们不该关掉作者正在输入的搜索。
+ * 去往具体的阶段、资料页或章节时同时收起设置页；不带去处的「回到作品」（打开作品后的默认落点）不收，
+ * 打开作品途中点开的设置页不会被它关掉。
  */
-function enterWork(): void {
+function enterWork(destination: boolean): void {
   useStageStore.setState({ focus: false })
+  if (destination && useLayoutStore.getState().settingsOpen) useLayoutStore.setState({ settingsOpen: false })
   if (useLayoutStore.getState().sidebarView === 'home') useLayoutStore.setState({ sidebarView: 'project', activeRailItem: 'project' })
 }
 
@@ -102,7 +105,7 @@ async function openManuscript(): Promise<void> {
   else openPageTab('blueprint')
 }
 
-/** 新外壳下各意图的落点。设置与写作此章仍由旧对话框承接，RD-5、RD-7 换成新页面。 */
+/** 新外壳下各意图的落点。设置是内容面板里的设置页；写作此章仍由旧对话框承接，RD-7 换成新弹层。 */
 export function stageNavigate(intent: NavigationIntent): void {
   if (intent.kind === 'settings') {
     useLayoutStore.setState({ settingsOpen: true, settingsSection: intent.section })
@@ -112,7 +115,7 @@ export function stageNavigate(intent: NavigationIntent): void {
     useLayoutStore.setState(chapterWritePrefill(intent.chapterNumber, intent.write))
     return
   }
-  enterWork()
+  enterWork(intent.kind !== 'run' && !(intent.kind === 'stage' && !intent.stage))
   switch (intent.kind) {
     case 'stage':
       if (!intent.stage) useStageStore.setState({ sheet: null })
