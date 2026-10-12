@@ -406,7 +406,7 @@ export const ARCH_SCENARIOS = {
   /** 评审视频：架构四节与主按钮、生成对话框的覆盖与保留、大纲提示条、清空此节的危险确认、角色名单保存与关系图谱。配 --video。 */
   'arch-tour': { model: false, shell: 'stage', setup: seedArch({ clear: ['worldbuilding'], characters: ['守塔人', '沈砚'] }), run: async ({ page }) => {
     await openArchitecture(page)
-    await pause(2500)
+    await pause(7000)
     await arch.primary(page).click()
     await arch.dialog(page).waitFor({ state: 'visible' })
     await pause(1500)
@@ -430,7 +430,7 @@ export const ARCH_SCENARIOS = {
     await root(page).locator('.cast-save-state').filter({ hasText: '已保存' }).waitFor({ timeout: 20_000 })
     await pause(1500)
     await root(page).getByRole('button', { name: '关系图谱', exact: true }).click()
-    await pause(2000)
+    await pause(3500)
     await root(page).getByRole('button', { name: '放大关系图谱' }).click()
     await pause(800)
     await root(page).getByRole('button', { name: '放大关系图谱' }).click()
@@ -438,7 +438,7 @@ export const ARCH_SCENARIOS = {
     await root(page).getByRole('button', { name: '基础设定', exact: true }).click()
     await pause(1200)
     await stage.tab(page, '架构').click()
-    await pause(2500)
+    await pause(5000)
   } },
 }
 
