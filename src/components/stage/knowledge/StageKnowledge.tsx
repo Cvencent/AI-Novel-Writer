@@ -13,7 +13,7 @@ import { EmptyState } from '../../ui/EmptyState'
 import { Notice } from '../../ui/Notice'
 import { SegmentedControl } from '../../ui/SegmentedControl'
 import PlainConfirm from '../PlainConfirm'
-import { commandLabel, isCommand, isComposing } from '../shortcut-keys'
+import { commandLabel, isCommand, isComposing, isModalOpen } from '../shortcut-keys'
 import { highlight } from './search-highlight'
 import { isImportedDocument, useKnowledgeBase } from './use-knowledge-base'
 
@@ -59,7 +59,8 @@ export default function StageKnowledge() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || isComposing(event) || !isCommand(event, 's')) return
+      // 外壳的快捷键先于本页处理 Ctrl S 并已拦下默认行为，所以这里不看 defaultPrevented。
+      if (isComposing(event) || !isCommand(event, 's') || isModalOpen()) return
       if (!dirty) return
       event.preventDefault()
       void saveRef.current()

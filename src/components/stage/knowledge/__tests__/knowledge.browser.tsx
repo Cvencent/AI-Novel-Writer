@@ -12,6 +12,7 @@ import { setActiveProjectSessionContext } from '../../../../shared/project-sessi
 import { useLayoutStore } from '../../../../stores/layout-store'
 import { useLocaleStore } from '../../../../stores/locale-store'
 import { useProjectStore } from '../../../../stores/project-store'
+import { useStageShortcuts } from '../../use-stage-shortcuts'
 import KnowledgeIndexSection from '../KnowledgeIndexSection'
 import StageKnowledge from '../StageKnowledge'
 
@@ -53,6 +54,7 @@ beforeEach(() => {
       { text: '……北郊车站三号站台发生一起列车事故……', score: 0.5, fileName: '车站档案.md' },
     ]
     if (channel === 'kb:clear-all') return { success: true }
+    if (channel === 'kb:save-document-copy') return { success: true }
     if (channel === 'kb:backfill-vectors') return { success: true, processed: 4, failed: 0 }
     throw new Error(`未配置调用：${channel}`)
   })
@@ -163,6 +165,25 @@ describe('知识库', () => {
     await click('放弃并切换')
     await vi.waitFor(() => expect(document.querySelector('textarea')?.value).toBe(copies.people))
     expect(reads()).toEqual(['station', 'people'])
+  })
+
+  it('外壳快捷键也在时，Ctrl S 保存项目副本', async () => {
+    function WithShell() {
+      useStageShortcuts({ library: false, focus: false, mac: false })
+      return <StageKnowledge />
+    }
+    await act(async () => root!.render(<WithShell />))
+    await vi.waitFor(() => expect(button(/车站档案/)).toBeTruthy())
+    await click(/车站档案/)
+    const editor = await vi.waitFor(() => {
+      const textarea = document.querySelector('textarea')
+      expect(textarea).toBeTruthy()
+      return textarea!
+    })
+    await type(editor, `${copies.station}站台已封闭。`)
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, bubbles: true, cancelable: true })) })
+    await vi.waitFor(() => expect(invoke.mock.calls.filter(([channel]) => channel === 'kb:save-document-copy').map(([, id, content]) => [id, content]))
+      .toEqual([['station', `${copies.station}站台已封闭。`]]))
   })
 
   it('没有修改时直接切换，不弹确认', async () => {

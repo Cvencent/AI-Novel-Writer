@@ -331,7 +331,7 @@ node scripts/redesign/drive.mjs --scenario typing-latency --shell stage --out <�
 | `refs-threads` | 线索路线起初是埋设未到、推进不显示、解决未到；记录第 1 章定稿里的变化后，埋设一站变成已发生 | 推进后的线索 | 否 | lane 4 |
 | `refs-delete` | 线索行「更多」里的「删除线索…」弹出危险确认；`after` 取消，线索仍在 | 危险确认 | 否 | lane 5 |
 | `refs-kb` | 导入两份资料后查「雾钟」，结果片段里标出查找词；整窗文字、可访问名称、提示与占位里没有 LanceDB、FTS、BM25、Embedding、向量、query、MCP、token | 查找结果 | 是 | lane 6 |
-| `refs-kb-dirty` | 改了项目副本不保存就点另一份资料，弹出放弃修改的确认；`after` 选「继续编辑」，修改还在 | 未保存确认 | 是 | lane 7 |
+| `refs-kb-dirty` | 改了项目副本不保存就点另一份资料，弹出放弃修改的确认；`after` 选「继续编辑」，修改还在，再按 Ctrl S 保存后「有未保存的修改」消失 | 未保存确认 | 是 | lane 7 |
 | `refs-diff` | 第 3 章选草稿 v1：对比是 `aria-readonly` 的差异页，标出新增，区域里没有输入框、可编辑元素或编辑器，没有「完成合并」 | 只读对比 | 否 | lane 8 |
 | `refs-revert` | 回退到草稿 v1：确认里写明新建草稿 v3；确认后时间线依次是草稿 v3、v2、v1，选 v3 显示「与当前稿相同」 | 回退后的时间线 | 否 | lane 9 |
 | `refs-dark` | 用 `--theme dark` 跑：知识库、版本历史、剧情树三页各查一次资料页文字对比度（标题与正文 4.5:1，说明 3:1），最后再查外壳 | 深色剧情树 | 是 | lane 10 |

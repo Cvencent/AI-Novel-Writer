@@ -15,7 +15,7 @@ interface PlainConfirmProps {
 }
 
 /**
- * 不丢数据、但要作者先知情的确认（新建回滚草稿、把资料发给模型）。外形与危险确认相同，标题与主按钮用墨色与强调色；
+ * 不丢数据、但要作者先知情的确认（新建回滚草稿、把资料发给模型、保存线索）。外形与危险确认相同，标题与主按钮用墨色与强调色；
  * 确认后由调用方决定何时关闭；忙碌或内容不完整时由调用方禁用主按钮。
  */
 export default function PlainConfirm({ open, onOpenChange, title, children, confirmLabel, disabled = false, onConfirm }: PlainConfirmProps) {
