@@ -171,7 +171,7 @@ node scripts/redesign/drive.mjs --scenario chapter-switch --shell stage --out <�
 
 ## 运行侧页（RD-4 起）
 
-场景在 `scripts/redesign/run-scenarios.mjs`，页面对象在 `scripts/redesign/pages/run-sheet.mjs`（侧页是 `complementary`「运行」，分页是其中的 `tab`，运行与恢复项是 `article`，按标题命名）。假模型另有两种回复：`fake.streamProse({ chunks, intervalMs })` 之后的正文按块定速流出，每块发出的时刻记进 `fake.streamLog`；提示词里有「【资料 」时回一份角色提取 JSON（守塔人与林岚）。复制类操作在页面里改写 `navigator.clipboard.writeText` 记录内容，不碰系统剪贴板。
+场景在 `scripts/redesign/run-scenarios.mjs`，页面对象在 `scripts/redesign/pages/run-sheet.mjs`（侧页是 `complementary`「运行」，分页是其中的 `tab`，运行与恢复项是 `article`，按标题命名）。假模型另有两种回复：`fake.streamProse({ chunks, intervalMs })` 之后的正文按块定速流出，每块发出的时刻记进 `fake.streamLog`；`fake.replyCharacterCards()` 之后，提示词里有「【资料 」时回一份角色提取 JSON（守塔人与林岚），不开时照旧回正文、提取失败。复制类操作在页面里改写 `navigator.clipboard.writeText` 记录内容，不碰系统剪贴板。
 
 | 名称 | 检查 | 截图停在 | 夹具模型 | 对应计划 |
 |---|---|---|---|---|

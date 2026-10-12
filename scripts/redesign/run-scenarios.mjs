@@ -176,7 +176,8 @@ export const RUN_SCENARIOS = {
     assert.ok(fake.requests.length > pausedAt, '继续后写了下一章')
   } },
 
-  'run-confirm': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+  'run-confirm': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page, fake }) => {
+    fake.replyCharacterCards()
     await page.keyboard.press('Control+K')
     await stage.paletteInput(page).fill('角色')
     await stage.palette(page).getByRole('option', { name: /^角色/ }).first().click()

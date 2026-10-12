@@ -21,11 +21,11 @@ function characterExtraction(prompt) {
   ] })) })
 }
 
-function responseFor(prompt) {
+function responseFor(prompt, { extraction }) {
   if (prompt.includes('【已确认纳入本次修稿的审稿项】')) return { kind: 'revision', content: FIXTURE_REVISED }
   if (prompt.includes('goalReviews')) return { kind: 'review', content: REVIEW }
   if (prompt.includes('{"updates"')) return { kind: 'character-state', content: '{"updates":[]}' }
-  if (prompt.includes('【资料 ')) return { kind: 'character-extraction', content: characterExtraction(prompt) }
+  if (extraction && prompt.includes('【资料 ')) return { kind: 'character-extraction', content: characterExtraction(prompt) }
   if (prompt.includes('只写短细纲')) return { kind: 'outline', content: FIXTURE_PROSE }
   return { kind: 'prose', content: FIXTURE_PROSE }
 }
@@ -45,6 +45,7 @@ export async function startFakeModel(diagnostics) {
   let holdEmbeddings = false
   let waiting = 0
   let stream = null
+  let extraction = false
   const streamLog = []
   const gate = {
     /** 卡住之后的模型调用；embeddings 为 true 时连嵌入也卡住（参考文本入库这类只走嵌入的步骤）。 */
@@ -60,6 +61,8 @@ export async function startFakeModel(diagnostics) {
   }
   /** 之后的正文回复按 chunks 逐块发出，块间隔 intervalMs；每块发出的时刻记进 streamLog（epoch 毫秒与累计块数）。 */
   const streamProse = plan => { stream = plan; streamLog.length = 0 }
+  /** 之后的创作资料角色提取回一份合法 JSON；不开时与以前一样回正文，提取失败，导入类场景不会停在等你确认。 */
+  const replyCharacterCards = () => { extraction = true }
   const record = (kind, detail) => {
     requests.push(kind)
     diagnostics.push(`[fake-model] ${kind} <- ${detail}`)
@@ -80,7 +83,7 @@ export async function startFakeModel(diagnostics) {
     if (request.url !== '/v1/chat/completions') { response.writeHead(404).end(); return }
     await pass()
     const prompt = (body.messages ?? []).map(message => typeof message.content === 'string' ? message.content : JSON.stringify(message.content)).join('\n')
-    const { kind, content } = responseFor(prompt)
+    const { kind, content } = responseFor(prompt, { extraction })
     record(kind, prompt.slice(0, 120).replace(/\s+/g, ' '))
     response.writeHead(200, { 'Content-Type': 'text/event-stream' })
     if (kind === 'prose' && stream) {
@@ -98,6 +101,6 @@ export async function startFakeModel(diagnostics) {
   })
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
   server.unref()
-  return { port: server.address().port, requests, gate, streamProse, streamLog,
+  return { port: server.address().port, requests, gate, streamProse, streamLog, replyCharacterCards,
     close: () => new Promise(resolve => { server.closeAllConnections(); server.close(() => resolve()) }) }
 }
