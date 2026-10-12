@@ -55,16 +55,11 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
   const overview = useArchitectureOverview(projectKey)
   const filled = useFilledSections()
   const cast = useCastSummary(projectKey)
-  const [focusSteps, setFocusSteps] = useState<ArchStepKey[] | undefined>(undefined)
   const [clearing, setClearing] = useState<ArchStepKey | null>(null)
 
   const total = ARCHITECTURE_SECTIONS.length
   const action = mainAction(filled ?? 0, total)
 
-  const openGenerate = (steps?: ArchStepKey[]) => {
-    setFocusSteps(steps)
-    overview.openGenerateDialog()
-  }
   const reload = () => {
     void overview.loadStatus()
     void overview.roster.refresh()
@@ -116,7 +111,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
               align="end"
               groups={[{ id: 'page', items: [
                 { id: 'refresh', label: text('刷新状态', 'Refresh status'), onSelect: reload },
-                ...(action === 'next' ? [{ id: 'generate', label: text('AI 生成架构…', 'Generate with AI…'), onSelect: () => openGenerate() }] : []),
+                ...(action === 'next' ? [{ id: 'generate', label: text('AI 生成架构…', 'Generate with AI…'), onSelect: () => overview.openGenerateDialog() }] : []),
               ] }]}
             />
             {action === 'next'
@@ -126,7 +121,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
                 </Button>
               )
               : (
-                <Button variant="primary" disabled={filled === null} onClick={() => openGenerate()}>
+                <Button variant="primary" disabled={filled === null} onClick={() => overview.openGenerateDialog()}>
                   <Sparkles size={14} aria-hidden />
                   {action === 'generate' ? text('AI 生成架构', 'Generate architecture') : text('继续生成架构', 'Continue architecture')}
                 </Button>
@@ -142,7 +137,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
               overview={overview}
               summary={summary(key)}
               onEdit={() => editSection(key)}
-              onGenerate={() => openGenerate([key])}
+              onGenerate={() => overview.openGenerateDialog([key])}
               onClear={() => setClearing(key)}
               onOpenCast={() => openCast(text)}
               onReload={reload}
@@ -151,14 +146,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
         </div>
       </div>
 
-      <ArchitectureGenerateDialog
-        isOpen={overview.generateDialog.open}
-        onClose={overview.generateDialog.close}
-        archStatus={overview.archStatus}
-        initialSelectedSteps={focusSteps}
-        initialSynopsisRange={overview.generateDialog.synopsisRange}
-        onConfirm={overview.handleConfirm}
-      />
+      <ArchitectureGenerateDialog {...overview.generateDialog} />
       <DangerConfirm
         open={clearing !== null}
         onOpenChange={open => { if (!open) setClearing(null) }}

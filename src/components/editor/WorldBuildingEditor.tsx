@@ -15,7 +15,7 @@ export default function WorldBuildingEditor({ projectKey }: { projectKey: string
   const overview = useArchitectureOverview(projectKey)
   const {
     projectMatches, loading, archStatus, wordCounts, planningRecovery,
-    loadStatus, openArchFile, handleConfirm, handleResumeSynopsis, handleResumeWorldBuilding,
+    loadStatus, openArchFile, handleResumeSynopsis, handleResumeWorldBuilding,
     copyCandidate, handleContinueOutlineBatch, openGenerateDialog, openRecoveryDraft,
   } = overview
   const {
@@ -28,7 +28,6 @@ export default function WorldBuildingEditor({ projectKey }: { projectKey: string
     setCandidateShown: setShowWorldBuildingCandidate, handle: worldHandle,
   } = overview.worldBuilding
   const { presentation: rosterPresentation, canRepair: canRepairRoster, repairing: extracting, repair: handleRepairCharacterRoster } = overview.roster
-  const { open: showArchDialog, close: closeArchDialog, synopsisRange: pendingSynopsisRange } = overview.generateDialog
 
   if (!projectMatches) {
     return (
@@ -86,7 +85,7 @@ export default function WorldBuildingEditor({ projectKey }: { projectKey: string
           <Button
             variant="ai"
             size="sm"
-            onClick={openGenerateDialog}
+            onClick={() => openGenerateDialog()}
             title={text('AI 生成故事架构（选择要生成的步骤）', 'Generate story architecture (choose steps to generate)')}
           >
             <Sparkles size={12} />
@@ -380,13 +379,7 @@ export default function WorldBuildingEditor({ projectKey }: { projectKey: string
       </div>
 
       {/* AI 生成架构确认弹窗 */}
-      <ArchitectureConfirmDialog
-        isOpen={showArchDialog}
-        onClose={closeArchDialog}
-        archStatus={archStatus}
-        initialSynopsisRange={pendingSynopsisRange}
-        onConfirm={handleConfirm}
-      />
+      <ArchitectureConfirmDialog {...overview.generateDialog} />
     </div>
   )
 }

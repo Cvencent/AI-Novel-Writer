@@ -15,6 +15,7 @@ const MARK_TEXT: Record<ArchStepMark, [string, string]> = {
   keep: ['保留', 'Keep'],
   new: ['新生成', 'New'],
   continue: ['续写', 'Continue'],
+  invalid: ['范围无效', 'Invalid range'],
 }
 
 /** 生成架构的确认对话框。表单与校验沿用 ArchitectureConfirmDialog 的 useArchitectureConfirmForm，这里只换成纸墨样式。 */
@@ -42,7 +43,7 @@ export default function ArchitectureGenerateDialog(props: ArchitectureConfirmFor
           <Button
             variant="primary"
             onClick={() => { void form.handleConfirm() }}
-            disabled={form.noneSelected || form.isConfirming || (checked.synopsis && form.preferenceLoading)}
+            disabled={form.noneSelected || form.isConfirming || form.synopsisRangeIssue !== null || (checked.synopsis && form.preferenceLoading)}
           >
             <Sparkles size={14} aria-hidden />
             {form.isConfirming ? text('校验中…', 'Checking…') : text(`开始生成 ${selectedSteps.length} 项`, `Generate ${selectedSteps.length}`)}
@@ -53,7 +54,7 @@ export default function ArchitectureGenerateDialog(props: ArchitectureConfirmFor
       <div className="arch-dialog">
         <div className="arch-steps" role="group" aria-label={text('要生成的节', 'Sections to generate')}>
           <div className="arch-step arch-step-all">
-            <Check checked={allChecked} onChange={all => { if (all) form.selectAll() }} label={text('全选', 'Select all')} />
+            <Check checked={allChecked} onChange={form.setAll} label={text('全选', 'Select all')} />
             <span className="arch-step-count">{text(`已选 ${selectedSteps.length} / ${SECTION_ORDER.length}`, `${selectedSteps.length} / ${SECTION_ORDER.length} selected`)}</span>
           </div>
           {SECTION_ORDER.map(key => {
@@ -92,6 +93,7 @@ export default function ArchitectureGenerateDialog(props: ArchitectureConfirmFor
                     <p className="arch-range-note">
                       {text(`全书 ${totalChapters} 章，每次最多 ${PLANNING_ACTION_CHAPTER_LIMIT} 章；目标字数只作参考。`, `${totalChapters} chapters in all, up to ${PLANNING_ACTION_CHAPTER_LIMIT} per run; the target is a guide.`)}
                     </p>
+                    {form.synopsisRangeIssue && <p className="arch-range-issue" role="alert">{form.synopsisRangeIssue}</p>}
                   </div>
                 )}
               </div>

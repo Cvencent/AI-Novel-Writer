@@ -261,6 +261,11 @@
   color: var(--danger);
 }
 
+.arch-mark[data-mark='invalid'] {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
 .arch-mark[data-mark='keep'] {
   background: var(--surface-2);
   color: var(--ink-2);
@@ -297,6 +302,13 @@
   flex-basis: 100%;
   margin: 0;
   color: var(--ink-3);
+  font-size: var(--fs-12);
+}
+
+.arch-range-issue {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--warn);
   font-size: var(--fs-12);
 }
 

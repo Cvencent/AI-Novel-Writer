@@ -32,7 +32,7 @@ export default function ArchitectureConfirmDialog(props: ArchitectureConfirmForm
   const text = useLocaleStore(s => s.text)
   const form = useArchitectureConfirmForm(props)
   const {
-    config, checked, toggleStep, selectAll, selectedSteps, noneSelected, stepGuidance, showGuidance, setShowGuidance,
+    config, checked, toggleStep, setAll, selectedSteps, noneSelected, stepGuidance, showGuidance, setShowGuidance,
     synopsisFrom, setSynopsisFrom, synopsisTo, setSynopsisTo, targetUnits, setTargetUnits, preferenceLoading,
     isConfirming, guardError, totalChapters, handleConfirm, handleOpenChange,
   } = form
@@ -91,7 +91,7 @@ export default function ArchitectureConfirmDialog(props: ArchitectureConfirmForm
                 {text('勾选要生成的步骤', 'Sections to generate')}
               </p>
               <button
-                onClick={selectAll}
+                onClick={() => setAll(true)}
                 className="text-xs underline"
                 style={{ color: 'var(--color-text-muted)' }}
               >

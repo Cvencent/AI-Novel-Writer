@@ -29,6 +29,7 @@ import type { MainGenerationRunHandle } from '../../services/generation/generati
 import { architectureRecoveryHandle } from '../../shared/architecture-recovery-navigation'
 import { DEFAULT_PLANNING_ACTION_CHAPTERS } from '../../shared/plot-outline-contract'
 import type { GenerationRecoveryContext } from '../../shared/generation-owner-contract'
+import type { ArchitectureConfirmFormOptions } from '../dialogs/use-architecture-confirm-form'
 import { openPlanningRecoveryDraft } from '../../stores/editor-store'
 import {
   hasVisiblePartialSynopsisMarker,
@@ -50,6 +51,11 @@ export const ARCH_FILES: Array<{
     { key: 'worldbuilding', fileName: 'worldbuilding.md', labelZh: '世界观', labelEn: 'Worldbuilding', iconName: 'globe', descZh: '核心规则 · 社会结构 · 深层危机', descEn: 'Core rules · social structure · underlying crisis' },
     { key: 'synopsis', fileName: 'synopsis.md', labelZh: '情节大纲', labelEn: 'Plot outline', iconName: 'map', descZh: '结构推进 · 转折节奏 · 伏笔闭环', descEn: 'Story progression · turning points · setup and payoff' },
   ]
+
+interface GenerateIntent {
+  steps?: ArchStepKey[]
+  synopsisRange?: { from: number; to: number }
+}
 
 /**
  * 故事架构总览的数据与操作：四节状态、未完成候选、大纲续写与续批、角色名单修复、打开单节文档与架构生成。
@@ -78,9 +84,9 @@ export function useArchitectureOverview(projectKey: string) {
   const [worldBuildingCandidate, setWorldBuildingCandidate] = useState('')
   const [worldBuildingBusy, setWorldBuildingBusy] = useState(false)
   const [showWorldBuildingCandidate, setShowWorldBuildingCandidate] = useState(false)
-  const [pendingSynopsisRange, setPendingSynopsisRange] = useState<{ from: number; to: number } | null>(null)
   const [loading, setLoading] = useState(true)
-  const [showArchDialog, setShowArchDialog] = useState(false)
+  /** 生成对话框由哪个入口打开、预选哪几节；null 为关闭。每个入口整体替换，取消后不残留到下一次打开。 */
+  const [generateIntent, setGenerateIntent] = useState<GenerateIntent | null>(null)
   const lastCompletedArchitectureRunRef = useRef<string | null>(null)
   const archStatusRequestGate = useRef(new LatestRequestGate())
   const {
@@ -405,18 +411,14 @@ export function useArchitectureOverview(projectKey: string) {
     if (!isProjectSessionCurrent(projectSession)) return
     const from = synopsisCoveredTo + 1
     if (from > synopsisTotalChapters || synopsisTotalChapters <= 0) return
-    setPendingSynopsisRange({
-      from,
-      to: Math.min(synopsisTotalChapters, from + DEFAULT_PLANNING_ACTION_CHAPTERS - 1),
+    setGenerateIntent({
+      steps: ['synopsis'],
+      synopsisRange: { from, to: Math.min(synopsisTotalChapters, from + DEFAULT_PLANNING_ACTION_CHAPTERS - 1) },
     })
-    setShowArchDialog(true)
   }
 
-  /** 打开普通「AI 生成架构」入口（不携带续批预填）。 */
-  const openGenerateDialog = () => {
-    setPendingSynopsisRange(null)
-    setShowArchDialog(true)
-  }
+  /** 普通生成入口；steps 是「AI 生成此节」那一节，不携带续批预填。 */
+  const openGenerateDialog = (steps?: ArchStepKey[]) => setGenerateIntent({ steps })
 
   /** 情节大纲有可编辑的恢复稿时打开它。 */
   const openRecoveryDraft = () => {
@@ -464,11 +466,16 @@ export function useArchitectureOverview(projectKey: string) {
       repair: handleRepairCharacterRoster,
       refresh: loadCharacterRosterStatus,
     },
+    /** 两种外壳的生成对话框直接展开这一份：开关、入口预选、大纲进度与提交。 */
     generateDialog: {
-      open: showArchDialog,
-      close: () => setShowArchDialog(false),
-      synopsisRange: pendingSynopsisRange,
-    },
+      isOpen: generateIntent !== null,
+      onClose: () => setGenerateIntent(null),
+      archStatus,
+      initialSelectedSteps: generateIntent?.steps,
+      initialSynopsisRange: generateIntent?.synopsisRange ?? null,
+      synopsisProgress: { coveredTo: synopsisCoveredTo, interrupted: synopsisIncomplete },
+      onConfirm: handleConfirm,
+    } satisfies ArchitectureConfirmFormOptions,
     loadStatus,
     openArchFile,
     handleConfirm,

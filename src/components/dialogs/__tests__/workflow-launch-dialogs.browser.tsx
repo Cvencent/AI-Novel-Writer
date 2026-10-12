@@ -278,6 +278,7 @@ describe('workflow launch dialogs', () => {
         archStatus={{ premise: true, characters: true, worldbuilding: true, synopsis: true }}
         initialSelectedSteps={['synopsis']}
         initialSynopsisRange={{ from: 21, to: 40 }}
+        synopsisProgress={{ coveredTo: 20, interrupted: false }}
         onConfirm={onConfirm}
       />,
     ))
