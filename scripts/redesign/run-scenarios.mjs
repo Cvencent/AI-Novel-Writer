@@ -168,6 +168,8 @@ export const RUN_SCENARIOS = {
     await new Promise(resolve => setTimeout(resolve, 2000))
     assert.equal(fake.requests.length, pausedAt, '暂停后不再开始下一章')
     assert.deepEqual(await writingChapters(page), [], '暂停时没有章标为生成中')
+    assert.equal(await runSheet.sheet(page).getByRole('button', { name: '继续此批次' }).count(), 0, '暂停的这一批只显示为运行卡片，不再列为可恢复')
+    assert.deepEqual(await runSheet.activeTitles(page), ['批量草稿待审 · 第 3 至 4 章'], '运行标题章号在后、只用间隔点')
     return { requestsWhenPaused: pausedAt }
   }, after: async ({ page, fake }) => {
     const pausedAt = fake.requests.length
@@ -186,6 +188,7 @@ export const RUN_SCENARIOS = {
     const waiting = runSheet.anyCard(page).filter({ hasText: '等你确认' })
     await waiting.getByRole('button', { name: '按当前选择确认', disabled: false }).waitFor({ state: 'visible', timeout: 60_000 })
     assert.equal(await waiting.getByRole('combobox', { name: /^采用方式：/ }).count(), 2, '两张角色候选各有一个采用方式')
+    assert.equal(await runSheet.sheet(page).locator('.pi-btn--primary').count(), 1, '侧页只有一个主按钮')
   }, after: async ({ page }) => {
     const waiting = runSheet.anyCard(page).filter({ hasText: '等你确认' })
     const keeper = waiting.getByRole('combobox', { name: /^采用方式：守塔人/ })
