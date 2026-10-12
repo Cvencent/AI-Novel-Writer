@@ -64,11 +64,15 @@ const withKeeperInChapter3 = context => seedStageSample(context, { beforeReload:
     userGuidance: '前半章只写钟声，不写人脸。' }, path, session)).success, true)
 } })
 
-/** 主进程里改写 db:continuity-list-before：第 1 章定稿里守塔人已死，作为一致性预检的夹具。保存安排等其余通道照常走真实处理。 */
+/**
+ * 主进程里改写 db:continuity-list-before：第 1 章定稿里守塔人已死，作为一致性预检的夹具。保存安排等其余通道照常走真实处理。
+ * 写稿时的上下文也读这条通道，夹具的来源不是真实定稿，所以开始写之前要换回原处理函数。
+ */
 async function injectDeadKeeper(app) {
   const wrapped = await app.evaluate(({ ipcMain }) => {
     const handlers = ipcMain._invokeHandlers
     if (!(handlers instanceof Map) || !handlers.has('db:continuity-list-before')) return false
+    globalThis.__driveContinuityOriginal = handlers.get('db:continuity-list-before')
     handlers.set('db:continuity-list-before', () => [{
       draftId: 1, chapterNumber: 1, chapterTitle: '旧港', chapterNotes: '守塔人死于第一章的风暴。',
       source: { draftId: 1, finalizationId: 'drive-fixture', chapterNumber: 1, contentHash: 'a'.repeat(64) },
@@ -78,6 +82,10 @@ async function injectDeadKeeper(app) {
     return true
   })
   assert.ok(wrapped, '能在主进程里替换连续性事实的读取')
+}
+
+function restoreContinuity(app) {
+  return app.evaluate(({ ipcMain }) => ipcMain._invokeHandlers.set('db:continuity-list-before', globalThis.__driveContinuityOriginal))
 }
 
 /** 两种外壳各自从蓝图写下一章：旧外壳点「写作第 3 章」后在对话框里直接开始，不改任何字段。 */
@@ -137,7 +145,7 @@ const withManyBlueprints = context => seedStageSample(context, { totalChapters: 
 } })
 
 export const BLUEPRINT_SCENARIOS = {
-  'blueprint-regression': { model: true, setup: seedStageSample, run: async ({ page, fake }) => {
+  'blueprint-regression': { model: true, setup: withKeeperInChapter3, run: async ({ page, fake }) => {
     await writeNextEitherShell(page)
     const chats = await proseRequest(fake)
     const prose = chats.find(chat => chat.kind === 'prose')
@@ -183,7 +191,8 @@ export const BLUEPRINT_SCENARIOS = {
     await blueprint.popover(page).getByText(/“守塔人”处于死亡终态/).waitFor({ state: 'visible' })
     assert.equal(fake.chats.length, 0, '有提醒时不开始写')
     for (const name of ['保存安排', '仅本次忽略', '改蓝图后重检']) await blueprint.preflight(page).getByRole('button', { name }).waitFor({ state: 'visible' })
-  }, after: async ({ page, fake }) => {
+  }, after: async ({ app, page, fake }) => {
+    await restoreContinuity(app)
     await blueprint.preflight(page).getByRole('button', { name: '仅本次忽略' }).click()
     await runSheet.waitUntilOpen(page)
     await proseRequest(fake)
@@ -211,6 +220,69 @@ export const BLUEPRINT_SCENARIOS = {
     await stage.saveStatus(page).getByText('已保存').waitFor({ state: 'visible' })
     await blueprint.pageMenu(page, '重新加载蓝图')
     await blueprint.planItem(page, 6).getByText('第二盏灯亮起').waitFor({ state: 'visible' })
+  } },
+
+  'blueprint-overwrite': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+    await blueprint.open(page)
+    await blueprint.openGenerate(page)
+    const dialog = blueprint.generateDialog(page)
+    await dialog.getByRole('button', { name: '覆盖' }).click()
+    await dialog.getByText('已有蓝图会被覆盖，开始前再确认一次').waitFor({ state: 'visible' })
+    await dialog.getByRole('button', { name: '开始生成' }).click()
+    const confirm = blueprint.confirmDialog(page, '覆盖已有蓝图？')
+    await confirm.getByText(`已有的 ${STAGE_SAMPLE.titles.length} 章蓝图会被新蓝图替换`).waitFor({ state: 'visible' })
+    assert.equal(await page.getByRole('dialog').count(), 1, '覆盖确认不叠在生成对话框上')
+  }, after: async ({ page }) => {
+    await blueprint.confirmDialog(page, '覆盖已有蓝图？').getByRole('button', { name: '取消' }).click()
+    await blueprint.generateDialog(page).getByRole('alert').getByText('已取消覆盖生成，原有蓝图没有改动。').waitFor({ state: 'visible' })
+    await blueprint.generateDialog(page).getByRole('button', { name: '取消' }).click()
+    assert.equal(await blueprint.plan(page).getByRole('listitem').count(), STAGE_SAMPLE.titles.length, '取消覆盖后蓝图不变')
+  } },
+
+  'blueprint-batch': { model: true, shell: 'stage', setup: context => seedStageSample(context, { landOnChapter3: false, beforeReload: async ({ page, invoke, path, session }) => {
+    for (const chapterNumber of [3, 4]) {
+      for (const draft of await invoke(page, 'db:draft-list', chapterNumber, path, session)) {
+        assert.equal((await invoke(page, 'db:draft-delete', draft.id, path, session)).success, true)
+      }
+    }
+  } }), run: async ({ page, fake }) => {
+    fake.gate.hold()
+    await blueprint.open(page)
+    await blueprint.startBatch(page, 4)
+    await runSheet.waitUntilOpen(page)
+    await untilGateHolds(fake.gate)
+    const card = runSheet.sheet(page).getByRole('article').filter({ hasText: '批量' }).first()
+    await card.waitFor({ state: 'visible' })
+    await runSheet.sheet(page).getByRole('button', { name: '暂停批量创作' }).waitFor({ state: 'visible' })
+    return { cards: await runSheet.activeTitles(page) }
+  }, after: async ({ page, fake }) => {
+    await runSheet.sheet(page).getByRole('button', { name: /^取消「/ }).click()
+    fake.gate.release()
+    await runSheet.anyCard(page).filter({ hasText: /^上一次运行/ }).waitFor({ state: 'visible', timeout: 60_000 })
+  } },
+
+  'blueprint-recover': { model: true, shell: 'stage', setup: context => seedStageSample(context, { totalChapters: 16 }), run: async ({ page }) => {
+    await blueprint.open(page)
+    await blueprint.generateRange(page, 13, 16)
+    await runSheet.waitUntilOpen(page)
+    const notice = page.getByRole('status').filter({ hasText: '有一份蓝图恢复稿' })
+    await notice.waitFor({ state: 'visible', timeout: 60_000 })
+    await notice.getByRole('button', { name: '编辑恢复稿' }).click()
+    await stage.tab(page, '蓝图恢复稿').waitFor({ state: 'visible' })
+    const recovery = page.getByLabel('蓝图恢复')
+    await recovery.getByRole('button', { name: '保存恢复蓝图' }).waitFor({ state: 'visible' })
+    const proceed = recovery.getByRole('button', { name: '继续生成缺少的章节' })
+    await proceed.waitFor({ state: 'visible' })
+    assert.equal(await proceed.isEnabled(), true, '恢复稿里可以接着生成缺少的章节')
+    return { remaining: await recovery.getByText(/^待完成第/).innerText() }
+  }, after: async ({ page, fake }) => {
+    const before = fake.chats.length
+    await page.getByLabel('蓝图恢复').getByRole('button', { name: '继续生成缺少的章节' }).click()
+    const deadline = Date.now() + 30_000
+    while (fake.chats.length === before) {
+      assert.ok(Date.now() < deadline, '继续生成没有发出模型请求')
+      await page.waitForTimeout(200)
+    }
   } },
 
   'blueprint-timing': { model: false, setup: withManyBlueprints, run: async ({ page }) => {

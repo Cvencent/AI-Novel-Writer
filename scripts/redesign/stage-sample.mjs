@@ -5,7 +5,8 @@ import { countDraftUnits } from '../../src/shared/draft-units.ts'
 export const STAGE_SAMPLE = Object.freeze({
   name: '灯塔',
   totalChapters: 12,
-  wordsPerChapter: 3000,
+  // 新外壳写作此章按设定里的每章字数写（RD-7 起不再在写作时填字数）；夹具模型每次只回一段，目标定在它一次写得完的范围。
+  wordsPerChapter: 100,
   titles: ['旧港', '北堤', '雾钟', '守塔人', '潮汐表', '第二盏灯', '盐霜', '沉船名录', '风暴前夜', '灯室', '回声', '归航'],
   core: {
     coreOutline: '测绘师林岚追查父亲留下的一张失踪地图，来到一座本该停用的灯塔。雾钟每晚提前一刻响起，她要在下一次大潮之前弄清钟声与那条沉船的关系。',

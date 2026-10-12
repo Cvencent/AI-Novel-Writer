@@ -38,3 +38,32 @@ export async function chapterMenu(page, number, item) {
 }
 
 export const confirmDialog = (page, title) => page.getByRole('dialog', { name: title })
+
+export const generateDialog = page => page.getByRole('dialog', { name: 'AI 生成蓝图' })
+export const batchDialog = page => page.getByRole('dialog', { name: '批量创作' })
+
+/** 打开 AI 生成蓝图；existing 为 'append' 或 'full'（覆盖），只在已有蓝图时出现。 */
+export async function openGenerate(page) {
+  await page.getByRole('button', { name: 'AI 生成蓝图' }).click()
+  await generateDialog(page).getByRole('button', { name: '开始生成', disabled: false }).waitFor({ state: 'visible' })
+}
+
+/** 生成第 from～to 章蓝图（指定范围，保留已有）。 */
+export async function generateRange(page, from, to) {
+  await openGenerate(page)
+  const dialog = generateDialog(page)
+  await dialog.getByLabel('蓝图起始章').fill(String(from))
+  await dialog.getByLabel('蓝图结束章').fill(String(to))
+  await dialog.getByRole('button', { name: '开始生成' }).click()
+  const warning = page.getByRole('dialog', { name: '架构还不完整' })
+  await warning.or(dialog).first().waitFor({ state: 'visible' })
+  if (await warning.isVisible()) await warning.getByRole('button', { name: '继续生成' }).click()
+}
+
+/** 批量创作 count 章，模型用默认，写完留作草稿。 */
+export async function startBatch(page, count) {
+  await page.getByRole('button', { name: '批量创作' }).click()
+  const dialog = batchDialog(page)
+  await dialog.getByLabel(/写几章/).fill(String(count))
+  await dialog.getByRole('button', { name: `开始写 ${count} 章` }).click()
+}

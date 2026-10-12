@@ -156,8 +156,8 @@ export const RUN_SCENARIOS = {
     }
   } }), run: async ({ page, fake }) => {
     fake.gate.hold()
-    await stage.stageButton(page, '蓝图').click()
-    await chapter.startBatch(page, FAKE_MODEL.id, 100, 2)
+    await blueprint.open(page)
+    await blueprint.startBatch(page, 2)
     await runSheet.waitUntilOpen(page)
     await untilGateHolds(fake.gate)
     assert.deepEqual(await writingChapters(page), ['第 3 章'], '批量创作只把正在写的那一章标为生成中，排队的第 4 章不算')
