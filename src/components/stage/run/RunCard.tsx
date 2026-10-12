@@ -109,7 +109,7 @@ function RunConfirmation({ confirmation, text }: { confirmation: WorkflowConfirm
     <section className="run-confirm" aria-label={text('需要你确认', 'Needs your confirmation')}>
       {proposal && (
         <>
-          <p className="run-confirm-summary">{proposal.summary}</p>
+          <p className="run-confirm-summary">{text(`${proposal.batch.items.length} 个角色候选`, `${proposal.batch.items.length} character candidates`)}</p>
           <div className="run-proposals">
             <CharacterProposalSelectionPanel batch={proposal.batch} choices={proposal.choices}
               identities={proposal.identities} disabled={!ready} onChange={proposal.onChange} />

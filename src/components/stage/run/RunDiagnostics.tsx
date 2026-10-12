@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Copy, Lock, Trash2 } from 'lucide-react'
-import type { LLMCallRecord } from '../../../services/stats-service'
+import { llmCallTime, type LLMCallRecord } from '../../../services/stats-service'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
 import { copySafeDiagnostic, useModelCalls } from '../../run/use-model-calls'
@@ -8,7 +8,7 @@ import { Button } from '../../ui/Button'
 import { Check } from '../../ui/Check'
 import { InlineConfirm } from '../../ui/InlineConfirm'
 import { StatGrid } from '../../ui/StatGrid'
-import { compactNumber } from './run-format'
+import { callPurpose, clockTime, compactNumber } from './run-format'
 
 type Text = (zh: string, en: string) => string
 
@@ -128,8 +128,8 @@ function CallRow({ call, text, onCopy }: { call: LLMCallRecord; text: Text; onCo
   const usage = (value: number | null) => value === null ? '—' : value.toLocaleString(locale)
   return (
     <tr>
-      <td className="run-table-num">{new Date(call.createdAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false })}</td>
-      <td>{call.purpose || '—'}</td>
+      <td className="run-table-num">{clockTime(llmCallTime(call.createdAt).toISOString(), locale)}</td>
+      <td>{callPurpose(call.purpose, text)}</td>
       <td>{call.modelName || '—'}</td>
       <td className="run-table-num" data-align="end">{usage(call.promptTokens)}</td>
       <td className="run-table-num" data-align="end">{usage(call.completionTokens)}</td>

@@ -127,8 +127,11 @@ function usageOf(view: Pick<MainGenerationRunView, 'budgetDiagnostics' | 'ledger
   }
 }
 
+/** 没写出任何字的片段（例如刚发出请求就取消）没有可复制、可续接的内容，不列出。 */
+export const hasText = (item: { text: string }) => item.text.trim().length > 0
+
 const texts = (items: readonly { attemptId: string; text: string }[] | undefined): RecoveryText[] =>
-  (items ?? []).map(item => ({ id: item.attemptId, text: item.text }))
+  (items ?? []).filter(hasText).map(item => ({ id: item.attemptId, text: item.text }))
 
 export function candidateEntry(candidate: RecoveryCandidate, locale: Locale): CandidateEntry {
   const t = lang(locale)
@@ -172,7 +175,7 @@ function editorEntry(recovery: EditorInlineRecovery, locale: Locale): EditorEntr
     selectedText: recovery.context.selectedText,
     ...usageOf(view, locale),
     conflictNote: recovery.sourceStatus === 'conflict' ? t('来源已变化；原建议仍可复制。', 'Sources changed; the original suggestion can still be copied.') : undefined,
-    suggestions: (view.candidates ?? view.artifacts).map(artifact => ({
+    suggestions: (view.candidates ?? view.artifacts).filter(hasText).map(artifact => ({
       id: artifact.artifactId,
       text: artifact.text,
       incompleteNote: artifact.status === 'completed' ? undefined : t('生成未完整完成，保留的文字仅供参考。', 'Generation is incomplete; the saved text is for reference.'),
@@ -214,7 +217,7 @@ function reviewEntry({ view, recovery }: RecoverySources['reviews'][number], loc
       `Chapter ${recovery.context.source.chapterNumber} ${review ? 'review' : 'revision'} candidate`),
     ...usageOf(view, locale),
     notes,
-    artifacts: (view.candidates ?? view.artifacts).map(artifact => ({ id: artifact.artifactId, text: artifact.text })),
+    artifacts: (view.candidates ?? view.artifacts).filter(hasText).map(artifact => ({ id: artifact.artifactId, text: artifact.text })),
     tails: texts(view.unsavedTails),
     actionLabel: recovery.saved ? t('打开已保存结果', 'Open saved result')
       : requestsReview ? t('重新审稿', 'Review again') : t('恢复此审修任务', 'Recover this review or revision'),
@@ -251,7 +254,7 @@ function draftEntry({ view, recovery }: RecoverySources['drafts'][number], local
     title: changed ? t(`第${recovery.chapterNumber}章生成记录`, `Chapter ${recovery.chapterNumber} generation history`)
       : t(`第${recovery.chapterNumber}章候选`, `Chapter ${recovery.chapterNumber} candidate`),
     ...usageOf(view, locale),
-    artifacts: withoutDraftReconciliationArtifacts(unique, recovery).map(artifact => ({
+    artifacts: withoutDraftReconciliationArtifacts(unique, recovery).filter(hasText).map(artifact => ({
       id: artifact.artifactId, text: artifact.text, selectable: !changed && artifact.compositionEligible === true,
     })),
     tails: texts(view.unsavedTails),
