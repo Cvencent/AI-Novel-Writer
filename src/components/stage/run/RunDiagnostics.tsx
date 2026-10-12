@@ -128,7 +128,7 @@ function CallRow({ call, text, onCopy }: { call: LLMCallRecord; text: Text; onCo
   const usage = (value: number | null) => value === null ? '—' : value.toLocaleString(locale)
   return (
     <tr>
-      <td className="run-table-num">{clockTime(llmCallTime(call.createdAt).toISOString(), locale)}</td>
+      <td className="run-table-num">{clockTime(llmCallTime(call.createdAt), locale)}</td>
       <td>{callPurpose(call.purpose, text)}</td>
       <td>{call.modelName || '—'}</td>
       <td className="run-table-num" data-align="end">{usage(call.promptTokens)}</td>

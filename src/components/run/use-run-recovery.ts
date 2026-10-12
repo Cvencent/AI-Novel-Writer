@@ -149,16 +149,27 @@ export function useRunRecovery(): RunRecovery {
     finally { setBusy(false) }
   }, [busy, session, stillCurrent])
 
+  const showGenerationFailure = useCallback((reason: unknown) => {
+    if (stillCurrent()) setGenerationError(reason instanceof Error ? reason.message : String(reason))
+  }, [stillCurrent])
+
+  /** startWorkflow 要等整个工作流结束才返回；只等定义建好，不让恢复区在运行期间一直忙。 */
   const startRecovery = useCallback((create: (session: ProjectSessionContext) => Promise<WorkflowDefinition>) =>
-    void act(async current => { await useWorkflowStore.getState().startWorkflow(await create(current)) }), [act])
+    void act(async current => {
+      const definition = await create(current)
+      if (stillCurrent()) useWorkflowStore.getState().startWorkflow(definition).catch(showGenerationFailure)
+    }), [act, stillCurrent, showGenerationFailure])
 
   const dropCandidate = (candidateId: string) => {
     setCandidates(loaded => ({ ...loaded, value: loaded.value.filter(item => item.candidateId !== candidateId) }))
     setCandidateError('')
   }
 
-  const failCandidate = useCallback((error: string | undefined) =>
-    setCandidateError(error || (locale === 'en-US' ? 'Recovery candidate action failed' : '恢复候选操作失败')), [locale])
+  const failCandidate = useCallback((error: unknown) => {
+    if (!stillCurrent()) return
+    const message = error instanceof Error ? error.message : error ? String(error) : ''
+    setCandidateError(message || (locale === 'en-US' ? 'Recovery candidate action failed' : '恢复候选操作失败'))
+  }, [locale, stillCurrent])
 
   return {
     entries,
@@ -170,7 +181,9 @@ export function useRunRecovery(): RunRecovery {
       const current = previous[entry.key] ?? []
       return { ...previous, [entry.key]: checked ? [...current, artifactId] : current.filter(id => id !== artifactId) }
     }),
-    copy: text => void act(() => navigator.clipboard.writeText(text)),
+    copy: text => {
+      if (stillCurrent()) navigator.clipboard.writeText(text).catch(showGenerationFailure)
+    },
     copyCandidate: entry => {
       if (!stillCurrent()) return
       navigator.clipboard.writeText(entry.text).then(() => setCandidateError(''),
@@ -180,6 +193,7 @@ export function useRunRecovery(): RunRecovery {
       if (!session || !stillCurrent() || !entry.canContinue) return
       void ipc.invokeWithProjectSession(session, 'db:recovery-candidate-update', entry.candidate.candidateId, entry.candidate.visibleText, session.projectPath)
         .then(result => {
+          if (!stillCurrent()) return
           if (!result.success || !result.candidate) return failCandidate(result.error)
           const candidate = result.candidate
           useEditorStore.getState().openFile({
@@ -196,15 +210,16 @@ export function useRunRecovery(): RunRecovery {
             projectSessionLease: session.leaseId,
           })
           dropCandidate(entry.key)
-        })
+        }, failCandidate)
     },
     discardCandidate: entry => {
       if (!session || !stillCurrent()) return
       void ipc.invokeWithProjectSession(session, 'db:recovery-candidate-resolve', entry.candidate.candidateId, 'discarded', session.projectPath)
         .then(result => {
+          if (!stillCurrent()) return
           if (!result.success) return failCandidate(result.error)
           dropCandidate(entry.key)
-        })
+        }, failCandidate)
     },
     openPlanning: entry => void act(async current => {
       const fresh = await ipc.invokeWithProjectSession(current, 'generation:read-context', { handle: entry.recovery.handle })

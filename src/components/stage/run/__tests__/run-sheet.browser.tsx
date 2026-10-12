@@ -10,6 +10,7 @@ import type { Locale } from '../../../../i18n/types'
 import type { ProjectData } from '../../../../shared/ipc-channels'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
 import type { RecoveryCandidate } from '../../../../shared/recovery-candidate'
+import { useEditorStore } from '../../../../stores/editor-store'
 import { useLayoutStore } from '../../../../stores/layout-store'
 import { useLocaleStore } from '../../../../stores/locale-store'
 import { useStageStore, type StageSheet } from '../../../../stores/navigation/stage-store'
@@ -27,7 +28,7 @@ function snapshot<T>(store: StoreApi<T>): () => void {
   const state = store.getState()
   return () => store.setState(state, true)
 }
-const restores = [useProjectStore, useWorkflowStore, useStageStore, useLocaleStore, useLayoutStore].map(store => snapshot(store as StoreApi<unknown>))
+const restores = [useProjectStore, useWorkflowStore, useStageStore, useLocaleStore, useLayoutStore, useEditorStore].map(store => snapshot(store as StoreApi<unknown>))
 
 let root: Root | undefined
 let host: HTMLDivElement | undefined
@@ -238,6 +239,97 @@ describe('运行侧页', () => {
     await vi.waitFor(() => expect(host!.textContent).not.toContain('原始候选 · 第3章 雾钟'))
     expect(invoke.mock.calls.find(([channel]) => channel === 'db:recovery-candidate-resolve')).toEqual(
       expect.arrayContaining(['db:recovery-candidate-resolve', '候选甲', 'discarded']))
+  })
+
+  it('恢复运行进行中：复制尾段仍可用且不清掉部分任务读取失败的提醒，恢复按钮不被锁住', async () => {
+    const draft = { projectId: session.projectId, epoch: '旧会话', rootActionId: '单章根', runId: '单章' }
+    const review = { ...draft, rootActionId: '审稿根', runId: '审稿' }
+    batches = [{ batchId: '批次', range: { startChapter: 3, endChapter: 5 }, completedChapters: [{ chapterNumber: 3 }], nextChapterNumber: 4,
+      sourceCurrent: true, rootHandle: { projectId: session.projectId, epoch: '旧会话', rootActionId: '批量根', runId: '批量' } }]
+    const fallback = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+      const handle = (args[0] as { handle?: { runId: string } } | undefined)?.handle
+      if (channel === 'generation:list') return [
+        { handle: draft, status: 'failed', artifacts: [], unsavedTails: [{ attemptId: '尾请求', artifactId: '尾片', durableRevision: 0, text: '尚未保存的潮声', failureCode: 'STORAGE_FAILED' }] },
+        { handle: review, status: 'failed', artifacts: [] },
+      ]
+      if (channel === 'generation:read-context') return handle?.runId === review.runId
+        ? { draftSave: { kind: 'absent' }, handle: review, operation: 'review-chapter' }
+        : { draftSave: { kind: 'absent' }, handle: draft, operation: 'chapter-draft', chapterNumber: 1, modelId: '原模型', authorInputs: [], attemptedPurposes: ['chapter-draft'] }
+      if (channel === 'review-revision:read-recovery') throw new Error('审稿记录读取失败')
+      if (channel === 'generation:read-batch') return { batchId: '批次', nextChapterNumber: 4, modelId: '原模型', mode: 'review', targetUnits: 900, range: { startChapter: 3, endChapter: 5 } }
+      return fallback(channel, ...args)
+    })
+    const startWorkflow = vi.fn(() => new Promise<string>(() => {}))
+    useWorkflowStore.setState({ startWorkflow })
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
+    await render()
+    await vi.waitFor(() => expect(button('继续此批次')).toBeTruthy())
+    await vi.waitFor(() => expect(host!.textContent).toContain('部分任务暂时无法读取'))
+
+    await click('复制')
+    expect(writeText).toHaveBeenCalledWith('尚未保存的潮声')
+    await act(async () => {})
+    expect(host!.textContent).toContain('部分任务暂时无法读取')
+
+    await click('继续此批次')
+    await vi.waitFor(() => expect(startWorkflow).toHaveBeenCalledOnce())
+    await click('复制')
+    expect(writeText).toHaveBeenCalledTimes(2)
+    expect(button('继续此批次')?.disabled).toBe(false)
+  })
+
+  it('恢复候选：继续编辑或放弃的调用失败时显示错误', async () => {
+    candidates = [candidate()]
+    const fallback = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'db:recovery-candidate-update') throw new Error('候选写入失败')
+      if (channel === 'db:recovery-candidate-resolve') throw new Error('候选放弃失败')
+      return fallback(channel, ...args)
+    })
+    await render()
+    await vi.waitFor(() => expect(host!.textContent).toContain('原始候选 · 第3章 雾钟'))
+    await click('继续编辑')
+    await vi.waitFor(() => expect(host!.querySelector('[role="alert"]')?.textContent).toBe('候选写入失败'))
+    await click('放弃…')
+    await click('放弃')
+    await vi.waitFor(() => expect(host!.querySelector('[role="alert"]')?.textContent).toBe('候选放弃失败'))
+    expect(host!.textContent).toContain('原始候选 · 第3章 雾钟')
+  })
+
+  it('恢复候选：继续编辑的结果回来前换了作品，不在新作品里打开旧候选', async () => {
+    candidates = [candidate()]
+    let finish!: (value: unknown) => void
+    const fallback = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel: string, ...args: unknown[]) => channel === 'db:recovery-candidate-update'
+      ? new Promise(resolve => { finish = resolve })
+      : fallback(channel, ...args))
+    const openFile = vi.fn()
+    useEditorStore.setState({ openFile })
+    await render()
+    await vi.waitFor(() => expect(host!.textContent).toContain('原始候选 · 第3章 雾钟'))
+    await click('继续编辑')
+    const other = { projectId: '另一部', projectPath: 'C:/novels/other', leaseId: '另一次打开' }
+    await act(async () => {
+      useProjectStore.setState({ currentProject: { id: other.projectId, path: other.projectPath, sessionLease: other.leaseId, name: '另一部', novelConfig: {} } as unknown as ProjectData })
+      setActiveProjectSessionContext(other)
+    })
+    await act(async () => finish({ success: true, candidate: candidate() }))
+    expect(openFile).not.toHaveBeenCalled()
+  })
+
+  it('诊断：一条调用记录的时间无法解析时显示短横，其余记录照常显示', async () => {
+    const fallback = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel: string, ...args: unknown[]) => channel === 'db:get-llm-history'
+      ? [{ id: 1, modelName: '夹具模型', purpose: 'chapter-draft', promptTokens: 8420, completionTokens: 1236, totalTokens: 9656, durationMs: 41000, success: true, createdAt: '2026-10-12T08:31:00.000Z' },
+        { id: 2, modelName: '坏时间模型', purpose: 'chapter-draft', promptTokens: 10, completionTokens: 5, totalTokens: 15, durationMs: 1000, success: false, createdAt: '不是时间' }]
+      : fallback(channel, ...args))
+    await render({ kind: 'run', tab: 'diagnostics' })
+    await vi.waitFor(() => expect(host!.querySelectorAll('tbody tr')).toHaveLength(2))
+    const [good, bad] = [...host!.querySelectorAll('tbody tr')].map(row => row.querySelector('td')!.textContent)
+    expect(good).toMatch(/^\d{2}:\d{2}$/)
+    expect(bad).toBe('—')
+    expect(host!.querySelector('table')!.textContent).toContain('坏时间模型')
   })
 
   it('清空日志要就地确认，写明行数', async () => {

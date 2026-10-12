@@ -2,9 +2,11 @@ import type { Locale } from '../../../i18n/types'
 
 type Text = (zh: string, en: string) => string
 
-/** 时刻只到分钟，例如 21:26。 */
-export function clockTime(iso: string | undefined, locale: Locale): string {
-  return iso ? new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false }) : ''
+/** 时刻只到分钟，例如 21:26；没有时间时为空，时间无法解析时写一条短横。 */
+export function clockTime(at: string | Date | undefined, locale: Locale): string {
+  if (!at) return ''
+  const time = new Date(at)
+  return Number.isNaN(time.getTime()) ? '—' : time.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
 /** 步骤耗时：不到一分钟写秒，否则写分与秒。 */
