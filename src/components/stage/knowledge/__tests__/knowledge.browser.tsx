@@ -11,9 +11,12 @@ import type { ProjectData } from '../../../../shared/ipc-channels'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
 import { saveDirtyEditorChangesForExit, useEditorStore } from '../../../../stores/editor-store'
 import { useLayoutStore } from '../../../../stores/layout-store'
+import { useLLMStore } from '../../../../stores/llm-store'
 import { useLocaleStore } from '../../../../stores/locale-store'
 import { useStageStore } from '../../../../stores/navigation/stage-store'
 import { useProjectStore } from '../../../../stores/project-store'
+import { useWorkflowStore } from '../../../../stores/workflow-store'
+import { toast } from '../../../ui/Toast'
 import StageWorkspace from '../../StageWorkspace'
 import { requestCloseTab } from '../../tab-close'
 import { useStageShortcuts } from '../../use-stage-shortcuts'
@@ -25,13 +28,13 @@ import StageKnowledge from '../StageKnowledge'
 const session = { projectId: '雨夜列车', projectPath: 'C:/novels/night-train', leaseId: '本次打开' }
 const KB_TAB = `knowledge-base:${encodeURIComponent(session.projectPath)}`
 const project = (extra: Record<string, unknown> = {}) => ({ id: session.projectId, path: session.projectPath, sessionLease: session.leaseId, name: '雨夜列车', novelConfig: {}, ...extra }) as unknown as ProjectData
-const IMPLEMENTATION_TERMS = /LanceDB|FTS|BM25|Embedding|向量|query|MCP|token/i
+const IMPLEMENTATION_TERMS = /LanceDB|FTS|BM25|Embedding|向量|vector|chunk|query|MCP|token/i
 
 function snapshot<T>(store: StoreApi<T>): () => void {
   const state = store.getState()
   return () => store.setState(state, true)
 }
-const restores = [useProjectStore, useLocaleStore, useLayoutStore, useEditorStore, useStageStore].map(store => snapshot(store as StoreApi<unknown>))
+const restores = [useProjectStore, useLocaleStore, useLayoutStore, useEditorStore, useStageStore, useLLMStore, useWorkflowStore].map(store => snapshot(store as StoreApi<unknown>))
 
 const copies: Record<string, string> = {
   station: '本报讯 三月十二日深夜，北郊车站三号站台发生一起列车事故。',
@@ -67,6 +70,8 @@ beforeEach(() => {
     if (channel === 'kb:save-document-copy') return { success: true }
     if (channel === 'kb:backfill-vectors') return { success: true, processed: 4, failed: 0 }
     if (channel === 'db:blueprint-get-all') return []
+    if (channel === 'dialog:select-knowledge-files') return [{ grantId: 'grant-1', displayName: '守塔人小传.txt' }]
+    if (channel === 'fs:grant-read-file') return { success: true, content: '守塔人姓周，在灯塔守了三十年。' }
     throw new Error(`未配置调用：${channel}`)
   })
   Object.defineProperty(window, 'aiNovelAPI', { configurable: true, value: { invoke, on: () => () => {} } })
@@ -136,17 +141,69 @@ function visibleWords(): string {
 
 describe('知识库', () => {
   for (const locale of ['zh-CN', 'en-US'] as Locale[]) {
-    it(`${locale} 下资料、原文、查找、索引提示与确认里都没有实现术语`, async () => {
+    const say = (zh: string, en: string) => locale === 'zh-CN' ? zh : en
+
+    /** 作者在页面与提示里读到的全部文字：每一步收一次页面，再加上弹过的提示。 */
+    function wordCollector() {
+      const toasts: string[] = []
+      for (const kind of ['success', 'error', 'warning', 'info'] as const) {
+        vi.spyOn(toast, kind).mockImplementation(message => { toasts.push(message) })
+      }
+      const pages: string[] = []
+      return { snap: () => { pages.push(visibleWords()) }, all: () => [...pages, ...toasts].join('\n'), toasts }
+    }
+
+    it(`${locale} 下资料、原文不可用、保存、查找、清空与外发提取确认里都没有实现术语`, async () => {
       useLocaleStore.setState({ locale })
+      useLLMStore.setState({ loaded: true, models: [{ id: 'm1', name: '夹具模型', modelName: 'fixture', baseUrl: 'http://127.0.0.1:9', purposes: ['generation'] }] as never, defaultModelId: 'm1' })
+      useWorkflowStore.setState({ startWorkflow: async () => 'local-run', history: [{ id: 'local-run', status: 'completed' }] as never })
+      const words = wordCollector()
       await renderPage()
+      words.snap()
+      await click(/旧版地名表/)
+      await vi.waitFor(() => expect(document.body.textContent).toContain(say('完整原文不可用', 'The full text is unavailable')))
+      words.snap()
+      await click(say('定稿章节 1', 'Final chapters 1'))
+      await click(/母亲的旧照片/)
+      words.snap()
+      await click(say('我导入的 3', 'Imported 3'))
       await click(/车站档案/)
-      await vi.waitFor(() => expect(document.querySelector('textarea')).toBeTruthy())
-      await type(document.querySelector<HTMLInputElement>('input[type="search"], form[role="search"] input')!, '三号站台 失踪')
+      await type(await editorArea(), `${copies.station}站台已封闭。`)
+      await click(say('保存副本', 'Save copy'))
+      await vi.waitFor(() => expect(words.toasts.length).toBeGreaterThan(0))
+      await type(document.querySelector<HTMLInputElement>('form[role="search"] input')!, '三号站台 失踪')
       await act(async () => document.querySelector<HTMLFormElement>('form[role="search"]')!.requestSubmit())
       await vi.waitFor(() => expect(document.querySelectorAll('mark').length).toBeGreaterThan(0))
-      await click(locale === 'zh-CN' ? '清空知识库…' : 'Clear knowledge base…')
+      words.snap()
+      await click(say('清空知识库…', 'Clear knowledge base…'))
       expect(document.querySelector('[role="dialog"]')).toBeTruthy()
-      expect(visibleWords()).not.toMatch(IMPLEMENTATION_TERMS)
+      words.snap()
+      await click(say('取消', 'Cancel'))
+      await click(say('导入创作资料', 'Import planning material'))
+      await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')?.textContent).toContain('http://127.0.0.1:9'))
+      words.snap()
+      expect(words.all()).not.toMatch(IMPLEMENTATION_TERMS)
+    })
+
+    it(`${locale} 下空知识库、可按意思查找与检索检查的提示里都没有实现术语`, async () => {
+      useLocaleStore.setState({ locale })
+      const plain = invoke.getMockImplementation()!
+      invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+        if (channel === 'kb:list-documents') return []
+        if (channel === 'kb:stats') return { documentCount: 0, totalChunks: 0, vectorDimension: 768 }
+        return plain(channel, ...args)
+      })
+      const words = wordCollector()
+      await act(async () => root!.render(<StageKnowledge tabId={KB_TAB} />))
+      await vi.waitFor(() => expect(document.body.textContent).toContain(say('知识库里还没有资料', 'No material yet')))
+      expect(document.body.textContent).toContain(say('可以按意思和字词查找。', 'Search by meaning and by words.'))
+      words.snap()
+      await act(async () => root!.render(<KnowledgeIndexSection />))
+      await vi.waitFor(() => expect(document.querySelector('section button')).toBeTruthy())
+      await act(async () => document.querySelector<HTMLButtonElement>('section button')!.click())
+      await vi.waitFor(() => expect(words.toasts.length).toBeGreaterThan(0))
+      expect(words.toasts.join('\n')).not.toMatch(IMPLEMENTATION_TERMS)
+      expect(words.all()).not.toMatch(IMPLEMENTATION_TERMS)
     })
   }
 

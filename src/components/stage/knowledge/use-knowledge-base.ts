@@ -67,10 +67,10 @@ export function useKnowledgeIndex() {
       if (!isProjectSessionCurrent(projectSession)) return
       if (result.success) {
         toast.success(result.processed === 0
-          ? text('向量索引检查完成，当前模型无需重建', 'Vector index check complete; the current model does not need a rebuild')
-          : text(`向量索引重建完成：已处理 ${result.processed} 块${result.failed > 0 ? `，${result.failed} 块失败` : ''}`, `Vector index rebuilt: ${result.processed} chunks processed${result.failed > 0 ? `, ${result.failed} failed` : ''}`))
+          ? text('检查完成，当前检索模型不需要重建', 'Check complete. The current retrieval model needs no rebuild.')
+          : text(`检索已重建：处理了 ${result.processed} 段资料${result.failed > 0 ? `，${result.failed} 段失败` : ''}`, `Search rebuilt: ${result.processed} passages processed${result.failed > 0 ? `, ${result.failed} failed` : ''}`))
       } else {
-        toast.error(result.error || text('向量回填失败', 'Vector backfill failed'))
+        toast.error(result.error || text('重建检索失败', 'Could not rebuild search'))
       }
     } catch (error) {
       if (!isProjectSessionCurrent(projectSession)) return
