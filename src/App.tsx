@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect } from 'react'
 import { type Theme, useThemeStore } from './stores/theme-store'
 import { useLayoutStore } from './stores/layout-store'
+import { useAppearanceStore } from './stores/appearance-bootstrap'
 import { navigate } from './stores/navigation/navigation-intents'
 import { useLLMStore } from './stores/llm-store'
 import { useProjectStore } from './stores/project-store'
@@ -10,6 +11,7 @@ import { useLocaleStore } from './stores/locale-store'
 import { useSkinStore } from './stores/skin-store'
 import { ipc } from './services/ipc-client'
 import TitleBar from './components/layout/TitleBar'
+import { useWindowCloseGuard } from './components/layout/use-window-close-guard'
 import StatusBar from './components/layout/StatusBar'
 import LeftToolWindowBar from './components/layout/LeftToolWindowBar'
 import RightToolWindowBar from './components/layout/RightToolWindowBar'
@@ -26,6 +28,8 @@ import ExportDialog from './components/dialogs/ExportDialog'
 import SettingsModal from './components/settings/SettingsModal'
 import { ANIME_SKIN_URL } from './components/settings/AppearanceSettings'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import StageRoot from './components/stage/StageRoot'
+import StageShell from './components/stage/StageShell'
 import { actionToast } from './components/ui/ActionToast'
 import { UpdateNotifier } from './components/updates/UpdateNotifier'
 import { globalEventBus } from './shared/event-bus'
@@ -121,6 +125,8 @@ export default function App() {
   const initSkin = useSkinStore((s) => s.init)
   const disposeSkin = useSkinStore((s) => s.dispose)
   const recoverFromImageFailure = useSkinStore((s) => s.recoverFromImageFailure)
+  const shell = useAppearanceStore((s) => s.resolvedShell)
+  const exitGuard = useWindowCloseGuard()
 
   // 初始化：主题 + LLM 模型 + 最近项目 + 缩放级别
   useEffect(() => {
@@ -225,8 +231,7 @@ export default function App() {
     }).catch(error => console.error('[SmokeProjectOpen]', error))
   }, [])
 
-  // 全局快捷键: Cmd+N 新建项目，Cmd+O 打开项目
-  // 注意：Cmd+=/- 缩放已由 TitleBar.tsx 统一处理，此处不重复注册
+  // 全局快捷键: Cmd+N 新建项目，Cmd+O 打开项目，Cmd+= / Cmd+- / Cmd+0 缩放；两种外壳共用
   useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey
@@ -240,11 +245,60 @@ export default function App() {
         if (folder) {
           useProjectStore.getState().openProject(folder)
         }
+      } else if (e.key === '=' || e.key === '+') {
+        e.preventDefault()
+        useThemeStore.getState().zoomIn()
+      } else if (e.key === '-') {
+        e.preventDefault()
+        useThemeStore.getState().zoomOut()
+      } else if (e.key === '0') {
+        e.preventDefault()
+        useThemeStore.getState().zoomReset()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
+
+  const globalDialogs = (
+    <>
+      {/* 全局对话框 — 由 layout-store 控制开关，不再依赖 window.dispatchEvent */}
+      <NewProjectDialog
+        open={newProjectOpen}
+        onClose={closeNewProject}
+      />
+      <ImportNovelDialog
+        open={importNovelOpen}
+        onClose={closeImportNovel}
+      />
+      <ChapterCreationDialog
+        isOpen={chapterCreationOpen}
+        prefill={chapterCreationPrefill}
+        onClose={closeChapterCreation}
+      />
+      <ExportDialog
+        isOpen={exportOpen}
+        onClose={closeExport}
+      />
+      {/* 全屏设置弹窗 */}
+      <SettingsModal
+        open={settingsOpen}
+        onClose={closeSettings}
+      />
+    </>
+  )
+
+  if (shell === 'stage') {
+    return (
+      <>
+        <StageRoot theme={resolvedTheme} exitGuard={exitGuard}>
+          <StageShell theme={resolvedTheme} />
+        </StageRoot>
+        <UpdateNotifier />
+        {globalDialogs}
+      </>
+    )
+  }
 
   return (
     <AppSkinRoot theme={resolvedTheme} skinId={skinState.activeSkin}>
@@ -257,7 +311,7 @@ export default function App() {
       <ShellV2
         home={!currentProject || sidebarView === 'home'}
         theme={resolvedTheme}
-        titleBar={<TitleBar />}
+        titleBar={<TitleBar exitGuard={exitGuard} />}
         rail={<LeftToolWindowBar />}
         sidebar={(
           <ErrorBoundary fallbackLabel={text('侧边栏渲染失败', 'Sidebar failed to render')}>
@@ -283,30 +337,7 @@ export default function App() {
         immersive={immersive}
       />
 
-      {/* 全局对话框 — 由 layout-store 控制开关，不再依赖 window.dispatchEvent */}
-      <NewProjectDialog
-        open={newProjectOpen}
-        onClose={closeNewProject}
-      />
-      <ImportNovelDialog
-        open={importNovelOpen}
-        onClose={closeImportNovel}
-      />
-      <ChapterCreationDialog
-        isOpen={chapterCreationOpen}
-        prefill={chapterCreationPrefill}
-        onClose={closeChapterCreation}
-      />
-      <ExportDialog
-        isOpen={exportOpen}
-        onClose={closeExport}
-      />
-      {/* 全屏设置弹窗 */}
-      <SettingsModal
-        open={settingsOpen}
-        onClose={closeSettings}
-      />
-
+      {globalDialogs}
     </AppSkinRoot>
   )
 }

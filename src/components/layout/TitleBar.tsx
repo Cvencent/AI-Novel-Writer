@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type MouseEvent } from 'react'
+import { type CSSProperties, type MouseEvent } from 'react'
 import {
   Archive,
   CheckCircle2,
@@ -22,19 +22,16 @@ import {
   ZoomOut,
 } from 'lucide-react'
 import { useProjectStore } from '../../stores/project-store'
-import { useWorkflowStore } from '../../stores/workflow-store'
 import { useThemeStore, type Theme } from '../../stores/theme-store'
 import { useEditorStore } from '../../stores/editor-store'
-import { saveDirtyEditorChangesForExit } from '../../stores/editor-store'
 import { countUnsavedEditorItems } from '../../stores/editor-unsaved'
-import { discardAllEditorChanges } from '../../stores/editor-discard'
 import { useLayoutStore } from '../../stores/layout-store'
 import { navigate } from '../../stores/navigation/navigation-intents'
 import { APP_BRAND } from '../../shared/brand'
 import { ipc } from '../../services/ipc-client'
 import { useLocaleStore } from '../../stores/locale-store'
 import type { MessageKey } from '../../i18n/core'
-import { sameProjectPathKey } from '../../shared/project-session-context'
+import type { WindowCloseGuard } from './use-window-close-guard'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '../ui/Dialog'
@@ -56,7 +53,8 @@ const themeLabelKeys: Record<Theme, MessageKey> = {
   dark: 'theme.dark',
 }
 
-export default function TitleBar() {
+/** 关窗守卫由 App 在外壳之外持有，这里只呈现确认对话框。 */
+export default function TitleBar({ exitGuard }: { exitGuard: WindowCloseGuard }) {
   const currentProject = useProjectStore((s) => s.currentProject)
   const openProject = useProjectStore((s) => s.openProject)
   const { theme, setTheme } = useThemeStore()
@@ -68,79 +66,7 @@ export default function TitleBar() {
   const immersive = useLayoutStore(s => s.immersive)
   const toggleImmersion = useLayoutStore(s => s.toggleImmersion)
   const { locale, toggleLocale, t, text } = useLocaleStore()
-  const [exitRequest, setExitRequest] = useState<{ requestId: string; workflowBlocked?: boolean } | null>(null)
-  const [exitBusy, setExitBusy] = useState(false)
-  const [exitError, setExitError] = useState<string | null>(null)
-
-  useEffect(() => ipc.on('window:close-requested', ({ requestId }) => {
-    const projectPath = useProjectStore.getState().currentProject?.path
-    const hasActiveWorkflow = !!projectPath && useWorkflowStore.getState().activeRuns.some(
-      run => sameProjectPathKey(run.projectPath, projectPath),
-    )
-    if (hasActiveWorkflow) {
-      setExitError(null)
-      setExitRequest({ requestId, workflowBlocked: true })
-      return
-    }
-    const editor = useEditorStore.getState()
-    if (countUnsavedEditorItems(editor.tabs, editor.draftLedgers) === 0) {
-      void ipc.invoke('window:resolve-close', requestId, 'proceed').then(result => {
-        if (!result.success) console.error('[TitleBar] 退出请求已失效')
-      }).catch(error => console.error('[TitleBar] 退出请求失败:', error))
-      return
-    }
-    setExitError(null)
-    setExitRequest({ requestId })
-  }), [])
-
-  const cancelExit = async () => {
-    const request = exitRequest
-    if (!request || exitBusy) return
-    setExitBusy(true)
-    try {
-      const result = await ipc.invoke('window:resolve-close', request.requestId, 'cancel')
-      if (!result.success) throw new Error(text('退出请求已失效，请重试', 'The exit request expired. Try again.'))
-      setExitRequest(null)
-      setExitError(null)
-    } catch (error) {
-      setExitError(error instanceof Error ? error.message : String(error))
-    } finally {
-      setExitBusy(false)
-    }
-  }
-
-  const discardAndExit = async () => {
-    const request = exitRequest
-    if (!request || request.workflowBlocked || exitBusy) return
-    setExitBusy(true)
-    setExitError(null)
-    try {
-      const result = await ipc.invoke('window:resolve-close', request.requestId, 'proceed')
-      if (!result.success) throw new Error(text('退出请求已失效，请重试', 'The exit request expired. Try again.'))
-      discardAllEditorChanges()
-      setExitRequest(null)
-    } catch (error) {
-      setExitError(error instanceof Error ? error.message : String(error))
-    } finally {
-      setExitBusy(false)
-    }
-  }
-
-  const saveAndExit = async () => {
-    const request = exitRequest
-    if (!request || request.workflowBlocked || exitBusy) return
-    setExitBusy(true)
-    setExitError(null)
-    try {
-      await saveDirtyEditorChangesForExit(useProjectStore.getState().currentProject?.path)
-      const result = await ipc.invoke('window:resolve-close', request.requestId, 'proceed')
-      if (!result.success) throw new Error(text('退出请求已失效，请重试', 'The exit request expired. Try again.'))
-    } catch (error) {
-      setExitError(error instanceof Error ? error.message : String(error))
-    } finally {
-      setExitBusy(false)
-    }
-  }
+  const { exitRequest, exitBusy, exitError, cancelExit, discardAndExit, saveAndExit } = exitGuard
 
   const ThemeIcon = themeIcons[theme] || Sun
   const cycleTheme = (e: MouseEvent) => {
@@ -181,25 +107,6 @@ export default function TitleBar() {
       )
     })
   }
-
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey
-      if (!mod) return
-      if (e.key === '=' || e.key === '+') {
-        e.preventDefault()
-        zoomIn()
-      } else if (e.key === '-') {
-        e.preventDefault()
-        zoomOut()
-      } else if (e.key === '0') {
-        e.preventDefault()
-        zoomReset()
-      }
-    }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [zoomIn, zoomOut, zoomReset])
 
   const handleOpenProject = async () => {
     const folder = await ipc.invoke('dialog:select-folder', 'project-open')

@@ -1,4 +1,4 @@
-import type { LayoutFields, LeftRailItem } from '../layout-store'
+import type { ChapterWritePrefill, LayoutFields, LeftRailItem } from '../layout-store'
 import type { NavigationIntent, ResourcePage, WorkStage } from './navigation-intents'
 
 const EXIT_IMMERSION = { immersive: false, preImmersivePanels: null } as const
@@ -23,6 +23,11 @@ function leaveHome(state: Pick<LayoutFields, 'sidebarView'>): Partial<LayoutFiel
     : {}
 }
 
+/** 写作此章：打开章节创作弹窗并预填参数。两种外壳都由这个旧弹窗承接，RD-7 换成新弹层。 */
+export function chapterWritePrefill(chapterNumber: number, write: ChapterWritePrefill): Pick<LayoutFields, 'chapterCreationOpen' | 'chapterCreationPrefill'> {
+  return { chapterCreationOpen: true, chapterCreationPrefill: { ...write, chapterNumber } }
+}
+
 /** 意图在旧外壳下对应的布局字段组合。 */
 export function legacyLayoutPatch(state: Pick<LayoutFields, 'sidebarView'>, intent: NavigationIntent): Partial<LayoutFields> {
   switch (intent.kind) {
@@ -39,7 +44,7 @@ export function legacyLayoutPatch(state: Pick<LayoutFields, 'sidebarView'>, inte
       return { settingsOpen: true, settingsSection: intent.section, activeRailItem: 'settings' }
     case 'chapter':
       return intent.write
-        ? { chapterCreationOpen: true, chapterCreationPrefill: { ...intent.write, chapterNumber: intent.chapterNumber } }
+        ? chapterWritePrefill(intent.chapterNumber, intent.write)
         : { sidebarView: 'project', activeRailItem: 'project', sidebarOpen: true, ...EXIT_IMMERSION }
   }
 }

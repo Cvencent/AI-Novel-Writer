@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createAppearanceStore, type AppearanceBootstrapDependencies } from '../appearance-bootstrap'
 import { createThemeStore } from '../theme-store'
 import { APPEARANCE_STORAGE_KEY as KEY, LEGACY_THEME_STORAGE_KEY as THEME, LEGACY_UI_STORAGE_KEY as SHELL } from '../../shared/appearance-profile'
+import { parseAppearanceProfileV1 } from '../../shared/__tests__/fixtures/appearance-profile-v1-parser.fixture'
 
 /** Real Chromium localStorage/DOM, deterministic main transport contract fixtures only. */
 function dependencies(overrides: Partial<AppearanceBootstrapDependencies> = {}): AppearanceBootstrapDependencies {
@@ -84,6 +85,56 @@ describe('appearance bootstrap in real browser storage', () => {
     expect(JSON.parse(localStorage.getItem(KEY)!)).toMatchObject({ colorTheme: 'galaxy', writingFont: 'noto-serif-sc', uiFont: 'inter', zoom: 1.3, shellPreference: 'writer' })
     expect(localStorage.getItem(THEME)).toBe(legacy)
     expect(localStorage.getItem(SHELL)).toBe('v1')
+  })
+
+  it.each([1, 2] as const)('已保存的 v%s 配置启动时不写存储，回执用原 revision，确认后才进入工作台', async version => {
+    const raw = JSON.stringify({ schemaVersion: version, revision: 5, shellPreference: version === 2 ? 'stage' : 'writer', colorTheme: 'dark',
+      zoom: 1.1, writingFont: 'noto-serif-sc', uiFont: 'inter', origin: 'author', legacyImportCompleted: true, legacyFontDefaultsVersion: 1 })
+    localStorage.setItem(KEY, raw)
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+    const ack = vi.fn(async () => true)
+    const store = createAppearanceStore()
+    expect(await store.getState().bootstrap(dependencies({ acknowledgeReadback: ack }))).toBe(true)
+    expect(setItem.mock.calls.filter(([key]) => key === KEY)).toEqual([])
+    expect(localStorage.getItem(KEY)).toBe(raw)
+    expect(ack).toHaveBeenCalledWith(expect.objectContaining({ profileRevision: 5 }))
+    expect(store.getState()).toMatchObject({ phase: 'migrated', resolvedShell: version === 2 ? 'stage' : 'writer' })
+  })
+
+  it('选新外壳才写成 v2；改主题与切回工作台都写 v1，RD-3 之前的解析器能读', async () => {
+    const store = createAppearanceStore()
+    await store.getState().bootstrap(dependencies())
+    createThemeStore(store).getState().setTheme('dark')
+    const themed = localStorage.getItem(KEY)!
+    expect(JSON.parse(themed)).toMatchObject({ schemaVersion: 1, colorTheme: 'dark' })
+    expect(parseAppearanceProfileV1(themed)).toEqual(JSON.parse(themed))
+    expect(store.getState().update({ shellPreference: 'stage' })).toBe(true)
+    expect(JSON.parse(localStorage.getItem(KEY)!)).toMatchObject({ schemaVersion: 2, shellPreference: 'stage' })
+    const reopened = createAppearanceStore()
+    await reopened.getState().bootstrap(dependencies())
+    expect(reopened.getState().resolvedShell).toBe('stage')
+    expect(reopened.getState().update({ shellPreference: 'unset' })).toBe(true)
+    const back = localStorage.getItem(KEY)!
+    expect(JSON.parse(back)).toMatchObject({ schemaVersion: 1, shellPreference: 'unset' })
+    expect(parseAppearanceProfileV1(back)).toEqual(JSON.parse(back))
+  })
+
+  it.each(['已确认', '存储里更新'] as const)('%s的新外壳 v2 配置重置后写成 v1，revision 递增，RD-3 之前的解析器能读', async source => {
+    const store = createAppearanceStore()
+    await store.getState().bootstrap(dependencies())
+    expect(store.getState().update({ shellPreference: 'stage' })).toBe(true)
+    let revision = store.getState().profile!.revision
+    if (source === '存储里更新') {
+      localStorage.setItem(KEY, JSON.stringify({ ...JSON.parse(localStorage.getItem(KEY)!), revision: revision + 5 }))
+      revision += 5
+    }
+    expect(JSON.parse(localStorage.getItem(KEY)!)).toMatchObject({ schemaVersion: 2, shellPreference: 'stage' })
+    expect(store.getState().resetAppearance()).toBe(true)
+    const reset = localStorage.getItem(KEY)!
+    expect(JSON.parse(reset)).toMatchObject({ schemaVersion: 1, shellPreference: 'unset', revision: revision + 1, origin: 'author' })
+    expect(parseAppearanceProfileV1(reset)).toEqual(JSON.parse(reset))
+    expect(await store.getState().bootstrap(dependencies())).toBe(true)
+    expect(store.getState()).toMatchObject({ phase: 'migrated', resolvedShell: 'writer' })
   })
 
   it.each(['legacy-json', 'canonical-json', 'unknown-shell'] as const)('preserves %s and blocks without writing defaults', async kind => {

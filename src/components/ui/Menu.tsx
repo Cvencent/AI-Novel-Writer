@@ -21,6 +21,8 @@ interface MenuProps {
   /** 触发按钮的可访问名称；只给图标时也作为 aria-label。 */
   label: string
   icon?: ReactNode
+  /** 文字触发按钮的内容与样式，例如顶栏的作品名加下拉箭头；label 仍作为可访问名称。 */
+  trigger?: { content: ReactNode; className?: string }
   groups: readonly MenuGroupSpec[]
   align?: 'start' | 'end'
 }
@@ -28,7 +30,7 @@ interface MenuProps {
 const enabledItems = (menu: HTMLElement | null) =>
   Array.from(menu?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? [])
 
-export function Menu({ label, icon, groups, align = 'start' }: MenuProps) {
+export function Menu({ label, icon, trigger, groups, align = 'start' }: MenuProps) {
   const { open, layerId, anchorRef, triggerRef, layerRef: menuRef, renderLayer, show, toggle, close } = useAnchoredLayer(align)
   const focusFirstOnOpen = useRef(false)
 
@@ -82,9 +84,11 @@ export function Menu({ label, icon, groups, align = 'start' }: MenuProps) {
 
   return (
     <div className="pi-anchor" ref={anchorRef}>
-      {icon
-        ? <Button variant="icon" aria-label={label} {...triggerProps}>{icon}</Button>
-        : <Button variant="secondary" {...triggerProps}>{label}</Button>}
+      {trigger
+        ? <Button variant="text" className={trigger.className} aria-label={label} {...triggerProps}>{trigger.content}</Button>
+        : icon
+          ? <Button variant="icon" aria-label={label} {...triggerProps}>{icon}</Button>
+          : <Button variant="secondary" {...triggerProps}>{label}</Button>}
       {open && renderLayer(
         <div
           id={layerId}

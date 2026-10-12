@@ -5,7 +5,8 @@
 import { useState, useEffect } from 'react'
 import { ChevronRight, ChevronDown, CheckCircle2, Circle, FileText, FolderOpen, Copy, Trash2, FilePen } from 'lucide-react'
 import type { DraftMeta } from '../../../stores/draft-store'
-import { useDraftStore, readDraftBody } from '../../../stores/draft-store'
+import { useDraftStore } from '../../../stores/draft-store'
+import { openDraftTab } from '../../../stores/open-draft-tab'
 import { useEditorStore } from '../../../stores/editor-store'
 import { confirm } from '../../ui/Confirm'
 import { DRAFT_STATUS_LABEL, DRAFT_STATUS_COLOR } from '../../../shared/draft-status'
@@ -225,21 +226,7 @@ function DraftItem({
   const openDraft = async () => {
     const projectSession = captureProjectSession(currentProject)
     if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
-    const content = await readDraftBody(draft.filePath, projectKey, projectSession)
-    if (!isProjectSessionCurrent(projectSession)) return
-    useEditorStore.getState().openFile({
-      id: draft.filePath,
-      name: `${chapterTitleText} v${draft.version}`,
-      type: 'chapter',
-      filePath: draft.filePath,
-      content,
-      savedContent: content,
-      draftId: draft.id,
-      chapterNumber: draft.chapterNumber,
-      draftStatus: draft.status,
-      projectKey,
-      projectSessionLease: projectSession.leaseId,
-    })
+    await openDraftTab(draft, `${chapterTitleText} v${draft.version}`, projectSession)
   }
 
   /** 删除草稿 */

@@ -1,9 +1,8 @@
-import { useEditorStore } from '../editor-store'
+import { useAppearanceStore } from '../appearance-bootstrap'
 import { useLayoutStore, type ChapterWritePrefill, type SettingsSection } from '../layout-store'
-import { useLocaleStore } from '../locale-store'
-import { openBuiltinEditor } from '../open-builtin-editor'
-import { useProjectStore } from '../project-store'
 import { legacyLayoutPatch } from './legacy-layout'
+import { openPageTab } from './page-tabs'
+import { stageNavigate } from './stage-navigation'
 
 /** 作品流程脊的四个阶段，顺序即创作顺序。 */
 export type WorkStage = 'setup' | 'architecture' | 'blueprint' | 'manuscript'
@@ -27,20 +26,13 @@ export type NavigationIntent =
   /** 带 write 时同时展开写作此章的参数，即旧外壳的章节创作弹窗。 */
   | { kind: 'chapter'; chapterNumber: number; write?: ChapterWritePrefill }
 
-const LEGACY_PAGE_TABS: Partial<Record<WorkStage | ResourcePage, (text: (zh: string, en: string) => string) => void>> = {
-  architecture: text => openBuiltinEditor('world-building-editor', text('故事架构', 'Story architecture'), 'world-building'),
-  blueprint: text => openBuiltinEditor('chapter-card-editor', text('章节蓝图', 'Chapter blueprint'), 'chapter-card'),
-  plot: text => openBuiltinEditor('narrative-thread-editor', text('剧情树与叙事线索', 'Plot tree & narrative threads'), 'narrative-thread', 'plot-tree'),
-  history: text => openBuiltinEditor('version-history', text('版本历史', 'Version history'), 'version-history'),
-  setup: text => {
-    const projectKey = useProjectStore.getState().currentProject?.path
-    if (projectKey) useEditorStore.getState().openFile({ id: 'config', name: text('小说配置', 'Novel configuration'), type: 'config', projectKey })
-  },
-}
-
-/** 唯一的跨层导航入口。 */
+/** 唯一的跨层导航入口。外观选择新外壳时落到新外壳的状态，否则落到旧外壳的布局字段。 */
 export function navigate(intent: NavigationIntent): void {
+  if (useAppearanceStore.getState().resolvedShell === 'stage') {
+    stageNavigate(intent)
+    return
+  }
   useLayoutStore.setState(state => legacyLayoutPatch(state, intent))
   const page = intent.kind === 'stage' ? intent.stage : intent.kind === 'resource' ? intent.page : undefined
-  if (page) LEGACY_PAGE_TABS[page]?.(useLocaleStore.getState().text)
+  if (page) openPageTab(page)
 }

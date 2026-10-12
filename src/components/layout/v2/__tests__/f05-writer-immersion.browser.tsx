@@ -3,7 +3,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import ShellV2 from '../ShellV2'
-import TitleBar from '../../TitleBar'
+import { GuardedTitleBar } from '../../__tests__/guarded-title-bar'
 import LeftToolWindowBar from '../../LeftToolWindowBar'
 import RightToolWindowBar from '../../RightToolWindowBar'
 import EditorArea from '../../../panels/EditorArea'
@@ -34,7 +34,7 @@ let root: Root
 
 function WriterFixture() {
   const layout = useLayoutStore()
-  return <ShellV2 theme="paper" titleBar={<TitleBar />}
+  return <ShellV2 theme="paper" titleBar={<GuardedTitleBar />}
     rail={<LeftToolWindowBar />} rightRail={<RightToolWindowBar />}
     sidebar={<p>作品资料</p>} editor={<EditorArea onNewProject={vi.fn()} />}
     aiPanel={<AIPanel />}

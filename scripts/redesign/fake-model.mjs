@@ -22,9 +22,19 @@ function responseFor(prompt) {
 export async function startFakeModel(diagnostics) {
   const requests = []
   let held = null
+  let holdEmbeddings = false
+  let waiting = 0
   const gate = {
-    hold: () => { held ??= Promise.withResolvers() },
-    release: () => { held?.resolve(); held = null },
+    /** 卡住之后的模型调用；embeddings 为 true 时连嵌入也卡住（参考文本入库这类只走嵌入的步骤）。 */
+    hold: ({ embeddings = false } = {}) => { held ??= Promise.withResolvers(); holdEmbeddings = embeddings },
+    release: () => { held?.resolve(); held = null; holdEmbeddings = false },
+    /** 正卡在门上的请求数，场景据此确认运行已停在要截的那一步。 */
+    get waiting() { return waiting },
+  }
+  const pass = async () => {
+    if (!held) return
+    waiting++
+    try { await held.promise } finally { waiting-- }
   }
   const record = (kind, detail) => {
     requests.push(kind)
@@ -36,6 +46,7 @@ export async function startFakeModel(diagnostics) {
     }
     const body = JSON.parse(Buffer.concat(await Array.fromAsync(request)).toString('utf8'))
     if (request.url === '/v1/embeddings') {
+      if (holdEmbeddings) await pass()
       const input = Array.isArray(body.input) ? body.input : [body.input]
       record('embedding', `${input.length} 条`)
       response.writeHead(200, { 'Content-Type': 'application/json' })
@@ -43,7 +54,7 @@ export async function startFakeModel(diagnostics) {
       return
     }
     if (request.url !== '/v1/chat/completions') { response.writeHead(404).end(); return }
-    await held?.promise
+    await pass()
     const prompt = (body.messages ?? []).map(message => typeof message.content === 'string' ? message.content : JSON.stringify(message.content)).join('\n')
     const { kind, content } = responseFor(prompt)
     record(kind, prompt.slice(0, 120).replace(/\s+/g, ' '))
