@@ -1,12 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { Sparkles, Hash, FileText } from 'lucide-react'
 import { useLLMStore } from '../../stores/llm-store'
-import { useWorkflowStore, workflowResourceConflictMessage } from '../../stores/workflow-store'
+import { useWorkflowStore } from '../../stores/workflow-store'
 
 import { useProjectStore } from '../../stores/project-store'
-import { createConfigGenerationWorkflow } from '../../services/workflows/architecture-workflow'
 import { confirm } from '../ui/Confirm'
-import { toast } from '../ui/Toast'
 import {
   Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
 } from '../ui/Dialog'
@@ -16,6 +14,7 @@ import { Textarea } from '../ui/Textarea'
 import type { NovelConfig } from '../../shared/ipc-channels'
 import { useLocaleStore } from '../../stores/locale-store'
 import { captureProjectSession, isProjectSessionCurrent } from '../project-session-gate'
+import { configFieldsToExpand, startConfigGeneration } from './config-generation'
 
 interface Props {
   isOpen: boolean
@@ -30,7 +29,6 @@ export default function GenerateConfigDialog({ isOpen, onClose, onGenerated }: P
   const defaultModelId = useLLMStore(s => s.defaultModelId)
   // ✅ 用 getState() 获取 action，不订阅 workflow store 的 globalLogs 高频更新
   const addLog = useWorkflowStore.getState().addLog
-  const startWorkflow = useWorkflowStore.getState().startWorkflow
   const currentProject = useProjectStore(s => s.currentProject)
   const updateNovelConfig = useProjectStore(s => s.updateNovelConfig)
   const defaultIdea = currentProject?.novelConfig?.coreOutline || ''
@@ -87,15 +85,7 @@ export default function GenerateConfigDialog({ isOpen, onClose, onGenerated }: P
     setIsSubmitting(true)
     try {
       // 已有作者内容时先确认扩写范围
-      const cfg = currentProject?.novelConfig
-      const filledFields: string[] = []
-      if (cfg?.coreOutline?.trim()) filledFields.push(text('核心大纲', 'Core outline'))
-      if (cfg?.worldSetting?.trim()) filledFields.push(text('世界观设定', 'World setting'))
-      if (cfg?.goldenFinger?.trim()) filledFields.push(text('金手指体系', 'Special advantage'))
-      if (cfg?.protagonistProfile?.trim()) filledFields.push(text('主角人设', 'Protagonist profile'))
-      if (cfg?.globalGuidance?.trim()) filledFields.push(text('全局写作要求', 'Global writing guidance'))
-      if (cfg?.subGenre?.trim()) filledFields.push(text('细分类型', 'Subgenre'))
-
+      const filledFields = configFieldsToExpand(currentProject?.novelConfig, text)
       if (filledFields.length > 0) {
         setConfirming(true)
         const fieldList = filledFields.map(f => `• ${f}`).join('\n')
@@ -108,28 +98,8 @@ export default function GenerateConfigDialog({ isOpen, onClose, onGenerated }: P
       }
 
       if (!isProjectSessionCurrent(projectSession)) return
-
-      const workflow = createConfigGenerationWorkflow({
-        projectPath: projectSession.projectPath,
-        projectSession,
-        idea,
-        totalChapters: totalChapters || 100,
-        wordsPerChapter: wordsPerChapter || 3000,
-        onGenerated,
-      })
-      const conflict = useWorkflowStore.getState().getResourceConflict(workflow)
-      if (conflict) {
-        toast.warning(workflowResourceConflictMessage(useLocaleStore.getState().locale, conflict.title))
-        return
-      }
-
-      // 扩写确认通过后，立即关闭弹窗
-      onClose()
-      toast.info(text('正在根据脑洞生成小说配置...', 'Generating novel configuration from your idea...'))
-      addLog('info', text(`正在根据创作脑洞生成小说配置（规模：${totalChapters} 章 / ${wordsPerChapter} 字/章）...`, `Generating novel configuration (${totalChapters} chapters / ${wordsPerChapter} words per chapter)...`))
-
-      // 后台执行 LLM 调用（由 WorkflowEngine 接管并显示全局状态面板）
-      void startWorkflow(workflow)
+      // 扩写确认通过、任务已启动后立即关闭弹窗
+      if (startConfigGeneration({ idea, projectSession, onGenerated })) onClose()
     } finally {
       isSubmittingRef.current = false
       setIsSubmitting(false)

@@ -158,8 +158,19 @@ export function overviewBars(page, name) {
 
 export const updateCard = page => root(page).getByRole('status', { name: '应用更新' })
 
-/** 在设定页改一项（细分类型），让设定标签变成未保存。 */
-export async function dirtySetup(page, value = '海港悬疑') {
-  await page.getByPlaceholder('如：修仙/重生/末世').fill(value)
+/** 设定页。核心大纲的名字在缺这一项时带「 · 必填」。 */
+export const setupOutline = page => root(page).getByRole('textbox', { name: /^核心大纲/ })
+export const setupNext = page => root(page).getByRole('button', { name: /^下一步：故事架构/ })
+export const setupHint = page => root(page).locator('.stage-setup-foot').getByRole('status')
+export const setupFill = page => root(page).getByRole('button', { name: /^(AI 补全其余设定|AI 正在补全…)$/ })
+export const setupChip = (page, name) => root(page).getByRole('group', { name: '更多设定' }).getByRole('button', { name: new RegExp(`^${escape(name)}`) })
+export const setupPanel = (page, name) => root(page).getByRole('region', { name })
+/** 三项必填的下拉；名字在缺这一项时带「 · 必填」。 */
+export const setupField = (page, name) => root(page).getByRole('combobox', { name: new RegExp(`^${escape(name)}`) })
+
+/** 在核心大纲末尾补一句，让设定标签变成未保存。 */
+export async function dirtySetup(page, addition = '还有一盏灯没有熄灭。') {
+  const outline = setupOutline(page)
+  await outline.fill(`${await outline.inputValue()}${addition}`)
   await saveStatus(page).filter({ hasText: '未保存' }).waitFor({ state: 'visible' })
 }

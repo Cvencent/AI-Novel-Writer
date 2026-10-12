@@ -21,7 +21,22 @@ function characterExtraction(prompt) {
   ] })) })
 }
 
+/** AI 填充小说配置：按配置 JSON 合同给出 9 个必填字段与两个枚举；规模字段省略，由作者设置决定。 */
+export const FIXTURE_CONFIG = Object.freeze({
+  genre: '悬疑', targetAudience: '全龄', subGenre: '海港悬疑',
+  coreOutline: '测绘师在停用的灯塔里追查一条沉船。',
+  worldSetting: '旧港以潮汐计时，港务局的档案按潮期装订。',
+  goldenFinger: '林岚能从潮位刻痕里读出年份。',
+  protagonistProfile: '林岚，测绘师，冷静而执拗，相信一切都能量出来。',
+  globalGuidance: ['对白克制，不替人物解释动机。', '每章至少写到一次潮水或灯光。', '线索先于解释出现。', '不使用倒叙开篇。'].join('\n'),
+  writingStyle: '短句为主，多用潮汐与灯光的意象，叙述距离贴近林岚。',
+  plotStructure: 'three_act', narrativePOV: 'third_limited',
+})
+
 function responseFor(prompt, { extraction }) {
+  if (prompt.includes('不可变小说配置 JSON 合同') || prompt.includes('Immutable novel-configuration JSON contract')) {
+    return { kind: 'config', content: JSON.stringify(FIXTURE_CONFIG) }
+  }
   if (prompt.includes('【已确认纳入本次修稿的审稿项】')) return { kind: 'revision', content: FIXTURE_REVISED }
   if (prompt.includes('goalReviews')) return { kind: 'review', content: REVIEW }
   if (prompt.includes('{"updates"')) return { kind: 'character-state', content: '{"updates":[]}' }

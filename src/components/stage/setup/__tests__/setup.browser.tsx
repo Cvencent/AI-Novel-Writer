@@ -1,0 +1,169 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { StoreApi } from 'zustand'
+import { act } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+
+import type { NovelConfig, ProjectData } from '../../../../shared/ipc-channels'
+import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
+import { useAppearanceStore } from '../../../../stores/appearance-bootstrap'
+import { useEditorStore } from '../../../../stores/editor-store'
+import { useLayoutStore } from '../../../../stores/layout-store'
+import { useLLMStore } from '../../../../stores/llm-store'
+import { useProjectStore } from '../../../../stores/project-store'
+import { useWorkflowStore } from '../../../../stores/workflow-store'
+import StageSetup from '../StageSetup'
+
+;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+function snapshot<T>(store: StoreApi<T>): () => void {
+  const state = store.getState()
+  return () => store.setState(state, true)
+}
+const restores = [snapshot(useLayoutStore), snapshot(useProjectStore), snapshot(useLLMStore), snapshot(useEditorStore), snapshot(useAppearanceStore), snapshot(useWorkflowStore)]
+
+const PATH = 'C:\\novels\\island'
+const SESSION = { projectId: 'island', leaseId: 'lease-1', projectPath: PATH }
+const BLANK: Partial<NovelConfig> = {
+  coreOutline: '', genre: '', subGenre: '', targetAudience: '', totalChapters: 24, wordsPerChapter: 3000,
+  worldSetting: '', goldenFinger: '', protagonistProfile: '', globalGuidance: '', writingStyle: '', referenceWorks: '',
+  narrativePOV: 'third_limited', plotStructure: 'three_act', writingLanguage: 'zh-CN',
+}
+
+let root: Root | undefined
+let host: HTMLDivElement | undefined
+
+function project(config: Partial<NovelConfig>) {
+  setActiveProjectSessionContext(SESSION)
+  useProjectStore.setState({ currentProject: { id: 'island', sessionLease: 'lease-1', name: '雾岛', path: PATH, novelConfig: { ...BLANK, ...config } } as unknown as ProjectData })
+}
+
+async function mount() {
+  host = document.createElement('div')
+  host.className = 'paper-ink stage-shell'
+  host.style.cssText = 'width: 1200px; height: 900px;'
+  document.body.append(host)
+  root = createRoot(host)
+  await act(async () => root!.render(<StageSetup projectKey={PATH} />))
+}
+
+const byName = (name: string | RegExp) => [...document.querySelectorAll<HTMLButtonElement>('button')]
+  .find(button => {
+    const label = button.getAttribute('aria-label') ?? button.textContent?.trim() ?? ''
+    return typeof name === 'string' ? label === name : name.test(label)
+  })
+const next = () => byName(/^下一步：故事架构/)!
+const hint = () => host!.querySelector('.stage-setup-foot [role="status"]')!.textContent
+const field = (label: RegExp) => [...host!.querySelectorAll<HTMLSelectElement | HTMLTextAreaElement>('select, textarea')]
+  .find(control => label.test(control.labels?.[0]?.textContent ?? ''))!
+
+async function click(element: HTMLElement | undefined) {
+  expect(element, '要点击的元素存在').toBeTruthy()
+  await act(async () => element!.click())
+}
+
+async function choose(select: HTMLSelectElement, value: string) {
+  await act(async () => {
+    select.value = value
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+}
+
+async function write(textarea: HTMLTextAreaElement, value: string) {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(textarea, value)
+    textarea.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+}
+
+beforeEach(() => {
+  useWorkflowStore.setState({ startWorkflow: vi.fn(async () => undefined), getResourceConflict: () => null } as never)
+  useAppearanceStore.setState({ resolvedShell: 'stage' })
+  useLLMStore.setState({ loaded: true, defaultModelId: 'model' })
+  useEditorStore.setState({ tabs: [], activeTabId: null })
+  useProjectStore.setState({ saveProject: vi.fn(async () => true) } as never)
+})
+
+afterEach(async () => {
+  await act(async () => root?.unmount())
+  host?.remove()
+  root = undefined
+  host = undefined
+  setActiveProjectSessionContext(null)
+  for (const restore of restores) restore()
+})
+
+describe('设定页', () => {
+  it('必填未齐时下一步不可用，提示写明还缺哪几项；补齐后才能往下走', async () => {
+    project({})
+    await mount()
+    expect(next().disabled).toBe(true)
+    expect(hint()).toBe('还差 3 项：核心大纲、类型、目标读者')
+    expect(next().getAttribute('aria-describedby')).toBe(host!.querySelector('.stage-setup-foot [role="status"]')!.id)
+
+    await write(field(/^核心大纲/) as HTMLTextAreaElement, '一个收到匿名信的年轻人登上末班车。')
+    await choose(field(/^类型/) as HTMLSelectElement, '悬疑')
+    expect(hint()).toBe('选好目标读者就能继续')
+    expect(next().disabled).toBe(true)
+    expect(host!.querySelector('[data-missing]')?.textContent).toBe('目标读者 · 必填')
+
+    await choose(field(/^目标读者/) as HTMLSelectElement, '全龄')
+    expect(hint()).toBe('设定已齐，可以往下走')
+    expect(next().disabled).toBe(false)
+    expect([...host!.querySelectorAll('.pi-btn--primary')]).toHaveLength(1)
+  })
+
+  it('下一步先保存设定再去架构', async () => {
+    project({ coreOutline: '雾钟提前一刻响起。', genre: '悬疑', targetAudience: '全龄' })
+    useEditorStore.setState({ tabs: [{ id: 'config', name: '设定', type: 'config', projectKey: PATH, dirty: true }] as never, activeTabId: 'config' })
+    await mount()
+    await click(next())
+    expect(useProjectStore.getState().saveProject).toHaveBeenCalledTimes(1)
+    expect(useEditorStore.getState().tabs.map(tab => tab.type)).toContain('world-building')
+  })
+
+  it('AI 补全以核心大纲为脑洞启动；已有作者内容时先确认扩写', async () => {
+    project({ coreOutline: '雾钟提前一刻响起。', worldSetting: '旧港以潮汐计时。' })
+    await mount()
+    await click(byName('AI 补全其余设定'))
+    const startWorkflow = useWorkflowStore.getState().startWorkflow
+    expect(startWorkflow).not.toHaveBeenCalled()
+    const dialog = document.querySelector('[role="dialog"]')!
+    expect(dialog.querySelector('h2')?.textContent).toBe('扩写已有的设定？')
+    expect([...dialog.querySelectorAll('li')].map(item => item.textContent)).toEqual(['核心大纲', '世界观设定'])
+
+    await click(byName('继续扩写'))
+    expect(startWorkflow).toHaveBeenCalledWith(expect.objectContaining({ type: 'config_generation', projectPath: PATH, projectSession: SESSION }))
+  })
+
+  it('没有核心大纲时 AI 补全不可用；没有模型时所有 AI 按钮不可用并给出添加模型的入口', async () => {
+    project({})
+    await mount()
+    expect(byName('AI 补全其余设定')?.disabled).toBe(true)
+    await act(async () => root!.unmount())
+    host!.remove()
+
+    useLLMStore.setState({ loaded: true, defaultModelId: null })
+    project({ coreOutline: '雾钟提前一刻响起。' })
+    await mount()
+    expect(byName('AI 补全其余设定')?.disabled).toBe(true)
+    expect(byName('AI 生成「核心大纲」')?.disabled).toBe(true)
+    expect(host!.textContent).toContain('还没有连接 AI 模型')
+    await click(byName('添加模型'))
+    expect(useLayoutStore.getState()).toMatchObject({ settingsOpen: true, settingsSection: 'llm' })
+  })
+
+  it('更多设定点开才出现，每项可以单独收起', async () => {
+    project({ subGenre: '海港悬疑' })
+    await mount()
+    const chip = byName(/^细分类型/)!
+    expect(chip.textContent).toBe('细分类型 · 海港悬疑')
+    expect(chip.getAttribute('aria-expanded')).toBe('false')
+    expect(host!.querySelector('[aria-label="细分类型"]')).toBeNull()
+
+    await click(chip)
+    expect(chip.getAttribute('aria-expanded')).toBe('true')
+    expect(host!.querySelector<HTMLInputElement>('[aria-label="细分类型"] input')?.value).toBe('海港悬疑')
+    await click(byName('收起「细分类型」'))
+    expect(host!.querySelector('[aria-label="细分类型"]')).toBeNull()
+  })
+})

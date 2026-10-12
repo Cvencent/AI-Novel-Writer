@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { chooseProjectDirectoryGrant } from '../project-directory-grant.mjs'
-import { FAKE_MODEL, FIXTURE_PROSE } from './fake-model.mjs'
+import { FAKE_MODEL, FIXTURE_CONFIG, FIXTURE_PROSE } from './fake-model.mjs'
 import * as bookshelf from './pages/bookshelf.mjs'
 import * as chapter from './pages/chapter.mjs'
 import * as materials from './pages/materials.mjs'
@@ -418,6 +418,8 @@ async function chromeContrastFailures(page) {
       ['.stage-library-title', 4.5], ['.stage-eyebrow', 3], ['.stage-start-text > b', 4.5], ['.stage-start-text > span', 3],
       ['.stage-shelf-title', 4.5], ['.stage-shelf-hint', 3], ['.stage-book-title', 4.5], ['.stage-book-name', 4.5], ['.stage-book-meta', 3],
       ['.stage-ov-title', 4.5], ['.stage-ov-meta', 3], ['.stage-ov-bar-label', 3], ['.stage-ov .pi-stat-label', 3],
+      ['.stage-setup-title', 4.5], ['.stage-setup-lede', 4.5], ['.stage-setup-label', 4.5], ['.stage-setup-hint', 3], ['.stage-chip', 4.5],
+      ['.stage-setup-panel-title', 4.5], ['.stage-setup-panel-desc', 3], ['.stage-setup-outline-foot', 3],
       ['.stage-update-title', 4.5], ['.stage-update-text', 3], ['.stage-library .pi-btn:not(.pi-btn--icon)', 4.5], ['.stage-library .pi-btn--icon', 3], ['.pi-notice-title', 4.5], ['.pi-notice-text', 3],
     ]
     return checks.flatMap(([selector, minimum]) => [...document.querySelectorAll(`[data-shell-presentation="stage"] ${selector}`)].map(element => {
@@ -457,21 +459,18 @@ export const STAGE_SCENARIOS = {
   } },
   'stage-dirty-close': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
     await stage.stageButton(page, '设定').click()
-    const field = page.getByPlaceholder('如：修仙/重生/末世')
-    await field.fill('海港悬疑')
-    await stage.saveStatus(page).filter({ hasText: '未保存' }).waitFor({ state: 'visible' })
+    await stage.dirtySetup(page)
     await stage.closeTabButton(page, '设定').click()
     await page.getByRole('dialog', { name: '放弃未保存的修改？' }).waitFor({ state: 'visible' })
   }, after: async ({ page }) => {
     await page.getByRole('button', { name: '继续编辑', exact: true }).click()
     await page.getByRole('dialog', { name: '放弃未保存的修改？' }).waitFor({ state: 'hidden' })
     assert.equal(await stage.tab(page, '设定').getAttribute('aria-selected'), 'true', '取消后标签仍在')
-    assert.equal(await page.getByPlaceholder('如：修仙/重生/末世').inputValue(), '海港悬疑', '取消后修改保留')
+    assert.equal(await stage.setupOutline(page).inputValue(), `${STAGE_SAMPLE.core.coreOutline}还有一盏灯没有熄灭。`, '取消后修改保留')
   } },
   'stage-save': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
     await stage.stageButton(page, '设定').click()
-    await page.getByPlaceholder('如：修仙/重生/末世').fill('海港悬疑')
-    await stage.saveStatus(page).filter({ hasText: '未保存' }).waitFor({ state: 'visible' })
+    await stage.dirtySetup(page)
     await page.keyboard.press('Control+S')
     await stage.saveStatus(page).filter({ hasText: '已保存' }).waitFor({ state: 'visible' })
   } },
@@ -569,6 +568,38 @@ export const STAGE_SCENARIOS = {
   }, after: async ({ app, page }) => {
     await page.getByRole('dialog', { name: '请先处理未保存的修改' }).getByRole('button', { name: '返回保存' }).click()
     assert.equal(await app.evaluate(() => globalThis.__driveUpdate.installs), 0, '有未保存修改时不会重启安装')
+  } },
+  'stage-setup-required': { model: false, shell: 'stage', run: async ({ app, page, roots }) => {
+    await stubOpenDialog(app, roots.projects)
+    await bookshelf.createProject(page, '雾岛')
+    await stage.setupOutline(page).fill('一个收到匿名信的年轻人，在一座本该拆除的车站登上末班车。')
+    await stage.setupField(page, '类型').selectOption('悬疑')
+    assert.equal(await stage.setupNext(page).isDisabled(), true, '目标读者没选时下一步不可用')
+    assert.equal(await stage.setupHint(page).innerText(), '选好目标读者就能继续')
+    assert.equal(await stage.setupNext(page).getAttribute('aria-describedby'), await stage.setupHint(page).getAttribute('id'), '主按钮由提示说明缺什么')
+    assert.deepEqual(await stage.primaryButtons(page), ['下一步：故事架构'], '设定页唯一的主按钮是下一步')
+    assert.deepEqual(await stage.stageStates(page), { setup: 'active', architecture: 'todo', blueprint: 'todo', manuscript: 'todo' })
+    assert.deepEqual(await chromeContrastFailures(page), [], '设定页文字对比度不足')
+  }, after: async ({ page }) => {
+    await stage.setupField(page, '目标读者').selectOption('全龄')
+    await stage.setupHint(page).filter({ hasText: '设定已齐' }).waitFor({ state: 'visible' })
+    await stage.setupNext(page).click()
+    await page.getByRole('navigation', { name: '位置' }).getByText('架构', { exact: true }).waitFor({ state: 'visible' })
+    assert.equal(await stage.saveStatus(page).innerText(), '已保存', '下一步先保存设定')
+  } },
+  'stage-setup-fill': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+    await stage.stageButton(page, '设定').click()
+    await stage.setupFill(page).click()
+    const confirm = page.getByRole('dialog', { name: '扩写已有的设定？' })
+    await confirm.getByRole('button', { name: '继续扩写', exact: true }).click()
+    await stage.setupChip(page, '世界观').and(page.locator('[data-filled]')).waitFor({ state: 'visible', timeout: 20_000 })
+    await stage.setupChip(page, '世界观').click()
+    const world = stage.setupPanel(page, '世界观').getByRole('textbox')
+    assert.equal(await world.inputValue(), FIXTURE_CONFIG.worldSetting, 'AI 补全写进了世界观')
+    assert.ok((await stage.setupOutline(page).inputValue()).startsWith(STAGE_SAMPLE.core.coreOutline), 'AI 补全保留了作者写的核心大纲')
+    await world.fill('旧港以潮汐计时。')
+    await stage.saveStatus(page).filter({ hasText: '未保存' }).waitFor({ state: 'visible' })
+    assert.deepEqual(await chromeContrastFailures(page), [], '设定页文字对比度不足')
   } },
   'stage-run': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page, fake }) => {
     fake.gate.hold()

@@ -150,17 +150,20 @@ export function useNovelConfigForm(projectKey: string) {
     }
   }
 
-  /** 渲染 GenerateConfigDialog 用的参数；生成结果只提交给打开对话框时冻结的会话。 */
+  /** AI 填充的结果只提交给启动时冻结的会话；作品已切换或重新打开时丢弃。 */
+  const applyGeneratedTo = (session: ReturnType<typeof captureProjectSession>) => (parsed: Partial<NovelConfig>) => {
+    if (!isProjectSessionCurrent(session)) return
+    updateNovelConfig(parsed, session)
+  }
+
+  /** 渲染 GenerateConfigDialog 用的参数。 */
   const generateDialog = {
     isOpen: showGenerateConfig,
     onClose: () => {
       setGenerateSession(null)
       setShowGenerateConfig(false)
     },
-    onGenerated: (parsed: Partial<NovelConfig>) => {
-      if (!isProjectSessionCurrent(generateSession)) return
-      updateNovelConfig(parsed, generateSession)
-    },
+    onGenerated: applyGeneratedTo(generateSession),
   }
 
   return {
@@ -175,5 +178,6 @@ export function useNovelConfigForm(projectKey: string) {
     generateField,
     openGenerateDialog,
     generateDialog,
+    applyGeneratedTo,
   }
 }
