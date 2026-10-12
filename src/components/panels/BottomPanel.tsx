@@ -4,6 +4,7 @@ import {
   Play, Pause, X, ChevronDown, ChevronRight, Zap, Copy,
 } from 'lucide-react'
 import { useLayoutStore } from '../../stores/layout-store'
+import { navigate } from '../../stores/navigation/navigation-intents'
 import { useWorkflowStore, type WorkflowStep, type WorkflowRun } from '../../stores/workflow-store'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useProjectStore } from '../../stores/project-store'
@@ -359,7 +360,7 @@ function ActiveRunPanel({
 
       {waitingForConfirm && nextStepName && (
         <button type="button" data-testid="workflow-confirmation-open"
-          onClick={() => useLayoutStore.getState().openRightPanel('ai-output', run.id)}
+          onClick={() => navigate({ kind: 'run', facet: 'output', runId: run.id })}
           className="mx-3 mb-2 flex items-center gap-1 rounded px-2.5 py-1.5 text-xs"
           style={{ color: 'var(--color-accent)', border: '1px solid var(--color-border)' }}>
           <ChevronRight size={11} /> {text('在 AI 输出中确认', 'Confirm in AI output')}

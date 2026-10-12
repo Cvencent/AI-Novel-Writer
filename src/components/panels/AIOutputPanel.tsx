@@ -16,6 +16,7 @@ import {
   type WorkflowStep,
 } from '../../stores/workflow-store'
 import { useLayoutStore } from '../../stores/layout-store'
+import { navigate } from '../../stores/navigation/navigation-intents'
 import { openPlanningRecoveryDraft, useEditorStore } from '../../stores/editor-store'
 import { useProjectStore } from '../../stores/project-store'
 import { useWorkflowReasoningStore } from '../../stores/workflow-reasoning-store'
@@ -969,13 +970,7 @@ function WorkflowFailureNotice({
       !sameProjectPathKey(projectPath, project?.path)
       || !sameProjectSessionContext(projectSession, projectSessionContextFromProject(project))
     ) return
-    useEditorStore.getState().openFile({
-      id: 'config',
-      name: locale === 'zh-CN' ? '小说配置' : 'Novel configuration',
-      type: 'config',
-      projectKey: projectPath,
-    })
-    useLayoutStore.setState({ sidebarView: 'project', activeRailItem: 'project', sidebarOpen: true })
+    navigate({ kind: 'stage', stage: 'setup' })
   }
 
   return (

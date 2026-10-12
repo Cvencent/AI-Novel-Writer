@@ -717,7 +717,10 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
           return false
         }
         if (!sameRendererProject(rendererProject, get().currentProject)) return false
-        const { useLayoutStore } = await import('./layout-store')
+        const [{ useLayoutStore }, { navigate }] = await Promise.all([
+          import('./layout-store'),
+          import('./navigation/navigation-intents'),
+        ])
         if (!isLatestRequest() || !sameRendererProject(rendererProject, get().currentProject)) return false
         const layoutBeforeCommit = useLayoutStore.getState()
         if (rendererProjectPath) {
@@ -761,15 +764,16 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
         // 此后渲染进程已经提交返回项目；过期状态只影响派生视图，可以安全退出。
         if (!isLatestRequest()) return false
         // 文件树加载期间的显式导航优先于项目打开时的默认侧栏。
-        useLayoutStore.setState((layout) => ({
-          ...(layout.sidebarView === layoutBeforeCommit.sidebarView
-            && layout.activeRailItem === layoutBeforeCommit.activeRailItem
-            && layout.sidebarOpen === layoutBeforeCommit.sidebarOpen
-            ? { sidebarOpen: true, sidebarView: 'project', activeRailItem: 'project' as const }
-            : {}),
-          immersive: false,
-          preImmersivePanels: null,
-        }))
+        const layout = useLayoutStore.getState()
+        if (
+          layout.sidebarView === layoutBeforeCommit.sidebarView
+          && layout.activeRailItem === layoutBeforeCommit.activeRailItem
+          && layout.sidebarOpen === layoutBeforeCommit.sidebarOpen
+        ) {
+          navigate({ kind: 'stage' })
+        } else {
+          useLayoutStore.setState({ immersive: false, preImmersivePanels: null })
+        }
         // 统一初始化第二层状态仓库（角色卡、草稿等）
         let layer2Warnings: string[] = []
         try {

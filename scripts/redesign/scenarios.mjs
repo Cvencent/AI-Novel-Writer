@@ -1,20 +1,25 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
+import fs from 'node:fs'
+import path from 'node:path'
 
 import { chooseProjectDirectoryGrant } from '../project-directory-grant.mjs'
 import { FAKE_MODEL, FIXTURE_PROSE } from './fake-model.mjs'
 import * as bookshelf from './pages/bookshelf.mjs'
 import * as chapter from './pages/chapter.mjs'
+import * as materials from './pages/materials.mjs'
 import * as project from './pages/project.mjs'
 import * as runPanel from './pages/run-panel.mjs'
 import * as settings from './pages/settings.mjs'
+import * as shell from './pages/shell.mjs'
 
 const SAMPLE = Object.freeze({ name: '灯塔', chapterNumber: 1, blueprints: [[1, '旧港'], [2, '北堤']] })
 
-async function stubFolderPicker(app, directory) {
+/** 系统打开对话框直接返回 selected，文件夹与文件通用。 */
+async function stubOpenDialog(app, selected) {
   await app.evaluate(({ dialog }, selected) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] })
-  }, directory)
+  }, selected)
 }
 
 /** 用公开 IPC 预置示例作品，然后重载，让界面从书房重新打开它。 */
@@ -79,7 +84,7 @@ async function reviewLatestDraft({ page }) {
  */
 export const SCENARIOS = {
   'new-project': { model: false, run: async ({ app, page, roots }) => {
-    await stubFolderPicker(app, roots.projects)
+    await stubOpenDialog(app, roots.projects)
     await bookshelf.createProject(page, SAMPLE.name)
     await page.getByText('小说配置', { exact: true }).first().waitFor({ state: 'visible' })
   } },
@@ -109,6 +114,112 @@ export const SCENARIOS = {
       await runPanel.waitForPersistedRun(page, `第${SAMPLE.chapterNumber}章候选`)
     } },
   settings: { model: false, run: ({ page }) => settings.open(page), after: ({ page }) => settings.close(page) },
+}
+
+async function assertRunPanelHiddenThenOpens(page, open) {
+  await shell.showAssistant(page)
+  assert.equal(await runPanel.isOpen(page), false, '切到写作助手后 AI 输出应隐藏')
+  await open()
+  await runPanel.waitUntilOpen(page)
+}
+
+async function assertBottomOpensOn(page, start) {
+  await shell.closeBottomPanel(page)
+  await start()
+  await page.waitForFunction(() => !document.querySelector('#writer-bottom')?.hasAttribute('hidden'))
+  await shell.bottomTabLabel(page, '任务').waitFor({ state: 'visible', timeout: 5_000 })
+}
+
+/**
+ * 不进 baseline-all 的场景：性能测量，以及 RD-2 导航意图在旧外壳上的回归。run 的返回值写进结果的 measured。
+ * nav- 场景对 trunk 与 head 各跑一次（--app-root 指向 trunk），两边都通过即行为一致。
+ */
+export const EXTRA_SCENARIOS = {
+  'write-latency': { model: true, setup: seedWithoutDraft, run: async ({ page }) => {
+    await project.openBlueprints(page)
+    const writeToOutputMs = await runPanel.msFromClickToOpen(page, '开始创作', () => chapter.writeThisChapter(page, 100))
+    await runPanel.waitForWorkflowDone(page)
+    return { writeToOutputMs }
+  } },
+  'nav-switch-project': { model: false, setup: seedWithDraft, run: async ({ app, page, roots, invoke }) => {
+    const other = await invoke(page, 'project:create', { parentGrantId: (await chooseProjectDirectoryGrant(app, page, roots.projects)).grantId,
+      name: '雾岛', genre: '悬疑', targetAudience: '成年读者', writingLanguage: 'zh-CN' }, randomUUID(), null)
+    assert.equal(other.success, true, other.error)
+    await shell.clickRail(page, '角色')
+    await shell.toggleImmersion(page)
+    assert.equal(await shell.isImmersive(page), true)
+    await stubOpenDialog(app, other.projectPath)
+    await shell.switchProject(page)
+    await project.tree(page).getByText('雾岛', { exact: true }).waitFor({ state: 'visible' })
+    assert.equal(await shell.isImmersive(page), false, '切换项目后应退出沉浸')
+    assert.equal((await shell.panels(page)).sidebar, true, '切换项目后侧栏应显示')
+    await project.tree(page).waitFor({ state: 'visible' })
+  } },
+  'nav-toast-open': { model: true, setup: seedWithoutDraft, run: async ({ page }) => {
+    await project.openBlueprints(page)
+    await chapter.writeThisChapter(page, 100)
+    await runPanel.waitForWorkflowDone(page)
+    await assertRunPanelHiddenThenOpens(page, () => runPanel.openFromCompletionToast(page))
+    await runPanel.waitForPersistedRun(page, `第${SAMPLE.chapterNumber}章候选`)
+  } },
+  'nav-status-capsule': { model: true, setup: seedWithoutDraft, run: async ({ page, fake }) => {
+    fake.gate.hold()
+    await project.openBlueprints(page)
+    await chapter.writeThisChapter(page, 100)
+    await runPanel.waitForStatusCapsule(page)
+    await assertRunPanelHiddenThenOpens(page, () => runPanel.openFromStatusCapsule(page))
+  }, after: async ({ page, fake }) => {
+    fake.gate.release()
+    await runPanel.waitForWorkflowDone(page)
+  } },
+  'nav-settings-model': { model: true, setup: seedWithoutDraft, run: async ({ page }) => {
+    await shell.openBackupSettings(page)
+    await settings.waitForSection(page, '项目备份')
+    await settings.close(page)
+    await shell.clickStatusBarModel(page)
+    await settings.waitForSection(page, 'AI 生成模型')
+  }, after: ({ page }) => settings.close(page) },
+  'nav-kb-import': { model: true, setup: seedWithoutDraft, run: async ({ app, page, roots }) => {
+    const file = path.join(roots.temp, '灯塔资料.txt')
+    fs.writeFileSync(file, '林岚：旧港潮汐记录的测绘师，追查失踪地图的来源。')
+    await stubOpenDialog(app, file)
+    await shell.clickRail(page, '小说')
+    await assertBottomOpensOn(page, () => materials.importPlanningMaterial(page))
+  }, after: ({ page }) => runPanel.cancelActiveRuns(page) },
+  'nav-card-import': { model: true, setup: seedWithoutDraft, run: async ({ page }) => {
+    await shell.clickRail(page, '角色')
+    await assertBottomOpensOn(page, () => materials.importCharacterCards(page, '姓名：守塔人\n身份：灯塔看守，记得每一次钟声。'))
+  }, after: ({ page }) => runPanel.cancelActiveRuns(page) },
+  'nav-batch': { model: true, setup: seedWithoutDraft, run: async ({ page }) => {
+    await project.openBlueprints(page)
+    await assertBottomOpensOn(page, () => chapter.startBatch(page, FAKE_MODEL.id, 100))
+  }, after: ({ page }) => runPanel.waitForWorkflowDone(page) },
+  'nav-home-import': { model: true, setup: seedWithoutDraft, run: async ({ app, page, roots, fake }) => {
+    const file = path.join(roots.temp, '参考小说.txt')
+    fs.writeFileSync(file, `第1章 旧港\n${FIXTURE_PROSE}\n\n第2章 北堤\n${FIXTURE_PROSE}\n`)
+    await stubOpenDialog(app, file)
+    await shell.clickRail(page, '首页')
+    await shell.shelf(page).waitFor({ state: 'visible' })
+    assert.equal(await project.tree(page).isVisible(), false, '首页不显示项目树')
+    assert.equal(await runPanel.isOpen(page), false, '首页不显示 AI 输出')
+    fake.gate.hold()
+    await materials.importReferenceNovelIntoCurrentProject(page, 2)
+    await project.tree(page).waitFor({ state: 'visible' })
+    await runPanel.waitUntilOpen(page)
+    assert.equal(await shell.shelf(page).isVisible(), false, '启动导入后应离开首页')
+  }, after: async ({ page, fake }) => {
+    fake.gate.release()
+    await runPanel.waitForStatusCapsuleGone(page)
+  } },
+  'nav-immersive-twice': { model: false, setup: seedWithDraft, run: async ({ page }) => {
+    await shell.closeBottomPanel(page)
+    const before = await shell.panels(page)
+    await shell.toggleImmersion(page)
+    assert.deepEqual(await shell.panels(page), { sidebar: false, assistant: false, bottom: false })
+    await shell.toggleImmersion(page)
+    assert.deepEqual(await shell.panels(page), before, '两次切换后面板应恢复到切换前')
+    assert.equal(await shell.isImmersive(page), false)
+  } },
 }
 
 /** new-project 与示例作品都建「灯塔」，同一项目目录里不能共存，所以分两个会话。 */

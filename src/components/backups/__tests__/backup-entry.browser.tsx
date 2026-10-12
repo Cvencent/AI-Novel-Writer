@@ -7,6 +7,7 @@ import TitleBar from '../../layout/TitleBar'
 import { WriterWelcomePage } from '../../pages/v2/use-project-overview'
 import SettingsModal from '../../settings/SettingsModal'
 import { useLayoutStore } from '../../../stores/layout-store'
+import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
 
@@ -105,11 +106,11 @@ describe('backup production entries', () => {
 
     await act(async () => settingsButtons[1]?.click())
     await vi.waitFor(() => expect(container.querySelector('h2')?.textContent).toBe('AI 生成模型'))
-    await act(async () => useLayoutStore.getState().openSettings('about'))
+    await act(async () => navigate({ kind: 'settings', section: 'about' }))
     await vi.waitFor(() => expect(container.querySelector('h2')?.textContent).toBe('关于'))
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="关闭设置"]')?.click())
 
-    await act(async () => useLayoutStore.getState().openSettings('backup'))
+    await act(async () => navigate({ kind: 'settings', section: 'backup' }))
     await vi.waitFor(() => expect(container.querySelector('h2')?.textContent).toBe('项目备份'))
     expect(container.textContent).toContain('请先打开一个项目')
   })

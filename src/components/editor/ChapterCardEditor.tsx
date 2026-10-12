@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import { useProjectStore } from '../../stores/project-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
-import { useLayoutStore } from '../../stores/layout-store'
+import { navigate } from '../../stores/navigation/navigation-intents'
 import { ipc } from '../../services/ipc-client'
 import { clearProjectData } from '../../services/project-clear-service'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
@@ -776,16 +776,14 @@ function ChapterCardEditorSession({
       !projectSession
       || !sameProjectSessionContext(dataProjectSessionRef.current, projectSession)
     ) return
-    // 通过 layout-store openChapterCreation 传递预填参数，替代 window.dispatchEvent
-    useLayoutStore.getState().openChapterCreation({
-      chapterNumber: bp.chapterNumber,
+    navigate({ kind: 'chapter', chapterNumber: bp.chapterNumber, write: {
       title: bp.title,
       role: bp.role,
       purpose: bp.purpose,
       keyEvents: bp.keyEvents,
       characters: bp.characters.join('、'),
       userGuidance: bp.userGuidance || '',
-    })
+    } })
   }
 
   /**

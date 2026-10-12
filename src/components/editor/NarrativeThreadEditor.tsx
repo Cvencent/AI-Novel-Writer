@@ -50,7 +50,8 @@ import { Label } from '../ui/Label'
 import { NativeSelect } from '../ui/NativeSelect'
 import { Textarea } from '../ui/Textarea'
 import { toast } from '../ui/Toast'
-import { openBuiltinEditor, openChapterFile } from '../panels/sidebar/sidebar-file-openers'
+import { openChapterFile } from '../panels/sidebar/sidebar-file-openers'
+import { openBuiltinEditor } from '../../stores/open-builtin-editor'
 import PlotTreeView from './PlotTreeView'
 
 const EMPTY_PLAN: NarrativeThreadPlanInput = {

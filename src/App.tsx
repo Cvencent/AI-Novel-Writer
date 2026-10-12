@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect } from 'react'
 import { type Theme, useThemeStore } from './stores/theme-store'
 import { useLayoutStore } from './stores/layout-store'
+import { navigate } from './stores/navigation/navigation-intents'
 import { useLLMStore } from './stores/llm-store'
 import { useProjectStore } from './stores/project-store'
 import { useMCPStore } from './stores/mcp-store'
@@ -147,7 +148,7 @@ export default function App() {
       if (!completedRun) return
       actionToast.workflowComplete(
         text(`「${completedRun.title}」已完成`, `“${completedRun.title}” completed`),
-        () => useLayoutStore.getState().openRightPanel('ai-output')
+        () => navigate({ kind: 'run', facet: 'output', runId }),
       )
     })
 
@@ -190,7 +191,7 @@ export default function App() {
             blueprint as NextChapterBlueprint | null,
             existingDraft !== null,
           )
-          if (prefill) useLayoutStore.getState().openChapterCreation(prefill)
+          if (prefill) navigate({ kind: 'chapter', chapterNumber: nextChapterNumber, write: prefill })
         } catch (error) {
           console.warn('[AutoNextChapter] 无法打开下一章创作窗口:', error)
         }
