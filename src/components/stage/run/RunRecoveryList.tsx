@@ -3,6 +3,7 @@ import { countDraftUnits } from '../../../shared/draft-units'
 import { useLocaleStore } from '../../../stores/locale-store'
 import GenerationBudgetDiagnostics from '../../panels/GenerationBudgetDiagnostics'
 import { useProjectStore } from '../../../stores/project-store'
+import type { WorkflowRun } from '../../../stores/workflow-store'
 import { canResumeDraft, isInFlight, type CandidateEntry, type DraftEntry, type RecoveryEntry } from '../../run/run-recovery'
 import type { RunRecovery } from '../../run/use-run-recovery'
 import { Button } from '../../ui/Button'
@@ -11,10 +12,11 @@ import { InlineConfirm } from '../../ui/InlineConfirm'
 
 type Text = (zh: string, en: string) => string
 
-export function RunRecoveryList({ recovery }: { recovery: RunRecovery }) {
+/** liveRuns：这部作品进行中的运行，它们推进的工作已经显示为运行卡片，不再列为可恢复。 */
+export function RunRecoveryList({ recovery, liveRuns }: { recovery: RunRecovery; liveRuns: readonly WorkflowRun[] }) {
   const text = useLocaleStore(s => s.text)
   const leaseId = useProjectStore(s => s.currentProject?.sessionLease)
-  const entries = recovery.entries.filter(entry => !isInFlight(entry, leaseId))
+  const entries = recovery.entries.filter(entry => !isInFlight(entry, leaseId, liveRuns))
   const errors = [recovery.generationError, recovery.candidateError].filter(Boolean)
   if (!entries.length && !errors.length) return null
   return (

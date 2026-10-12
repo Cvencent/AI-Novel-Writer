@@ -7,6 +7,7 @@ import type { EditorInlineRecovery } from '../../shared/editor-inline-generation
 import type { GenerationBatchHistory, GenerationRecoveryContext } from '../../shared/generation-owner-contract'
 import type { RecoveryCandidate } from '../../shared/recovery-candidate'
 import type { ReviewRevisionRecovery } from '../../shared/review-revision-generation'
+import type { WorkflowRun } from '../../stores/workflow-store'
 
 /**
  * 运行中断后可以接着做的事。两种外壳的运行界面都从这里取标题、提示、可复制的文字与动作是否可用，
@@ -84,6 +85,7 @@ export interface BatchEntry {
   canContinue: boolean
   actionLabel: string
   batchId: string
+  range: { startChapter: number; endChapter: number }
 }
 
 /** 单章写作中断：勾选保留的片段续写，或沿已存细纲继续。 */
@@ -238,6 +240,7 @@ function batchEntry(batch: GenerationBatchHistory, locale: Locale): BatchEntry {
     canContinue: batch.sourceCurrent,
     actionLabel: t('继续此批次', 'Continue this batch'),
     batchId: batch.batchId,
+    range: batch.range,
   }
 }
 
@@ -273,12 +276,20 @@ function draftEntry({ view, recovery }: RecoverySources['drafts'][number], local
 }
 
 /**
- * 这次打开作品后还在写的生成：它的实时输出正显示在运行卡片里，不是中断留下的。
- * 上次打开时没写完的生成换过会话（epoch 不同），仍算可恢复。
+ * 这次打开作品后还在进行的工作：它正显示在运行卡片里，不是中断留下的。
+ * 单章、审修与选区生成看 epoch：上次打开时没写完的换过会话，仍算可恢复。
+ * 批量看进行中（含暂停）的批量运行：资源锁让同一批章同时只有一个批量运行在写，范围相同就是它在推进这一批。
  */
-export function isInFlight(entry: RecoveryEntry, leaseId: string | undefined): boolean {
+export function isInFlight(entry: RecoveryEntry, leaseId: string | undefined, liveRuns: readonly Pick<WorkflowRun, 'type' | 'resourceKeys'>[]): boolean {
+  if (entry.kind === 'batch') return liveRuns.some(run => run.type === 'batch_generate' && sameChapters(run.resourceKeys, entry.range))
   const view = entry.kind === 'draft' || entry.kind === 'review' ? entry.view : entry.kind === 'editor' ? entry.recovery.view : undefined
   return view?.status === 'running' && view.handle.epoch === leaseId
+}
+
+function sameChapters(keys: readonly string[] | undefined, range: BatchEntry['range']): boolean {
+  const chapters = (keys ?? []).flatMap(key => /^chapter:(\d+)$/.exec(key)?.[1] ?? []).map(Number)
+  return chapters.length === range.endChapter - range.startChapter + 1
+    && chapters.every((chapter, index) => chapter === range.startChapter + index)
 }
 
 /** 单章候选的续写按钮是否可点：没有改过正文，且勾了片段或有已存方案可沿用。 */

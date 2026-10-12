@@ -87,7 +87,7 @@ function ActiveRuns({ runs, last, recovery, focusRunId, hasHistory, text }: {
     <div className="run-list">
       {ordered.map(run => <RunCard key={run.id} run={run} focused={run.id === focusRunId} />)}
       {showLast && <RunCard run={last} caption={text('上一次运行', 'Last run')} />}
-      <RunRecoveryList recovery={recovery} />
+      <RunRecoveryList recovery={recovery} liveRuns={runs} />
     </div>
   )
 }

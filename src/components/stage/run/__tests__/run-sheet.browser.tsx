@@ -32,6 +32,7 @@ const restores = [useProjectStore, useWorkflowStore, useStageStore, useLocaleSto
 let root: Root | undefined
 let host: HTMLDivElement | undefined
 let candidates: RecoveryCandidate[]
+let batches: unknown[]
 let invoke: ReturnType<typeof vi.fn<(channel: string, ...args: unknown[]) => Promise<unknown>>>
 
 function run(id: string, status: WorkflowRun['status'], extra: Partial<WorkflowRun> = {}): WorkflowRun {
@@ -71,9 +72,11 @@ const selectedTab = () => host!.querySelector('[role="tab"][aria-selected="true"
 
 beforeEach(() => {
   candidates = []
+  batches = []
   invoke = vi.fn(async (channel: string) => {
     if (channel === 'db:recovery-candidate-list') return candidates
-    if (channel === 'generation:list' || channel === 'generation:list-batches' || channel === 'skills:list-user') return []
+    if (channel === 'generation:list-batches') return batches
+    if (channel === 'generation:list' || channel === 'skills:list-user') return []
     if (channel === 'fs:check-exists') return false
     if (channel === 'db:recovery-candidate-resolve') return { success: true }
     if (channel === 'db:get-llm-stats') return { totalCalls: 3, successfulCalls: 2, failedCalls: 1, knownUsageCalls: 3, totalTokens: 21400, totalPromptTokens: 15200, totalCompletionTokens: 6200 }
@@ -160,6 +163,23 @@ describe('运行侧页', () => {
     await act(async () => useWorkflowStore.setState({ activeRuns: [batch('paused')] }))
     await click('继续批量创作')
     expect(resumeWorkflow).toHaveBeenCalledWith('5')
+  })
+
+  it('批量暂停时这一批只在进行中的运行卡片里出现，运行结束后才列为可恢复', async () => {
+    batches = [{ batchId: '批次', range: { startChapter: 3, endChapter: 5 }, completedChapters: [{ chapterNumber: 3 }], nextChapterNumber: 4,
+      sourceCurrent: true, rootHandle: { projectId: session.projectId, epoch: session.leaseId, rootActionId: '根', runId: '批量' } }]
+    const paused = run('5', 'paused', { type: 'batch_generate', resourceKeys: ['chapter:3', 'chapter:4', 'chapter:5'] })
+    useWorkflowStore.setState({ activeRuns: [paused] })
+    await render()
+    await vi.waitFor(() => expect(invoke.mock.calls.some(([channel]) => channel === 'generation:list-batches')).toBe(true))
+    await act(async () => {})
+    expect(button('继续批量创作')).toBeTruthy()
+    expect(button('继续此批次')).toBeUndefined()
+    expect(host!.querySelectorAll('article')).toHaveLength(1)
+
+    await act(async () => useWorkflowStore.setState({ activeRuns: [], history: [{ ...paused, status: 'failed' }] }))
+    await vi.waitFor(() => expect(button('继续此批次')).toBeTruthy())
+    expect(host!.textContent).toContain('批量正文：已保存 1 章，下一章 4')
   })
 
   it('等你确认：显示下一步，确认后工作流继续到完成', async () => {

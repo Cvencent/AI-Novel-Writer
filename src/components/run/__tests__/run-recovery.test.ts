@@ -61,9 +61,19 @@ describe('还在写的生成', () => {
       view: { ...view('正文', { status: 'running', artifacts: [artifact('甲', true)] }), handle: { ...handle, epoch } } as never,
       recovery: { handle, operation: 'chapter-draft', chapterNumber: 4, attemptedPurposes: ['chapter-draft'], draftSave: { kind: 'absent' } } as never,
     }] }, 'zh-CN')[0]
-    expect(isInFlight(running('本次'), '本次')).toBe(true)
-    expect(isInFlight(running('上次'), '本次')).toBe(false)
-    expect(isInFlight(draft({}), '会话')).toBe(false)
+    expect(isInFlight(running('本次'), '本次', [])).toBe(true)
+    expect(isInFlight(running('上次'), '本次', [])).toBe(false)
+    expect(isInFlight(draft({}), '会话', [])).toBe(false)
+  })
+
+  it('批量正文由进行中（含暂停）的同范围批量运行推进时不算可恢复，运行结束后算', () => {
+    const [entry] = buildRecoveryEntries({ ...EMPTY_RECOVERY_SOURCES, batches: [{ batchId: '批次', completedChapters: [1],
+      nextChapterNumber: 4, sourceCurrent: true, range: { startChapter: 3, endChapter: 5 } } as never] }, 'zh-CN')
+    const live = (type: 'batch_generate' | 'chapter_creation', chapters: number[]) => ({ type, resourceKeys: chapters.map(chapter => `chapter:${chapter}`) })
+    expect(isInFlight(entry, '本次', [live('batch_generate', [3, 4, 5])])).toBe(true)
+    expect(isInFlight(entry, '本次', [live('batch_generate', [4, 5, 6])])).toBe(false)
+    expect(isInFlight(entry, '本次', [live('chapter_creation', [3, 4, 5])])).toBe(false)
+    expect(isInFlight(entry, '本次', [])).toBe(false)
   })
 })
 
