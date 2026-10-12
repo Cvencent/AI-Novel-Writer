@@ -25,7 +25,7 @@ export default function RevertDialog({ open, onOpenChange, chapterNumber, source
       onOpenChange={onOpenChange}
       title={text(`回退到${source}？`, `Revert to ${source}?`)}
       confirmLabel={<><RotateCcw size={14} aria-hidden="true" />{text('新建回滚草稿', 'Create rollback draft')}</>}
-      busy={busy}
+      disabled={busy}
       onConfirm={onConfirm}
     >
       <p>{text(

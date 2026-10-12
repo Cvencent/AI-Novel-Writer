@@ -742,21 +742,24 @@ export function usePlotThreads(projectKey: string, {
     }
   }
 
-  const savePlan = async () => {
+  /** 保存新建或编辑中的线索计划，成功时返回 true。 */
+  const savePlan = async (): Promise<boolean> => {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
-    if (!session || !isProjectSessionPath(session, projectKey) || busy) return
+    if (!session || !isProjectSessionPath(session, projectKey) || busy) return false
     setBusy(true)
     try {
       const result = editingId === null
         ? await ipc.invokeWithProjectSession(session, 'db:narrative-thread-plan-create', plan, projectKey)
         : await ipc.invokeWithProjectSession(session, 'db:narrative-thread-plan-update', editingId, plan, projectKey)
       if (!result.success) throw new Error(result.error)
-      if (!isProjectSessionCurrent(session)) return
+      if (!isProjectSessionCurrent(session)) return false
       setPlan(EMPTY_PLAN)
       setEditingId(null)
       await reload()
+      return true
     } catch {
       if (isProjectSessionCurrent(session)) toast.error(text('保存叙事线索失败', 'Could not save narrative thread'))
+      return false
     } finally {
       if (isProjectSessionCurrent(session)) setBusy(false)
     }
