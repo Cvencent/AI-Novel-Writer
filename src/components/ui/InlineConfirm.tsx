@@ -1,6 +1,5 @@
 import { useEffect, useId, useRef, type KeyboardEvent } from 'react'
 import { Button } from './Button'
-import '../../styles/paper-ink/index.css'
 
 interface InlineConfirmProps {
   /** 写明后果与能否恢复，例如「清空后无法恢复这 12 条日志」。 */

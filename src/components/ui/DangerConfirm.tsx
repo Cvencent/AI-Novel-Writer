@@ -2,7 +2,6 @@ import { useId, useRef, useState } from 'react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { Button } from './Button'
 import { usePaperInkRoot } from './use-paper-ink-root'
-import '../../styles/paper-ink/index.css'
 
 interface DangerConfirmProps {
   open: boolean

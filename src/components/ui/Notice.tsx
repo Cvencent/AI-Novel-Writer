@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
 import { CircleCheck, Info, TriangleAlert, type LucideIcon } from 'lucide-react'
-import '../../styles/paper-ink/index.css'
 
 export type NoticeTone = 'info' | 'ok' | 'warn' | 'danger'
 

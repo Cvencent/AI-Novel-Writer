@@ -1,4 +1,3 @@
-import '../../styles/paper-ink/index.css'
 
 export interface SegmentOption<T extends string> {
   value: T

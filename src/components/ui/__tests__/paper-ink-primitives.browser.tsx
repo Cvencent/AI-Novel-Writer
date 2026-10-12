@@ -172,6 +172,7 @@ describe('Sheet', () => {
         >
           正文
         </Sheet>
+        <Button variant="text">侧页之后</Button>
       </div>
     )
   }
@@ -239,8 +240,9 @@ describe('Sheet', () => {
     await userEvent.tab()
     expect(focused()).toBe(tabs[0])
     expectFocusRing(tabs[0])
+    // Tab 若走出测试文档，Shift+Tab 回到哪里取决于外层页面与浏览器，所以在侧页之后放一个可聚焦元素。
     await userEvent.tab()
-    expect(tabs).not.toContain(focused())
+    expect(focused()).toBe(page.getByRole('button', { name: '侧页之后' }).element())
     await userEvent.tab({ shift: true })
     expectActive(0)
 

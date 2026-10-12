@@ -1,5 +1,4 @@
 import type { CSSProperties } from 'react'
-import '../../styles/paper-ink/index.css'
 
 interface LifecycleProps {
   /** 生命周期整体的可访问名称，例如「第 4 章进度」。 */

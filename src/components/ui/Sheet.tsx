@@ -2,7 +2,6 @@ import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from 're
 import { X } from 'lucide-react'
 import { clsx } from 'clsx'
 import { Button } from './Button'
-import '../../styles/paper-ink/index.css'
 
 export interface SheetTab {
   id: string

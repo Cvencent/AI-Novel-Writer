@@ -1,5 +1,4 @@
 import React from 'react'
-import '../../styles/paper-ink/index.css'
 
 /** 旧外壳的空状态，RD-10 删除旧外壳时一并删除。 */
 interface LegacyProps extends React.HTMLAttributes<HTMLDivElement> {

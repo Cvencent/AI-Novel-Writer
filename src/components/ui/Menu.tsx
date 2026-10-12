@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useRef, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { Button } from './Button'
 import { useAnchoredLayer } from './use-anchored-layer'
-import '../../styles/paper-ink/index.css'
 
 export interface MenuItemSpec {
   id: string

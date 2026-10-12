@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
 import { Check as CheckIcon } from 'lucide-react'
-import '../../styles/paper-ink/index.css'
 
 interface CheckProps {
   checked: boolean

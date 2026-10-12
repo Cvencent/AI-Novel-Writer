@@ -1,7 +1,6 @@
 import { useEffect, useId, type ReactNode } from 'react'
 import { Button, type InkButtonVariant } from './Button'
 import { useAnchoredLayer } from './use-anchored-layer'
-import '../../styles/paper-ink/index.css'
 
 interface PopoverProps {
   /** 触发按钮文字。 */

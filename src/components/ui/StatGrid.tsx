@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react'
-import '../../styles/paper-ink/index.css'
 
 export interface StatItem {
   id: string
