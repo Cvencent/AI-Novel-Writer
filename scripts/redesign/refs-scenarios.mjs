@@ -244,11 +244,11 @@ export const REFS_SCENARIOS = {
     const { page, fake } = context
     fake.replyPlotTree()
     await refs.open(page, 'plot')
-    await pause(1500)
+    await pause(2500)
     await refs.buildPlotTree(page)
-    await pause(1500)
+    await pause(2500)
     await refs.plotTable(page).getByRole('button', { name: '旧港' }).click()
-    await pause(2000)
+    await pause(3000)
     await refs.plotMore(page).click()
     await refs.menuItem(page, '清除剧情树…').click()
     await pause(2500)
@@ -257,7 +257,7 @@ export const REFS_SCENARIOS = {
     await pause(2500)
     await importMaterials(context)
     await refs.materialButton(page, '守塔人小传').click()
-    await pause(1500)
+    await pause(2500)
     await refs.search(page, '雾钟')
     await pause(2500)
     await openChapterThreeVersions(page)
@@ -268,9 +268,9 @@ export const REFS_SCENARIOS = {
     await pause(2500)
     await refs.dialog(page).getByRole('button', { name: '新建回滚草稿' }).click()
     await refs.versionButton(page, '草稿 v3').waitFor({ state: 'visible' })
-    await pause(2000)
+    await pause(3000)
     await stage.tab(page, '剧情与伏笔').click()
-    await pause(2000)
+    await pause(3000)
   } },
   'refs-timing': { model: true, setup: seedHundred, run: async ({ page }) => {
     const onStage = await stage.root(page).count() > 0
