@@ -60,6 +60,11 @@ function installIpc() {
     }
     if (channel === 'db:blueprint-upsert' || channel === 'db:blueprint-upsert-many') return { success: true }
     if (channel === 'fs:list-dir') return []
+    if (channel === 'config:get') return { blueprintTargetUnits: 800 }
+    if (channel === 'config:set') return { success: true }
+    if (channel === 'generation:list-directory-progress') return { progress: [], diagnostics: [] }
+    if (channel === 'db:blueprint-character-sync-list-pending') return []
+    if (channel === 'db:project-core-get') return null
     throw new Error(`unexpected IPC ${channel}`)
   })
   Object.defineProperty(window, 'aiNovelAPI', {
@@ -177,6 +182,33 @@ describe('蓝图阶段', () => {
     await act(async () => { await save!() })
     const [[, saved]] = calls('db:blueprint-upsert-many')
     expect((saved as ChapterBlueprint[])[0].characters).toEqual(['林岚', '沈砺'])
+  })
+
+  it('生成蓝图选覆盖时先危险确认，取消后不启动并写明原蓝图没有改动', async () => {
+    await renderPage()
+    await act(async () => page.getByRole('button', { name: 'AI 生成蓝图' }).click())
+    const dialog = page.getByRole('dialog', { name: 'AI 生成蓝图' })
+    await expect.element(dialog).toBeVisible()
+    await act(async () => dialog.getByRole('button', { name: '覆盖' }).click())
+    await expect.element(dialog.getByText('已有蓝图会被覆盖，开始前再确认一次')).toBeVisible()
+    await act(async () => dialog.getByRole('button', { name: '开始生成' }).click())
+    const confirm = page.getByRole('dialog', { name: '覆盖已有蓝图？' })
+    await expect.element(confirm).toHaveTextContent('已有的 3 章蓝图会被新蓝图替换')
+    expect(calls('db:project-core-get')).toHaveLength(0)
+    await act(async () => confirm.getByRole('button', { name: '取消' }).click())
+    await expect.element(dialog.getByRole('alert')).toHaveTextContent('已取消覆盖生成，原有蓝图没有改动。')
+    expect(calls('db:project-core-get')).toHaveLength(0)
+  })
+
+  it('批量创作对话框从权威下一章开始，按章数显示主按钮', async () => {
+    await renderPage()
+    await act(async () => page.getByRole('button', { name: '批量创作' }).click())
+    const dialog = page.getByRole('dialog', { name: '批量创作' })
+    await expect.element(dialog.getByText('第 2 章', { exact: true })).toBeVisible()
+    await act(async () => dialog.getByLabelText(/写几章/).fill('4'))
+    await expect.element(dialog.getByRole('button', { name: '开始写 4 章' })).toBeVisible()
+    await act(async () => dialog.getByRole('radio', { name: /自动定稿/ }).click())
+    await expect.element(dialog.getByRole('button', { name: '继续确认自动定稿' })).toBeVisible()
   })
 
   it('写作请求落到这一页：可写的那一章自动弹出写作弹层，写不了的章丢掉请求', async () => {

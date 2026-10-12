@@ -348,3 +348,139 @@
   border-style: solid;
   border-color: var(--accent);
 }
+
+/* ================= 生成蓝图与批量创作对话框 ================= */
+.stage-dialog:has(.stage-bp-dialog-body) {
+  width: 580px;
+}
+
+.stage-bp-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+.stage-bp-dialog-body .pi-field em {
+  font-style: normal;
+  color: var(--ink-3);
+}
+
+.stage-bp-dialog-line {
+  display: block;
+}
+
+.stage-bp-dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: var(--fs-13);
+}
+
+.stage-bp-dialog-field > legend {
+  margin-bottom: var(--s-2);
+  padding: 0;
+  font-size: var(--fs-12);
+  color: var(--ink-2);
+}
+
+.stage-bp-option {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.stage-bp-option input[type="radio"],
+.stage-bp-mode input[type="radio"] {
+  accent-color: var(--accent);
+}
+
+.stage-bp-num {
+  width: 72px;
+  height: 30px;
+}
+
+.stage-bp-dialog-hint {
+  margin: 0;
+  font-size: var(--fs-12);
+  color: var(--ink-2);
+}
+
+.stage-bp-dialog-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-4);
+  align-items: end;
+}
+
+.stage-bp-dialog-row-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.stage-bp-dialog-textarea {
+  height: auto;
+  padding: var(--s-2) var(--s-3);
+  line-height: 1.7;
+  resize: vertical;
+}
+
+.stage-bp-readonly {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--s-3);
+  border-radius: var(--radius-control);
+  background: var(--sunken);
+  font-size: var(--fs-13);
+  color: var(--ink);
+}
+
+.stage-bp-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-2);
+}
+
+.stage-bp-mode {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 0 0 1px var(--rule-strong);
+  cursor: pointer;
+}
+
+.stage-bp-mode:has(input:checked) {
+  box-shadow: 0 0 0 1.5px var(--accent);
+  background: var(--accent-soft);
+}
+
+.stage-bp-mode[data-tone="warn"]:has(input:checked) {
+  box-shadow: 0 0 0 1.5px var(--warn);
+  background: var(--warn-soft);
+}
+
+.stage-bp-mode b {
+  display: block;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.stage-bp-mode small {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-12);
+  color: var(--ink-2);
+}
+
+.stage-bp-dialog-note {
+  margin-right: auto;
+  align-self: center;
+  font-size: var(--fs-12);
+  color: var(--ink-3);
+}

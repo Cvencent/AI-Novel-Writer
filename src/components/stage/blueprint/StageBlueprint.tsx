@@ -5,8 +5,6 @@ import type { DirectoryWorkflowParams } from '../../../services/workflows/direct
 import { openPlanningRecoveryDraft } from '../../../stores/editor-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useStageStore } from '../../../stores/navigation/stage-store'
-import BatchChapterCreationDialog from '../../dialogs/BatchChapterCreationDialog'
-import DirectoryConfigDialog from '../../dialogs/DirectoryConfigDialog'
 import { isCurrentProjectSession, currentProjectSessionForPath, useChapterBlueprints } from '../../editor/use-chapter-blueprints'
 import { Button } from '../../ui/Button'
 import { DangerConfirm } from '../../ui/DangerConfirm'
@@ -16,8 +14,10 @@ import { Notice } from '../../ui/Notice'
 import { InkDialog } from '../InkDialog'
 import { useStageView } from '../use-stage-work'
 import WriteChapterPopover from '../write/WriteChapterPopover'
+import BatchWriteDialog from './BatchWriteDialog'
 import BlueprintCard from './BlueprintCard'
 import BlueprintPlanList from './BlueprintPlanList'
+import GenerateBlueprintsDialog from './GenerateBlueprintsDialog'
 
 /** 等作者确认的一步：覆盖已有蓝图、生成前的架构警告、清空全部、删除此章、清除误导入正文。 */
 type Ask =
@@ -60,11 +60,18 @@ export default function StageBlueprint({ projectKey, initialChapterNumber, selec
     setAsk(null)
   }
 
+  // 确认框不叠在生成对话框上：先收起对话框再问；取消或启动失败时重新打开，表单与原因还在。
   const generate = async (params: DirectoryWorkflowParams) => {
-    if (params.mode === 'full' && count > 0 && !(await confirmWith('overwrite'))) {
-      throw new Error(text('已取消覆盖生成，原有蓝图没有改动。', 'Overwrite cancelled. Existing blueprints are unchanged.'))
+    setGenerateOpen(false)
+    try {
+      if (params.mode === 'full' && count > 0 && !(await confirmWith('overwrite'))) {
+        throw new Error(text('已取消覆盖生成，原有蓝图没有改动。', 'Overwrite cancelled. Existing blueprints are unchanged.'))
+      }
+      await plan.generateBlueprints(params, message => confirmWith('warning', message))
+    } catch (error) {
+      setGenerateOpen(true)
+      throw error
     }
-    await plan.generateBlueprints(params, message => confirmWith('warning', message))
   }
 
   const openRecovery = () => {
@@ -206,13 +213,13 @@ export default function StageBlueprint({ projectKey, initialChapterNumber, selec
         </div>
       )}
 
-      <DirectoryConfigDialog
+      <GenerateBlueprintsDialog
         isOpen={generateOpen}
         onClose={() => setGenerateOpen(false)}
         existingCount={count}
         onConfirm={generate}
       />
-      <BatchChapterCreationDialog
+      <BatchWriteDialog
         isOpen={batchOpen}
         startChapterNumber={next?.chapterNumber ?? null}
         onClose={() => setBatchOpen(false)}
