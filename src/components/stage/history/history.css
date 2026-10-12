@@ -78,8 +78,9 @@
   font-weight: 600;
 }
 
+/* 还没有稿的章淡一级；章名与正文同字号，用二级墨色仍够 4.5:1 */
 .stage-hist-chapter[data-empty] {
-  color: var(--ink-3);
+  color: var(--ink-2);
 }
 
 .stage-hist-chapter:focus-visible,
