@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict'
 import { Buffer } from 'node:buffer'
 import { execFileSync } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -9,6 +10,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { _electron as electron } from 'playwright'
 
+import { chooseProjectDirectoryGrant } from '../project-directory-grant.mjs'
 import { startFakeModel } from './fake-model.mjs'
 import { RUN_SCENARIOS } from './run-scenarios.mjs'
 import { BASELINE_SESSIONS, EXTRA_SCENARIOS, SCENARIOS as BASELINE_SCENARIOS, STAGE_SCENARIOS } from './scenarios.mjs'
@@ -22,7 +24,10 @@ const THEMES = ['light', 'dark']
 const SHELLS = ['writer', 'stage']
 const ROOT_NAMES = ['legacy', 'canonical', 'userData', 'home', 'appData', 'localAppData', 'temp', 'projects']
 const SCENARIOS = { ...BASELINE_SCENARIOS, ...EXTRA_SCENARIOS, ...STAGE_SCENARIOS, ...RUN_SCENARIOS }
-const ALL_SCENARIOS = [...Object.keys(SCENARIOS), 'baseline-all', 'startup-timing']
+/** 计时会话：先在同一隔离目录预启动一次写好外观（书房计时另建 20 部作品），再计之后那次冷启动。 */
+const TIMED_SESSIONS = new Set(['startup-timing', 'library-timing'])
+export const SHELF_BOOKS = 20
+const ALL_SCENARIOS = [...Object.keys(SCENARIOS), 'baseline-all', ...TIMED_SESSIONS]
 const USAGE = `用法: node scripts/redesign/drive.mjs --scenario <名称> [--theme light|dark] [--shell writer|stage] [--out <目录>] [--dump-dom] [--console] [--video] [--app-root <目录>]
 场景: ${ALL_SCENARIOS.join(', ')}`
 
@@ -150,7 +155,7 @@ export async function quit(app, graceMs = 10_000) {
   return { forced: true }
 }
 
-async function launch({ roots, appRoot, fakeModelPort, diagnostics }) {
+async function launch({ roots, appRoot, fakeModelPort, diagnostics, shelfBooks = 0 }) {
   const launchedAt = Date.now()
   const app = await electron.launch({ cwd: appRoot, args: ['-r', OFFSCREEN_WINDOW, '.', `--user-data-dir=${roots.userData}`],
     env: isolatedEnvironment(roots), timeout: TIMEOUT })
@@ -179,6 +184,13 @@ async function launch({ roots, appRoot, fakeModelPort, diagnostics }) {
     const timing = { launchToInteractiveMs: interactiveAt - launchedAt,
       readyToShowToInteractiveMs: readyToShow === null ? null : interactiveAt - readyToShow,
       navigationToInteractiveMs: Math.round(interactiveAt - timeOrigin) }
+    // 书架上每本书都有「预览《书名》」按钮（旧欢迎页与新书房同名），按帧轮询到齐的那一刻，记为导航开始后的毫秒数。
+    if (shelfBooks > 0) {
+      timing.navigationToShelfMs = await (await page.waitForFunction(count => {
+        const shown = document.querySelectorAll('button[aria-label^="预览《"]').length
+        return shown >= count && Math.round(performance.now())
+      }, shelfBooks, { polling: 'raf', timeout: TIMEOUT })).jsonValue()
+    }
     page.setDefaultTimeout(20_000)
     assert.equal(path.resolve(await app.evaluate(({ app: electronApp }) => electronApp.getPath('userData'))), roots.userData)
     await page.setViewportSize(VIEWPORT)
@@ -214,9 +226,23 @@ async function applyAppearance(page, { theme, shell }) {
  * 启动计时量的是同一配置目录里的第二次冷启动：先启动一次写好主题（与外壳偏好）再退出，两侧都这样做。
  * 首次启动还要迁移旧配置、建库，与之后的启动不可比。
  */
-async function prepareProfile({ roots, appRoot, diagnostics }, appearance) {
+async function prepareProfile({ roots, appRoot, diagnostics }, appearance, shelfBooks = 0) {
   const prepared = await launch({ roots, appRoot, fakeModelPort: null, diagnostics })
-  try { await applyAppearance(prepared.page, appearance) } finally { await quit(prepared.app) }
+  try {
+    await applyAppearance(prepared.page, appearance)
+    if (shelfBooks > 0) await seedShelf(prepared, roots, shelfBooks)
+  } finally { await quit(prepared.app) }
+}
+
+/** 用公开 IPC 新建 count 部作品；新建即进入最近项目，书房的书架上就有 count 本书。 */
+async function seedShelf({ app, page }, roots, count) {
+  for (let index = 1; index <= count; index++) {
+    const grant = await chooseProjectDirectoryGrant(app, page, roots.projects)
+    const created = await invoke(page, 'project:create', { parentGrantId: grant.grantId, name: `书架${String(index).padStart(2, '0')}`,
+      genre: '悬疑', targetAudience: '全龄', writingLanguage: 'zh-CN' }, randomUUID(), null)
+    assert.equal(created.success, true, created.error)
+  }
+  assert.equal((await invoke(page, 'project:recent-list')).length, count, `最近项目应有 ${count} 部`)
 }
 
 /**
@@ -283,11 +309,12 @@ async function runSession(sessionName, names, options) {
   let launched
   const shell = names.map(name => SCENARIOS[name]?.shell).find(Boolean) ?? options.shell
   try {
-    if (sessionName === 'startup-timing') await prepareProfile({ roots, appRoot: options.appRoot, diagnostics }, { theme: options.theme, shell })
-    launched = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics })
+    const shelfBooks = sessionName === 'library-timing' ? SHELF_BOOKS : 0
+    if (TIMED_SESSIONS.has(sessionName)) await prepareProfile({ roots, appRoot: options.appRoot, diagnostics }, { theme: options.theme, shell }, shelfBooks)
+    launched = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics, shelfBooks })
     shared.timing = launched.timing
     const shellShown = page => page.locator('[data-shell-presentation]').first().getAttribute('data-shell-presentation')
-    if (sessionName === 'startup-timing') shared.shell = await shellShown(launched.page)
+    if (TIMED_SESSIONS.has(sessionName)) shared.shell = await shellShown(launched.page)
     else {
       const { page } = launched
       await applyAppearance(page, { theme: options.theme, shell })
