@@ -1,9 +1,33 @@
 /* ================= 知识库：资料 / 原文 / 查找 ================= */
+.stage-kb-frame {
+  container-type: inline-size;
+  min-height: 0;
+}
+
 .stage-kb {
   display: grid;
   grid-template-columns: 272px minmax(0, 1fr) 340px;
   height: 100%;
   min-height: 0;
+}
+
+/* 运行侧页展开后内容区变窄：查找挪到原文下方，原文保持可读的宽度 */
+@container (max-width: 1040px) {
+  .stage-kb {
+    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .stage-kb-docs {
+    grid-row: 1 / span 2;
+  }
+
+  .stage-kb-search {
+    max-height: 45cqh;
+    overflow: auto;
+    border-left: 0;
+    border-top: 1px solid var(--rule);
+  }
 }
 
 .stage-kb-col {
@@ -123,6 +147,10 @@
 .stage-kb-reader {
   overflow: auto;
   padding: var(--s-6) var(--s-10) var(--s-12);
+}
+
+.stage-kb-reader > * {
+  flex: none;
 }
 
 .stage-kb-hint {

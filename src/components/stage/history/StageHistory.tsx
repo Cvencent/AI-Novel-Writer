@@ -126,114 +126,116 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
   }
 
   return (
-    <div className="stage-hist">
-      <nav className="stage-hist-col stage-hist-chapters" aria-label={text('章节', 'Chapters')}>
-        <div className="stage-hist-pad">
-          <h1 className="stage-hist-title">{text('版本历史', 'Version history')}</h1>
-          <p className="stage-hist-help">{text('每章的草稿、修稿和定稿都会留下记录。', 'Every draft, revision and final of each chapter is kept.')}</p>
-        </div>
-        <ol className="stage-hist-list">
-          {chapters.map(item => {
-            const count = draftCounts?.[item.number]?.length
-            return (
-              <li key={item.number}>
-                <button
-                  type="button"
-                  className="stage-hist-chapter"
-                  aria-current={item.number === selectedChapter ? 'true' : undefined}
-                  data-empty={count === 0 || undefined}
-                  onClick={() => pickChapter(item.number)}
-                >
-                  <span className="stage-hist-no">{String(item.number).padStart(2, '0')}</span>
-                  <span className="stage-hist-name">{item.title}</span>
-                  {count !== undefined && <small>{count === 0 ? text('未开始', 'Not started') : text(`${count} 稿`, `${count} drafts`)}</small>}
-                </button>
-              </li>
-            )
-          })}
-        </ol>
-      </nav>
+    <div className="stage-hist-frame">
+      <div className="stage-hist">
+        <nav className="stage-hist-col stage-hist-chapters" aria-label={text('章节', 'Chapters')}>
+          <div className="stage-hist-pad">
+            <h1 className="stage-hist-title">{text('版本历史', 'Version history')}</h1>
+            <p className="stage-hist-help">{text('每章的草稿、修稿和定稿都会留下记录。', 'Every draft, revision and final of each chapter is kept.')}</p>
+          </div>
+          <ol className="stage-hist-list">
+            {chapters.map(item => {
+              const count = draftCounts?.[item.number]?.length
+              return (
+                <li key={item.number}>
+                  <button
+                    type="button"
+                    className="stage-hist-chapter"
+                    aria-current={item.number === selectedChapter ? 'true' : undefined}
+                    data-empty={count === 0 || undefined}
+                    onClick={() => pickChapter(item.number)}
+                  >
+                    <span className="stage-hist-no">{String(item.number).padStart(2, '0')}</span>
+                    <span className="stage-hist-name">{item.title}</span>
+                    {count !== undefined && <small>{count === 0 ? text('未开始', 'Not started') : text(`${count} 稿`, `${count} drafts`)}</small>}
+                  </button>
+                </li>
+              )
+            })}
+          </ol>
+        </nav>
 
-      <section className="stage-hist-col stage-hist-versions" aria-label={text('这一章的各稿', 'Versions of this chapter')}>
-        {chapter ? <>
-          <div className="stage-hist-eyebrow">{text(`第 ${chapter.number} 章`, `Chapter ${chapter.number}`)}</div>
-          <h2 className="stage-hist-chapter-title">{chapter.title}</h2>
-          {ordered.length === 0
-            ? <p className="stage-hist-help">{text('这一章还没有稿。写出第一稿后会出现在这里。', 'No drafts yet. The first draft will appear here.')}</p>
-            : (
-              <ol className="stage-hist-timeline" aria-label={text('版本时间线', 'Version timeline')}>
-                {ordered.map(version => (
-                  <li key={version.id} data-kind={version.type}>
-                    <button
-                      type="button"
-                      className="stage-hist-version"
-                      aria-pressed={version.id === selectedVersionId}
-                      onClick={() => void pickVersion(version.id)}
-                    >
-                      <span className="stage-hist-node" aria-hidden="true" />
-                      <span className="stage-hist-version-name">
-                        {versionName(version, text)}
-                        {version === latest && <span className="stage-hist-badge">{text('当前', 'Current')}</span>}
-                        {version.dependencies_stale && (
-                          <span
-                            className="stage-hist-badge"
-                            data-tone="warn"
-                            title={text(
-                              '此草稿生成时使用的前文来源已变化或不再是当前定稿；草稿会保留，但连续性需要复核。',
-                              'A prior source used to generate this draft changed or is no longer the current final. The draft is preserved, but its continuity needs review.',
-                            )}
-                          >
-                            {text('来源已过期', 'Source changed')}
-                          </span>
-                        )}
-                      </span>
-                      <span className="stage-hist-meta">
-                        {text(`${version.word_count.toLocaleString(locale)} 字`, `${version.word_count.toLocaleString(locale)} words`)} · {formatTime(version.created_at)}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ol>
-            )}
-        </> : <p className="stage-hist-help">{text('从左边选一章，查看它的各稿。', 'Pick a chapter on the left to see its versions.')}</p>}
-      </section>
+        <section className="stage-hist-col stage-hist-versions" aria-label={text('这一章的各稿', 'Versions of this chapter')}>
+          {chapter ? <>
+            <div className="stage-hist-eyebrow">{text(`第 ${chapter.number} 章`, `Chapter ${chapter.number}`)}</div>
+            <h2 className="stage-hist-chapter-title">{chapter.title}</h2>
+            {ordered.length === 0
+              ? <p className="stage-hist-help">{text('这一章还没有稿。写出第一稿后会出现在这里。', 'No drafts yet. The first draft will appear here.')}</p>
+              : (
+                <ol className="stage-hist-timeline" aria-label={text('版本时间线', 'Version timeline')}>
+                  {ordered.map(version => (
+                    <li key={version.id} data-kind={version.type}>
+                      <button
+                        type="button"
+                        className="stage-hist-version"
+                        aria-pressed={version.id === selectedVersionId}
+                        onClick={() => void pickVersion(version.id)}
+                      >
+                        <span className="stage-hist-node" aria-hidden="true" />
+                        <span className="stage-hist-version-name">
+                          {versionName(version, text)}
+                          {version === latest && <span className="stage-hist-badge">{text('当前', 'Current')}</span>}
+                          {version.dependencies_stale && (
+                            <span
+                              className="stage-hist-badge"
+                              data-tone="warn"
+                              title={text(
+                                '此草稿生成时使用的前文来源已变化或不再是当前定稿；草稿会保留，但连续性需要复核。',
+                                'A prior source used to generate this draft changed or is no longer the current final. The draft is preserved, but its continuity needs review.',
+                              )}
+                            >
+                              {text('来源已过期', 'Source changed')}
+                            </span>
+                          )}
+                        </span>
+                        <span className="stage-hist-meta">
+                          {text(`${version.word_count.toLocaleString(locale)} 字`, `${version.word_count.toLocaleString(locale)} words`)} · {formatTime(version.created_at)}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              )}
+          </> : <p className="stage-hist-help">{text('从左边选一章，查看它的各稿。', 'Pick a chapter on the left to see its versions.')}</p>}
+        </section>
 
-      <section className="stage-hist-col stage-hist-diff" aria-label={text('对比', 'Comparison')}>
-        {selected && comparison && latest ? <>
-          <header className="stage-hist-diff-head">
-            <div className="stage-hist-pair">
-              <span className="stage-hist-tag">{versionName(selected, text)} · {formatTime(selected.created_at)}</span>
-              <ArrowRight size={14} aria-hidden="true" />
-              <span className="stage-hist-tag">{text('当前', 'Current')} · {versionName(latest, text)}</span>
-            </div>
-            {selected !== latest && (
-              <Button variant="secondary" onClick={() => setRevertOpen(true)}>
-                <RotateCcw size={14} aria-hidden="true" />{text('回退到此版本…', 'Revert to this version…')}
-              </Button>
-            )}
-          </header>
-          {comparison.current === null
-            ? <p className="stage-hist-help">{text('这一章还没有当前稿。', 'This chapter has no current draft.')}</p>
-            : <DiffView older={comparison.older} current={comparison.current} />}
-        </> : (
-          <p className="stage-hist-help stage-hist-hint">{selectedVersionId === null
-            ? text('选一稿，与当前稿逐字对比。', 'Pick a version to compare it with the current draft.')
-            : text('正在读取…', 'Loading…')}</p>
+        <section className="stage-hist-col stage-hist-diff" aria-label={text('对比', 'Comparison')}>
+          {selected && comparison && latest ? <>
+            <header className="stage-hist-diff-head">
+              <div className="stage-hist-pair">
+                <span className="stage-hist-tag">{versionName(selected, text)} · {formatTime(selected.created_at)}</span>
+                <ArrowRight size={14} aria-hidden="true" />
+                <span className="stage-hist-tag">{text('当前', 'Current')} · {versionName(latest, text)}</span>
+              </div>
+              {selected !== latest && (
+                <Button variant="secondary" onClick={() => setRevertOpen(true)}>
+                  <RotateCcw size={14} aria-hidden="true" />{text('回退到此版本…', 'Revert to this version…')}
+                </Button>
+              )}
+            </header>
+            {comparison.current === null
+              ? <p className="stage-hist-help">{text('这一章还没有当前稿。', 'This chapter has no current draft.')}</p>
+              : <DiffView older={comparison.older} current={comparison.current} />}
+          </> : (
+            <p className="stage-hist-help stage-hist-hint">{selectedVersionId === null
+              ? text('选一稿，与当前稿逐字对比。', 'Pick a version to compare it with the current draft.')
+              : text('正在读取…', 'Loading…')}</p>
+          )}
+        </section>
+
+        {selected && latest && selectedChapter !== null && (
+          <RevertDialog
+            open={revertOpen}
+            onOpenChange={setRevertOpen}
+            chapterNumber={selectedChapter}
+            source={versionName(selected, text)}
+            nextVersion={latest.version + 1}
+            current={versionName(latest, text)}
+            busy={reverting}
+            onConfirm={() => void revert()}
+          />
         )}
-      </section>
-
-      {selected && latest && selectedChapter !== null && (
-        <RevertDialog
-          open={revertOpen}
-          onOpenChange={setRevertOpen}
-          chapterNumber={selectedChapter}
-          source={versionName(selected, text)}
-          nextVersion={latest.version + 1}
-          current={versionName(latest, text)}
-          busy={reverting}
-          onConfirm={() => void revert()}
-        />
-      )}
+      </div>
     </div>
   )
 }

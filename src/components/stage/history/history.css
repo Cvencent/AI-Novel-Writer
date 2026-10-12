@@ -1,9 +1,29 @@
 /* ================= 版本历史：章节 / 版本时间线 / 只读对比 ================= */
+.stage-hist-frame {
+  container-type: inline-size;
+  min-height: 0;
+}
+
 .stage-hist {
   display: grid;
   grid-template-columns: 232px 316px minmax(0, 1fr);
   height: 100%;
   min-height: 0;
+}
+
+/* 运行侧页展开后内容区变窄：章节与版本两列收窄，对比仍有可读的宽度 */
+@container (max-width: 1040px) {
+  .stage-hist {
+    grid-template-columns: 180px 240px minmax(0, 1fr);
+  }
+
+  .stage-hist-diff {
+    padding: var(--s-5) var(--s-4) var(--s-8);
+  }
+
+  .stage-hist-page {
+    padding: var(--s-5) var(--s-5);
+  }
 }
 
 .stage-hist--empty {
@@ -98,6 +118,11 @@
   font-size: var(--fs-11);
   font-weight: 400;
   color: var(--ink-3);
+}
+
+/* 选中行的底色比面板深，说明文字提一级墨色才够 3:1 */
+.stage-hist-chapter[aria-current='true'] small {
+  color: var(--ink-2);
 }
 
 .stage-hist-versions {

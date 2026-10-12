@@ -7,6 +7,10 @@
   gap: var(--s-4);
 }
 
+.stage-plot > * {
+  flex: none;
+}
+
 .stage-plot-head {
   display: flex;
   align-items: flex-end;

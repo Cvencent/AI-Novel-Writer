@@ -21,7 +21,7 @@ const OPERATION_NAMES: Record<string, [string, string]> = {
 }
 
 /** 整理记录：剧情树与 AI 候选的每次生成都留有记录，可以恢复、继续、取消或保存原结果。 */
-function GenerationRecords({ plot, onClose }: { plot: PlotThreads; onClose: () => void }) {
+function GenerationRecords({ plot, onClose }: { plot: PlotThreads; onClose?: () => void }) {
   const text = useLocaleStore(s => s.text)
   const recovery = plot.graphRecovery
   const busy = plot.plotBusy || plot.aiBusy
@@ -32,7 +32,7 @@ function GenerationRecords({ plot, onClose }: { plot: PlotThreads; onClose: () =
         <Button variant="text" size="sm" onClick={() => void plot.loadGraphRuns()}>{text('刷新记录', 'Refresh records')}</Button>
         {busy && <Button variant="text" size="sm" onClick={() => void plot.cancelGraph()}>{text('取消当前生成', 'Cancel current build')}</Button>}
         <span className="stage-plot-gap" />
-        <Button variant="icon" size="sm" aria-label={text('收起整理记录', 'Hide build records')} onClick={onClose}><X size={14} aria-hidden="true" /></Button>
+        {onClose && <Button variant="icon" size="sm" aria-label={text('收起整理记录', 'Hide build records')} onClick={onClose}><X size={14} aria-hidden="true" /></Button>}
       </header>
       {plot.graphRuns.length === 0
         ? <p className="stage-plot-help">{text('还没有生成记录。', 'No build records yet.')}</p>
@@ -92,7 +92,8 @@ export default function StagePlot({ projectKey, initialView, viewRequest }: Stag
   const [recordsOpen, setRecordsOpen] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
   const [deleting, setDeleting] = useState<NarrativeThreadView | null>(null)
-  const showRecords = recordsOpen || plot.graphRecovery !== null
+  // 生成进行中（可以取消）或剧情树生成完却没保存上（来源变化、被取消）时记录自动展开，此时不能收起；其余时候从「更多」打开。
+  const pinnedRecords = plot.plotBusy || plot.aiBusy || (plot.graphRecovery?.result?.kind === 'plot' && plot.graphRecovery.effects.length === 0)
 
   return (
     <div className="stage-plot">
@@ -112,7 +113,7 @@ export default function StagePlot({ projectKey, initialView, viewRequest }: Stag
         />
       </header>
 
-      {showRecords && <GenerationRecords plot={plot} onClose={() => setRecordsOpen(false)} />}
+      {(recordsOpen || pinnedRecords) && <GenerationRecords plot={plot} onClose={pinnedRecords ? undefined : () => setRecordsOpen(false)} />}
 
       {plot.view === 'plot-tree'
         ? <PlotTimeline plot={plot} onShowRecords={() => setRecordsOpen(true)} onClear={() => setClearOpen(true)} />
