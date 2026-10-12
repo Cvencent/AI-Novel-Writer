@@ -11,6 +11,7 @@ import type { ProjectData } from '../../../../shared/ipc-channels'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
 import { EMPTY_CARD, useCharacterStore, type CharacterCard } from '../../../../stores/character-store'
 import { useEditorStore } from '../../../../stores/editor-store'
+import { useLLMStore } from '../../../../stores/llm-store'
 import { useLocaleStore } from '../../../../stores/locale-store'
 import { useStageStore } from '../../../../stores/navigation/stage-store'
 import { useProjectStore } from '../../../../stores/project-store'
@@ -34,7 +35,7 @@ function snapshot<T>(store: StoreApi<T>): () => void {
   const state = store.getState()
   return () => store.setState(state, true)
 }
-const restores = [useProjectStore, useWorkflowStore, useStageStore, useLocaleStore, useEditorStore, useCharacterStore]
+const restores = [useProjectStore, useWorkflowStore, useStageStore, useLocaleStore, useEditorStore, useCharacterStore, useLLMStore]
   .map(store => snapshot(store as StoreApi<unknown>))
 
 let root: Root | undefined
@@ -176,5 +177,28 @@ describe('角色名单', () => {
     await render()
     await vi.waitFor(() => expect(invoke.mock.calls.some(([channel]) => channel === 'finalized-character:list-state-candidates')).toBe(true))
     expect(banner()).toBeNull()
+  })
+
+  it('导入角色卡用纸墨对话框，外发确认是同一对话框的第二步，不弹旧确认框', async () => {
+    useLLMStore.setState({ models: [{ id: 'm1', name: '夹具模型', modelName: 'fixture-1', baseUrl: 'https://fixture.example/v1' }], defaultModelId: 'm1' } as never)
+    const legacyConfirm = vi.spyOn(window, 'confirm')
+    await render()
+    await click('粘贴 / 导入角色卡')
+    const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')!
+    expect(dialog().classList.contains('pi-dialog')).toBe(true)
+    expect(dialog().closest('.paper-ink')).toBeTruthy()
+    const source = dialog().querySelector<HTMLTextAreaElement>('textarea')!
+    expect(source.classList.contains('pi-input')).toBe(true)
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(source, '林舟：末班车上的乘客。')
+      source.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await click('AI 提取并预览')
+    expect(dialog().textContent).toContain('https://fixture.example/v1')
+    expect(dialog().textContent).toContain('不会直接覆盖角色名单')
+    expect(document.querySelectorAll('[role="dialog"], [role="alertdialog"]')).toHaveLength(1)
+    await click('返回')
+    expect(dialog().querySelector('textarea')?.value).toBe('林舟：末班车上的乘客。')
+    expect(legacyConfirm).not.toHaveBeenCalled()
   })
 })

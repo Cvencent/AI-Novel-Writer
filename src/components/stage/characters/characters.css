@@ -450,3 +450,27 @@
   color: var(--ink-3);
   font-size: var(--fs-12);
 }
+
+.cast-import-source {
+  width: 100%;
+  resize: vertical;
+  font: var(--fs-13)/1.7 var(--font-ui);
+}
+
+.cast-import-files {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+}
+
+.cast-import-names {
+  color: var(--ink-2);
+  font-size: var(--fs-12);
+  word-break: break-all;
+}
+
+.cast-import-consent {
+  white-space: pre-line;
+}
