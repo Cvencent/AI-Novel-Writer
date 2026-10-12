@@ -136,6 +136,9 @@ function reset() {
 
 beforeEach(async () => {
   await page.viewport(1280, 900)
+  // 视口变化的 resize 事件可能晚于渲染才到，浮层收到 resize 会关闭：先等它派发完。
+  await vi.waitFor(() => expect([window.innerWidth, window.innerHeight]).toEqual([1280, 900]))
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
   createChapterWorkflow.mockClear()
   writtenLogs = []
   continuityProjections = []
