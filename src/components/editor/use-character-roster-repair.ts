@@ -16,14 +16,17 @@ import {
   type CharacterRosterRepairState,
 } from './character-roster-repair-controller'
 
-const EMPTY_STATE: CharacterRosterRepairState = {
+const EMPTY_STATE: CharacterRosterRepairState & { settled: boolean } = {
   snapshot: null,
   repairError: null,
   isRepairing: false,
+  settled: false,
 }
 
 interface SessionBoundRosterRepairState extends CharacterRosterRepairState {
   sessionKey: string
+  /** 本会话至少读完过一次名单（成功或失败），之前的 snapshot 为空不代表没有名单。 */
+  settled: boolean
 }
 
 export interface UseCharacterRosterRepairOptions {
@@ -62,7 +65,7 @@ export function useCharacterRosterRepair({
   })
 
   const setControllerState = useCallback((next: Partial<CharacterRosterRepairState>) => {
-    setState(previous => ({ ...previous, ...next, sessionKey }))
+    setState(previous => ({ ...previous, ...next, sessionKey, settled: (previous.sessionKey === sessionKey && previous.settled) || 'snapshot' in next }))
   }, [sessionKey])
 
   const port = useMemo<CharacterRosterRepairPort>(() => ({
@@ -116,6 +119,7 @@ export function useCharacterRosterRepair({
     snapshot: visibleState.snapshot,
     repairError: visibleState.repairError,
     isRepairing: visibleState.isRepairing,
+    settled: visibleState.settled,
     refresh,
     migrate,
   }

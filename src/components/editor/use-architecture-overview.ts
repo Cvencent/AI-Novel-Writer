@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CANONICAL_PROJECT_DIRECTORY } from '../../shared/project-format'
 import { useProjectStore } from '../../stores/project-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
@@ -67,9 +67,10 @@ export function useArchitectureOverview(projectKey: string) {
   const latestArchitectureTerminalRunId = useWorkflowStore(state => (
     state.history.find(run => run.type === 'architecture_generation' && run.projectPath === projectKey)?.id ?? null
   ))
-  const [archStatus, setArchStatus] = useState<Record<string, boolean>>({})
+  /** 前提、世界观、大纲三节；角色名单一节随名单快照另算，不必等名单读完再读一遍这三节。 */
+  const [coreStatus, setCoreStatus] = useState<Record<string, boolean>>({})
   const [planningRecovery, setPlanningRecovery] = useState<GenerationRecoveryContext | null>(null)
-  const [wordCounts, setWordCounts] = useState<Record<string, number>>({})
+  const [coreWordCounts, setCoreWordCounts] = useState<Record<string, number>>({})
   const [contents, setContents] = useState<Record<string, string>>({})
   const [synopsisIncomplete, setSynopsisIncomplete] = useState(false)
   const [synopsisRecoveryFailed, setSynopsisRecoveryFailed] = useState(false)
@@ -92,6 +93,7 @@ export function useArchitectureOverview(projectKey: string) {
     snapshot: rosterSnapshot,
     repairError: rosterRepairError,
     isRepairing: extracting,
+    settled: rosterSettled,
     refresh: loadCharacterRosterStatus,
     migrate: handleRepairCharacterRoster,
   } = useCharacterRosterRepair({ projectKey, enabled: projectMatches })
@@ -102,8 +104,8 @@ export function useArchitectureOverview(projectKey: string) {
     const projectSession = captureProjectSession(currentProject)
     if (!projectMatches || !projectSession || !isProjectSessionPath(projectSession, projectKey)) {
       archStatusRequestGate.current.begin()
-      setArchStatus({})
-      setWordCounts({})
+      setCoreStatus({})
+      setCoreWordCounts({})
       setContents({})
       setSynopsisIncomplete(false)
       setSynopsisRecoveryFailed(false)
@@ -199,13 +201,11 @@ export function useArchitectureOverview(projectKey: string) {
     }
     const status: Record<string, boolean> = {
       premise: (core?.premise?.length ?? 0) > 50,
-      characters: rosterSnapshot?.status === 'ready',
       worldbuilding: (core?.worldbuilding?.length ?? 0) > 50,
       synopsis: (core?.synopsis?.length ?? 0) > 50,
     }
     const counts: Record<string, number> = {
       premise: status.premise ? (core?.premise?.length ?? 0) : 0,
-      characters: status.characters ? (rosterSnapshot?.renderedMarkdown.length ?? 0) : 0,
       worldbuilding: status.worldbuilding ? (core?.worldbuilding?.length ?? 0) : 0,
       synopsis: status.synopsis ? (core?.synopsis?.length ?? 0) : 0,
     }
@@ -213,8 +213,8 @@ export function useArchitectureOverview(projectKey: string) {
       !archStatusRequestGate.current.isLatest(requestId)
       || !isProjectSessionCurrent(projectSession)
     ) return
-    setArchStatus(status)
-    setWordCounts(counts)
+    setCoreStatus(status)
+    setCoreWordCounts(counts)
     setContents({ premise: core?.premise ?? '', worldbuilding: core?.worldbuilding ?? '', synopsis: core?.synopsis ?? '' })
     setSynopsisIncomplete(interrupted)
     setSynopsisRecoveryFailed(recoveryFailed && Boolean(status.synopsis))
@@ -228,7 +228,14 @@ export function useArchitectureOverview(projectKey: string) {
     setWorldBuildingCandidate(recoveredWorldBuildingCandidate)
     if (!recoveredWorldBuildingCandidate) setShowWorldBuildingCandidate(false)
     setLoading(false)
-  }, [currentProject, projectKey, projectMatches, rosterSnapshot])
+  }, [currentProject, projectKey, projectMatches])
+
+  const rosterReady = rosterSnapshot?.status === 'ready'
+  const archStatus = useMemo<Record<string, boolean>>(() => ({ ...coreStatus, characters: rosterReady }), [coreStatus, rosterReady])
+  const wordCounts = useMemo<Record<string, number>>(() => ({
+    ...coreWordCounts,
+    characters: rosterReady ? rosterSnapshot.renderedMarkdown.length : 0,
+  }), [coreWordCounts, rosterReady, rosterSnapshot])
 
   useEffect(() => {
     const timer = setTimeout(() => { void loadStatus() }, 0)
@@ -435,7 +442,8 @@ export function useArchitectureOverview(projectKey: string) {
 
   return {
     projectMatches,
-    loading,
+    /** 三节正文与名单都读完之前为真；名单读不到时也算读完，按没有名单显示。 */
+    loading: loading || (projectMatches && !rosterSettled),
     archStatus,
     wordCounts,
     /** 故事前提、世界观、情节大纲的正式内容；角色名单以角色卡为准，不在这里。 */

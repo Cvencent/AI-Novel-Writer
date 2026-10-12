@@ -184,6 +184,8 @@ describe('架构阶段', () => {
     await act(async () => useCharacterStore.setState({ rosterRevision: 2 }))
     await vi.waitFor(() => expect(rosterReads()).toBe(afterOpen + 1))
     expect(invoke.mock.calls.some(([channel]) => channel === 'legacy-roster:read-source')).toBe(false)
+    // 名单快照换了不必再读一遍另三节：打开时一轮，重读名单后也不加。
+    expect(invoke.mock.calls.filter(([channel]) => channel === 'db:project-core-get')).toHaveLength(1)
     expect(started).not.toHaveBeenCalled()
   })
 
