@@ -12,7 +12,7 @@ export const SETUP_FIELDS: readonly SetupField[] = ['coreOutline', 'genre', 'len
 /**
  * 架构的四节：故事前提、角色名单、世界观、情节大纲。
  * ia.md 写的是「4 节均已确认」，但产品里各节没有确认状态（ArchitectureConfirmDialog 只是生成前勾选步骤），
- * 所以取旧外壳侧栏与架构页同一个判定：这一节已有内容（checkArchStatus）。
+ * 所以取旧外壳侧栏同一个判定：这一节已有内容，情节大纲还要没有「只覆盖到第 N 章」「未完成」的可见标记（checkArchStatus）。
  */
 export const ARCHITECTURE_SECTIONS = ['premise', 'characters', 'worldbuilding', 'synopsis'] as const
 

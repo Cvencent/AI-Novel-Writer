@@ -7,6 +7,7 @@
 
 import type { ProjectSessionContext } from '../shared/ipc-channels'
 import { ipc } from './ipc-client'
+import { hasVisiblePartialSynopsisMarker } from './workflows/commands/architecture.command'
 
 export type ArchStepKey = 'premise' | 'characters' | 'worldbuilding' | 'synopsis'
 
@@ -54,7 +55,8 @@ export async function checkArchStatus(
   status.premise = (core.premise?.length ?? 0) > 50
   status.characters = roster.status === 'ready'
   status.worldbuilding = (core.worldbuilding?.length ?? 0) > 50
-  status.synopsis = (core.synopsis?.length ?? 0) > 50
+  // 分批只写到一半或被打断的大纲带可见标记，不算完成（与架构页「部分完成」「不完整」徽标一致）。
+  status.synopsis = (core.synopsis?.length ?? 0) > 50 && !hasVisiblePartialSynopsisMarker(core.synopsis ?? '')
 
   return status
 }

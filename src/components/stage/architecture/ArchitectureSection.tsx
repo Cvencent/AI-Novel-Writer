@@ -7,11 +7,12 @@ import type { ArchitectureOverview } from '../../editor/use-architecture-overvie
 import { Button } from '../../ui/Button'
 import { Menu, type MenuGroupSpec } from '../../ui/Menu'
 import { Notice } from '../../ui/Notice'
-import { badgeText, badgeTone, sectionBadge, SECTION_NAMES, SECTION_NUMERALS } from './architecture-sections'
+import { badgeText, badgeTone, SECTION_NAMES, SECTION_NUMERALS, type SectionBadge } from './architecture-sections'
 
 interface SectionProps {
   sectionKey: ArchStepKey
   overview: ArchitectureOverview
+  badge: SectionBadge
   summary: string
   onEdit: () => void
   onGenerate: () => void
@@ -123,9 +124,8 @@ function RosterNotice({ overview }: { overview: ArchitectureOverview }) {
   )
 }
 
-export default function ArchitectureSection({ sectionKey, overview, summary, onEdit, onGenerate, onClear, onOpenCast, onReload }: SectionProps) {
+export default function ArchitectureSection({ sectionKey, overview, badge, summary, onEdit, onGenerate, onClear, onOpenCast, onReload }: SectionProps) {
   const text = useLocaleStore(s => s.text)
-  const badge = sectionBadge(sectionKey, overview)
   const filled = Boolean(overview.archStatus[sectionKey])
   const cast = sectionKey === 'characters'
   const name = text(...SECTION_NAMES[sectionKey])

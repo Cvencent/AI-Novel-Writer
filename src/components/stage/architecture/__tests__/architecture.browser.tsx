@@ -32,6 +32,7 @@ let root: Root | undefined
 let host: HTMLDivElement | undefined
 let core: Record<string, unknown>
 let partial: Record<string, unknown> | null
+let rosterStatus: 'empty' | 'ready'
 let invoke: ReturnType<typeof vi.fn<(channel: string, ...args: unknown[]) => Promise<unknown>>>
 
 const button = (name: string | RegExp) => [...document.querySelectorAll('button')]
@@ -82,10 +83,11 @@ async function render() {
 beforeEach(() => {
   core = { premise: PREMISE, worldbuilding: '', synopsis: '', totalChapters: 24, writingLanguage: 'zh-CN' }
   partial = null
+  rosterStatus = 'empty'
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
     if (channel === 'db:project-core-get') return core
     if (channel === 'fs:read-json') return partial ? { success: true, data: partial } : { success: false, error: 'not found' }
-    if (channel === 'db:character-roster-read') return { schemaVersion: 1, revision: 1, migrationState: 'ready', status: 'empty', entries: [], renderedMarkdown: '', projectionHash: 'p', factHash: 'f' }
+    if (channel === 'db:character-roster-read') return { schemaVersion: 1, revision: 1, migrationState: 'ready', status: rosterStatus, entries: [], renderedMarkdown: '林舟、沈砚', projectionHash: 'p', factHash: 'f' }
     if (channel === 'generation:list') return []
     if (channel === 'config:get') return { outlineTargetUnits: 300 }
     if (channel === 'config:set') return { success: true }
@@ -122,22 +124,25 @@ afterEach(async () => {
 })
 
 describe('架构阶段', () => {
-  it('主按钮随流程脊的四节状态切换：一节没有时生成，有缺口时继续生成，四节齐了进入蓝图', async () => {
-    filledSpine([])
+  const LONG = '内容。'.repeat(30)
+  it.each([
+    { state: '一节都没有', premise: '', cast: false, world: '', outline: 'none', count: 0, action: 'AI 生成架构' },
+    { state: '前提与角色名单', premise: PREMISE, cast: true, world: '', outline: 'none', count: 2, action: '继续生成架构' },
+    { state: '缺情节大纲', premise: PREMISE, cast: true, world: LONG, outline: 'none', count: 3, action: '继续生成架构' },
+    { state: '大纲只到第 16 章', premise: PREMISE, cast: true, world: LONG, outline: 'partial', count: 3, action: '继续生成架构' },
+    { state: '四节齐全', premise: PREMISE, cast: true, world: LONG, outline: 'full', count: 4, action: '下一步：章节蓝图' },
+  ])('主按钮与页头计数读四节徽标：$state', async ({ premise, cast, world, outline, count, action }) => {
+    if (outline === 'partial') seedPartialOutline()
+    core = { ...core, premise, worldbuilding: world, ...(outline === 'full' ? { synopsis: LONG } : {}) }
+    rosterStatus = cast ? 'ready' : 'empty'
     await render()
-    expect(primary()).toBe('AI 生成架构')
+    const ready = [...host!.querySelectorAll('.arch-badge')].filter(badge => badge.textContent === '已确认').length
+    expect(ready).toBe(count)
+    expect(host!.querySelector('.arch-eyebrow')?.textContent).toContain(`${count} / 4 已确认`)
+    expect(primary()).toBe(action)
     expect(host!.querySelectorAll('.arch-header .pi-btn--primary')).toHaveLength(1)
-
-    await act(async () => filledSpine(['premise', 'characters']))
-    expect(primary()).toBe('继续生成架构')
-    expect(host!.querySelector('.arch-eyebrow')?.textContent).toContain('2 / 4 已确认')
-
-    await act(async () => filledSpine(['premise', 'characters', 'worldbuilding']))
-    expect(primary()).toBe('继续生成架构')
-
-    await act(async () => filledSpine(['premise', 'characters', 'worldbuilding', 'synopsis']))
-    expect(primary()).toBe('下一步：章节蓝图')
-    expect(host!.querySelectorAll('.arch-header .pi-btn--primary')).toHaveLength(1)
+    const next = button('下一步：章节蓝图') as HTMLButtonElement
+    expect(next.disabled).toBe(count < 4)
   })
 
   it('清空此节先出危险确认，取消后什么也不写、摘要不变；确认后才清空', async () => {
