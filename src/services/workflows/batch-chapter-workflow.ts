@@ -406,13 +406,13 @@ export function createBatchChapterWorkflow(params: BatchChapterWorkflowParams): 
         name: completionMode === 'draft_review'
           ? localeText(
             uiLocale,
-            `第${chapterNumber}章：生成草稿待审`,
-            `Chapter ${chapterNumber}: generate review draft`,
+            `第 ${chapterNumber} 章 · 生成草稿待审`,
+            `Chapter ${chapterNumber} · Generate review draft`,
           )
           : localeText(
             uiLocale,
-            `第${chapterNumber}章：自动定稿与后处理`,
-            `Chapter ${chapterNumber}: auto-finalize and post-process`,
+            `第 ${chapterNumber} 章 · 自动定稿与后处理`,
+            `Chapter ${chapterNumber} · Auto-finalize and post-process`,
           ),
         description: completionMode === 'draft_review'
           ? localeText(

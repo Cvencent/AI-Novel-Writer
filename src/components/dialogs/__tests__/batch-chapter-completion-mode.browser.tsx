@@ -854,7 +854,7 @@ describe('batch chapter completion mode browser flow', () => {
     expect(useWorkflowStore.getState().history[0]).toMatchObject({
       title: '批量草稿待审 · 第 1 章',
       steps: [expect.objectContaining({
-        name: '第1章：生成草稿待审',
+        name: '第 1 章 · 生成草稿待审',
         result: '第1章草稿已生成并保存，等待审稿。',
       })],
     })
@@ -900,7 +900,7 @@ describe('batch chapter completion mode browser flow', () => {
     expect(useWorkflowStore.getState().history[0]).toMatchObject({
       title: '批量自动定稿 · 第 1 章',
       steps: [expect.objectContaining({
-        name: '第1章：自动定稿与后处理',
+        name: '第 1 章 · 自动定稿与后处理',
         result: '第1章已定稿，后处理全部通过。',
       })],
     })
