@@ -4,7 +4,6 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 
 import '../../../index.css'
-import '../stage.css'
 import { APPEARANCE_STORAGE_KEY } from '../../../shared/appearance-profile'
 import { useAppearanceStore } from '../../../stores/appearance-bootstrap'
 import type { WindowCloseGuard } from '../../layout/use-window-close-guard'

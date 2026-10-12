@@ -126,7 +126,7 @@ function AITaskCapsule() {
       >
         <CheckCircle2 size={10} />
         <span className="truncate">
-          {text(`${completedTitle.replace(/^[^\s]+\s/, '')} 完成`, `${completedTitle.replace(/^[^\s]+\s/, '')} complete`)}
+          {text(`${completedTitle} 完成`, `${completedTitle} complete`)}
         </span>
       </div>
     )
