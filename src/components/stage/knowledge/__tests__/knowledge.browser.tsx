@@ -139,19 +139,19 @@ function visibleWords(): string {
   return [document.body.textContent ?? '', ...attributes].join('\n')
 }
 
+/** 作者在页面与提示里读到的全部文字：每一步收一次页面，再加上弹过的提示。 */
+function wordCollector() {
+  const toasts: string[] = []
+  for (const kind of ['success', 'error', 'warning', 'info'] as const) {
+    vi.spyOn(toast, kind).mockImplementation(message => { toasts.push(message) })
+  }
+  const pages: string[] = []
+  return { snap: () => { pages.push(visibleWords()) }, all: () => [...pages, ...toasts].join('\n'), toasts }
+}
+
 describe('知识库', () => {
   for (const locale of ['zh-CN', 'en-US'] as Locale[]) {
     const say = (zh: string, en: string) => locale === 'zh-CN' ? zh : en
-
-    /** 作者在页面与提示里读到的全部文字：每一步收一次页面，再加上弹过的提示。 */
-    function wordCollector() {
-      const toasts: string[] = []
-      for (const kind of ['success', 'error', 'warning', 'info'] as const) {
-        vi.spyOn(toast, kind).mockImplementation(message => { toasts.push(message) })
-      }
-      const pages: string[] = []
-      return { snap: () => { pages.push(visibleWords()) }, all: () => [...pages, ...toasts].join('\n'), toasts }
-    }
 
     it(`${locale} 下资料、原文不可用、保存、查找、清空与外发提取确认里都没有实现术语`, async () => {
       useLocaleStore.setState({ locale })
