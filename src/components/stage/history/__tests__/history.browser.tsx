@@ -12,6 +12,7 @@ import { useDraftStore } from '../../../../stores/draft-store'
 import { useEditorStore } from '../../../../stores/editor-store'
 import { useLocaleStore } from '../../../../stores/locale-store'
 import { useProjectStore } from '../../../../stores/project-store'
+import { toast } from '../../../ui/Toast'
 import StageHistory from '../StageHistory'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -29,6 +30,8 @@ const restores = [useProjectStore, useLocaleStore, useEditorStore, useDraftStore
 let root: Root | undefined
 let host: HTMLDivElement | undefined
 let drafts: Draft[]
+let readGate: Promise<void> | null
+let beforeCreate: (() => void) | null
 let invoke: ReturnType<typeof vi.fn<(channel: string, ...args: unknown[]) => Promise<unknown>>>
 
 const meta = (draft: Draft) => ({ id: draft.id, chapterNumber: draft.chapterNumber, version: draft.version, status: draft.status,
@@ -42,16 +45,23 @@ beforeEach(() => {
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
     if (channel === 'db:blueprint-get-all') return [{ chapterNumber: 3, title: '雨夜车站' }, { chapterNumber: 4, title: '第三节车厢' }]
     if (channel === 'db:draft-list') return drafts.filter(draft => draft.chapterNumber === args[0]).map(meta)
-    if (channel === 'db:draft-get-full') return drafts.find(draft => draft.id === args[0]) ?? null
+    if (channel === 'db:draft-get-full') {
+      if (readGate) await readGate
+      return drafts.find(draft => draft.id === args[0]) ?? null
+    }
     if (channel === 'db:draft-get-latest') {
       const own = drafts.filter(draft => draft.chapterNumber === args[0]).sort((a, b) => b.version - a.version)
       return own[0] ? meta(own[0]) : null
     }
     if (channel === 'db:draft-next-version') return Math.max(0, ...drafts.filter(draft => draft.chapterNumber === args[0]).map(draft => draft.version)) + 1
     if (channel === 'db:draft-create') {
-      const input = args[0] as { chapterNumber: number; version: number; content: string }
-      drafts.push({ id: 100 + drafts.length, chapterNumber: input.chapterNumber, version: input.version, status: 'draft', content: input.content })
-      return { success: true, id: 100 + drafts.length }
+      // 与 DraftRepository.create 一致：版本号在事务里按现有最大版本加一分配，不用调用方传的值。
+      const input = args[0] as { chapterNumber: number; content: string }
+      beforeCreate?.()
+      const id = 100 + drafts.length
+      const version = Math.max(0, ...drafts.filter(draft => draft.chapterNumber === input.chapterNumber).map(draft => draft.version)) + 1
+      drafts.push({ id, chapterNumber: input.chapterNumber, version, status: 'draft', content: input.content })
+      return { success: true, id }
     }
     if (channel === 'db:draft-list-all') return drafts.map(meta)
     throw new Error(`未配置调用：${channel}`)
@@ -61,6 +71,8 @@ beforeEach(() => {
   setActiveProjectSessionContext(session)
   useLocaleStore.setState({ locale: 'zh-CN' })
   useEditorStore.setState({ tabs: [], activeTabId: null })
+  readGate = null
+  beforeCreate = null
   host = document.createElement('div')
   host.className = 'paper-ink stage-shell'
   host.style.cssText = 'width: 1200px; height: 800px; display: flex'
@@ -133,6 +145,46 @@ describe('版本历史', () => {
     expect([...timeline.querySelectorAll('.stage-hist-version-name')].map(node => node.firstChild?.textContent)).toEqual(['草稿 v3', '草稿 v2', '草稿 v1'])
     expect(timeline.querySelector('li:first-child')!.textContent).toContain('当前')
     expect(document.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('回退成功的提示用数据库实际分配的版本号', async () => {
+    const success = vi.spyOn(toast, 'success')
+    await openChapterThree()
+    await click(/草稿 v1/)
+    await vi.waitFor(() => expect(button('回退到此版本…')).toBeTruthy())
+    await click('回退到此版本…')
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain('新建一份草稿 v3')
+    // 估算出 v3 之后、新建之前，后台运行又给这一章写了一稿 v3。
+    beforeCreate = () => { drafts.push({ id: 13, chapterNumber: 3, version: 3, status: 'draft', content: '后台写的一稿' }) }
+    await click('新建回滚草稿')
+    await vi.waitFor(() => expect(button(/草稿 v4/)).toBeTruthy())
+    expect(success).toHaveBeenCalledWith('已新建草稿 v4，原有各稿都保留')
+  })
+
+  it('回退读旧稿时作品已重新打开，就不再新建稿', async () => {
+    await openChapterThree()
+    await click(/草稿 v1/)
+    await vi.waitFor(() => expect(button('回退到此版本…')).toBeTruthy())
+    await click('回退到此版本…')
+    let release: () => void = () => {}
+    readGate = new Promise(resolve => { release = resolve })
+    await click('新建回滚草稿')
+    const reopened = { ...session, leaseId: '再次打开' }
+    useProjectStore.setState({ currentProject: { id: session.projectId, path: session.projectPath, sessionLease: reopened.leaseId, name: '雨夜列车', novelConfig: {} } as unknown as ProjectData })
+    setActiveProjectSessionContext(reopened)
+    await act(async () => { release(); await Promise.resolve() })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)) })
+    expect(channels()).not.toContain('db:draft-next-version')
+    expect(channels()).not.toContain('db:draft-create')
+  })
+
+  it('还没有任何稿的章节标「未开始」', async () => {
+    useDraftStore.setState({ draftsByChapter: { 3: [{ id: 11 }, { id: 12 }] } as never, dataProjectSession: session })
+    await act(async () => root!.render(<StageHistory projectKey={session.projectPath} />))
+    await vi.waitFor(() => expect(button(/第三节车厢/)).toBeTruthy())
+    expect(button(/雨夜车站/)!.textContent).toContain('2 稿')
+    expect(button(/第三节车厢/)!.textContent).toContain('未开始')
+    expect(button(/第三节车厢/)!.hasAttribute('data-empty')).toBe(true)
   })
 
   it('取消回退不写入任何稿', async () => {

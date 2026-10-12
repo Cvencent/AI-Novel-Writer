@@ -54,22 +54,25 @@ export function useVersionHistory(projectKey: string) {
     return () => { mounted = false }
   }, [loadChapters])
 
-  const loadVersions = useCallback(async (chapterNumber: number) => {
+  const loadVersions = useCallback(async (chapterNumber: number): Promise<VersionRecord[]> => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
-    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
+    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return []
     try {
       const drafts = await ipc.invokeWithProjectSession(projectSession, 'db:draft-list', chapterNumber, projectSession.projectPath)
-      if (!isProjectSessionCurrent(projectSession)) return
-      setVersions(drafts.map(draft => ({
+      if (!isProjectSessionCurrent(projectSession)) return []
+      const loaded: VersionRecord[] = drafts.map(draft => ({
         id: draft.id,
         version: draft.version,
         type: draft.status === 'finalized' ? 'final' : (draft.status === 'revised' ? 'refined' : 'draft'),
         word_count: draft.wordCount || 0,
         created_at: draft.createdAt,
         dependencies_stale: draft.dependenciesStale,
-      })))
+      }))
+      setVersions(loaded)
+      return loaded
     } catch {
       if (isProjectSessionCurrent(projectSession)) setVersions([])
+      return []
     }
   }, [projectKey])
 
@@ -100,7 +103,7 @@ export function useVersionHistory(projectKey: string) {
     return { older, current: current?.content ?? '' }
   }, [projectKey, selectedChapter])
 
-  /** 用这一稿的正文新建一稿（回滚草稿），原有各稿都保留。返回新稿的版本号；会话已切换或旧稿为空时返回 null。 */
+  /** 用这一稿的正文新建一稿（回滚草稿），原有各稿都保留。返回数据库给新稿分配的版本号；会话已切换或旧稿为空时返回 null。 */
   const createRollbackDraft = useCallback(async (versionId: number): Promise<number | null> => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession || !isProjectSessionPath(projectSession, projectKey) || selectedChapter === null) return null
@@ -108,7 +111,7 @@ export function useVersionHistory(projectKey: string) {
     if (!isProjectSessionCurrent(projectSession) || !content) return null
     const nextVersion = await ipc.invokeWithProjectSession(projectSession, 'db:draft-next-version', selectedChapter, projectSession.projectPath)
     if (!isProjectSessionCurrent(projectSession)) return null
-    requireIpcSuccess(await ipc.invokeWithProjectSession(projectSession, 'db:draft-create', {
+    const created = requireIpcSuccess(await ipc.invokeWithProjectSession(projectSession, 'db:draft-create', {
       chapterNumber: selectedChapter,
       version: nextVersion,
       source: 'rewrite',
@@ -116,8 +119,9 @@ export function useVersionHistory(projectKey: string) {
       wordCount: countDraftUnits(content),
     }, projectSession.projectPath), text('创建回滚草稿', 'Create rollback draft'))
     if (!isProjectSessionCurrent(projectSession)) return null
-    await loadVersions(selectedChapter)
-    return nextVersion
+    // 版本号在数据库事务里分配，估算值可能被同时写入的稿占掉，以刷新后的列表为准。
+    const refreshed = await loadVersions(selectedChapter)
+    return refreshed.find(version => version.id === created.id)?.version ?? null
   }, [loadVersions, projectKey, selectedChapter, text])
 
   return { chapters, loading, selectedChapter, selectChapter, versions, readComparison, createRollbackDraft }

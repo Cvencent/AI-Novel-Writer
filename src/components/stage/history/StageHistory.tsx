@@ -135,7 +135,7 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
           </div>
           <ol className="stage-hist-list">
             {chapters.map(item => {
-              const count = draftCounts?.[item.number]?.length
+              const count = draftCounts ? (draftCounts[item.number]?.length ?? 0) : undefined
               return (
                 <li key={item.number}>
                   <button
