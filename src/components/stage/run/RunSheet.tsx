@@ -71,6 +71,7 @@ function ActiveRuns({ runs, last, recovery, focusRunId, hasHistory, text }: {
 }) {
   const ordered = [...runs].sort((a, b) => (ATTENTION[a.status] ?? 9) - (ATTENTION[b.status] ?? 9))
   const showLast = ordered.length === 0 && last !== undefined
+  const primaryId = ordered[0]?.status === 'waiting' ? ordered[0].id : undefined
   const nothing = ordered.length === 0 && !showLast && !recovery.entries.length && !recovery.generationError && !recovery.candidateError
   if (nothing) {
     return (
@@ -85,8 +86,8 @@ function ActiveRuns({ runs, last, recovery, focusRunId, hasHistory, text }: {
   }
   return (
     <div className="run-list">
-      {ordered.map(run => <RunCard key={run.id} run={run} focused={run.id === focusRunId} />)}
-      {showLast && <RunCard run={last} caption={text('上一次运行', 'Last run')} />}
+      {ordered.map(run => <RunCard key={run.id} run={run} focused={run.id === focusRunId} primary={run.id === primaryId} />)}
+      {showLast && <RunCard run={last} caption={text('上一次运行', 'Last run')} primary />}
       <RunRecoveryList recovery={recovery} liveRuns={runs} />
     </div>
   )

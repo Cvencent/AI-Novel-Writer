@@ -41,8 +41,9 @@ function runMeta(run: WorkflowRun, model: string | undefined, text: Text, locale
 /**
  * 运行侧页里的一次运行。进行中的运行默认展开当前步骤，实时输出持续追加；
  * 步骤日志不在这里重复，工作流把每条步骤日志同时写进了诊断分页的日志。
+ * primary：侧页同一时刻只有一个主按钮，由侧页交给最需要作者处理的那张卡，其余卡的确认与续写是次按钮。
  */
-export function RunCard({ run, caption, focused }: { run: WorkflowRun; caption?: string; focused?: boolean }) {
+export function RunCard({ run, caption, focused, primary = false }: { run: WorkflowRun; caption?: string; focused?: boolean; primary?: boolean }) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
   const titleId = useId()
@@ -89,24 +90,24 @@ export function RunCard({ run, caption, focused }: { run: WorkflowRun; caption?:
           </div>
         )}
       </header>
-      {confirmation && <RunConfirmation confirmation={confirmation} text={text} />}
-      <RunDetails run={run} />
+      {confirmation && <RunConfirmation confirmation={confirmation} primary={primary} text={text} />}
+      <RunDetails run={run} primary={primary} />
     </article>
   )
 }
 
-/** 一次运行的步骤与失败提示；历史里展开一条时只显示这部分。 */
-export function RunDetails({ run }: { run: WorkflowRun }) {
+/** 一次运行的步骤与失败提示；历史里一次只展开一条，展开的这条就是主操作所在。 */
+export function RunDetails({ run, primary = true }: { run: WorkflowRun; primary?: boolean }) {
   const text = useLocaleStore(s => s.text)
   return (
     <>
       <RunSteps run={run} live={ACTIVE_RUN_STATUSES.has(run.status)} text={text} />
-      {run.status === 'failed' && <RunFailureNotice run={run} />}
+      {run.status === 'failed' && <RunFailureNotice run={run} primary={primary} />}
     </>
   )
 }
 
-function RunConfirmation({ confirmation, text }: { confirmation: WorkflowConfirmation; text: Text }) {
+function RunConfirmation({ confirmation, primary, text }: { confirmation: WorkflowConfirmation; primary: boolean; text: Text }) {
   const { proposal, blocked, ready, nextStepName } = confirmation
   return (
     <section className="run-confirm" aria-label={text('需要你确认', 'Needs your confirmation')}>
@@ -121,7 +122,7 @@ function RunConfirmation({ confirmation, text }: { confirmation: WorkflowConfirm
       )}
       {blocked && <p className="run-note" role="status">{blocked}</p>}
       <p className="run-confirm-next">{text('下一步：', 'Next: ')}{nextStepName}</p>
-      <Button variant="primary" className="run-confirm-button" disabled={!ready} onClick={confirmation.confirm}>
+      <Button variant={primary ? 'primary' : 'secondary'} className="run-confirm-button" disabled={!ready} onClick={confirmation.confirm}>
         {confirmation.confirmLabel}
       </Button>
     </section>
@@ -244,7 +245,7 @@ function StepOutput({ content, live, text }: { content: string; live: boolean; t
   )
 }
 
-function RunFailureNotice({ run }: { run: WorkflowRun }) {
+function RunFailureNotice({ run, primary }: { run: WorkflowRun; primary: boolean }) {
   const text = (zh: string, en: string) => run.uiLocale === 'en-US' ? en : zh
   const { presentation, errorCode, canResumeOutline } = runFailure(run)
   const current = useProjectStore(() => isCurrentSessionRun(run))
@@ -263,7 +264,7 @@ function RunFailureNotice({ run }: { run: WorkflowRun }) {
       {(openConfig || canResumeOutline) && (
         <div className="run-notice-actions">
           {canResumeOutline && (
-            <Button variant="primary" size="sm" disabled={!current || outline.resuming} onClick={() => void outline.resume()}>
+            <Button variant={primary ? 'primary' : 'secondary'} size="sm" disabled={!current || outline.resuming} onClick={() => void outline.resume()}>
               {outline.resuming ? text('正在从断点续写…', 'Resuming…') : text('继续生成情节大纲', 'Continue the plot outline')}
             </Button>
           )}

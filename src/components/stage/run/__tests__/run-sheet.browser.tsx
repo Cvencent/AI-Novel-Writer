@@ -199,6 +199,24 @@ describe('运行侧页', () => {
     expect(useWorkflowStore.getState().history[0]?.status).toBe('completed')
   })
 
+  it('两次运行都等你确认时，侧页只有排在最前的那张卡给主按钮，它确认后主按钮交给下一张', async () => {
+    const start = (title: string) => useWorkflowStore.getState().startWorkflow({ type: 'post_process', title, projectPath: session.projectPath, projectSession: session, steps: [
+      { name: '读取正文', description: '', executor: async () => '候选' },
+      { name: '写入角色卡', description: '', requiresConfirmation: true, executor: async () => '已写入' },
+    ] })
+    const first = start('提取角色甲')
+    const second = start('提取角色乙')
+    await render()
+    await vi.waitFor(() => expect(host!.querySelectorAll('.run-confirm-button')).toHaveLength(2))
+    const primaries = () => [...host!.querySelectorAll('.pi-btn--primary')].map(node => node.closest('article')?.querySelector('h3')?.textContent)
+    expect(primaries()).toEqual(['提取角色甲'])
+    await act(async () => (host!.querySelector('.pi-btn--primary') as HTMLButtonElement).click())
+    await act(async () => { await first })
+    await vi.waitFor(() => expect(primaries()).toEqual(['提取角色乙']))
+    await act(async () => (host!.querySelector('.pi-btn--primary') as HTMLButtonElement).click())
+    await act(async () => { await second })
+  })
+
   it('恢复候选：复制；放弃要就地确认，保留不动磁盘，确认后候选消失', async () => {
     candidates = [candidate()]
     const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
