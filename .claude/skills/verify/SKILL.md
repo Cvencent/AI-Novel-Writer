@@ -185,6 +185,7 @@ node scripts/redesign/drive.mjs --scenario chapter-switch --shell stage --out <�
 | `run-en` | 切到英文重载：Ctrl K 搜 assistant、agent、chat 都没有结果；写一章时侧页分页是英文，整页没有聊天字样 | 英文的进行中 | 是 | lane 8 |
 | `legacy-no-chat` | 旧外壳：右侧栏只有「AI 输出」，没有 Agent 按钮，右侧区域名为「AI 输出」，整页没有聊天字样；再点一次收起、再点打开 | AI 输出 | 否 | lane 9 |
 | `run-olddata` | 预置一条助手任务（两轮历史加一轮回复）：打开作品与运行侧页没有报错，界面没有调用任何 `agent-generation:*`（在主进程里包一层 invoke 计数），侧页不列助手任务；`after` 重开读出的对话内容与之前相同，项目目录里数据库以外的文件没有改动 | 进行中 | 是 | lane 10 |
+| `run-tour` | 30–60 秒的导览：定速写一章看实时输出与完成，历史里展开这次运行，诊断宽版，放弃恢复候选的就地确认后选「保留」，收起侧页再用 Ctrl K 打开。配 `--video` 录评审视频 | 进行中 | 是 | Review gate |
 | `write-stream` | 60 块、每块 50 字、间隔 50 ms 的正文流出（3000 字）：`measured.fps` 是第一块到最后一块显示之间的帧率，`appendMedianMs`、`appendP95Ms` 是每块从假模型发出到出现在界面上的延迟。两种外壳都能跑，用 `--shell stage` 选新外壳 | 写完一章 | 是 | perf |
 
 `run-olddata` 的状态对比只看对话内容：重开作品时主进程会把旧会话里没写完的助手任务登记为暂停、改期限，这是主进程的租约记账，与界面无关。

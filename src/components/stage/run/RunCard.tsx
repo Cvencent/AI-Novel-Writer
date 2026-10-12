@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ChevronRight, CircleCheck, CircleDashed, CircleX, Pause, Play } from 'lucide-react'
+import { useLLMStore } from '../../../stores/llm-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowReasoningStore } from '../../../stores/workflow-reasoning-store'
@@ -28,17 +29,18 @@ const STATUS_TEXT: Record<WorkflowRun['status'], [string, string]> = {
   failed: ['失败', 'Failed'],
 }
 
-function runMeta(run: WorkflowRun, text: Text, locale: Parameters<typeof clockTime>[1]): string {
+function runMeta(run: WorkflowRun, model: string | undefined, text: Text, locale: Parameters<typeof clockTime>[1]): string {
   const started = text(`${clockTime(run.createdAt, locale)} 开始`, `Started ${clockTime(run.createdAt, locale)}`)
-  const status = run.status === 'running'
-    ? run.pauseRequested ? text('本章写完后暂停', 'Pausing after this chapter') : `${Math.round(runProgress(run) * 100)}%`
-    : text(...STATUS_TEXT[run.status])
-  return `${started} · ${status}`
+  const percent = `${Math.round(runProgress(run) * 100)}%`
+  const status = run.status === 'running' && run.pauseRequested ? text('本章写完后暂停', 'Pausing after this chapter')
+    : run.status === 'running' || run.status === 'waiting' ? percent
+      : text(...STATUS_TEXT[run.status])
+  return [started, model, status].filter(Boolean).join(' · ')
 }
 
 /**
- * 运行侧页里的一次运行：标题与状态、批量创作的暂停与继续、取消，然后是确认区、步骤（可展开看输出、错误与日志）与失败提示。
- * 进行中的运行默认展开当前步骤，实时输出持续追加。
+ * 运行侧页里的一次运行。进行中的运行默认展开当前步骤，实时输出持续追加；
+ * 步骤日志不在这里重复，工作流把每条步骤日志同时写进了诊断分页的日志。
  */
 export function RunCard({ run, caption, focused }: { run: WorkflowRun; caption?: string; focused?: boolean }) {
   const text = useLocaleStore(s => s.text)
@@ -48,6 +50,7 @@ export function RunCard({ run, caption, focused }: { run: WorkflowRun; caption?:
   const live = ACTIVE_RUN_STATUSES.has(run.status)
   const confirmation = useWorkflowConfirmation(run)
   const batch = run.type === 'batch_generate'
+  const model = useLLMStore(s => s.models.find(candidate => candidate.id === run.generationModelId)?.name)
 
   useEffect(() => {
     if (focused) ref.current?.scrollIntoView({ block: 'nearest' })
@@ -63,7 +66,7 @@ export function RunCard({ run, caption, focused }: { run: WorkflowRun; caption?:
             {confirmation && <span className="run-badge" data-tone="accent">{text('等你确认', 'Needs you')}</span>}
             <h3 id={titleId} className="run-card-title">{run.title}</h3>
           </div>
-          <p className="run-card-meta">{runMeta(run, text, locale)}</p>
+          <p className="run-card-meta">{runMeta(run, model, text, locale)}</p>
         </div>
         {live && (
           <div className="run-card-actions">

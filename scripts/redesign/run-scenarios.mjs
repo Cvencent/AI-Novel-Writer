@@ -76,6 +76,15 @@ function conversation(recovery) {
   return JSON.stringify({ input: recovery.context.input, rounds: recovery.rounds.map(round => ({ visibleText: round.visibleText, actions: round.actions })) })
 }
 
+/** 示例作品加一条第 5 章的旧恢复候选（写作中断时留下的正文）。 */
+const seedWithCandidate = context => seedStageSample(context, { beforeReload: async ({ page, invoke, path: projectPath, session }) => {
+  const recorded = await invoke(page, 'db:recovery-candidate-record', { runId: randomUUID(), stepId: '写稿', chapterNumber: 5, chapterTitle: '潮汐表',
+    source: { chapterNumber: 5, title: '潮汐表', role: '发展', purpose: '推进灯塔与沉船的线索', keyEvents: '林岚在灯塔里找到新的线索', characters: [] },
+    sourceDraft: null, visibleText: '潮水退去，钟声早了一刻。林岚把潮汐表翻到三十年前那一页。', failureCode: 'timeout', failureReason: '模型长时间没有响应' },
+  projectPath, session)
+  assert.equal(recorded.success, true, recorded.error)
+} })
+
 /** 界面打开作品后会话租约换了新的；核对磁盘数据时回到书房，由驱动自己再打开一次拿会话。 */
 async function reopenForReading({ page, invoke, reload }, projectPath) {
   await reload()
@@ -189,13 +198,7 @@ export const RUN_SCENARIOS = {
     assert.equal(await roster.getByText('林岚', { exact: true }).count(), 1, '林岚对应已有角色，没有多出一个')
   } },
 
-  'run-discard': { model: false, shell: 'stage', setup: context => seedStageSample(context, { beforeReload: async ({ page, invoke, path: projectPath, session }) => {
-    const recorded = await invoke(page, 'db:recovery-candidate-record', { runId: randomUUID(), stepId: '写稿', chapterNumber: 5, chapterTitle: '潮汐表',
-      source: { chapterNumber: 5, title: '潮汐表', role: '发展', purpose: '推进灯塔与沉船的线索', keyEvents: '林岚在灯塔里找到新的线索', characters: [] },
-      sourceDraft: null, visibleText: '潮水退去，钟声早了一刻。林岚把潮汐表翻到三十年前那一页。', failureCode: 'timeout', failureReason: '模型长时间没有响应' },
-    projectPath, session)
-    assert.equal(recorded.success, true, recorded.error)
-  } }), run: async ({ page }) => {
+  'run-discard': { model: false, shell: 'stage', setup: seedWithCandidate, run: async ({ page }) => {
     const copied = await recordClipboard(page)
     await runSheet.openFromPalette(page)
     const card = runSheet.recovery(page).getByRole('article', { name: '原始候选 · 第5章 潮汐表' })
@@ -321,6 +324,36 @@ export const RUN_SCENARIOS = {
     const changed = Object.keys({ ...context.filesBefore, ...filesAfter })
       .filter(file => !/\.(db|sqlite)(-wal|-shm|-journal)?$/i.test(file) && context.filesBefore[file] !== filesAfter[file])
     assert.deepEqual(changed, [], '项目目录里数据库以外的文件没有改动')
+  } },
+
+  'run-tour': { model: true, shell: 'stage', setup: seedWithCandidate, run: async ({ page, fake }) => {
+    const pause = ms => page.waitForTimeout(ms)
+    fake.streamProse({ chunks: streamingProse(36, 50), intervalMs: 180 })
+    await pause(1500)
+    await stage.stageButton(page, '蓝图').click()
+    await pause(1200)
+    await chapter.writeNextChapter(page, 100)
+    await runSheet.waitUntilOpen(page)
+    await runSheet.output(page).waitFor({ state: 'visible', timeout: 20_000 })
+    await runSheet.waitForRunDone(page)
+    await pause(2500)
+    await runSheet.tab(page, '历史').click()
+    await pause(1200)
+    await runSheet.sheet(page).getByRole('button', { name: /^写稿/ }).first().click()
+    await pause(2500)
+    await runSheet.tab(page, '诊断').click()
+    await pause(3500)
+    await runSheet.tab(page, '进行中').click()
+    await pause(1500)
+    const candidate = runSheet.recovery(page).getByRole('article', { name: '原始候选 · 第5章 潮汐表' })
+    await candidate.getByRole('button', { name: '放弃…' }).click()
+    await pause(2500)
+    await candidate.getByRole('group').getByRole('button', { name: '保留' }).click()
+    await pause(1500)
+    await runSheet.sheet(page).getByRole('button', { name: '收起运行侧页' }).first().click()
+    await pause(1500)
+    await runSheet.openFromPalette(page)
+    await pause(2500)
   } },
 
   'write-stream': { model: true, setup: seedStageSample, run: async ({ page, fake }) => {

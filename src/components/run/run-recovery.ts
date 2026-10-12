@@ -14,7 +14,6 @@ import type { ReviewRevisionRecovery } from '../../shared/review-revision-genera
  */
 export type RecoveryEntry = CandidateEntry | PlanningEntry | EditorEntry | ReviewEntry | BatchEntry | DraftEntry
 
-/** 一段可复制的生成文字。 */
 export interface RecoveryText {
   id: string
   text: string

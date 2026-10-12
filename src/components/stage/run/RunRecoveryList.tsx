@@ -11,7 +11,6 @@ import { InlineConfirm } from '../../ui/InlineConfirm'
 
 type Text = (zh: string, en: string) => string
 
-/** 运行中断后可以接着做的事：恢复稿、选区建议、审修、批量、单章与旧恢复候选。 */
 export function RunRecoveryList({ recovery }: { recovery: RunRecovery }) {
   const text = useLocaleStore(s => s.text)
   const leaseId = useProjectStore(s => s.currentProject?.sessionLease)
