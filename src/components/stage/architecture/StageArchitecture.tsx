@@ -11,7 +11,8 @@ import { openBuiltinEditor } from '../../../stores/open-builtin-editor'
 import { useProjectStore } from '../../../stores/project-store'
 import { clearArchSection } from '../../editor/clear-arch-section'
 import { ARCH_FILES, useArchitectureOverview } from '../../editor/use-architecture-overview'
-import { captureProjectSession, isProjectSessionCurrent } from '../../project-session-gate'
+import type { ProjectSessionContext } from '../../../shared/ipc-channels'
+import { captureProjectSession, isProjectSessionCurrent, isProjectSessionPath } from '../../project-session-gate'
 import { Button } from '../../ui/Button'
 import { DangerConfirm } from '../../ui/DangerConfirm'
 import { Menu } from '../../ui/Menu'
@@ -55,7 +56,8 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
   const overview = useArchitectureOverview(projectKey)
   const filled = useFilledSections()
   const cast = useCastSummary(projectKey)
-  const [clearing, setClearing] = useState<ArchStepKey | null>(null)
+  /** 清空确认打开时冻结的会话：确认时作品已换就什么也不写。 */
+  const [clearing, setClearing] = useState<{ key: ArchStepKey; session: ProjectSessionContext } | null>(null)
 
   const total = ARCHITECTURE_SECTIONS.length
   const action = mainAction(filled ?? 0, total)
@@ -71,9 +73,10 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
   }
 
   const confirmClear = async () => {
-    const key = clearing
-    const session = captureProjectSession(useProjectStore.getState().currentProject)
-    if (!key || !session) return
+    if (!clearing) return
+    const { key, session } = clearing
+    setClearing(null)
+    if (!isProjectSessionPath(session, projectKey) || !isProjectSessionCurrent(session)) return
     const name = text(...SECTION_NAMES[key])
     const cleared = await clearArchSection(`ai-novel://core/${key}`, session)
     if (!isProjectSessionCurrent(session)) return
@@ -93,7 +96,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
       : text('还没有内容。可以让 AI 按设定生成，也可以自己写。', 'Nothing here yet. Let AI draft it from the setup, or write it yourself.')
   }
 
-  const clearingName = clearing ? text(...SECTION_NAMES[clearing]) : ''
+  const clearingName = clearing ? text(...SECTION_NAMES[clearing.key]) : ''
 
   return (
     <div className="arch-page" data-loading={overview.loading || undefined} data-cast-loading={cast.loading || undefined}>
@@ -138,7 +141,10 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
               summary={summary(key)}
               onEdit={() => editSection(key)}
               onGenerate={() => overview.openGenerateDialog([key])}
-              onClear={() => setClearing(key)}
+              onClear={() => {
+                const session = captureProjectSession(useProjectStore.getState().currentProject)
+                if (session && isProjectSessionPath(session, projectKey)) setClearing({ key, session })
+              }}
               onOpenCast={() => openCast(text)}
               onReload={reload}
             />

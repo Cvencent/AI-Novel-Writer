@@ -167,6 +167,21 @@ describe('架构阶段', () => {
     await vi.waitFor(() => expect(host!.querySelector('[data-section="premise"] .arch-badge')?.textContent).toBe('待生成'))
   })
 
+  it('清空确认打开期间换了作品，确认时什么也不写', async () => {
+    filledSpine(['premise'])
+    await render()
+    await click('「故事前提」的更多操作')
+    await click('清空此节…')
+    const other = { projectId: '另一部', projectPath: 'C:/novels/other', leaseId: '另一次打开' }
+    await act(async () => {
+      useProjectStore.setState({ currentProject: { id: other.projectId, path: other.projectPath, sessionLease: other.leaseId, name: '另一部', novelConfig: { totalChapters: 24 } } as unknown as ProjectData })
+      setActiveProjectSessionContext(other)
+    })
+    if (document.querySelector('[role="dialog"]')) await click('清空此节')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(writes()).toHaveLength(0)
+  })
+
   it('大纲分批停在第 16 章：提示条说明缺的章，续写只从第 17 章起追加', async () => {
     seedPartialOutline()
     await render()
