@@ -862,13 +862,12 @@ export function usePlotThreads(projectKey: string, {
     eventPlanId, startEvent, eventDraftId, setEventDraftId, eventType, setEventType,
     eventEvidence, setEventEvidence, eventReason, setEventReason, eventError, saveEvent,
     generationModels, plotSources, selectedPlotModel, setPlotModelId, plotBusy, plotError, plotModelSelectionError,
-    refreshPlotTree, clearPlotTree, loadPlotTree, openPlotSource,
+    refreshPlotTree, clearPlotTree, openPlotSource,
     aiOpen, aiMode, aiBusy, aiError, selectedModelId, setAiModelId, modelSelectionError,
     aiBlueprintChapter, setAiBlueprintChapter, planCandidates, eventCandidates,
     openAI, closeAI, generatePlanCandidates, generateEventCandidates,
     confirmPlanCandidate, rejectPlanCandidate, confirmEventCandidate, rejectEventCandidate,
     graphRuns, graphRecovery, graphError, loadGraphRuns, restoreGraph, continueGraph, cancelGraph,
     copyOriginalResult, cancelOriginalRun, saveOriginalPlotTree, setAiError,
-    usesGraphGeneration: { candidates: !candidateGenerator, plotTree: !plotTreeGenerator },
   }
 }

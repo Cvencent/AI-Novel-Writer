@@ -39,7 +39,7 @@ function TabContent({ tab, project }: { tab: EditorTab; project: ProjectData }) 
   if (tab.type === 'version-history' && tab.projectKey === project.path) return <StageHistory projectKey={tab.projectKey} />
   if (tab.type === 'knowledge' && tab.projectKey === project.path) return <StageKnowledge />
   if (tab.type === 'narrative-thread' && tab.projectKey === project.path) {
-    return <StagePlot key={tab.id} projectKey={tab.projectKey} initialView={tab.narrativeThreadView ?? 'plans'} viewRequest={tab.narrativeThreadViewRequest} />
+    return <StagePlot projectKey={tab.projectKey} initialView={tab.narrativeThreadView ?? 'plans'} viewRequest={tab.narrativeThreadViewRequest} />
   }
   return <EditorTabContent activeTab={tab} currentProject={project} />
 }
