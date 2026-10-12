@@ -5,6 +5,7 @@ import path from 'node:path'
 
 import { chooseProjectDirectoryGrant } from '../project-directory-grant.mjs'
 import { FAKE_MODEL, FIXTURE_CONFIG, FIXTURE_PROSE } from './fake-model.mjs'
+import * as blueprint from './pages/blueprint.mjs'
 import * as bookshelf from './pages/bookshelf.mjs'
 import * as chapter from './pages/chapter.mjs'
 import * as materials from './pages/materials.mjs'
@@ -946,8 +947,8 @@ export const STAGE_SCENARIOS = {
   } },
   'stage-run': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page, fake }) => {
     fake.gate.hold()
-    await stage.stageButton(page, '蓝图').click()
-    await chapter.writeNextChapter(page, 100)
+    await blueprint.open(page)
+    await blueprint.writeNext(page)
     await page.getByRole('heading', { name: '运行', exact: true }).waitFor({ state: 'visible' })
     await stage.root(page).getByRole('button', { expanded: true }).filter({ hasText: '%' }).waitFor({ state: 'visible' })
   }, after: async ({ page, fake }) => {
@@ -1165,9 +1166,9 @@ export const STAGE_SCENARIOS = {
     await page.keyboard.press('Escape')
     await pause(1200)
     fake.gate.hold()
-    await stage.stageButton(page, '蓝图').click()
+    await blueprint.open(page)
     await pause(1200)
-    await chapter.writeNextChapter(page, 100)
+    await blueprint.writeNext(page)
     await page.getByRole('heading', { name: '运行', exact: true }).waitFor({ state: 'visible' })
     await pause(3000)
     fake.gate.release()

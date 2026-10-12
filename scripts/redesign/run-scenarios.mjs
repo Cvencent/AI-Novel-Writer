@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { FAKE_MODEL, FIXTURE_PROSE, streamingProse } from './fake-model.mjs'
+import * as blueprint from './pages/blueprint.mjs'
 import * as chapter from './pages/chapter.mjs'
 import * as materials from './pages/materials.mjs'
 import * as project from './pages/project.mjs'
@@ -25,8 +26,8 @@ function everyName(page) {
 }
 
 async function writeNextFromBlueprint(page) {
-  await stage.stageButton(page, '蓝图').click()
-  await chapter.writeNextChapter(page, 100)
+  await blueprint.open(page)
+  await blueprint.writeNext(page)
   await runSheet.waitUntilOpen(page)
 }
 
@@ -351,9 +352,9 @@ export const RUN_SCENARIOS = {
     const pause = ms => page.waitForTimeout(ms)
     fake.streamProse({ chunks: streamingProse(36, 50), intervalMs: 180 })
     await pause(1500)
-    await stage.stageButton(page, '蓝图').click()
+    await blueprint.open(page)
     await pause(1200)
-    await chapter.writeNextChapter(page, 100)
+    await blueprint.writeNext(page)
     await runSheet.waitUntilOpen(page)
     await runSheet.output(page).waitFor({ state: 'visible', timeout: 20_000 })
     await runSheet.waitForRunDone(page)
@@ -397,9 +398,13 @@ export const RUN_SCENARIOS = {
       requestAnimationFrame(tick)
       new MutationObserver(sample).observe(document.body, { subtree: true, childList: true, characterData: true })
     }, { selector: OUTPUT_TEXT, total: chunks.length })
-    if (await stage.root(page).count() > 0) await stage.stageButton(page, '蓝图').click()
-    else await project.openNode(page, '章节蓝图')
-    await chapter.writeNextChapter(page, 100)
+    if (await stage.root(page).count() > 0) {
+      await blueprint.open(page)
+      await blueprint.writeNext(page)
+    } else {
+      await project.openNode(page, '章节蓝图')
+      await chapter.writeNextChapter(page, 100)
+    }
     await page.waitForFunction(() => window.__driveStream, null, { timeout: 60_000 })
     const { shownAt, frames } = await page.evaluate(() => window.__driveStream)
     const latencies = fake.streamLog.map((sent, index) => shownAt[index] - sent.at).sort((a, b) => a - b)

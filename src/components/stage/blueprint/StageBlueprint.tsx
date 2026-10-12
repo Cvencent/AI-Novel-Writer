@@ -127,7 +127,7 @@ export default function StageBlueprint({ projectKey, initialChapterNumber, selec
               ] },
             ]}
           />
-          {generateButton}
+          {count > 0 && generateButton}
           {next && (
             <Button variant="secondary" onClick={() => setBatchOpen(true)}>
               <ListChecks size={15} aria-hidden />{text('批量创作', 'Batch write')}

@@ -62,6 +62,8 @@ export function streamingProse(chunks, chunkChars) {
 
 export async function startFakeModel(diagnostics) {
   const requests = []
+  /** 对话请求的模型与消息原文，按到达顺序；场景用它核对两边发给模型的参数是否一致。 */
+  const chats = []
   let held = null
   let holdEmbeddings = false
   let waiting = 0
@@ -105,6 +107,7 @@ export async function startFakeModel(diagnostics) {
     await pass()
     const prompt = (body.messages ?? []).map(message => typeof message.content === 'string' ? message.content : JSON.stringify(message.content)).join('\n')
     const { kind, content } = responseFor(prompt, { extraction })
+    chats.push({ kind, model: body.model, messages: body.messages })
     record(kind, prompt.slice(0, 120).replace(/\s+/g, ' '))
     response.writeHead(200, { 'Content-Type': 'text/event-stream' })
     if (kind === 'prose' && stream) {
@@ -122,6 +125,6 @@ export async function startFakeModel(diagnostics) {
   })
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
   server.unref()
-  return { port: server.address().port, requests, gate, streamProse, streamLog, replyCharacterCards,
+  return { port: server.address().port, requests, chats, gate, streamProse, streamLog, replyCharacterCards,
     close: () => new Promise(resolve => { server.closeAllConnections(); server.close(() => resolve()) }) }
 }

@@ -14,6 +14,7 @@ import { chooseProjectDirectoryGrant } from '../project-directory-grant.mjs'
 import { startFakeModel } from './fake-model.mjs'
 import { ARCH_SCENARIOS } from './arch-scenarios.mjs'
 import { RUN_SCENARIOS } from './run-scenarios.mjs'
+import { BLUEPRINT_SCENARIOS } from './blueprint-scenarios.mjs'
 import { BASELINE_SESSIONS, EXTRA_SCENARIOS, SCENARIOS as BASELINE_SCENARIOS, STAGE_SCENARIOS } from './scenarios.mjs'
 import { dismissCompletionToasts, dismissStartupNotice, firstInteractiveControl, waitForShell } from './pages/shell.mjs'
 
@@ -24,7 +25,7 @@ const VIEWPORT = { width: 1440, height: 900 }
 const THEMES = ['light', 'dark']
 const SHELLS = ['writer', 'stage']
 const ROOT_NAMES = ['legacy', 'canonical', 'userData', 'home', 'appData', 'localAppData', 'temp', 'projects']
-const SCENARIOS = { ...BASELINE_SCENARIOS, ...EXTRA_SCENARIOS, ...STAGE_SCENARIOS, ...RUN_SCENARIOS, ...ARCH_SCENARIOS }
+const SCENARIOS = { ...BASELINE_SCENARIOS, ...EXTRA_SCENARIOS, ...STAGE_SCENARIOS, ...RUN_SCENARIOS, ...ARCH_SCENARIOS, ...BLUEPRINT_SCENARIOS }
 /** 计时会话：先在同一隔离目录预启动一次写好外观（书房计时另建 20 部作品），再计之后那次冷启动。 */
 const TIMED_SESSIONS = new Set(['startup-timing', 'library-timing'])
 export const SHELF_BOOKS = 20
