@@ -346,3 +346,17 @@ perf：trunk 与 head 交替各跑 5 次，取两项各自的中位数。head �
 node scripts/redesign/drive.mjs --scenario refs-timing --app-root <trunk 工作树> --out <目录>
 node scripts/redesign/drive.mjs --scenario refs-timing --shell stage --out <目录>
 ```
+
+## 统一视觉层（RD-V）
+
+场景在 `scripts/redesign/visual-scenarios.mjs`，都走新外壳，浅深各跑一次。断言的是浮层渲染进带 `.paper-ink` 的纸墨根或宿主（`#ai-novel-ink-overlay`），才取得到纸墨令牌与深色。对话框类场景截图前等 400 ms，让遮罩与对话框的淡入走完。
+
+| 名称 | 检查 | 截图停在 | 夹具模型 |
+|---|---|---|---|
+| `rdv-clear` | 作品菜单「清除生成内容…」：标准危险确认，焦点在「取消」，三类内容是勾选行，取消一项后后果句改成「将清除 2 类内容」；`after` 按 Esc 关闭 | 危险确认 | 否 |
+| `rdv-alert` | 书房里在同一目录再建一部同名作品，主进程拒绝，命令式 `alertError` 渲染进纸墨宿主，焦点在「确定」，旧「新建小说项目」对话框也在宿主里；`after` 点「确定」 | 叠在新建作品对话框上的错误弹框 | 否 |
+| `rdv-toasts` | 预置两条调用记录后写一章，在诊断分页连点三次「复制安全诊断」：只有一个提示栈，通知互不重叠，`measured.toasts` 是栈里的条数 | 右下角提示栈 | 是 |
+| `rdv-run-failure` | 粘贴一张角色卡但假模型不回提取 JSON：运行失败，运行卡里的失败提示是朱批（没有底色）；关掉导入对话框 | 运行侧页的失败提示 | 是 |
+| `rdv-export` | 作品菜单「导出…」：旧导出对话框 Portal 进纸墨宿主，外壳是 `pi-dialog` | 导出对话框 | 否 |
+| `rdv-import-novel` | 作品菜单「小说拆解与仿写…」：旧拆解对话框 Portal 进纸墨宿主 | 拆解对话框 | 否 |
+| `rdv-settings` | 从流程脊打开设置 | 设置 | 否 |
