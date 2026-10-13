@@ -504,10 +504,10 @@ describe('SegmentedControl 与 Check', () => {
     expect(segments.map((s) => s.getAttribute('aria-pressed'))).toEqual(['true', 'false'])
 
     await userEvent.tab()
-    await userEvent.tab()
+    expect(focused()).toBe(segments[0])
+    await userEvent.keyboard('{ArrowRight}')
     expect(focused()).toBe(segments[1])
     expectFocusRing(segments[1])
-    await userEvent.keyboard(' ')
     expect(segments.map((s) => s.getAttribute('aria-pressed'))).toEqual(['false', 'true'])
     expect(getComputedStyle(segments[1]).fontWeight).toBe('500')
 

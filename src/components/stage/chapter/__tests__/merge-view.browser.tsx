@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 
@@ -72,6 +72,20 @@ describe('修稿合并视图', () => {
     await click('全部用原稿')
     await click('完成合并')
     expect(completed).toEqual([REVISED, ORIGINAL])
+  })
+
+  it('每段的选择只占一个 Tab 停靠点，方向键换选', async () => {
+    await mount()
+    const group = page.getByRole('group', { name: '第 2 段用哪一版' })
+    await act(async () => group.getByRole('button', { name: '用原稿' }).element().focus())
+    await act(async () => userEvent.keyboard('{ArrowRight}'))
+    await expect.element(group.getByRole('button', { name: '用修稿' })).toHaveAttribute('aria-pressed', 'true')
+    expect(document.activeElement?.textContent).toBe('用修稿')
+    await act(async () => userEvent.keyboard('{End}'))
+    await expect.element(page.getByRole('textbox', { name: '第 2 段的合并文字' })).toBeVisible()
+    await act(async () => userEvent.keyboard('{Home}'))
+    await expect.element(group.getByRole('button', { name: '用原稿' })).toHaveAttribute('aria-pressed', 'true')
+    expect([...group.element().querySelectorAll('button')].map(button => button.tabIndex)).toEqual([0, -1, -1])
   })
 
   it('稍后再合并只收起视图，不提交', async () => {
