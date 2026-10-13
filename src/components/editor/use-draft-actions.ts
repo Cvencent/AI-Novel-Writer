@@ -313,13 +313,16 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
     }
   }
 
-  /** 能否定稿：项目、元数据就位，本章没有写作任务在跑。调用方先请作者确认，再调 finalize。 */
-  const canFinalize = Boolean(projectMatches && currentProject && meta && !isChapterBusy)
+  /**
+   * 能否定稿：项目、元数据就位，本章没有写作任务在跑，也没有进行中的定稿或待处理的定稿冲突（ADR 0003 要求冲突显式保留，
+   * 再定稿会清掉它）。所有定稿入口都看这一项，finalize 自己也再查一次。
+   */
+  const canFinalize = Boolean(projectMatches && currentProject && meta && !isChapterBusy && !finalizationConflict && !finalizationPending)
 
   /** 定稿：冻结标签里可见的正文（含未保存的修改）作为提交快照。 */
   const finalize = async () => {
     const projectSession = captureProjectSession(currentProject)
-    if (!projectMatches || !currentProject || !meta || isChapterBusy || !projectSession || !isProjectSessionPath(projectSession, projectKey)) return
+    if (!canFinalize || !currentProject || !meta || !projectSession || !isProjectSessionPath(projectSession, projectKey)) return
     try {
       const { createFinalizeWorkflow } = await import('../../services/workflows/chapter-workflow')
       if (!isProjectSessionCurrent(projectSession)) return

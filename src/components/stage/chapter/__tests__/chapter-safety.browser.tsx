@@ -205,3 +205,45 @@ describe('标签与外壳', () => {
     await expect.element(page.getByText('删除正文后的清理没有完成')).not.toBeInTheDocument()
   })
 })
+
+describe('定稿冲突与定稿进行中', () => {
+  const conflict = { finalizationId: 'final-1', publicationStatus: 'published' as const }
+  const markTab = (fields: { finalizationConflict?: typeof conflict; finalizationPublication?: 'pending' }) => act(async () => useEditorStore.setState(state => ({
+    tabs: state.tabs.map(tab => tab.id === state.activeTabId ? { ...tab, ...fields } : tab),
+  })))
+  const finalizeItem = async () => {
+    await click('更多操作')
+    return page.getByRole('menuitem', { name: '定稿…' })
+  }
+
+  it('冲突保留时，「更多」里的定稿不可用', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    await mount()
+    await openDraft(draft.id)
+    await markTab({ finalizationConflict: conflict })
+    await expect.element(page.getByText('已保留后续编辑')).toBeVisible()
+    await expect.element(await finalizeItem()).toBeDisabled()
+  })
+
+  it('已修稿的稿在定稿进行中：主按钮不可用', async () => {
+    const draft = backend.addDraft({ status: 'revised' })
+    await mount()
+    await openDraft(draft.id)
+    await markTab({ finalizationPublication: 'pending' })
+    await expect.element(page.getByRole('button', { name: '定稿', exact: true })).toBeDisabled()
+  })
+
+  it('确认框开着时冲突到达：确认定稿不可用，不启动定稿，冲突仍保留', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    await mount()
+    await openDraft(draft.id)
+    await act(async () => (await finalizeItem()).click())
+    await expect.element(page.getByRole('dialog', { name: '定稿第 3 章？' })).toBeVisible()
+    await markTab({ finalizationConflict: conflict })
+    const confirm = page.getByRole('button', { name: '确认定稿' })
+    await expect.element(confirm).toBeDisabled()
+    await act(async () => confirm.element().dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    expect(useWorkflowStore.getState().startWorkflow).not.toHaveBeenCalled()
+    expect(activeTab()?.finalizationConflict).toEqual(conflict)
+  })
+})
