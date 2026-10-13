@@ -95,10 +95,10 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
   const reviseOptions = useAnchoredLayer('start')
 
   // 审稿侧页与运行侧页共用 stage-store 的 sheet，同一时间只开一个：哪个后打开就显示哪个，正文不会被两页挤窄或盖住。
-  const reviewSheet = useStageStore(s => s.sheet?.kind === 'review')
+  const reviewSheet = useStageStore(s => s.sheet?.kind === 'review' && s.sheet.filePath === filePath)
   const sheetOpen = Boolean(review) && !focus && reviewSheet
   const setSheet = (open: boolean) => {
-    if (open) useStageStore.setState({ sheet: { kind: 'review' } })
+    if (open) useStageStore.setState({ sheet: { kind: 'review', filePath } })
     else if (useStageStore.getState().sheet?.kind === 'review') useStageStore.setState({ sheet: null })
   }
   // 已审稿的稿打开时默认展开审稿侧页，但不抢作者开着的运行侧页；审稿刚完成时单章视图会先收起运行侧页。
@@ -106,8 +106,8 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
   useEffect(() => {
     if (defaulted.current || !review || stage !== 'reviewed') return
     defaulted.current = true
-    if (useStageStore.getState().sheet === null) useStageStore.setState({ sheet: { kind: 'review' } })
-  }, [review, stage])
+    if (useStageStore.getState().sheet?.kind !== 'run') useStageStore.setState({ sheet: { kind: 'review', filePath } })
+  }, [review, stage, filePath])
   const included = includedCount(checklist.items)
   const busy = draft.isChapterBusy
   const generationModels = models.filter(isGenerationModel)

@@ -7,9 +7,9 @@ export type RunSheetTab = 'active' | 'history' | 'diagnostics'
 
 /**
  * 内容区右侧的按需侧页，同一时间只开一个。运行侧页的 runId 是要看的那次运行：还在运行就在「进行中」里定位，已结束就在「历史」里展开它。
- * 审稿侧页由单章视图摆出，内容是当前稿的审稿报告。
+ * 审稿侧页由单章视图摆出，内容是 filePath 那一稿的审稿报告；换到别的稿时它不跟过去，各稿按自己的阶段决定是否默认展开。
  */
-export type StageSheet = { kind: 'run'; tab: RunSheetTab; runId?: string } | { kind: 'review' }
+export type StageSheet = { kind: 'run'; tab: RunSheetTab; runId?: string } | { kind: 'review'; filePath: string }
 
 /** 命令面板：commands 是搜索与跳转（⌘K / Ctrl K），chapters 只查章节（⌘P / Ctrl P）。 */
 export type StagePalette = 'commands' | 'chapters'
