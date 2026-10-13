@@ -46,8 +46,11 @@ export async function refreshStageWork(text: (zh: string, en: string) => string)
     const working = deriveChapters({ blueprints: chapters, drafts: useDraftStore.getState().draftsByChapter, runningChapters: new Set() })
       .flatMap(row => row.draft && row.draft.status !== 'finalized' ? [row.draft] : [])
     useStageStore.setState({ work: { session, architecture, blueprints: chapters } })
-    // 落点与阶段完成度只看章是否待写或定稿，不需要 facts；先出 work，打开作品时落点那一章的正文不用排在 facts 读取后面。
-    void refreshChapterFacts(working, session)
+    // 落点与阶段完成度只看章是否待写或定稿，不需要 facts，所以先出 work。主进程按到达顺序处理读取：
+    // 等一个任务，让 work 引起的落点先把那一章的正文读取发出去，facts 排在它后面。
+    await new Promise(resolve => setTimeout(resolve, 0))
+    if (!current()) return
+    await refreshChapterFacts(working, session)
   } catch (error) {
     if (current()) toast.error(text(`项目资源刷新失败：${String(error)}`, `Could not refresh project resources: ${String(error)}`))
   }
