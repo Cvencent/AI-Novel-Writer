@@ -196,10 +196,10 @@
 }
 
 /*
- * 状态读到之前各节按「没有内容」渲染，动作会先闪一下「自己写 / AI 生成此节」再变成「编辑」。先占位不画：
- * 那一帧的次按钮描边会让 GPU 现编一个着色器（冷启动约 20ms），排在架构页第一帧之前。
+ * 第一次读到状态之前各节按「没有内容」渲染，动作会先闪一下「自己写 / AI 生成此节」再变成「编辑」。先占位不画：
+ * 那一帧的次按钮描边会让 GPU 现编一个着色器（冷启动约 20ms），排在架构页第一帧之前。之后刷新状态时不隐藏。
  */
-.arch-page[data-loading] .arch-section-actions {
+.arch-page[data-status-unread] .arch-section-actions {
   visibility: hidden;
 }
 

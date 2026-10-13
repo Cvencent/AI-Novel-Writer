@@ -381,10 +381,12 @@ describe('架构阶段', () => {
     expect((button(/开始生成 0 项/) as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('四节状态读到之前不显示各节的动作按钮，读到后按内容显示', async () => {
+  it('第一次读到四节状态之前不显示各节的动作按钮，读到后按内容显示，之后刷新时不隐藏', async () => {
     filledSpine(['premise'])
     let release!: () => void
-    const held = new Promise<void>(resolve => { release = resolve })
+    let held!: Promise<void>
+    const hold = () => { held = new Promise<void>(resolve => { release = resolve }) }
+    hold()
     const answer = invoke.getMockImplementation()!
     invoke.mockImplementation(async (channel, ...args) => {
       if (channel === 'db:project-core-get') await held
@@ -401,6 +403,14 @@ describe('架构阶段', () => {
     await act(async () => release())
     await vi.waitFor(() => expect(host!.querySelector('.arch-page[data-loading], .arch-page[data-cast-loading]')).toBeNull())
     expect(shown()).toEqual(['编辑', '「故事前提」的更多操作'])
+
+    hold()
+    await click('架构的更多操作')
+    await click('刷新状态')
+    await vi.waitFor(() => expect(host!.querySelector('.arch-page[data-loading]')).not.toBeNull())
+    expect(shown()).toEqual(['编辑', '「故事前提」的更多操作'])
+    await act(async () => release())
+    await vi.waitFor(() => expect(host!.querySelector('.arch-page[data-loading]')).toBeNull())
   })
 
   it('分节摘要不带文档的 Markdown 标题行', async () => {
