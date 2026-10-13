@@ -5,7 +5,7 @@ import { chapterTabName } from '../../shared/chapter-label'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
 import { projectSessionContextFromProject, sameProjectSessionContext } from '../../shared/project-session-context'
 import { fetchChapterDrafts, useDraftStore } from '../draft-store'
-import { useEditorStore } from '../editor-store'
+import { createProjectScopedEditorTabId, useEditorStore } from '../editor-store'
 import { useLayoutStore } from '../layout-store'
 import { useLocaleStore } from '../locale-store'
 import { openBuiltinEditor } from '../open-builtin-editor'
@@ -38,16 +38,16 @@ async function chapterDrafts(chapterNumber: number, session: ProjectSessionConte
 
 let openChapterRequest = 0
 
-/** 待写章的单章视图标签：还没有稿，所以没有 filePath，按章号区分。 */
+/** 待写章的单章视图标签：还没有稿，所以没有 filePath，按章号区分；与其他正文标签一样按作品加后缀。 */
 export function chapterPlanTabId(chapterNumber: number, projectPath: string): string {
-  return `chapter-plan:${chapterNumber}:${encodeURIComponent(projectPath)}`
+  return createProjectScopedEditorTabId(`chapter-plan:${chapterNumber}`, 'chapter', projectPath)
 }
 
 /** 打开待写章的单章视图：显示本章蓝图与「写作此章」。草稿生成后，新外壳把它换成草稿标签。 */
 export function openChapterPlan(chapterNumber: number, title: string, session: ProjectSessionContext): void {
   const text = useLocaleStore.getState().text
   useEditorStore.getState().openFile({
-    id: chapterPlanTabId(chapterNumber, session.projectPath),
+    id: `chapter-plan:${chapterNumber}`,
     name: chapterTabName(chapterNumber, title, text),
     type: 'chapter',
     chapterNumber,
