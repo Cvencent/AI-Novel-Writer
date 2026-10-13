@@ -360,3 +360,4 @@ node scripts/redesign/drive.mjs --scenario refs-timing --shell stage --out <目�
 | `rdv-export` | 作品菜单「导出…」：旧导出对话框 Portal 进纸墨宿主，外壳是 `pi-dialog` | 导出对话框 | 否 |
 | `rdv-import-novel` | 作品菜单「小说拆解与仿写…」：旧拆解对话框 Portal 进纸墨宿主 | 拆解对话框 | 否 |
 | `rdv-settings` | 从流程脊打开设置 | 设置 | 否 |
+| `rdv-tour` | 30–60 秒的评审导览：清除生成内容的危险确认（勾掉一项）、旧导出对话框、写一章后连点「复制安全诊断」看提示栈、粘贴角色卡看运行失败的朱批提示。配 `--video` 录评审视频 | 运行失败提示 | 是 |

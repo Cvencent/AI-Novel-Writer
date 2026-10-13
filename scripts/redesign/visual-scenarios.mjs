@@ -23,6 +23,14 @@ const focusedText = page => page.evaluate(() => document.activeElement?.textCont
 /** 浮层是否渲染进带 .paper-ink 的纸墨根或宿主里：只有那样才取得到纸墨令牌与深色。 */
 const inPaperInk = locator => locator.evaluate(element => element.closest('.paper-ink') !== null)
 
+/** 预置两条调用记录，诊断分页的调用表才有「复制安全诊断」。 */
+async function seedCalls({ page, invoke, path: projectPath, session }) {
+  for (const [purpose, durationMs] of [['chapter-draft', 41_000], ['review-chapter', 27_000]]) {
+    assert.equal((await invoke(page, 'db:log-llm-call', { modelId: FAKE_MODEL.id, modelName: FAKE_MODEL.name, purpose, promptTokens: 4000,
+      completionTokens: 1200, totalTokens: 5200, durationMs, success: true }, projectPath, session)).success, true)
+  }
+}
+
 export const VISUAL_SCENARIOS = {
   'rdv-clear': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
     await openWorkMenuItem(page, '清除生成内容…')
@@ -63,12 +71,7 @@ export const VISUAL_SCENARIOS = {
     await page.getByRole('alertdialog').waitFor({ state: 'hidden' })
   } },
 
-  'rdv-toasts': { model: true, shell: 'stage', setup: context => seedStageSample(context, { beforeReload: async ({ page, invoke, path: projectPath, session }) => {
-    for (const [purpose, durationMs] of [['chapter-draft', 41_000], ['review-chapter', 27_000]]) {
-      assert.equal((await invoke(page, 'db:log-llm-call', { modelId: FAKE_MODEL.id, modelName: FAKE_MODEL.name, purpose, promptTokens: 4000,
-        completionTokens: 1200, totalTokens: 5200, durationMs, success: true }, projectPath, session)).success, true)
-    }
-  } }), run: async ({ page }) => {
+  'rdv-toasts': { model: true, shell: 'stage', setup: context => seedStageSample(context, { beforeReload: seedCalls }), run: async ({ page }) => {
     await page.evaluate(() => { navigator.clipboard.writeText = async () => {} })
     await stage.stageButton(page, '蓝图').click()
     await chapter.writeNextChapter(page, 100)
@@ -130,5 +133,39 @@ export const VISUAL_SCENARIOS = {
     await settle(page)
   }, after: async ({ page }) => {
     await page.getByRole('button', { name: '关闭设置' }).click()
+  } },
+  'rdv-tour': { model: true, shell: 'stage', setup: context => seedStageSample(context, { beforeReload: seedCalls }), run: async ({ page }) => {
+    const pause = () => page.waitForTimeout(2600)
+    await page.evaluate(() => { navigator.clipboard.writeText = async () => {} })
+    await pause()
+    await openWorkMenuItem(page, '清除生成内容…')
+    const clear = page.getByRole('dialog', { name: '清除项目生成内容' })
+    await clear.waitFor({ state: 'visible' })
+    await pause()
+    await clear.locator('.pi-check-row').first().click()
+    await pause()
+    await page.keyboard.press('Escape')
+    await openWorkMenuItem(page, '导出…')
+    await page.getByRole('dialog', { name: '导出项目' }).waitFor({ state: 'visible' })
+    await pause()
+    await page.keyboard.press('Escape')
+    await stage.stageButton(page, '蓝图').click()
+    await chapter.writeNextChapter(page, 100)
+    await runSheet.waitUntilOpen(page)
+    await runSheet.waitForRunDone(page)
+    await pause()
+    await runSheet.tab(page, '诊断').click()
+    const copy = runSheet.sheet(page).getByRole('table').getByRole('button', { name: '复制安全诊断' }).first()
+    await copy.waitFor({ state: 'visible', timeout: 10_000 })
+    for (let i = 0; i < 3; i++) { await copy.dispatchEvent('click'); await page.waitForTimeout(500) }
+    await pause()
+    await page.keyboard.press('Control+K')
+    await stage.paletteInput(page).fill('角色')
+    await stage.palette(page).getByRole('option', { name: /^角色/ }).first().click()
+    await materials.importCharacterCards(page, '姓名：守塔人\n身份：灯塔看守，记得每一次钟声。')
+    await page.locator('.run-card .pi-notice[data-tone="danger"]').first().waitFor({ state: 'visible', timeout: 60_000 })
+    await page.keyboard.press('Escape')
+    await pause()
+    await pause()
   } },
 }
