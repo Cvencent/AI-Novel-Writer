@@ -10,10 +10,13 @@ export interface ProxyDraft {
   port: number | ''
 }
 
+const DEFAULT_PROXY: ProxyDraft = { enabled: false, type: 'http', host: '', port: 7890 }
+
 /** 网络代理的读取与保存。旧外壳设置弹窗与新外壳设置页共用。 */
 export function useProxySettings() {
   const text = useLocaleStore(s => s.text)
-  const [proxy, setProxy] = useState<ProxyDraft>({ enabled: false, type: 'http', host: '', port: 7890 })
+  const [proxy, setProxy] = useState<ProxyDraft>(DEFAULT_PROXY)
+  const [stored, setStored] = useState<ProxyDraft>(DEFAULT_PROXY)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -21,12 +24,14 @@ export function useProxySettings() {
   useEffect(() => {
     ipc.invoke('config:get').then((cfg) => {
       if (cfg?.proxy) {
-        setProxy({
+        const loaded: ProxyDraft = {
           enabled: cfg.proxy.enabled ?? false,
           type: cfg.proxy.type ?? 'http',
           host: cfg.proxy.host ?? '',
           port: cfg.proxy.port ?? 7890,
-        })
+        }
+        setProxy(loaded)
+        setStored(loaded)
       }
     }).catch(() => { })
   }, [])
@@ -37,6 +42,7 @@ export function useProxySettings() {
     try {
       const result = await ipc.invoke('config:set', { proxy: { ...proxy, port: Number(proxy.port) || 7890 } })
       if (!result.success) throw new Error(result.error || text('未知错误', 'Unknown error'))
+      setStored(proxy)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch (error) {
@@ -52,6 +58,8 @@ export function useProxySettings() {
 
   return {
     proxy,
+    /** 表单与上次读到或保存的设置不同。 */
+    dirty: JSON.stringify(proxy) !== JSON.stringify(stored),
     update: (patch: Partial<ProxyDraft>) => setProxy(previous => ({ ...previous, ...patch })),
     restorePortOnBlur: () => setProxy(previous => (Number(previous.port) ? previous : { ...previous, port: 7890 })),
     saving,

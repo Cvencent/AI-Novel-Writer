@@ -4,6 +4,7 @@ import type { ModelProfile } from '../../../shared/ipc-channels'
 import { BUILTIN_PRESETS } from '../../../shared/provider-presets'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { openModelProviderResource } from '../../settings/model-provider-resource'
+import { useUnsavedSettings } from '../../settings/unsaved-settings'
 import { ModelForm } from '../../settings/SettingsModal'
 import { useModelSection } from '../../settings/use-model-section'
 import { Button } from '../../ui/Button'
@@ -21,6 +22,7 @@ function providerName(model: ModelProfile): string {
 export default function ModelsSection({ purposes, header }: { purposes: ModelProfile['purposes']; header: (action: ReactNode) => ReactNode }) {
   const text = useLocaleStore(s => s.text)
   const section = useModelSection(purposes)
+  useUnsavedSettings(section.editingDirty)
   const [deleting, setDeleting] = useState<ModelProfile | null>(null)
   const retrieval = section.isEmbeddingSection
   const kind = retrieval ? text('检索模型', 'retrieval model') : text('模型', 'model')

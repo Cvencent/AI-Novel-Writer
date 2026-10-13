@@ -5,7 +5,9 @@ import { useLocaleStore } from '../../../stores/locale-store'
 import ProjectBackupPanel from '../../backups/ProjectBackupPanel'
 import PromptSettings from '../../settings/PromptSettings'
 import SkillSettings from '../../settings/SkillSettings'
+import { leaveSettings, useSettingsLeave } from '../../settings/unsaved-settings'
 import { Button } from '../../ui/Button'
+import { DangerConfirm } from '../../ui/DangerConfirm'
 import { ErrorBoundary } from '../../ErrorBoundary'
 import { isComposing, isModalOpen } from '../shortcut-keys'
 import AboutSection from './AboutSection'
@@ -54,21 +56,27 @@ function PageBody({ page }: { page: SettingsPage }) {
   }
 }
 
+const close = () => leaveSettings(() => useLayoutStore.getState().closeSettings())
+
+/** 输入框里的 Esc 属于输入（撤销联想、收起下拉），不关闭设置页。 */
+const isTyping = (target: EventTarget | null) =>
+  target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+
 /**
  * 设置页：左侧按常用、高级、其他分组，右侧是当前一页。占满内容面板，书房与作品里都能打开；
- * 「返回」或 Esc 回到打开前的页面。当前分区记在 layout-store，切换外壳重挂后仍停在原处。
+ * 「返回」或 Esc 回到打开前的页面，有没保存的输入时先确认。当前分区记在 layout-store，切换外壳重挂后仍停在原处。
  */
 export default function StageSettings({ library }: { library: boolean }) {
   const text = useLocaleStore(s => s.text)
   const page = settingsPageOf(useLayoutStore(s => s.settingsSection))
+  const pendingLeave = useSettingsLeave(s => s.pending)
   const bodyRef = useRef<HTMLDivElement>(null)
-  const close = () => useLayoutStore.getState().closeSettings()
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.defaultPrevented || isComposing(event) || isModalOpen()) return
+      if (event.key !== 'Escape' || event.defaultPrevented || isComposing(event) || isModalOpen() || isTyping(event.target)) return
       event.preventDefault()
-      useLayoutStore.getState().closeSettings()
+      close()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -95,7 +103,7 @@ export default function StageSettings({ library }: { library: boolean }) {
                 type="button"
                 className="stage-set-link"
                 aria-current={spec.id === page ? 'page' : undefined}
-                onClick={() => useLayoutStore.setState({ settingsSection: spec.id })}
+                onClick={() => { if (spec.id !== page) leaveSettings(() => useLayoutStore.setState({ settingsSection: spec.id })) }}
               >
                 {text(...spec.name)}
               </button>
@@ -110,6 +118,20 @@ export default function StageSettings({ library }: { library: boolean }) {
           </ErrorBoundary>
         </div>
       </div>
+      <DangerConfirm
+        open={pendingLeave !== null}
+        onOpenChange={open => { if (!open) useSettingsLeave.setState({ pending: null }) }}
+        title={text('放弃未保存的修改？', 'Discard unsaved changes?')}
+        consequence={text('这一页有还没保存的修改，离开后会丢失。', 'This page has changes that are not saved yet. Leaving discards them.')}
+        recoverability={text('丢弃后无法恢复。想保留就选「继续编辑」，先保存再离开。', 'This cannot be undone. Choose “Keep editing” and save first to keep them.')}
+        confirmLabel={text('放弃修改', 'Discard changes')}
+        cancelLabel={text('继续编辑', 'Keep editing')}
+        onConfirm={() => {
+          const action = useSettingsLeave.getState().pending
+          useSettingsLeave.setState({ pending: null })
+          action?.()
+        }}
+      />
     </div>
   )
 }

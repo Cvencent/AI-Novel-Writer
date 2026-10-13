@@ -21,6 +21,7 @@ export function useModelSection(purposes: ModelProfile['purposes']) {
   const setDefaultModel = useLLMStore(s => s.setDefaultModel)
   const setDefaultEmbeddingModel = useLLMStore(s => s.setDefaultEmbeddingModel)
   const [editingModel, setEditingModel] = useState<ModelProfile | null>(null)
+  const [editingOriginal, setEditingOriginal] = useState('')
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     if (!loaded) loadModels()
@@ -33,8 +34,12 @@ export function useModelSection(purposes: ModelProfile['purposes']) {
   const defaultId = isEmbeddingSection ? defaultEmbeddingModelId : defaultModelId
 
   /** 向量模型由工厂选择完整的 SiliconFlow 默认值。 */
+  const startEditing = (model: ModelProfile) => {
+    setEditingModel(model)
+    setEditingOriginal(JSON.stringify(model))
+  }
   const add = () => {
-    setEditingModel(createModelProfileDraft({
+    startEditing(createModelProfileDraft({
       id: randomUUID(),
       purposes: [...purposes],
     }))
@@ -64,10 +69,12 @@ export function useModelSection(purposes: ModelProfile['purposes']) {
     defaultId,
     isEmbeddingSection,
     editingModel,
+    /** 编辑表单里的内容与打开时不同。 */
+    editingDirty: editingModel !== null && JSON.stringify(editingModel) !== editingOriginal,
     setEditingModel,
     saving,
     add,
-    edit: (model: ModelProfile) => setEditingModel({ ...model }),
+    edit: (model: ModelProfile) => startEditing({ ...model }),
     cancelEdit: () => setEditingModel(null),
     save,
     remove: (modelId: string) => deleteModel(modelId),

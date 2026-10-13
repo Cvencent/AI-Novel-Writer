@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { editorSaveHandler, useEditorStore } from '../../stores/editor-store'
 import { useLayoutStore } from '../../stores/layout-store'
+import { leaveSettings } from '../settings/unsaved-settings'
 import { useStageStore } from '../../stores/navigation/stage-store'
 import { IS_MAC, isCommand, isComposing, isModalOpen } from './shortcut-keys'
 import { requestCloseTab } from './tab-close'
@@ -35,7 +36,7 @@ export function useStageShortcuts({ library, focus, mac = IS_MAC }: { library: b
       }
       if (isModalOpen()) return
       if (close && useLayoutStore.getState().settingsOpen) {
-        useLayoutStore.getState().closeSettings()
+        leaveSettings(() => useLayoutStore.getState().closeSettings())
         return
       }
       if (commands) {
