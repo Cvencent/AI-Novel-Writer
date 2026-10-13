@@ -389,6 +389,20 @@ async function stubUpdates(app) {
 }
 
 /** 在渲染进程里计时：从点击 trigger 指向的元素到正文编辑区出现 text，单位毫秒，帧粒度。 */
+const SETUP_SAVE_FAILED = '没能保存。设定还在这一页，没有丢，可以再保存一次。'
+
+/** 让主进程的 project:save 返回失败（模拟磁盘写不进去）；fail 为 false 时换回原来的处理函数。 */
+async function failProjectSaves(app, fail) {
+  await app.evaluate(({ ipcMain }, fail) => {
+    const handlers = ipcMain._invokeHandlers
+    if (!handlers?.has('project:save')) throw new Error('取不到 project:save 的处理函数')
+    if (fail) {
+      globalThis.__driveSave ??= handlers.get('project:save')
+      handlers.set('project:save', async () => ({ success: false, error: 'DRIVE_DISK_FULL' }))
+    } else handlers.set('project:save', globalThis.__driveSave)
+  }, fail)
+}
+
 /** 在主进程拦下文件名含 pattern 的代码块请求（模拟磁盘读失败）；把 pattern 清空即放行。请求都记进 log。 */
 async function blockChunks(app, pattern) {
   await app.evaluate(({ session }, initial) => {
@@ -719,6 +733,24 @@ export const STAGE_SCENARIOS = {
     await stage.setupOutline(page).waitFor({ state: 'visible' })
     const requests = await app.evaluate(() => globalThis.__driveChunkBlock.log)
     assert.ok(requests.some(entry => entry.startsWith('allow StageSetup-') && entry.includes('.js?retry=')), `重试重新读取了设定页代码：${requests.join(' | ')}`)
+  } },
+  'stage-setup-save-fail': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ app, page }) => {
+    await stage.stageButton(page, '设定').click()
+    await stage.dirtySetup(page)
+    await failProjectSaves(app, true)
+    const failed = stage.root(page).locator('.stage-setup-foot').getByRole('alert')
+    await page.keyboard.press('Control+S')
+    await failed.filter({ hasText: SETUP_SAVE_FAILED }).waitFor({ state: 'visible' })
+    await stage.setupOutline(page).focus()
+    await stage.setupNext(page).click()
+    await failed.filter({ hasText: SETUP_SAVE_FAILED }).waitFor({ state: 'visible' })
+    assert.deepEqual(await page.getByRole('navigation', { name: '位置' }).locator('span').allInnerTexts(), ['设定'], '保存失败时下一步不离开设定页')
+    assert.equal(await stage.saveStatus(page).innerText(), '未保存')
+  }, after: async ({ app, page }) => {
+    await failProjectSaves(app, false)
+    await stage.root(page).locator('.stage-setup-foot').getByRole('button', { name: /^保存/ }).click()
+    await stage.saveStatus(page).filter({ hasText: '已保存' }).waitFor({ state: 'visible' })
+    assert.equal(await stage.root(page).locator('.stage-setup-foot').getByRole('alert').count(), 0, '再保存成功后失败说明消失')
   } },
   'stage-run': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page, fake }) => {
     fake.gate.hold()
