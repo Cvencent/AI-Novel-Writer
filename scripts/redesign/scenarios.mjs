@@ -10,12 +10,13 @@ import * as chapter from './pages/chapter.mjs'
 import * as materials from './pages/materials.mjs'
 import * as project from './pages/project.mjs'
 import * as runPanel from './pages/run-panel.mjs'
+import * as runSheet from './pages/run-sheet.mjs'
 import * as settings from './pages/settings.mjs'
 import * as shell from './pages/shell.mjs'
 import * as stage from './pages/stage.mjs'
 import { countUnits, STAGE_SAMPLE, stageChapterTitle } from './stage-sample.mjs'
 
-const SAMPLE = Object.freeze({ name: '灯塔', chapterNumber: 1, blueprints: [[1, '旧港'], [2, '北堤']] })
+export const SAMPLE = Object.freeze({ name: '灯塔', chapterNumber: 1, blueprints: [[1, '旧港'], [2, '北堤']] })
 
 /** 系统打开对话框直接返回 selected，文件夹与文件通用。 */
 async function stubOpenDialog(app, selected) {
@@ -60,7 +61,7 @@ async function openSample(page) {
 }
 
 const seedWithDraft = context => seedSample(context, { withDraft: true })
-const seedWithoutDraft = context => seedSample(context, { withDraft: false })
+export const seedWithoutDraft = context => seedSample(context, { withDraft: false })
 
 async function openLatestDraft(page) {
   await project.openLatestDraft(page)
@@ -119,8 +120,9 @@ export const SCENARIOS = {
 }
 
 async function assertRunPanelHiddenThenOpens(page, open) {
-  await shell.showAssistant(page)
-  assert.equal(await runPanel.isOpen(page), false, '切到写作助手后 AI 输出应隐藏')
+  await runPanel.waitUntilOpen(page)
+  await shell.hideRunPanel(page)
+  assert.equal(await runPanel.isOpen(page), false, '收起后 AI 输出应隐藏')
   await open()
   await runPanel.waitUntilOpen(page)
 }
@@ -260,10 +262,10 @@ export const EXTRA_SCENARIOS = {
   } },
 }
 
-const firstLine = text => text.split('\n')[0].slice(0, 16)
+export const firstLine = text => text.split('\n')[0].slice(0, 16)
 
 /** 等到有请求卡在假模型的门上：截图停在运行卡住的那一步，而不是它前后某个随机时刻。 */
-async function untilGateHolds(gate, timeoutMs = 15_000) {
+export async function untilGateHolds(gate, timeoutMs = 15_000) {
   const deadline = Date.now() + timeoutMs
   while (gate.waiting === 0) {
     assert.ok(Date.now() < deadline, `${timeoutMs} ms 内没有请求卡在假模型的门上`)
@@ -275,7 +277,7 @@ async function untilGateHolds(gate, timeoutMs = 15_000) {
  * 用公开 IPC 预置新外壳示例作品：12 章蓝图，1、2 章定稿，3 章已审稿，4 章草稿；架构四节齐全。
  * totalChapters 改规划总章数；beforeReload 在重载前再写入数据；landOnChapter3 为 false 时只等流程脊，落点由场景自己断言。
  */
-async function seedStageSample({ app, page, roots, invoke, reload },
+export async function seedStageSample({ app, page, roots, invoke, reload },
   { totalChapters = STAGE_SAMPLE.totalChapters, beforeReload, landOnChapter3 = true } = {}) {
   const created = await invoke(page, 'project:create', { parentGrantId: (await chooseProjectDirectoryGrant(app, page, roots.projects)).grantId,
     name: STAGE_SAMPLE.name, genre: '悬疑', targetAudience: '成年读者', writingLanguage: 'zh-CN' }, randomUUID(), null)
@@ -503,7 +505,7 @@ export const STAGE_SCENARIOS = {
     await page.keyboard.press('Escape')
     await stage.palette(page).waitFor({ state: 'hidden' })
     fake.gate.release()
-    await runPanel.waitForWorkflowDone(page)
+    await runSheet.waitForRunDone(page)
     await stage.waitForProse(page, firstLine(FIXTURE_PROSE))
   } },
   'stage-settings-switch': { model: false, setup: seedWithDraft, run: async ({ page }) => {
@@ -668,7 +670,7 @@ export const STAGE_SCENARIOS = {
     await page.getByRole('heading', { name: '运行', exact: true }).waitFor({ state: 'visible' })
     await pause(3000)
     fake.gate.release()
-    await runPanel.waitForWorkflowDone(page)
+    await runSheet.waitForRunDone(page)
     await pause(2000)
   } },
   'chapter-switch': { model: false, setup: seedStageSample, run: async ({ page }) => {

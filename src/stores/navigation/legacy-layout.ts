@@ -37,7 +37,7 @@ export function legacyLayoutPatch(state: Pick<LayoutFields, 'sidebarView'>, inte
       return { ...RESOURCE_SIDEBAR[intent.page], sidebarOpen: true, ...EXIT_IMMERSION }
     case 'run':
       if (intent.facet === 'output') {
-        return { ...leaveHome(state), aiPanelOpen: true, rightView: 'ai-output', rightPanelRunId: intent.runId ?? null, ...EXIT_IMMERSION }
+        return { ...leaveHome(state), aiPanelOpen: true, rightPanelRunId: intent.runId ?? null, ...EXIT_IMMERSION }
       }
       return { ...leaveHome(state), bottomPanelOpen: true, bottomTab: intent.facet, activeRailItem: intent.facet, ...EXIT_IMMERSION }
     case 'settings':

@@ -90,6 +90,21 @@ describe('打开作品时的落点', () => {
     expect(tabTypes()).toEqual(['world-building'])
   })
 
+  it('作者在落点之前打开了搜索：落点照常打开，搜索不被关掉', async () => {
+    const current = session('current')
+    await open(current, READY)
+    await act(async () => {
+      useStageStore.setState({ work: { session: current, architecture: { premise: true }, blueprints: [{ chapterNumber: 1, title: '旧港' }] } })
+      useDraftStore.setState({ dataProjectSession: current, loading: true })
+    })
+    await act(async () => root!.render(<Landing />))
+    await act(async () => useStageStore.setState({ palette: 'commands' }))
+
+    await act(async () => useDraftStore.setState({ loading: false }))
+    expect(tabTypes()).toEqual(['world-building'])
+    expect(useStageStore.getState().palette).toBe('commands')
+  })
+
   it('上一次打开留下的架构与蓝图数据不算这次的', async () => {
     const current = session('current')
     await open(current, READY)

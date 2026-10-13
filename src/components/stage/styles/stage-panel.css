@@ -82,6 +82,7 @@
   display: flex;
   border-left: 1px solid var(--rule);
   background: color-mix(in srgb, var(--surface) 45%, var(--paper));
+  transition: width var(--dur) var(--ease);
 }
 
 .stage-sheet-slot[data-wide] {
@@ -93,20 +94,4 @@
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-}
-
-.stage-sheet-slot .pi-sheet-body {
-  padding: 0;
-}
-
-.stage-run-slot {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.stage-run-slot > * {
-  flex: 1;
-  min-height: 0;
 }

@@ -114,8 +114,8 @@ node scripts/redesign/drive.mjs --scenario startup-timing --out <目录>
 |---|---|---|---|
 | `write-latency` | 在渲染进程里计时：点击写作此章弹窗的「开始创作」到 AI 输出标题可见，写进 `measured.writeToOutputMs` | 写作完成 | 是 |
 | `nav-switch-project` | 角色视图加沉浸写作时从标题栏切换到另一部作品，断言退出沉浸、侧栏显示项目树 | 新作品的小说配置页 | 否 |
-| `nav-toast-open` | 写作完成后把右侧切到写作助手，点完成提示「打开查看」，断言 AI 输出重新出现 | AI 输出里的「第1章候选」 | 是 |
-| `nav-status-capsule` | 卡住模型让写作停在运行中，切到写作助手后点状态栏任务胶囊，断言 AI 输出出现 | 运行中的 AI 输出 | 是 |
+| `nav-toast-open` | 写作完成后再点右侧栏「AI 输出」收起它，点完成提示「打开查看」，断言 AI 输出重新出现 | AI 输出里的「第1章候选」 | 是 |
+| `nav-status-capsule` | 卡住模型让写作停在运行中，收起 AI 输出后点状态栏任务胶囊，断言 AI 输出出现 | 运行中的 AI 输出 | 是 |
 | `nav-settings-model` | 先从标题栏「备份」打开设置并关闭，再点状态栏模型，断言落在「AI 生成模型」 | 设置弹窗的模型分组 | 是 |
 | `nav-kb-import` | 关掉底部面板后在「小说」视图导入创作资料并确认发送，断言底部面板打开且停在「任务」 | 知识库页与任务面板 | 是 |
 | `nav-card-import` | 关掉底部面板后在「角色」视图粘贴角色卡并确认发送，断言底部面板打开且停在「任务」 | 角色页与任务面板 | 是 |
@@ -143,7 +143,7 @@ node scripts/redesign/drive.mjs --scenario startup-timing --out <目录>
 | `stage-migrate` | 写入一份 v1 外观配置后重载：进入工作台、不出现启动阻塞，存储逐字节不变（只有选新外壳时才写成 v2） | 工作台（旧外壳，v1 没有 stage） | 否 | lane 10 |
 | `stage-settings-switch` | 从旧外壳打开设置 → 外观 → 界面布局选「创作流程（预览）」，新外壳出现，设置仍停在「外观」 | 新外壳 | 否 | You see |
 | `stage-palette` | Ctrl K 输入「灯」，结果里有第 6 章；`after` 按 Esc 关闭 | Ctrl K 结果 | 否 | |
-| `stage-run` | 卡住模型后从章节蓝图写下一章：运行侧页自动打开，顶栏胶囊展开并显示进度；`after` 先确认侧页开着时 Ctrl K 仍能打开搜索（侧页不是模态层），再放行、等工作流完成、新草稿打开 | 运行侧页与胶囊 | 是 | |
+| `stage-run` | 卡住模型后从章节蓝图写下一章：运行侧页自动打开，顶栏胶囊展开并显示进度；`after` 先确认侧页开着时 Ctrl K 仍能打开搜索（侧页不是模态层），再放行、等侧页里「上一次运行」显示已完成、新草稿打开 | 运行侧页与胶囊 | 是 | |
 | `stage-library` | 没有打开作品时是书房，没有流程脊 | 书房 | 否 | |
 | `stage-modal-layers` | 改小说配置后打开设置：Ctrl K 不开搜索、Ctrl W 不弹放弃确认；从主进程关窗，退出确认画在设置之上（`isTopmost` 让所有元素参与命中测试后取中心点最上层元素）；`after` 取消退出并关设置 | 退出确认 | 否 | 第 3 条 |
 | `stage-close-key` | 书房里、搜索框里各按一次 Ctrl W，页面都拦下（`defaultPrevented`），应用仍在。应用菜单有 CommandOrControl+W 的「关闭」，但驱动注入的按键到不了菜单快捷键，所以断言的是拦截 | 搜索框 | 否 | 第 4 条 |
@@ -169,8 +169,29 @@ node scripts/redesign/drive.mjs --scenario chapter-switch --shell stage --out <�
 
 `startup-timing` 三组都先在同一隔离目录启动一次写好主题（新外壳另写外壳偏好）再退出，计时的是之后那次冷启动；首次启动还要迁移旧配置、建库，与之后的启动不可比，所以两侧都不计首次。启动计时以驱动发现「新建作品」可见为准，Playwright 的轮询间隔随等待时间变长，所以晚出现的界面会被多计一些。
 
+## 运行侧页（RD-4 起）
+
+场景在 `scripts/redesign/run-scenarios.mjs`，页面对象在 `scripts/redesign/pages/run-sheet.mjs`（侧页是 `complementary`「运行」，分页是其中的 `tab`，运行与恢复项是 `article`，按标题命名）。假模型另有两种回复：`fake.streamProse({ chunks, intervalMs })` 之后的正文按块定速流出，每块发出的时刻记进 `fake.streamLog`；`fake.replyCharacterCards()` 之后，提示词里有「【资料 」时回一份角色提取 JSON（守塔人与林岚），不开时照旧回正文、提取失败。复制类操作在页面里改写 `navigator.clipboard.writeText` 记录内容，不碰系统剪贴板。
+
+| 名称 | 检查 | 截图停在 | 夹具模型 | 对应计划 |
+|---|---|---|---|---|
+| `run-write-steps` | 旧外壳写一章，`measured` 记下 AI 输出里的步骤名、正文与聊天按钮、「写作助手」区域的数量；head 与 trunk 各跑一次对照 | 写完的 AI 输出 | 是 | lane 1 |
+| `run-live` | 正文定速流出时侧页「进行中」展开当前步骤，实时输出的句数持续增加 | 正文流到一半 | 是 | lane 2 |
+| `run-cancel` | 卡住模型后在运行卡片上点「取消」：没有进行中的运行，顶栏胶囊消失，「上一次运行」写明已取消 | 取消后的侧页 | 是 | lane 3 |
+| `run-batch` | 删掉 3、4 章草稿后批量写两章：Ctrl P 里只有正在写的第 3 章标生成中；暂停后本章写完即停，2 秒内不再有模型请求，没有章标生成中；`after` 继续并写完 | 已暂停 | 是 | lane 4 |
+| `run-confirm` | 从角色页粘贴两张角色卡：侧页出现「等你确认」与两个采用方式；`after` 林岚对应已有、守塔人新建，确认后角色列表多了守塔人、林岚仍只有一个 | 等你确认 | 是 | lane 5 |
+| `run-discard` | 预置一条恢复候选：复制得到原文；「放弃…」出现就地确认条且焦点在「保留」；`after` 确认放弃，收起再打开侧页（重新读取）后候选不再列出 | 就地确认条 | 否 | lane 6 |
+| `run-diagnostics` | 预置三条调用记录后写一章：诊断分页是宽版，调用表三行，复制安全诊断不含正文与密钥，界面文字没有 token（日志行原文除外） | 诊断分页 | 是 | lane 7 |
+| `run-en` | 切到英文重载：Ctrl K 搜 assistant、agent、chat 都没有结果；写一章时侧页分页是英文，整页没有聊天字样 | 英文的进行中 | 是 | lane 8 |
+| `legacy-no-chat` | 旧外壳：右侧栏只有「AI 输出」，没有 Agent 按钮，右侧区域名为「AI 输出」，整页没有聊天字样；再点一次收起、再点打开 | AI 输出 | 否 | lane 9 |
+| `run-olddata` | 预置一条助手任务（两轮历史加一轮回复）：打开作品与运行侧页没有报错，界面没有调用任何 `agent-generation:*`（在主进程里包一层 invoke 计数），侧页不列助手任务；`after` 重开读出的对话内容与之前相同，项目目录里数据库以外的文件没有改动 | 进行中 | 是 | lane 10 |
+| `run-tour` | 30–60 秒的导览：定速写一章看实时输出与完成，历史里展开这次运行，诊断宽版，放弃恢复候选的就地确认后选「保留」，收起侧页再用 Ctrl K 打开。配 `--video` 录评审视频 | 进行中 | 是 | Review gate |
+| `write-stream` | 60 块、每块 50 字、间隔 50 ms 的正文流出（3000 字）：`measured.fps` 是第一块到最后一块显示之间的帧率，`appendMedianMs`、`appendP95Ms` 是每块从假模型发出到出现在界面上的延迟。两种外壳都能跑，用 `--shell stage` 选新外壳 | 写完一章 | 是 | perf |
+
+`run-olddata` 的状态对比只看对话内容：重开作品时主进程会把旧会话里没写完的助手任务登记为暂停、改期限，这是主进程的租约记账，与界面无关。
+
 ## 改外壳时
 
-类名选择器只出现在 `scripts/redesign/pages/`，按任务域分文件：`shell`（启动、外壳就绪、标题栏、状态栏、左右栏与可收起面板）、`bookshelf`（书房）、`project`（项目树）、`chapter`（单章写作、审稿、修稿合并、定稿）、`run-panel`（运行面板）、`settings`（设置，含外观里切换界面布局）、`materials`（知识库与角色卡导入）、`stage`（新外壳：流程脊、章节列表、标签条、Ctrl K 与 Ctrl P、保存状态、沉浸写作）。`shell.waitForShell` 对两种外壳都成立。外壳替换后只改这些页面对象，场景 `scripts/redesign/scenarios.mjs` 不动。
+类名选择器只出现在 `scripts/redesign/pages/`，按任务域分文件：`shell`（启动、外壳就绪、标题栏、状态栏、左右栏与可收起面板）、`bookshelf`（书房）、`project`（项目树）、`chapter`（单章写作、审稿、修稿合并、定稿）、`run-panel`（运行面板）、`settings`（设置，含外观里切换界面布局）、`materials`（知识库与角色卡导入）、`stage`（新外壳：流程脊、章节列表、标签条、Ctrl K 与 Ctrl P、保存状态、沉浸写作）、`run-sheet`（新外壳的运行侧页）。`shell.waitForShell` 对两种外壳都成立。外壳替换后只改这些页面对象，场景 `scripts/redesign/scenarios.mjs` 不动。
 
-`/.claude/` 在 `.gitignore` 里，提交本文件的改动要用 `git add -f .claude/skills/verify/SKILL.md`（或 `git add -u`）。假模型在 `scripts/redesign/fake-model.mjs`，按提示词特征返回正文、审稿 JSON、修稿正文或角色状态 JSON。
+`/.claude/` 在 `.gitignore` 里，提交本文件的改动要用 `git add -f .claude/skills/verify/SKILL.md`（或 `git add -u`）。假模型在 `scripts/redesign/fake-model.mjs`，按提示词特征返回正文、短细纲（与正文同一段文字，但不参与定速流出）、审稿 JSON、修稿正文、角色状态 JSON 或角色提取 JSON。

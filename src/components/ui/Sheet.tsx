@@ -14,8 +14,8 @@ interface SheetProps {
   subtitle?: string
   closeLabel: string
   onClose: () => void
-  /** 侧页分页；给出时 children 是当前分页的内容。 */
-  tabs?: { items: readonly SheetTab[]; active: string; onChange: (id: string) => void }
+  /** 侧页分页；给出时 children 是当前分页的内容。segmented 是标题下一条分段胶囊，underline 是下划线页签。 */
+  tabs?: { items: readonly SheetTab[]; active: string; onChange: (id: string) => void; style?: 'underline' | 'segmented' }
   footer?: ReactNode
   wide?: boolean
   children: ReactNode
@@ -74,7 +74,7 @@ export function Sheet({ open, title, subtitle, closeLabel, onClose, tabs, footer
   }
 
   return (
-    <aside className={clsx('pi-sheet', wide && 'pi-sheet--wide')} aria-labelledby={titleId} tabIndex={-1} onKeyDown={onKeyDown}>
+    <aside className={clsx('pi-sheet', wide && 'pi-sheet--wide', tabs?.style === 'segmented' && 'pi-sheet--segmented')} aria-labelledby={titleId} tabIndex={-1} onKeyDown={onKeyDown}>
       <header className="pi-sheet-head">
         <div>
           <h2 id={titleId} ref={titleRef} tabIndex={-1} className="pi-sheet-title">{title}</h2>

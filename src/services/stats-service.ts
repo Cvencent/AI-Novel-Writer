@@ -49,6 +49,11 @@ function callCompletionRange(createdAt: string): [number, number] | null {
   return Number.isFinite(timestamp) ? [timestamp, timestamp] : null
 }
 
+/** 调用记录的时刻。SQLite 的 CURRENT_TIMESTAMP 是不带时区的 UTC，直接交给 Date 会被当成本地时间。 */
+export function llmCallTime(createdAt: string): Date {
+  return new Date(callCompletionRange(createdAt)?.[0] ?? Date.parse(createdAt))
+}
+
 function timestamp(value: string | undefined): number | null {
   if (!value) return null
   const parsed = Date.parse(value)

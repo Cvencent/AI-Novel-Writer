@@ -278,7 +278,7 @@ async function main() {
       await taskPanel.waitFor({ state: 'visible' })
       const activeCount = taskPanel.locator(':scope > div:first-child > div:first-child > span.font-mono')
       const history = taskPanel.getByText('历史任务', { exact: true }).locator('..')
-      const finalizedHistory = history.getByText('定稿 — 第1章 南站', { exact: true })
+      const finalizedHistory = history.getByText('第 1 章 · 定稿', { exact: true })
       let quiet = false
       for (let attempt = 0; attempt < 360; attempt++) {
         quiet = await activeCount.count() === 0 && await finalizedHistory.isVisible()
@@ -563,7 +563,7 @@ async function main() {
       await taskPanel.waitFor({ state: 'visible' })
       const activeCount = taskPanel.locator(':scope > div:first-child > div:first-child > span.font-mono')
       const history = taskPanel.getByText('历史任务', { exact: true }).locator('..')
-      const finalizedHistory = history.getByText('定稿 — 第2章 南站', { exact: true })
+      const finalizedHistory = history.getByText('第 2 章 · 定稿', { exact: true })
       let taskState
       for (let attempt = 0; attempt < 360; attempt++) {
         taskState = { activeCount: await activeCount.count() ? (await activeCount.textContent())?.trim() : null,

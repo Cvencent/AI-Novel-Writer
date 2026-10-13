@@ -50,13 +50,20 @@
 .pi-sheet--wide { width: var(--sheet-w-wide); }
 .pi-sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-3);
   padding: var(--s-4) var(--s-4) var(--s-3); border-bottom: 1px solid var(--rule); }
-.pi-sheet-title { margin: 0; font: 600 var(--fs-14)/1.4 var(--font-ui); }
+.pi-sheet-title { margin: 0; font: 600 15px/1.4 var(--font-display); }
 .pi-sheet:focus, .pi-sheet-title:focus { outline: none; }
 .pi-sheet-sub { margin: 2px 0 0; color: var(--ink-3); font-size: var(--fs-12); }
 .pi-sheet-tabs { display: flex; gap: var(--s-4); padding: 0 var(--s-4); border-bottom: 1px solid var(--rule); }
 .pi-sheet-tab { padding: 10px 0; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; background: none;
   border-radius: var(--radius-sm) var(--radius-sm) 0 0; color: var(--ink-3); font: inherit; font-size: var(--fs-12); cursor: pointer; }
 .pi-sheet-tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 500; }
+/* 分段页签（Claude Design 运行侧页）：标题下一条凹陷的胶囊，选中项浮起成纸面 */
+.pi-sheet--segmented .pi-sheet-head { border-bottom: 0; padding-bottom: 10px; }
+.pi-sheet--segmented .pi-sheet-tabs { gap: 2px; margin: 0 var(--s-4) var(--s-3); padding: 3px; border: 0;
+  border-radius: var(--radius-control); background: var(--sunken); }
+.pi-sheet--segmented .pi-sheet-tab { flex: 1; height: 28px; padding: 0 10px; margin: 0; border: 0; border-radius: 7px; color: var(--ink-2); }
+.pi-sheet--segmented .pi-sheet-tab[aria-selected="true"] { background: var(--paper); color: var(--ink); box-shadow: var(--shadow-seg); }
+.pi-sheet--segmented .pi-sheet-body { padding-top: 0; }
 .pi-sheet-body { flex: 1; min-height: 0; overflow: auto; padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); }
 .pi-sheet-foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--s-2);
   padding: var(--s-3) var(--s-4); border-top: 1px solid var(--rule); }
@@ -127,6 +134,14 @@
 .pi-notice-title { margin: 0; font-weight: 600; }
 .pi-notice-text { margin: 0; color: var(--ink-2); }
 .pi-notice-actions { display: flex; align-items: center; gap: var(--s-2); flex: none; }
+
+/* 带操作的通知（运行完成提示）。挂在页面根上，自带纸墨作用域，所以要盖掉 .paper-ink 的外框底色 */
+.paper-ink.pi-toast { pointer-events: auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: var(--s-2);
+  width: 340px; padding: var(--s-3) var(--s-3) var(--s-3) var(--s-4); border-radius: var(--radius-lg);
+  background: var(--surface); box-shadow: var(--shadow-pop); animation: pi-rise var(--dur) var(--ease); }
+.paper-ink.pi-toast[data-exiting] { opacity: 0; transition: opacity var(--dur) var(--ease); }
+.pi-toast-text { margin: 4px 0 0; color: var(--ink); overflow-wrap: anywhere; }
+.pi-toast-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: var(--s-2); }
 
 .pi-inline-confirm { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2) var(--s-2) var(--s-2) var(--s-3);
   border-radius: var(--radius-lg); background: var(--danger-soft); }

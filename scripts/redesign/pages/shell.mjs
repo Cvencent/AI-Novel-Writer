@@ -80,9 +80,9 @@ export async function clickStatusBarModel(page) {
   await page.locator('[title^="当前模型："]').click()
 }
 
-/** 右侧工具栏的写作助手按钮；用来把右侧面板从 AI 输出切走。 */
-export async function showAssistant(page) {
-  await page.getByRole('button', { name: 'AI Agent 面板' }).click()
+/** 收起右侧 AI 输出：再点一次右侧工具栏的「AI 输出」。trunk 与 head 都是这个行为。 */
+export async function hideRunPanel(page) {
+  await page.getByRole('button', { name: 'AI 输出', exact: true }).click()
 }
 
 /** 像点窗口关闭按钮或按 Alt F4 一样从主进程关窗，渲染端的关窗守卫会收到请求。 */

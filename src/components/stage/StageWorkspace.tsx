@@ -13,7 +13,7 @@ import { WriterWelcomePage } from '../pages/v2/use-project-overview'
 import { Button } from '../ui/Button'
 import { EmptyState } from '../ui/EmptyState'
 import { DangerConfirm } from '../ui/DangerConfirm'
-import StageRunSheet from './StageRunSheet'
+import RunSheet from './run/RunSheet'
 import StageTabs from './StageTabs'
 import { commandLabel } from './shortcut-keys'
 import { stageTabName } from './stage-text'
@@ -94,9 +94,9 @@ export default function StageWorkspace({ library, focus }: { library: boolean; f
             )}
         </div>
         {sheet && !focus && (
-          <div className="stage-sheet-slot" data-wide={sheet.facet === 'log' || sheet.facet === 'models' || undefined}>
-            <ErrorBoundary fallbackLabel={text('AI 面板渲染失败', 'AI panel failed to render')}>
-              <StageRunSheet facet={sheet.facet} />
+          <div className="stage-sheet-slot" data-wide={sheet.tab === 'diagnostics' || undefined}>
+            <ErrorBoundary fallbackLabel={text('运行侧页渲染失败', 'Run sheet failed to render')}>
+              <RunSheet sheet={sheet} />
             </ErrorBoundary>
           </div>
         )}

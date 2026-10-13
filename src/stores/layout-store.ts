@@ -6,9 +6,6 @@ export type SidebarView = 'home' | 'project' | 'knowledge' | 'characters' | 'set
 /** 下方工具窗口 Tab */
 export type BottomTab = 'tasks' | 'log' | 'models'
 
-/** 右侧面板视图类型 */
-export type RightView = 'agent' | 'ai-output'
-
 /** 左侧主导航当前视觉激活项 */
 export type LeftRailItem = SidebarView | 'blueprint' | 'world' | 'plot-tree' | BottomTab
 
@@ -36,11 +33,10 @@ export interface LayoutFields {
   sidebarWidth: number
   activeRailItem: LeftRailItem
 
-  // ===== AI 对话面板 =====
+  // ===== 右侧 AI 输出面板 =====
   aiPanelOpen: boolean
   aiPanelWidth: number
-  /** 右侧面板当前视图：Agent 对话 / AI 输出 */
-  rightView: RightView
+  /** AI 输出要定位的运行，面板消费后清空。 */
   rightPanelRunId: string | null
 
   // ===== 底部面板 =====
@@ -76,9 +72,6 @@ interface LayoutState extends LayoutFields {
   toggleAIPanel: () => void
   setAIPanelOpen: (open: boolean) => void
   setAIPanelWidth: (width: number) => void
-  setRightView: (view: RightView) => void
-  /** 打开右侧面板并切到写作助手；AI 输出经 `navigate` 打开。 */
-  openAgentPanel: () => void
   toggleBottomPanel: () => void
   setBottomTab: (tab: BottomTab) => void
   setBottomPanelHeight: (height: number) => void
@@ -104,7 +97,6 @@ export const useLayoutStore = create<LayoutState>()((set, get) => ({
 
   aiPanelOpen: true,
   aiPanelWidth: 320,
-  rightView: 'agent',
   rightPanelRunId: null,
 
   bottomPanelOpen: true,
@@ -141,11 +133,6 @@ export const useLayoutStore = create<LayoutState>()((set, get) => ({
   toggleAIPanel: () => set((s) => ({ aiPanelOpen: !s.aiPanelOpen, immersive: false, preImmersivePanels: null })),
   setAIPanelOpen: (open) => set({ aiPanelOpen: open, ...(open ? { immersive: false, preImmersivePanels: null } : {}) }),
   setAIPanelWidth: (width) => set({ aiPanelWidth: Math.max(260, Math.min(600, width)) }),
-  setRightView: (view) => set({ rightView: view }),
-  openAgentPanel: () => {
-    if (get().sidebarView === 'home') get().setSidebarView('project')
-    set({ aiPanelOpen: true, rightView: 'agent', rightPanelRunId: null, immersive: false, preImmersivePanels: null })
-  },
 
   toggleBottomPanel: () => set((s) => ({ bottomPanelOpen: !s.bottomPanelOpen, immersive: false, preImmersivePanels: null })),
   setBottomTab: (tab) => {

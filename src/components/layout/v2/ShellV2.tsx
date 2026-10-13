@@ -40,7 +40,7 @@ export default function ShellV2({ theme, titleBar, rail, sidebar, editor, aiPane
       <div className="v3-masthead-band" aria-hidden="true">{Array.from({ length: 7 }, (_, index) => <span key={index} />)}</div>
       {titleBar}
     </div>
-    <p className="writer-small-window" role="status">{text('窗口较窄，可横向滚动工作区，或收起侧栏与助手。', 'The window is narrow. Scroll the workspace or hide side panels.')}</p>
+    <p className="writer-small-window" role="status">{text('窗口较窄，可横向滚动工作区，或收起侧栏与 AI 输出。', 'The window is narrow. Scroll the workspace or hide side panels.')}</p>
     <div className="writer-workspace-scroll">
       <div className="writer-workspace">
         <div className="writer-rail-host">{rail}</div>
@@ -54,9 +54,9 @@ export default function ShellV2({ theme, titleBar, rail, sidebar, editor, aiPane
               <Panel id="writer-editor" defaultSize={60} minSize={30}>
                 <main aria-label={text('写作区', 'Writing area')} className="writer-editor"><div className="writer-tabs-host">{tabs}</div><div className="writer-editor-content">{editor}</div></main>
               </Panel>
-              {aiPanelOpen && !magazineHome && <Separator className="writer-grip" aria-label={text('调整助手宽度', 'Resize assistant panel')} />}
+              {aiPanelOpen && !magazineHome && <Separator className="writer-grip" aria-label={text('调整 AI 输出宽度', 'Resize AI output panel')} />}
               <Panel id="writer-assistant" hidden={!aiPanelOpen || magazineHome} disabled={!aiPanelOpen || magazineHome} defaultSize={20} minSize={12}>
-                <aside aria-label={text('写作助手', 'Writing assistant')} className="writer-panel">{aiPanel}</aside>
+                <aside aria-label={text('AI 输出', 'AI output')} className="writer-panel">{aiPanel}</aside>
               </Panel>
             </Group>
           </Panel>

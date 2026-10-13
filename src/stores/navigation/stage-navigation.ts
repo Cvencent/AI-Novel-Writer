@@ -16,9 +16,12 @@ import { openPageTab } from './page-tabs'
 import { deriveChapters, focusChapter } from './stage-progress'
 import { useStageStore } from './stage-store'
 
-/** 回到作品：离开书房、退出沉浸、收起搜索。 */
+/**
+ * 回到作品：离开书房、退出沉浸。不收起搜索：搜索是模态层，作者在里面选中一项时它自己先关；
+ * 搜索开着时还能到这里的只有自动跳转（打开作品后的落点、工作流开始时打开运行侧页），它们不该关掉作者正在输入的搜索。
+ */
 function enterWork(): void {
-  useStageStore.setState({ focus: false, palette: null })
+  useStageStore.setState({ focus: false })
   if (useLayoutStore.getState().sidebarView === 'home') useLayoutStore.setState({ sidebarView: 'project', activeRailItem: 'project' })
 }
 
@@ -121,11 +124,7 @@ export function stageNavigate(intent: NavigationIntent): void {
       else openPageTab(intent.page)
       return
     case 'run':
-      useStageStore.setState({ sheet: { kind: 'run', facet: intent.facet } })
-      // 运行侧页在 RD-4 之前沿用旧的 AI 输出与任务面板，它们读这几个布局字段。
-      useLayoutStore.setState(intent.facet === 'output'
-        ? { rightView: 'ai-output', rightPanelRunId: intent.runId ?? null }
-        : { bottomTab: intent.facet, bottomPanelOpen: true })
+      useStageStore.setState({ sheet: { kind: 'run', tab: intent.facet === 'log' || intent.facet === 'models' ? 'diagnostics' : 'active', runId: intent.runId } })
       return
     case 'chapter':
       void openChapter(intent.chapterNumber)

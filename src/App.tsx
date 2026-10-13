@@ -5,7 +5,6 @@ import { useAppearanceStore } from './stores/appearance-bootstrap'
 import { navigate } from './stores/navigation/navigation-intents'
 import { useLLMStore } from './stores/llm-store'
 import { useProjectStore } from './stores/project-store'
-import { useMCPStore } from './stores/mcp-store'
 import { useWorkflowStore } from './stores/workflow-store'
 import { useLocaleStore } from './stores/locale-store'
 import { useSkinStore } from './stores/skin-store'
@@ -18,7 +17,6 @@ import RightToolWindowBar from './components/layout/RightToolWindowBar'
 import ShellV2 from './components/layout/v2/ShellV2'
 import Sidebar from './components/panels/Sidebar'
 import EditorArea from './components/panels/EditorArea'
-import AIPanel from './components/panels/AIPanel'
 import AIOutputPanel from './components/panels/AIOutputPanel'
 import BottomPanel from './components/panels/BottomPanel'
 import NewProjectDialog from './components/dialogs/NewProjectDialog'
@@ -106,7 +104,6 @@ export default function App() {
   const aiPanelOpen = useLayoutStore(s => s.aiPanelOpen)
   const bottomPanelOpen = useLayoutStore(s => s.bottomPanelOpen)
   const immersive = useLayoutStore(s => s.immersive)
-  const rightView = useLayoutStore(s => s.rightView)
   const settingsOpen = useLayoutStore(s => s.settingsOpen)
   const closeSettings = useLayoutStore(s => s.closeSettings)
   const newProjectOpen = useLayoutStore(s => s.newProjectOpen)
@@ -134,8 +131,6 @@ export default function App() {
     initTheme()
     initLLM()
     loadRecentProjects()
-    // 初始化 MCP Store
-    useMCPStore.getState().init().catch(e => console.warn('[MCP] 初始化失败:', e))
     // 初始化 ProjectService — 注册全局事件监听（生命周期与 App 一致）
     import('./services/project-service').then(({ initProjectService }) => {
       initProjectService()
@@ -325,7 +320,7 @@ export default function App() {
         )}
         aiPanel={(
           <ErrorBoundary fallbackLabel={text('AI 面板渲染失败', 'AI panel failed to render')}>
-            {rightView === 'ai-output' ? <AIOutputPanel /> : <AIPanel />}
+            <AIOutputPanel />
           </ErrorBoundary>
         )}
         bottom={<BottomPanel />}

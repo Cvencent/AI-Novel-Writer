@@ -69,10 +69,3 @@
   --writer-task-row-border: var(--color-border);
   --writer-primary-surface: var(--color-accent);
 }
-
-.stage-shell .stage-sheet-slot {
-  --writer-surface-ai-panel: transparent;
-  --writer-surface-task-table: transparent;
-  --writer-panel-border: transparent;
-  --writer-task-border: transparent;
-}

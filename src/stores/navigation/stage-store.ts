@@ -1,9 +1,14 @@
 import { create } from 'zustand'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
-import type { RunPaneFacet } from './navigation-intents'
 
-/** 内容区右侧的按需侧页。RD-3 只有运行侧页；审稿、版本对比等侧页由后续 PR 加入。 */
-export type StageSheet = { kind: 'run'; facet: RunPaneFacet }
+/** 运行侧页的分页：进行中（步骤、实时输出、等确认、可恢复）、历史、诊断（宽版：日志与模型调用）。 */
+export type RunSheetTab = 'active' | 'history' | 'diagnostics'
+
+/**
+ * 内容区右侧的按需侧页。目前只有运行侧页；审稿、版本对比等侧页由后续 PR 加入。
+ * runId 是要看的那次运行：还在运行就在「进行中」里定位，已结束就在「历史」里展开。
+ */
+export type StageSheet = { kind: 'run'; tab: RunSheetTab; runId?: string }
 
 /** 命令面板：commands 是搜索与跳转（⌘K / Ctrl K），chapters 只查章节（⌘P / Ctrl P）。 */
 export type StagePalette = 'commands' | 'chapters'

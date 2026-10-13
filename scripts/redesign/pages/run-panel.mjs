@@ -47,6 +47,14 @@ export async function msFromClickToOpen(page, buttonName, trigger, deadlineMs = 
   return page.evaluate(() => window.__driveOpenLatency)
 }
 
+/** AI 输出里列出的步骤名与最后一段正文。 */
+export async function summary(page) {
+  return {
+    steps: await panel(page).locator('.truncate.flex-1').allInnerTexts(),
+    output: (await panel(page).locator('.assistant-content').last().innerText()).trim(),
+  }
+}
+
 export const isOpen = page => panel(page).getByText('AI 输出', { exact: true }).isVisible()
 
 export async function waitUntilOpen(page) {

@@ -4,7 +4,6 @@ import { createRoot, type Root } from 'react-dom/client'
 
 import '../../../index.css'
 import '../../../styles/paper-ink/index.css'
-import '../stage.css'
 import type { DraftMeta } from '../../../services/draft-index'
 import {
   deriveChapters, deriveStages, focusChapter, landingStage, type WorkFacts,

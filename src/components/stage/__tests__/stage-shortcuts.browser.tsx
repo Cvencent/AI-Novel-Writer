@@ -5,7 +5,6 @@ import { createRoot, type Root } from 'react-dom/client'
 
 import '../../../index.css'
 import '../../../styles/paper-ink/index.css'
-import '../stage.css'
 import { registerEditorExitSaveHandler, useEditorStore } from '../../../stores/editor-store'
 import { useLayoutStore } from '../../../stores/layout-store'
 import { useStageStore } from '../../../stores/navigation/stage-store'

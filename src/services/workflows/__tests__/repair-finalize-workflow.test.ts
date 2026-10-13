@@ -272,7 +272,7 @@ describe('createRepairFinalizeWorkflow', () => {
 
     expect(workflow).toMatchObject({
       uiLocale: 'en-US',
-      title: 'Repair post-processing — Chapter 3',
+      title: 'Chapter 3 · Repair post-processing',
       steps: [{
         name: 'Rebuild post-processing',
         description: 'Regenerate chapter notes, continuity facts, and character state from the finalized manuscript',
