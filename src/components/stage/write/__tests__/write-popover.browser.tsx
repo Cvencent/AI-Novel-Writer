@@ -25,6 +25,7 @@ vi.mock('/src/services/workflows/chapter-workflow.ts', async importOriginal => {
 })
 
 const PROJECT_PATH = 'C:\\novels\\write-popover'
+const SESSION = { projectId: 'write-popover', leaseId: 'write-popover-lease', projectPath: PROJECT_PATH }
 const originalLLM = useLLMStore.getState()
 const originalProject = useProjectStore.getState()
 const originalWorkflow = useWorkflowStore.getState()
@@ -158,7 +159,7 @@ beforeEach(async () => {
   startWorkflow = vi.fn(async () => 'write-popover-run')
   useLocaleStore.setState({ locale: 'zh-CN' })
   useProjectStore.setState({ currentProject: project() })
-  setActiveProjectSessionContext({ projectId: 'write-popover', leaseId: 'write-popover-lease', projectPath: PROJECT_PATH })
+  setActiveProjectSessionContext(SESSION)
   useLLMStore.setState({ models: [model('glm'), model('grok')], defaultModelId: 'grok', loaded: true })
   useWorkflowStore.setState({ activeRuns: [], history: [], startWorkflow: startWorkflow as never, addLog: vi.fn() as never })
   useStageStore.setState({ writeRequest: null })
@@ -326,7 +327,7 @@ describe('写作此章弹层', () => {
   it('定稿后打开下一章等请求：挂着这一章按钮的弹层自己打开并清掉请求', async () => {
     await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" />)
     expect(page.getByRole('dialog', { name: '本次写作选项' }).query()).toBeNull()
-    await act(async () => useStageStore.setState({ writeRequest: { chapterNumber: 5 } }))
+    await act(async () => useStageStore.setState({ writeRequest: { session: SESSION, chapterNumber: 5 } }))
     await expect.element(page.getByRole('dialog', { name: '本次写作选项' })).toBeVisible()
     expect(useStageStore.getState().writeRequest).toBeNull()
     expect(startWorkflow).not.toHaveBeenCalled()

@@ -22,7 +22,7 @@ beforeEach(() => {
   useLayoutStore.setState({ sidebarView: 'home', activeRailItem: 'home', settingsOpen: false, chapterCreationOpen: false,
     chapterCreationPrefill: null, immersive: false, bottomPanelOpen: false })
   useEditorStore.setState({ tabs: [], activeTabId: null })
-  useProjectStore.setState({ currentProject: { id: 'stage', name: '灯塔', path: PROJECT_PATH } as ProjectData })
+  useProjectStore.setState({ currentProject: { id: 'stage', sessionLease: 'lease-1', name: '灯塔', path: PROJECT_PATH } as ProjectData })
   useStageStore.setState({ sheet: { kind: 'run', tab: 'diagnostics' }, focus: true, palette: 'commands', work: null, closingTabId: null })
 })
 
@@ -85,6 +85,28 @@ describe('新外壳下 navigate 的落点，调用方与旧外壳相同', () => 
     expect(useLayoutStore.getState().chapterCreationOpen).toBe(false)
     expect(useEditorStore.getState().tabs).toMatchObject([{ type: 'chapter-card', chapterNumber: 3 }])
     expect(useStageStore.getState()).toMatchObject({ focus: false, writeRequest: { chapterNumber: 3 } })
+  })
+
+  it('在书房里收到写作此章（定稿后打开下一章）：回到作品，请求带上这次打开的作品', () => {
+    navigate({ kind: 'chapter', chapterNumber: 3, write: WRITE })
+    expect(useLayoutStore.getState()).toMatchObject({ sidebarView: 'project', activeRailItem: 'project' })
+    expect(useStageStore.getState().writeRequest).toEqual({
+      session: { projectId: 'stage', leaseId: 'lease-1', projectPath: PROJECT_PATH }, chapterNumber: 3,
+    })
+  })
+
+  it('写作请求只属于发出时的那次打开：同一作品的其他改动不清，换作品或重新打开就清掉', () => {
+    navigate({ kind: 'chapter', chapterNumber: 3, write: WRITE })
+    useProjectStore.setState(state => ({ currentProject: { ...state.currentProject!, name: '灯塔（改名）' } }))
+    expect(useStageStore.getState().writeRequest).toMatchObject({ chapterNumber: 3 })
+
+    useProjectStore.setState({ currentProject: { id: 'other', sessionLease: 'lease-2', name: '雾岛', path: 'C:\\novels\\other' } as ProjectData })
+    expect(useStageStore.getState().writeRequest).toBeNull()
+
+    useProjectStore.setState({ currentProject: { id: 'stage', sessionLease: 'lease-1', name: '灯塔', path: PROJECT_PATH } as ProjectData })
+    navigate({ kind: 'chapter', chapterNumber: 3, write: WRITE })
+    useProjectStore.setState({ currentProject: { id: 'stage', sessionLease: 'lease-3', name: '灯塔', path: PROJECT_PATH } as ProjectData })
+    expect(useStageStore.getState().writeRequest).toBeNull()
   })
 
   it('旧外壳不受影响：同一意图仍写旧布局字段', () => {

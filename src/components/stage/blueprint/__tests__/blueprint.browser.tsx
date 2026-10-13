@@ -14,6 +14,7 @@ import { useProjectStore } from '../../../../stores/project-store'
 import StageBlueprint from '../StageBlueprint'
 
 const PROJECT_PATH = 'C:\\novels\\stage-blueprint'
+const SESSION = { projectId: 'stage-blueprint', leaseId: 'stage-blueprint-lease', projectPath: PROJECT_PATH }
 const originalEditor = useEditorStore.getState()
 const originalProject = useProjectStore.getState()
 const originalStage = useStageStore.getState()
@@ -86,7 +87,7 @@ async function renderPage(initialChapterNumber?: number) {
 async function refreshBlueprints() {
   const before = calls('db:blueprint-get-all').length
   await act(async () => globalEventBus.emit('REFRESH_RESOURCE', { resources: ['blueprints'], projectPath: PROJECT_PATH,
-    projectSession: { projectId: 'stage-blueprint', leaseId: 'stage-blueprint-lease', projectPath: PROJECT_PATH } }))
+    projectSession: SESSION }))
   await vi.waitFor(() => expect(calls('db:blueprint-get-all').length).toBeGreaterThan(before))
   await vi.waitFor(() => expect(calls('db:draft-authority-sequence').length).toBe(calls('db:blueprint-get-all').length))
 }
@@ -102,7 +103,7 @@ beforeEach(async () => {
   useEditorStore.setState({ tabs: [], activeTabId: null, draftLedgers: {} })
   useProjectStore.setState({ currentProject: project() })
   useStageStore.setState({ writeRequest: null, work: null })
-  setActiveProjectSessionContext({ projectId: 'stage-blueprint', leaseId: 'stage-blueprint-lease', projectPath: PROJECT_PATH })
+  setActiveProjectSessionContext(SESSION)
   installIpc()
   container = document.createElement('div')
   document.body.append(container)
@@ -235,13 +236,13 @@ describe('蓝图阶段', () => {
   })
 
   it('写作请求落到这一页：可写的那一章自动弹出写作弹层，写不了的章丢掉请求', async () => {
-    useStageStore.setState({ writeRequest: { chapterNumber: 2 } })
+    useStageStore.setState({ writeRequest: { session: SESSION, chapterNumber: 2 } })
     await renderPage()
     await expect.element(page.getByRole('dialog', { name: '本次写作选项' })).toBeVisible()
     expect(useStageStore.getState().writeRequest).toBeNull()
 
     await act(async () => root?.render(null))
-    useStageStore.setState({ writeRequest: { chapterNumber: 3 } })
+    useStageStore.setState({ writeRequest: { session: SESSION, chapterNumber: 3 } })
     await renderPage()
     await vi.waitFor(() => expect(useStageStore.getState().writeRequest).toBeNull())
     expect(page.getByRole('dialog', { name: '本次写作选项' }).query()).toBeNull()

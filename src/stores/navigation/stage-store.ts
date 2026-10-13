@@ -30,8 +30,8 @@ interface StageState {
   work: StageWork | null
   /** 有未保存修改、等作者确认是否放弃的待关闭标签。 */
   closingTabId: string | null
-  /** 要为这一章打开写作弹层（定稿后打开下一章等）；挂着这一章写作按钮的页面接手后清空。 */
-  writeRequest: { chapterNumber: number } | null
+  /** 要为这一章打开写作弹层（定稿后打开下一章等）；挂着这一章写作按钮的页面接手后清空。只属于发出时的那次打开，换作品或重新打开即清掉。 */
+  writeRequest: { session: ProjectSessionContext; chapterNumber: number } | null
 }
 
 /** 新外壳自己的界面状态。书房与作品的切换沿用 layout-store 的 sidebarView === 'home'，两种外壳共用。 */
