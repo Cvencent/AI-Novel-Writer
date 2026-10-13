@@ -36,6 +36,7 @@ import {
 } from '../../shared/human-confirmed-review'
 import {
   normalizeSeverity,
+  severityCopy,
   useReviewChecklist,
   useReviewCycle,
   type EditableReviewItem,
@@ -88,38 +89,6 @@ const SEVERITY_META: Record<ReviewIssue['severity'], {
     bgClass: 'bg-green-500/10',
     borderClass: 'border-green-500/30',
   },
-}
-
-function severityCopy(
-  severity: ReviewIssue['severity'],
-  text: (zhCNText: string, enUSText: string) => string,
-) {
-  switch (severity) {
-    case 'unknown':
-      return {
-        label: text('待核实', 'Needs verification'),
-        actionLabel: text('证据不足，不代表通过；默认不修稿', 'Insufficient evidence; not passed or included by default'),
-        countLabel: text('待核实', 'unverified'),
-      }
-    case 'error':
-      return {
-        label: text('严重问题', 'Critical issue'),
-        actionLabel: text('强烈建议修复', 'Strongly recommended to fix'),
-        countLabel: text('严重', 'critical'),
-      }
-    case 'warning':
-      return {
-        label: text('改进建议', 'Improvement'),
-        actionLabel: text('建议酌情修复', 'Consider fixing'),
-        countLabel: text('建议', 'suggestions'),
-      }
-    default:
-      return {
-        label: text('检查通过', 'Passed'),
-        actionLabel: text('无需处理', 'No action needed'),
-        countLabel: text('通过', 'passed'),
-      }
-  }
 }
 
 function SeverityIcon({ severity }: { severity: ReviewIssue['severity'] }) {

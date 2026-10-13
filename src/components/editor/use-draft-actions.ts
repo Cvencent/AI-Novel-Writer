@@ -527,6 +527,12 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
       if (result.success) {
         setMergeData(null)
         setMeta(prev => prev ? { ...prev, status: 'revised' } : prev)
+        // 标签上的稿状态优先于元数据，合并后同步改成已修稿，否则界面仍按合并前的状态显示。
+        useEditorStore.setState(state => ({
+          tabs: state.tabs.map(tab => tab.id === tabId && tab.projectKey === projectKey && tab.draftStatus !== undefined
+            ? { ...tab, draftStatus: 'revised' }
+            : tab),
+        }))
         toast.success(text('合并完成，草稿已更新', 'Merge complete. The draft is updated.'))
         if (result.postCommitError) toast.warning(text(
           '合并已持久化，但自动复验未启动；请从审稿报告重试。',

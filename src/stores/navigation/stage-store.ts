@@ -32,6 +32,8 @@ interface StageState {
   closingTabId: string | null
   /** 要为这一章打开写作弹层（定稿后打开下一章等）；挂着这一章写作按钮的页面接手后清空。只属于发出时的那次打开，换作品或重新打开即清掉。 */
   writeRequest: { session: ProjectSessionContext; chapterNumber: number } | null
+  /** 审稿或修稿刚生成，要这一稿的单章视图重读数据并展开审稿侧页或合并视图；视图接手后清空。 */
+  chapterRequest: { filePath: string; open: 'review' | 'merge' } | null
 }
 
 /** 新外壳自己的界面状态。书房与作品的切换沿用 layout-store 的 sidebarView === 'home'，两种外壳共用。 */
@@ -42,4 +44,5 @@ export const useStageStore = create<StageState>()(() => ({
   work: null,
   closingTabId: null,
   writeRequest: null,
+  chapterRequest: null,
 }))

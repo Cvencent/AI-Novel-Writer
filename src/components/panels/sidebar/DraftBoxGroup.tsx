@@ -5,15 +5,12 @@
 import { useState, useEffect } from 'react'
 import { ChevronRight, ChevronDown, CheckCircle2, Circle, FileText, FolderOpen, Copy, Trash2, FilePen } from 'lucide-react'
 import type { DraftMeta } from '../../../stores/draft-store'
-import { useDraftStore } from '../../../stores/draft-store'
 import { openDraftTab } from '../../../stores/open-draft-tab'
 import { useEditorStore } from '../../../stores/editor-store'
 import { confirm } from '../../ui/Confirm'
 import { DRAFT_STATUS_LABEL, DRAFT_STATUS_COLOR } from '../../../shared/draft-status'
 import { showSidebarMenu } from './sidebar-menu'
 import { ipc } from '../../../services/ipc-client'
-import { toast } from '../../ui/Toast'
-import { globalEventBus } from '../../../shared/event-bus'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
 import {
@@ -22,6 +19,7 @@ import {
   isProjectSessionPath,
 } from '../../project-session-gate'
 import { deleteFinalizedChapter } from './finalized-chapter-deletion'
+import { deleteDraftVersion } from './draft-deletion'
 
 const DRAFT_STATUS_EN: Record<string, string> = {
   draft: 'Draft', revising: 'Revising', reviewed: 'Reviewed', finalized: 'Finalized', archived: 'Archived',
@@ -251,52 +249,13 @@ function DraftItem({
       { title: text('删除这一稿', 'Delete draft'), confirmText: text('删除', 'Delete'), danger: true }
     )
     if (!ok || !isProjectSessionCurrent(projectSession)) return
-    const result = await ipc.invokeWithProjectSession(
-      projectSession,
-      'db:draft-delete',
-      draft.id,
-      projectKey,
-    )
-    if (!isProjectSessionCurrent(projectSession)) return
-    if (result.errorCode === 'FINALIZED_DRAFT_DELETE_REQUIRED') {
-      await useDraftStore.getState().loadChapterDrafts(
-        draft.chapterNumber,
-        projectKey,
-        projectSession,
-      )
-      if (!isProjectSessionCurrent(projectSession)) return
-      await deleteFinalizedChapter({
-        project: currentProject,
-        projectPath: projectKey,
-        draftId: draft.id,
-        chapterNumber: draft.chapterNumber,
-        displayName: `${chapterTitleText} v${draft.version}`,
-        tabFilePath: draft.filePath,
-        surface: 'draft',
-      })
-      return
-    }
-    if (!result.success) {
-      toast.error(text(`删除失败\n\n${result.error ?? '未知错误'}`, `Delete failed\n\n${result.error ?? 'Unknown error'}`))
-      return
-    }
+    const displayName = `${chapterTitleText} v${draft.version}`
+    if (!await deleteDraftVersion({ draft, displayName, projectKey, project: currentProject })) return
     const editor = useEditorStore.getState()
     const tab = editor.tabs.find(t =>
       t.projectKey === projectKey && (t.id === draft.filePath || t.filePath === draft.filePath)
     )
     if (tab) editor.closeTab(tab.id)
-    await useDraftStore.getState().loadChapterDrafts(
-      draft.chapterNumber,
-      projectKey,
-      projectSession,
-    )
-    if (!isProjectSessionCurrent(projectSession)) return
-    globalEventBus.emit('REFRESH_RESOURCE', {
-      resources: ['drafts', 'fileTree'],
-      projectPath: projectKey,
-      projectSession,
-    })
-    toast.success(text(`已删除 ${chapterTitleText} v${draft.version}`, `Deleted ${chapterTitleText} v${draft.version}`))
   }
 
   const isFinalized = draft.status === 'finalized'

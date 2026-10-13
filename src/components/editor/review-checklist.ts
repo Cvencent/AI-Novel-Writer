@@ -772,3 +772,41 @@ export function useReviewChecklist({
     updateItem, removeItem, addAuthorItem, confirmChecklist, startConfirmedRevision, retryRequiredRecheck,
   }
 }
+
+/** 严重程度的名称、处理建议与计数用词；两种审稿界面共用。 */
+export function severityCopy(
+  severity: ReviewIssue['severity'],
+  text: (zhCNText: string, enUSText: string) => string,
+) {
+  switch (severity) {
+    case 'unknown':
+      return {
+        label: text('待核实', 'Needs verification'),
+        actionLabel: text('证据不足，不代表通过；默认不修稿', 'Insufficient evidence; not passed or included by default'),
+        countLabel: text('待核实', 'unverified'),
+      }
+    case 'error':
+      return {
+        label: text('严重问题', 'Critical issue'),
+        actionLabel: text('强烈建议修复', 'Strongly recommended to fix'),
+        countLabel: text('严重', 'critical'),
+      }
+    case 'warning':
+      return {
+        label: text('改进建议', 'Improvement'),
+        actionLabel: text('建议酌情修复', 'Consider fixing'),
+        countLabel: text('建议', 'suggestions'),
+      }
+    default:
+      return {
+        label: text('检查通过', 'Passed'),
+        actionLabel: text('无需处理', 'No action needed'),
+        countLabel: text('通过', 'passed'),
+      }
+  }
+}
+
+/** 审稿项要不要用于修稿：纳入为勾选。「通过」只展示，没有勾选框。 */
+export function includedCount(items: readonly EditableReviewItem[]): number {
+  return items.filter(item => item.severity !== 'pass' && item.decision === 'apply').length
+}

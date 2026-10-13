@@ -19,14 +19,17 @@ import { SettingsPage, SetupPage } from './stage-pages'
 import StageTabs from './StageTabs'
 import { commandLabel } from './shortcut-keys'
 import StageBlueprint from './blueprint/StageBlueprint'
+import ChapterView from './chapter/ChapterView'
+import { installChapterTabRouting, isChapterViewTab } from './chapter/chapter-tab-routing'
 import { stageTabName } from './stage-text'
 import { cancelCloseTab, confirmCloseTab, requestCloseTab, STAGE_CONTENT_ID } from './tab-close'
 
-/** 设定、架构、角色名单与蓝图是新外壳的页面，其余标签沿用旧编辑区。 */
+/** 设定、架构、角色名单、蓝图与单章正文是新外壳的页面，其余标签沿用旧编辑区。 */
 function TabContent({ tab, project }: { tab: EditorTab; project: ProjectData }) {
   if (tab.type === 'config' && tab.projectKey) return <SetupPage projectKey={tab.projectKey} />
   if (tab.type === 'world-building' && tab.projectKey) return <StageArchitecture projectKey={tab.projectKey} />
   if (tab.type === 'character' && tab.projectKey) return <StageCharacters projectKey={tab.projectKey} />
+  if (isChapterViewTab(tab)) return <ChapterView tab={tab} />
   if (tab.type === 'chapter-card' && tab.projectKey && !tab.planningRecovery) {
     return <StageBlueprint projectKey={tab.projectKey} initialChapterNumber={tab.chapterNumber} selectRequest={tab.chapterSelectRequest} />
   }
@@ -46,6 +49,7 @@ export default function StageWorkspace({ library, focus }: { library: boolean; f
   const pendingName = pending ? stageTabName(pending, text) : ''
 
   const activeTab = tabs.find(tab => tab.id === activeTabId)
+  useEffect(() => installChapterTabRouting(), [])
   useEffect(() => {
     if (tabs.length > 0 && !activeTab) useEditorStore.getState().setActiveTab(tabs[0].id)
   }, [tabs, activeTab])

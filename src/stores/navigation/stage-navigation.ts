@@ -38,8 +38,26 @@ async function chapterDrafts(chapterNumber: number, session: ProjectSessionConte
 
 let openChapterRequest = 0
 
+/** 待写章的单章视图标签：还没有稿，所以没有 filePath，按章号区分。 */
+export function chapterPlanTabId(chapterNumber: number, projectPath: string): string {
+  return `chapter-plan:${chapterNumber}:${encodeURIComponent(projectPath)}`
+}
+
+/** 打开待写章的单章视图：显示本章蓝图与「写作此章」。草稿生成后，新外壳把它换成草稿标签。 */
+export function openChapterPlan(chapterNumber: number, title: string, session: ProjectSessionContext): void {
+  const text = useLocaleStore.getState().text
+  useEditorStore.getState().openFile({
+    id: chapterPlanTabId(chapterNumber, session.projectPath),
+    name: chapterTabName(chapterNumber, title, text),
+    type: 'chapter',
+    chapterNumber,
+    projectKey: session.projectPath,
+    projectSessionLease: session.leaseId,
+  })
+}
+
 /**
- * 打开一章：已有这一稿的标签就直接切过去；否则读出正文开新标签。待写的章还没有正文，落到蓝图并选中这一章，那里有「写作此章」。
+ * 打开一章：已有这一稿的标签就直接切过去；否则读出正文开新标签。待写的章还没有正文，打开它的单章视图，那里有「写作此章」。
  * 连续点几章时只有最后一次生效；读取失败时提示作者，而不是点了没反应。
  */
 export async function openChapter(chapterNumber: number): Promise<void> {
@@ -60,7 +78,7 @@ export async function openChapter(chapterNumber: number): Promise<void> {
     })
     const draft = row?.draft
     if (!draft) {
-      openBuiltinEditor('chapter-card-editor', text('章节蓝图', 'Chapter blueprint'), 'chapter-card', undefined, chapterNumber)
+      openChapterPlan(chapterNumber, row?.title ?? '', session)
       return
     }
     const editor = useEditorStore.getState()
