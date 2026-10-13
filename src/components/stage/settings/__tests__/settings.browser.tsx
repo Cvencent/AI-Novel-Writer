@@ -121,6 +121,20 @@ describe('设置页', () => {
     expect(useLLMStore.getState().deleteModel).toHaveBeenCalledWith('local')
   })
 
+  it('保存模型时主进程出错：弹出错误，保存按钮恢复可点，编辑表单留着', async () => {
+    useLLMStore.setState({ saveModel: vi.fn(async () => { throw new Error('llm:save-model 不可用') }) })
+    await mount()
+    await click(byName('编辑「DeepSeek V4 Flash」'))
+    await click(byName('保存配置'))
+
+    const alert = document.querySelector('[role="alertdialog"]')
+    expect(alert?.textContent).toContain('模型设置保存失败')
+    expect(alert?.textContent).toContain('llm:save-model 不可用')
+    expect(byName('保存配置')?.disabled).toBe(false)
+    await click([...alert!.querySelectorAll('button')].find(button => button.textContent === '确定'))
+    await expect.poll(() => document.querySelector('[role="alertdialog"]')).toBeNull()
+  })
+
   it('没有模型时是空状态，唯一的主按钮是添加模型', async () => {
     useLLMStore.setState({ models: [], defaultModelId: null })
     await mount()
