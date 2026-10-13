@@ -133,6 +133,17 @@ describe('设定页', () => {
 
     await click(byName('继续扩写'))
     expect(startWorkflow).toHaveBeenCalledWith(expect.objectContaining({ type: 'config_generation', projectPath: PATH, projectSession: SESSION }))
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('另一个任务占着设定时 AI 补全不启动，扩写确认留着', async () => {
+    project({ coreOutline: '雾钟提前一刻响起。', worldSetting: '旧港以潮汐计时。' })
+    useWorkflowStore.setState({ getResourceConflict: () => ({ title: '生成架构' }) } as never)
+    await mount()
+    await click(byName('AI 补全其余设定'))
+    await click(byName('继续扩写'))
+    expect(useWorkflowStore.getState().startWorkflow).not.toHaveBeenCalled()
+    expect(document.querySelector('[role="dialog"] h2')?.textContent).toBe('扩写已有的设定？')
   })
 
   it('没有核心大纲时 AI 补全不可用；没有模型时所有 AI 按钮不可用并给出添加模型的入口', async () => {

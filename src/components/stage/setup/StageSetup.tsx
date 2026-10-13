@@ -245,8 +245,7 @@ function SetupSession({ projectKey }: { projectKey: string }) {
   const startFill = () => {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
     if (!session) return
-    setExpandFields(null)
-    startConfigGeneration({ idea: config.coreOutline, projectSession: session, onGenerated: form.applyGeneratedTo(session) })
+    if (startConfigGeneration({ idea: config.coreOutline, projectSession: session, onGenerated: form.applyGeneratedTo(session) })) setExpandFields(null)
   }
   const requestFill = () => {
     const fields = configFieldsToExpand(config, text)
