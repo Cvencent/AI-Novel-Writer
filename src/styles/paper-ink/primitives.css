@@ -361,6 +361,14 @@
   display: flex; align-items: center; justify-content: flex-end; gap: var(--s-2);
   padding: var(--s-3) var(--s-6); border-top: 1px solid var(--rule); background: var(--surface);
 }
+.pi-dialog-close { position: absolute; top: var(--s-4); right: var(--s-4); }
+/*
+ * 旧 ui/Dialog 的调用方在新外壳下也用这张浮笺。宽度上限、高度上限与底栏排法仍听调用方的 Tailwind 类：
+ * 那些类在 @layer utilities 里，会输给这里的无层样式，revert-layer 把这几项让回给它们。
+ */
+.pi-dialog--legacy { width: calc(100vw - 48px); max-width: revert-layer; max-height: revert-layer; overflow: auto; }
+.pi-dialog--legacy .pi-dialog-head { flex-direction: column; gap: 2px; padding-right: 56px; }
+.pi-dialog--legacy .pi-dialog-foot { justify-content: revert-layer; }
 
 /* ================= 命令式浮层的宿主与提示栈 ================= */
 /*

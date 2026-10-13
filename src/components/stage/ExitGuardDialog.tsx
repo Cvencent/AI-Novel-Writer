@@ -33,7 +33,7 @@ export default function ExitGuardDialog({ guard, container }: { guard: WindowClo
             {!blocked && (
               <>
                 <Button variant="danger" disabled={exitBusy} onClick={() => void discardAndExit()}>{text('放弃并退出', 'Discard and exit')}</Button>
-                <Button variant="primary" disabled={exitBusy} onClick={() => void saveAndExit()}>
+                <Button variant="primary" disabled={exitBusy} aria-busy={exitBusy || undefined} onClick={() => void saveAndExit()}>
                   {exitBusy ? text('正在处理…', 'Working…') : text('保存并退出', 'Save and exit')}
                 </Button>
               </>
