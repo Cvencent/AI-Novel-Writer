@@ -297,7 +297,7 @@ describe('chapter-card draft ledger', () => {
     expect(componentSource).toContain('await saveChapterBlueprint(selected, projectKey, projectSession)')
     expect(componentSource).toContain('await saveAllBlueprints(saveInput, projectKey, projectSession)')
     expect(componentSource).toContain(
-      "'db:blueprint-delete',\n      selected.chapterNumber,\n      projectKey,",
+      "'db:blueprint-delete',\n      target.chapterNumber,\n      projectKey,",
     )
     expect(componentSource).toContain(
       "'db:blueprint-clear-all',\n      projectKey,",

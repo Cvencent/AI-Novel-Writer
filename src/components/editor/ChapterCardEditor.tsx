@@ -195,7 +195,7 @@ function ChapterCardEditorSession({
     saveOne: handleSaveOne,
     saveAll: handleSaveAll,
     addChapter: handleAddChapter,
-    deleteSelected,
+    deleteChapter,
     clearAll,
     generateBlueprints,
     writeChapter: handleWriteChapter,
@@ -222,7 +222,7 @@ function ChapterCardEditorSession({
       confirmText: text('删除', 'Delete'),
       danger: true,
     })
-    if (ok) await deleteSelected()
+    if (ok) await deleteChapter(selected.chapterNumber)
   }
 
   /** 清空全部章节蓝图 */

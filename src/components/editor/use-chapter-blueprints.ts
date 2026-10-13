@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useProjectStore } from '../../stores/project-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
 import { navigate } from '../../stores/navigation/navigation-intents'
@@ -107,7 +107,8 @@ export function useChapterBlueprints({
   // ✅ action 用 getState() 获取，不订阅 workflow store 高频更新
   const addLog = useWorkflowStore.getState().addLog
   const [blueprints, setBlueprints] = useState<ChapterBlueprint[]>([])
-  const [selectedIdx, setSelectedIdx] = useState<number>(0)
+  // 选中按章号记：重新加载、删除与新增都会改变下标，章号不变；选中的章不在列表里时回到第一章。
+  const [selectedChapter, setSelectedChapter] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveOutcome, setSaveOutcome] = useState<SaveOutcome>('idle')
   const [loading, setLoading] = useState(true)
@@ -136,12 +137,16 @@ export function useChapterBlueprints({
   const [recoveringLegacyImportedText, setRecoveringLegacyImportedText] = useState(false)
 
   useEffect(() => {
-    if (loading || initialChapterNumber === undefined) return
-    const targetIndex = blueprintsRef.current.findIndex(
-      blueprint => blueprint.chapterNumber === initialChapterNumber,
-    )
-    if (targetIndex >= 0) setSelectedIdx(targetIndex)
-  }, [initialChapterNumber, selectRequest, loading])
+    if (initialChapterNumber !== undefined) setSelectedChapter(initialChapterNumber)
+  }, [initialChapterNumber, selectRequest])
+
+  const selectedIdx = useMemo(
+    () => Math.max(0, blueprints.findIndex(blueprint => blueprint.chapterNumber === selectedChapter)),
+    [blueprints, selectedChapter],
+  )
+  const setSelectedIdx = useCallback((index: number) => {
+    setSelectedChapter(blueprintsRef.current[index]?.chapterNumber ?? null)
+  }, [])
 
   const applyVisibleDraftState = useCallback((nextBlueprints: ChapterBlueprint[], nextDirty: Set<number>) => {
     blueprintsRef.current = nextBlueprints
@@ -266,8 +271,6 @@ export function useChapterBlueprints({
       })
       // 项目可能在远端读取期间切换；旧项目结果不会进入 commit。
       if (!restored || !isLatestProjectRequest()) return
-      const data = restored.blueprints
-      if (data.length > 0) setSelectedIdx(0)
       try {
         const nextChapter = await readAuthoritativeNextChapter(projectSession, locale)
         if (!isLatestProjectRequest()) return
@@ -486,7 +489,7 @@ export function useChapterBlueprints({
       notesUpdatedAt: '',
     }
     markChapterDirty([...currentBlueprints, newBlueprint], newBlueprint.chapterNumber)
-    setSelectedIdx(currentBlueprints.length)
+    setSelectedChapter(newBlueprint.chapterNumber)
     if (authoritativeBlueprintExists) {
       toast.info(text(
         `第 ${nextWriteChapter} 章蓝图已存在，已新增第 ${chapterNumber} 章；写作入口仍为第 ${nextWriteChapter} 章。`,
@@ -495,20 +498,21 @@ export function useChapterBlueprints({
     }
   }
 
-  /** 删除选中章节 */
-  const handleDeleteChapter = async () => {
+  /** 删除指定的一章：章号在作者打开确认时就定下，确认期间重新加载或换选中都不改变删除目标。 */
+  const handleDeleteChapter = async (chapterNumber: number) => {
     const projectSession = currentProjectSessionForPath(projectKey)
+    const target = blueprintsRef.current.find(blueprint => blueprint.chapterNumber === chapterNumber)
     if (
       !projectMatches
       || !projectSession
-      || !selected
+      || !target
       || !sameProjectSessionContext(dataProjectSessionRef.current, projectSession)
     ) return
-    const deletedSnapshots = captureBlueprintSnapshots([selected])
+    const deletedSnapshots = captureBlueprintSnapshots([target])
     const result = await ipc.invokeWithProjectSession(
       projectSession,
       'db:blueprint-delete',
-      selected.chapterNumber,
+      target.chapterNumber,
       projectKey,
     )
     if (!isCurrentProjectSession(projectSession)) return
@@ -517,6 +521,7 @@ export function useChapterBlueprints({
       return
     }
     const current = currentWorkingState(projectKey, projectSession)
+    const deletedIndex = current.blueprints.findIndex(blueprint => blueprint.chapterNumber === target.chapterNumber)
     const next = reconcileDeletedBlueprintSnapshots(
       current.blueprints,
       current.dirtyChapterNumbers,
@@ -524,14 +529,15 @@ export function useChapterBlueprints({
     )
     persistProjectDraftState(projectKey, projectSession, next.blueprints, next.dirtyChapterNumbers)
     if (isCurrentProjectSession(projectSession)) {
-      setSelectedIdx(index => Math.max(0, Math.min(index, next.blueprints.length - 1)))
+      const neighbor = next.blueprints[Math.max(0, Math.min(deletedIndex, next.blueprints.length - 1))]?.chapterNumber ?? null
+      setSelectedChapter(chapter => chapter === target.chapterNumber ? neighbor : chapter)
     }
     globalEventBus.emit('REFRESH_RESOURCE', {
       resources: ['blueprints', 'fileTree'],
       projectPath: projectKey,
       projectSession,
     })
-    toast.success(text(`已删除第 ${selected.chapterNumber} 章蓝图`, `Deleted the blueprint for Chapter ${selected.chapterNumber}`))
+    toast.success(text(`已删除第 ${target.chapterNumber} 章蓝图`, `Deleted the blueprint for Chapter ${target.chapterNumber}`))
   }
 
   /** 清空全部章节蓝图 */
@@ -557,7 +563,7 @@ export function useChapterBlueprints({
     const current = currentWorkingState(projectKey, projectSession)
     const next = reconcileClearedBlueprintSnapshots(current.blueprints, clearedSnapshots)
     persistProjectDraftState(projectKey, projectSession, next.blueprints, next.dirtyChapterNumbers)
-    if (isCurrentProjectSession(projectSession)) setSelectedIdx(0)
+    if (isCurrentProjectSession(projectSession)) setSelectedChapter(null)
     globalEventBus.emit('REFRESH_RESOURCE', {
       resources: ['blueprints', 'fileTree'],
       projectPath: projectKey,
@@ -668,12 +674,10 @@ export function useChapterBlueprints({
     saveOne: handleSaveOne,
     saveAll: handleSaveAll,
     addChapter: handleAddChapter,
-    deleteSelected: handleDeleteChapter,
+    deleteChapter: handleDeleteChapter,
     clearAll: handleClearAllBlueprints,
     generateBlueprints: handleBatchGenerate,
     writeChapter: handleWriteChapter,
     clearLegacyImportedText: handleClearLegacyImportedText,
   }
 }
-
-export type ChapterBlueprintsState = ReturnType<typeof useChapterBlueprints>

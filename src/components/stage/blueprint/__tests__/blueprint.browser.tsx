@@ -4,6 +4,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 
 import type { ProjectData } from '../../../../shared/ipc-channels'
+import { globalEventBus } from '../../../../shared/event-bus'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
 import type { ChapterBlueprint } from '../../../../services/workflows/directory-workflow'
 import { editorSaveHandler, useEditorStore } from '../../../../stores/editor-store'
@@ -22,6 +23,7 @@ const originalStage = useStageStore.getState()
 let root: Root | undefined
 let container: HTMLDivElement | undefined
 let stored: ChapterBlueprint[]
+let nextChapter: number
 let invoke: ReturnType<typeof vi.fn>
 
 function blueprint(chapterNumber: number, title: string): ChapterBlueprint {
@@ -46,7 +48,7 @@ function installIpc() {
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
     if (channel === 'db:blueprint-get-all') return stored
     if (channel === 'db:draft-authority-sequence') return {
-      status: 'continuous', lastChapterNumber: 1, nextChapterNumber: 2, duplicateChapterNumbers: [], authorityFingerprint: 'a'.repeat(64),
+      status: 'continuous', lastChapterNumber: nextChapter - 1, nextChapterNumber: nextChapter, duplicateChapterNumbers: [], authorityFingerprint: 'a'.repeat(64),
     }
     if (channel === 'generation:list') return []
     if (channel === 'db:consistency-exemption-list') return []
@@ -75,9 +77,18 @@ function installIpc() {
 
 const calls = (channel: string) => invoke.mock.calls.filter(call => call[0] === channel)
 
-async function renderPage() {
-  await act(async () => root?.render(<div className="paper-ink"><StageBlueprint projectKey={PROJECT_PATH} /></div>))
+async function renderPage(initialChapterNumber?: number) {
+  await act(async () => root?.render(<div className="paper-ink"><StageBlueprint projectKey={PROJECT_PATH} initialChapterNumber={initialChapterNumber} /></div>))
   await expect.element(page.getByRole('complementary', { name: '章节规划' })).toBeVisible()
+}
+
+/** 后台生成提交一段蓝图、定稿、删除或清空之后，蓝图页都会收到这条刷新。 */
+async function refreshBlueprints() {
+  const before = calls('db:blueprint-get-all').length
+  await act(async () => globalEventBus.emit('REFRESH_RESOURCE', { resources: ['blueprints'], projectPath: PROJECT_PATH,
+    projectSession: { projectId: 'stage-blueprint', leaseId: 'stage-blueprint-lease', projectPath: PROJECT_PATH } }))
+  await vi.waitFor(() => expect(calls('db:blueprint-get-all').length).toBeGreaterThan(before))
+  await vi.waitFor(() => expect(calls('db:draft-authority-sequence').length).toBe(calls('db:blueprint-get-all').length))
 }
 
 beforeEach(async () => {
@@ -86,6 +97,7 @@ beforeEach(async () => {
   await vi.waitFor(() => expect([window.innerWidth, window.innerHeight]).toEqual([1280, 900]))
   await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
   stored = [blueprint(1, '旧港'), blueprint(2, '北堤'), blueprint(3, '灯室')]
+  nextChapter = 2
   useLocaleStore.setState({ locale: 'zh-CN' })
   useEditorStore.setState({ tabs: [], activeTabId: null, draftLedgers: {} })
   useProjectStore.setState({ currentProject: project() })
@@ -233,5 +245,40 @@ describe('蓝图阶段', () => {
     await renderPage()
     await vi.waitFor(() => expect(useStageStore.getState().writeRequest).toBeNull())
     expect(page.getByRole('dialog', { name: '本次写作选项' }).query()).toBeNull()
+  })
+
+  it('蓝图重新加载时页面与打开的弹层都留着，作者刚写的指导不丢', async () => {
+    await renderPage()
+    await act(async () => page.getByRole('button', { name: '本次写作选项' }).click())
+    const popover = page.getByRole('dialog', { name: '本次写作选项' })
+    await act(async () => popover.getByLabelText(/作者微操指导/).fill('作者刚写的指导'))
+    await refreshBlueprints()
+    await expect.element(popover.getByLabelText(/作者微操指导/)).toHaveValue('作者刚写的指导')
+  })
+
+  it('删除确认期间蓝图重新加载：确认框仍是作者选的那一章，删的也是它，选中不跳回', async () => {
+    await renderPage(2)
+    await act(async () => page.getByRole('button', { name: /^3\D/ }).click())
+    await act(async () => page.getByRole('button', { name: '第 3 章更多操作' }).click())
+    await act(async () => page.getByRole('group', { name: '危险' }).getByRole('menuitem', { name: '删除此章…' }).click())
+    await expect.element(page.getByRole('dialog', { name: '删除第 3 章蓝图？' })).toBeVisible()
+    await refreshBlueprints()
+    // 确认框是模态的，页面其余部分对辅助技术隐藏，直接读选中的那一行。
+    expect(container?.querySelector('.stage-bp-plan-item[aria-current] .stage-bp-plan-no')?.textContent).toBe('3')
+    const confirm = page.getByRole('dialog', { name: /^删除第 \d+ 章蓝图？$/ })
+    await expect.element(confirm).toHaveAccessibleName('删除第 3 章蓝图？')
+    await act(async () => confirm.getByRole('button', { name: '删除此章' }).click())
+    await vi.waitFor(() => expect(calls('db:blueprint-delete').map(call => call[1])).toEqual([3]))
+  })
+
+  it('下一章变了，写作弹层按新的一章重建，上一章没用掉的指导不带过去', async () => {
+    await renderPage()
+    await act(async () => page.getByRole('button', { name: '本次写作选项' }).click())
+    await act(async () => page.getByRole('dialog', { name: '本次写作选项' }).getByLabelText(/作者微操指导/).fill('只给第 2 章的指导'))
+    nextChapter = 3
+    await refreshBlueprints()
+    await expect.element(page.getByRole('button', { name: '写第 3 章' })).toBeVisible()
+    await act(async () => page.getByRole('button', { name: '本次写作选项' }).click())
+    await expect.element(page.getByRole('dialog', { name: '本次写作选项' }).getByLabelText(/作者微操指导/)).toHaveValue('')
   })
 })

@@ -22,7 +22,8 @@ import GenerateBlueprintsDialog from './GenerateBlueprintsDialog'
 /** 等作者确认的一步：覆盖已有蓝图、生成前的架构警告、清空全部、删除此章、清除误导入正文。 */
 type Ask =
   | { kind: 'overwrite' | 'warning'; message?: string; resolve: (ok: boolean) => void }
-  | { kind: 'clear' | 'delete' | 'legacy' }
+  | { kind: 'delete'; chapterNumber: number }
+  | { kind: 'clear' | 'legacy' }
 
 /**
  * 蓝图阶段：章节规划列表与单章蓝图编辑。主操作是写下一章（拆分按钮带写作弹层）；没有可写的章时主操作是 AI 生成蓝图。
@@ -45,6 +46,7 @@ export default function StageBlueprint({ projectKey, initialChapterNumber, selec
   const next = plan.nextWritableBlueprint
   const count = plan.blueprints.length
   const selected = plan.selected
+  const deleting = ask?.kind === 'delete' ? ask.chapterNumber : null
 
   // 写作请求只由那一章的写作按钮接手；那一章现在写不了时丢掉请求，免得以后突然弹出。
   useEffect(() => {
@@ -81,7 +83,8 @@ export default function StageBlueprint({ projectKey, initialChapterNumber, selec
     }
   }
 
-  if (plan.loading) {
+  // 只有第一次读取（含换作品）才整页换成读取中；之后的重新加载保留页面、打开的弹层与对话框，作者的输入不丢。
+  if (plan.loading && !plan.projectDataReady) {
     return <div className="stage-bp-loading" role="status">{text('正在读取章节蓝图…', 'Loading chapter blueprints…')}</div>
   }
 
@@ -107,7 +110,7 @@ export default function StageBlueprint({ projectKey, initialChapterNumber, selec
   )
 
   return (
-    <div className="stage-bp">
+    <div className="stage-bp" aria-busy={plan.loading}>
       <header className="stage-bp-head">
         <div className="stage-bp-heading">
           <div className="stage-bp-kicker">
@@ -207,7 +210,7 @@ export default function StageBlueprint({ projectKey, initialChapterNumber, selec
               saving={plan.saving}
               onField={plan.updateField}
               onSave={() => void plan.saveOne()}
-              onDelete={() => setAsk({ kind: 'delete' })}
+              onDelete={() => setAsk({ kind: 'delete', chapterNumber: selected.chapterNumber })}
             />
           )}
         </div>
@@ -259,14 +262,14 @@ export default function StageBlueprint({ projectKey, initialChapterNumber, selec
         onConfirm={() => void plan.clearAll()}
       />
       <DangerConfirm
-        open={ask?.kind === 'delete'}
+        open={deleting !== null}
         onOpenChange={open => { if (!open) setAsk(null) }}
-        title={text(`删除第 ${selected?.chapterNumber ?? ''} 章蓝图？`, `Delete the chapter ${selected?.chapterNumber ?? ''} blueprint?`)}
+        title={text(`删除第 ${deleting ?? ''} 章蓝图？`, `Delete the chapter ${deleting ?? ''} blueprint?`)}
         consequence={text('只删除这一章的蓝图，草稿与正文保留。', 'Only this chapter’s blueprint is deleted. Drafts and manuscript text remain.')}
         recoverability={text('删除后无法恢复。', 'This cannot be undone.')}
         confirmLabel={text('删除此章', 'Delete chapter')}
         cancelLabel={text('取消', 'Cancel')}
-        onConfirm={() => void plan.deleteSelected()}
+        onConfirm={() => { if (deleting !== null) void plan.deleteChapter(deleting) }}
       />
       <DangerConfirm
         open={ask?.kind === 'legacy'}
