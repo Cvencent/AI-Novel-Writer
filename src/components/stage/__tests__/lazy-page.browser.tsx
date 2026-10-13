@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { act, type ComponentType, type ReactNode } from 'react'
+import { act, type ComponentType } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 
 import { lazyPage } from '../lazy-page'
@@ -9,13 +9,6 @@ import { lazyPage } from '../lazy-page'
 let root: Root | undefined
 let host: HTMLDivElement | undefined
 
-async function mount(node: ReactNode) {
-  host = document.createElement('div')
-  document.body.append(host)
-  root = createRoot(host)
-  await act(async () => root!.render(node))
-}
-
 afterEach(async () => {
   await act(async () => root?.unmount())
   host?.remove()
@@ -23,17 +16,23 @@ afterEach(async () => {
   host = undefined
 })
 
-it('页面代码第一次载入失败不留未处理的拒绝；再打开时重新载入并显示页面', async () => {
+it('页面代码载入失败时写明没有载入并给出重试；重试成功后显示页面', async () => {
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
   const load = vi.fn<() => Promise<{ default: ComponentType<{ title: string }> }>>()
     .mockRejectedValueOnce(new Error('chunk 404'))
     .mockResolvedValueOnce({ default: ({ title }: { title: string }) => <h1>{title}</h1> })
-  const { Page, preload } = lazyPage(load)
+  const { Page } = lazyPage(load)
 
-  await expect(preload()).resolves.toBeUndefined()
-  await mount(<Page title="设置" />)
-  expect(load).toHaveBeenCalledTimes(2)
-  expect(host!.querySelector('h1')?.textContent).toBe('设置')
+  host = document.createElement('div')
+  document.body.append(host)
+  root = createRoot(host)
+  await act(async () => root!.render(<Page title="设置" />))
+  await expect.poll(() => host!.querySelector('h3')?.textContent).toBe('页面没有载入')
   expect(warn).toHaveBeenCalledWith('[lazyPage] 页面代码载入失败', expect.any(Error))
+
+  const retry = [...host!.querySelectorAll('button')].find(button => button.textContent === '重试')
+  await act(async () => retry!.click())
+  await expect.poll(() => host!.querySelector('h1')?.textContent).toBe('设置')
+  expect(load).toHaveBeenCalledTimes(2)
   warn.mockRestore()
 })
