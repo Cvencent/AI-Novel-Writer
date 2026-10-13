@@ -632,7 +632,7 @@ export const STAGE_SCENARIOS = {
     await stage.spine(page).waitFor({ state: 'detached' })
     assert.equal(await stage.tabList(page).count(), 0)
     await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
-    await page.getByRole('button', { name: 'AI 审稿', exact: true }).waitFor({ state: 'visible' })
+    await page.getByRole('button', { name: /^按 \d+ 项意见修稿$/ }).waitFor({ state: 'visible' })
   }, after: async ({ page }) => {
     await page.keyboard.press('Escape')
     await stage.spine(page).waitFor({ state: 'visible' })

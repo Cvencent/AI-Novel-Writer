@@ -80,10 +80,10 @@ describe('新外壳下 navigate 的落点，调用方与旧外壳相同', () => 
     expect(useStageStore.getState().focus).toBe(true)
   })
 
-  it('写作此章不再打开旧的创作对话框：落到蓝图并选中这一章，请蓝图页弹出写作弹层', () => {
+  it('写作此章不再打开旧的创作对话框，也不落到蓝图：打开这一章，请单章视图的写作按钮弹出写作弹层', () => {
     navigate({ kind: 'chapter', chapterNumber: 3, write: WRITE })
     expect(useLayoutStore.getState().chapterCreationOpen).toBe(false)
-    expect(useEditorStore.getState().tabs).toMatchObject([{ type: 'chapter-card', chapterNumber: 3 }])
+    expect(tabTypes()).not.toContain('chapter-card')
     expect(useStageStore.getState()).toMatchObject({ focus: false, writeRequest: { chapterNumber: 3 } })
   })
 
