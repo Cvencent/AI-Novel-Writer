@@ -7,8 +7,8 @@ import {
   GeneratePlotArchitectureCommand,
   PLOT_OUTLINE_RESUME_ERROR_CODE,
   PlotOutlineResumeAvailableError,
-  synopsisFactsFingerprint,
 } from '../architecture.command'
+import { synopsisFactsFingerprint } from '../../../../shared/plot-outline-checkpoint'
 import { createWorkflowRuntimeDependencies } from './workflow-generation-runtime.fixture'
 import { clearProjectCustomPrompts, getBuiltinPromptTemplate } from '../../../prompt-templates'
 import { composeVisibleContinuation } from '../../../../shared/visible-continuation'

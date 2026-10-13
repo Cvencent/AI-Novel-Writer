@@ -8,7 +8,8 @@ import '../../../../styles/paper-ink/index.css'
 import '../../stage.css'
 import type { ProjectData } from '../../../../shared/ipc-channels'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
-import { synopsisFactsFingerprint } from '../../../../services/workflows/commands/architecture.command'
+import { synopsisFactsFingerprint } from '../../../../shared/plot-outline-checkpoint'
+import { PLOT_OUTLINE_PROTOCOL, renderPlotOutlineSynopsis } from '../../../../shared/plot-outline-contract'
 import { EMPTY_CARD, useCharacterStore } from '../../../../stores/character-store'
 import { useEditorStore } from '../../../../stores/editor-store'
 import { useLocaleStore } from '../../../../stores/locale-store'
@@ -55,12 +56,17 @@ function filledSpine(filled: readonly string[]) {
   useStageStore.setState({ work: { session, architecture, blueprints: [] } })
 }
 
-/** 已有第 1～16 章大纲（全书 24 章），分批检查点可用。 */
+/** 按章写好的大纲正文，与主进程逐章生成的格式相同。 */
+const outlineBody = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, index) => from + index)
+  .map(n => `## 第${n}章：第${n}盏灯\n林舟在第${n}站认出一位失踪者的座位。`).join('\n\n')
+const OUTLINE_SOURCE = { totalChapters: 24, writingLanguage: 'zh-CN' as const }
+
+/** 已有第 1–16 章大纲（全书 24 章），分批检查点可用。 */
 function seedPartialOutline() {
-  const body = `Chapters 1-16: ${'The conductor keeps the lamps lit and every stop costs a name. '.repeat(4)}`.trim()
-  core = { ...core, writingLanguage: 'en-US', synopsis: `# Plot Outline\n\n${body}\n\n> This outline covers chapters 1-16 of 24; the remaining chapters will be generated in later batches.` }
+  const body = outlineBody(1, 16)
+  core = { ...core, synopsis: renderPlotOutlineSynopsis(body, 16, OUTLINE_SOURCE) }
   partial = {
-    synopsis_result: body, synopsis_incomplete: false, synopsis_covered_to: 16, synopsis_range: { from: 1, to: 16 },
+    synopsis_result: body, synopsis_incomplete: false, synopsis_covered_to: 16, synopsis_range: { from: 11, to: 16 },
     synopsis_facts_fingerprint: 'stored-inputs', synopsis_db_hash: synopsisFactsFingerprint([core.synopsis as string]),
   }
   filledSpine(['premise', 'synopsis'])
@@ -89,6 +95,7 @@ beforeEach(() => {
     if (channel === 'fs:read-json') return partial ? { success: true, data: partial } : { success: false, error: 'not found' }
     if (channel === 'db:character-roster-read') return { schemaVersion: 1, revision: 1, migrationState: 'ready', status: rosterStatus, entries: [], renderedMarkdown: '林舟、沈砚', projectionHash: 'p', factHash: 'f' }
     if (channel === 'generation:list') return []
+    if (channel === 'generation:read-context' || channel === 'generation:read-visible-composition') return null
     if (channel === 'config:get') return { outlineTargetUnits: 300 }
     if (channel === 'config:set') return { success: true }
     if (channel === 'db:project-core-update') {
@@ -211,7 +218,7 @@ describe('架构阶段', () => {
     await render()
     const outline = host!.querySelector('[data-section="synopsis"]')!
     expect(outline.querySelector('.arch-badge')?.textContent).toBe('部分完成 · 16 / 24 章')
-    expect(outline.textContent).toContain('第 17～24 章还没有大纲')
+    expect(outline.textContent).toContain('第 17–24 章还没有大纲')
     expect(outline.textContent).toContain('续写只追加缺少的章节')
 
     await click('续写第 17 章起')
@@ -243,32 +250,110 @@ describe('架构阶段', () => {
     await vi.waitFor(() => expect(launchedSteps()).toEqual([['synopsis']]))
   })
 
-  it('大纲范围的标记与后台规则一致：第 1 章起是覆盖，紧接已有章是续写，其余起始章在对话框里就拦下', async () => {
+  const submit = () => button(/开始生成 \d 项/) as HTMLButtonElement
+  const issue = () => document.querySelector('.arch-range-issue')?.textContent ?? null
+  const effect = () => document.querySelector('.arch-range-effect')?.textContent ?? null
+  const inputValue = (label: string) => document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)?.value
+  async function range(from: number, to: number) {
+    await typeInto('本次生成范围的起始章', String(from))
+    await typeInto('本次生成范围的结束章', String(to))
+  }
+  async function openOutlineRegenerate() {
+    await click('「情节大纲」的更多操作')
+    await click('AI 重新生成此节…')
+  }
+
+  it('大纲范围按主进程开跑时的同一判定：起始章不超过已有章节是覆盖该范围、其余保留，紧接已有章节是续写，只有跳章无效', async () => {
     seedPartialOutline()
     await render()
-    await click('续写第 17 章起')
-    const submit = () => button(/开始生成 \d 项/) as HTMLButtonElement
+    await openOutlineRegenerate()
+    expect(inputValue('本次生成范围的起始章')).toBe('17')
 
-    await typeInto('本次生成范围的起始章', '1')
-    await typeInto('本次生成范围的结束章', '20')
-    expect(mark('synopsis')).toBe('将覆盖')
+    await range(1, 5)
+    expect(mark('synopsis')).toBe('将覆盖第 1–5 章')
+    expect(effect()).toBe('第 1–5 章按本次结果替换，第 6–16 章原样保留。')
+    expect(issue()).toBeNull()
     expect(submit().disabled).toBe(false)
 
-    await typeInto('本次生成范围的结束章', '10')
-    expect(document.querySelector('.arch-range-issue')?.textContent).toContain('第 11–16 章')
-    expect(submit().disabled).toBe(true)
+    await range(1, 10)
+    expect(mark('synopsis')).toBe('将覆盖第 1–10 章')
+    expect(submit().disabled).toBe(false)
 
-    await typeInto('本次生成范围的起始章', '17')
-    await typeInto('本次生成范围的结束章', '24')
+    await range(10, 14)
+    expect(mark('synopsis')).toBe('将覆盖第 10–14 章')
+    expect(effect()).toBe('第 10–14 章按本次结果替换，第 1–9、15–16 章原样保留。')
+    expect(submit().disabled).toBe(false)
+
+    await range(17, 24)
     expect(mark('synopsis')).toBe('续写')
-    expect(document.querySelector('.arch-range-issue')).toBeNull()
+    expect(effect()).toBe('接在第 16 章之后写第 17–24 章，已有章节不动。')
+    expect(submit().disabled).toBe(false)
 
-    await typeInto('本次生成范围的起始章', '10')
+    await range(20, 24)
     expect(mark('synopsis')).toBe('范围无效')
-    expect(document.querySelector('.arch-range-issue')?.textContent).toContain('从第 17 章续写')
+    expect(issue()).toContain('请从第 17 章续写')
     expect(submit().disabled).toBe(true)
     await act(async () => submit().click())
     expect(started).not.toHaveBeenCalled()
+
+    await range(1, 5)
+    await act(async () => submit().click())
+    await vi.waitFor(() => expect(launchedSteps()[0]).toContain('synopsis'))
+  })
+
+  it('大纲分批写满全书后仍可重写其中一段', async () => {
+    const body = outlineBody(1, 24)
+    core = { ...core, synopsis: renderPlotOutlineSynopsis(body, 24, OUTLINE_SOURCE) }
+    partial = {
+      synopsis_result: body, synopsis_incomplete: false, synopsis_covered_to: 24, synopsis_range: { from: 21, to: 24 },
+      synopsis_facts_fingerprint: 'stored-inputs', synopsis_db_hash: synopsisFactsFingerprint([core.synopsis as string]),
+    }
+    await render()
+    expect(host!.querySelector('[data-section="synopsis"] .arch-badge')?.textContent).toBe('已确认')
+    await openOutlineRegenerate()
+    expect(inputValue('本次生成范围的起始章')).toBe('1')
+    await range(1, 5)
+    expect(mark('synopsis')).toBe('将覆盖第 1–5 章')
+    expect(effect()).toBe('第 1–5 章按本次结果替换，第 6–24 章原样保留。')
+    expect(submit().disabled).toBe(false)
+  })
+
+  it('有一批被打断时，范围仍按数据库里的正式大纲判定，不看检查点的进度', async () => {
+    seedPartialOutline()
+    // 重写第 1–5 章的那一批被打断：检查点记的进度是开跑前的 0，正式大纲仍是第 1–16 章。
+    partial = {
+      synopsis_protocol: PLOT_OUTLINE_PROTOCOL, synopsis_incomplete: true, synopsis_covered_to: 0, synopsis_range: { from: 1, to: 5 },
+      synopsis_generation_handle: { projectId: session.projectId, epoch: session.leaseId, rootActionId: 'root', runId: 'run' },
+    }
+    await render()
+    expect(host!.querySelector('[data-section="synopsis"] .arch-badge')?.textContent).toBe('不完整')
+    await openOutlineRegenerate()
+    expect(inputValue('本次生成范围的起始章')).toBe('17')
+    await range(1, 5)
+    expect(mark('synopsis')).toBe('将覆盖第 1–5 章')
+    expect(submit().disabled).toBe(false)
+    await range(17, 24)
+    expect(mark('synopsis')).toBe('续写')
+    expect(submit().disabled).toBe(false)
+    await range(18, 24)
+    expect(mark('synopsis')).toBe('范围无效')
+    expect(submit().disabled).toBe(true)
+  })
+
+  it('只差分批没写完的大纲时，主按钮直接打开续批并能提交', async () => {
+    seedPartialOutline()
+    core = { ...core, worldbuilding: '世界观。'.repeat(30) }
+    rosterStatus = 'ready'
+    await render()
+    expect(host!.querySelector('.arch-eyebrow')?.textContent).toContain('3 / 4 已确认')
+    await click('继续生成架构')
+    expect(['premise', 'characters', 'worldbuilding', 'synopsis'].map(stepChecked)).toEqual([false, false, false, true])
+    expect(inputValue('本次生成范围的起始章')).toBe('17')
+    expect(inputValue('本次生成范围的结束章')).toBe('21')
+    expect(document.querySelector('[data-step="synopsis"] .arch-step-status')?.textContent).toBe('未完成')
+    expect(mark('synopsis')).toBe('续写')
+    await act(async () => submit().click())
+    await vi.waitFor(() => expect(launchedSteps()).toEqual([['synopsis']]))
   })
 
   it('生成架构对话框按新样式标出已确认的节是覆盖还是保留', async () => {

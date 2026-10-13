@@ -8,6 +8,10 @@ import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
 import ArchitectureConfirmDialog from '../ArchitectureConfirmDialog'
 import DirectoryConfigDialog from '../DirectoryConfigDialog'
+import { renderPlotOutlineSynopsis } from '../../../shared/plot-outline-contract'
+
+/** 数据库里还没有大纲。 */
+const NO_OUTLINE = { synopsis: '', totalChapters: 100, writingLanguage: 'zh-CN' as const }
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -220,6 +224,7 @@ describe('workflow launch dialogs', () => {
         isOpen
         onClose={onClose}
         archStatus={{ premise: false, characters: false, worldbuilding: false, synopsis: false }}
+        synopsisSource={NO_OUTLINE}
         initialSelectedSteps={['premise']}
         onConfirm={vi.fn().mockRejectedValue(new Error('架构启动被领域门禁拒绝'))}
       />,
@@ -245,6 +250,7 @@ describe('workflow launch dialogs', () => {
         isOpen
         onClose={vi.fn()}
         archStatus={{ premise: true, characters: true, worldbuilding: true, synopsis: false }}
+        synopsisSource={NO_OUTLINE}
         initialSelectedSteps={['synopsis']}
         onConfirm={onConfirm}
       />,
@@ -276,9 +282,9 @@ describe('workflow launch dialogs', () => {
         isOpen
         onClose={vi.fn()}
         archStatus={{ premise: true, characters: true, worldbuilding: true, synopsis: true }}
+        synopsisSource={{ ...NO_OUTLINE, synopsis: renderPlotOutlineSynopsis(Array.from({ length: 20 }, (_, index) => `## 第${index + 1}章：站${index + 1}\n列车停靠第${index + 1}站。`).join('\n\n'), 20, NO_OUTLINE) }}
         initialSelectedSteps={['synopsis']}
         initialSynopsisRange={{ from: 21, to: 40 }}
-        synopsisProgress={{ coveredTo: 20, interrupted: false }}
         onConfirm={onConfirm}
       />,
     ))
@@ -295,6 +301,40 @@ describe('workflow launch dialogs', () => {
     ))
   })
 
+  it('marks outline ranges by the main-process rule and disables submit only for a range it would reject', async () => {
+    useProjectStore.setState({
+      currentProject: { ...project, novelConfig: { ...project.novelConfig, totalChapters: 24 } } as never,
+    })
+    const onConfirm = vi.fn().mockResolvedValue(undefined)
+    const source = { synopsis: '', totalChapters: 24, writingLanguage: 'zh-CN' as const }
+    source.synopsis = renderPlotOutlineSynopsis(Array.from({ length: 16 }, (_, index) => `## 第${index + 1}章：站${index + 1}\n列车停靠第${index + 1}站。`).join('\n\n'), 16, source)
+    await act(async () => root.render(
+      <ArchitectureConfirmDialog
+        isOpen
+        onClose={vi.fn()}
+        archStatus={{ premise: true, characters: true, worldbuilding: true, synopsis: true }}
+        confirmed={{ premise: true, characters: true, worldbuilding: true, synopsis: false }}
+        synopsisSource={source}
+        onConfirm={onConfirm}
+      />,
+    ))
+    const from = page.getByRole('spinbutton', { name: '本次生成范围的起始章' })
+    const to = page.getByRole('spinbutton', { name: '本次生成范围的结束章' })
+    const submit = page.getByRole('button', { name: /确认生成/ })
+    await expect.element(from).toHaveValue(17)
+    await expect.element(page.getByText('续写', { exact: true })).toBeVisible()
+
+    await act(async () => { await from.fill('20'); await to.fill('24') })
+    await expect.element(page.getByRole('alert')).toHaveTextContent('请从第 17 章续写')
+    await expect.element(submit).toBeDisabled()
+
+    await act(async () => { await from.fill('1'); await to.fill('5') })
+    await expect.element(page.getByText('将覆盖第 1–5 章')).toBeVisible()
+    await expect.element(page.getByText('第 1–5 章按本次结果替换，第 6–16 章原样保留。')).toBeVisible()
+    await act(async () => submit.click())
+    await vi.waitFor(() => expect(onConfirm).toHaveBeenCalledWith(['synopsis'], {}, { from: 1, to: 5 }, 600))
+  })
+
   it.each(['', '0', '-1', '1.5'])('rejects invalid synopsis range value %s without falling back to the whole book', async invalidFrom => {
     const onConfirm = vi.fn().mockResolvedValue(undefined)
     await act(async () => root.render(
@@ -302,6 +342,7 @@ describe('workflow launch dialogs', () => {
         isOpen
         onClose={vi.fn()}
         archStatus={{ premise: true, characters: true, worldbuilding: true, synopsis: false }}
+        synopsisSource={NO_OUTLINE}
         initialSelectedSteps={['synopsis']}
         onConfirm={onConfirm}
       />,
@@ -322,13 +363,14 @@ describe('workflow launch dialogs', () => {
         isOpen={isOpen}
         onClose={onClose}
         archStatus={{ premise: false, characters: false, worldbuilding: false, synopsis: false }}
+        synopsisSource={NO_OUTLINE}
         onConfirm={onConfirm}
       />,
     ))
 
     await renderDialog(true)
     const charactersRow = Array.from(document.querySelectorAll('label'))
-      .find(label => label.textContent?.includes('角色图谱'))
+      .find(label => label.textContent?.includes('角色名单'))
     expect(charactersRow).toBeDefined()
     await act(async () => charactersRow?.click())
     await expect.element(page.getByRole('button', { name: '确认生成（3/4）' })).toBeVisible()
@@ -485,7 +527,7 @@ it.each(['outline', 'blueprint'] as const)('persists the %s target independently
   useProjectStore.setState({ currentProject: { ...project, novelConfig: { ...project.novelConfig, totalChapters: 20 } } as never })
   const onConfirm = vi.fn(async () => {})
   const renderDialog = async (isOpen: boolean) => act(async () => root.render(kind === 'outline'
-    ? <ArchitectureConfirmDialog isOpen={isOpen} onClose={() => {}} archStatus={{ premise: true, characters: true, worldbuilding: true }} initialSelectedSteps={['synopsis']} onConfirm={onConfirm} />
+    ? <ArchitectureConfirmDialog isOpen={isOpen} onClose={() => {}} synopsisSource={NO_OUTLINE} archStatus={{ premise: true, characters: true, worldbuilding: true }} initialSelectedSteps={['synopsis']} onConfirm={onConfirm} />
     : <DirectoryConfigDialog isOpen={isOpen} onClose={() => {}} existingCount={0} onConfirm={onConfirm} />))
   await renderDialog(true)
   const target = page.getByRole('spinbutton', { name: kind === 'outline' ? '每章大纲目标字数' : '每章蓝图目标字数' })
@@ -510,7 +552,7 @@ it.each(['outline', 'blueprint'] as const)('rejects eleven chapters and target 1
   useProjectStore.setState({ currentProject: { ...project, novelConfig: { ...project.novelConfig, totalChapters: 20 } } as never })
   const onConfirm = vi.fn(async () => {})
   await act(async () => root.render(kind === 'outline'
-    ? <ArchitectureConfirmDialog isOpen onClose={() => {}} archStatus={{}} initialSelectedSteps={['synopsis']} onConfirm={onConfirm} />
+    ? <ArchitectureConfirmDialog isOpen onClose={() => {}} synopsisSource={NO_OUTLINE} archStatus={{}} initialSelectedSteps={['synopsis']} onConfirm={onConfirm} />
     : <DirectoryConfigDialog isOpen onClose={() => {}} existingCount={0} onConfirm={onConfirm} />))
   const count = page.getByRole('spinbutton', { name: kind === 'outline' ? '本次生成范围的结束章' : '本次蓝图章数' })
   const submit = page.getByRole('button', { name: kind === 'outline' ? /确认生成/ : '开始生成' })
@@ -535,7 +577,7 @@ it.each(['outline', 'blueprint'] as const)('retains %s input and does not start 
   const onConfirm = vi.fn(async () => {})
   const onClose = vi.fn()
   await act(async () => root.render(kind === 'outline'
-    ? <ArchitectureConfirmDialog isOpen onClose={onClose} archStatus={{}} initialSelectedSteps={['synopsis']} onConfirm={onConfirm} />
+    ? <ArchitectureConfirmDialog isOpen onClose={onClose} synopsisSource={NO_OUTLINE} archStatus={{}} initialSelectedSteps={['synopsis']} onConfirm={onConfirm} />
     : <DirectoryConfigDialog isOpen onClose={onClose} existingCount={0} onConfirm={onConfirm} />))
   const target = page.getByRole('spinbutton', { name: kind === 'outline' ? '每章大纲目标字数' : '每章蓝图目标字数' })
   await act(async () => { await target.fill('900'); await page.getByRole('button', { name: kind === 'outline' ? /确认生成/ : '开始生成' }).click() })

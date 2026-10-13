@@ -62,37 +62,40 @@ function CandidateNotice({ sectionKey, overview }: { sectionKey: 'worldbuilding'
   )
 }
 
-/** 大纲的状态提示：被打断、检查点失效，或分批生成还有没写到的章。 */
+/** 大纲的状态提示：被打断、分批生成还有没写到的章，或正文带分批标记而检查点已对不上。 */
 function OutlineNotice({ overview, onGenerate }: { overview: ArchitectureOverview; onGenerate: () => void }) {
   const text = useLocaleStore(s => s.text)
-  const { coveredTo, totalChapters, incomplete, recoveryFailed, busy, candidate } = overview.synopsis
+  const { progress, recoveryFailed, busy, candidate, handle } = overview.synopsis
   if (!overview.archStatus.synopsis || candidate) return null
-  if (recoveryFailed) {
-    return (
-      <Notice tone="warn" title={text('大纲不完整，检查点已无法恢复。', 'The outline is incomplete and its checkpoint cannot be recovered.')}
-        actions={<Button variant="secondary" size="sm" onClick={onGenerate}><Sparkles size={14} aria-hidden />{text('重新生成大纲', 'Regenerate outline')}</Button>} />
-    )
-  }
-  if (incomplete) {
+  if (progress.kind === 'interrupted') {
     return (
       <Notice tone="warn" title={text('上次生成被输出长度打断，已完成的部分已保存。', 'The last run hit the output limit. The finished part is saved.')}
         actions={(
-          <Button variant="secondary" size="sm" disabled={busy || overview.loading} onClick={() => { void overview.handleResumeSynopsis() }}>
+          <Button variant="secondary" size="sm" disabled={busy || !handle || overview.loading} onClick={() => { void overview.handleResumeSynopsis() }}>
             <RotateCw size={14} aria-hidden />{busy ? text('续写中…', 'Resuming…') : text('断点续写大纲', 'Continue outline')}
           </Button>
         )} />
     )
   }
-  if (coveredTo > 0 && coveredTo < totalChapters) {
+  if (progress.kind === 'partial') {
+    const { coveredTo, total } = progress
     return (
       <Notice tone="warn"
-        title={text(`上次生成到第 ${coveredTo} 章停下了，第 ${coveredTo + 1}～${totalChapters} 章还没有大纲。`, `Generation stopped at chapter ${coveredTo}; chapters ${coveredTo + 1}–${totalChapters} have no outline yet.`)}
+        title={text(`上次生成到第 ${coveredTo} 章停下了，第 ${coveredTo + 1}–${total} 章还没有大纲。`, `Generation stopped at chapter ${coveredTo}; chapters ${coveredTo + 1}–${total} have no outline yet.`)}
         actions={(
           <Button variant="secondary" size="sm" disabled={busy || overview.loading} onClick={() => { void overview.handleContinueOutlineBatch() }}>
             <Sparkles size={14} aria-hidden />{text(`续写第 ${coveredTo + 1} 章起`, `Continue from ch. ${coveredTo + 1}`)}
           </Button>
         )}>
         {text(`已生成的 ${coveredTo} 章保留不动，续写只追加缺少的章节。`, `The first ${coveredTo} chapters stay as they are; only missing chapters are added.`)}
+      </Notice>
+    )
+  }
+  if (recoveryFailed) {
+    return (
+      <Notice tone="warn" title={text('大纲正文里还留着分批生成的标记，但分批记录已对不上（可能手动改过）。', 'The outline still carries a batch note, but its batch record no longer matches (it may have been edited).')}
+        actions={<Button variant="secondary" size="sm" onClick={onGenerate}><Sparkles size={14} aria-hidden />{text('选章节范围生成…', 'Choose chapters…')}</Button>}>
+        {text('续写按钮用不了；在生成对话框里选起止章，会标出哪些章被替换、哪些原样保留。', 'Continue is unavailable. Pick the chapters in the dialog; it shows which chapters are replaced and which stay.')}
       </Notice>
     )
   }

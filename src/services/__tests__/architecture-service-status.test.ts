@@ -1,26 +1,73 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const invoke = vi.hoisted(() => vi.fn())
 vi.mock('../ipc-client', () => ({ ipc: { invokeWithProjectSession: invoke } }))
 
-import { checkArchStatus } from '../architecture-service'
+import { checkArchConfirmed, checkArchStatus } from '../architecture-service'
+import { PLOT_OUTLINE_PROTOCOL, renderPlotOutlineSynopsis } from '../../shared/plot-outline-contract'
+import { synopsisFactsFingerprint } from '../../shared/plot-outline-checkpoint'
 
 const session = { projectId: '灯塔', projectPath: 'C:/novels/lighthouse', leaseId: '本次打开' }
 const LONG = '内容。'.repeat(30)
-
-function respond(synopsis: string) {
-  invoke.mockImplementation(async (_session: unknown, channel: string) => channel === 'db:project-core-get'
-    ? { premise: LONG, worldbuilding: LONG, synopsis }
-    : { status: 'ready' })
+const body = Array.from({ length: 16 }, (_, index) => `## 第${index + 1}章：灯${index + 1}\n守灯人记下第${index + 1}夜的来船。`).join('\n\n')
+const partialOutline = renderPlotOutlineSynopsis(body, 16, { totalChapters: 24, writingLanguage: 'zh-CN' })
+const batchCheckpoint = {
+  synopsis_result: body, synopsis_incomplete: false, synopsis_covered_to: 16, synopsis_range: { from: 11, to: 16 },
+  synopsis_db_hash: synopsisFactsFingerprint([partialOutline]),
 }
 
-describe('流程脊的架构完成数', () => {
-  it('分批只写到一半或被打断的大纲不算完成，写完的算', async () => {
-    respond(`# 情节大纲\n\n${LONG}\n\n> 本大纲已覆盖至第 16 章（全书 24 章），其余章节将在后续批次继续生成。`)
-    expect(await checkArchStatus(session)).toEqual({ premise: true, characters: true, worldbuilding: true, synopsis: false })
-    respond(`# Plot Outline\n\n${LONG}\n\n> This outline covers chapters 1-16 of 24; the remaining chapters will be generated in later batches.`)
-    expect((await checkArchStatus(session)).synopsis).toBe(false)
-    respond(`# 情节大纲\n\n${LONG}`)
-    expect((await checkArchStatus(session)).synopsis).toBe(true)
+let synopsis: string
+let partial: Record<string, unknown> | null
+
+beforeEach(() => {
+  synopsis = LONG
+  partial = null
+  invoke.mockReset()
+  invoke.mockImplementation(async (_session: unknown, channel: string) => {
+    if (channel === 'db:project-core-get') return { premise: LONG, worldbuilding: LONG, synopsis, totalChapters: 24, writingLanguage: 'zh-CN' }
+    if (channel === 'fs:read-json') return partial ? { success: true, data: partial } : { success: false, error: 'not found' }
+    return { status: 'ready' }
+  })
+})
+
+describe('旧外壳侧栏的架构状态：有内容就算已生成', () => {
+  it('分批写到第 16 章的大纲有内容，算已生成（侧栏据此显示勾与清空入口）', async () => {
+    synopsis = partialOutline
+    partial = batchCheckpoint
+    expect(await checkArchStatus(session)).toEqual({ premise: true, characters: true, worldbuilding: true, synopsis: true })
+    expect(invoke.mock.calls.some(([, channel]) => channel === 'fs:read-json')).toBe(false)
+  })
+})
+
+describe('流程脊的架构四节是否已确认：与架构页徽标同一判定', () => {
+  it('分批检查点写到第 16 章（全书 24 章）：大纲未确认', async () => {
+    synopsis = partialOutline
+    partial = batchCheckpoint
+    expect(await checkArchConfirmed(session)).toEqual({ premise: true, characters: true, worldbuilding: true, synopsis: false })
+  })
+
+  it('有一批被打断（检查点 incomplete 且带运行记录）：大纲未确认', async () => {
+    synopsis = partialOutline
+    partial = { synopsis_protocol: PLOT_OUTLINE_PROTOCOL, synopsis_incomplete: true, synopsis_generation_handle: { runId: 'r' }, synopsis_covered_to: 0, synopsis_range: { from: 1, to: 5 } }
+    expect((await checkArchConfirmed(session)).synopsis).toBe(false)
+  })
+
+  it('分批写满全书或没有分批检查点：大纲已确认', async () => {
+    synopsis = LONG
+    expect((await checkArchConfirmed(session)).synopsis).toBe(true)
+    synopsis = renderPlotOutlineSynopsis(body, 24, { totalChapters: 24, writingLanguage: 'zh-CN' })
+    partial = { ...batchCheckpoint, synopsis_covered_to: 24, synopsis_range: { from: 21, to: 24 }, synopsis_db_hash: synopsisFactsFingerprint([synopsis]) }
+    expect((await checkArchConfirmed(session)).synopsis).toBe(true)
+  })
+
+  it('正文里留着分批标记、但检查点已对不上（作者手改过）：不读标记文字，按已确认算', async () => {
+    synopsis = `${partialOutline}\n\n作者补的一句。`
+    partial = batchCheckpoint
+    expect((await checkArchConfirmed(session)).synopsis).toBe(true)
+  })
+
+  it('没有内容：未确认', async () => {
+    synopsis = ''
+    expect((await checkArchConfirmed(session)).synopsis).toBe(false)
   })
 })

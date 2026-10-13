@@ -1,22 +1,14 @@
 import { ChevronDown, ChevronRight, Sparkles } from 'lucide-react'
-import { ARCH_STEP_NAMES, type ArchStepKey } from '../../../services/architecture-step-selection'
+import { ARCH_STEP_NAMES } from '../../../services/architecture-step-selection'
 import { resolveWritingLanguage } from '../../../shared/writing-language'
 import { PLANNING_ACTION_CHAPTER_LIMIT, PLANNING_TARGET_UNITS_LIMIT } from '../../../shared/plot-outline-contract'
 import { useLocaleStore } from '../../../stores/locale-store'
-import { useArchitectureConfirmForm, type ArchStepMark, type ArchitectureConfirmFormOptions } from '../../dialogs/use-architecture-confirm-form'
+import { useArchitectureConfirmForm, type ArchitectureConfirmFormOptions } from '../../dialogs/use-architecture-confirm-form'
 import { Button } from '../../ui/Button'
 import { Check } from '../../ui/Check'
 import { Notice } from '../../ui/Notice'
 import { InkDialog } from '../InkDialog'
 import { SECTION_ORDER } from './architecture-sections'
-
-const MARK_TEXT: Record<ArchStepMark, [string, string]> = {
-  overwrite: ['将覆盖', 'Overwrite'],
-  keep: ['保留', 'Keep'],
-  new: ['新生成', 'New'],
-  continue: ['续写', 'Continue'],
-  invalid: ['范围无效', 'Invalid range'],
-}
 
 /** 生成架构的确认对话框。表单与校验沿用 ArchitectureConfirmDialog 的 useArchitectureConfirmForm，这里只换成纸墨样式。 */
 export default function ArchitectureGenerateDialog(props: ArchitectureConfirmFormOptions) {
@@ -27,8 +19,6 @@ export default function ArchitectureGenerateDialog(props: ArchitectureConfirmFor
   const allChecked = selectedSteps.length === SECTION_ORDER.length
   const unit = resolveWritingLanguage(config.writingLanguage) === 'zh-CN' ? text('字', 'characters') : text('词', 'words')
   const overwritingCast = form.stepMark('characters') === 'overwrite'
-
-  const status = (key: ArchStepKey) => props.archStatus[key] ? text('已确认', 'Confirmed') : text('待生成', 'Not started')
 
   return (
     <InkDialog
@@ -65,9 +55,9 @@ export default function ArchitectureGenerateDialog(props: ArchitectureConfirmFor
                   <Check
                     checked={checked[key]}
                     onChange={() => form.toggleStep(key)}
-                    label={<>{text(...ARCH_STEP_NAMES[key])}<span className="arch-step-status">{status(key)}</span></>}
+                    label={<>{text(...ARCH_STEP_NAMES[key])}<span className="arch-step-status">{form.statusLabel(key)}</span></>}
                   />
-                  <span className="arch-mark" data-mark={mark}>{text(...MARK_TEXT[mark])}</span>
+                  <span className="arch-mark" data-mark={mark}>{form.markLabel(key)}</span>
                 </div>
                 {key === 'synopsis' && checked.synopsis && totalChapters > 0 && (
                   <div className="arch-range">
@@ -93,6 +83,7 @@ export default function ArchitectureGenerateDialog(props: ArchitectureConfirmFor
                     <p className="arch-range-note">
                       {text(`全书 ${totalChapters} 章，每次最多 ${PLANNING_ACTION_CHAPTER_LIMIT} 章；目标字数只作参考。`, `${totalChapters} chapters in all, up to ${PLANNING_ACTION_CHAPTER_LIMIT} per run; the target is a guide.`)}
                     </p>
+                    {form.synopsisEffectNote && <p className="arch-range-effect">{form.synopsisEffectNote}</p>}
                     {form.synopsisRangeIssue && <p className="arch-range-issue" role="alert">{form.synopsisRangeIssue}</p>}
                   </div>
                 )}

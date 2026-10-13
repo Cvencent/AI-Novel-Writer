@@ -20,10 +20,12 @@ export default function WorldBuildingEditor({ projectKey }: { projectKey: string
     copyCandidate, handleContinueOutlineBatch, openGenerateDialog, openRecoveryDraft,
   } = overview
   const {
-    incomplete: synopsisIncomplete, recoveryFailed: synopsisRecoveryFailed, coveredTo: synopsisCoveredTo,
-    totalChapters: synopsisTotalChapters, busy: synopsisBusy, candidate: synopsisCandidate,
+    progress: synopsisProgress, recoveryFailed: synopsisRecoveryFailed, busy: synopsisBusy, candidate: synopsisCandidate,
     candidateShown: showSynopsisCandidate, setCandidateShown: setShowSynopsisCandidate, handle: synopsisHandle,
   } = overview.synopsis
+  const synopsisIncomplete = synopsisProgress.kind === 'interrupted' && Boolean(synopsisHandle)
+  const synopsisCoveredTo = synopsisProgress.kind === 'partial' ? synopsisProgress.coveredTo : 0
+  const synopsisTotalChapters = synopsisProgress.kind === 'partial' ? synopsisProgress.total : 0
   const {
     busy: worldBuildingBusy, candidate: worldBuildingCandidate, candidateShown: showWorldBuildingCandidate,
     setCandidateShown: setShowWorldBuildingCandidate, handle: worldHandle,

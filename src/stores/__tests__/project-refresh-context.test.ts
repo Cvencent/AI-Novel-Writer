@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ProjectData } from '../../shared/ipc-channels'
-import { checkArchStatusWithWordCount, getBlueprintCount } from '../../services/architecture-service'
+import { checkArchStatus, getBlueprintCount } from '../../services/architecture-service'
 import { useDraftStore } from '../draft-store'
 import { useEditorStore } from '../editor-store'
 import { useLayoutStore } from '../layout-store'
@@ -472,9 +472,7 @@ describe('project refresh context', () => {
       leaseId: projectA.sessionLease!,
       projectPath: projectA.path,
     }
-    await expect(checkArchStatusWithWordCount(projectSession)).resolves.toMatchObject({
-      status: { premise: true },
-    })
+    await expect(checkArchStatus(projectSession)).resolves.toMatchObject({ premise: true })
     await expect(getBlueprintCount(projectSession)).resolves.toBe(1)
     expect(invoke).toHaveBeenCalledWith('db:project-core-get', project('A').path)
     expect(invoke).toHaveBeenCalledWith('db:character-roster-read', project('A').path)

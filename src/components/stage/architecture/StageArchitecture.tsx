@@ -43,14 +43,16 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
   const text = useLocaleStore(s => s.text)
   const overview = useArchitectureOverview(projectKey)
   const badges = Object.fromEntries(SECTION_ORDER.map(key => [key, sectionBadge(key, overview)])) as Record<ArchStepKey, ReturnType<typeof sectionBadge>>
-  /** 页头计数与主按钮只数徽标为「已确认」的节：部分完成、不完整、待处理都不算。 */
-  const filled = overview.loading ? null : SECTION_ORDER.filter(key => badges[key].kind === 'ready').length
+  /** 页头计数与主按钮只数已确认的节（徽标「已确认」）：部分完成、不完整、待处理都不算。 */
+  const filled = overview.loading ? null : SECTION_ORDER.filter(key => overview.confirmed[key]).length
   const cast = useCastSummary(projectKey)
   /** 清空确认打开时冻结的会话：确认时作品已换就什么也不写。 */
   const [clearing, setClearing] = useState<{ key: ArchStepKey; session: ProjectSessionContext } | null>(null)
 
   const total = SECTION_ORDER.length
   const action = mainAction(filled ?? 0, total)
+  /** 只差分批没写完的大纲时，主按钮直接续写下一批。 */
+  const continueOutline = filled === total - 1 && overview.synopsis.progress.kind === 'partial'
 
   const reload = () => {
     void overview.loadStatus()
@@ -118,7 +120,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
                   <Button variant="secondary" disabled title={text('四节都确认后才能进入蓝图', 'Confirm all four sections first')}>
                     {text('下一步：章节蓝图', 'Next: chapter blueprint')}<ArrowRight size={14} aria-hidden />
                   </Button>
-                  <Button variant="primary" disabled={filled === null} onClick={() => overview.openGenerateDialog()}>
+                  <Button variant="primary" disabled={filled === null} onClick={() => continueOutline ? void overview.handleContinueOutlineBatch() : overview.openGenerateDialog()}>
                     <Sparkles size={14} aria-hidden />
                     {action === 'generate' ? text('AI 生成架构', 'Generate architecture') : text('继续生成架构', 'Continue architecture')}
                   </Button>

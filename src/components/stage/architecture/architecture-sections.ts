@@ -8,7 +8,7 @@ export const SECTION_ORDER: readonly ArchStepKey[] = ['premise', 'characters', '
 export const SECTION_NUMERALS: Record<ArchStepKey, string> = { premise: 'i', characters: 'ii', worldbuilding: 'iii', synopsis: 'iv' }
 
 /**
- * 一节的状态徽标。「已确认」沿用流程脊的判定（这一节已有内容，见 stage-progress 的 ARCHITECTURE_SECTIONS）；
+ * 一节的状态徽标。「已确认」即 overview.confirmed（流程脊用同一判定，见 checkArchConfirmed）；
  * 其余几种是这节虽有或没有内容、但需要作者处理的情况。
  */
 export type SectionBadge =
@@ -16,7 +16,7 @@ export type SectionBadge =
   | { kind: 'ready' }
   /** 大纲分批生成，已覆盖到第 coveredTo 章。 */
   | { kind: 'partial'; coveredTo: number; total: number }
-  /** 大纲被输出长度打断，或检查点已不可恢复。 */
+  /** 大纲有一批被打断或正在生成。 */
   | { kind: 'incomplete' }
   /** 还没有正式内容，只有一份未完成候选。 */
   | { kind: 'candidate' }
@@ -24,21 +24,19 @@ export type SectionBadge =
   | { kind: 'attention'; label: string }
 
 export function sectionBadge(key: ArchStepKey, overview: ArchitectureOverview): SectionBadge {
-  const filled = Boolean(overview.archStatus[key])
+  if (overview.confirmed[key]) return { kind: 'ready' }
   if (key === 'characters') {
     const presentation = overview.roster.presentation
-    if (presentation && presentation.kind !== 'ready' && presentation.kind !== 'empty') return { kind: 'attention', label: presentation.label }
-    return filled ? { kind: 'ready' } : { kind: 'empty' }
+    return presentation && presentation.kind !== 'ready' && presentation.kind !== 'empty' ? { kind: 'attention', label: presentation.label } : { kind: 'empty' }
   }
   if (key === 'synopsis') {
-    const { coveredTo, totalChapters, incomplete, recoveryFailed, candidate } = overview.synopsis
-    if (!filled) return candidate ? { kind: 'candidate' } : { kind: 'empty' }
-    if (incomplete || recoveryFailed) return { kind: 'incomplete' }
-    if (coveredTo > 0 && coveredTo < totalChapters) return { kind: 'partial', coveredTo, total: totalChapters }
-    return { kind: 'ready' }
+    const { progress, candidate } = overview.synopsis
+    if (progress.kind === 'partial') return { kind: 'partial', coveredTo: progress.coveredTo, total: progress.total }
+    if (progress.kind === 'interrupted') return { kind: 'incomplete' }
+    return candidate ? { kind: 'candidate' } : { kind: 'empty' }
   }
-  if (key === 'worldbuilding' && !filled && overview.worldBuilding.candidate) return { kind: 'candidate' }
-  return filled ? { kind: 'ready' } : { kind: 'empty' }
+  if (key === 'worldbuilding' && overview.worldBuilding.candidate) return { kind: 'candidate' }
+  return { kind: 'empty' }
 }
 
 export function badgeText(badge: SectionBadge, text: Text): string {

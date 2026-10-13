@@ -32,10 +32,8 @@ import type { GenerationRecoveryContext } from '../../shared/generation-owner-co
 import type { ArchitectureConfirmFormOptions } from '../dialogs/use-architecture-confirm-form'
 import { openPlanningRecoveryDraft } from '../../stores/editor-store'
 import { planningTitle } from '../run/run-recovery'
-import {
-  hasVisiblePartialSynopsisMarker,
-  isUsableSynopsisCheckpoint,
-} from '../../services/workflows/commands/architecture.command'
+import { hasVisiblePartialSynopsisMarker, outlineProgress, type OutlineProgress } from '../../shared/plot-outline-checkpoint'
+import type { PlotOutlineRangeSource } from '../../shared/plot-outline-contract'
 
 /** 架构四节的文档与旧外壳总览上的图标、说明；名字取 ARCH_STEP_NAMES。 */
 export const ARCH_FILES: Array<{
@@ -72,10 +70,9 @@ export function useArchitectureOverview(projectKey: string) {
   const [planningRecovery, setPlanningRecovery] = useState<GenerationRecoveryContext | null>(null)
   const [coreWordCounts, setCoreWordCounts] = useState<Record<string, number>>({})
   const [contents, setContents] = useState<Record<string, string>>({})
-  const [synopsisIncomplete, setSynopsisIncomplete] = useState(false)
+  const [synopsisProgress, setSynopsisProgress] = useState<OutlineProgress>({ kind: 'empty' })
   const [synopsisRecoveryFailed, setSynopsisRecoveryFailed] = useState(false)
-  const [synopsisCoveredTo, setSynopsisCoveredTo] = useState<number>(0)
-  const [synopsisTotalChapters, setSynopsisTotalChapters] = useState<number>(0)
+  const [synopsisSource, setSynopsisSource] = useState<PlotOutlineRangeSource>({ synopsis: '', totalChapters: 0, writingLanguage: 'zh-CN' })
   const [synopsisBusy, setSynopsisBusy] = useState(false)
   const [synopsisCandidate, setSynopsisCandidate] = useState('')
   const [showSynopsisCandidate, setShowSynopsisCandidate] = useState(false)
@@ -107,10 +104,9 @@ export function useArchitectureOverview(projectKey: string) {
       setCoreStatus({})
       setCoreWordCounts({})
       setContents({})
-      setSynopsisIncomplete(false)
+      setSynopsisProgress({ kind: 'empty' })
       setSynopsisRecoveryFailed(false)
-      setSynopsisCoveredTo(0)
-      setSynopsisTotalChapters(0)
+      setSynopsisSource({ synopsis: '', totalChapters: 0, writingLanguage: 'zh-CN' })
       setSynopsisCandidate('')
       setSynopsisHandle(null)
       setWorldHandle(null)
@@ -128,10 +124,8 @@ export function useArchitectureOverview(projectKey: string) {
       'db:project-core-get',
       projectPath,
     )
-    // 情节大纲状态：中断可断点续写；或部分覆盖可分批续写（covered_to < total）
-    let interrupted = false
+    let progress: OutlineProgress
     let recoveryFailed = false
-    let coveredTo = 0
     let recoveredWorldBuildingCandidate = ''
     let recoveredSynopsisCandidate = ''
     let confirmedWorldHandle: MainGenerationRunHandle | null = null
@@ -182,21 +176,11 @@ export function useArchitectureOverview(projectKey: string) {
           }
         } catch { /* Preserve the readable mirror; it does not authorize continuation. */ }
       }
-      const checkpointUsable = isUsableSynopsisCheckpoint(
-        partial,
-        dbSynopsis,
-        writingLanguage,
-        totalChapters,
-      )
-      interrupted = Boolean(confirmedSynopsisHandle)
-      recoveryFailed = visiblyPartial && !checkpointUsable
-      coveredTo = checkpointUsable && Number(partial?.synopsis_covered_to) > 0
-        ? Number(partial?.synopsis_covered_to)
-        : 0
+      progress = outlineProgress(dbSynopsis, partial, writingLanguage, totalChapters)
+      recoveryFailed = visiblyPartial && progress.kind === 'complete'
     } catch {
-      interrupted = false
+      progress = outlineProgress(dbSynopsis, undefined, writingLanguage, totalChapters)
       recoveryFailed = visiblyPartial
-      coveredTo = 0
       recoveredWorldBuildingCandidate = ''
     }
     const status: Record<string, boolean> = {
@@ -216,10 +200,9 @@ export function useArchitectureOverview(projectKey: string) {
     setCoreStatus(status)
     setCoreWordCounts(counts)
     setContents({ premise: core?.premise ?? '', worldbuilding: core?.worldbuilding ?? '', synopsis: core?.synopsis ?? '' })
-    setSynopsisIncomplete(interrupted)
+    setSynopsisProgress(progress)
     setSynopsisRecoveryFailed(recoveryFailed && Boolean(status.synopsis))
-    setSynopsisCoveredTo(coveredTo)
-    setSynopsisTotalChapters(totalChapters)
+    setSynopsisSource({ synopsis: dbSynopsis, totalChapters, writingLanguage })
     setSynopsisCandidate(recoveredSynopsisCandidate)
     setSynopsisHandle(confirmedSynopsisHandle)
     setPlanningRecovery(recoveredPlanning)
@@ -234,6 +217,22 @@ export function useArchitectureOverview(projectKey: string) {
     ...coreStatus,
     characters: rosterSnapshot?.status === 'ready',
   }), [coreStatus, rosterSnapshot])
+  /**
+   * 每节是否已确认：架构页徽标、页头计数、主按钮与生成对话框的默认勾选共用，流程脊用同一判定（checkArchConfirmed）。
+   * 情节大纲还要分批写完、没有中断的批次；角色名单要名单就绪且不需要修复。
+   */
+  const rosterPresentation = getCharacterRosterRepairPresentation(
+    rosterSnapshot,
+    text,
+    rosterRepairError,
+  )
+  const rosterReady = rosterPresentation?.kind === 'ready'
+  const confirmed = useMemo<Record<ArchStepKey, boolean>>(() => ({
+    premise: Boolean(coreStatus.premise),
+    characters: rosterReady,
+    worldbuilding: Boolean(coreStatus.worldbuilding),
+    synopsis: synopsisProgress.kind === 'complete',
+  }), [coreStatus, rosterReady, synopsisProgress])
   const wordCounts = useMemo<Record<string, number>>(() => ({
     ...coreWordCounts,
     characters: rosterSnapshot?.status === 'ready' ? rosterSnapshot.renderedMarkdown.length : 0,
@@ -418,11 +417,12 @@ export function useArchitectureOverview(projectKey: string) {
     const projectSession = captureProjectSession(currentProject)
     if (!projectMatches || !projectSession || !isProjectSessionPath(projectSession, projectKey)) return
     if (!isProjectSessionCurrent(projectSession)) return
-    const from = synopsisCoveredTo + 1
-    if (from > synopsisTotalChapters || synopsisTotalChapters <= 0) return
+    if (synopsisProgress.kind !== 'partial') return
+    const { coveredTo, total } = synopsisProgress
+    const from = coveredTo + 1
     setGenerateIntent({
       steps: ['synopsis'],
-      synopsisRange: { from, to: Math.min(synopsisTotalChapters, from + DEFAULT_PLANNING_ACTION_CHAPTERS - 1) },
+      synopsisRange: { from, to: Math.min(total, from + DEFAULT_PLANNING_ACTION_CHAPTERS - 1) },
     })
   }
 
@@ -436,26 +436,20 @@ export function useArchitectureOverview(projectKey: string) {
     if (session && isProjectSessionCurrent(session)) openPlanningRecoveryDraft(planningRecovery, projectKey, planningTitle(planningRecovery, useLocaleStore.getState().locale))
   }
 
-  const rosterPresentation = getCharacterRosterRepairPresentation(
-    rosterSnapshot,
-    text,
-    rosterRepairError,
-  )
-
   return {
     projectMatches,
     /** 三节正文与名单都读完之前为真；名单读不到时也算读完，按没有名单显示。 */
     loading: loading || (projectMatches && !rosterSettled),
     archStatus,
+    confirmed,
     wordCounts,
     /** 故事前提、世界观、情节大纲的正式内容；角色名单以角色卡为准，不在这里。 */
     contents,
     planningRecovery,
     synopsis: {
-      incomplete: synopsisIncomplete,
+      progress: synopsisProgress,
+      /** 正文带分批标记、检查点却对不上（多半手改过）：续写按钮用不了，只能在对话框里选范围。 */
       recoveryFailed: synopsisRecoveryFailed,
-      coveredTo: synopsisCoveredTo,
-      totalChapters: synopsisTotalChapters,
       busy: synopsisBusy,
       candidate: synopsisCandidate,
       candidateShown: showSynopsisCandidate,
@@ -481,9 +475,10 @@ export function useArchitectureOverview(projectKey: string) {
       isOpen: generateIntent !== null,
       onClose: () => setGenerateIntent(null),
       archStatus,
+      confirmed,
       initialSelectedSteps: generateIntent?.steps,
       initialSynopsisRange: generateIntent?.synopsisRange ?? null,
-      synopsisProgress: { coveredTo: synopsisCoveredTo, interrupted: synopsisIncomplete },
+      synopsisSource,
       onConfirm: handleConfirm,
     } satisfies ArchitectureConfirmFormOptions,
     loadStatus,

@@ -1,5 +1,5 @@
 import { Wand2, AlertCircle, AlertTriangle, Check, ChevronDown, ChevronRight } from 'lucide-react'
-import type { ArchStepKey } from '../../services/architecture-step-selection'
+import { ARCH_STEP_NAMES, type ArchStepKey } from '../../services/architecture-step-selection'
 import {
   Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
 } from '../ui/Dialog'
@@ -11,24 +11,17 @@ import { resolveWritingLanguage } from '../../shared/writing-language'
 import { PLANNING_ACTION_CHAPTER_LIMIT, PLANNING_TARGET_UNITS_LIMIT } from '../../shared/plot-outline-contract'
 import { useArchitectureConfirmForm, type ArchitectureConfirmFormOptions } from './use-architecture-confirm-form'
 
-const ARCH_FILES: Array<{
-  key: ArchStepKey
-  fileName: string
-  label: string
-  labelEn: string
-  iconName: string
-  desc: string
-  descEn: string
-}> = [
-  { key: 'premise', fileName: 'premise.md', label: '故事前提', labelEn: 'Premise', iconName: 'target', desc: 'Logline、核心冲突、金手指定位', descEn: 'Logline, core conflict, and protagonist advantage' },
-  { key: 'characters', fileName: 'characters.md', label: '角色图谱', labelEn: 'Characters', iconName: 'users', desc: '角色弧光、关系网、矛盾交织', descEn: 'Character arcs, relationships, and conflicts' },
-  { key: 'worldbuilding', fileName: 'worldbuilding.md', label: '世界观', labelEn: 'World building', iconName: 'globe', desc: '核心规则、阶层断层、深层危机', descEn: 'Core rules, social fault lines, and hidden crises' },
-  { key: 'synopsis', fileName: 'synopsis.md', label: '情节大纲', labelEn: 'Synopsis', iconName: 'map', desc: '三幕式情节骨架', descEn: 'Three-act plot structure' },
+/** 四节的说明；名字取 ARCH_STEP_NAMES。 */
+const ARCH_FILES: Array<{ key: ArchStepKey; desc: string; descEn: string }> = [
+  { key: 'premise', desc: 'Logline、核心冲突、金手指定位', descEn: 'Logline, core conflict, and protagonist advantage' },
+  { key: 'characters', desc: '角色弧光、关系网、矛盾交织', descEn: 'Character arcs, relationships, and conflicts' },
+  { key: 'worldbuilding', desc: '核心规则、阶层断层、深层危机', descEn: 'Core rules, social fault lines, and hidden crises' },
+  { key: 'synopsis', desc: '三幕式情节骨架', descEn: 'Three-act plot structure' },
 ]
 
 /** 生成架构确认弹框（含步骤勾选） */
 export default function ArchitectureConfirmDialog(props: ArchitectureConfirmFormOptions) {
-  const { isOpen, onClose, archStatus } = props
+  const { isOpen, onClose } = props
   const text = useLocaleStore(s => s.text)
   const form = useArchitectureConfirmForm(props)
   const {
@@ -100,7 +93,7 @@ export default function ArchitectureConfirmDialog(props: ArchitectureConfirmForm
             </div>
 
             {ARCH_FILES.map(f => {
-              const exists = archStatus[f.key]
+              const mark = form.stepMark(f.key)
               const isChecked = checked[f.key]
               return (
                 <label
@@ -123,7 +116,7 @@ export default function ArchitectureConfirmDialog(props: ArchitectureConfirmForm
 
                   {/* 步骤名 */}
                   <span className="text-xs flex-1" style={{ color: isChecked ? 'var(--color-text)' : 'var(--color-text-muted)' }}>
-                    {text(f.label, f.labelEn)}
+                    {text(...ARCH_STEP_NAMES[f.key])}
                     <span className="ml-1 text-[0.7rem]" style={{ color: 'var(--color-text-muted)' }}>
                       — {text(f.desc, f.descEn)}
                     </span>
@@ -131,15 +124,16 @@ export default function ArchitectureConfirmDialog(props: ArchitectureConfirmForm
 
                   {/* 状态标签 */}
                   <span
+                    data-mark={mark}
                     className={`text-[0.7rem] px-1.5 py-0.5 rounded flex-shrink-0 ${
-                      exists
-                        ? isChecked
-                          ? 'bg-yellow-500/15 text-[var(--color-warning-text)]'
-                          : 'bg-green-500/10 text-[var(--color-success-text)]'
-                        : 'bg-[rgba(var(--color-accent-rgb),0.1)] text-[var(--color-accent)]'
+                      mark === 'overwrite' || mark === 'invalid'
+                        ? 'bg-yellow-500/15 text-[var(--color-warning-text)]'
+                        : mark === 'keep'
+                          ? 'bg-green-500/10 text-[var(--color-success-text)]'
+                          : 'bg-[rgba(var(--color-accent-rgb),0.1)] text-[var(--color-accent)]'
                     }`}
                   >
-                    {exists ? (isChecked ? text('将覆盖', 'Overwrite') : text('保留', 'Keep')) : text('待生成', 'New')}
+                    {form.markLabel(f.key)}
                   </span>
                 </label>
               )
@@ -211,6 +205,8 @@ export default function ArchitectureConfirmDialog(props: ArchitectureConfirmForm
                   />
                 </label>
                 <p className="text-xs text-[var(--color-text-muted)]">{text('仅作生成目标，实际内容可多可少。', 'A generation target. Actual content may be longer or shorter.')}</p>
+                {form.synopsisEffectNote && <p className="text-xs m-0" style={{ color: 'var(--color-text-secondary)' }}>{form.synopsisEffectNote}</p>}
+                {form.synopsisRangeIssue && <p role="alert" className="text-xs m-0 text-[var(--color-warning-text)]">{form.synopsisRangeIssue}</p>}
             </div>
           )}
 
@@ -233,12 +229,12 @@ export default function ArchitectureConfirmDialog(props: ArchitectureConfirmForm
                   {ARCH_FILES.filter(f => checked[f.key]).map(f => (
                     <div key={f.key}>
                       <label className="text-[0.7rem] font-medium mb-1 block" style={{ color: 'var(--color-text-muted)' }}>
-                        {text(f.label, f.labelEn)}
+                        {text(...ARCH_STEP_NAMES[f.key])}
                       </label>
                       <Textarea
                         value={stepGuidance[f.key] || ''}
                         onChange={e => form.setStepGuidance(f.key, e.target.value)}
-                        placeholder={text(`对「${f.label}」生成的特殊要求，如：“多强调金手指的限制”`, `Special requirements for “${f.labelEn}”, such as limitations on the protagonist advantage`)}
+                        placeholder={text(`对「${ARCH_STEP_NAMES[f.key][0]}」生成的特殊要求，如：“多强调金手指的限制”`, `Special requirements for “${ARCH_STEP_NAMES[f.key][1]}”, such as limitations on the protagonist advantage`)}
                         rows={2}
                         className="text-xs"
                       />
@@ -266,7 +262,7 @@ export default function ArchitectureConfirmDialog(props: ArchitectureConfirmForm
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isConfirming}>{text('取消', 'Cancel')}</Button>
-          <Button variant="default" onClick={handleConfirm} disabled={noneSelected || isConfirming || (checked.synopsis && preferenceLoading)}>
+          <Button variant="default" onClick={handleConfirm} disabled={noneSelected || isConfirming || form.synopsisRangeIssue !== null || (checked.synopsis && preferenceLoading)}>
             <Wand2 size={13} />
             {isConfirming ? text('校验中...', 'Validating...') : text(`确认生成（${selectedSteps.length}/4）`, `Generate (${selectedSteps.length}/4)`)}
           </Button>

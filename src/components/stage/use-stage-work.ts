@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { checkArchStatus } from '../../services/architecture-service'
+import { checkArchConfirmed } from '../../services/architecture-service'
 import { ipc } from '../../services/ipc-client'
 import { globalEventBus } from '../../shared/event-bus'
 import { sameProjectPathKey, sameProjectSessionContext } from '../../shared/project-session-context'
@@ -21,7 +21,7 @@ import { toast } from '../ui/Toast'
 let refreshSequence = 0
 
 /**
- * 读一次流程脊需要而 project-store、draft-store 里没有的数据：架构四节是否已有内容、蓝图章号与标题；草稿顺带刷新。
+ * 读一次流程脊需要而 project-store、draft-store 里没有的数据：架构四节是否已确认、蓝图章号与标题；草稿顺带刷新。
  * 守卫与项目树的刷新相同：只认最后一次请求，项目会话或会话代数变了就丢弃结果。
  */
 export async function refreshStageWork(text: (zh: string, en: string) => string): Promise<void> {
@@ -36,7 +36,7 @@ export async function refreshStageWork(text: (zh: string, en: string) => string)
     && useProjectStore.getState().projectSessionEpoch === projectSessionEpoch
   try {
     const [architecture, blueprints] = await Promise.all([
-      checkArchStatus(session),
+      checkArchConfirmed(session),
       ipc.invokeWithProjectSession(session, 'db:blueprint-get-all', session.projectPath),
       useDraftStore.getState().loadAllDrafts(session.projectPath, session),
     ])

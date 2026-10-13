@@ -19,7 +19,7 @@ import { useProjectStore } from '../../stores/project-store'
 import { useLocaleStore } from '../../stores/locale-store'
 import { launchCreativeWorkflow } from '../../services/workflows/creative-workflow-launcher'
 import { createArchitectureWorkflow } from '../../services/workflows/architecture-workflow'
-import { renderPlotOutlineSynopsis, validPlotOutlineAuthorPrefix } from '../../shared/plot-outline-contract'
+import { renderPlotOutlineSynopsis, validPlotOutlineAuthorPrefix, type PlotOutlineRangeSource } from '../../shared/plot-outline-contract'
 import { useWorkflowStore } from '../../stores/workflow-store'
 import { globalEventBus } from '../../shared/event-bus'
 import {
@@ -143,6 +143,7 @@ function ArchFileViewerSession({
   const [showDialog, setShowDialog] = useState(false)
   const [checkingArch, setCheckingArch] = useState(false)
   const [fullArchStatus, setFullArchStatus] = useState<Record<string, boolean>>({})
+  const [synopsisSource, setSynopsisSource] = useState<PlotOutlineRangeSource>({ synopsis: '', totalChapters: 0, writingLanguage: 'zh-CN' })
   const lastCompletedArchitectureRunRef = useRef<string | null>(null)
   const [refreshBlockedMessage, setRefreshBlockedMessage] = useState<string | null>(null)
   const reloadGateRef = useRef(new ArchReloadGate())
@@ -512,6 +513,11 @@ function ArchFileViewerSession({
         status[stepKey] = true
       }
       setFullArchStatus(status)
+      setSynopsisSource({
+        synopsis: core?.synopsis ?? '',
+        totalChapters: Number(core?.totalChapters ?? currentProject?.novelConfig?.totalChapters) || 0,
+        writingLanguage: (core?.writingLanguage ?? currentProject?.novelConfig?.writingLanguage) === 'en-US' ? 'en-US' : 'zh-CN',
+      })
       setShowDialog(true)
     } catch (error) {
       if (isProjectSessionCurrent(projectSession)) {
@@ -765,6 +771,7 @@ function ArchFileViewerSession({
           isOpen={showDialog}
           onClose={() => setShowDialog(false)}
           archStatus={fullArchStatus}
+          synopsisSource={synopsisSource}
           initialSelectedSteps={[stepKey]}
           onConfirm={handleConfirm}
         />
