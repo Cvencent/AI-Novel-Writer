@@ -89,7 +89,7 @@ export function createChapterBackend() {
         state.drafts = state.drafts.filter(draft => draft.id !== Number(args[0]))
         return { success: true }
       }
-      case 'db:review-list': return state.reviews.filter(review => review.baseDraftId === Number(args[0])).map(({ content: _content, source: _source, ...rest }) => ({ ...rest, contentId: rest.id, createdAt: '2026-10-13 21:14:00' }))
+      case 'db:review-list': return state.reviews.filter(review => review.baseDraftId === Number(args[0])).map(review => ({ id: review.id, baseDraftId: review.baseDraftId, reviewIndex: review.reviewIndex, contentId: review.id, createdAt: '2026-10-13 21:14:00' }))
       case 'db:review-get-latest':
       case 'db:review-get-full': {
         const review = channel === 'db:review-get-full'
@@ -107,7 +107,8 @@ export function createChapterBackend() {
         return { success: true, id, reviewIndex: request.reviewIndex }
       }
       case 'db:revision-get-pending': return state.revisions.filter(revision => revision.baseDraftId === Number(args[0]) && revision.status === 'pending')
-        .map(({ content: _content, source: _source, ...rest }) => ({ ...rest, mergedToDraftId: null, userPrompt: '', reviewSourceId: null, contentId: rest.id, wordCount: 0, createdAt: '', updatedAt: '' }))
+        .map(revision => ({ id: revision.id, baseDraftId: revision.baseDraftId, revisionIndex: revision.revisionIndex, revisionType: revision.revisionType, status: revision.status,
+          mergedToDraftId: null, userPrompt: '', reviewSourceId: null, contentId: revision.id, wordCount: 0, createdAt: '', updatedAt: '' }))
       case 'db:revision-get-full': {
         const revision = state.revisions.find(candidate => candidate.id === Number(args[0]))
         return revision ? { ...revision, mergedToDraftId: null, userPrompt: '', reviewSourceId: null, contentId: revision.id, wordCount: 0, createdAt: '', updatedAt: '', sourceDraft: source(revision.source) } : null
