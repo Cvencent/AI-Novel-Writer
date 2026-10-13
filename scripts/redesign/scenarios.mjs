@@ -359,6 +359,7 @@ export async function seedStageSample(context,
   }
   await bookshelf.openProject(page, STAGE_SAMPLE.name)
   await project.waitForTreeRefreshed(page, blueprintCount)
+  if (!landOnChapter3) return
   await project.draftOfChapter(page, 3).click()
   await chapter.editor(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text)).waitFor({ state: 'visible' })
 }

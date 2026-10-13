@@ -225,7 +225,7 @@ async function openLongChapter(page) {
   await target.scrollIntoViewIfNeeded()
   await target.hover()
   await page.waitForTimeout(300)
-  return openTiming(page, target, '第50段。')
+  return openTiming(page, target, '第1段。')
 }
 
 const proseOf = async page => await isStage(page) ? chapterView.prose(page) : chapter.editor(page)
@@ -302,13 +302,15 @@ export const CHAPTER_SCENARIOS = {
       await groups.nth(1).getByRole('button', { name: '手动编辑' }).click()
       await chapterView.merge(page).getByRole('textbox').first().fill(manual)
     }
-    const chosen = await chosenTexts(page)
+    context.chosen = await chosenTexts(page)
+    context.manual = hunks > 1 ? manual : null
+    return { hunks, chosen: context.chosen }
+  }, after: async ({ page, chosen, manual }) => {
     await chapterView.merge(page).getByRole('button', { name: '完成合并' }).click()
     await chapterView.view(page).getByRole('button', { name: '定稿', exact: true }).waitFor({ state: 'visible', timeout: 30_000 })
-    const merged = await chapterView.prose(page).innerText()
-    for (const text of chosen) assert.ok(merged.replace(/\s+/g, '').includes(text.replace(/\s+/g, '')), `合并结果含选中的「${text.slice(0, 12)}」`)
-    if (hunks > 1) assert.ok(merged.includes(manual), '合并结果含手动编辑的文字')
-    return { hunks, chosen }
+    const merged = (await chapterView.prose(page).innerText()).replace(/\s+/g, '')
+    for (const text of chosen) assert.ok(merged.includes(text.replace(/\s+/g, '')), `合并结果含选中的「${text.slice(0, 12)}」`)
+    if (manual) assert.ok(merged.includes(manual), '合并结果含手动编辑的文字')
   } },
 
   /** lane 6：定稿确认后正文只读，定稿视图列出后处理四步（正文文件与三步后处理）。 */
@@ -386,10 +388,12 @@ export const CHAPTER_SCENARIOS = {
   'chapter-1280': { model: false, shell: 'stage', setup: seed(), run: async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await chapterView.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text)).first().waitFor({ state: 'visible' })
-    await page.waitForTimeout(300)
+    // 打开作品的流程在文件树读完后才回到作品页，那一步会收起侧页；等它结束再打开运行侧页。
+    await page.waitForTimeout(2000)
     const alone = await charsPerLine(page)
     await runSheet.openFromPalette(page)
-    await page.waitForTimeout(400)
+    await page.waitForTimeout(500)
+    assert.equal(await runSheet.sheet(page).isVisible(), true, '运行侧页开着')
     const withSheet = await charsPerLine(page)
     const horizontal = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
     assert.ok(alone >= 32 && alone <= 35, `1280 宽正文一行约 34 字，实际 ${alone}`)
