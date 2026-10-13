@@ -5,6 +5,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { FAKE_MODEL, FIXTURE_PROSE } from './fake-model.mjs'
 import * as blueprint from './pages/blueprint.mjs'
 import * as chapter from './pages/chapter.mjs'
+import * as chapterView from './pages/chapter-view.mjs'
 import * as project from './pages/project.mjs'
 import * as runSheet from './pages/run-sheet.mjs'
 import * as stage from './pages/stage.mjs'
@@ -119,8 +120,7 @@ export const BLUEPRINT_SCENARIOS = {
     }
     assert.equal((await invoke(page, 'config:set', { autoOpenNextChapterAfterFinalize: true })).success, true)
   } }), run: async ({ page }) => {
-    await page.getByRole('button', { name: '定稿', exact: true }).click()
-    await page.getByRole('dialog').filter({ hasText: '确定要将第 3 章定稿吗？' }).getByRole('button', { name: '确认定稿', exact: true }).click()
+    await chapterView.finalize(page, 3, { untilReadOnly: false })
     await blueprint.popover(page).waitFor({ state: 'visible', timeout: 60_000 })
     assert.equal(await stage.tabList(page).getByRole('tab', { selected: true }).innerText(), '蓝图', '定稿后落到蓝图')
     assert.equal(await blueprint.writeButton(page).innerText(), '写第 4 章')

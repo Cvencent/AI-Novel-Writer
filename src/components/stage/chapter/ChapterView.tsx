@@ -59,7 +59,8 @@ function DraftChapter({ tab, filePath, projectKey }: { tab: EditorTab; filePath:
   const chapterNumber = draft.meta?.chapterNumber ?? tab.chapterNumber
   const blueprint = useChapterBlueprint(chapterNumber, projectKey)
   const latest = useLatestReview(draft.reviews, projectKey)
-  const review = useReviewCycle({ reportText: latest?.content ?? '', reviewId: latest?.id, projectKey })
+  const review = useReviewCycle({ reportText: latest?.content ?? '', reviewId: latest?.id, projectKey,
+    refreshKey: `${draft.status}:${draft.pendingRevisions.map(revision => revision.id).join(',')}` })
   const [charCount, setCharCount] = useState(() => countDraftUnits(tab.content ?? ''))
   const [sheetSlot, setSheetSlot] = useState<HTMLDivElement | null>(null)
 

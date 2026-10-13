@@ -238,11 +238,13 @@ function matchesReviewSource(
 }
 
 /** 一份审稿报告的持久化复验周期：确认快照指向原始审稿，周期也按原始审稿读。reloadCycle 在复验后重读。 */
-export function useReviewCycle({ reportText, reviewId, projectKey, cycle }: {
+export function useReviewCycle({ reportText, reviewId, projectKey, cycle, refreshKey }: {
   reportText: string
   reviewId?: number
   projectKey: string
   cycle?: ReviewCycleProjection | null
+  /** 变化时重读周期：修稿生成、合并提交都会改它，而审稿报告本身不变。 */
+  refreshKey?: string
 }) {
   const snapshot = parseHumanConfirmedReviewSnapshot(reportText)
   const cycleReviewId = confirmationSourceReviewId(snapshot, reviewId)
@@ -269,7 +271,7 @@ export function useReviewCycle({ reportText, reviewId, projectKey, cycle }: {
       if (!cancelled && isProjectSessionCurrent(projectSession)) setLoadedCycle(next)
     })()
     return () => { cancelled = true }
-  }, [cycleReviewId, cycle, projectKey])
+  }, [cycleReviewId, cycle, projectKey, refreshKey])
 
   const resolvedCycle = cycle !== undefined ? cycle : loadedCycle
   // 报告可以原地更新；会话键只在底层不可变报告变了时变，可编辑清单随之重置。

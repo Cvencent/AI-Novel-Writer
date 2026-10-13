@@ -120,6 +120,7 @@ export function createChapterBackend() {
         draft.content = request.mergedContent
         draft.status = 'revised'
         revision.status = 'merged'
+        setCycle(revision.baseDraftId, 'merge-committed')
         return { success: true, receipt: {
           revisionId: revision.id, targetDraftId: draft.id, status: 'revised', wordCount: request.mergedContent.length, idempotent: false,
           chapterNumber: draft.chapterNumber, version: draft.version,
@@ -150,14 +151,21 @@ export function createChapterBackend() {
     state.drafts.push(draft)
     return draft
   }
+  /** 和主进程一样：AI 审稿开一个复验周期，修稿生成后为 generated，合并提交后为 merge-committed。 */
+  function setCycle(draftId: number, revisionStatus: ReviewCycleProjection['revisionStatus']) {
+    const review = state.reviews.find(candidate => candidate.baseDraftId === draftId && state.cycles.has(candidate.id))
+    if (review) state.cycles.set(review.id, { ...state.cycles.get(review.id)!, revisionStatus })
+  }
   const addReview = (draft: Draft, content = AI_REVIEW): Review => {
     const review: Review = { id: ++state.nextId, baseDraftId: draft.id, reviewIndex: 1, content, source: { ...draft } }
     state.reviews.push(review)
+    state.cycles.set(review.id, { cycleId: `cycle-${review.id}`, reviewId: review.id, revisionStatus: 'not-generated', recheckCount: 0, findings: [] })
     return review
   }
   const addRevision = (draft: Draft, revisionType: Revision['revisionType'] = 'review-fix'): Revision => {
     const revision: Revision = { id: ++state.nextId, baseDraftId: draft.id, revisionIndex: 1, revisionType, status: 'pending', content: REVISED, source: { ...draft } }
     state.revisions.push(revision)
+    if (revisionType === 'review-fix') setCycle(draft.id, 'generated')
     return revision
   }
   const writes = (channel: string) => state.calls.filter(call => call.channel === channel).map(call => call.args)
