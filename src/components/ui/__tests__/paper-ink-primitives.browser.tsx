@@ -373,7 +373,7 @@ describe('侧页内的菜单', () => {
     const hit = document.elementFromPoint(menuRect.left + menuRect.width / 2, (bodyRect.bottom + menuRect.bottom) / 2)
     expect(hit?.closest('[role="menuitem"]')).not.toBeNull()
     expect(body.scrollHeight).toBe(scrollHeight)
-    expect(getComputedStyle(menu).backgroundColor).toBe(tokenColor(container, '--surface'))
+    expect(getComputedStyle(menu).backgroundColor).toBe(tokenColor(container, '--layer'))
     await shot('rd1-menu-in-sheet')
 
     await userEvent.click(page.getByRole('menuitem', { name: '重命名' }))
@@ -670,7 +670,7 @@ describe('DangerConfirm', () => {
     expect(rect.left + rect.width / 2).toBeCloseTo(document.documentElement.clientWidth / 2, 0)
     expect(rect.top + rect.height / 2).toBeCloseTo(document.documentElement.clientHeight / 2, 0)
     expect(document.elementFromPoint(rect.left + rect.width / 2, rect.top + 20)?.closest('[role="dialog"]')).toBe(dialog)
-    expect(getComputedStyle(dialog).backgroundColor).toBe(tokenColor(container, '--surface'))
+    expect(getComputedStyle(dialog).backgroundColor).toBe(tokenColor(container, '--layer'))
   })
 
   it('Esc 关闭对话框且不确认', async () => {
