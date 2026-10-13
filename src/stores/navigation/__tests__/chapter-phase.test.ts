@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { setActiveProjectSessionContext } from '../../../shared/project-session-context'
 import { refreshChapterFacts } from '../chapter-facts'
-import { chapterPhase, type ChapterFacts } from '../stage-progress'
+import type { DraftMeta } from '../../../services/draft-index'
+import { chapterPhase, deriveChapters, deriveStages, focusChapter, landingStage, type ChapterFacts } from '../stage-progress'
 import { useStageStore } from '../stage-store'
 
 interface FakeRevision { id: number; status: 'pending' | 'merged' | 'discarded'; updatedAt: string; sourceContent: string | null }
@@ -114,5 +115,30 @@ describe('一稿走到哪一步（chapter-facts 读记录，chapterPhase 判断�
     db.revisions = [{ id: 9, status: 'merged', updatedAt: '2026-10-13 20:00:05', sourceContent: db.draft.content }]
     const facts: ChapterFacts | undefined = (await phaseOf('revised')).facts
     expect([chapterPhase('revised', facts), facts?.latestReview]).toEqual(['revised', { createdAt: '2026-10-13 20:00:09', cycleStatus: null }])
+  })
+})
+
+describe('流程脊先出 work、facts 后到：打开作品的落点与落在哪一章不变', () => {
+  const draft = (id: number, chapterNumber: number, status: DraftMeta['status']): DraftMeta => ({ id, chapterNumber, version: 1, status,
+    createdAt: '2026-10-13 20:00:00', updatedAt: '2026-10-13 20:00:00', source: 'write', filePath: `ai-novel://draft/${id}`, fileName: 'draft_v1.md' })
+  const reviewed: ChapterFacts = { mergeable: [], stale: [], latestReview: { createdAt: '2026-10-13 20:00:01', cycleStatus: 'not-generated' }, lastMergedAt: null }
+  const merge: ChapterFacts = { ...reviewed, mergeable: [21] }
+  const work = {
+    config: { coreOutline: '旧港', genre: '悬疑', targetAudience: '成年读者', totalChapters: 6, wordsPerChapter: 3000 },
+    architecture: { premise: true, characters: true, worldbuilding: true, synopsis: true },
+    blueprints: [1, 2, 3, 4, 5, 6].map(chapterNumber => ({ chapterNumber, title: `第${chapterNumber}章` })),
+    drafts: { 1: [draft(11, 1, 'finalized')], 2: [draft(12, 2, 'reviewed')], 3: [draft(13, 3, 'revised')], 4: [draft(14, 4, 'draft')] },
+    runningChapters: new Set<number>(),
+  }
+
+  it('有无 facts，落点都是正文、落在第 2 章；facts 只改动中间几章的阶段', () => {
+    const open = (chapterFacts?: Record<number, ChapterFacts>) => {
+      const chapters = deriveChapters({ ...work, chapterFacts })
+      return { landing: landingStage(deriveStages({ ...work, chapterFacts }, chapters)), focus: focusChapter(chapters)?.number,
+        phases: chapters.map(row => row.phase) }
+    }
+    expect(open()).toEqual({ landing: 'manuscript', focus: 2, phases: ['final', 'draft', 'revised', 'draft', 'todo', 'todo'] })
+    expect(open({ 12: reviewed, 13: reviewed, 14: merge })).toEqual({ landing: 'manuscript', focus: 2,
+      phases: ['final', 'reviewed', 'reviewed', 'merge', 'todo', 'todo'] })
   })
 })

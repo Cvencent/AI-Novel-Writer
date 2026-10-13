@@ -45,9 +45,9 @@ export async function refreshStageWork(text: (zh: string, en: string) => string)
     const chapters = blueprints.map(({ chapterNumber, title }) => ({ chapterNumber, title }))
     const working = deriveChapters({ blueprints: chapters, drafts: useDraftStore.getState().draftsByChapter, runningChapters: new Set() })
       .flatMap(row => row.draft && row.draft.status !== 'finalized' ? [row.draft] : [])
-    await refreshChapterFacts(working, session)
-    if (!current()) return
     useStageStore.setState({ work: { session, architecture, blueprints: chapters } })
+    // 落点与阶段完成度只看章是否待写或定稿，不需要 facts；先出 work，打开作品时落点那一章的正文不用排在 facts 读取后面。
+    void refreshChapterFacts(working, session)
   } catch (error) {
     if (current()) toast.error(text(`项目资源刷新失败：${String(error)}`, `Could not refresh project resources: ${String(error)}`))
   }
