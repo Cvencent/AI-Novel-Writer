@@ -27,7 +27,7 @@ export function inkOverlayHost(): HTMLElement {
   return host
 }
 
-/** 宿主里放一个独立的挂载点，命令式弹窗用完即删。 */
+/** 宿主里放一个独立的挂载点：命令式弹窗用完即删，提示栈常驻。 */
 export function createInkOverlayMount(): HTMLElement {
   const mount = document.createElement('div')
   inkOverlayHost().append(mount)

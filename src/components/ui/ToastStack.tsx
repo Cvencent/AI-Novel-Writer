@@ -18,7 +18,7 @@ export interface ToastStackAction {
   emphasis: 'secondary' | 'text'
 }
 
-export interface ToastStackInput {
+interface ToastStackInput {
   tone: ToastTone
   /** 调用方写的整段消息；第一个空行之前是标题，之后是说明。 */
   message: string
@@ -32,7 +32,7 @@ interface ToastStackEntry extends ToastStackInput {
   exiting: boolean
 }
 
-export const TOAST_STACK_LIMIT = 4
+const TOAST_STACK_LIMIT = 4
 const EXIT_MS = 140
 
 const toneIcons: Record<ToastTone, LucideIcon> = { ok: CircleCheck, info: Info, warn: TriangleAlert, danger: OctagonAlert }
@@ -62,7 +62,7 @@ function ensureStack() {
   stackRoot.render(<ToastStack />)
 }
 
-export function dismissToast(id: number) {
+function dismissToast(id: number) {
   if (!entries.some(entry => entry.id === id && !entry.exiting)) return
   publish(entries.map(entry => (entry.id === id ? { ...entry, exiting: true } : entry)))
   setTimeout(() => publish(entries.filter(entry => entry.id !== id)), EXIT_MS)
