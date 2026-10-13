@@ -12,6 +12,7 @@ import { useLLMStore } from '../../../stores/llm-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { navigate } from '../../../stores/navigation/navigation-intents'
 import { openChapterPlan } from '../../../stores/navigation/stage-navigation'
+import { useStageStore } from '../../../stores/navigation/stage-store'
 import { deriveChapters, type ChapterFacts } from '../../../stores/navigation/stage-progress'
 import { useDraftStore } from '../../../stores/draft-store'
 import { useProjectStore } from '../../../stores/project-store'
@@ -86,12 +87,24 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
   const dims = reviewDimensions(text)
   const [checkedDims, setCheckedDims] = useState<Record<string, boolean>>(() => Object.fromEntries(dims.map(dim => [dim.key, true])))
   const [reviseModelId, setReviseModelId] = useState<string | null>(null)
-  const [sheetPref, setSheetPref] = useState<boolean | null>(null)
   const [ask, setAsk] = useState<Ask>(null)
   const [refinePrompt, setRefinePrompt] = useState('')
   const [mergeLater, setMergeLater] = useState(false)
 
-  const sheetOpen = Boolean(review) && !focus && (sheetPref ?? stage === 'reviewed')
+  // 审稿侧页与运行侧页共用 stage-store 的 sheet，同一时间只开一个：哪个后打开就显示哪个，正文不会被两页挤窄或盖住。
+  const reviewSheet = useStageStore(s => s.sheet?.kind === 'review')
+  const sheetOpen = Boolean(review) && !focus && reviewSheet
+  const setSheet = (open: boolean) => {
+    if (open) useStageStore.setState({ sheet: { kind: 'review' } })
+    else if (useStageStore.getState().sheet?.kind === 'review') useStageStore.setState({ sheet: null })
+  }
+  // 已审稿的稿打开时默认展开审稿侧页，但不抢作者开着的运行侧页；审稿刚完成时单章视图会先收起运行侧页。
+  const defaulted = useRef(false)
+  useEffect(() => {
+    if (defaulted.current || !review || stage !== 'reviewed') return
+    defaulted.current = true
+    if (useStageStore.getState().sheet === null) useStageStore.setState({ sheet: { kind: 'review' } })
+  }, [review, stage])
   const included = includedCount(checklist.items)
   const busy = draft.isChapterBusy
   const generationModels = models.filter(isGenerationModel)
@@ -122,20 +135,20 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
   const revise = async () => {
     if (!selectedReviseModel) {
       checklist.setChecklistError(text('没有可用于文本生成的模型。请在设置中添加或启用一项生成模型。', 'No model can generate text. Add or enable a generation model in Settings.'))
-      setSheetPref(true)
+      setSheet(true)
       return
     }
     const confirmed = checklist.editingChecklist || !checklist.confirmed ? await checklist.confirmChecklist() : checklist.confirmed
     if (!confirmed) {
-      setSheetPref(true)
+      setSheet(true)
       return
     }
     const error = await checklist.startConfirmedRevision(selectedReviseModel, confirmed)
     if (error) {
       checklist.setChecklistError(error)
-      setSheetPref(true)
+      setSheet(true)
     } else {
-      setSheetPref(false)
+      setSheet(false)
     }
   }
 
@@ -182,7 +195,7 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
     { id: 'chapter', items: [
       ...(editable ? [{ id: 'refine', label: text('直接修稿…', 'Revise directly…'), disabled: busy, onSelect: () => { setRefinePrompt(''); setAsk('refine') } }] : []),
       ...(editable && stage !== 'revised' ? [{ id: 'finalize', label: text('定稿…', 'Finalize…'), disabled: !draft.canFinalize, onSelect: () => setAsk('finalize') }] : []),
-      ...(review && !sheetOpen && !focus ? [{ id: 'report', label: text('审稿报告', 'Review report'), onSelect: () => setSheetPref(true) }] : []),
+      ...(review && !sheetOpen && !focus ? [{ id: 'report', label: text('审稿报告', 'Review report'), onSelect: () => setSheet(true) }] : []),
       { id: 'history', label: text('版本历史', 'Version history'), onSelect: () => navigate({ kind: 'resource', page: 'history' }) },
       { id: 'copy', label: text('复制本章正文', 'Copy chapter text'), onSelect: copyBody },
     ] },
@@ -336,7 +349,7 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
           checklist={checklist}
           reportText={review.report}
           subtitle={text(`基于草稿 v${meta.version}`, `Based on draft v${meta.version}`)}
-          onClose={() => setSheetPref(false)}
+          onClose={() => setSheet(false)}
         />,
         sheetSlot,
       )}

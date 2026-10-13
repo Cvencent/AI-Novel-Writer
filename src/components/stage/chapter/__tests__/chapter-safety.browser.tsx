@@ -247,3 +247,47 @@ describe('定稿冲突与定稿进行中', () => {
     expect(activeTab()?.finalizationConflict).toEqual(conflict)
   })
 })
+
+describe('审稿侧页与运行侧页', () => {
+  const reviewHeading = () => page.getByRole('heading', { name: '审稿报告' })
+  const runHeading = () => page.getByRole('heading', { name: '运行' })
+
+  it('同一时间只开一个：作者开着运行侧页时不抢；从「更多」打开审稿报告换掉运行侧页，纸面与侧页并排不重叠', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    backend.addReview(draft)
+    await mount()
+    await act(async () => useStageStore.setState({ sheet: { kind: 'run', tab: 'active' } }))
+    await openDraft(draft.id)
+    await expect.element(page.getByRole('button', { name: '按 2 项意见修稿' })).toBeVisible()
+    await expect.element(runHeading()).toBeVisible()
+    await expect.element(reviewHeading()).not.toBeInTheDocument()
+
+    await click('更多操作')
+    await act(async () => page.getByRole('menuitem', { name: '审稿报告' }).click())
+    await expect.element(reviewHeading()).toBeVisible()
+    await expect.element(runHeading()).not.toBeInTheDocument()
+    const paper = host!.querySelector('.stage-ch-page')!.getBoundingClientRect()
+    const sheet = host!.querySelector('.stage-ch-sheet-slot .pi-sheet')!.getBoundingClientRect()
+    expect(paper.right).toBeLessThanOrEqual(sheet.left)
+
+    await act(async () => useStageStore.setState({ sheet: { kind: 'run', tab: 'active' } }))
+    await expect.element(runHeading()).toBeVisible()
+    await expect.element(reviewHeading()).not.toBeInTheDocument()
+  })
+
+  it('审稿完成时收起跟着工作流打开的运行侧页，展开审稿侧页', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    await mount()
+    await openDraft(draft.id)
+    await act(async () => useStageStore.setState({ sheet: { kind: 'run', tab: 'active' } }))
+    await expect.element(runHeading()).toBeVisible()
+    const review = backend.addReview(draft)
+    const sourcePath = formatResourceUri({ kind: 'draft', id: draft.id })
+    await act(async () => useEditorStore.getState().openFile({
+      id: `review-${sourcePath}-1`, name: '审稿报告：第3章', type: 'review-report', content: AI_REVIEW, filePath: sourcePath,
+      reviewReport: AI_REVIEW, chapterNumber: 3, chapterDir: 'ai-novel://draft/ch3', reviewId: review.id, projectKey: SESSION.projectPath,
+    }))
+    await expect.element(reviewHeading()).toBeVisible()
+    await expect.element(runHeading()).not.toBeInTheDocument()
+  })
+})

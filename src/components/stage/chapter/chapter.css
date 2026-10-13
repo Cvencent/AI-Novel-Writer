@@ -1,7 +1,7 @@
 /*
  * 正文单章视图。视觉基准为 claude-design/Main.dc.html 的纸面与审稿侧页、Focus.dc.html 的沉浸写作与选区工具条；
  * 待写、合并、定稿确认与定稿视图的结构按 prototype/chapter-*.html。只引用纸墨令牌。
- * 两层容器查询：chapter 按整个视图宽度决定审稿侧页是并排还是覆盖，page 按纸面可用宽度收紧版心，运行侧页打开时正文不被挤到不可读。
+ * 审稿侧页与运行侧页同一时间只开一个，侧页总是与纸面并排、从不覆盖正文；page 容器查询按纸面可用宽度收紧版心。
  */
 .stage-ch {
   position: relative;
@@ -702,19 +702,6 @@ span.stage-ch-version {
 
   .stage-ch-titlerow {
     flex-wrap: wrap;
-  }
-}
-
-/* 视图放不下侧页加一页可读的纸面时，审稿侧页改为覆盖在纸面右侧，正文版心不再被挤窄 */
-@container chapter (max-width: 940px) {
-  .stage-ch-sheet-slot {
-    position: absolute;
-    inset: 0 0 0 auto;
-    z-index: 2;
-  }
-
-  .stage-ch-sheet-slot .pi-sheet {
-    box-shadow: var(--shadow-pop);
   }
 }
 

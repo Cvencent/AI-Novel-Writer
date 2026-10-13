@@ -100,7 +100,7 @@ export default function StageWorkspace({ library, focus }: { library: boolean; f
               />
             )}
         </div>
-        {sheet && !focus && (
+        {sheet?.kind === 'run' && !focus && (
           <div className="stage-sheet-slot" data-wide={sheet.tab === 'diagnostics' || undefined}>
             <ErrorBoundary fallbackLabel={text('运行侧页渲染失败', 'Run sheet failed to render')}>
               <RunSheet sheet={sheet} />

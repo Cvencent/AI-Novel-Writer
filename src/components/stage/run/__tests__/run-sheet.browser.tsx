@@ -59,7 +59,7 @@ async function render(sheet: StageSheet = { kind: 'run', tab: 'active' }) {
 
 function Sheet() {
   const sheet = useStageStore(s => s.sheet)
-  return sheet ? <RunSheet sheet={sheet} /> : null
+  return sheet?.kind === 'run' ? <RunSheet sheet={sheet} /> : null
 }
 
 const button = (name: string | RegExp) => [...host!.querySelectorAll('button')]

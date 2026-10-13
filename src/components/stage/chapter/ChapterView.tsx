@@ -75,11 +75,12 @@ function DraftChapter({ tab, filePath, projectKey }: { tab: EditorTab; filePath:
   const reviewReady = draft.loaded && (draft.reviews.length === 0 || latest !== null)
   const stage = draft.loaded && draft.meta ? draft.status === 'archived' ? 'archived' : chapterPhase(draft.status, facts) : null
 
-  // 审稿或修稿刚在别处生成：重读这一稿的数据。新审稿换掉动作条的会话键，侧页按「已审稿」默认展开；待合并修稿直接摆出合并视图。
+  // 审稿或修稿刚在别处生成：重读这一稿的数据，并收起跟着工作流打开的运行侧页。新审稿换掉动作条的会话键，
+  // 审稿侧页按「已审稿」默认展开；待合并修稿直接摆出合并视图。
   const { reload } = draft
   useEffect(() => {
     if (!request || request.filePath !== filePath) return
-    useStageStore.setState({ chapterRequest: null })
+    useStageStore.setState({ chapterRequest: null, sheet: null })
     reload()
   }, [request, filePath, reload])
 
