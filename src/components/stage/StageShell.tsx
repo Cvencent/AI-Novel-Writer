@@ -10,6 +10,7 @@ import { chapterLabel } from '../../shared/chapter-label'
 import type { Theme } from '../../stores/theme-store'
 import { ipc } from '../../services/ipc-client'
 import ClearProjectDataDialog from '../dialogs/ClearProjectDataDialog'
+import { leaveSettings } from '../settings/unsaved-settings'
 import type { MenuGroupSpec } from '../ui/Menu'
 import NewWorkDialog from './library/NewWorkDialog'
 import { SETTINGS_PAGES, settingsPageOf } from './settings/settings-pages'
@@ -115,7 +116,10 @@ export default function StageShell({ theme }: { theme: Theme }) {
         run: () => navigate({ kind: 'resource', page }),
       })),
       paletteItem('reference', { id: 'characters', label: text('角色', 'Characters'), keywords: 'roster 名单',
-        run: () => openBuiltinEditor('character-editor', text('角色', 'Characters'), 'character') }),
+        run: () => leaveSettings(() => {
+          useLayoutStore.getState().closeSettings()
+          openBuiltinEditor('character-editor', text('角色', 'Characters'), 'character')
+        }) }),
     ] : []
     const books = recentProjects.map(project => paletteItem('action', {
       id: `book-${project.path}`, label: text(`打开《${project.name}》`, `Open “${project.name}”`), keywords: project.name,
