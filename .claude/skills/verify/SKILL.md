@@ -305,7 +305,7 @@ node scripts/redesign/drive.mjs --scenario blueprint-timing --shell stage --out 
 | `chapter-sheets-1280`、`chapter-sheets-1440` | 第 3 章（已审稿）在该宽度下先开运行侧页、再从「更多」开审稿报告：同一时间只有一个侧页，纸面不被盖住，正文一行不少于 24 字，没有横向滚动 | 审稿侧页与纸面 | 否 | 双侧页 |
 | `chapter-focus` | 1440 宽打开第 4 章进入沉浸写作：内容面板无外边距、圆角与阴影（全出血）；底部「N / 设定每章字数 字」与进度条；正文首行缩进 36px | 沉浸写作 | 否 | Focus 画板 |
 | `chapter-tour` | 30～60 秒导览：检查维度、审稿侧页与作者意见、按意见修稿、逐段合并、定稿确认、定稿后处理。配 `--video` 录评审视频 | 定稿视图 | 是 | Review gate |
-| `chapter-open` | 1 万字的第 5 章：从点击（新外壳点流程脊里的章，旧外壳点草稿箱）到正文出现且所在滚动区可以滚动。`frameMs` 按动画帧检查，`domMs` 在 DOM 变化回调里记，不依赖动画帧 | 第 5 章 | 否 | perf |
+| `chapter-open` | 1 万字的第 5 章：从点击（新外壳点流程脊里的章，旧外壳点草稿箱）到正文出现且所在滚动区可以滚动，毫秒，不取整。`frameMs` 按动画帧检查，`domMs` 在 DOM 变化回调里记，不依赖动画帧 | 第 5 章 | 否 | perf |
 | `typing-latency` | 在第 5 章第 1 段末尾连续输入 40 个字母：每键从 `beforeinput` 到正文 DOM 变化（`domP95Ms`）与之后第一帧（`frameP95Ms`） | 第 5 章 | 否 | perf |
 
 ```bash
