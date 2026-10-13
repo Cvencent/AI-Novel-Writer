@@ -82,8 +82,10 @@ async function finalizedFacts(context, chapterNumber) {
 }
 
 async function waitRunDone(page) {
-  if (await isStage(page)) await runSheet.waitForRunDone(page)
-  else await runPanel.waitForWorkflowDone(page)
+  if (!await isStage(page)) return runPanel.waitForWorkflowDone(page)
+  if (await runSheet.sheet(page).isVisible()) return runSheet.waitForRunDone(page)
+  // 审稿或修稿结果送到单章视图时运行侧页已收起：等顶栏不再有进行中的运行胶囊（完成后的胶囊带 data-tone="ok"）。
+  await stage.root(page).locator('.stage-capsule:not([data-tone="ok"])').waitFor({ state: 'detached', timeout: 90_000 })
 }
 
 /** 两种外壳各自写第 3 章：新外壳在待写章的单章视图点「写作此章」，旧外壳从章节蓝图的「写作第3章」对话框直接开始。 */
