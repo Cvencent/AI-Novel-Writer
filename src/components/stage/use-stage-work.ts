@@ -158,7 +158,7 @@ export function useStageView(): StageView {
     ? deriveStages({ config: project.novelConfig, architecture: currentWork.architecture, blueprints: currentWork.blueprints, drafts, runningChapters: runningChapterSet }, chapters)
     : [], [project, currentWork, drafts, runningChapterSet, chapters])
   const settled = Boolean(currentWork && drafts && !draftsLoading)
-  // 记录读完前章节阶段只能按稿状态估计；与读完前没有 work 时一样，流程脊先空着。
+  // 记录读完前章节阶段只能按稿状态估计，会先错后改，所以流程脊与命令面板先空着；落点不受影响。
   const shown = Boolean(session && spineFacts && sameProjectSessionContext(spineFacts, session))
   return {
     stages: shown ? stages : NO_STAGES,
