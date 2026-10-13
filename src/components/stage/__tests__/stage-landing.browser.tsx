@@ -132,13 +132,14 @@ describe('打开作品时流程脊等各稿的审稿与修稿记录', () => {
   const meta = (id: number, chapterNumber: number, status: string) => ({ id, chapterNumber, version: 1, status, source: 'write',
     createdAt: '2026-10-13 20:00:00', updatedAt: '2026-10-13 20:00:00' })
   /**
-   * 第 1 章定稿，第 2 章草稿没审过（落点那一章），第 3 章草稿已有一份审稿：没读到它的记录时只能按稿状态估计成「待审稿」。
-   * 第 3 章那一稿的记录要等 release 才返回，其余读取立即返回。
+   * 第 1 章定稿，第 3 章草稿已有一份审稿：没读到它的记录时只能按稿状态估计成「待审稿」。第 2 章按参数是没审过的草稿或定稿，
+   * 决定落点是第 2 章还是第 3 章。第 3 章那一稿第 n 次读审稿记录要等 release(n) 才返回，其余读取立即返回。
    */
-  function installProject() {
-    const drafts = [meta(11, 1, 'finalized'), meta(21, 2, 'draft'), meta(31, 3, 'draft')]
-    let release = () => {}
-    const held = new Promise<void>(resolve => { release = resolve })
+  function installProject(chapter2: 'draft' | 'finalized') {
+    const drafts = [meta(11, 1, 'finalized'), meta(21, 2, chapter2), meta(31, 3, 'draft'), ...(chapter2 === 'finalized' ? [meta(41, 4, 'draft')] : [])]
+    const releases: (() => void)[] = []
+    const holds = [0, 1].map(() => new Promise<void>(resolve => { releases.push(resolve) }))
+    let reads = 0
     const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
       const id = args[0]
       switch (channel) {
@@ -146,12 +147,11 @@ describe('打开作品时流程脊等各稿的审稿与修稿记录', () => {
         case 'db:character-roster-read': return { status: 'ready' }
         case 'db:blueprint-get-all': return [1, 2, 3, 4].map(chapterNumber => ({ chapterNumber, title: `第${chapterNumber}章` }))
         case 'db:draft-list-all': return drafts
-        case 'db:revision-list':
-          if (id === 31) await held
-          return []
+        case 'db:revision-list': return []
         case 'db:review-list':
-          if (id === 31) await held
-          return id === 31 ? [{ id: 5, reviewIndex: 1, createdAt: '2026-10-13 20:00:01' }] : []
+          if (id !== 31) return []
+          await holds[reads++]
+          return [{ id: 5, reviewIndex: 1, createdAt: '2026-10-13 20:00:01' }]
         case 'db:review-get-full': return { id, content: '' }
         case 'db:review-cycle-get': return null
         case 'db:draft-get-full': return { ...drafts.find(draft => draft.id === id), content: '雾是从海面上爬上来的。' }
@@ -159,7 +159,7 @@ describe('打开作品时流程脊等各稿的审稿与修稿记录', () => {
       }
     })
     Object.defineProperty(window, 'aiNovelAPI', { configurable: true, value: { invoke, on: vi.fn(() => () => {}), once: vi.fn(), send: vi.fn() } })
-    return { release }
+    return { release: (read: number) => releases[read]() }
   }
 
   /** 流程脊上看得到的阶段与各章的阶段。 */
@@ -172,7 +172,7 @@ describe('打开作品时流程脊等各稿的审稿与修稿记录', () => {
   })
 
   it('落点不等记录，流程脊等这次打开的记录全部读完才出现，出现时各章就是读到的阶段；单章视图先读完自己那一稿也不提前出现', async () => {
-    const { release } = installProject()
+    const { release } = installProject('draft')
     const current = session('current')
     await open(current, READY)
     await act(async () => root!.render(<Spine />))
@@ -187,9 +187,31 @@ describe('打开作品时流程脊等各稿的审稿与修稿记录', () => {
     expect(spine()).toEqual([])
     expect(refreshed).toBe(false)
 
-    release()
+    release(0)
     await flush()
     expect(refreshed).toBe(true)
     expect(spine()).toEqual(['setup', 'architecture', 'blueprint', 'manuscript', '1:final', '2:draft', '3:reviewed', '4:todo'])
+  })
+
+  it('落点那一章就是有审稿的章：单章视图对同一稿的读取还没回来，流程脊出现时这一章也已是读到的阶段', async () => {
+    const { release } = installProject('finalized')
+    const current = session('current')
+    await open(current, READY)
+    await act(async () => root!.render(<Spine />))
+    void refreshStageWork((zh: string) => zh)
+    await flush()
+    expect(useEditorStore.getState().tabs.map(tab => [tab.type, tab.chapterNumber])).toEqual([['chapter', 3]])
+
+    void refreshChapterFacts([{ id: 31 }], current)
+    await flush()
+    expect(spine()).toEqual([])
+
+    release(0)
+    await flush()
+    expect(spine()).toEqual(['setup', 'architecture', 'blueprint', 'manuscript', '1:final', '2:final', '3:reviewed', '4:draft'])
+
+    release(1)
+    await flush()
+    expect(spine()).toEqual(['setup', 'architecture', 'blueprint', 'manuscript', '1:final', '2:final', '3:reviewed', '4:draft'])
   })
 })
