@@ -328,6 +328,50 @@ export const ARCH_SCENARIOS = {
     assert.equal(await arch.primary(page).innerText(), '继续生成架构')
   } },
 
+  /** 旧外壳（发布默认外壳）侧栏：大纲分批写到 16 / 24 章仍算已生成，行内有清空按钮、右键可清空；名字与新外壳相同。 */
+  'arch-legacy-sidebar': { model: false, shell: 'writer', setup: context => seedStageSample(context, { totalChapters: 24, beforeReload: async ({ page, invoke, path, session }) => {
+    const body = Array.from({ length: 16 }, (_, index) => `## 第${index + 1}章：灯下第${index + 1}夜\n林岚在第${index + 1}夜核对雾钟与潮位。`).join('\n\n')
+    const synopsis = `# 情节大纲\n\n${body}\n\n> 本大纲已覆盖至第 16 章（全书 24 章），其余章节将在后续批次继续生成。`
+    const saved = await invoke(page, 'db:project-core-update', { synopsis }, path, session)
+    assert.equal(saved.success, true, saved.error)
+  } }), run: async ({ page }) => {
+    const tree = page.locator('.tree-item')
+    await tree.filter({ hasText: /^故事架构/ }).filter({ hasText: '4/4' }).waitFor({ timeout: 20_000 })
+    const outline = tree.filter({ hasText: /^情节大纲/ })
+    assert.doesNotMatch(await outline.innerText(), /待生成/, '分批大纲不显示待生成')
+    assert.equal(await outline.getByRole('button').count(), 1, '行内有清空按钮')
+    const names = await tree.allInnerTexts()
+    assert.ok(names.some(name => name.startsWith('角色名单')), '侧栏写角色名单')
+    assert.ok(!names.some(name => name.includes('角色图谱')), '侧栏没有角色图谱')
+    await outline.click({ button: 'right' })
+    const clear = page.getByRole('button', { name: '清空情节大纲' }).or(page.getByText('清空情节大纲', { exact: true })).first()
+    await clear.waitFor({ state: 'visible' })
+    assert.equal(await clear.isDisabled(), false, '右键清空可用')
+    return { sidebar: names.slice(0, 8) }
+  } },
+
+  /** 英文界面一次：四节名字、名单菜单、名单全文标签与视图头、横幅、名单底栏单复数都与中文同一套说法。 */
+  'arch-names-en': { model: false, shell: 'stage', setup: seedArch(), run: async ({ page, invoke, reload }) => {
+    assert.equal((await invoke(page, 'config:set', { locale: 'en-US' })).success, true)
+    await reload()
+    await stage.shelfButton(page, 'Open 灯塔').click()
+    await page.getByRole('navigation', { name: 'Writing flow' }).getByRole('button', { name: /^Architecture/ }).click()
+    await root(page).locator('.arch-page:not([data-loading]):not([data-cast-loading])').waitFor({ state: 'visible', timeout: 30_000 })
+    const regions = ['Premise', 'Cast', 'World', 'Outline']
+    for (const name of regions) await root(page).getByRole('region', { name, exact: true }).waitFor({ state: 'visible' })
+    await root(page).getByRole('region', { name: 'Cast', exact: true }).getByRole('button', { name: 'More for Cast' }).click()
+    await page.getByRole('menuitem', { name: 'View cast as text' }).click()
+    await page.getByRole('tab', { name: 'Cast as text' }).waitFor({ state: 'visible' })
+    const viewer = root(page)
+    await viewer.getByText('This is the read-only text of the cast, generated from it. Edit identities, profiles and relationships on the Cast page.').waitFor()
+    const text = await viewer.innerText()
+    assert.doesNotMatch(text, /Character graph|Character map|Character Management|Worldbuilding|Synopsis/, '没有旧名字')
+    await page.getByRole('tab', { name: 'Architecture' }).click()
+    await root(page).getByRole('region', { name: 'Cast', exact: true }).getByRole('button', { name: 'Open cast' }).click()
+    await root(page).locator('.cast-roster-foot').filter({ hasText: '1 character · page 1 / 1' }).waitFor()
+    return { regions }
+  } },
+
   /** lane 6：清空此节出现危险确认；after 取消，界面与数据库里的世界观都没变。 */
   'arch-clear': { model: false, shell: 'stage', setup: seedArch(), run: async context => {
     const { page } = context
