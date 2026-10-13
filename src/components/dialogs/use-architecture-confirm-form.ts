@@ -122,7 +122,7 @@ export function useArchitectureConfirmForm({
       : from > synopsisEffect.lastChapter + 1
         ? text(`已有大纲写到第 ${synopsisEffect.lastChapter} 章，不能跳到第 ${from} 章开始。请从第 ${synopsisEffect.lastChapter + 1} 章续写，或从第 1–${synopsisEffect.lastChapter} 章中的某一章起重写。`,
           `The outline reaches chapter ${synopsisEffect.lastChapter}, so it cannot skip to chapter ${from}. Continue from chapter ${synopsisEffect.lastChapter + 1}, or rewrite from a chapter between 1 and ${synopsisEffect.lastChapter}.`)
-        : text('这个范围会切开已有的章节条目，或已有大纲与分批记录对不上，后台会拒绝。请换一个起止章。', 'This range splits an existing chapter entry, or the outline does not match its batch record, so it would be rejected. Choose other chapters.')
+        : text('这个范围会切开已有的章节条目，或已有大纲末尾的分批说明与正文对不上，后台会拒绝。请换一个起止章。', 'This range splits an existing chapter entry, or the batch note at the end of the outline does not match its text, so it would be rejected. Choose other chapters.')
 
   /** 选定范围的说明：覆盖哪几章、哪几章原样保留；续写接在哪一章之后。 */
   const synopsisEffectNote = (): string | null => {

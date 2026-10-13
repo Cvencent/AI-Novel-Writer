@@ -93,7 +93,7 @@ function OutlineNotice({ overview, onGenerate }: { overview: ArchitectureOvervie
   }
   if (recoveryFailed) {
     return (
-      <Notice tone="warn" title={text('大纲正文里还留着分批生成的标记，但分批记录已对不上（可能手动改过）。', 'The outline still carries a batch note, but its batch record no longer matches (it may have been edited).')}
+      <Notice tone="warn" title={text('大纲末尾还留着分批生成的说明，但正文已和它对不上（可能手动改过）。', 'The outline still ends with a batch note that no longer matches its text (it may have been edited).')}
         actions={<Button variant="secondary" size="sm" onClick={onGenerate}><Sparkles size={14} aria-hidden />{text('选章节范围生成…', 'Choose chapters…')}</Button>}>
         {text('续写按钮用不了；在生成对话框里选起止章，会标出哪些章被替换、哪些原样保留。', 'Continue is unavailable. Pick the chapters in the dialog; it shows which chapters are replaced and which stay.')}
       </Notice>

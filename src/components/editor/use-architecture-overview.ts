@@ -448,7 +448,7 @@ export function useArchitectureOverview(projectKey: string) {
     planningRecovery,
     synopsis: {
       progress: synopsisProgress,
-      /** 正文带分批标记、检查点却对不上（多半手改过）：续写按钮用不了，只能在对话框里选范围。 */
+      /** 正文末尾带分批说明、主进程却已不能紧接续写（多半手改过）：续写按钮用不了，只能在对话框里选范围。 */
       recoveryFailed: synopsisRecoveryFailed,
       busy: synopsisBusy,
       candidate: synopsisCandidate,
