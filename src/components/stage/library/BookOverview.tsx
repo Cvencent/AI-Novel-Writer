@@ -54,7 +54,7 @@ export default function BookOverview({ mode, name, meta, overview, bars, primary
           items={[
             { id: 'words', label: text('正文字数', 'Words'), value: count(ready.totalWords, locale) },
             { id: 'final', label: text('定稿章节', 'Final chapters'), value: count(ready.finalizedChapters, locale) },
-            { id: 'characters', label: text('人物', 'Characters'), value: count(ready.characters, locale) },
+            { id: 'characters', label: text('角色', 'Characters'), value: count(ready.characters, locale) },
           ]}
         />
       )}
