@@ -33,8 +33,8 @@ interface StageState {
   closingTabId: string | null
   /** 要为这一章打开写作弹层（定稿后打开下一章等）；挂着这一章写作按钮的页面接手后清空。只属于发出时的那次打开，换作品或重新打开即清掉。 */
   writeRequest: { session: ProjectSessionContext; chapterNumber: number } | null
-  /** 审稿或修稿刚生成，要这一稿的单章视图重读数据并展开审稿侧页或合并视图；视图接手后清空。 */
-  chapterRequest: { filePath: string; open: 'review' | 'merge' } | null
+  /** 审稿或修稿刚生成，要这一稿的单章视图重读数据；视图接手后清空。只属于发出时的那次打开，换作品或重新打开即清掉。 */
+  chapterRequest: { session: ProjectSessionContext; filePath: string } | null
   /** 各稿的审稿与修稿记录（按稿 id），流程脊与单章视图据此判断一章走到哪一步；只属于读出它的那次打开。 */
   chapterFacts: { session: ProjectSessionContext; byDraft: Readonly<Record<number, ChapterFacts>> } | null
 }

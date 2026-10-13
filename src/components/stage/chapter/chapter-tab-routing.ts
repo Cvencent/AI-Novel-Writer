@@ -9,6 +9,7 @@ import { useLocaleStore } from '../../../stores/locale-store'
 import { chapterPlanTabId } from '../../../stores/navigation/stage-navigation'
 import { useStageStore } from '../../../stores/navigation/stage-store'
 import { openDraftTab } from '../../../stores/open-draft-tab'
+import { toast } from '../../ui/Toast'
 
 /** 正文类标签里由单章视图承接的：一稿草稿或定稿（ai-novel://draft/、ai-novel://manuscript/），以及待写章（没有 filePath）。 */
 export function isChapterViewTab(tab: EditorTab): boolean {
@@ -20,13 +21,22 @@ export function isChapterViewTab(tab: EditorTab): boolean {
 
 /**
  * 在 tabId 那个标签的位置换上另一稿或待写章：open 打开（或切到）新标签后，关掉旧标签并把新标签挪到旧位置。
- * open 返回 false（读取失败、会话已变）时什么也不动。旧标签有未保存修改时由调用方先保存或请作者确认。
+ * open 返回 false（读取失败、会话已变）时什么也不动。旧标签有未保存修改时由调用方先保存或请作者确认（放弃时照常关掉）；
+ * 打开新标签期间作者又在旧标签里打了字，那些字没人确认过，旧标签就留着不关，并提示一句。
  */
 export async function swapChapterTab(tabId: string, open: () => Promise<boolean> | boolean): Promise<void> {
-  const index = useEditorStore.getState().tabs.findIndex(tab => tab.id === tabId)
+  const tabs = useEditorStore.getState().tabs
+  const index = tabs.findIndex(tab => tab.id === tabId)
+  const before = tabs[index]?.content
   if (!(await open())) return
   const opened = useEditorStore.getState().activeTabId
   if (!opened || opened === tabId) return
+  const old = useEditorStore.getState().tabs.find(tab => tab.id === tabId)
+  if (old?.dirty && old.content !== before) {
+    const text = useLocaleStore.getState().text
+    toast.warning(text('原来那一稿在切换时又有了修改，它的标签留着，请保存后再关闭。', 'The previous draft changed while switching, so its tab stays open. Save it before closing.'))
+    return
+  }
   useEditorStore.getState().closeTab(tabId)
   if (index < 0) return
   useEditorStore.setState(state => {
@@ -82,7 +92,7 @@ export function installChapterTabRouting(): () => void {
       handling = true
       try {
         useEditorStore.getState().closeTab(active.id)
-        useStageStore.setState({ chapterRequest: { filePath: active.filePath, open: active.type === 'review-report' ? 'review' : 'merge' } })
+        useStageStore.setState({ chapterRequest: { session, filePath: active.filePath } })
       } finally {
         handling = false
       }

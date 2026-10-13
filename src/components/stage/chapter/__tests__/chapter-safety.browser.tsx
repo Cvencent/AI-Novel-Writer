@@ -3,25 +3,28 @@ import { page } from 'vitest/browser'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 
+import { blueprintWritePrefill } from '../../../../services/workflows/chapter-write-launch'
 import { formatResourceUri } from '../../../../shared/project-paths'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
+import { useAppearanceStore } from '../../../../stores/appearance-bootstrap'
 import { useDraftStore } from '../../../../stores/draft-store'
 import { useEditorStore } from '../../../../stores/editor-store'
 import { useLLMStore } from '../../../../stores/llm-store'
 import { useLocaleStore } from '../../../../stores/locale-store'
 import { useStageStore } from '../../../../stores/navigation/stage-store'
-import { openChapterPlan } from '../../../../stores/navigation/stage-navigation'
+import { openChapterPlan, stageNavigate } from '../../../../stores/navigation/stage-navigation'
 import { openDraftTab } from '../../../../stores/open-draft-tab'
 import { useProjectStore } from '../../../../stores/project-store'
 import { useWorkflowStore } from '../../../../stores/workflow-store'
 import StageWorkspace from '../../StageWorkspace'
+import { swapChapterTab } from '../chapter-tab-routing'
 import { AI_REVIEW, BLUEPRINT, ORIGINAL, REVISED, SESSION, chapterProject, createChapterBackend, generationModel } from './chapter-fixture'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const original = {
   editor: useEditorStore.getState(), project: useProjectStore.getState(), drafts: useDraftStore.getState(),
-  stage: useStageStore.getState(), llm: useLLMStore.getState(), workflow: useWorkflowStore.getState(),
+  stage: useStageStore.getState(), llm: useLLMStore.getState(), workflow: useWorkflowStore.getState(), appearance: useAppearanceStore.getState(),
 }
 
 let root: Root | undefined
@@ -82,6 +85,7 @@ afterEach(async () => {
   useStageStore.setState(original.stage, true)
   useLLMStore.setState(original.llm, true)
   useWorkflowStore.setState(original.workflow, true)
+  useAppearanceStore.setState(original.appearance, true)
 })
 
 describe('版本切换器', () => {
@@ -289,5 +293,56 @@ describe('审稿侧页与运行侧页', () => {
     }))
     await expect.element(reviewHeading()).toBeVisible()
     await expect.element(runHeading()).not.toBeInTheDocument()
+  })
+})
+
+describe('写作此章、标签顶替与跨作品的请求', () => {
+  it('写作此章（定稿后打开下一章、Ctrl K）落到这一章的单章视图并弹出写作弹层，不再落到蓝图', async () => {
+    await mount()
+    await act(async () => stageNavigate({ kind: 'chapter', chapterNumber: 3, write: blueprintWritePrefill(BLUEPRINT) }))
+    await expect.element(page.getByRole('dialog', { name: '本次写作选项' })).toBeVisible()
+    expect([activeTab()?.type, activeTab()?.chapterNumber, tabs().some(tab => tab.type === 'chapter-card')]).toEqual(['chapter', 3, false])
+    expect(useStageStore.getState().writeRequest).toBeNull()
+  })
+
+  it('这一章已经有稿：打开它的单章视图，写作请求落空，不会留到蓝图页再弹出', async () => {
+    backend.addDraft({ status: 'draft' })
+    await mount()
+    await act(async () => stageNavigate({ kind: 'chapter', chapterNumber: 3, write: blueprintWritePrefill(BLUEPRINT) }))
+    await expect.element(page.getByRole('button', { name: 'AI 审稿', exact: true })).toBeVisible()
+    expect(useStageStore.getState().writeRequest).toBeNull()
+  })
+
+  it('换上另一稿期间旧标签又有了修改：旧标签留着不关', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    await mount()
+    await act(async () => openChapterPlan(5, '第五章', SESSION))
+    await openDraft(draft.id)
+    const old = activeTab()!.id
+    await act(async () => swapChapterTab(old, () => {
+      useEditorStore.getState().updateTabContent(old, '切换途中打的字')
+      openChapterPlan(5, '第五章', SESSION)
+      return true
+    }))
+    expect(tabs().find(tab => tab.id === old)).toMatchObject({ content: '切换途中打的字', dirty: true })
+  })
+
+  it('审稿完成的重读请求属于发出时那次打开：换作品后清掉', async () => {
+    await mount()
+    await act(async () => useStageStore.setState({ chapterRequest: { session: SESSION, filePath: formatResourceUri({ kind: 'draft', id: 1 }) } }))
+    await act(async () => useProjectStore.setState({ currentProject: { ...chapterProject(), sessionLease: 'reopened-lease' } }))
+    expect(useStageStore.getState().chapterRequest).toBeNull()
+  })
+
+  it('删除正文的确认写的是新外壳里重试清理的位置', async () => {
+    const draft = backend.addDraft({ status: 'finalized' })
+    useAppearanceStore.setState({ resolvedShell: 'stage' })
+    await mount()
+    await openDraft(draft.id)
+    await click('更多操作')
+    await act(async () => page.getByRole('menuitem', { name: '删除正文…' }).click())
+    await expect.element(page.getByText(/清理失败时可在这一章的页面里重试/)).toBeVisible()
+    await expect.element(page.getByText(/正文章节下/)).not.toBeInTheDocument()
+    await click('取消')
   })
 })
