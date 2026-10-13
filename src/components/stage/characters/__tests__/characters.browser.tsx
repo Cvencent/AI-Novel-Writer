@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react'
+import { userEvent } from 'vitest/browser'
 import { createRoot, type Root } from 'react-dom/client'
 import type { StoreApi } from 'zustand'
 
@@ -200,5 +201,39 @@ describe('角色名单', () => {
     await click('返回')
     expect(dialog().querySelector('textarea')?.value).toBe('林舟：末班车上的乘客。')
     expect(legacyConfirm).not.toHaveBeenCalled()
+  })
+
+  it('外发确认不能被第一步按钮上的双击或连按回车跳过，只有在第二步单独确认才发送', async () => {
+    useLLMStore.setState({ models: [{ id: 'm1', name: '夹具模型', modelName: 'fixture-1', baseUrl: 'https://fixture.example/v1' }], defaultModelId: 'm1' } as never)
+    const startWorkflow = vi.fn(async () => 'r1')
+    useWorkflowStore.setState({ startWorkflow: startWorkflow as never })
+    await render()
+    await click('粘贴 / 导入角色卡')
+    const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')!
+    const source = dialog().querySelector<HTMLTextAreaElement>('textarea')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(source, '林舟：末班车上的乘客。')
+      source.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    const consentShown = () => dialog().textContent?.includes('https://fixture.example/v1') ?? false
+
+    await userEvent.dblClick(button('AI 提取并预览')!)
+    await vi.waitFor(() => expect(consentShown()).toBe(true))
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(startWorkflow).not.toHaveBeenCalled()
+
+    await click('返回')
+    button('AI 提取并预览')!.focus()
+    await userEvent.keyboard('{Enter}')
+    await vi.waitFor(() => expect(consentShown()).toBe(true))
+    expect(document.activeElement?.textContent).toBe('返回')
+    await userEvent.keyboard('{Enter}')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(startWorkflow).not.toHaveBeenCalled()
+    expect(consentShown()).toBe(false)
+
+    await click('AI 提取并预览')
+    await click('发送并提取')
+    await vi.waitFor(() => expect(startWorkflow).toHaveBeenCalledTimes(1))
   })
 })

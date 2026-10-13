@@ -199,14 +199,16 @@ function SessionImportButton({ session, compact, disabled, ink }: Props & { sess
         description={consent
           ? <span className="cast-import-consent">{consentText(consent.model)}</span>
           : text('粘贴完整角色卡，或选择资料文件。AI 提取后由你预览确认，不会自动保存。', 'Paste full character cards or choose files. Preview and confirm the AI extraction before saving.')}
+        // 两步的按钮各自带 key 重挂：第一步按钮上的回车连按落在第二步的「返回」上。外发要在第二步单独点一次，
+        // 落在同一位置的双击第二下（detail > 1）不算确认。
         footer={consent
           ? <>
-            <Button variant="secondary" disabled={busy} onClick={() => setConsent(null)}>{text('返回', 'Back')}</Button>
-            <Button variant="primary" disabled={busy} onClick={() => void sendConsented(consent)}>{text('发送并提取', 'Send and extract')}</Button>
+            <Button key="consent-back" variant="secondary" autoFocus disabled={busy} onClick={() => setConsent(null)}>{text('返回', 'Back')}</Button>
+            <Button key="consent-send" variant="primary" disabled={busy} onClick={event => { if (event.detail <= 1) void sendConsented(consent) }}>{text('发送并提取', 'Send and extract')}</Button>
           </>
           : <>
-            <Button variant="secondary" disabled={busy} onClick={() => setOpen(false)}>{text('暂不导入', 'Not now')}</Button>
-            <Button variant="primary" disabled={busy || (!draft.source.trim() && !draft.files.length)} onClick={() => setConsent(prepare())}>{busy ? text('处理中…', 'Working…') : text('AI 提取并预览', 'Extract and preview with AI')}</Button>
+            <Button key="source-close" variant="secondary" disabled={busy} onClick={() => setOpen(false)}>{text('暂不导入', 'Not now')}</Button>
+            <Button key="source-extract" variant="primary" disabled={busy || (!draft.source.trim() && !draft.files.length)} onClick={() => setConsent(prepare())}>{busy ? text('处理中…', 'Working…') : text('AI 提取并预览', 'Extract and preview with AI')}</Button>
           </>}
       >
         {!consent && <>
