@@ -1,7 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ProjectData } from '../../../shared/ipc-channels'
+import type { DraftMeta } from '../../../services/draft-index'
 import { useAppearanceStore } from '../../appearance-bootstrap'
+import { useDraftStore } from '../../draft-store'
 import { useEditorStore } from '../../editor-store'
 import { useLayoutStore } from '../../layout-store'
 import { useProjectStore } from '../../project-store'
@@ -9,10 +11,12 @@ import { navigate } from '../navigation-intents'
 import { useStageStore } from '../stage-store'
 
 const PROJECT_PATH = 'C:\\novels\\stage'
+const SESSION = { projectId: 'stage', leaseId: 'lease-1', projectPath: PROJECT_PATH }
 const WRITE = { title: '夜雨', role: '发展', purpose: '交代来信', keyEvents: '收到密信', characters: '林岚', userGuidance: '' }
 
 const originalAppearance = useAppearanceStore.getState()
 const originalLayout = useLayoutStore.getState()
+const originalDrafts = useDraftStore.getState()
 const originalEditor = useEditorStore.getState()
 const originalProject = useProjectStore.getState()
 const originalStage = useStageStore.getState()
@@ -22,6 +26,7 @@ beforeEach(() => {
   useLayoutStore.setState({ sidebarView: 'home', activeRailItem: 'home', settingsOpen: false, chapterCreationOpen: false,
     chapterCreationPrefill: null, immersive: false, bottomPanelOpen: false })
   useEditorStore.setState({ tabs: [], activeTabId: null })
+  useDraftStore.setState({ draftsByChapter: {}, loading: false, dataProjectSession: SESSION })
   useProjectStore.setState({ currentProject: { id: 'stage', sessionLease: 'lease-1', name: '灯塔', path: PROJECT_PATH } as ProjectData })
   useStageStore.setState({ sheet: { kind: 'run', tab: 'diagnostics' }, focus: true, palette: 'commands', work: null, closingTabId: null })
 })
@@ -30,11 +35,13 @@ afterEach(() => {
   useAppearanceStore.setState(originalAppearance, true)
   useLayoutStore.setState(originalLayout, true)
   useEditorStore.setState(originalEditor, true)
+  useDraftStore.setState(originalDrafts, true)
   useProjectStore.setState(originalProject, true)
   useStageStore.setState(originalStage, true)
 })
 
 const tabTypes = () => useEditorStore.getState().tabs.map(tab => tab.type)
+const activeTab = () => useEditorStore.getState().tabs.find(tab => tab.id === useEditorStore.getState().activeTabId)
 
 describe('新外壳下 navigate 的落点，调用方与旧外壳相同', () => {
   it('回到流程脊：离开书房、退出沉浸、收起侧页，不打开页面；作者开着的搜索不动', () => {
@@ -80,11 +87,25 @@ describe('新外壳下 navigate 的落点，调用方与旧外壳相同', () => 
     expect(useStageStore.getState().focus).toBe(true)
   })
 
-  it('写作此章不再打开旧的创作对话框，也不落到蓝图：打开这一章，请单章视图的写作按钮弹出写作弹层', () => {
+  it('写作此章不再打开旧的创作对话框，也不落到蓝图：打开这一章的单章视图，写作请求留给那里的写作按钮', async () => {
     navigate({ kind: 'chapter', chapterNumber: 3, write: WRITE })
+    await vi.waitFor(() => expect(activeTab()).toMatchObject({ type: 'chapter', chapterNumber: 3, filePath: undefined }))
+    expect(tabTypes()).toEqual(['chapter'])
     expect(useLayoutStore.getState().chapterCreationOpen).toBe(false)
-    expect(tabTypes()).not.toContain('chapter-card')
     expect(useStageStore.getState()).toMatchObject({ focus: false, writeRequest: { chapterNumber: 3 } })
+  })
+
+  it('写作此章落到已经有稿的章：切到这一稿的标签，写作请求清掉，不留到蓝图页再弹', async () => {
+    const draft = { id: 31, chapterNumber: 3, version: 1, status: 'draft', createdAt: '2026-10-13T08:00:00.000Z',
+      source: 'write', filePath: 'draft:31', fileName: '第3章.md' } satisfies DraftMeta
+    useDraftStore.setState({ draftsByChapter: { 3: [draft] } })
+    useEditorStore.setState({ tabs: [
+      { id: 'draft-tab', name: '第 3 章', type: 'chapter', chapterNumber: 3, filePath: 'draft:31', projectKey: PROJECT_PATH },
+      { id: 'plan-tab', name: '蓝图', type: 'chapter-card', projectKey: PROJECT_PATH },
+    ], activeTabId: 'plan-tab' })
+    navigate({ kind: 'chapter', chapterNumber: 3, write: WRITE })
+    await vi.waitFor(() => expect(useEditorStore.getState().activeTabId).toBe('draft-tab'))
+    expect(useStageStore.getState().writeRequest).toBeNull()
   })
 
   it('在书房里收到写作此章（定稿后打开下一章）：回到作品，请求带上这次打开的作品', () => {
