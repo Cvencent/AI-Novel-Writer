@@ -239,7 +239,7 @@ export function plotOutlineNextChapter(source: PlotOutlineRangeSource): number {
 }
 
 /** Replace only the explicitly committed chapter range; keep the surrounding source text. */
-export function renderPlotOutlineRange(body: string, range: PlotOutlineRange, expected: ProjectCoreSynopsisExpected): string {
+export function renderPlotOutlineRange(body: string, range: PlotOutlineRange, expected: PlotOutlineRangeSource): string {
   plotOutlineConfirmedPrefix(expected, range)
   const entries = headings(expected.synopsis)
   if (!entries.length) return renderPlotOutlineSynopsis(body, range.to, expected)

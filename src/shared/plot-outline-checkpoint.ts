@@ -1,5 +1,5 @@
 import type { MainGenerationRunHandle } from '../services/generation/generation-runtime'
-import { PLOT_OUTLINE_PROTOCOL } from './plot-outline-contract'
+import { PLOT_OUTLINE_PROTOCOL, plotOutlineNextChapter } from './plot-outline-contract'
 import type { WritingLanguage } from './writing-language'
 
 /** partial_arch.json 里情节大纲的分批检查点字段。 */
@@ -176,20 +176,20 @@ export function isRecoverableSynopsisCheckpoint(
 
 /**
  * 情节大纲写到了哪里：流程脊、架构页的徽标、页头计数与主按钮、生成对话框的默认勾选共用这一个判定。
- * 只信 partial_arch.json 的分批检查点（与正式大纲逐字对得上才算数），不读正文里的标记文字。
+ * 写到第几章按主进程开跑时的同一判定（plotOutlineNextChapter 内部即 plotOutlineConfirmedPrefix）：正式大纲能紧接第 k 章续写才算只写到第 k 章。
+ * 不用检查点的 synopsis_covered_to：重写中间几章后它记的是本批终章，与正式大纲对不上。检查点只用来认出被打断或正在生成的一批。
  */
 export type OutlineProgress =
   | { kind: 'empty' }
   /** 有一批被打断或正在生成；正式大纲还是开跑前的样子。 */
   | { kind: 'interrupted' }
-  /** 分批写到第 coveredTo 章，全书 total 章。 */
+  /** 正式大纲写到第 coveredTo 章，全书 total 章。 */
   | { kind: 'partial'; coveredTo: number; total: number }
   | { kind: 'complete' }
 
 export function outlineProgress(synopsis: string, checkpoint: unknown, writingLanguage: WritingLanguage, totalChapters: number): OutlineProgress {
   if (synopsis.length <= 50) return { kind: 'empty' }
-  if (!isUsableSynopsisCheckpoint(checkpoint, synopsis, writingLanguage, totalChapters)) return { kind: 'complete' }
-  const { synopsis_incomplete: incomplete, synopsis_covered_to: coveredTo = 0 } = checkpoint as SynopsisCheckpoint
-  if (incomplete) return { kind: 'interrupted' }
-  return coveredTo > 0 && coveredTo < totalChapters ? { kind: 'partial', coveredTo, total: totalChapters } : { kind: 'complete' }
+  if (isRecoverableSynopsisCheckpoint(checkpoint, synopsis, writingLanguage, totalChapters)) return { kind: 'interrupted' }
+  const next = plotOutlineNextChapter({ synopsis, totalChapters, writingLanguage })
+  return next > 1 ? { kind: 'partial', coveredTo: next - 1, total: totalChapters } : { kind: 'complete' }
 }

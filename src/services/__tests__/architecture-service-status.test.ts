@@ -4,8 +4,8 @@ const invoke = vi.hoisted(() => vi.fn())
 vi.mock('../ipc-client', () => ({ ipc: { invokeWithProjectSession: invoke } }))
 
 import { checkArchConfirmed, checkArchStatus } from '../architecture-service'
-import { PLOT_OUTLINE_PROTOCOL, renderPlotOutlineSynopsis } from '../../shared/plot-outline-contract'
-import { synopsisFactsFingerprint } from '../../shared/plot-outline-checkpoint'
+import { PLOT_OUTLINE_PROTOCOL, renderPlotOutlineRange, renderPlotOutlineSynopsis } from '../../shared/plot-outline-contract'
+import { outlineProgress, synopsisFactsFingerprint } from '../../shared/plot-outline-checkpoint'
 
 const session = { projectId: '灯塔', projectPath: 'C:/novels/lighthouse', leaseId: '本次打开' }
 const LONG = '内容。'.repeat(30)
@@ -60,10 +60,33 @@ describe('流程脊的架构四节是否已确认：与架构页徽标同一判�
     expect((await checkArchConfirmed(session)).synopsis).toBe(true)
   })
 
-  it('正文里留着分批标记、但检查点已对不上（作者手改过）：不读标记文字，按已确认算', async () => {
+  it('正文里留着分批标记、但作者在末尾补写过（主进程已不能紧接续写）：按已确认算', async () => {
     synopsis = `${partialOutline}\n\n作者补的一句。`
     partial = batchCheckpoint
     expect((await checkArchConfirmed(session)).synopsis).toBe(true)
+  })
+
+  it('分批写到第 16 章后重写第 1–5 章：检查点记成本批终章第 5 章，大纲仍按正式大纲算写到第 16 章', async () => {
+    const rewritten = Array.from({ length: 5 }, (_, index) => `## 第${index + 1}章：新灯${index + 1}\n守灯人重写第${index + 1}夜。`).join('\n\n')
+    const expected = { synopsis: partialOutline, totalChapters: 24, writingLanguage: 'zh-CN' as const }
+    synopsis = renderPlotOutlineRange(rewritten, { from: 1, to: 5 }, expected)
+    // executeChapterOutline 提交后 saveNavigation(outline, true) 写下的检查点。
+    partial = {
+      synopsis_protocol: PLOT_OUTLINE_PROTOCOL, synopsis_incomplete: false, synopsis_range: { from: 1, to: 5 }, synopsis_covered_to: 5,
+      synopsis_result: rewritten, synopsis_body_hash: synopsisFactsFingerprint([rewritten]), synopsis_db_hash: synopsisFactsFingerprint([synopsis]),
+    }
+    expect(outlineProgress(synopsis, partial, 'zh-CN', 24)).toEqual({ kind: 'partial', coveredTo: 16, total: 24 })
+    expect((await checkArchConfirmed(session)).synopsis).toBe(false)
+  })
+
+  it('检查点可用时与正式大纲给出同一进度', () => {
+    expect(outlineProgress(partialOutline, batchCheckpoint, 'zh-CN', 24)).toEqual({ kind: 'partial', coveredTo: 16, total: 24 })
+    expect(outlineProgress(partialOutline, null, 'zh-CN', 24)).toEqual({ kind: 'partial', coveredTo: 16, total: 24 })
+  })
+
+  it('作者手写、只列了部分章的大纲不算分批没写完', () => {
+    const sparse = `# 情节大纲\n\n${[1, 5, 12].map(n => `## 第${n}章：转折${n}\n这一章发生的大事。`).join('\n\n')}`
+    expect(outlineProgress(sparse, null, 'zh-CN', 24)).toEqual({ kind: 'complete' })
   })
 
   it('没有内容：未确认', async () => {
