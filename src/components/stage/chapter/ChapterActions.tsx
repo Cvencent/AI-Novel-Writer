@@ -304,7 +304,7 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
           versionLabel={versionLabel}
           recheck={pending?.type === 'review-fix'}
           onComplete={draft.completeMerge}
-          onLater={() => { setMergeLater(true); draft.setMergeData(null) }}
+          onLater={() => { setMergeLater(true); draft.closeMerge() }}
         />
       )}
       {sheetOpen && review && sheetSlot && createPortal(

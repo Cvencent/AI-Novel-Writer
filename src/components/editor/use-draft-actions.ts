@@ -81,6 +81,12 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
   const currentBodyRef = useRef(content)
 
   const reload = useCallback(() => setReloadKey(key => key + 1), [])
+  // 打开修稿合并要先读修订与源稿；读的过程中作者关掉了合并或已合并完，晚到的结果不再摆出来。
+  const mergeRequest = useRef(0)
+  const closeMerge = useCallback(() => {
+    mergeRequest.current += 1
+    setMergeData(null)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -418,6 +424,7 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
 
   /** 读出待合并修稿与它的真实冻结源，交给合并视图；正文有未保存修改或读取期间变了就不打开。 */
   const openPendingRevision = async (rev: RevisionEntry) => {
+    const request = ++mergeRequest.current
     const projectSession = captureProjectSession(currentProject)
     if (!meta || !projectSession || !isProjectSessionPath(projectSession, projectKey)) return
     const targetTab = useEditorStore.getState().tabs.find(
@@ -440,7 +447,7 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
       readDraftBody(filePath, projectKey, projectSession),
       ipc.invokeWithProjectSession(projectSession, 'db:revision-get-full', rev.id, projectKey),
     ])
-    if (!isProjectSessionCurrent(projectSession)) return
+    if (!isProjectSessionCurrent(projectSession) || request !== mergeRequest.current) return
     if (!revision) return
     const currentTarget = useEditorStore.getState().tabs.find(
       tab => tab.id === tabId && tab.projectKey === projectKey,
@@ -525,7 +532,7 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
 
       if (!isProjectSessionCurrent(projectSession)) return false
       if (result.success) {
-        setMergeData(null)
+        closeMerge()
         setMeta(prev => prev ? { ...prev, status: 'revised' } : prev)
         // 标签上的稿状态优先于元数据，合并后同步改成已修稿，否则界面仍按合并前的状态显示。
         useEditorStore.setState(state => ({
@@ -555,6 +562,6 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
     pendingRevisions, reviews, loaded, reload,
     saving, saveOutcome, currentBodyRef, onBodyChange, save,
     refine, review, canFinalize, finalize, retryManuscriptPublication, repairFinalize,
-    mergeData, setMergeData, openPendingRevision, completeMerge,
+    mergeData, closeMerge, openPendingRevision, completeMerge,
   }
 }

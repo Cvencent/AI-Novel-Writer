@@ -56,7 +56,7 @@ export default function ChapterPlan({ tab, chapterNumber, projectKey }: { tab: E
           />
           {blueprint && (
             <div className="stage-ch-actions">
-              <WriteChapterPopover chapterNumber={chapterNumber} blueprint={blueprintWritePrefill(blueprint)} label={text('写作此章', 'Write this chapter')} />
+              <WriteChapterPopover chapterNumber={chapterNumber} blueprint={blueprintWritePrefill(blueprint)} label={text('写作此章', 'Write this chapter')} align="start" />
               <span className="stage-ch-hint">
                 {row?.running
                   ? text('这一章正在写，完成后会在这里换成草稿', 'This chapter is being written; the draft replaces this page when it is done')

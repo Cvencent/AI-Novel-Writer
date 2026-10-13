@@ -63,6 +63,8 @@ function DraftChapter({ tab, filePath, projectKey }: { tab: EditorTab; filePath:
   const [charCount, setCharCount] = useState(() => countDraftUnits(tab.content ?? ''))
   const [sheetSlot, setSheetSlot] = useState<HTMLDivElement | null>(null)
 
+  // 最新审稿读出来之前不摆动作条：清单状态按审稿报告重置，先摆再换会让刚开始的合并或勾选丢掉。
+  const reviewReady = draft.reviews.length === 0 || latest !== null
   const stage = draft.meta ? chapterStage({
     status: draft.status,
     pendingRevisions: draft.pendingRevisions.length,
@@ -102,7 +104,7 @@ function DraftChapter({ tab, filePath, projectKey }: { tab: EditorTab; filePath:
                 : <span className="stage-ch-version" role="status">{versionLabel}</span>}
             />
           )}
-          {draft.meta && stage && chapterNumber !== undefined && (
+          {draft.meta && stage && chapterNumber !== undefined && reviewReady && (
             <ChapterActions
               key={review.sessionKey}
               sheetSlot={sheetSlot}

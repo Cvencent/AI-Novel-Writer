@@ -61,7 +61,7 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
   const draft = useDraftActions({ tabId, filePath, content, projectKey })
   const {
     meta, status, isReadonly, isChapterBusy, isDirty, finalizationPending, finalizationConflict,
-    pendingRevisions, saving, saveOutcome, currentBodyRef, mergeData, setMergeData,
+    pendingRevisions, saving, saveOutcome, currentBodyRef, mergeData,
   } = draft
   const reviewCount = draft.reviews.length
   // 后处理失败状态（用于控制是否展示修复按钮）
@@ -465,7 +465,7 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
       </Dialog>
 
       {/* 弹出式三栏合并视图 —— 使用统一 Dialog 组件 */}
-      <Dialog open={mergeData !== null} onOpenChange={(v) => !v && setMergeData(null)}>
+      <Dialog open={mergeData !== null} onOpenChange={(v) => !v && draft.closeMerge()}>
         <DialogContent
           className="p-0"
           style={{
@@ -501,7 +501,7 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
                     originalContent={mergeData.originalContent}
                     modifiedContent={mergeData.modifiedContent}
                     onComplete={handleMergeComplete}
-                    onCancel={() => setMergeData(null)}
+                    onCancel={draft.closeMerge}
                   />
                 </div>
               </div>

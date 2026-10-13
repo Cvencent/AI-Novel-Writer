@@ -77,14 +77,15 @@ describe('在新外壳里打开一章', () => {
     expect(useEditorStore.getState().tabs).toEqual([])
   })
 
-  it('待写的章落到蓝图并选中它；再点一次同一章，选中请求递增，蓝图页会重新选中', async () => {
+  it('待写的章打开它的单章视图（RD-8）：再点一次同一章只切过去，不再开第二个标签', async () => {
     installDrafts({ 7: { empty: true } })
     navigate({ kind: 'chapter', chapterNumber: 7 })
-    await vi.waitFor(() => expect(activeTab()).toMatchObject({ type: 'chapter-card', chapterNumber: 7, chapterSelectRequest: 1 }))
-    navigate({ kind: 'chapter', chapterNumber: 7 })
-    await vi.waitFor(() => expect(activeTab()?.chapterSelectRequest).toBe(2))
+    await vi.waitFor(() => expect(activeTab()).toMatchObject({ type: 'chapter', chapterNumber: 7, name: '第 7 章 · 第7章标题' }))
+    expect(activeTab()?.filePath).toBeUndefined()
     openBuiltinEditor('chapter-card-editor', '章节蓝图', 'chapter-card')
-    expect(activeTab()?.chapterSelectRequest).toBe(2)
+    navigate({ kind: 'chapter', chapterNumber: 7 })
+    await vi.waitFor(() => expect(activeTab()?.type).toBe('chapter'))
+    expect(useEditorStore.getState().tabs.map(tab => tab.type)).toEqual(['chapter', 'chapter-card'])
   })
 
   it('草稿已按这次会话载入完时直接用 store 里的草稿，不再单独读', async () => {
