@@ -13,13 +13,21 @@ const db = vi.hoisted(() => ({
   draft: { id: 7, chapterNumber: 3, version: 1, status: 'draft', content: '雨从傍晚开始就没有停过。' },
   revisions: [] as FakeRevision[],
   reviews: [] as FakeReview[],
+  /** 下一次读修稿列表先按当时的记录取好，等它放行才返回。 */
+  hold: null as Promise<void> | null,
 }))
 
 vi.mock('../../../services/ipc-client', () => ({
   ipc: {
     invokeWithProjectSession: async (_session: unknown, channel: string, id: number) => {
       switch (channel) {
-        case 'db:revision-list': return db.revisions.map(({ id, status, updatedAt }) => ({ id, status, updatedAt }))
+        case 'db:revision-list': {
+          const listed = db.revisions.map(({ id, status, updatedAt }) => ({ id, status, updatedAt }))
+          const hold = db.hold
+          db.hold = null
+          await hold
+          return listed
+        }
         case 'db:review-list': return db.reviews.map(({ id, reviewIndex, createdAt }) => ({ id, reviewIndex, createdAt }))
         case 'db:review-get-full': return { id, content: '{"summary":"","items":[]}' }
         case 'db:review-cycle-get': {
@@ -52,6 +60,7 @@ beforeEach(() => {
   db.draft.content = '雨从傍晚开始就没有停过。'
   db.revisions = []
   db.reviews = []
+  db.hold = null
 })
 
 afterEach(() => {
@@ -108,6 +117,19 @@ describe('一稿走到哪一步（chapter-facts 读记录，chapterPhase 判断�
     db.reviews = [{ id: 1, reviewIndex: 1, createdAt: '2026-10-13 20:00:05', cycle: 'not-generated' }]
     db.revisions = [{ id: 9, status: 'merged', updatedAt: '2026-10-13 20:00:05', sourceContent: db.draft.content }]
     expect((await phaseOf('revised')).phase).toBe('revised')
+  })
+
+  it('同一稿先发的读取晚回来：不盖掉后发读取的结果', async () => {
+    db.revisions = [{ id: 9, status: 'pending', updatedAt: '2026-10-13 20:00:02', sourceContent: db.draft.content }]
+    let release = () => {}
+    db.hold = new Promise<void>(resolve => { release = resolve })
+    const older = refreshChapterFacts([{ id: db.draft.id }], SESSION)
+
+    db.revisions[0].status = 'merged'
+    await refreshChapterFacts([{ id: db.draft.id }], SESSION)
+    release()
+    await older
+    expect(useStageStore.getState().chapterFacts?.byDraft[db.draft.id]).toMatchObject({ mergeable: [], lastMergedAt: '2026-10-13 20:00:02' })
   })
 
   it('合并后的自动复验没有复验周期：不算重新审稿', async () => {
