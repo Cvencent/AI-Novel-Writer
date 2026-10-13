@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react'
-import { ChevronDown, ChevronRight, PenLine } from 'lucide-react'
+import { ChevronRight, PenLine } from 'lucide-react'
 import type { ConsistencyPreflightResult } from '../../../services/consistency-preflight'
 import { ipc } from '../../../services/ipc-client'
 import { requireIpcSuccess } from '../../../services/ipc-result'
@@ -18,8 +18,8 @@ import { useLocaleStore } from '../../../stores/locale-store'
 import { useStageStore } from '../../../stores/navigation/stage-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { captureProjectSession, isProjectSessionCurrent } from '../../project-session-gate'
-import { Button } from '../../ui/Button'
 import { useAnchoredLayer } from '../../ui/use-anchored-layer'
+import SplitAction from './SplitAction'
 import WritePreflight from './WritePreflight'
 
 interface WriteChapterPopoverProps {
@@ -42,7 +42,8 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
   const models = useLLMStore(s => s.models)
   const defaultModelId = useLLMStore(s => s.defaultModelId)
   const writeRequest = useStageStore(s => s.writeRequest)
-  const { open, layerId, anchorRef, triggerRef, layerRef, renderLayer, show, toggle, close } = useAnchoredLayer(align)
+  const layer = useAnchoredLayer(align)
+  const { open, show, close } = layer
   const [modelId, setModelId] = useState<string | null>(null)
   const [guidance, setGuidance] = useState<string | null>(null)
   const [knowledgeHint, setKnowledgeHint] = useState('')
@@ -63,10 +64,6 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     useStageStore.setState({ writeRequest: null })
     show()
   }, [writeRequest, chapterNumber, show])
-
-  useEffect(() => {
-    if (open) layerRef.current?.focus()
-  }, [open, layerRef])
 
   // 与旧对话框一样，打开时列出已保存的一致性安排，作者可以在这里撤销。
   useEffect(() => {
@@ -158,84 +155,73 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
   const showPreflight = preflight && (preflight.findings.length > 0 || preflight.exemptions.some(item => !item.revoked))
 
   return (
-    <div className="pi-anchor stage-write" ref={anchorRef}>
-      <Button variant="primary" className="stage-write-main" disabled={busy} onClick={() => void start(false)}>
-        <PenLine size={15} aria-hidden />{label}
-      </Button>
-      <Button
-        ref={triggerRef}
-        variant="primary"
-        className="stage-write-toggle"
-        aria-label={text('本次写作选项', 'Options for this run')}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-controls={open ? layerId : undefined}
-        onClick={toggle}
-      >
-        <ChevronDown size={14} aria-hidden />
-      </Button>
-      {open && renderLayer(
-        <div id={layerId} ref={layerRef} role="dialog" aria-label={text('本次写作选项', 'Options for this run')} tabIndex={-1} className="pi-popover stage-write-pop">
-          <div className="pi-field">
-            <label htmlFor={modelFieldId}>{text('本次模型', 'Model for this run')} <em>{text('只用于这一次', 'This run only')}</em></label>
-            <select
-              id={modelFieldId}
-              className="pi-input"
-              value={selectedModelId ?? ''}
-              disabled={generationModels.length === 0}
-              onChange={event => { setModelId(event.target.value || null); setMessage(null) }}
-            >
-              <option value="" disabled>{text('请选择可用生成模型', 'Select a generation model')}</option>
-              {generationModels.map(model => (
-                <option key={model.id} value={model.id}>
-                  {model.name || model.modelName}{model.id === defaultModelId ? text('（默认）', ' (default)') : ''}
-                </option>
-              ))}
-            </select>
-            {modelError && <p className="stage-write-error" role="alert">{modelError}</p>}
-          </div>
-          <div className="pi-field">
-            <label htmlFor={guidanceFieldId}>{text('作者微操指导', 'Author guidance')} <em>{text('可选', 'Optional')}</em></label>
-            <textarea
-              id={guidanceFieldId}
-              className="pi-input stage-write-textarea"
-              rows={3}
-              value={userGuidance}
-              placeholder={text('比如：开头只写声音；结尾停在回头之前。', 'For example: open on sound only; end just before they turn around.')}
-              onChange={event => setGuidance(event.target.value)}
-            />
-          </div>
-          <details className="stage-write-more">
-            <summary>
-              <ChevronRight size={14} aria-hidden />
-              {text('更多', 'More')}
-              <small>{text('知识库检索关键词', 'Knowledge search terms')}</small>
-            </summary>
-            <div className="pi-field">
-              <label htmlFor={hintFieldId}>{text('知识库检索关键词', 'Knowledge search terms')} <em>{text('可选', 'Optional')}</em></label>
-              <input
-                id={hintFieldId}
-                className="pi-input"
-                value={knowledgeHint}
-                placeholder={text('如：剑法传承、草原地貌', 'e.g. sword inheritance, grassland terrain')}
-                onChange={event => setKnowledgeHint(event.target.value)}
-              />
-            </div>
-          </details>
-          {showPreflight && (
-            <WritePreflight
-              preflight={preflight}
-              busy={busy}
-              onIgnoreOnce={() => void start(true)}
-              onRerun={() => void start(false)}
-              onSave={(key, reason) => void saveArrangement(key, reason)}
-              onRevoke={key => void revokeArrangement(key)}
-            />
-          )}
-          {message && <p className="stage-write-error" role="alert">{message}</p>}
-          <p className="stage-write-foot">{text(`这些选项只用于本次写作，点「${label}」开始。`, `These options apply to this run only. Choose “${label}” to start.`)}</p>
-        </div>,
+    <SplitAction
+      layer={layer}
+      label={label}
+      icon={<PenLine size={15} aria-hidden />}
+      disabled={busy}
+      onRun={() => void start(false)}
+      optionsLabel={text('本次写作选项', 'Options for this run')}
+      popoverClassName="stage-write-pop"
+    >
+      <div className="pi-field">
+        <label htmlFor={modelFieldId}>{text('本次模型', 'Model for this run')} <em>{text('只用于这一次', 'This run only')}</em></label>
+        <select
+          id={modelFieldId}
+          className="pi-input"
+          value={selectedModelId ?? ''}
+          disabled={generationModels.length === 0}
+          onChange={event => { setModelId(event.target.value || null); setMessage(null) }}
+        >
+          <option value="" disabled>{text('请选择可用生成模型', 'Select a generation model')}</option>
+          {generationModels.map(model => (
+            <option key={model.id} value={model.id}>
+              {model.name || model.modelName}{model.id === defaultModelId ? text('（默认）', ' (default)') : ''}
+            </option>
+          ))}
+        </select>
+        {modelError && <p className="stage-write-error" role="alert">{modelError}</p>}
+      </div>
+      <div className="pi-field">
+        <label htmlFor={guidanceFieldId}>{text('作者微操指导', 'Author guidance')} <em>{text('可选', 'Optional')}</em></label>
+        <textarea
+          id={guidanceFieldId}
+          className="pi-input stage-write-textarea"
+          rows={3}
+          value={userGuidance}
+          placeholder={text('比如：开头只写声音；结尾停在回头之前。', 'For example: open on sound only; end just before they turn around.')}
+          onChange={event => setGuidance(event.target.value)}
+        />
+      </div>
+      <details className="stage-write-more">
+        <summary>
+          <ChevronRight size={14} aria-hidden />
+          {text('更多', 'More')}
+          <small>{text('知识库检索关键词', 'Knowledge search terms')}</small>
+        </summary>
+        <div className="pi-field">
+          <label htmlFor={hintFieldId}>{text('知识库检索关键词', 'Knowledge search terms')} <em>{text('可选', 'Optional')}</em></label>
+          <input
+            id={hintFieldId}
+            className="pi-input"
+            value={knowledgeHint}
+            placeholder={text('如：剑法传承、草原地貌', 'e.g. sword inheritance, grassland terrain')}
+            onChange={event => setKnowledgeHint(event.target.value)}
+          />
+        </div>
+      </details>
+      {showPreflight && (
+        <WritePreflight
+          preflight={preflight}
+          busy={busy}
+          onIgnoreOnce={() => void start(true)}
+          onRerun={() => void start(false)}
+          onSave={(key, reason) => void saveArrangement(key, reason)}
+          onRevoke={key => void revokeArrangement(key)}
+        />
       )}
-    </div>
+      {message && <p className="stage-write-error" role="alert">{message}</p>}
+      <p className="stage-write-foot">{text(`这些选项只用于本次写作，点「${label}」开始。`, `These options apply to this run only. Choose “${label}” to start.`)}</p>
+    </SplitAction>
   )
 }

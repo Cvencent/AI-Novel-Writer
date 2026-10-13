@@ -28,13 +28,14 @@ import { Menu, type MenuGroupSpec } from '../../ui/Menu'
 import { Notice } from '../../ui/Notice'
 import { toast } from '../../ui/Toast'
 import { InkDialog } from '../InkDialog'
+import SplitAction from '../write/SplitAction'
+import { useAnchoredLayer } from '../../ui/use-anchored-layer'
 import { useStageView } from '../use-stage-work'
 import { openDraftInChapterView, swapChapterTab } from './chapter-tab-routing'
 import type { ChapterStage } from './chapter-lifecycle'
 import MergeView from './MergeView'
 import PostProcessSteps from './PostProcessSteps'
 import ReviewSheet from './ReviewSheet'
-import SplitAction from './SplitAction'
 
 type DraftActions = ReturnType<typeof useDraftActions>
 
@@ -90,6 +91,8 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
   const [ask, setAsk] = useState<Ask>(null)
   const [refinePrompt, setRefinePrompt] = useState('')
   const [mergeLater, setMergeLater] = useState(false)
+  const reviewOptions = useAnchoredLayer('start')
+  const reviseOptions = useAnchoredLayer('start')
 
   // 审稿侧页与运行侧页共用 stage-store 的 sheet，同一时间只开一个：哪个后打开就显示哪个，正文不会被两页挤窄或盖住。
   const reviewSheet = useStageStore(s => s.sheet?.kind === 'review')
@@ -220,7 +223,7 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
       case 'draft':
         return (
           <>
-            <SplitAction label={text('AI 审稿', 'AI review')} icon={<Search size={15} aria-hidden />} disabled={busy} onRun={startReview} optionsLabel={text('检查维度', 'Review focus')}>
+            <SplitAction layer={reviewOptions} label={text('AI 审稿', 'AI review')} icon={<Search size={15} aria-hidden />} disabled={busy} onRun={startReview} optionsLabel={text('检查维度', 'Review focus')} popoverClassName="stage-ch-options">
               <p className="pi-popover-title">{text('重点检查维度', 'Review focus')}</p>
               {dims.map(dim => (
                 <Check key={dim.key} checked={Boolean(checkedDims[dim.key])} onChange={checked => setCheckedDims(current => ({ ...current, [dim.key]: checked }))} label={<span className="stage-ch-dim">{dim.label}<small>{dim.desc}</small></span>} />
@@ -235,6 +238,8 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
         return (
           <>
             <SplitAction
+              layer={reviseOptions}
+              popoverClassName="stage-ch-options"
               label={text(`按 ${included} 项意见修稿`, `Revise with ${included} ${included === 1 ? 'note' : 'notes'}`)}
               icon={<Sparkles size={15} aria-hidden />}
               disabled={busy || included === 0 || checklist.confirming || checklist.processing}
