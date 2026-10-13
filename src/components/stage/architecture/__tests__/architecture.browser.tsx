@@ -381,6 +381,28 @@ describe('架构阶段', () => {
     expect((button(/开始生成 0 项/) as HTMLButtonElement).disabled).toBe(true)
   })
 
+  it('四节状态读到之前不显示各节的动作按钮，读到后按内容显示', async () => {
+    filledSpine(['premise'])
+    let release!: () => void
+    const held = new Promise<void>(resolve => { release = resolve })
+    const answer = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel, ...args) => {
+      if (channel === 'db:project-core-get') await held
+      return answer(channel, ...args)
+    })
+    await act(async () => root!.render(<StageArchitecture projectKey={session.projectPath} />))
+    const shown = () => [...host!.querySelectorAll<HTMLElement>('[data-section="premise"] .arch-section-actions button')]
+      .filter(action => action.checkVisibility({ visibilityProperty: true }))
+      .map(action => action.textContent || action.getAttribute('aria-label'))
+    expect(host!.querySelector('.arch-page[data-loading]')).not.toBeNull()
+    expect(host!.querySelectorAll('[data-section="premise"] .arch-section-actions button').length).toBeGreaterThan(0)
+    expect(shown()).toEqual([])
+
+    await act(async () => release())
+    await vi.waitFor(() => expect(host!.querySelector('.arch-page[data-loading], .arch-page[data-cast-loading]')).toBeNull())
+    expect(shown()).toEqual(['编辑', '「故事前提」的更多操作'])
+  })
+
   it('分节摘要不带文档的 Markdown 标题行', async () => {
     core = { ...core, premise: `# 故事前提\n\n## 核心钩子\n\n${PREMISE}` }
     filledSpine(['premise'])
