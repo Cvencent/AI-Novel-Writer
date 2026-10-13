@@ -21,7 +21,7 @@ let root: Root | undefined
 let host: HTMLDivElement | undefined
 
 function Shortcuts(props: { library: boolean; focus: boolean; mac?: boolean }) {
-  useStageShortcuts(props)
+  useStageShortcuts({ ...props, mac: props.mac ?? false })
   return null
 }
 
