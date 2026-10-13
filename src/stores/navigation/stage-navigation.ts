@@ -159,9 +159,10 @@ function arrive(intent: Exclude<NavigationIntent, { kind: 'settings' }>): void {
   enterWork()
   switch (intent.kind) {
     case 'stage':
-      // 回到作品只收起运行侧页。审稿侧页属于单章视图：打开作品落在已审稿的章时它按这一章默认展开，不能随后又被收起。
-      if (!intent.stage && useStageStore.getState().sheet?.kind === 'run') useStageStore.setState({ sheet: null })
-      else if (intent.stage === 'manuscript') void openManuscript()
+      if (!intent.stage) {
+        // 回到作品只收起运行侧页。审稿侧页属于单章视图：打开作品落在已审稿的章时它按这一章默认展开，不能随后又被收起。
+        if (useStageStore.getState().sheet?.kind === 'run') useStageStore.setState({ sheet: null })
+      } else if (intent.stage === 'manuscript') void openManuscript()
       else openPageTab(intent.stage)
       return
     case 'resource':
