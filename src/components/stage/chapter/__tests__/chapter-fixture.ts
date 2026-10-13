@@ -49,7 +49,7 @@ interface Draft { id: number; chapterNumber: number; version: number; status: St
 interface Review { id: number; baseDraftId: number; reviewIndex: number; content: string; source: Draft; createdAt: string }
 interface Revision {
   id: number; baseDraftId: number; revisionIndex: number; revisionType: 'refine' | 'review-fix'; status: 'pending' | 'merged' | 'discarded'
-  content: string; source: Draft; createdAt: string; updatedAt: string
+  content: string; source: Draft | null; createdAt: string; updatedAt: string
 }
 
 /**
@@ -123,7 +123,7 @@ export function createChapterBackend() {
         .map(revisionMeta)
       case 'db:revision-get-full': {
         const revision = state.revisions.find(candidate => candidate.id === Number(args[0]))
-        return revision ? { ...revisionMeta(revision), content: revision.content, sourceDraft: source(revision.source) } : null
+        return revision ? { ...revisionMeta(revision), content: revision.content, sourceDraft: revision.source && source(revision.source) } : null
       }
       case 'db:revision-mark-discarded': {
         const revision = state.revisions.find(candidate => candidate.id === Number(args[0]) && candidate.status === 'pending')

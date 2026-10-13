@@ -271,10 +271,21 @@ describe('流程脊与单章视图同一个阶段', () => {
     await expect.element(page.getByRole('button', { name: '完成合并' })).not.toBeInTheDocument()
     await expect.element(spineRow()).toHaveTextContent('待修稿')
     await expect.element(page.getByText('有 1 份修稿不能再合并')).toBeVisible()
+    await expect.element(page.getByText('修稿生成之后正文又改过，合并会覆盖这些修改。可以查看修稿手动摘取，或丢弃后重新修稿。')).toBeVisible()
     await click('丢弃…')
     await click('丢弃修稿')
     await expect.element(page.getByText('有 1 份修稿不能再合并')).not.toBeInTheDocument()
     expect(backend.writes('db:revision-mark-discarded').map(args => args[0])).toEqual([revision.id])
+  })
+
+  it('旧修稿没有记下生成时的源稿：同样不能合并，提示说的是没有源稿记录，不说正文改过', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    backend.addRevision(draft).source = null
+    await mountWithSpine()
+    await openDraft(draft.id)
+    await expect.element(page.getByText('有 1 份修稿不能再合并')).toBeVisible()
+    await expect.element(page.getByText('较早的修稿没有记下生成时依据的正文，无法确认合并会不会覆盖之后的修改。可以查看修稿手动摘取，或丢弃后重新修稿。')).toBeVisible()
+    await expect.element(page.getByRole('button', { name: '完成合并' })).not.toBeInTheDocument()
   })
 
   it('有两份能合并的修稿：合并视图摆的是最新的一份', async () => {
