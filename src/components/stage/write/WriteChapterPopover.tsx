@@ -11,6 +11,7 @@ import {
   launchChapterWrite,
   preferredGenerationModelId,
 } from '../../../services/workflows/chapter-write-launch'
+import type { ProjectSessionContext } from '../../../shared/ipc-channels'
 import type { ChapterWritePrefill } from '../../../stores/layout-store'
 import { useLLMStore } from '../../../stores/llm-store'
 import { useLocaleStore } from '../../../stores/locale-store'
@@ -27,20 +28,19 @@ interface WriteChapterPopoverProps {
   blueprint: ChapterWritePrefill
   /** 主按钮文字：蓝图页是「写第 N 章」，单章视图是「写作此章」。 */
   label: string
-  align?: 'start' | 'end'
 }
 
 /**
  * 写作此章：拆分主按钮加一个小弹层。主按钮直接按蓝图开始写；箭头打开弹层，只能改本次模型、作者微操指导和收在「更多」里的检索关键词。
  * 其余参数都取自蓝图，与旧的章节创作对话框走同一个 launchChapterWrite。一致性预检有提醒、或前置条件不满足时，弹层自己打开说明原因。
  */
-export default function WriteChapterPopover({ chapterNumber, blueprint, label, align = 'end' }: WriteChapterPopoverProps) {
+export default function WriteChapterPopover({ chapterNumber, blueprint, label }: WriteChapterPopoverProps) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
   const models = useLLMStore(s => s.models)
   const defaultModelId = useLLMStore(s => s.defaultModelId)
   const writeRequest = useStageStore(s => s.writeRequest)
-  const { open, layerId, anchorRef, triggerRef, layerRef, renderLayer, show, toggle, close } = useAnchoredLayer(align)
+  const { open, layerId, anchorRef, triggerRef, layerRef, renderLayer, show, toggle, close } = useAnchoredLayer('end')
   const [modelId, setModelId] = useState<string | null>(null)
   const [guidance, setGuidance] = useState<string | null>(null)
   const [knowledgeHint, setKnowledgeHint] = useState('')
@@ -120,17 +120,33 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     }
   }
 
-  const saveArrangement = async (stableFactKey: string, reason: string) => {
+  /** 保存或撤销一致性安排：进行中按钮不可再点，失败时在弹层里写明原因。返回是否成功。 */
+  const changeArrangement = async (action: string, call: (session: ProjectSessionContext) => Promise<{ success: boolean; error?: string }>) => {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
-    if (!session) return
-    requireIpcSuccess(await ipc.invokeWithProjectSession(session, 'db:consistency-exemption-save', stableFactKey, reason, session.projectPath), text('保存一致性安排', 'Save consistency arrangement'))
-    await start(false)
+    if (!session || busy) return false
+    setBusy(true)
+    setMessage(null)
+    try {
+      requireIpcSuccess(await call(session), action)
+      return true
+    } catch (error) {
+      if (isProjectSessionCurrent(session)) setMessage(error instanceof Error ? error.message : String(error))
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const saveArrangement = async (stableFactKey: string, reason: string) => {
+    const saved = await changeArrangement(text('保存一致性安排', 'Save consistency arrangement'),
+      session => ipc.invokeWithProjectSession(session, 'db:consistency-exemption-save', stableFactKey, reason, session.projectPath))
+    if (saved) await start(false)
   }
 
   const revokeArrangement = async (stableFactKey: string) => {
-    const session = captureProjectSession(useProjectStore.getState().currentProject)
-    if (!session) return
-    requireIpcSuccess(await ipc.invokeWithProjectSession(session, 'db:consistency-exemption-revoke', stableFactKey, session.projectPath), text('撤销一致性安排', 'Revoke consistency arrangement'))
+    const revoked = await changeArrangement(text('撤销一致性安排', 'Revoke consistency arrangement'),
+      session => ipc.invokeWithProjectSession(session, 'db:consistency-exemption-revoke', stableFactKey, session.projectPath))
+    if (!revoked) return
     setPreflight(current => current ? {
       ...current,
       exemptions: current.exemptions.map(item => item.stableFactKey === stableFactKey ? { ...item, revoked: true } : item),

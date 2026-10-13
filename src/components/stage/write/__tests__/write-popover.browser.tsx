@@ -13,6 +13,7 @@ import { useProjectStore } from '../../../../stores/project-store'
 import { useStageStore } from '../../../../stores/navigation/stage-store'
 import { useWorkflowStore, type WorkflowDefinition } from '../../../../stores/workflow-store'
 import ChapterCreationDialog from '../../../dialogs/ChapterCreationDialog'
+import BatchWriteDialog from '../../blueprint/BatchWriteDialog'
 import WriteChapterPopover from '../WriteChapterPopover'
 
 const createChapterWorkflow = vi.hoisted(() => vi.fn())
@@ -37,6 +38,14 @@ let startWorkflow: ReturnType<typeof vi.fn>
 let writtenLogs: unknown[]
 let continuityProjections: unknown[]
 let exemptions: { stableFactKey: string; reason: string; revoked: boolean }[]
+let exemptionSave: () => Promise<{ success: boolean; error?: string }>
+
+const DEAD_KEEPER = [{
+  draftId: 1, chapterNumber: 1, chapterTitle: '终局', chapterNotes: '老周死亡',
+  source: { draftId: 1, finalizationId: 'finalization-1', chapterNumber: 1, contentHash: 'a'.repeat(64) },
+  sourceStatus: 'current',
+  facts: [{ category: 'character-state', entities: ['老周'], statement: '老周已经死亡。', sourceChapter: 1, evidence: '老周停止了呼吸。' }],
+}]
 
 const BLUEPRINT: ChapterBlueprint = {
   chapterNumber: 5,
@@ -88,8 +97,9 @@ function installIpc() {
     if (channel === 'db:continuity-list-before') return continuityProjections
     if (channel === 'db:consistency-exemption-list') return exemptions
     if (channel === 'db:consistency-exemption-save') {
-      exemptions = [...exemptions, { stableFactKey: String(args[0]), reason: String(args[1]), revoked: false }]
-      return { success: true }
+      const result = await exemptionSave()
+      if (result.success) exemptions = [...exemptions, { stableFactKey: String(args[0]), reason: String(args[1]), revoked: false }]
+      return result
     }
     if (channel === 'db:consistency-exemption-revoke') {
       exemptions = exemptions.map(item => item.stableFactKey === args[0] ? { ...item, revoked: true } : item)
@@ -124,8 +134,9 @@ function launched() {
   }
 }
 
+/** 写作按钮与页面里一样靠右，弹层向左展开。 */
 async function render(node: React.ReactNode) {
-  await act(async () => root?.render(<div className="paper-ink">{node}</div>))
+  await act(async () => root?.render(<div className="paper-ink"><div style={{ display: 'flex', justifyContent: 'flex-end' }}>{node}</div></div>))
 }
 
 function reset() {
@@ -143,6 +154,7 @@ beforeEach(async () => {
   writtenLogs = []
   continuityProjections = []
   exemptions = []
+  exemptionSave = async () => ({ success: true })
   startWorkflow = vi.fn(async () => 'write-popover-run')
   useLocaleStore.setState({ locale: 'zh-CN' })
   useProjectStore.setState({ currentProject: project() })
@@ -180,7 +192,7 @@ describe('写作此章弹层', () => {
 
     reset()
     await act(async () => root?.render(null))
-    await render(<WriteChapterPopover chapterNumber={BLUEPRINT.chapterNumber} blueprint={prefill} label="写第 5 章" align="start" />)
+    await render(<WriteChapterPopover chapterNumber={BLUEPRINT.chapterNumber} blueprint={prefill} label="写第 5 章" />)
     await act(async () => page.getByRole('button', { name: '写第 5 章' }).click())
     await vi.waitFor(() => expect(startWorkflow).toHaveBeenCalledOnce())
     const fromPopover = launched()
@@ -215,7 +227,7 @@ describe('写作此章弹层', () => {
 
     reset()
     await act(async () => root?.render(null))
-    await render(<WriteChapterPopover chapterNumber={BLUEPRINT.chapterNumber} blueprint={prefill} label="写第 5 章" align="start" />)
+    await render(<WriteChapterPopover chapterNumber={BLUEPRINT.chapterNumber} blueprint={prefill} label="写第 5 章" />)
     await act(async () => page.getByRole('button', { name: '本次写作选项' }).click())
     const popover = page.getByRole('dialog', { name: '本次写作选项' })
     await expect.element(popover.getByLabelText(/作者微操指导/)).toHaveValue('母亲的声音只出现一次，不要解释来源。')
@@ -232,7 +244,7 @@ describe('写作此章弹层', () => {
   })
 
   it('选项只用于这一次：写完后再打开，指导、模型与检索关键词回到蓝图与默认', async () => {
-    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" align="start" />)
+    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" />)
     await act(async () => page.getByRole('button', { name: '本次写作选项' }).click())
     const popover = page.getByRole('dialog', { name: '本次写作选项' })
     await act(async () => popover.getByLabelText(/本次模型/).selectOptions('glm'))
@@ -250,7 +262,7 @@ describe('写作此章弹层', () => {
   })
 
   it('弹层只有本次模型、作者微操指导与折叠的更多，不重复蓝图字段', async () => {
-    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" align="start" />)
+    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" />)
     await act(async () => page.getByRole('button', { name: '本次写作选项' }).click())
     const popover = page.getByRole('dialog', { name: '本次写作选项' })
     await expect.element(popover).toBeVisible()
@@ -267,7 +279,7 @@ describe('写作此章弹层', () => {
       sourceStatus: 'current',
       facts: [{ category: 'character-state', entities: ['老周'], statement: '老周已经死亡。', sourceChapter: 1, evidence: '老周停止了呼吸。' }],
     }]
-    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" align="start" />)
+    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" />)
     await act(async () => page.getByRole('button', { name: '写第 5 章' }).click())
     const popover = page.getByRole('dialog', { name: '本次写作选项' })
     await expect.element(popover.getByRole('region', { name: '一致性预检' })).toBeVisible()
@@ -290,7 +302,7 @@ describe('写作此章弹层', () => {
       sourceStatus: 'current',
       facts: [{ category: 'character-state', entities: ['老周'], statement: '老周已经死亡。', sourceChapter: 1, evidence: '老周停止了呼吸。' }],
     }]
-    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" align="start" />)
+    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" />)
     await act(async () => page.getByRole('button', { name: '写第 5 章' }).click())
     const popover = page.getByRole('dialog', { name: '本次写作选项' })
     await act(async () => popover.getByLabelText('安排说明').fill('老周以幽灵身份出现，是刻意安排。'))
@@ -305,18 +317,85 @@ describe('写作此章弹层', () => {
   })
 
   it('前置条件不满足时弹层打开并写明原因，不启动', async () => {
-    await render(<WriteChapterPopover chapterNumber={7} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 7 章" align="start" />)
+    await render(<WriteChapterPopover chapterNumber={7} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 7 章" />)
     await act(async () => page.getByRole('button', { name: '写第 7 章' }).click())
     await expect.element(page.getByRole('dialog', { name: '本次写作选项' }).getByRole('alert')).toHaveTextContent('当前权威定稿之后只能创作第 5 章')
     expect(startWorkflow).not.toHaveBeenCalled()
   })
 
   it('定稿后打开下一章等请求：挂着这一章按钮的弹层自己打开并清掉请求', async () => {
-    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" align="start" />)
+    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" />)
     expect(page.getByRole('dialog', { name: '本次写作选项' }).query()).toBeNull()
     await act(async () => useStageStore.setState({ writeRequest: { chapterNumber: 5 } }))
     await expect.element(page.getByRole('dialog', { name: '本次写作选项' })).toBeVisible()
     expect(useStageStore.getState().writeRequest).toBeNull()
+    expect(startWorkflow).not.toHaveBeenCalled()
+  })
+
+  it('被挡下时作者改过的选项都留着，改好条件后照原样再试', async () => {
+    await render(<WriteChapterPopover chapterNumber={7} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 7 章" />)
+    await act(async () => page.getByRole('button', { name: '本次写作选项' }).click())
+    const popover = page.getByRole('dialog', { name: '本次写作选项' })
+    await act(async () => popover.getByLabelText(/本次模型/).selectOptions('glm'))
+    await act(async () => popover.getByLabelText(/作者微操指导/).fill('被挡下前写的指导'))
+    await act(async () => popover.getByText('更多').click())
+    await act(async () => popover.getByLabelText(/知识库检索关键词/).fill('列车时刻表'))
+    await act(async () => page.getByRole('button', { name: '写第 7 章' }).click())
+    await expect.element(popover.getByRole('alert')).toHaveTextContent('当前权威定稿之后只能创作第 5 章')
+    await expect.element(popover.getByLabelText(/作者微操指导/)).toHaveValue('被挡下前写的指导')
+    await expect.element(popover.getByLabelText(/本次模型/)).toHaveValue('glm')
+    await expect.element(popover.getByLabelText(/知识库检索关键词/)).toHaveValue('列车时刻表')
+  })
+
+  it('一致性预检提醒时作者改过的选项都留着，仅本次忽略后按这些选项写', async () => {
+    continuityProjections = DEAD_KEEPER
+    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" />)
+    await act(async () => page.getByRole('button', { name: '本次写作选项' }).click())
+    const popover = page.getByRole('dialog', { name: '本次写作选项' })
+    await act(async () => popover.getByLabelText(/作者微操指导/).fill('预检前写的指导'))
+    await act(async () => popover.getByText('更多').click())
+    await act(async () => popover.getByLabelText(/知识库检索关键词/).fill('列车时刻表'))
+    await act(async () => page.getByRole('button', { name: '写第 5 章' }).click())
+    await expect.element(popover.getByRole('region', { name: '一致性预检' })).toBeVisible()
+    await expect.element(popover.getByLabelText(/作者微操指导/)).toHaveValue('预检前写的指导')
+    await expect.element(popover.getByLabelText(/知识库检索关键词/)).toHaveValue('列车时刻表')
+    await act(async () => popover.getByRole('button', { name: '仅本次忽略' }).click())
+    await vi.waitFor(() => expect(startWorkflow).toHaveBeenCalledOnce())
+    expect(launched().chapterInfo).toMatchObject({ userGuidance: '预检前写的指导', knowledgeQueryHint: '列车时刻表' })
+  })
+
+  it('保存安排时按钮不可再点；保存失败写明原因，不开始写', async () => {
+    continuityProjections = DEAD_KEEPER
+    let finishSave: (result: { success: boolean; error?: string }) => void = () => {}
+    exemptionSave = () => new Promise(resolve => { finishSave = resolve })
+    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" />)
+    await act(async () => page.getByRole('button', { name: '写第 5 章' }).click())
+    const popover = page.getByRole('dialog', { name: '本次写作选项' })
+    await act(async () => popover.getByLabelText('安排说明').fill('老周以幽灵身份出现，是刻意安排。'))
+    await act(async () => popover.getByRole('button', { name: '保存安排' }).click())
+    await expect.element(popover.getByRole('button', { name: '保存安排' })).toBeDisabled()
+    await expect.element(popover.getByRole('button', { name: '仅本次忽略' })).toBeDisabled()
+    await act(async () => finishSave({ success: false, error: '数据库只读' }))
+    await expect.element(popover.getByRole('alert')).toHaveTextContent('数据库只读')
+    await expect.element(popover.getByRole('button', { name: '保存安排' })).toBeEnabled()
+    expect(startWorkflow).not.toHaveBeenCalled()
+  })
+
+  it('批量创作的预检里保存安排失败也写明原因，保存中不可再点', async () => {
+    continuityProjections = DEAD_KEEPER
+    let finishSave: (result: { success: boolean; error?: string }) => void = () => {}
+    exemptionSave = () => new Promise(resolve => { finishSave = resolve })
+    await render(<BatchWriteDialog isOpen startChapterNumber={5} onClose={vi.fn()} />)
+    const dialog = page.getByRole('dialog', { name: '批量创作' })
+    await act(async () => dialog.getByLabelText(/写几章/).fill('1'))
+    await act(async () => dialog.getByRole('button', { name: '开始写 1 章' }).click())
+    await expect.element(dialog.getByRole('region', { name: '一致性预检' })).toBeVisible()
+    await act(async () => dialog.getByLabelText('安排说明').fill('老周以幽灵身份出现，是刻意安排。'))
+    await act(async () => dialog.getByRole('button', { name: '保存安排' }).click())
+    await expect.element(dialog.getByRole('button', { name: '保存安排' })).toBeDisabled()
+    await act(async () => finishSave({ success: false, error: '数据库只读' }))
+    await expect.element(dialog.getByRole('alert')).toHaveTextContent('数据库只读')
+    await expect.element(dialog.getByRole('button', { name: '保存安排' })).toBeEnabled()
     expect(startWorkflow).not.toHaveBeenCalled()
   })
 })

@@ -11,6 +11,7 @@ import {
 import { guardChapterWriting } from '../../services/workflow-guards'
 import { ipc } from '../../services/ipc-client'
 import { useLocaleStore } from '../../stores/locale-store'
+import type { ProjectSessionContext } from '../../shared/ipc-channels'
 import {
   captureProjectSession,
   isProjectSessionCurrent,
@@ -234,17 +235,33 @@ export function useBatchChapterForm({ isOpen, startChapterNumber, onClose }: Bat
     }
   }
 
-  const saveArrangement = async (stableFactKey: string, reason: string) => {
+  /** 保存或撤销一致性安排：进行中按钮不可再点，失败时在对话框里写明原因。返回是否成功。 */
+  const changeArrangement = async (action: string, call: (session: ProjectSessionContext) => Promise<{ success: boolean; error?: string }>) => {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
-    if (!session) return
-    requireIpcSuccess(await ipc.invokeWithProjectSession(session, 'db:consistency-exemption-save', stableFactKey, reason, session.projectPath), text('保存一致性安排', 'Save consistency arrangement'))
-    await handleStart(false)
+    if (!session || starting) return false
+    setStarting(true)
+    setError(null)
+    try {
+      requireIpcSuccess(await call(session), action)
+      return true
+    } catch (cause) {
+      if (isProjectSessionCurrent(session)) setError(cause instanceof Error ? cause.message : String(cause))
+      return false
+    } finally {
+      setStarting(false)
+    }
+  }
+
+  const saveArrangement = async (stableFactKey: string, reason: string) => {
+    const saved = await changeArrangement(text('保存一致性安排', 'Save consistency arrangement'),
+      session => ipc.invokeWithProjectSession(session, 'db:consistency-exemption-save', stableFactKey, reason, session.projectPath))
+    if (saved) await handleStart(false)
   }
 
   const revokeArrangement = async (stableFactKey: string) => {
-    const session = captureProjectSession(useProjectStore.getState().currentProject)
-    if (!session) return
-    requireIpcSuccess(await ipc.invokeWithProjectSession(session, 'db:consistency-exemption-revoke', stableFactKey, session.projectPath), text('撤销一致性安排', 'Revoke consistency arrangement'))
+    const revoked = await changeArrangement(text('撤销一致性安排', 'Revoke consistency arrangement'),
+      session => ipc.invokeWithProjectSession(session, 'db:consistency-exemption-revoke', stableFactKey, session.projectPath))
+    if (!revoked) return
     setConsistencyPreflight(current => current ? {
       ...current,
       exemptions: current.exemptions.map(item => item.stableFactKey === stableFactKey ? { ...item, revoked: true } : item),
