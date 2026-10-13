@@ -113,6 +113,20 @@ const withManyBlueprints = context => seedStageSample(context, { totalChapters: 
 } })
 
 export const BLUEPRINT_SCENARIOS = {
+  'blueprint-finalize-next': { model: true, shell: 'stage', setup: context => seedStageSample(context, { beforeReload: async ({ page, invoke, path, session }) => {
+    for (const draft of await invoke(page, 'db:draft-list', 4, path, session)) {
+      assert.equal((await invoke(page, 'db:draft-delete', draft.id, path, session)).success, true)
+    }
+    assert.equal((await invoke(page, 'config:set', { autoOpenNextChapterAfterFinalize: true })).success, true)
+  } }), run: async ({ page }) => {
+    await page.getByRole('button', { name: '定稿', exact: true }).click()
+    await page.getByRole('dialog').filter({ hasText: '确定要将第 3 章定稿吗？' }).getByRole('button', { name: '确认定稿', exact: true }).click()
+    await blueprint.popover(page).waitFor({ state: 'visible', timeout: 60_000 })
+    assert.equal(await stage.tabList(page).getByRole('tab', { selected: true }).innerText(), '蓝图', '定稿后落到蓝图')
+    assert.equal(await blueprint.writeButton(page).innerText(), '写第 4 章')
+    assert.equal(await blueprint.card(page).getAttribute('aria-label'), '第 4 章蓝图', '选中下一章')
+    assert.equal(await page.getByRole('dialog').count(), 1, '只弹出写作弹层，不再弹旧的创作对话框')
+  } },
   'blueprint-regression': { model: true, setup: withKeeperInChapter3, run: async ({ page, fake }) => {
     await writeNextEitherShell(page)
     const chats = await proseRequest(fake)
