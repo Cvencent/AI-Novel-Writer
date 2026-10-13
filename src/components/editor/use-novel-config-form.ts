@@ -42,6 +42,7 @@ export function useNovelConfigForm(projectKey: string) {
   const text = useLocaleStore(s => s.text)
   const [generateSession, setGenerateSession] = useState<ReturnType<typeof captureProjectSession>>(null)
   const [generatingField, setGeneratingField] = useState<GeneratableField | null>(null)
+  const [generateError, setGenerateError] = useState<{ field: GeneratableField; message: string } | null>(null)
 
   const projectMatches = currentProject?.path === projectKey
   const config = projectMatches ? currentProject.novelConfig : null
@@ -116,6 +117,7 @@ export function useNovelConfigForm(projectKey: string) {
     if (generatingField) return
 
     setGeneratingField(fieldKey)
+    setGenerateError(null)
     try {
       const { GenerateFieldCommand } = await import('../../services/workflows/commands/generate-field.command')
       if (!isProjectSessionCurrent(projectSession)) return
@@ -139,12 +141,16 @@ export function useNovelConfigForm(projectKey: string) {
       })
     } catch (e) {
       if (!isProjectSessionCurrent(projectSession)) return
-      addLog('error', e instanceof Error && e.message === 'GENERATION_AUTHOR_DRAFT_CHANGED'
+      const draftChanged = e instanceof Error && e.message === 'GENERATION_AUTHOR_DRAFT_CHANGED'
+      addLog('error', draftChanged
         ? text(
           '生成期间小说配置已修改。已保留你的修改，请按当前配置重新生成。',
           'The novel configuration changed during generation. Your edits have been preserved. Generate again using the current configuration.',
         )
         : text(`生成失败：${e}`, `Generation failed: ${e}`))
+      setGenerateError({ field: fieldKey, message: draftChanged
+        ? text('生成期间设定改过了，已保留你的修改，请再生成一次', 'The setup changed while generating. Your edits are kept; generate again')
+        : e instanceof Error ? e.message : String(e) })
     } finally {
       if (isProjectSessionCurrent(projectSession)) setGeneratingField(null)
     }
@@ -174,6 +180,7 @@ export function useNovelConfigForm(projectKey: string) {
     update,
     save,
     generatingField,
+    generateError,
     generateField,
     openGenerateDialog,
     generateDialog,

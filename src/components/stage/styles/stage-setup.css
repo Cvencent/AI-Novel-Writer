@@ -373,3 +373,13 @@
 .pi-num-ui {
   font-variant-numeric: tabular-nums;
 }
+
+.stage-setup-hint[data-tone='danger'],
+.stage-setup-error {
+  color: var(--danger);
+}
+
+.stage-setup-error {
+  margin: 8px 0 0;
+  font-size: var(--fs-12);
+}

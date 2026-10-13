@@ -79,6 +79,17 @@ function AiButton({ field, label, form, disabled }: { field: GeneratableField; l
   )
 }
 
+/** 单项 AI 生成失败时写在那一项下面；下次生成或改动内容前一直留着。 */
+function GenerateError({ field, label, form }: { field: GeneratableField; label: string; form: Form }) {
+  const text = useLocaleStore(s => s.text)
+  if (form.generateError?.field !== field) return null
+  return (
+    <p className="stage-setup-error" role="alert">
+      {text(`「${label}」没有生成：${form.generateError.message}。原来的内容没有改动。`, `“${label}” was not generated: ${form.generateError.message}. Nothing was changed.`)}
+    </p>
+  )
+}
+
 function RequiredLabel({ htmlFor, id, name, missing }: { htmlFor?: string; id?: string; name: string; missing: boolean }) {
   const text = useLocaleStore(s => s.text)
   return (
@@ -156,6 +167,7 @@ function MorePanel({ field, config, form, aiDisabled, onCollapse }: {
         </Button>
       </div>
       {control}
+      {field.kind === 'text' && field.aiField && <GenerateError field={field.aiField} label={name} form={form} />}
     </section>
   )
 }
@@ -305,6 +317,7 @@ function SetupSession({ projectKey }: { projectKey: string }) {
               </label>
               <span className="pi-num-ui">{text(`${countDraftUnits(config.coreOutline)} 字`, `${countDraftUnits(config.coreOutline)} words`)}</span>
             </div>
+            <GenerateError field="coreOutline" label={text('核心大纲', 'Core outline')} form={form} />
           </section>
 
           <div className="stage-setup-required">
@@ -367,7 +380,9 @@ function SetupSession({ projectKey }: { projectKey: string }) {
           {filling ? <LoaderCircle size={15} className="stage-update-spin" aria-hidden="true" /> : <Sparkles size={15} className="stage-setup-spark" aria-hidden="true" />}
           {filling ? text('AI 正在补全…', 'AI is filling in…') : text('AI 补全其余设定', 'Fill the rest with AI')}
         </Button>
-        <span className="stage-setup-hint" id={hintId} data-ready={missing.length === 0 || undefined} role="status">{hint}</span>
+        {form.saveOutcome === 'failed'
+          ? <span className="stage-setup-hint" id={hintId} data-tone="danger" role="alert">{text('没能保存。设定还在这一页，没有丢，可以再保存一次。', 'Could not save. Your setup is still on this page; try saving again.')}</span>
+          : <span className="stage-setup-hint" id={hintId} data-ready={missing.length === 0 || undefined} role="status">{hint}</span>}
         {form.dirty && (
           <Button variant="text" disabled={form.saving} onClick={() => void form.save()}>
             {form.saving ? text('正在保存…', 'Saving…') : text('保存', 'Save')}<kbd>{commandLabel('s')}</kbd>
