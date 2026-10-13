@@ -192,4 +192,16 @@ describe('标签与外壳', () => {
     await vi.waitFor(() => expect(tabs().map(tab => tab.filePath ?? tab.chapterNumber)).toEqual([path, 5]))
     expect(activeTab()?.filePath).toBe(path)
   })
+
+  it('删除正文后清理没做完：这一章的待写视图提示并可以重试清理（F-070）', async () => {
+    backend.state.incompleteDeletions = [{ operationId: 'deletion-1', chapterNumber: 3, draftId: 9, chapterTitle: '雨夜车站', status: 'failed',
+      manuscriptStatus: 'failed', manuscriptError: '正文文件被占用', knowledgeStatus: 'done', legacyKnowledgeAuthorization: 'not-required' }]
+    await mount()
+    await act(async () => openChapterPlan(3, BLUEPRINT.title, SESSION))
+    await expect.element(page.getByText('删除正文后的清理没有完成')).toBeVisible()
+    await expect.element(page.getByText('正文文件被占用')).toBeVisible()
+    await click('重试清理')
+    await vi.waitFor(() => expect(backend.writes('chapter:retry-deletion').map(args => args[0])).toEqual(['deletion-1']))
+    await expect.element(page.getByText('删除正文后的清理没有完成')).not.toBeInTheDocument()
+  })
 })

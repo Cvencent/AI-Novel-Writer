@@ -27,7 +27,8 @@ function useLatestReview(reviews: readonly ReviewEntry[], projectKey: string) {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
     if (!session || !isProjectSessionPath(session, projectKey)) return
     let cancelled = false
-    void readDraftBody(formatResourceUri({ kind: 'review', id: latest.id }), projectKey, session).then(content => {
+    // 读不出原文时按空报告处理：动作条照常出现，侧页里没有可勾选的意见，作者可以重新审稿。
+    void readDraftBody(formatResourceUri({ kind: 'review', id: latest.id }), projectKey, session).catch(() => '').then(content => {
       if (!cancelled && isProjectSessionCurrent(session)) setReport({ id: latest.id, content })
     })
     return () => { cancelled = true }
@@ -100,7 +101,7 @@ function DraftChapter({ tab, filePath, projectKey }: { tab: EditorTab; filePath:
               title={title}
               step={stage === 'archived' || stage === null ? null : STAGE_STEP[stage]}
               focus={focus}
-              version={draft.meta && chapterNumber !== undefined
+              version={draft.meta
                 ? <VersionSwitcher tab={tab} current={draft.meta} label={versionLabel} title={title} onSave={() => draft.save(draft.currentBodyRef.current, true)} />
                 : <span className="stage-ch-version" role="status">{versionLabel}</span>}
             />

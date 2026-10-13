@@ -62,6 +62,7 @@ export function createChapterBackend() {
     postProcess: null as null | { steps: { stepKey: string; label: string; ok: boolean; errorMsg?: string; attemptCount?: number }[] },
     nextId: 100,
     mergeDisposition: 'required' as 'required' | 'not-required',
+    incompleteDeletions: [] as unknown[],
     calls: [] as { channel: string; args: unknown[] }[],
   }
   const meta = (draft: Draft) => ({
@@ -130,6 +131,11 @@ export function createChapterBackend() {
       case 'db:post-process-get-latest-run': return state.postProcess ? { id: 'run-1', sourceLabel: '第3章定稿', createdAt: '', updatedAt: '', allCriticalPassed: false } : null
       case 'db:post-process-get-steps': return state.postProcess?.steps.map(step => ({ critical: false, completedAt: step.ok ? '2026-10-13 22:00:00' : '', ...step })) ?? []
       case 'db:consistency-exemption-list': return []
+      case 'chapter:list-incomplete-deletions': return { success: true, operations: state.incompleteDeletions }
+      case 'chapter:retry-deletion': {
+        state.incompleteDeletions = []
+        return { success: true }
+      }
       case 'db:character-get-all': return [{ id: 1 }]
       case 'db:draft-authority-sequence': return { status: 'continuous', lastChapterNumber: 2, nextChapterNumber: 3, duplicateChapterNumbers: [], authorityFingerprint: 'e'.repeat(64) }
       case 'db:draft-get-finalized': return { chapterNumber: Number(args[0]) }
