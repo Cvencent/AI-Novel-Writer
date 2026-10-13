@@ -72,7 +72,7 @@
   font-weight: 400;
 }
 
-span.stage-ch-version {
+.stage-ch-version-chip {
   display: inline-flex;
   align-items: center;
   height: 28px;
@@ -172,8 +172,15 @@ span.stage-ch-version {
   color: var(--ink);
 }
 
-.stage-ch-page > .pi-notice {
+.stage-ch-notices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
   margin-bottom: var(--s-6);
+}
+
+.stage-ch-notices:empty {
+  display: none;
 }
 
 /* ================= 纸面正文：编辑器随内容长高，由纸面滚动 ================= */
@@ -192,6 +199,11 @@ span.stage-ch-version {
   padding: 0;
   line-height: var(--prose-lh);
   color: var(--ink);
+}
+
+/* 段落首行缩进两字（design-system「字体」）；只缩以文字开头的行，见 paragraph-indent */
+.stage-ch .stage-ch-prose .cm-indent {
+  text-indent: 2em;
 }
 
 .stage-ch-prose[data-readonly] .cm-content {
@@ -325,7 +337,7 @@ span.stage-ch-version {
   background: var(--danger);
 }
 
-.stage-ch-post-step[data-state="failed"] > span {
+.stage-ch-post-step[data-state="failed"] .stage-ch-post-detail {
   color: var(--danger);
 }
 
@@ -334,7 +346,7 @@ span.stage-ch-version {
   color: var(--ink);
 }
 
-.stage-ch-post-step > span {
+.stage-ch-post-detail {
   overflow-wrap: anywhere;
 }
 
@@ -374,7 +386,7 @@ span.stage-ch-version {
   padding: 2px 0 2px 10px;
   border-left: 2px solid var(--rule);
   font-size: var(--fs-12);
-  color: var(--ink-4);
+  color: var(--ink-3);
 }
 
 .stage-ch-hunk {
@@ -402,8 +414,8 @@ span.stage-ch-version {
   padding: 10px var(--s-3);
   border-radius: var(--radius-control);
   background: var(--sunken);
-  font: 15px/1.9 var(--font-prose);
-  color: var(--ink-3);
+  font: var(--fs-16)/1.9 var(--font-prose);
+  color: var(--ink-2);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -420,7 +432,7 @@ span.stage-ch-version {
 .stage-ch-hunk-edit {
   width: 100%;
   margin-top: 10px;
-  font: 15px/1.9 var(--font-prose);
+  font: var(--fs-16)/1.9 var(--font-prose);
 }
 
 .stage-ch-merge-note {
@@ -510,7 +522,7 @@ span.stage-ch-version {
 }
 
 .stage-ch-issue-tag {
-  font-size: 11.5px;
+  font-size: var(--fs-12);
   font-weight: 600;
   color: var(--ink-2);
 }
@@ -646,7 +658,20 @@ span.stage-ch-version {
   white-space: pre-wrap;
 }
 
-/* ================= 沉浸写作：只留正文与章节动作条 ================= */
+/* ================= 沉浸写作：只留正文与章节动作条，纸面全出血（Focus.dc.html） ================= */
+.stage-shell[data-focus] .stage-panel:has(.stage-ch) {
+  --focus-paper: var(--paper);
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: radial-gradient(1100px 520px at 50% -160px, var(--accent-soft), transparent 70%), var(--focus-paper);
+}
+
+/* 深色下全出血的纸面就是应用底色，与画板一致 */
+.stage-shell[data-focus][data-theme="dark"] .stage-panel:has(.stage-ch) {
+  --focus-paper: var(--frame);
+}
+
 .stage-ch[data-focus] .stage-ch-scroll {
   padding-bottom: 96px;
 }
@@ -675,9 +700,24 @@ span.stage-ch-version {
   align-items: center;
   justify-content: center;
   gap: 22px;
-  background: var(--surface);
+  background: var(--focus-paper, var(--surface));
   font-size: var(--fs-12);
   color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.stage-ch-focus-progress {
+  width: 120px;
+  height: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--track);
+  overflow: hidden;
+}
+
+.stage-ch-focus-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
 }
 
 /* ================= 窄宽度 ================= */
@@ -691,7 +731,7 @@ span.stage-ch-version {
   }
 
   .stage-ch-title {
-    font-size: 30px;
+    font-size: var(--fs-30);
   }
 }
 
@@ -726,7 +766,7 @@ span.stage-ch-version {
 
 .cm-selbar .cm-selbar-tool {
   height: 32px;
-  font-size: 12.5px;
+  font-size: var(--fs-13);
   font-weight: 500;
   color: var(--ink);
 }

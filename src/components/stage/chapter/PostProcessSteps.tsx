@@ -64,7 +64,7 @@ export default function PostProcessSteps({ chapterNumber, publication, busy, onR
         {rows.map(row => (
           <li key={row.key} className="stage-ch-post-step" data-state={row.presentation}>
             <b>{row.label}</b>
-            <span>{row.detail}</span>
+            <span className="stage-ch-post-detail">{row.detail}</span>
             {row.presentation === 'failed' && (
               <Button variant="text" size="sm" disabled={busy} onClick={row.retry}>{row.retryLabel}</Button>
             )}

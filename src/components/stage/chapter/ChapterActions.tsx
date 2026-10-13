@@ -311,25 +311,27 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
   return (
     <>
       {!draft.mergeData && <div className="stage-ch-actions">{bar}</div>}
-      {!draft.mergeData && stale.length > 0 && (
-        <Notice
-          tone="warn"
-          title={text(`有 ${stale.length} 份修稿不能再合并`, `${stale.length} revision(s) can no longer be merged`)}
-          actions={(
-            <>
-              <Button variant="secondary" size="sm" disabled={busy} onClick={() => openRevision(stale.at(-1)!)}>{text('查看修稿', 'View revision')}</Button>
-              <Button variant="danger" size="sm" disabled={busy} onClick={() => setAsk('discard')}>{text('丢弃…', 'Discard…')}</Button>
-            </>
-          )}
-        >
-          {text('修稿生成之后正文又改过，合并会覆盖这些修改。可以查看修稿手动摘取，或丢弃后重新修稿。', 'The text changed after the revision was generated, so merging would overwrite those edits. View it to copy parts by hand, or discard it and revise again.')}
-        </Notice>
-      )}
-      {draft.finalizationConflict && (
-        <Notice tone="warn" title={text('已保留后续编辑', 'Later edits kept')}>
-          {text('定稿完成事件没有覆盖这次编辑；请先处理本地后续修改与已定稿版本的差异。', 'Finalization did not overwrite this edit. Resolve the difference between your later local changes and the finalized version first.')}
-        </Notice>
-      )}
+      <div className="stage-ch-notices">
+        {!draft.mergeData && stale.length > 0 && (
+          <Notice
+            tone="warn"
+            title={text(`有 ${stale.length} 份修稿不能再合并`, `${stale.length} revision(s) can no longer be merged`)}
+            actions={(
+              <>
+                <Button variant="secondary" size="sm" disabled={busy} onClick={() => openRevision(stale.at(-1)!)}>{text('查看修稿', 'View revision')}</Button>
+                <Button variant="danger" size="sm" disabled={busy} onClick={() => setAsk('discard')}>{text('丢弃…', 'Discard…')}</Button>
+              </>
+            )}
+          >
+            {text('修稿生成之后正文又改过，合并会覆盖这些修改。可以查看修稿手动摘取，或丢弃后重新修稿。', 'The text changed after the revision was generated, so merging would overwrite those edits. View it to copy parts by hand, or discard it and revise again.')}
+          </Notice>
+        )}
+        {draft.finalizationConflict && (
+          <Notice tone="warn" title={text('已保留后续编辑', 'Later edits kept')}>
+            {text('定稿完成事件没有覆盖这次编辑；请先处理本地后续修改与已定稿版本的差异。', 'Finalization did not overwrite this edit. Resolve the difference between your later local changes and the finalized version first.')}
+          </Notice>
+        )}
+      </div>
       {stage === 'final' && (
         <PostProcessSteps
           chapterNumber={chapterNumber}

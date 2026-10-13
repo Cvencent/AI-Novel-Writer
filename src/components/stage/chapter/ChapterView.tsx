@@ -66,6 +66,8 @@ function DraftChapter({ tab, filePath, projectKey }: { tab: EditorTab; filePath:
   const review = useReviewCycle({ reportText: latest?.content ?? '', reviewId: latest?.id, projectKey,
     refreshKey: `${draft.status}:${draft.pendingRevisions.map(revision => revision.id).join(',')}` })
   const [charCount, setCharCount] = useState(() => countDraftUnits(tab.content ?? ''))
+  // 沉浸写作底部的字数进度，目标取设定里的每章字数。
+  const target = useProjectStore(s => s.currentProject?.novelConfig.wordsPerChapter) || 0
   const [sheetSlot, setSheetSlot] = useState<HTMLDivElement | null>(null)
 
   const facts = useStageStore(s => draft.meta && s.chapterFacts && session && sameProjectSessionContext(s.chapterFacts.session, session)
@@ -106,7 +108,7 @@ function DraftChapter({ tab, filePath, projectKey }: { tab: EditorTab; filePath:
               focus={focus}
               version={draft.meta
                 ? <VersionSwitcher tab={tab} current={draft.meta} label={versionLabel} title={title} onSave={() => draft.save(draft.currentBodyRef.current, true)} />
-                : <span className="stage-ch-version" role="status">{versionLabel}</span>}
+                : <span className="stage-ch-version stage-ch-version-chip" role="status">{versionLabel}</span>}
             />
           )}
           {draft.meta && stage && chapterNumber !== undefined && reviewReady && (
@@ -128,6 +130,7 @@ function DraftChapter({ tab, filePath, projectKey }: { tab: EditorTab; filePath:
               <CodeMirrorEditor
                 mode="prose"
                 fitContent
+                paragraphIndent
                 content={tab.content ?? ''}
                 filePath={filePath}
                 editable={editable}
@@ -143,7 +146,15 @@ function DraftChapter({ tab, filePath, projectKey }: { tab: EditorTab; filePath:
       <div ref={setSheetSlot} className="stage-ch-sheet-slot" />
       {focus && (
         <footer className="stage-ch-focusbar" aria-label={text('写作状态', 'Writing status')}>
-          <span>{text(`${units} 字`, `${units} words`)}</span>
+          {target ? (
+            <>
+              <span>{text(`${units} / ${target.toLocaleString(locale)} 字`, `${units} / ${target.toLocaleString(locale)} words`)}</span>
+              <span className="stage-ch-focus-progress" role="progressbar" aria-label={text('本章目标字数进度', 'Progress toward the chapter target')}
+                aria-valuemin={0} aria-valuemax={target} aria-valuenow={Math.min(charCount, target)}>
+                <span style={{ width: `${Math.min(100, charCount / target * 100)}%` }} />
+              </span>
+            </>
+          ) : <span>{text(`${units} 字`, `${units} words`)}</span>}
           <span>{tab.dirty ? text('有未保存的修改', 'Unsaved changes') : text('已保存', 'Saved')}</span>
         </footer>
       )}

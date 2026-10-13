@@ -52,7 +52,7 @@ export default function ChapterPlan({ tab, chapterNumber, projectKey }: { tab: E
             step={0}
             focus={focus}
             version={(
-              <span className="stage-ch-version" data-plain>
+              <span className="stage-ch-version stage-ch-version-chip">
                 {target ? text(`尚无草稿 · 目标 ${target} 字`, `No draft yet · target ${target} words`) : text('尚无草稿', 'No draft yet')}
               </span>
             )}
@@ -67,39 +67,41 @@ export default function ChapterPlan({ tab, chapterNumber, projectKey }: { tab: E
               </span>
             </div>
           )}
-          {unfinished.map(operation => {
-            const manual = operation.legacyKnowledgeAuthorization === 'required'
-            return (
+          <div className="stage-ch-notices">
+            {unfinished.map(operation => {
+              const manual = operation.legacyKnowledgeAuthorization === 'required'
+              return (
+                <Notice
+                  key={operation.operationId}
+                  tone="warn"
+                  title={manual ? text('删除正文后待人工核对知识投影', 'The deleted manuscript needs a manual knowledge check') : text('删除正文后的清理没有完成', 'Cleanup after deleting the manuscript is unfinished')}
+                  actions={(
+                    <Button variant="secondary" size="sm" onClick={() => void (manual ? deletions.confirmLegacyDeletion(operation) : deletions.retryDeletion(operation))}>
+                      {manual ? text('确认人工核对并继续', 'Confirm and continue') : text('重试清理', 'Retry cleanup')}
+                    </Button>
+                  )}
+                >
+                  {[operation.manuscriptStatus === 'failed' ? operation.manuscriptError : '', operation.knowledgeStatus === 'failed' ? operation.knowledgeError : ''].filter(Boolean).join('；') || null}
+                </Notice>
+              )
+            })}
+            {row?.running && (
               <Notice
-                key={operation.operationId}
+                tone="info"
+                title={text('正在写这一章', 'Writing this chapter')}
+                actions={<Button variant="secondary" size="sm" onClick={() => navigate({ kind: 'run', facet: 'output' })}>{text('查看运行', 'Open run')}</Button>}
+              />
+            )}
+            {blueprint === null && (
+              <Notice
                 tone="warn"
-                title={manual ? text('删除正文后待人工核对知识投影', 'The deleted manuscript needs a manual knowledge check') : text('删除正文后的清理没有完成', 'Cleanup after deleting the manuscript is unfinished')}
-                actions={(
-                  <Button variant="secondary" size="sm" onClick={() => void (manual ? deletions.confirmLegacyDeletion(operation) : deletions.retryDeletion(operation))}>
-                    {manual ? text('确认人工核对并继续', 'Confirm and continue') : text('重试清理', 'Retry cleanup')}
-                  </Button>
-                )}
+                title={text('这一章还没有蓝图', 'This chapter has no blueprint yet')}
+                actions={<Button variant="secondary" size="sm" onClick={editBlueprint}>{text('去蓝图规划', 'Plan it in the blueprint')}</Button>}
               >
-                {[operation.manuscriptStatus === 'failed' ? operation.manuscriptError : '', operation.knowledgeStatus === 'failed' ? operation.knowledgeError : ''].filter(Boolean).join('；') || null}
+                {text('写作此章按蓝图写，先在蓝图里规划这一章。', 'Writing follows the blueprint, so plan this chapter there first.')}
               </Notice>
-            )
-          })}
-          {row?.running && (
-            <Notice
-              tone="info"
-              title={text('正在写这一章', 'Writing this chapter')}
-              actions={<Button variant="secondary" size="sm" onClick={() => navigate({ kind: 'run', facet: 'output' })}>{text('查看运行', 'Open run')}</Button>}
-            />
-          )}
-          {blueprint === null && (
-            <Notice
-              tone="warn"
-              title={text('这一章还没有蓝图', 'This chapter has no blueprint yet')}
-              actions={<Button variant="secondary" size="sm" onClick={editBlueprint}>{text('去蓝图规划', 'Plan it in the blueprint')}</Button>}
-            >
-              {text('写作此章按蓝图写，先在蓝图里规划这一章。', 'Writing follows the blueprint, so plan this chapter there first.')}
-            </Notice>
-          )}
+            )}
+          </div>
           {blueprint && (
             <section className="stage-ch-plan" aria-label={text('本章蓝图', 'Chapter blueprint')}>
               <div className="stage-ch-plan-head">

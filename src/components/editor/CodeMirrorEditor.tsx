@@ -8,6 +8,7 @@ import { openSearchPanel, closeSearchPanel, search } from '@codemirror/search'
 import { Sparkles, Bold, Check } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { inkTheme } from '../stage/ink-theme'
+import { paragraphIndent } from './paragraph-indent'
 import { useThemeStore } from '../../stores/theme-store'
 import type { MainGenerationRunHandle } from '../../services/generation/generation-runtime'
 import { createEditorInlineGeneration } from '../../services/editor-inline-generation'
@@ -33,6 +34,8 @@ export type CodeMirrorEditorProps = {
   paperHead?: PaperHead | null
   /** 编辑器随内容长高、不自己滚动，由外层页面一起滚动（单章视图的纸面）。 */
   fitContent?: boolean
+  /** 段落首行缩进两字（只是显示，见 paragraph-indent）。 */
+  paragraphIndent?: boolean
 }
 
 type EditorAIAction = {
@@ -62,6 +65,7 @@ export default function CodeMirrorEditor({
   mode = 'document',
   paperHead = null,
   fitContent = false,
+  paragraphIndent: indentParagraphs = false,
 }: CodeMirrorEditorProps) {
   const inkThemeName = useThemeStore(s => inkTheme(s.resolvedTheme))
   const uiText = useLocaleStore(s => s.text)
@@ -396,9 +400,10 @@ export default function CodeMirrorEditor({
       }))
     }
     if (mode === 'prose') exts.push(...livePreview())
+    if (indentParagraphs) exts.push(paragraphIndent)
     exts.push(paperHeadFacet.of(stablePaperHead))
     return exts
-  }, [mode, stablePaperHead, uiLocale])
+  }, [mode, stablePaperHead, uiLocale, indentParagraphs])
 
   // AI 菜单处理（流式调用，实时显示生成内容）
   const handleAIAction = async (action: EditorAIAction) => {

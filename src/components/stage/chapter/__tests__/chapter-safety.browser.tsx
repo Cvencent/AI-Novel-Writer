@@ -4,6 +4,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 
 import { blueprintWritePrefill } from '../../../../services/workflows/chapter-write-launch'
+import { countDraftUnits } from '../../../../shared/draft-units'
 import { formatResourceUri } from '../../../../shared/project-paths'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
 import { useAppearanceStore } from '../../../../stores/appearance-bootstrap'
@@ -344,5 +345,39 @@ describe('写作此章、标签顶替与跨作品的请求', () => {
     await expect.element(page.getByText(/清理失败时可在这一章的页面里重试/)).toBeVisible()
     await expect.element(page.getByText(/正文章节下/)).not.toBeInTheDocument()
     await click('取消')
+  })
+})
+
+describe('纸面', () => {
+  it('段落首行缩进两字只是显示：正文内容不变，作者自己用 em 空格缩进的段落不再叠加', async () => {
+    const indented = ['雨从傍晚开始就没有停过。', '  最后一班列车晚点了十七分钟。'].join('\n\n')
+    const draft = backend.addDraft({ status: 'draft', content: indented })
+    await mount()
+    await openDraft(draft.id)
+    await expect.element(page.getByText('雨从傍晚开始就没有停过。')).toBeVisible()
+    const lines = [...host!.querySelectorAll<HTMLElement>('.stage-ch-prose .cm-line')]
+    expect(lines.map(line => [line.textContent, getComputedStyle(line).textIndent])).toEqual([
+      ['雨从傍晚开始就没有停过。', '36px'],
+      ['', '0px'],
+      ['  最后一班列车晚点了十七分钟。', '0px'],
+    ])
+    expect(activeTab()?.content).toBe(indented)
+  })
+
+  it('沉浸写作：纸面全出血，底部写出字数与设定里的每章目标字数及进度', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    host = document.createElement('div')
+    host.className = 'paper-ink stage-shell'
+    host.dataset.focus = 'true'
+    host.style.cssText = 'display:flex;flex-direction:column;height:900px;width:1280px'
+    document.body.append(host)
+    root = createRoot(host)
+    useStageStore.setState({ focus: true })
+    await act(async () => root!.render(<StageWorkspace library={false} focus />))
+    await openDraft(draft.id)
+    await expect.element(page.getByText(`${countDraftUnits(ORIGINAL)} / 3,000 字`)).toBeVisible()
+    await expect.element(page.getByRole('progressbar', { name: '本章目标字数进度' })).toHaveAttribute('aria-valuemax', '3000')
+    const panel = getComputedStyle(host!.querySelector('.stage-panel')!)
+    expect([panel.marginTop, panel.marginLeft, panel.borderTopLeftRadius, panel.boxShadow]).toEqual(['0px', '0px', '0px', 'none'])
   })
 })
