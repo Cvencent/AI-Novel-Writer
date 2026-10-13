@@ -123,7 +123,10 @@ export function useArchitectureOverview(projectKey: string) {
       projectSession,
       'db:project-core-get',
       projectPath,
-    )
+    ).catch((error: unknown) => {
+      if (archStatusRequestGate.current.isLatest(requestId)) setLoading(false)
+      throw error
+    })
     let progress: OutlineProgress
     let recoveryFailed = false
     let recoveredWorldBuildingCandidate = ''

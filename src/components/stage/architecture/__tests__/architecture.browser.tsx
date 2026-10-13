@@ -413,6 +413,32 @@ describe('架构阶段', () => {
     await vi.waitFor(() => expect(host!.querySelector('.arch-page[data-loading]')).toBeNull())
   })
 
+  it('四节状态读取失败时动作区照常显示并可聚焦', async () => {
+    const answer = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel, ...args) => {
+      if (channel === 'db:project-core-get') throw new Error('数据库读取失败')
+      return answer(channel, ...args)
+    })
+    const rejected: unknown[] = []
+    const record = (event: PromiseRejectionEvent) => { rejected.push(event.reason) }
+    window.addEventListener('unhandledrejection', record)
+    try {
+      await act(async () => root!.render(<StageArchitecture projectKey={session.projectPath} />))
+      await vi.waitFor(() => expect(rejected.map(reason => (reason as Error).message)).toEqual(['数据库读取失败']))
+    } finally {
+      window.removeEventListener('unhandledrejection', record)
+    }
+    const shown = (section: string) => [...host!.querySelectorAll<HTMLElement>(`[data-section="${section}"] .arch-section-actions button`)]
+      .filter(action => action.checkVisibility({ visibilityProperty: true }))
+      .map(action => action.textContent || action.getAttribute('aria-label'))
+    await vi.waitFor(() => expect(shown('premise')).toEqual(['自己写', 'AI 生成此节', '「故事前提」的更多操作']))
+    expect(shown('characters')).toEqual(['打开角色名单', '「角色名单」的更多操作'])
+    expect(host!.querySelector('.arch-page[data-loading]')).toBeNull()
+    const cast = button('打开角色名单') as HTMLButtonElement
+    cast.focus()
+    expect(document.activeElement).toBe(cast)
+  })
+
   it('分节摘要不带文档的 Markdown 标题行', async () => {
     core = { ...core, premise: `# 故事前提\n\n## 核心钩子\n\n${PREMISE}` }
     filledSpine(['premise'])

@@ -46,7 +46,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
   /** 页头计数与主按钮只数已确认的节（徽标「已确认」）：部分完成、不完整、待处理都不算。 */
   const filled = overview.loading ? null : SECTION_ORDER.filter(key => overview.confirmed[key]).length
   const cast = useCastSummary(projectKey)
-  /** 是否读到过一次四节状态。之前各节按「没有内容」渲染，动作区先不画（见 architecture.css）；之后刷新时照常显示。 */
+  /** 第一次读取四节状态是否已结束（成功或失败）。之前各节按「没有内容」渲染，动作区先不画（见 architecture.css）；之后刷新时照常显示。 */
   const [statusRead, setStatusRead] = useState(!overview.loading)
   if (!statusRead && !overview.loading) setStatusRead(true)
   /** 清空确认打开时冻结的会话：确认时作品已换就什么也不写。 */
