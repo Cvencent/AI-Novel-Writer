@@ -343,11 +343,12 @@ export async function seedStageSample(context,
     chapters: Object.entries(STAGE_SAMPLE.finalized).map(([number, content]) => ({ chapterNumber: Number(number),
       title: stageChapterTitle(Number(number)), content, wordCount: countUnits(content) })) }, path, session)
   assert.equal(imported.success, true, imported.error)
-  for (const [number, { status, text }] of Object.entries(STAGE_SAMPLE.drafts)) {
+  for (const [number, { status, text, review }] of Object.entries(STAGE_SAMPLE.drafts)) {
     const draft = await invoke(page, 'db:draft-create', { chapterNumber: Number(number), version: 1, source: 'write',
       content: text, wordCount: countUnits(text) }, path, session)
     assert.equal(draft.success, true, draft.error)
     if (status !== 'draft') assert.equal((await invoke(page, 'db:draft-update-status', draft.id, status, undefined, path, session)).success, true)
+    if (review) assert.equal((await invoke(page, 'db:review-create', { baseDraftId: draft.id, content: review }, path, session)).success, true)
   }
   await beforeReload?.({ page, invoke, path, session })
   await reload()

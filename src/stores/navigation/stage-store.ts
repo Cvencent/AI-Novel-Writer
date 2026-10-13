@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
+import type { ChapterFacts } from './stage-progress'
 
 /** 运行侧页的分页：进行中（步骤、实时输出、等确认、可恢复）、历史、诊断（宽版：日志与模型调用）。 */
 export type RunSheetTab = 'active' | 'history' | 'diagnostics'
@@ -34,6 +35,8 @@ interface StageState {
   writeRequest: { session: ProjectSessionContext; chapterNumber: number } | null
   /** 审稿或修稿刚生成，要这一稿的单章视图重读数据并展开审稿侧页或合并视图；视图接手后清空。 */
   chapterRequest: { filePath: string; open: 'review' | 'merge' } | null
+  /** 各稿的审稿与修稿记录（按稿 id），流程脊与单章视图据此判断一章走到哪一步；只属于读出它的那次打开。 */
+  chapterFacts: { session: ProjectSessionContext; byDraft: Readonly<Record<number, ChapterFacts>> } | null
 }
 
 /** 新外壳自己的界面状态。书房与作品的切换沿用 layout-store 的 sidebarView === 'home'，两种外壳共用。 */
@@ -45,4 +48,5 @@ export const useStageStore = create<StageState>()(() => ({
   closingTabId: null,
   writeRequest: null,
   chapterRequest: null,
+  chapterFacts: null,
 }))

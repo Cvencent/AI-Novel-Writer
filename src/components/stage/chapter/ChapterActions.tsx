@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BadgeCheck, MoreHorizontal, Search, Sparkles } from 'lucide-react'
 import type { ReviewCycleProjection } from '../../../shared/review-cycle'
+import type { RevisionEntry } from '../../../services/draft-index'
 import type { HumanConfirmedReviewSnapshot } from '../../../shared/human-confirmed-review'
 import { chapterLabel } from '../../../shared/chapter-label'
 import { countDraftUnits } from '../../../shared/draft-units'
@@ -11,7 +12,7 @@ import { useLLMStore } from '../../../stores/llm-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { navigate } from '../../../stores/navigation/navigation-intents'
 import { openChapterPlan } from '../../../stores/navigation/stage-navigation'
-import { deriveChapters } from '../../../stores/navigation/stage-progress'
+import { deriveChapters, type ChapterFacts } from '../../../stores/navigation/stage-progress'
 import { useDraftStore } from '../../../stores/draft-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { includedCount, useReviewChecklist } from '../../editor/review-checklist'
@@ -44,20 +45,22 @@ interface LatestReview {
   reloadCycle: () => Promise<ReviewCycleProjection | null>
 }
 
-type Ask = 'refine' | 'finalize' | 'delete' | null
+type Ask = 'refine' | 'finalize' | 'delete' | 'discard' | null
 
 /**
  * 章节动作条与它带出的侧页、对话框。主按钮随这一章所处的一步变化：AI 审稿（拆分按钮含检查维度）、按 N 项意见修稿、
  * 完成合并、定稿；直接修稿、删除这一稿、复制本章正文在「更多」里。审稿清单的状态也在这里，
  * 侧页的勾选数与主按钮的「按 N 项意见修稿」是同一份。挂载方以审稿报告的会话键作 key，报告变了清单随之重置。
  */
-export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, title, draft, review, focus }: {
+export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, title, draft, facts, review, focus }: {
   sheetSlot: HTMLDivElement | null
   tab: EditorTab
   stage: ChapterStage
   chapterNumber: number
   title: string
   draft: DraftActions
+  /** 与流程脊同一份的审稿与修稿记录：哪几份待合并修稿还能合并。 */
+  facts: ChapterFacts | undefined
   review: LatestReview | null
   focus: boolean
 }) {
@@ -93,18 +96,25 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
   const busy = draft.isChapterBusy
   const generationModels = models.filter(isGenerationModel)
   const selectedReviseModel = reviseModelId ?? preferredGenerationModelId(models, defaultModelId)
-  const pending = draft.pendingRevisions[0]
+  // 有几份能合并时取最新的一份；过期的修稿不占主流程，只能查看或丢弃。
+  const pending = draft.pendingRevisions.find(revision => revision.id === facts?.mergeable.at(-1))
+  const stale = draft.pendingRevisions.filter(revision => facts?.stale.includes(revision.id))
+  const [opened, setOpened] = useState<RevisionEntry | null>(null)
   const versionLabel = text(`草稿 v${meta.version}`, `Draft v${meta.version}`)
 
   // 有待合并的修稿时直接摆出合并视图；作者选了稍后再合并就留在正文，直到再点「打开修稿合并」。
   // 每份修稿只自动打开一次：正文有未保存修改时打开会被拒绝并提示，不能每次渲染都再提示。
   const { mergeData, openPendingRevision } = draft
+  const openRevision = useCallback((revision: RevisionEntry) => {
+    setOpened(revision)
+    void openPendingRevision(revision)
+  }, [openPendingRevision])
   const autoOpened = useRef<number | null>(null)
   useEffect(() => {
     if (stage !== 'merge' || !pending || mergeData || mergeLater || autoOpened.current === pending.id) return
     autoOpened.current = pending.id
-    void openPendingRevision(pending)
-  }, [stage, pending, mergeData, mergeLater, openPendingRevision])
+    openRevision(pending)
+  }, [stage, pending, mergeData, mergeLater, openRevision])
 
   const startReview = () => void draft.review(dims.filter(dim => checkedDims[dim.key]).map(dim => dim.promptLabel).join('、') || undefined)
 
@@ -235,11 +245,11 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
       case 'merge':
         return (
           <>
-            <Button variant="primary" disabled={busy} onClick={() => { setMergeLater(false); if (pending) void openPendingRevision(pending) }}>
+            <Button variant="primary" disabled={busy} onClick={() => { setMergeLater(false); if (pending) openRevision(pending) }}>
               {text('打开修稿合并', 'Open revision merge')}
             </Button>
             {more}
-            <span className="stage-ch-hint">{text(`有 ${draft.pendingRevisions.length} 份修稿待合并`, `${draft.pendingRevisions.length} revision(s) waiting to merge`)}</span>
+            <span className="stage-ch-hint">{text('修稿已生成，逐段选择后完成合并', 'The revision is ready; choose paragraph by paragraph, then finish the merge')}</span>
           </>
         )
       case 'revised':
@@ -282,7 +292,21 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
 
   return (
     <>
-      {!(stage === 'merge' && draft.mergeData) && <div className="stage-ch-actions">{bar}</div>}
+      {!draft.mergeData && <div className="stage-ch-actions">{bar}</div>}
+      {!draft.mergeData && stale.length > 0 && (
+        <Notice
+          tone="warn"
+          title={text(`有 ${stale.length} 份修稿不能再合并`, `${stale.length} revision(s) can no longer be merged`)}
+          actions={(
+            <>
+              <Button variant="secondary" size="sm" disabled={busy} onClick={() => openRevision(stale.at(-1)!)}>{text('查看修稿', 'View revision')}</Button>
+              <Button variant="danger" size="sm" disabled={busy} onClick={() => setAsk('discard')}>{text('丢弃…', 'Discard…')}</Button>
+            </>
+          )}
+        >
+          {text('修稿生成之后正文又改过，合并会覆盖这些修改。可以查看修稿手动摘取，或丢弃后重新修稿。', 'The text changed after the revision was generated, so merging would overwrite those edits. View it to copy parts by hand, or discard it and revise again.')}
+        </Notice>
+      )}
       {draft.finalizationConflict && (
         <Notice tone="warn" title={text('已保留后续编辑', 'Later edits kept')}>
           {text('定稿完成事件没有覆盖这次编辑；请先处理本地后续修改与已定稿版本的差异。', 'Finalization did not overwrite this edit. Resolve the difference between your later local changes and the finalized version first.')}
@@ -302,7 +326,7 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
         <MergeView
           data={draft.mergeData}
           versionLabel={versionLabel}
-          recheck={pending?.type === 'review-fix'}
+          recheck={opened?.type === 'review-fix'}
           onComplete={draft.completeMerge}
           onLater={() => { setMergeLater(true); draft.closeMerge() }}
         />
@@ -358,6 +382,16 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
         </ul>
         {tab.dirty && <Notice tone="info" title={text('还没保存的修改会一并定稿', 'Unsaved edits are included')}>{text('定稿以你现在看到的正文为准。', 'Finalization uses the text exactly as you see it now.')}</Notice>}
       </InkDialog>
+      <DangerConfirm
+        open={ask === 'discard'}
+        onOpenChange={open => { if (!open) setAsk(null) }}
+        title={text(`丢弃 ${stale.length} 份不能合并的修稿？`, `Discard ${stale.length} unmergeable revision(s)?`)}
+        consequence={text('这些修稿不再出现在这一章里；正文不变。', 'These revisions no longer appear on this chapter. The text is unchanged.')}
+        recoverability={text('丢弃后不能再查看或合并。', 'Discarded revisions cannot be viewed or merged again.')}
+        confirmLabel={text('丢弃修稿', 'Discard revisions')}
+        cancelLabel={text('取消', 'Cancel')}
+        onConfirm={() => void draft.discardRevisions(stale.map(revision => revision.id))}
+      />
       <DangerConfirm
         open={ask === 'delete'}
         onOpenChange={open => { if (!open) setAsk(null) }}

@@ -14,7 +14,9 @@ import { openChapterPlan } from '../../../../stores/navigation/stage-navigation'
 import { useProjectStore } from '../../../../stores/project-store'
 import { useWorkflowStore } from '../../../../stores/workflow-store'
 import { openDraftTab } from '../../../../stores/open-draft-tab'
+import StageSpine from '../../StageSpine'
 import StageWorkspace from '../../StageWorkspace'
+import { useStageView } from '../../use-stage-work'
 import { BLUEPRINT, ORIGINAL, REVISED, SESSION, chapterProject, createChapterBackend, generationModel } from './chapter-fixture'
 
 const workflows = vi.hoisted(() => ({
@@ -214,5 +216,94 @@ describe('单章视图的主按钮随五种状态变化', () => {
     await click('重试')
     await vi.waitFor(() => expect(workflows.createRepairFinalizeWorkflow).toHaveBeenCalledTimes(2))
     expect(workflows.createRepairFinalizeWorkflow.mock.calls.map(call => [call[0], call[3]])).toEqual([[3, undefined], [3, 'character_cards']])
+  })
+})
+
+/** 单章视图旁边摆上真实的流程脊，两边读的是同一份作品数据。 */
+async function mountWithSpine() {
+  const SpineBeside = () => {
+    const view = useStageView()
+    return <StageSpine stages={view.stages} chapters={view.chapters} location={view.location} onStage={() => {}} onChapter={() => {}} onResource={() => {}} onSettings={() => {}} />
+  }
+  host = document.createElement('div')
+  host.className = 'paper-ink stage-shell'
+  host.style.cssText = 'display:flex;height:900px;width:1280px'
+  document.body.append(host)
+  root = createRoot(host)
+  await act(async () => root!.render(<><SpineBeside /><StageWorkspace library={false} focus={false} /></>))
+}
+
+/** 流程脊上第 3 章那一行。 */
+const spineRow = () => page.getByRole('list', { name: '章节' }).getByRole('button', { name: /雨夜车站/ })
+
+describe('流程脊与单章视图同一个阶段', () => {
+  it('草稿上有审稿：流程脊写待修稿，单章视图的主按钮是按意见修稿', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    backend.addReview(draft)
+    await mountWithSpine()
+    await openDraft(draft.id)
+    await expect.element(page.getByRole('button', { name: '按 2 项意见修稿' })).toBeVisible()
+    await expect.element(spineRow()).toHaveTextContent('待修稿')
+  })
+
+  it('审稿后直接修稿并合并：两边都到定稿这一步，不再要求按旧意见修稿', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    backend.addReview(draft)
+    backend.addRevision(draft, 'refine')
+    await mountWithSpine()
+    await openDraft(draft.id)
+    await click('全部用修稿')
+    await click('完成合并')
+    await expect.element(page.getByRole('button', { name: '定稿', exact: true })).toBeVisible()
+    await expect.element(page.getByRole('button', { name: /项意见修稿$/ })).not.toBeInTheDocument()
+    await expect.element(spineRow()).toHaveTextContent('待定稿')
+  })
+
+  it('修稿生成后正文又改过：修稿不能合并，不占主流程；审稿入口还在，过期修稿可以丢弃', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    backend.addReview(draft)
+    const revision = backend.addRevision(draft)
+    draft.content = `${ORIGINAL}\n\n作者后来补的一段。`
+    await mountWithSpine()
+    await openDraft(draft.id)
+    await expect.element(page.getByRole('button', { name: '按 2 项意见修稿' })).toBeVisible()
+    await expect.element(page.getByRole('button', { name: '重新审稿' })).toBeVisible()
+    await expect.element(page.getByRole('button', { name: '完成合并' })).not.toBeInTheDocument()
+    await expect.element(spineRow()).toHaveTextContent('待修稿')
+    await expect.element(page.getByText('有 1 份修稿不能再合并')).toBeVisible()
+    await click('丢弃…')
+    await click('丢弃修稿')
+    await expect.element(page.getByText('有 1 份修稿不能再合并')).not.toBeInTheDocument()
+    expect(backend.writes('db:revision-mark-discarded').map(args => args[0])).toEqual([revision.id])
+  })
+
+  it('有两份能合并的修稿：合并视图摆的是最新的一份', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    backend.addRevision(draft, 'refine')
+    const newer = backend.addRevision(draft, 'refine')
+    await mountWithSpine()
+    await openDraft(draft.id)
+    await expect.element(spineRow()).toHaveTextContent('待合并')
+    await click('全部用修稿')
+    await click('完成合并')
+    await vi.waitFor(() => expect(backend.writes('db:revision-merge').map(args => (args[0] as { revisionId: number }).revisionId)).toEqual([newer.id]))
+  })
+
+  it('审稿记录读出来之前不摆主按钮：不会先闪一下 AI 审稿', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    backend.addReview(draft)
+    const answer = backend.invoke.getMockImplementation()!
+    backend.invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'db:review-list') await new Promise(resolve => setTimeout(resolve, 150))
+      return answer(channel, ...args)
+    })
+    await mount()
+    const seen = new Set<string>()
+    const observer = new MutationObserver(() => host!.querySelectorAll('.stage-ch-actions .pi-btn').forEach(button => seen.add(button.textContent ?? '')))
+    observer.observe(host!, { subtree: true, childList: true, characterData: true })
+    await openDraft(draft.id)
+    await expect.element(page.getByRole('button', { name: '按 2 项意见修稿' })).toBeVisible()
+    observer.disconnect()
+    expect([...seen].filter(label => label.includes('AI 审稿') || label.includes('定稿'))).toEqual([])
   })
 })

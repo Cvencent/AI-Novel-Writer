@@ -4,18 +4,20 @@ import { formatResourceUri } from '../../../shared/project-paths'
 import type { EditorTab } from '../../../stores/editor-store'
 import { readDraftBody } from '../../../stores/draft-store'
 import { useLocaleStore } from '../../../stores/locale-store'
+import { chapterPhase } from '../../../stores/navigation/stage-progress'
 import { useStageStore } from '../../../stores/navigation/stage-store'
 import { useProjectStore } from '../../../stores/project-store'
 import type { ReviewEntry } from '../../../services/draft-index'
 import CodeMirrorEditor from '../../editor/CodeMirrorEditor'
 import { useReviewCycle } from '../../editor/review-checklist'
 import { useDraftActions } from '../../editor/use-draft-actions'
+import { sameProjectSessionContext } from '../../../shared/project-session-context'
 import { captureProjectSession, isProjectSessionCurrent, isProjectSessionPath } from '../../project-session-gate'
 import ChapterActions from './ChapterActions'
 import ChapterHead from './ChapterHead'
 import { useChapterBlueprint } from './use-chapter-blueprint'
 import ChapterPlan from './ChapterPlan'
-import { chapterStage, STAGE_STEP } from './chapter-lifecycle'
+import { STAGE_STEP } from './chapter-lifecycle'
 import VersionSwitcher from './VersionSwitcher'
 
 /** 这一稿最新的审稿报告原文；审稿记录变化时重读。 */
@@ -52,6 +54,7 @@ export default function ChapterView({ tab }: { tab: EditorTab }) {
 }
 
 function DraftChapter({ tab, filePath, projectKey }: { tab: EditorTab; filePath: string; projectKey: string }) {
+  const session = captureProjectSession(useProjectStore(s => s.currentProject))
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
   const focus = useStageStore(s => s.focus)
@@ -65,13 +68,12 @@ function DraftChapter({ tab, filePath, projectKey }: { tab: EditorTab; filePath:
   const [charCount, setCharCount] = useState(() => countDraftUnits(tab.content ?? ''))
   const [sheetSlot, setSheetSlot] = useState<HTMLDivElement | null>(null)
 
-  // 最新审稿读出来之前不摆动作条：清单状态按审稿报告重置，先摆再换会让刚开始的合并或勾选丢掉。
-  const reviewReady = draft.reviews.length === 0 || latest !== null
-  const stage = draft.meta ? chapterStage({
-    status: draft.status,
-    pendingRevisions: draft.pendingRevisions.length,
-    latestReview: draft.reviews.length > 0 ? { cycleStatus: review.cycle?.revisionStatus ?? null } : null,
-  }) : null
+  const facts = useStageStore(s => draft.meta && s.chapterFacts && session && sameProjectSessionContext(s.chapterFacts.session, session)
+    ? s.chapterFacts.byDraft[draft.meta.id]
+    : undefined)
+  // 这一稿的记录与最新审稿都读出来之前不摆动作条：先按不全的数据摆会闪一下别的主按钮，清单状态也会被重置。
+  const reviewReady = draft.loaded && (draft.reviews.length === 0 || latest !== null)
+  const stage = draft.loaded && draft.meta ? draft.status === 'archived' ? 'archived' : chapterPhase(draft.status, facts) : null
 
   // 审稿或修稿刚在别处生成：重读这一稿的数据。新审稿换掉动作条的会话键，侧页按「已审稿」默认展开；待合并修稿直接摆出合并视图。
   const { reload } = draft
@@ -115,6 +117,7 @@ function DraftChapter({ tab, filePath, projectKey }: { tab: EditorTab; filePath:
               chapterNumber={chapterNumber}
               title={title}
               draft={draft}
+              facts={facts}
               review={latest ? { report: latest.content, reviewId: latest.id, snapshot: review.snapshot, cycle: review.cycle, reloadCycle: review.reloadCycle } : null}
               focus={focus}
             />

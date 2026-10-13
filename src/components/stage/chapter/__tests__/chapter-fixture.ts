@@ -46,8 +46,11 @@ export const AI_REVIEW = JSON.stringify({
 type Status = 'draft' | 'revised' | 'finalized' | 'archived'
 
 interface Draft { id: number; chapterNumber: number; version: number; status: Status; content: string; createdAt: string; updatedAt: string }
-interface Review { id: number; baseDraftId: number; reviewIndex: number; content: string; source: Draft }
-interface Revision { id: number; baseDraftId: number; revisionIndex: number; revisionType: 'refine' | 'review-fix'; status: 'pending' | 'merged'; content: string; source: Draft }
+interface Review { id: number; baseDraftId: number; reviewIndex: number; content: string; source: Draft; createdAt: string }
+interface Revision {
+  id: number; baseDraftId: number; revisionIndex: number; revisionType: 'refine' | 'review-fix'; status: 'pending' | 'merged' | 'discarded'
+  content: string; source: Draft; createdAt: string; updatedAt: string
+}
 
 /**
  * 一章的假数据库：草稿、审稿、修稿、复验周期与后处理，按主进程的通道语义回答。
@@ -64,12 +67,20 @@ export function createChapterBackend() {
     mergeDisposition: 'required' as 'required' | 'not-required',
     incompleteDeletions: [] as unknown[],
     calls: [] as { channel: string; args: unknown[] }[],
+    clock: 0,
+  }
+  /** 和主进程 datetime('now') 同样写法的时间，每次写入往后走一秒，先后可比。 */
+  const now = () => {
+    state.clock += 1
+    return `2026-10-13 21:${String(Math.floor(state.clock / 60)).padStart(2, '0')}:${String(state.clock % 60).padStart(2, '0')}`
   }
   const meta = (draft: Draft) => ({
     id: draft.id, chapterNumber: draft.chapterNumber, version: draft.version, status: draft.status, source: 'write',
     wordCount: draft.content.length, createdAt: draft.createdAt, updatedAt: draft.updatedAt,
   })
   const source = (draft: Draft) => ({ id: draft.id, chapterNumber: draft.chapterNumber, version: draft.version, status: draft.status, content: draft.content })
+  const revisionMeta = (revision: Revision) => ({ id: revision.id, baseDraftId: revision.baseDraftId, revisionIndex: revision.revisionIndex, revisionType: revision.revisionType,
+    status: revision.status, mergedToDraftId: null, userPrompt: '', reviewSourceId: null, contentId: revision.id, wordCount: 0, createdAt: revision.createdAt, updatedAt: revision.updatedAt })
   const byId = (id: unknown) => state.drafts.find(draft => draft.id === Number(id))
 
   const invoke = vi.fn(async (channel: string, ...args: unknown[]): Promise<unknown> => {
@@ -83,20 +94,20 @@ export function createChapterBackend() {
       case 'db:draft-get-full': { const draft = byId(args[0]); return draft ? { ...meta(draft), content: draft.content } : null }
       case 'db:draft-update-content': {
         const draft = byId(args[0])
-        if (draft) draft.content = String(args[1])
+        if (draft) Object.assign(draft, { content: String(args[1]), updatedAt: now() })
         return { success: Boolean(draft) }
       }
       case 'db:draft-delete': {
         state.drafts = state.drafts.filter(draft => draft.id !== Number(args[0]))
         return { success: true }
       }
-      case 'db:review-list': return state.reviews.filter(review => review.baseDraftId === Number(args[0])).map(review => ({ id: review.id, baseDraftId: review.baseDraftId, reviewIndex: review.reviewIndex, contentId: review.id, createdAt: '2026-10-13 21:14:00' }))
+      case 'db:review-list': return state.reviews.filter(review => review.baseDraftId === Number(args[0])).map(review => ({ id: review.id, baseDraftId: review.baseDraftId, reviewIndex: review.reviewIndex, contentId: review.id, createdAt: review.createdAt }))
       case 'db:review-get-latest':
       case 'db:review-get-full': {
         const review = channel === 'db:review-get-full'
           ? state.reviews.find(candidate => candidate.id === Number(args[0]))
           : state.reviews.filter(candidate => candidate.baseDraftId === Number(args[0])).at(-1)
-        return review ? { id: review.id, baseDraftId: review.baseDraftId, reviewIndex: review.reviewIndex, contentId: review.id, createdAt: '2026-10-13 21:14:00', content: review.content, sourceDraft: source(review.source) } : null
+        return review ? { id: review.id, baseDraftId: review.baseDraftId, reviewIndex: review.reviewIndex, contentId: review.id, createdAt: review.createdAt, content: review.content, sourceDraft: source(review.source) } : null
       }
       case 'db:review-cycle-get': return state.cycles.get(Number(args[0])) ?? null
       case 'db:review-next-index': return state.reviews.filter(review => review.baseDraftId === Number(args[0])).length + 1
@@ -104,28 +115,35 @@ export function createChapterBackend() {
         const request = args[0] as { baseDraftId: number; reviewIndex: number; content: string }
         const draft = byId(request.baseDraftId)!
         const id = ++state.nextId
-        state.reviews.push({ id, baseDraftId: request.baseDraftId, reviewIndex: request.reviewIndex, content: request.content, source: { ...draft } })
+        state.reviews.push({ id, baseDraftId: request.baseDraftId, reviewIndex: request.reviewIndex, content: request.content, source: { ...draft }, createdAt: now() })
         return { success: true, id, reviewIndex: request.reviewIndex }
       }
-      case 'db:revision-get-pending': return state.revisions.filter(revision => revision.baseDraftId === Number(args[0]) && revision.status === 'pending')
-        .map(revision => ({ id: revision.id, baseDraftId: revision.baseDraftId, revisionIndex: revision.revisionIndex, revisionType: revision.revisionType, status: revision.status,
-          mergedToDraftId: null, userPrompt: '', reviewSourceId: null, contentId: revision.id, wordCount: 0, createdAt: '', updatedAt: '' }))
+      case 'db:revision-list':
+      case 'db:revision-get-pending': return state.revisions.filter(revision => revision.baseDraftId === Number(args[0]) && (channel === 'db:revision-list' || revision.status === 'pending'))
+        .map(revisionMeta)
       case 'db:revision-get-full': {
         const revision = state.revisions.find(candidate => candidate.id === Number(args[0]))
-        return revision ? { ...revision, mergedToDraftId: null, userPrompt: '', reviewSourceId: null, contentId: revision.id, wordCount: 0, createdAt: '', updatedAt: '', sourceDraft: source(revision.source) } : null
+        return revision ? { ...revisionMeta(revision), content: revision.content, sourceDraft: source(revision.source) } : null
+      }
+      case 'db:revision-mark-discarded': {
+        const revision = state.revisions.find(candidate => candidate.id === Number(args[0]) && candidate.status === 'pending')
+        if (revision) Object.assign(revision, { status: 'discarded', updatedAt: now() })
+        return { success: Boolean(revision) }
       }
       case 'db:revision-merge': {
         const request = args[0] as { revisionId: number; targetDraftId: number; mergedContent: string }
         const draft = byId(request.targetDraftId)!
         const revision = state.revisions.find(candidate => candidate.id === request.revisionId)!
-        draft.content = request.mergedContent
-        draft.status = 'revised'
-        revision.status = 'merged'
-        setCycle(revision.baseDraftId, 'merge-committed')
+        const mergedAt = now()
+        Object.assign(draft, { content: request.mergedContent, status: 'revised', updatedAt: mergedAt })
+        Object.assign(revision, { status: 'merged', updatedAt: mergedAt })
+        // 只有按审稿意见修出的稿属于复验周期；直接修稿合并不动周期，也不复验。
+        const reviewFix = revision.revisionType === 'review-fix'
+        if (reviewFix) setCycle(revision.baseDraftId, 'merge-committed')
         return { success: true, receipt: {
           revisionId: revision.id, targetDraftId: draft.id, status: 'revised', wordCount: request.mergedContent.length, idempotent: false,
           chapterNumber: draft.chapterNumber, version: draft.version,
-          reviewCycle: { cycleId: 'cycle-1', mergedHash: 'b'.repeat(64), disposition: state.mergeDisposition },
+          ...(reviewFix ? { reviewCycle: { cycleId: 'cycle-1', mergedHash: 'b'.repeat(64), disposition: state.mergeDisposition } } : {}),
         } }
       }
       case 'db:post-process-get-latest-run': return state.postProcess ? { id: 'run-1', sourceLabel: '第3章定稿', createdAt: '', updatedAt: '', allCriticalPassed: false } : null
@@ -163,13 +181,15 @@ export function createChapterBackend() {
     if (review) state.cycles.set(review.id, { ...state.cycles.get(review.id)!, revisionStatus })
   }
   const addReview = (draft: Draft, content = AI_REVIEW): Review => {
-    const review: Review = { id: ++state.nextId, baseDraftId: draft.id, reviewIndex: 1, content, source: { ...draft } }
+    const review: Review = { id: ++state.nextId, baseDraftId: draft.id, reviewIndex: state.reviews.filter(candidate => candidate.baseDraftId === draft.id).length + 1, content, source: { ...draft }, createdAt: now() }
     state.reviews.push(review)
     state.cycles.set(review.id, { cycleId: `cycle-${review.id}`, reviewId: review.id, revisionStatus: 'not-generated', recheckCount: 0, findings: [] })
     return review
   }
   const addRevision = (draft: Draft, revisionType: Revision['revisionType'] = 'review-fix'): Revision => {
-    const revision: Revision = { id: ++state.nextId, baseDraftId: draft.id, revisionIndex: 1, revisionType, status: 'pending', content: REVISED, source: { ...draft } }
+    const createdAt = now()
+    const revision: Revision = { id: ++state.nextId, baseDraftId: draft.id, revisionIndex: state.revisions.filter(candidate => candidate.baseDraftId === draft.id).length + 1,
+      revisionType, status: 'pending', content: REVISED, source: { ...draft }, createdAt, updatedAt: createdAt }
     state.revisions.push(revision)
     if (revisionType === 'review-fix') setCycle(draft.id, 'generated')
     return revision

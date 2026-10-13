@@ -12,6 +12,7 @@ import {
   type FrozenDraftSourceIdentity,
 } from '../../services/workflows/chapter-workflow'
 import { getPendingRevisions, getReviewsForVersion, type ReviewEntry, type RevisionEntry } from '../../services/draft-index'
+import { isRevisionSourceCurrent, refreshChapterFacts } from '../../stores/navigation/chapter-facts'
 import { readDraftBody } from '../../stores/draft-store'
 import { ipc } from '../../services/ipc-client'
 import { retryFinalizationPublication } from '../../services/finalization-client'
@@ -108,6 +109,7 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
       const [pending, versionReviews] = await Promise.all([
         getPendingRevisions(chapterDir, m.version, projectKey),
         getReviewsForVersion(chapterDir, m.version, projectKey),
+        refreshChapterFacts([m], projectSession),
       ])
       if (cancelled || !isProjectSessionCurrent(projectSession)) return
       setPendingRevisions(pending)
@@ -187,6 +189,8 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
         const settledTab = useEditorStore.getState().tabs.find(tab => tab.id === currentTab.id)
         setSaveOutcome(settledTab?.dirty ? 'idle' : 'saved')
       }
+      // 待合并的修稿按保存的正文判断能否合并，正文变了就要重读。
+      if (pendingRevisions.length > 0) reload()
     } catch (error) {
       if (isProjectSessionCurrent(projectSession)) {
         setSaveOutcome('failed')
@@ -474,11 +478,7 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
           '旧修订稿缺少生成时源稿，修订仍可查看但不能合并。',
           'This legacy revision has no generation source. It remains viewable but cannot be merged.',
         )
-      : source.id !== meta.id
-        || source.chapterNumber !== meta.chapterNumber
-        || source.version !== meta.version
-        || source.status !== (currentTarget.draftStatus ?? meta.status)
-        || source.content !== currentSavedContent
+      : !isRevisionSourceCurrent(source, { ...meta, status: currentTarget.draftStatus ?? meta.status, content: currentSavedContent })
         ? text(
             '当前草稿已不是该修订稿的生成时源稿，修订仍可查看但不能合并。',
             'The current draft no longer matches this revision’s generation source. It remains viewable but cannot be merged.',
@@ -548,8 +548,7 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
           '合并已持久化，但自动复验未启动；请从审稿报告重试。',
           'The merge is durable, but the automatic recheck did not start. Retry it from the review report.',
         ))
-        const pending = await getPendingRevisions(chapterDir, meta.version, projectKey)
-        if (isProjectSessionCurrent(projectSession)) setPendingRevisions(pending)
+        reload()
         return true
       }
       toast.error(text(`合并失败：${result.error}`, 'Could not merge the revision.'))
@@ -560,11 +559,26 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
     return false
   }
 
+  /** 丢弃不能再合并的修稿（生成后正文改过）；修稿记录标为已弃用，复验周期随之对账。 */
+  const discardRevisions = async (ids: readonly number[]) => {
+    const projectSession = captureProjectSession(currentProject)
+    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
+    try {
+      for (const id of ids) {
+        const result = await ipc.invokeWithProjectSession(projectSession, 'db:revision-mark-discarded', id, projectSession.projectPath)
+        if (!result.success) throw new Error(result.error)
+      }
+    } catch (error) {
+      if (isProjectSessionCurrent(projectSession)) toast.error(text(`丢弃修稿失败：${error}`, 'Could not discard the revision.'))
+    }
+    if (isProjectSessionCurrent(projectSession)) reload()
+  }
+
   return {
     meta, status, isReadonly, isChapterBusy, isDirty, finalizationPending, finalizationConflict,
     pendingRevisions, reviews, loaded, reload,
     saving, saveOutcome, currentBodyRef, onBodyChange, save,
     refine, review, canFinalize, finalize, retryManuscriptPublication, repairFinalize,
-    mergeData, closeMerge, openPendingRevision, completeMerge,
+    mergeData, closeMerge, openPendingRevision, completeMerge, discardRevisions,
   }
 }

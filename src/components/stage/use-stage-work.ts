@@ -10,6 +10,7 @@ import {
   deriveChapters, deriveStages, landingStage, locate, missingSetup, runningChapters,
   type ChapterRow, type StageLocation, type StageStatus,
 } from '../../stores/navigation/stage-progress'
+import { refreshChapterFacts } from '../../stores/navigation/chapter-facts'
 import { useStageStore } from '../../stores/navigation/stage-store'
 import { navigate } from '../../stores/navigation/navigation-intents'
 import { useProjectStore } from '../../stores/project-store'
@@ -41,11 +42,12 @@ export async function refreshStageWork(text: (zh: string, en: string) => string)
       useDraftStore.getState().loadAllDrafts(session.projectPath, session),
     ])
     if (!current()) return
-    useStageStore.setState({ work: {
-      session,
-      architecture,
-      blueprints: blueprints.map(({ chapterNumber, title }) => ({ chapterNumber, title })),
-    } })
+    const chapters = blueprints.map(({ chapterNumber, title }) => ({ chapterNumber, title }))
+    const working = deriveChapters({ blueprints: chapters, drafts: useDraftStore.getState().draftsByChapter, runningChapters: new Set() })
+      .flatMap(row => row.draft && row.draft.status !== 'finalized' ? [row.draft] : [])
+    await refreshChapterFacts(working, session)
+    if (!current()) return
+    useStageStore.setState({ work: { session, architecture, blueprints: chapters } })
   } catch (error) {
     if (current()) toast.error(text(`项目资源刷新失败：${String(error)}`, `Could not refresh project resources: ${String(error)}`))
   }
@@ -128,6 +130,7 @@ function useActiveLocation(projectPath: string | undefined): StageLocation | nul
 export function useStageView(): StageView {
   const project = useProjectStore(s => s.currentProject)
   const work = useStageStore(s => s.work)
+  const factsState = useStageStore(s => s.chapterFacts)
   const draftsByChapter = useDraftStore(s => s.draftsByChapter)
   const draftSession = useDraftStore(s => s.dataProjectSession)
   const draftsLoading = useDraftStore(s => s.loading)
@@ -137,11 +140,12 @@ export function useStageView(): StageView {
 
   const currentWork = session && work && sameProjectSessionContext(work.session, session) ? work : null
   const drafts = session && sameProjectSessionContext(draftSession, session) ? draftsByChapter : null
+  const chapterFacts = session && factsState && sameProjectSessionContext(factsState.session, session) ? factsState.byDraft : undefined
   const runningChapterSet = useMemo(() => new Set(running ? running.split(',').map(Number) : []), [running])
 
   const chapters = useMemo(() => currentWork && drafts
-    ? deriveChapters({ blueprints: currentWork.blueprints, drafts, runningChapters: runningChapterSet })
-    : [], [currentWork, drafts, runningChapterSet])
+    ? deriveChapters({ blueprints: currentWork.blueprints, drafts, runningChapters: runningChapterSet, chapterFacts })
+    : [], [currentWork, drafts, runningChapterSet, chapterFacts])
   const stages = useMemo(() => project && currentWork && drafts
     ? deriveStages({ config: project.novelConfig, architecture: currentWork.architecture, blueprints: currentWork.blueprints, drafts, runningChapters: runningChapterSet }, chapters)
     : [], [project, currentWork, drafts, runningChapterSet, chapters])

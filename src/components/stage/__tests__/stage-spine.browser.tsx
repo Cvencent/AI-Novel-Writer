@@ -36,15 +36,16 @@ function facts(overrides: Partial<WorkFacts> = {}): WorkFacts {
   return { config: READY_CONFIG, architecture: ALL_ARCHITECTURE, blueprints: blueprints(12), drafts: {}, runningChapters: new Set(), ...overrides }
 }
 
-/** 写作中的作品：1、2 章定稿，3 章已审稿（还有一份旧草稿归档），4 章已修稿，5 章草稿，6 章正在生成。 */
+/** 写作中的作品：1、2 章定稿，3 章已审稿（草稿上有一份审稿，还有一份旧草稿归档），4 章已修稿，5 章草稿，6 章正在生成。 */
 const WRITING = facts({
   drafts: {
     1: [draft(1, 1, 'finalized')],
     2: [draft(2, 2, 'finalized'), draft(2, 1, 'archived')],
-    3: [draft(3, 2, 'reviewed'), draft(3, 1, 'archived')],
+    3: [draft(3, 2, 'draft'), draft(3, 1, 'archived')],
     4: [draft(4, 1, 'revised')],
     5: [draft(5, 1, 'draft')],
   },
+  chapterFacts: { 32: { mergeable: [], stale: [], latestReview: { createdAt: '2026-10-12 03:00:00', cycleStatus: 'not-generated' }, lastMergedAt: null } },
   runningChapters: new Set([6]),
 })
 
