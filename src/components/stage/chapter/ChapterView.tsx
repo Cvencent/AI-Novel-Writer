@@ -81,10 +81,10 @@ function DraftChapter({ tab, filePath, projectKey }: { tab: EditorTab; filePath:
   // 审稿侧页按「已审稿」默认展开；待合并修稿直接摆出合并视图。
   const { reload } = draft
   useEffect(() => {
-    if (!request || request.filePath !== filePath || !sameProjectSessionContext(request.session, session)) return
+    if (!request || request.filePath !== filePath || !sameProjectSessionContext(request.session, captureProjectSession(useProjectStore.getState().currentProject))) return
     useStageStore.setState({ chapterRequest: null, sheet: null })
     reload()
-  }, [request, filePath, session, reload])
+  }, [request, filePath, reload])
 
   const title = blueprint?.title || draft.meta?.chapterTitle || ''
   const units = charCount.toLocaleString(locale)
