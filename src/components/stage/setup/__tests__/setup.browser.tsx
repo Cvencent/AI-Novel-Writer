@@ -11,6 +11,7 @@ import { useLayoutStore } from '../../../../stores/layout-store'
 import { useLLMStore } from '../../../../stores/llm-store'
 import { useProjectStore } from '../../../../stores/project-store'
 import { useWorkflowStore } from '../../../../stores/workflow-store'
+import { useStageShortcuts } from '../../use-stage-shortcuts'
 import StageSetup from '../StageSetup'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -37,14 +38,23 @@ function project(config: Partial<NovelConfig>) {
   useProjectStore.setState({ currentProject: { id: 'island', sessionLease: 'lease-1', name: '雾岛', path: PATH, novelConfig: { ...BLANK, ...config } } as unknown as ProjectData })
 }
 
+function Shortcuts() {
+  useStageShortcuts({ library: false, focus: false })
+  return null
+}
+
 async function mount() {
   host = document.createElement('div')
   host.className = 'paper-ink stage-shell'
   host.style.cssText = 'width: 1200px; height: 900px;'
   document.body.append(host)
   root = createRoot(host)
-  await act(async () => root!.render(<StageSetup projectKey={PATH} />))
+  await act(async () => root!.render(<><Shortcuts /><StageSetup projectKey={PATH} /></>))
 }
+
+const alertText = () => [...host!.querySelectorAll('[role="alert"]')].map(node => node.textContent).join(' | ')
+const dirtyConfigTab = () => useEditorStore.setState({ tabs: [{ id: 'config', name: '设定', type: 'config', projectKey: PATH, dirty: true }] as never, activeTabId: 'config' })
+const SAVE_FAILED = '没能保存。设定还在这一页，没有丢，可以再保存一次。'
 
 const byName = (name: string | RegExp) => [...document.querySelectorAll<HTMLButtonElement>('button')]
   .find(button => {
@@ -90,6 +100,7 @@ afterEach(async () => {
   host = undefined
   setActiveProjectSessionContext(null)
   for (const restore of restores) restore()
+  vi.restoreAllMocks()
 })
 
 describe('设定页', () => {
@@ -119,6 +130,45 @@ describe('设定页', () => {
     await click(next())
     expect(useProjectStore.getState().saveProject).toHaveBeenCalledTimes(1)
     expect(useEditorStore.getState().tabs.map(tab => tab.type)).toContain('world-building')
+  })
+
+  it('保存失败时页面写明设定还在、可以再保存；点保存、Ctrl S 都一样', async () => {
+    project({ coreOutline: '雾钟提前一刻响起。', genre: '悬疑', targetAudience: '全龄' })
+    dirtyConfigTab()
+    useProjectStore.setState({ saveProject: vi.fn(async () => false) } as never)
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    await mount()
+    expect(alertText()).toBe('')
+
+    await click(byName(/^保存/))
+    await expect.poll(alertText).toBe(SAVE_FAILED)
+    expect(byName(/^保存/)?.disabled).toBe(false)
+
+    await write(field(/^核心大纲/) as HTMLTextAreaElement, '雾钟提前两刻响起。')
+    expect(alertText()).toBe('')
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, bubbles: true, cancelable: true })) })
+    await expect.poll(alertText).toBe(SAVE_FAILED)
+    expect(useProjectStore.getState().saveProject).toHaveBeenCalledTimes(2)
+  })
+
+  it('下一步保存失败时留在设定页并写明原因', async () => {
+    project({ coreOutline: '雾钟提前一刻响起。', genre: '悬疑', targetAudience: '全龄' })
+    dirtyConfigTab()
+    useProjectStore.setState({ saveProject: vi.fn(async () => { throw new Error('磁盘已满') }) } as never)
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    await mount()
+    await click(next())
+    await expect.poll(alertText).toBe(SAVE_FAILED)
+    expect(useEditorStore.getState().tabs.map(tab => tab.type)).toEqual(['config'])
+  })
+
+  it('单项 AI 生成失败时在那一项下面写明原因', async () => {
+    project({ coreOutline: '雾钟提前一刻响起。' })
+    await mount()
+    await click(byName('AI 生成「核心大纲」'))
+    await expect.poll(alertText).toBe('「核心大纲」没有生成：桌面接口 aiNovelAPI 未就绪，请重新启动应用。原来的内容没有改动。')
+    expect(host!.querySelector('.stage-setup-outline [role="alert"]')).not.toBeNull()
+    expect((field(/^核心大纲/) as HTMLTextAreaElement).value).toBe('雾钟提前一刻响起。')
   })
 
   it('AI 补全以核心大纲为脑洞启动；已有作者内容时先确认扩写', async () => {
