@@ -300,7 +300,8 @@ node scripts/redesign/drive.mjs --scenario blueprint-timing --shell stage --out 
 | `chapter-retry` | 角色状态更新失败后点「重试失败步骤」：之后假模型只收到角色状态请求，后处理回到 4 / 4 | 重试后的定稿视图 | 是 | lane 7 |
 | `chapter-selection` | 选中一段：工具条四个纸墨按钮（润色、扩写、续写、改成对话）；润色预览后替换，再选一段润色后取消，原文不变 | 选区工具条 | 是 | lane 8 |
 | `chapter-delete` | 第 4 章有 v1、v2：从「更多」删除这一稿出现危险确认；`after` 确认后版本切换器只剩 v1 | 危险确认 | 否 | lane 9 |
-| `chapter-1280` | 视口 1280×900（配 `--theme dark`）：收起默认展开的审稿侧页后正文一行 32～35 字；运行侧页打开后不少于 24 字，页面没有横向滚动 | 运行侧页与纸面 | 否 | lane 10 |
+| `chapter-1280` | 视口 1280×900（配 `--theme dark`）：第 3 章打开时审稿侧页已展开，收起它后正文一行 32～35 字；运行侧页打开后不少于 24 字，页面没有横向滚动 | 运行侧页与纸面 | 否 | lane 10 |
+| `chapter-sheet-landing` | 打开作品落在已审稿的第 3 章：审稿侧页刚出现与 4 秒后都展开（不先开后收）；换到带历史审稿的已定稿第 2 章不展开，「更多」里有审稿报告；回到第 3 章仍展开 | 审稿侧页 | 否 | 侧页归属 |
 | `chapter-sheets-1280`、`chapter-sheets-1440` | 第 3 章（已审稿）在该宽度下先开运行侧页、再从「更多」开审稿报告：同一时间只有一个侧页，纸面不被盖住，正文一行不少于 24 字，没有横向滚动 | 审稿侧页与纸面 | 否 | 双侧页 |
 | `chapter-focus` | 1440 宽打开第 4 章进入沉浸写作：内容面板无外边距、圆角与阴影（全出血）；底部「N / 设定每章字数 字」与进度条；正文首行缩进 36px | 沉浸写作 | 否 | Focus 画板 |
 | `chapter-tour` | 30～60 秒导览：检查维度、审稿侧页与作者意见、按意见修稿、逐段合并、定稿确认、定稿后处理。配 `--video` 录评审视频 | 定稿视图 | 是 | Review gate |
@@ -316,4 +317,4 @@ node scripts/redesign/drive.mjs --scenario typing-latency --app-root <trunk 工�
 node scripts/redesign/drive.mjs --scenario typing-latency --shell stage --out <目录>
 ```
 
-草稿、审稿、合并、定稿、1280 与沉浸写作各场景都用 `contrastFailures` 核对单章视图的文字对比度（正文与合并栏 4.5，说明文字 3）。屏幕外窗口的动画帧可能被系统节流，`chapter-open` 与 `typing-latency` 都同时报不依赖动画帧的 DOM 口径。打开作品的流程在文件树读完后回到作品页并收起侧页，场景要开运行侧页时先等它结束（`chapter-1280` 等 2 秒）。
+草稿、审稿、合并、定稿、1280 与沉浸写作各场景都用 `contrastFailures` 核对单章视图的文字对比度（正文与合并栏 4.5，说明文字 3）。屏幕外窗口的动画帧可能被系统节流，`chapter-open` 与 `typing-latency` 都同时报不依赖动画帧的 DOM 口径。打开作品的流程在文件树读完后回到作品页并收起运行侧页，比落点晚约半秒且界面上没有可等的信号，场景要开运行侧页时先等 2 秒（`afterProjectOpenSettles`）；审稿侧页属于单章视图，不随它收起。

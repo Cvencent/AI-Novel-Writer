@@ -36,6 +36,12 @@ async function sheetLayout(page) {
   })
 }
 
+/**
+ * 打开作品的流程在文件树读完后才回到作品页，那一步会收起运行侧页，比落点晚约半秒（实测落点 440ms、收起 1004ms），界面上没有可等的信号。
+ * 场景要开运行侧页时先等它过去；审稿侧页不受它影响。
+ */
+const afterProjectOpenSettles = page => page.waitForTimeout(2000)
+
 /** 预置示例作品；remember 把作品路径记进场景上下文，结束时据此重新打开作品读数据库。 */
 const seed = ({ deleteChapters = [], extra } = {}) => context => seedStageSample(context, {
   landOnChapter3: deleteChapters.length === 0,
@@ -263,8 +269,8 @@ const chosenTexts = page => chapterView.merge(page).locator('[data-chosen="true"
  */
 async function sheetsAt(page, width) {
   await page.setViewportSize({ width, height: 900 })
-  await chapterView.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text)).first().waitFor({ state: 'visible' })
-  await page.waitForTimeout(2000)
+  await chapterView.reviewSheet(page).waitFor({ state: 'visible' })
+  await afterProjectOpenSettles(page)
   await runSheet.openFromPalette(page)
   await page.waitForTimeout(500)
   const run = { ...await sheetLayout(page), chars: await charsPerLine(page) }
@@ -444,13 +450,11 @@ export const CHAPTER_SCENARIOS = {
   /** lane 10：1280 宽深色（--theme dark）下正文一行约 34 字；运行侧页打开后纸面收窄，正文一行仍不少于 24 字，页面没有横向滚动。 */
   'chapter-1280': { model: false, shell: 'stage', setup: seed(), run: async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
-    await chapterView.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text)).first().waitFor({ state: 'visible' })
-    // 打开作品的流程在文件树读完后才回到作品页，那一步会收起侧页；等它结束再打开运行侧页。
-    await page.waitForTimeout(2000)
     // 第 3 章已审稿，打开时默认展开审稿侧页；先收起它量纸面单独时的一行字数。
-    const closeReview = page.getByRole('button', { name: '关闭审稿报告' })
-    if (await closeReview.isVisible()) await closeReview.click()
+    await chapterView.reviewSheet(page).waitFor({ state: 'visible' })
+    await page.getByRole('button', { name: '关闭审稿报告' }).click()
     const alone = await charsPerLine(page)
+    await afterProjectOpenSettles(page)
     await runSheet.openFromPalette(page)
     await page.waitForTimeout(500)
     assert.equal(await runSheet.sheet(page).isVisible(), true, '运行侧页开着')
@@ -461,6 +465,36 @@ export const CHAPTER_SCENARIOS = {
     assert.equal(horizontal, false, '页面没有横向滚动')
     await assertContrast(page, CONTRAST.page, '单章视图')
     return { charsPerLine: alone, charsPerLineWithRunSheet: withSheet }
+  } },
+
+  /**
+   * 审稿侧页属于展开它的那一稿：打开作品落在已审稿的第 3 章，侧页刚出现与 4 秒后一样展开（不再先开后收）；
+   * 换到带历史审稿的已定稿第 2 章不跟过去，回到第 3 章仍展开。
+   */
+  'chapter-sheet-landing': { model: false, shell: 'stage', setup: seed({ extra: async ({ page, invoke, path, session }) => {
+    const [finalized] = (await invoke(page, 'db:draft-list', 2, path, session)).filter(draft => draft.status === 'finalized')
+    const full = await invoke(page, 'db:draft-get-full', finalized.id, path, session)
+    const expectedSource = { id: full.id, chapterNumber: 2, version: full.version, status: full.status, content: full.content }
+    const created = await invoke(page, 'db:review-create', { baseDraftId: full.id, content: STAGE_SAMPLE.drafts[3].review, expectedSource }, path, session)
+    assert.equal(created.success, true, created.error)
+  } }), run: async ({ page }) => {
+    await chapterView.reviewSheet(page).waitFor({ state: 'visible' })
+    const landing0s = (await sheetLayout(page)).sheets
+    await page.waitForTimeout(4000)
+    const landing4s = (await sheetLayout(page)).sheets
+    await chapterView.open(page, 2)
+    await chapterView.view(page).getByText('已定稿，只读', { exact: true }).waitFor({ state: 'visible' })
+    const finalChapter = (await sheetLayout(page)).sheets
+    await chapterView.view(page).getByRole('button', { name: '更多操作' }).click()
+    const reportInMore = await page.getByRole('menuitem', { name: '审稿报告' }).isVisible()
+    await page.keyboard.press('Escape')
+    await chapterView.open(page, 3)
+    await chapterView.reviewSheet(page).waitFor({ state: 'visible' })
+    const backToReviewed = (await sheetLayout(page)).sheets
+    assert.deepEqual({ landing0s, landing4s, finalChapter, reportInMore, backToReviewed },
+      { landing0s: ['审稿报告'], landing4s: ['审稿报告'], finalChapter: [], reportInMore: true, backToReviewed: ['审稿报告'] },
+      '审稿侧页只在已审稿的那一稿上展开，打开作品后不被收起')
+    return { landing0s, landing4s, finalChapter, backToReviewed }
   } },
 
   'chapter-sheets-1280': { model: false, shell: 'stage', setup: seed(), run: ({ page }) => sheetsAt(page, 1280) },
