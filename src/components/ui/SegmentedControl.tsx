@@ -31,7 +31,8 @@ export function SegmentedControl<T extends string>({ label, options, value, onCh
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const move = KEYS[event.key]
-    if (!move) return
+    // 带修饰键的组合留给系统与外层快捷键（如 Alt+← 后退、Shift+方向键选字）。
+    if (!move || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
     event.preventDefault()
     const next = move(selected, options.length)
     onChange(options[next].value)
