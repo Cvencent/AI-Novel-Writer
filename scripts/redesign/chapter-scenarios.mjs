@@ -9,10 +9,32 @@ import * as project from './pages/project.mjs'
 import * as runPanel from './pages/run-panel.mjs'
 import * as runSheet from './pages/run-sheet.mjs'
 import * as stage from './pages/stage.mjs'
-import { firstLine, seedStageSample } from './scenarios.mjs'
+import { contrastFailures, firstLine, seedStageSample } from './scenarios.mjs'
 import { countUnits, STAGE_SAMPLE } from './stage-sample.mjs'
 
 const isStage = async page => await stage.root(page).count() > 0
+
+/** 单章视图的文字对比度：正文与要对照阅读的合并栏 4.5，说明文字 3（design-system 第 9 条）。 */
+const CONTRAST = {
+  page: [['.stage-ch-title', 4.5], ['.stage-ch .stage-ch-prose .cm-content', 4.5], ['.stage-ch-eyebrow', 3], ['.stage-ch-hint', 3], ['.stage-ch-version', 3]],
+  sheet: [['.stage-ch-issue-text', 4.5], ['.stage-ch-sheet-summary', 4.5], ['.stage-ch-issue-tag', 3], ['.stage-ch-issue-quote', 3], ['.stage-ch-issue-meta', 3], ['.stage-ch-sheet-count', 3]],
+  merge: [['.stage-ch-hunk-col', 4.5], ['.stage-ch-hunk-col:not([data-chosen="true"])', 4.5], ['.stage-ch-same', 3], ['.stage-ch-merge-legend', 3], ['.stage-ch-merge-note', 3]],
+  post: [['.stage-ch-post-step b', 4.5], ['.stage-ch-post-detail', 3], ['.stage-ch-post-title small', 3]],
+  focus: [['.stage-ch .stage-ch-prose .cm-content', 4.5], ['.stage-ch-title', 4.5], ['.stage-ch-focusbar > span:not([role])', 3]],
+}
+const assertContrast = async (page, checks, what) => assert.deepEqual(await contrastFailures(page, checks), [], `${what}文字对比度不足`)
+
+/** 纸面与侧页的位置：侧页（运行或审稿）不盖住纸面，同一时间只开一个。 */
+async function sheetLayout(page) {
+  return page.evaluate(() => {
+    const paper = document.querySelector('.stage-ch-page')?.getBoundingClientRect()
+    const sheets = [...document.querySelectorAll('.pi-sheet')].filter(node => node.getClientRects().length > 0)
+    return {
+      sheets: sheets.map(node => node.querySelector('.pi-sheet-title')?.textContent),
+      overlap: sheets.some(node => paper && node.getBoundingClientRect().left < paper.right - 1),
+    }
+  })
+}
 
 /** 预置示例作品；remember 把作品路径记进场景上下文，结束时据此重新打开作品读数据库。 */
 const seed = ({ deleteChapters = [], extra } = {}) => context => seedStageSample(context, {
@@ -233,13 +255,41 @@ const proseOf = async page => await isStage(page) ? chapterView.prose(page) : ch
 /** 合并视图里每处改动当前选中的那一栏的文字。 */
 const chosenTexts = page => chapterView.merge(page).locator('[data-chosen="true"]').allInnerTexts()
 
+/**
+ * 双侧页：第 3 章已审稿，默认展开审稿侧页；打开运行侧页时审稿侧页让出，从「更多」打开审稿报告时运行侧页让出。
+ * 两种状态下都只有一个侧页、纸面不被盖住、正文一行不少于 24 字、页面没有横向滚动。
+ */
+async function sheetsAt(page, width) {
+  await page.setViewportSize({ width, height: 900 })
+  await chapterView.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text)).first().waitFor({ state: 'visible' })
+  await page.waitForTimeout(2000)
+  await runSheet.openFromPalette(page)
+  await page.waitForTimeout(500)
+  const run = { ...await sheetLayout(page), chars: await charsPerLine(page) }
+  await chapterView.more(page, '审稿报告')
+  await chapterView.reviewSheet(page).waitFor({ state: 'visible' })
+  await page.waitForTimeout(500)
+  const review = { ...await sheetLayout(page), chars: await charsPerLine(page) }
+  const horizontal = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
+  assert.deepEqual([run.sheets, run.overlap, review.sheets, review.overlap, horizontal], [['运行'], false, ['审稿报告'], false, false], '同一时间只开一个侧页，纸面不被盖住')
+  assert.ok(run.chars >= 24 && review.chars >= 24, `侧页打开时正文一行 ${run.chars} / ${review.chars} 字`)
+  return { width, charsWithRunSheet: run.chars, charsWithReviewSheet: review.chars }
+}
+
 export const CHAPTER_SCENARIOS = {
   /** lane 1：同一章在 trunk（旧外壳，--app-root）与 head（新外壳，--shell stage）走完写作、审稿、修稿、合并、定稿；两边 measured 相同即通过。 */
   'chapter-regression': { model: true, setup: seed({ deleteChapters: [3, 4] }), run: async context => {
     await writeChapter3(context.page)
     await reviewReviseMergeFinalize(context.page)
     const shell = await isStage(context.page) ? 'stage' : 'writer'
-    return { shell, ...await finalizedFacts(context, 3) }
+    const facts = await finalizedFacts(context, 3)
+    // 读数据库要回到书房重新打开作品；新外壳再打开一次作品与第 3 章，截图停在定稿视图。
+    if (shell === 'stage') {
+      await stage.openFromLibrary(context.page, STAGE_SAMPLE.name)
+      await chapterView.open(context.page, 3)
+      await chapterView.postProcess(context.page).waitFor({ state: 'visible', timeout: 30_000 })
+    }
+    return { shell, ...facts }
   } },
 
   /** lane 2：草稿状态的主按钮是 AI 审稿，生命周期停在审稿。 */
@@ -249,6 +299,7 @@ export const CHAPTER_SCENARIOS = {
     assert.equal(await chapterView.primary(page).innerText(), 'AI 审稿')
     assert.equal(await chapterView.lifecycleCurrent(page).innerText(), '审稿')
     assert.match(await chapterView.versionButton(page).innerText(), /^草稿 v1 · \d+ 字/)
+    await assertContrast(page, CONTRAST.page, '单章视图')
   } },
 
   /** lane 3：审稿后侧页展开，勾选数与主按钮「按 N 项意见修稿」、侧页底部计数同步。 */
@@ -270,6 +321,8 @@ export const CHAPTER_SCENARIOS = {
       rechecked: { button: '按 1 项意见修稿', footer: `1 / ${total}` },
     }, '勾选数与主按钮、侧页计数同步')
     assert.equal(await chapterView.reviseButton(page).isEnabled(), true)
+    assert.deepEqual(await sheetLayout(page), { sheets: ['审稿报告'], overlap: false }, '审稿完成后只开审稿侧页，不盖住纸面')
+    await assertContrast(page, CONTRAST.sheet, '审稿侧页')
   } },
 
   /** lane 4：添加作者意见后修稿，修稿请求里带着这条意见。 */
@@ -304,6 +357,7 @@ export const CHAPTER_SCENARIOS = {
     }
     context.chosen = await chosenTexts(page)
     context.manual = hunks > 1 ? manual : null
+    await assertContrast(page, CONTRAST.merge, '合并视图')
     return { hunks, chosen: context.chosen }
   }, after: async ({ page, chosen, manual }) => {
     await chapterView.merge(page).getByRole('button', { name: '完成合并' }).click()
@@ -323,6 +377,7 @@ export const CHAPTER_SCENARIOS = {
     await waitRunDone(page)
     await chapterView.postProcess(page).getByText('4 / 4 完成').waitFor({ state: 'visible', timeout: 60_000 })
     assert.equal(await chapterView.prose(page).getAttribute('contenteditable'), 'false', '定稿后正文只读')
+    await assertContrast(page, CONTRAST.post, '定稿后处理')
     return { steps: await chapterView.postProcessSteps(page) }
   } },
 
@@ -390,6 +445,9 @@ export const CHAPTER_SCENARIOS = {
     await chapterView.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text)).first().waitFor({ state: 'visible' })
     // 打开作品的流程在文件树读完后才回到作品页，那一步会收起侧页；等它结束再打开运行侧页。
     await page.waitForTimeout(2000)
+    // 第 3 章已审稿，打开时默认展开审稿侧页；先收起它量纸面单独时的一行字数。
+    const closeReview = page.getByRole('button', { name: '关闭审稿报告' })
+    if (await closeReview.isVisible()) await closeReview.click()
     const alone = await charsPerLine(page)
     await runSheet.openFromPalette(page)
     await page.waitForTimeout(500)
@@ -399,7 +457,33 @@ export const CHAPTER_SCENARIOS = {
     assert.ok(alone >= 32 && alone <= 35, `1280 宽正文一行约 34 字，实际 ${alone}`)
     assert.ok(withSheet >= 24, `运行侧页打开后正文一行 ${withSheet} 字，被挤得太窄`)
     assert.equal(horizontal, false, '页面没有横向滚动')
+    await assertContrast(page, CONTRAST.page, '单章视图')
     return { charsPerLine: alone, charsPerLineWithRunSheet: withSheet }
+  } },
+
+  'chapter-sheets-1280': { model: false, shell: 'stage', setup: seed(), run: ({ page }) => sheetsAt(page, 1280) },
+  'chapter-sheets-1440': { model: false, shell: 'stage', setup: seed(), run: ({ page }) => sheetsAt(page, 1440) },
+
+  /** 沉浸写作（Focus.dc.html）：纸面铺满内容区，底部写字数、设定里的每章目标与进度。截图浅深各一张。 */
+  'chapter-focus': { model: false, shell: 'stage', setup: seed(), run: async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await chapterView.open(page, 4)
+    await chapterView.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[4].text)).waitFor({ state: 'visible' })
+    await stage.focusToggle(page).click()
+    const bar = chapterView.view(page).locator('.stage-ch-focusbar')
+    await bar.waitFor({ state: 'visible' })
+    const panel = await page.locator('.stage-panel').evaluate(node => {
+      const style = getComputedStyle(node)
+      return { margin: style.margin, radius: style.borderTopLeftRadius, shadow: style.boxShadow }
+    })
+    assert.deepEqual(panel, { margin: '0px', radius: '0px', shadow: 'none' }, '纸面全出血')
+    const words = countUnits(STAGE_SAMPLE.drafts[4].text)
+    assert.equal(await bar.locator('span').first().innerText(), `${words} / ${STAGE_SAMPLE.wordsPerChapter} 字`)
+    assert.equal(await bar.getByRole('progressbar').getAttribute('aria-valuenow'), String(Math.min(words, STAGE_SAMPLE.wordsPerChapter)))
+    const indent = await chapterView.prose(page).locator('.cm-line').first().evaluate(node => getComputedStyle(node).textIndent)
+    assert.equal(indent, '36px', '正文首行缩进两字')
+    await assertContrast(page, CONTRAST.focus, '沉浸写作')
+    return { words, target: STAGE_SAMPLE.wordsPerChapter }
   } },
 
   /** 评审导览：草稿审稿、侧页勾选、按意见修稿、逐段合并、定稿后处理。配 --video 录 30～60 秒。 */
