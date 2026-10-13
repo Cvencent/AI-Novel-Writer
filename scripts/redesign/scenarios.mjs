@@ -348,7 +348,11 @@ export async function seedStageSample(context,
       content: text, wordCount: countUnits(text) }, path, session)
     assert.equal(draft.success, true, draft.error)
     if (status !== 'draft') assert.equal((await invoke(page, 'db:draft-update-status', draft.id, status, undefined, path, session)).success, true)
-    if (review) assert.equal((await invoke(page, 'db:review-create', { baseDraftId: draft.id, content: review }, path, session)).success, true)
+    if (review) {
+      const expectedSource = { id: draft.id, chapterNumber: Number(number), version: 1, status, content: text }
+      const created = await invoke(page, 'db:review-create', { baseDraftId: draft.id, content: review, expectedSource }, path, session)
+      assert.equal(created.success, true, created.error)
+    }
   }
   await beforeReload?.({ page, invoke, path, session })
   await reload()
