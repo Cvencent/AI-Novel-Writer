@@ -389,6 +389,21 @@ async function stubUpdates(app) {
 }
 
 /** 在渲染进程里计时：从点击 trigger 指向的元素到正文编辑区出现 text，单位毫秒，帧粒度。 */
+/** 在主进程拦下文件名含 pattern 的代码块请求（模拟磁盘读失败）；把 pattern 清空即放行。请求都记进 log。 */
+async function blockChunks(app, pattern) {
+  await app.evaluate(({ session }, initial) => {
+    globalThis.__driveChunkBlock = { pattern: initial, log: [] }
+    session.defaultSession.webRequest.onBeforeRequest({ urls: ['file://*/*'] }, (details, callback) => {
+      const { pattern: blocked, log } = globalThis.__driveChunkBlock
+      const name = details.url.slice(details.url.lastIndexOf('/') + 1)
+      if (!name.endsWith('.js') && !name.includes('.js?')) return callback({})
+      const cancel = blocked !== null && name.includes(blocked)
+      if (name.includes('Stage')) log.push(`${cancel ? 'cancel' : 'allow'} ${name}`)
+      callback({ cancel })
+    })
+  }, pattern)
+}
+
 async function msFromClickToProse(page, target, proseSelector, text, deadlineMs = 20_000) {
   const handle = await target.elementHandle()
   await page.evaluate(({ element, proseSelector, text, deadlineMs }) => {
@@ -688,6 +703,22 @@ export const STAGE_SCENARIOS = {
     await stage.root(page).getByRole('heading', { name: '还没有添加模型' }).waitFor({ state: 'visible' })
     assert.deepEqual(await stage.primaryButtons(page), ['添加模型'], '没有模型时设置页唯一的主按钮是添加模型')
     assert.deepEqual(await chromeContrastFailures(page), [], '首次使用的设置页文字对比度不足')
+  } },
+  'stage-lazy-retry': { model: false, shell: 'stage', setup: context => seedStageSample(context, { open: false }), run: async context => {
+    await blockChunks(context.app, 'StageSetup-')
+    await context.reload()
+    const { page } = context
+    await stage.openFromLibrary(page, STAGE_SAMPLE.name)
+    await stage.stageButton(page, '设定').click()
+    await stage.root(page).getByRole('heading', { name: '页面没有载入' }).waitFor({ state: 'visible' })
+    await page.waitForTimeout(500)
+    assert.equal(await stage.setupOutline(page).count(), 0, '拦下设定页代码时只显示失败态')
+  }, after: async ({ app, page }) => {
+    await app.evaluate(() => { globalThis.__driveChunkBlock.pattern = null })
+    await stage.root(page).getByRole('button', { name: '重试', exact: true }).click()
+    await stage.setupOutline(page).waitFor({ state: 'visible' })
+    const requests = await app.evaluate(() => globalThis.__driveChunkBlock.log)
+    assert.ok(requests.some(entry => entry.startsWith('allow StageSetup-') && entry.includes('.js?retry=')), `重试重新读取了设定页代码：${requests.join(' | ')}`)
   } },
   'stage-run': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page, fake }) => {
     fake.gate.hold()
