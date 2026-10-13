@@ -295,6 +295,43 @@ describe('审稿侧页与运行侧页', () => {
     await expect.element(reviewHeading()).toBeVisible()
     await expect.element(runHeading()).not.toBeInTheDocument()
   })
+
+  it('审稿侧页属于展开它的那一稿：换到有历史审稿的已定稿章不跟过去，那里只能从「更多」打开；回到原来那章仍按已审稿展开', async () => {
+    const reviewed = backend.addDraft({ status: 'draft' })
+    backend.addReview(reviewed)
+    const finalized = backend.addDraft({ status: 'finalized', chapterNumber: 2, content: '第二章定稿的正文。' })
+    backend.addReview(finalized)
+    await mount()
+    await openDraft(reviewed.id)
+    await expect.element(reviewHeading()).toBeVisible()
+    const reviewedTab = activeTab()!.id
+
+    await openDraft(finalized.id)
+    await expect.element(page.getByText('已定稿，只读')).toBeVisible()
+    await expect.element(reviewHeading()).not.toBeInTheDocument()
+    await click('更多操作')
+    await act(async () => page.getByRole('menuitem', { name: '审稿报告' }).click())
+    await expect.element(reviewHeading()).toBeVisible()
+
+    await act(async () => useEditorStore.getState().setActiveTab(reviewedTab))
+    await expect.element(page.getByRole('button', { name: '按 2 项意见修稿' })).toBeVisible()
+    await expect.element(reviewHeading()).toBeVisible()
+  })
+
+  it('打开作品落在已审稿的章：审稿侧页默认展开，随后回到作品的导航不再把它收起；运行侧页照旧收起', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    backend.addReview(draft)
+    await mount()
+    await openDraft(draft.id)
+    await expect.element(reviewHeading()).toBeVisible()
+    await act(async () => stageNavigate({ kind: 'stage' }))
+    await expect.element(reviewHeading()).toBeVisible()
+
+    await act(async () => useStageStore.setState({ sheet: { kind: 'run', tab: 'active' } }))
+    await expect.element(runHeading()).toBeVisible()
+    await act(async () => stageNavigate({ kind: 'stage' }))
+    await expect.element(runHeading()).not.toBeInTheDocument()
+  })
 })
 
 describe('写作此章、标签顶替与跨作品的请求', () => {
