@@ -572,15 +572,15 @@ export function useChapterBlueprints({
     toast.success(text('已清空全部蓝图', 'All chapter blueprints cleared'))
   }
 
-  /** 触发蓝图批量生成（来自 DirectoryConfigDialog 的确认回调） */
-  const handleBatchGenerate = async (params: DirectoryWorkflowParams, confirmWarning: (message: string) => Promise<boolean>) => {
+  /** 触发蓝图批量生成（来自生成对话框的确认回调）。返回是否已启动：作者取消架构警告时返回 false。 */
+  const handleBatchGenerate = async (params: DirectoryWorkflowParams, confirmWarning: (message: string) => Promise<boolean>): Promise<boolean> => {
     const projectSession = currentProjectSessionForPath(projectKey)
     if (!projectMatches || !projectSession) throw new Error(text('项目会话已切换，未启动章节蓝图生成', 'The project changed, so blueprint generation was not started.'))
     const expectedProjectPath = projectKey
 
     // 前置校验：故事架构是否就绪
     const guard = await guardDirectoryGeneration(expectedProjectPath, projectSession)
-    if (!isCurrentProjectSession(projectSession)) return
+    if (!isCurrentProjectSession(projectSession)) return false
     if (!guard.ok) {
       // 校验失败：阻断并提示
       addLog('error', text(`前置条件未满足：${guard.message}`, 'A required precondition is not met.'))
@@ -588,8 +588,7 @@ export function useChapterBlueprints({
     }
     if (guard.message) {
       // 有警告但允许继续：由界面确认
-      const yes = await confirmWarning(guard.message)
-      if (!yes) throw new Error(text('已取消启动章节蓝图生成', 'Blueprint generation was cancelled.'))
+      if (!await confirmWarning(guard.message)) return false
     }
 
     if (!isCurrentProjectSession(projectSession)) {
@@ -598,6 +597,7 @@ export function useChapterBlueprints({
     }
     await launchCreativeWorkflow({ workflow: 'generate_blueprint', params }, projectSession)
     addLog('info', text('已启动章节蓝图生成', 'Chapter blueprint generation started'))
+    return true
   }
 
   /**

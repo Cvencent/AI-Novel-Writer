@@ -25,6 +25,7 @@ let root: Root | undefined
 let container: HTMLDivElement | undefined
 let stored: ChapterBlueprint[]
 let nextChapter: number
+let projectCore: { premise: string } | null
 let invoke: ReturnType<typeof vi.fn>
 
 function blueprint(chapterNumber: number, title: string): ChapterBlueprint {
@@ -67,7 +68,8 @@ function installIpc() {
     if (channel === 'config:set') return { success: true }
     if (channel === 'generation:list-directory-progress') return { progress: [], diagnostics: [] }
     if (channel === 'db:blueprint-character-sync-list-pending') return []
-    if (channel === 'db:project-core-get') return null
+    if (channel === 'db:project-core-get') return projectCore
+    if (channel === 'db:character-get-all') return [{ id: 1 }]
     throw new Error(`unexpected IPC ${channel}`)
   })
   Object.defineProperty(window, 'aiNovelAPI', {
@@ -99,6 +101,7 @@ beforeEach(async () => {
   await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
   stored = [blueprint(1, '旧港'), blueprint(2, '北堤'), blueprint(3, '灯室')]
   nextChapter = 2
+  projectCore = null
   useLocaleStore.setState({ locale: 'zh-CN' })
   useEditorStore.setState({ tabs: [], activeTabId: null, draftLedgers: {} })
   useProjectStore.setState({ currentProject: project() })
@@ -200,7 +203,7 @@ describe('蓝图阶段', () => {
     expect((saved as ChapterBlueprint[])[0].characters).toEqual(['林岚', '沈砺'])
   })
 
-  it('生成蓝图选覆盖时先危险确认，取消后不启动并写明原蓝图没有改动', async () => {
+  it('生成蓝图选覆盖时先危险确认，取消后不启动，生成对话框回来且不当作错误', async () => {
     await renderPage()
     await act(async () => page.getByRole('button', { name: 'AI 生成蓝图' }).click())
     const dialog = page.getByRole('dialog', { name: 'AI 生成蓝图' })
@@ -212,8 +215,48 @@ describe('蓝图阶段', () => {
     await expect.element(confirm).toHaveTextContent('已有的 3 章蓝图会被新蓝图替换')
     expect(calls('db:project-core-get')).toHaveLength(0)
     await act(async () => confirm.getByRole('button', { name: '取消' }).click())
-    await expect.element(dialog.getByRole('alert')).toHaveTextContent('已取消覆盖生成，原有蓝图没有改动。')
+    await expect.element(dialog.getByRole('button', { name: '开始生成' })).toBeVisible()
+    expect(dialog.getByRole('alert').query()).toBeNull()
     expect(calls('db:project-core-get')).toHaveLength(0)
+  })
+
+  it('指定范围只补没有蓝图的章，不出现覆盖选项与覆盖提示', async () => {
+    await renderPage()
+    await act(async () => page.getByRole('button', { name: 'AI 生成蓝图' }).click())
+    const dialog = page.getByRole('dialog', { name: 'AI 生成蓝图' })
+    await act(async () => dialog.getByRole('button', { name: '覆盖' }).click())
+    await expect.element(dialog.getByText('已有蓝图会被覆盖，开始前再确认一次')).toBeVisible()
+    await act(async () => dialog.getByLabelText('蓝图起始章').fill('5'))
+    await expect.element(dialog.getByText('已有蓝图会被覆盖，开始前再确认一次')).not.toBeInTheDocument()
+    expect(dialog.getByRole('button', { name: '覆盖' }).query()).toBeNull()
+  })
+
+  it('指定范围后取消架构警告：对话框回来，作者填的起止章还在，不当作错误', async () => {
+    projectCore = { premise: '灯塔'.repeat(40) }
+    await renderPage()
+    await act(async () => page.getByRole('button', { name: 'AI 生成蓝图' }).click())
+    const dialog = page.getByRole('dialog', { name: 'AI 生成蓝图' })
+    await act(async () => dialog.getByLabelText('蓝图起始章').fill('5'))
+    await act(async () => dialog.getByLabelText('蓝图结束章').fill('7'))
+    await act(async () => dialog.getByRole('button', { name: '开始生成' }).click())
+    const warning = page.getByRole('dialog', { name: '架构还不完整' })
+    await expect.element(warning).toBeVisible()
+    await act(async () => warning.getByRole('button', { name: '取消' }).click())
+    await expect.element(dialog.getByLabelText('蓝图起始章')).toHaveValue(5)
+    await expect.element(dialog.getByLabelText('蓝图结束章')).toHaveValue(7)
+    expect(dialog.getByRole('alert').query()).toBeNull()
+  })
+
+  it('指定范围后启动失败：对话框回来写明原因，作者填的起止章还在', async () => {
+    await renderPage()
+    await act(async () => page.getByRole('button', { name: 'AI 生成蓝图' }).click())
+    const dialog = page.getByRole('dialog', { name: 'AI 生成蓝图' })
+    await act(async () => dialog.getByLabelText('蓝图起始章').fill('5'))
+    await act(async () => dialog.getByLabelText('蓝图结束章').fill('7'))
+    await act(async () => dialog.getByRole('button', { name: '开始生成' }).click())
+    await expect.element(dialog.getByRole('alert')).toHaveTextContent('「故事前提」尚未生成')
+    await expect.element(dialog.getByLabelText('蓝图起始章')).toHaveValue(5)
+    await expect.element(dialog.getByLabelText('蓝图结束章')).toHaveValue(7)
   })
 
   it('批量创作对话框从权威下一章开始，按章数显示主按钮', async () => {

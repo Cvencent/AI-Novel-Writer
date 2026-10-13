@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { BlueprintCharacterSyncOperation } from '../../../electron/repositories/blueprint-repository'
 import { useProjectStore } from '../../stores/project-store'
 import { toast } from '../ui/Toast'
@@ -27,7 +27,8 @@ export interface DirectoryConfigProps {
   onClose: () => void
   /** 已有蓝图章节数（影响「追加」模式的默认值） */
   existingCount: number
-  onConfirm: (params: DirectoryWorkflowParams) => Promise<void>
+  /** 返回是否已启动；作者在确认环节取消时返回 false，对话框保持原样、不提示。 */
+  onConfirm: (params: DirectoryWorkflowParams) => Promise<boolean>
 }
 
 function requestedChapterCount(
@@ -95,6 +96,8 @@ export function useDirectoryConfigForm({ isOpen, onClose, existingCount, onConfi
   const [directoryCatalog, setDirectoryCatalog] = useState<DirectoryGenerationCatalog>({ progress: [], diagnostics: [] })
   const [progressError, setProgressError] = useState<string | null>(null)
   const [progressSessionKey, setProgressSessionKey] = useState('')
+  // 范围默认值按哪次打开、从哪一章接着算出；这两者没变时（取消确认或启动失败后重开）保留作者填的起止章。
+  const rangeDefaultsFor = useRef<string | null>(null)
   useEffect(() => {
     if (!isOpen) return
     let disposed = false
@@ -170,8 +173,12 @@ export function useDirectoryConfigForm({ isOpen, onClose, existingCount, onConfi
         setAuthoritativeNextChapter(nextChapter)
         setHighestBlueprintChapter(highestBlueprint)
         const appendStart = Math.max(highestBlueprint + 1, nextChapter)
-        setRangeStart(appendStart)
-        setRangeEnd(Math.min(currentProject.novelConfig.totalChapters, appendStart + DEFAULT_PLANNING_ACTION_CHAPTERS - 1))
+        const defaultsKey = `${projectSession.projectId}:${projectSession.leaseId}:${appendStart}`
+        if (rangeDefaultsFor.current !== defaultsKey) {
+          rangeDefaultsFor.current = defaultsKey
+          setRangeStart(appendStart)
+          setRangeEnd(Math.min(currentProject.novelConfig.totalChapters, appendStart + DEFAULT_PLANNING_ACTION_CHAPTERS - 1))
+        }
         setAuthorityError(null)
       } catch (cause) {
         if (disposed || !isProjectSessionCurrent(projectSession)) return
@@ -304,8 +311,9 @@ export function useDirectoryConfigForm({ isOpen, onClose, existingCount, onConfi
         return
       }
       if (!isProjectSessionCurrent(projectSession)) return
-      await onConfirm({ ...params, pacingGuidance: pacingGuidance || undefined })
+      const started = await onConfirm({ ...params, pacingGuidance: pacingGuidance || undefined })
       setLaunchError(null)
+      if (!started) return
       onClose()
       toast.info(text('已提交：正在生成章节蓝图...', 'Submitted: generating chapter blueprints...'))
     } catch (error) {
@@ -320,8 +328,9 @@ export function useDirectoryConfigForm({ isOpen, onClose, existingCount, onConfi
     if (!session || !isProjectSessionCurrent(session)) return
     setIsConfirming(true)
     try {
-      await onConfirm({ mode: 'append', continueDirectoryOperationId: operationId })
-      setLaunchError(null); onClose()
+      const started = await onConfirm({ mode: 'append', continueDirectoryOperationId: operationId })
+      setLaunchError(null)
+      if (started) onClose()
     } catch (error) { setLaunchError(error instanceof Error ? error.message : String(error)) }
     finally { setIsConfirming(false) }
   }

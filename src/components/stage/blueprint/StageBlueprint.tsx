@@ -62,14 +62,15 @@ export default function StageBlueprint({ projectKey, initialChapterNumber, selec
     setAsk(null)
   }
 
-  // 确认框不叠在生成对话框上：先收起对话框再问；取消或启动失败时重新打开并写明原因（范围与目标字数会按打开时的规则重新读取）。
+  // 确认框不叠在生成对话框上：先收起对话框再问。作者取消时对话框原样回来，不当作错误；启动失败时回来并写明原因。
   const generate = async (params: DirectoryWorkflowParams) => {
     setGenerateOpen(false)
     try {
-      if (params.mode === 'full' && count > 0 && !(await confirmWith('overwrite'))) {
-        throw new Error(text('已取消覆盖生成，原有蓝图没有改动。', 'Overwrite cancelled. Existing blueprints are unchanged.'))
-      }
-      await plan.generateBlueprints(params, message => confirmWith('warning', message))
+      const started = params.mode === 'full' && count > 0 && !(await confirmWith('overwrite'))
+        ? false
+        : await plan.generateBlueprints(params, message => confirmWith('warning', message))
+      if (!started) setGenerateOpen(true)
+      return started
     } catch (error) {
       setGenerateOpen(true)
       throw error

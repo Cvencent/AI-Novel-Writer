@@ -479,7 +479,7 @@ it('shows the committed directory chain endpoint and resumes only its explicit r
     ], diagnostics: [] }
     return original(channel, ...args)
   })
-  const onConfirm = vi.fn(async () => {})
+  const onConfirm = vi.fn(async () => true)
   await act(async () => root.render(<DirectoryConfigDialog isOpen onClose={() => {}} existingCount={180} onConfirm={onConfirm} />))
   await expect.element(page.getByText('已保存第 161–180 章蓝图。')).toBeVisible()
   await expect.element(page.getByRole('button', { name: '继续第 161–200 章（沿用原预算）' })).not.toBeInTheDocument()
@@ -498,7 +498,7 @@ it('shows blueprint recovery diagnostics without blocking independent generation
     ] }
     return original(channel, ...args)
   })
-  const onConfirm = vi.fn(async () => {})
+  const onConfirm = vi.fn(async () => true)
   await act(async () => root.render(<DirectoryConfigDialog isOpen onClose={() => {}} existingCount={0} onConfirm={onConfirm} />))
   await expect.element(page.getByText('蓝图已清空，旧生成记录不能续接')).toBeVisible()
   await expect.element(page.getByText('旧蓝图生成进度校验失败，不能续接')).toBeVisible()
@@ -512,7 +512,7 @@ it('shows blueprint recovery diagnostics without blocking independent generation
 
 it('rejects a new 200-chapter action while retaining the entered value', async () => {
   useProjectStore.setState({ currentProject: { ...project, novelConfig: { ...project.novelConfig, totalChapters: 200 } } as never })
-  const onConfirm = vi.fn(async () => {})
+  const onConfirm = vi.fn(async () => true)
   await act(async () => root.render(<DirectoryConfigDialog isOpen onClose={() => {}} existingCount={0} onConfirm={onConfirm} />))
   await act(async () => page.getByRole('spinbutton').nth(0).fill('200'))
   await expect.element(page.getByRole('button', { name: '开始生成' })).toBeEnabled()
@@ -525,7 +525,7 @@ it('rejects a new 200-chapter action while retaining the entered value', async (
 it.each(['outline', 'blueprint'] as const)('persists the %s target independently and accepts ten chapters with target 1000', async kind => {
   planningPreferences = { outlineTargetUnits: 700, blueprintTargetUnits: 800 }
   useProjectStore.setState({ currentProject: { ...project, novelConfig: { ...project.novelConfig, totalChapters: 20 } } as never })
-  const onConfirm = vi.fn(async () => {})
+  const onConfirm = vi.fn().mockResolvedValue(true)
   const renderDialog = async (isOpen: boolean) => act(async () => root.render(kind === 'outline'
     ? <ArchitectureConfirmDialog isOpen={isOpen} onClose={() => {}} synopsisSource={NO_OUTLINE} archStatus={{ premise: true, characters: true, worldbuilding: true }} initialSelectedSteps={['synopsis']} onConfirm={onConfirm} />
     : <DirectoryConfigDialog isOpen={isOpen} onClose={() => {}} existingCount={0} onConfirm={onConfirm} />))
@@ -550,7 +550,7 @@ it.each(['outline', 'blueprint'] as const)('persists the %s target independently
 
 it.each(['outline', 'blueprint'] as const)('rejects eleven chapters and target 1001 in the %s dialog', async kind => {
   useProjectStore.setState({ currentProject: { ...project, novelConfig: { ...project.novelConfig, totalChapters: 20 } } as never })
-  const onConfirm = vi.fn(async () => {})
+  const onConfirm = vi.fn().mockResolvedValue(true)
   await act(async () => root.render(kind === 'outline'
     ? <ArchitectureConfirmDialog isOpen onClose={() => {}} synopsisSource={NO_OUTLINE} archStatus={{}} initialSelectedSteps={['synopsis']} onConfirm={onConfirm} />
     : <DirectoryConfigDialog isOpen onClose={() => {}} existingCount={0} onConfirm={onConfirm} />))
@@ -574,7 +574,7 @@ it.each(['outline', 'blueprint'] as const)('retains %s input and does not start 
     if (channel === 'config:set') return { success: false, error: 'disk unavailable' }
     return original(channel, ...args)
   })
-  const onConfirm = vi.fn(async () => {})
+  const onConfirm = vi.fn().mockResolvedValue(true)
   const onClose = vi.fn()
   await act(async () => root.render(kind === 'outline'
     ? <ArchitectureConfirmDialog isOpen onClose={onClose} synopsisSource={NO_OUTLINE} archStatus={{}} initialSelectedSteps={['synopsis']} onConfirm={onConfirm} />
@@ -589,7 +589,7 @@ it.each(['outline', 'blueprint'] as const)('retains %s input and does not start 
 
 it('rejects full-book generation above ten chapters and does not normalize an empty quantity', async () => {
   useProjectStore.setState({ currentProject: { ...project, novelConfig: { ...project.novelConfig, totalChapters: 20 } } as never })
-  const onConfirm = vi.fn(async () => {})
+  const onConfirm = vi.fn(async () => true)
   await act(async () => root.render(<DirectoryConfigDialog isOpen onClose={() => {}} existingCount={0} onConfirm={onConfirm} />))
   await act(async () => { await page.getByText('全量生成（共 20 章）').click(); await page.getByRole('button', { name: '开始生成' }).click() })
   expect(onConfirm).not.toHaveBeenCalled()
