@@ -117,6 +117,16 @@ afterEach(async () => {
 })
 
 describe('角色名单', () => {
+  it.each([
+    { cast: [linzhou], count: '1 character · page 1 / 1' },
+    { cast: [linzhou, shenyan], count: '2 characters · page 1 / 1' },
+  ])('英文名单底栏按人数用单复数：$count', async ({ cast, count }) => {
+    useLocaleStore.setState({ locale: 'en-US' })
+    useCharacterStore.setState({ characters: cast })
+    await render()
+    expect(host!.querySelector('.cast-roster-foot span')?.textContent).toBe(count)
+  })
+
   it('名单列出全部角色，改动后保存角色走名单的保存', async () => {
     await render()
     const rows = [...host!.querySelectorAll('.cast-row')].map(row => row.querySelector('.cast-row-name')?.textContent)

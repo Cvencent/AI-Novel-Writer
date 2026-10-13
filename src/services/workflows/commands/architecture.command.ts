@@ -986,7 +986,7 @@ export class GenerateCharactersCommand extends BaseWorkflowCommand<string> {
       ))
     }
 
-    callbacks.log(text('生成角色图谱...', 'Generating character graph...'))
+    callbacks.log(text('生成角色名单...', 'Generating the cast...'))
 
     const missingValue = promptLanguageText(writingLanguage, '（未填写）', '(not provided)')
     const manifestContext = {
@@ -1611,7 +1611,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       'The story premise has not been generated.',
     ))
     if (!char_dyn || char_dyn.includes('待生成')) throw new Error(text(
-      '角色图谱未生成',
+      '角色名单未生成',
       'The character graph has not been generated.',
     ))
     if (!world_b || world_b.includes('待生成')) throw new Error(text(
@@ -2100,7 +2100,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     const guidance = recovery.authorInputs.find(input => input.id === 'architecture:step-guidance:synopsis')?.text ?? ''
     const requestedGuidance = (context.data.stepGuidance as Record<string, unknown> | undefined)?.synopsis
     if (this.options.resumeSynopsis && typeof requestedGuidance === 'string' && requestedGuidance !== guidance) throw new Error('GENERATION_PLOT_OUTLINE_GUIDANCE_CHANGED')
-    if (!sourceExpected.premise || !sourceExpected.charactersArch || !sourceExpected.worldbuilding) throw new Error(text('故事前提、角色图谱和世界观必须先完成。', 'Complete the premise, characters and worldbuilding first.'))
+    if (!sourceExpected.premise || !sourceExpected.charactersArch || !sourceExpected.worldbuilding) throw new Error(text('故事前提、角色名单和世界观必须先完成。', 'Complete the premise, characters and worldbuilding first.'))
     const language = sourceExpected.writingLanguage
     const template = await resolvePromptTemplate('synopsis', session, language)
     if (!template) throw new Error(text('模板丢失', 'The plot-outline template is missing.'))

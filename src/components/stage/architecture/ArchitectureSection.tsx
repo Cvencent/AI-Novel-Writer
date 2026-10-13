@@ -138,7 +138,7 @@ export default function ArchitectureSection({ sectionKey, overview, badge, summa
     { id: 'section', items: [
       { id: 'reload', label: text('重新读取', 'Reload'), onSelect: onReload },
       { id: 'generate', label: filled ? text('AI 重新生成此节…', 'Regenerate with AI…') : text('AI 生成此节…', 'Generate with AI…'), onSelect: onGenerate },
-      ...(cast ? [{ id: 'projection', label: text('查看名单全文', 'View cast as text'), onSelect: onEdit }] : []),
+      ...(cast ? [{ id: 'projection', label: text('查看角色名单全文', 'View cast as text'), onSelect: onEdit }] : []),
     ] },
     ...(!cast && filled ? [{ id: 'danger', label: text('危险', 'Danger'), tone: 'danger' as const, items: [
       { id: 'clear', label: text('清空此节…', 'Clear this section…'), onSelect: onClear },

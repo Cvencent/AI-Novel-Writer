@@ -125,7 +125,7 @@ describe('规划恢复稿', () => {
   it('分批生成的两份大纲恢复稿按各自的章节范围区分标题', () => {
     const outline = (runId: string, from: number, to: number) => ({ handle: { ...handle, runId }, plotOutlineRecovery: {}, plotOutline: { range: { from, to } } }) as never
     const entries = buildRecoveryEntries({ ...EMPTY_RECOVERY_SOURCES, planning: [outline('第一批', 1, 10), outline('第二批', 11, 16)] }, 'zh-CN')
-    expect(entries.map(entry => entry.title)).toEqual(['大纲恢复稿 · 第 1～10 章', '大纲恢复稿 · 第 11～16 章'])
+    expect(entries.map(entry => entry.title)).toEqual(['大纲恢复稿 · 第 1–10 章', '大纲恢复稿 · 第 11–16 章'])
     expect(buildRecoveryEntries({ ...EMPTY_RECOVERY_SOURCES, planning: [outline('第一批', 1, 10)] }, 'en-US')[0].title).toBe('Outline recovery draft · ch. 1–10')
   })
 })

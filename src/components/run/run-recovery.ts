@@ -156,7 +156,7 @@ export function planningTitle(recovery: Pick<GenerationRecoveryContext, 'plotOut
   if (!recovery.plotOutlineRecovery) return t('蓝图恢复稿', 'Blueprint recovery draft')
   const range = recovery.plotOutline?.range
   return range
-    ? t(`大纲恢复稿 · 第 ${range.from}～${range.to} 章`, `Outline recovery draft · ch. ${range.from}–${range.to}`)
+    ? t(`大纲恢复稿 · 第 ${range.from}–${range.to} 章`, `Outline recovery draft · ch. ${range.from}–${range.to}`)
     : t('大纲恢复稿', 'Outline recovery draft')
 }
 

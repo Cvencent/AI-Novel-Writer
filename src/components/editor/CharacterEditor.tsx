@@ -53,7 +53,7 @@ export default function CharacterEditor({ projectKey }: { projectKey: string }) 
     if (!projectSession) return
     const ok = await confirm(
       text(
-        `确定删除全部 ${characters.length} 个角色及其关系吗？角色图谱是角色名单的投影，无法单独清空。此操作不可撤销。`,
+        `确定删除全部 ${characters.length} 个角色及其关系吗？角色名单全文与关系图谱随之清空。此操作不可撤销。`,
         `Delete all ${characters.length} characters and their relationships? The graph is a projection of the roster and cannot be cleared independently. This cannot be undone.`,
       ),
       {
@@ -91,7 +91,7 @@ export default function CharacterEditor({ projectKey }: { projectKey: string }) 
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-xs font-medium truncate text-[var(--color-text-secondary)]">
             {viewMode === 'graph'
-              ? text('角色图谱', 'Character graph')
+              ? text('关系图谱', 'Relationship graph')
               : selectedCard
                 ? `${selectedCard.name || text('新角色', 'New character')} ${viewMode === 'state' ? text('— 当前状态', '— Current state') : text('— 编辑档案', '— Edit profile')}`
                 : text('角色档案', 'Character profile')}

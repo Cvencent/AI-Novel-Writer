@@ -30,7 +30,7 @@ function useCastSummary(projectKey: string): { summary: string; loading: boolean
   const names = characters.map(character => character.name).filter(Boolean)
   if (names.length === 0) return { summary: text('还没有角色。可以让 AI 按设定生成，也可以在角色名单里自己添加。', 'No characters yet. Let AI create them from the setup, or add them in the cast.'), loading: false }
   const shown = names.slice(0, 5).join(text('、', ', '))
-  return { summary: text(`${names.length} 位角色：${shown}${names.length > 5 ? '……' : ''}`, `${names.length} characters: ${shown}${names.length > 5 ? '…' : ''}`), loading: false }
+  return { summary: text(`${names.length} 位角色：${shown}${names.length > 5 ? '……' : ''}`, `${names.length} ${names.length === 1 ? 'character' : 'characters'}: ${shown}${names.length > 5 ? '…' : ''}`), loading: false }
 }
 
 const openCast = (text: (zh: string, en: string) => string) => openBuiltinEditor('character-editor', text('角色名单', 'Cast'), 'character')

@@ -42,12 +42,13 @@ import {
 } from '../../project-session-gate'
 import { globalEventBus } from '../../../shared/event-bus'
 import { shouldRefreshBlueprints } from '../../editor/blueprint-refresh'
+import { ARCH_STEP_NAMES } from '../../../services/architecture-step-selection'
 
 const ARCH_FILE_EN: Record<string, { label: string; desc: string }> = {
-  premise: { label: 'Premise', desc: 'Core premise and conflict' },
-  characters: { label: 'Character map', desc: 'Character arcs and relationships' },
-  worldbuilding: { label: 'World building', desc: 'World rules and systems' },
-  synopsis: { label: 'Plot synopsis', desc: 'Overall plot structure' },
+  premise: { label: ARCH_STEP_NAMES.premise[1], desc: 'Core premise and conflict' },
+  characters: { label: ARCH_STEP_NAMES.characters[1], desc: 'Character arcs and relationships' },
+  worldbuilding: { label: ARCH_STEP_NAMES.worldbuilding[1], desc: 'World rules and systems' },
+  synopsis: { label: ARCH_STEP_NAMES.synopsis[1], desc: 'Overall plot structure' },
 }
 
 export default function ProjectTree() {

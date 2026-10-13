@@ -171,7 +171,7 @@ describe('ProjectTree architecture status refresh', () => {
       await vi.waitFor(() => expect(container.textContent).toContain('Story architecture4/4'))
     })
     const outlineRow = [...container.querySelectorAll('.tree-item')]
-      .find(row => /Plot synopsis/.test(row.textContent ?? '') && !/Story architecture/.test(row.textContent ?? ''))
+      .find(row => /^Outline/.test(row.textContent ?? '') && !/Story architecture/.test(row.textContent ?? ''))
     expect(outlineRow?.textContent).not.toContain('Pending')
     expect(outlineRow?.querySelectorAll('button')).toHaveLength(1)
   })
