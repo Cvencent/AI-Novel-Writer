@@ -171,6 +171,11 @@ export const EXTRA_SCENARIOS = {
   } },
   'write-latency': { model: true, setup: seedWithoutDraft, run: async ({ page }) => {
     await project.openBlueprints(page)
+    // RD-4 起旧外壳右栏默认就是 AI 输出；trunk 默认收着。只在开着时收起，两边从同一状态开始计时。
+    if (await runPanel.isOpen(page)) {
+      await shell.hideRunPanel(page)
+      await runPanel.waitUntilClosed(page)
+    }
     const writeToOutputMs = await runPanel.msFromClickToOpen(page, '开始创作', () => chapter.writeThisChapter(page, 100))
     await runPanel.waitForWorkflowDone(page)
     return { writeToOutputMs }
@@ -442,11 +447,11 @@ async function msFromClickToProse(page, target, proseSelector, text, deadlineMs 
 }
 
 /**
- * 外壳文字与它实际落在的底色之间的对比度：名称与正文类文字至少 4.5:1，说明文字至少 3:1。
+ * 文字与它实际落在的底色之间的对比度。checks 是 [选择器, 最低比值]：名称与正文类文字 4.5，说明文字 3；scope 是加在每个选择器前的祖先。
  * 底色沿祖先逐层叠加半透明背景求出，与画面上的颜色一致。
  */
-async function chromeContrastFailures(page) {
-  return page.evaluate(() => {
+export async function contrastFailures(page, checks, scope = '') {
+  return page.evaluate(({ checks, scope }) => {
     // color-mix 的结果以 color(srgb r g b / a) 给出，通道是 0–1；rgb()/rgba() 是 0–255
     const parse = value => {
       const numbers = value.match(/[\d.]+/g).map(Number)
@@ -471,26 +476,29 @@ async function chromeContrastFailures(page) {
       const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x)
       return (high + 0.05) / (low + 0.05)
     }
-    const checks = [
-      ['.stage-row-name', 4.5], ['.stage-row-label', 4.5], ['.stage-chapter:not([data-phase="todo"]) .stage-chapter-title', 4.5],
-      ['.stage-work-title', 4.5], ['.stage-row-meta', 3], ['.stage-chapter-status', 3], ['.stage-chapter[data-phase="todo"] .stage-chapter-title', 3],
-      ['.stage-crumb', 3], ['.stage-search-hint', 3], ['.stage-saved', 3], ['.stage-spine-label', 3], ['.stage-chapter-no', 3],
-      ['.stage-library-title', 4.5], ['.stage-eyebrow', 3], ['.stage-start-text > b', 4.5], ['.stage-start-text > span', 3],
-      ['.stage-shelf-title', 4.5], ['.stage-shelf-hint', 3], ['.stage-book-title', 4.5], ['.stage-book-name', 4.5], ['.stage-book-meta', 3],
-      ['.stage-ov-title', 4.5], ['.stage-ov-meta', 3], ['.stage-ov-bar-label', 3], ['.stage-ov .pi-stat-label', 3],
-      ['.stage-setup-title', 4.5], ['.stage-setup-lede', 4.5], ['.stage-setup-label', 4.5], ['.stage-setup-hint', 3], ['.stage-chip', 4.5],
-      ['.stage-setup-panel-title', 4.5], ['.stage-setup-panel-desc', 3], ['.stage-setup-outline-foot', 3],
-      ['.stage-set-title', 4.5], ['.stage-set-lede', 4.5], ['.stage-set-link', 4.5], ['.stage-set-group-label', 3], ['.stage-set-row-title', 4.5],
-      ['.stage-set-row-desc', 3], ['.stage-set-model-name', 4.5], ['.stage-set-model-meta', 3], ['.stage-badge', 4.5], ['.stage-set-theme-name', 4.5],
-      ['.stage-set-theme-desc', 3], ['.pi-empty-title', 4.5], ['.pi-empty-text', 3],
-      ['.stage-update-title', 4.5], ['.stage-update-text', 3], ['.stage-library .pi-btn:not(.pi-btn--icon)', 4.5], ['.stage-library .pi-btn--icon', 3], ['.pi-notice-title', 4.5], ['.pi-notice-text', 3],
-    ]
-    return checks.flatMap(([selector, minimum]) => [...document.querySelectorAll(`[data-shell-presentation="stage"] ${selector}`)].map(element => {
+    return checks.flatMap(([selector, minimum]) => [...document.querySelectorAll(`${scope}${selector}`)].map(element => {
       const value = ratio(parse(getComputedStyle(element).color), backdrop(element))
       return { selector, text: element.textContent, ratio: Math.round(value * 100) / 100, minimum }
     }).filter(result => result.ratio < result.minimum))
-  })
+  }, { checks, scope })
 }
+
+const CHROME_CONTRAST = [
+  ['.stage-row-name', 4.5], ['.stage-row-label', 4.5], ['.stage-chapter:not([data-phase="todo"]) .stage-chapter-title', 4.5],
+  ['.stage-work-title', 4.5], ['.stage-row-meta', 3], ['.stage-chapter-status', 3], ['.stage-chapter[data-phase="todo"] .stage-chapter-title', 3],
+  ['.stage-crumb', 3], ['.stage-search-hint', 3], ['.stage-saved', 3], ['.stage-spine-label', 3], ['.stage-chapter-no', 3],
+  ['.stage-library-title', 4.5], ['.stage-eyebrow', 3], ['.stage-start-text > b', 4.5], ['.stage-start-text > span', 3],
+  ['.stage-shelf-title', 4.5], ['.stage-shelf-hint', 3], ['.stage-book-title', 4.5], ['.stage-book-name', 4.5], ['.stage-book-meta', 3],
+  ['.stage-ov-title', 4.5], ['.stage-ov-meta', 3], ['.stage-ov-bar-label', 3], ['.stage-ov .pi-stat-label', 3],
+  ['.stage-setup-title', 4.5], ['.stage-setup-lede', 4.5], ['.stage-setup-label', 4.5], ['.stage-setup-hint', 3], ['.stage-chip', 4.5],
+  ['.stage-setup-panel-title', 4.5], ['.stage-setup-panel-desc', 3], ['.stage-setup-outline-foot', 3],
+  ['.stage-set-title', 4.5], ['.stage-set-lede', 4.5], ['.stage-set-link', 4.5], ['.stage-set-group-label', 3], ['.stage-set-row-title', 4.5],
+  ['.stage-set-row-desc', 3], ['.stage-set-model-name', 4.5], ['.stage-set-model-meta', 3], ['.stage-badge', 4.5], ['.stage-set-theme-name', 4.5],
+  ['.stage-set-theme-desc', 3], ['.pi-empty-title', 4.5], ['.pi-empty-text', 3],
+  ['.stage-update-title', 4.5], ['.stage-update-text', 3], ['.stage-library .pi-btn:not(.pi-btn--icon)', 4.5], ['.stage-library .pi-btn--icon', 3], ['.pi-notice-title', 4.5], ['.pi-notice-text', 3],
+]
+
+const chromeContrastFailures = page => contrastFailures(page, CHROME_CONTRAST, '[data-shell-presentation="stage"] ')
 
 async function assertSpineMatchesSample(page) {
   assert.deepEqual(await stage.stageStates(page), { setup: 'done', architecture: 'done', blueprint: 'done', manuscript: 'active' })

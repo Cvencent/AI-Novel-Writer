@@ -166,11 +166,11 @@
 
 .stage-bp-plan-status {
   font-size: var(--fs-11);
-  color: var(--ink-4);
+  color: var(--ink-3);
 }
 
 .stage-bp-plan-status[data-next] {
-  color: var(--ink-3);
+  color: var(--ink-2);
 }
 
 .stage-bp-plan-status[data-status="final"] {

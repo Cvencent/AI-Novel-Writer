@@ -8,52 +8,16 @@ import * as chapter from './pages/chapter.mjs'
 import * as project from './pages/project.mjs'
 import * as runSheet from './pages/run-sheet.mjs'
 import * as stage from './pages/stage.mjs'
-import { firstLine, seedStageSample, untilGateHolds } from './scenarios.mjs'
+import { contrastFailures, firstLine, seedStageSample, untilGateHolds } from './scenarios.mjs'
 import { STAGE_SAMPLE } from './stage-sample.mjs'
 
 /** 示例作品的下一章：1、2 章定稿，权威下一章是 3。 */
 const NEXT = 3
 
-/**
- * 文字与它实际落在的底色之间的对比度，底色沿祖先逐层叠加半透明背景求出。
- * checks 是 [选择器, 最低比值]：名称与正文 4.5，说明文字 3。
- */
-function contrastFailures(page, checks) {
-  return page.evaluate(checks => {
-    const parse = value => {
-      const numbers = value.match(/[\d.]+/g).map(Number)
-      const [r, g, b] = value.startsWith('color(') ? numbers.slice(0, 3).map(channel => channel * 255) : numbers.slice(0, 3)
-      return { r, g, b, a: numbers[3] ?? 1 }
-    }
-    const over = (top, bottom) => ({ r: top.r * top.a + bottom.r * (1 - top.a), g: top.g * top.a + bottom.g * (1 - top.a),
-      b: top.b * top.a + bottom.b * (1 - top.a), a: 1 })
-    const backdrop = element => {
-      const layers = []
-      for (let node = element; node; node = node.parentElement) {
-        const color = parse(getComputedStyle(node).backgroundColor)
-        if (color.a > 0) layers.push(color)
-        if (color.a === 1) break
-      }
-      return layers.reverse().reduce((bottom, top) => over(top, bottom), { r: 255, g: 255, b: 255, a: 1 })
-    }
-    const luminance = ({ r, g, b }) => [r, g, b].map(value => value / 255)
-      .map(value => value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4)
-      .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0)
-    const ratio = (a, b) => {
-      const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x)
-      return (high + 0.05) / (low + 0.05)
-    }
-    return checks.flatMap(([selector, minimum]) => [...document.querySelectorAll(selector)].map(element => {
-      const value = ratio(parse(getComputedStyle(element).color), backdrop(element))
-      return { selector, text: element.textContent?.slice(0, 20), ratio: Math.round(value * 100) / 100, minimum }
-    }).filter(result => result.ratio < result.minimum))
-  }, checks)
-}
-
 const PAGE_CONTRAST = [
   ['.stage-bp-h1', 4.5], ['.stage-bp-plan-name', 4.5], ['.stage-bp-title', 4.5], ['.stage-bp-ctl', 4.5], ['.stage-bp-person', 4.5],
   ['.stage-bp-field > label', 4.5], ['.stage-bp-eyebrow', 3], ['.stage-bp-plan-no', 3], ['.stage-bp-plan-top', 3],
-  ['.stage-bp-plan-status[data-next]', 3], ['.stage-bp-plan-status[data-status="final"]', 3], ['.stage-bp-card-status', 3],
+  ['.stage-bp-plan-status', 3], ['.stage-bp-card-status', 3],
   ['.stage-bp-field > label em', 3], ['.stage-bp-role select', 4.5], ['.stage-write .pi-btn', 4.5],
 ]
 
@@ -238,7 +202,8 @@ export const BLUEPRINT_SCENARIOS = {
     assert.equal(await page.getByRole('dialog').count(), 1, '覆盖确认不叠在生成对话框上')
   }, after: async ({ page }) => {
     await blueprint.confirmDialog(page, '覆盖已有蓝图？').getByRole('button', { name: '取消' }).click()
-    await blueprint.generateDialog(page).getByRole('alert').getByText('已取消覆盖生成，原有蓝图没有改动。').waitFor({ state: 'visible' })
+    await blueprint.generateDialog(page).getByRole('button', { name: '开始生成' }).waitFor({ state: 'visible' })
+    assert.equal(await blueprint.generateDialog(page).getByRole('alert').count(), 0, '取消覆盖不当作错误')
     await blueprint.generateDialog(page).getByRole('button', { name: '取消' }).click()
     assert.equal(await blueprint.plan(page).getByRole('listitem').count(), STAGE_SAMPLE.titles.length, '取消覆盖后蓝图不变')
   } },
