@@ -12,7 +12,7 @@ import {
 } from '../../stores/navigation/stage-progress'
 import { refreshChapterFacts } from '../../stores/navigation/chapter-facts'
 import { useStageStore } from '../../stores/navigation/stage-store'
-import { navigate } from '../../stores/navigation/navigation-intents'
+import { navigate, type WorkStage } from '../../stores/navigation/navigation-intents'
 import { useProjectStore } from '../../stores/project-store'
 import { useWorkflowStore, type WorkflowRun } from '../../stores/workflow-store'
 import { shouldRefreshBlueprints } from '../editor/blueprint-refresh'
@@ -45,12 +45,13 @@ export async function refreshStageWork(text: (zh: string, en: string) => string)
     const chapters = blueprints.map(({ chapterNumber, title }) => ({ chapterNumber, title }))
     const working = deriveChapters({ blueprints: chapters, drafts: useDraftStore.getState().draftsByChapter, runningChapters: new Set() })
       .flatMap(row => row.draft && row.draft.status !== 'finalized' ? [row.draft] : [])
+    // 落点只看章是否待写或定稿，不需要 facts，所以先出 work；流程脊等 spineFacts。主进程按到达顺序处理读取：
+    // 等一个任务，让落点先把那一章的正文读取发出去，facts 排在它后面。
     useStageStore.setState({ work: { session, architecture, blueprints: chapters } })
-    // 落点与阶段完成度只看章是否待写或定稿，不需要 facts，所以先出 work。主进程按到达顺序处理读取：
-    // 等一个任务，让 work 引起的落点先把那一章的正文读取发出去，facts 排在它后面。
     await new Promise(resolve => setTimeout(resolve, 0))
     if (!current()) return
     await refreshChapterFacts(working, session)
+    if (current()) useStageStore.setState({ spineFacts: session })
   } catch (error) {
     if (current()) toast.error(text(`项目资源刷新失败：${String(error)}`, `Could not refresh project resources: ${String(error)}`))
   }
@@ -111,8 +112,8 @@ export interface StageView {
   stages: StageStatus[]
   chapters: ChapterRow[]
   location: StageLocation | null
-  /** 架构、蓝图与草稿都已按当前项目会话载入，且草稿不在重新载入中；落点只在此时计算。 */
-  settled: boolean
+  /** 打开作品时该落到的阶段：架构、蓝图与草稿都已按当前项目会话载入、且草稿不在重新载入中才有，不等各稿的审稿与修稿记录。 */
+  landing: WorkStage | null
 }
 
 /** 这部作品正在生成的章号，排好序拼成字符串：运行进度每跳一次，只要涉及的章没变，键就不变。 */
@@ -130,10 +131,14 @@ function useActiveLocation(projectPath: string | undefined): StageLocation | nul
     [projectPath, type, chapterNumber, projectKey])
 }
 
+const NO_STAGES: StageStatus[] = []
+const NO_CHAPTERS: ChapterRow[] = []
+
 export function useStageView(): StageView {
   const project = useProjectStore(s => s.currentProject)
   const work = useStageStore(s => s.work)
   const factsState = useStageStore(s => s.chapterFacts)
+  const spineFacts = useStageStore(s => s.spineFacts)
   const draftsByChapter = useDraftStore(s => s.draftsByChapter)
   const draftSession = useDraftStore(s => s.dataProjectSession)
   const draftsLoading = useDraftStore(s => s.loading)
@@ -152,11 +157,19 @@ export function useStageView(): StageView {
   const stages = useMemo(() => project && currentWork && drafts
     ? deriveStages({ config: project.novelConfig, architecture: currentWork.architecture, blueprints: currentWork.blueprints, drafts, runningChapters: runningChapterSet }, chapters)
     : [], [project, currentWork, drafts, runningChapterSet, chapters])
-  return { stages, chapters, location, settled: Boolean(currentWork && drafts && !draftsLoading) }
+  const settled = Boolean(currentWork && drafts && !draftsLoading)
+  // 记录读完前章节阶段只能按稿状态估计；与读完前没有 work 时一样，流程脊先空着。
+  const shown = Boolean(session && spineFacts && sameProjectSessionContext(spineFacts, session))
+  return {
+    stages: shown ? stages : NO_STAGES,
+    chapters: shown ? chapters : NO_CHAPTERS,
+    location,
+    landing: settled ? landingStage(stages) : null,
+  }
 }
 
 /**
- * 打开作品时把内容区放到下一步：设定没填完就停在设定，否则等流程脊数据到了再落到第一个未完成的阶段。
+ * 打开作品时把内容区放到下一步：设定没填完就停在设定，否则等架构、蓝图与草稿载入后落到第一个未完成的阶段。
  * 每次打开（项目会话）只落一次；这次打开已有标签时保持原样（例如从旧外壳切过来）。
  */
 export function useLandingPage(view: StageView): void {
@@ -176,8 +189,8 @@ export function useLandingPage(view: StageView): void {
       navigate({ kind: 'stage', stage: 'setup' })
       return
     }
-    if (!view.settled) return
+    if (!view.landing) return
     landed.current = key
-    navigate({ kind: 'stage', stage: landingStage(view.stages) })
-  }, [project, view.settled, view.stages])
+    navigate({ kind: 'stage', stage: view.landing })
+  }, [project, view.landing])
 }

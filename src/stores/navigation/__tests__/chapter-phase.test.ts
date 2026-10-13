@@ -118,7 +118,7 @@ describe('一稿走到哪一步（chapter-facts 读记录，chapterPhase 判断�
   })
 })
 
-describe('流程脊先出 work、facts 后到：打开作品的落点与落在哪一章不变', () => {
+describe('打开作品的落点不等审稿与修稿记录：落到哪个阶段、哪一章、正文进度只看章是否待写或定稿', () => {
   const draft = (id: number, chapterNumber: number, status: DraftMeta['status']): DraftMeta => ({ id, chapterNumber, version: 1, status,
     createdAt: '2026-10-13 20:00:00', updatedAt: '2026-10-13 20:00:00', source: 'write', filePath: `ai-novel://draft/${id}`, fileName: 'draft_v1.md' })
   const reviewed: ChapterFacts = { mergeable: [], stale: [], latestReview: { createdAt: '2026-10-13 20:00:01', cycleStatus: 'not-generated' }, lastMergedAt: null }
@@ -131,15 +131,14 @@ describe('流程脊先出 work、facts 后到：打开作品的落点与落在�
     runningChapters: new Set<number>(),
   }
 
-  it('有无 facts，落点都是正文、落在第 2 章，正文阶段进度相同；facts 只改动中间几章的阶段', () => {
+  it('有无记录，都落在正文第 2 章，正文进度都是 1/6', () => {
     const open = (chapterFacts?: Record<number, ChapterFacts>) => {
       const chapters = deriveChapters({ ...work, chapterFacts })
       const stages = deriveStages({ ...work, chapterFacts }, chapters)
-      return { landing: landingStage(stages), manuscript: stages.at(-1), focus: focusChapter(chapters)?.number, phases: chapters.map(row => row.phase) }
+      return { landing: landingStage(stages), manuscript: stages.at(-1), focus: focusChapter(chapters)?.number }
     }
-    const manuscript = { stage: 'manuscript', finalized: 1, total: 6, progress: { state: 'active', ratio: 1 / 6 } }
-    expect(open()).toEqual({ landing: 'manuscript', manuscript, focus: 2, phases: ['final', 'draft', 'revised', 'draft', 'todo', 'todo'] })
-    expect(open({ 12: reviewed, 13: reviewed, 14: merge })).toEqual({ landing: 'manuscript', manuscript, focus: 2,
-      phases: ['final', 'reviewed', 'reviewed', 'merge', 'todo', 'todo'] })
+    const landed = { landing: 'manuscript', focus: 2, manuscript: { stage: 'manuscript', finalized: 1, total: 6, progress: { state: 'active', ratio: 1 / 6 } } }
+    expect(open()).toEqual(landed)
+    expect(open({ 12: reviewed, 13: reviewed, 14: merge })).toEqual(landed)
   })
 })

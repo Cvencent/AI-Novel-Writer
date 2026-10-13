@@ -37,6 +37,8 @@ interface StageState {
   chapterRequest: { session: ProjectSessionContext; filePath: string } | null
   /** 各稿的审稿与修稿记录（按稿 id），流程脊与单章视图据此判断一章走到哪一步；只属于读出它的那次打开。 */
   chapterFacts: { session: ProjectSessionContext; byDraft: Readonly<Record<number, ChapterFacts>> } | null
+  /** 流程脊为这次打开读完过一遍各稿的审稿与修稿记录。没读完时流程脊不列阶段与章节，章节阶段不会先按稿状态估计再改。 */
+  spineFacts: ProjectSessionContext | null
 }
 
 /** 新外壳自己的界面状态。书房与作品的切换沿用 layout-store 的 sidebarView === 'home'，两种外壳共用。 */
@@ -49,4 +51,5 @@ export const useStageStore = create<StageState>()(() => ({
   writeRequest: null,
   chapterRequest: null,
   chapterFacts: null,
+  spineFacts: null,
 }))
