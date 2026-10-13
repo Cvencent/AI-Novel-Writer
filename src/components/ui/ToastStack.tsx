@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { createRoot } from 'react-dom/client'
+import { createRoot, type Root } from 'react-dom/client'
 import { CircleCheck, Info, OctagonAlert, TriangleAlert, X, type LucideIcon } from 'lucide-react'
 import { useLocaleStore } from '../../stores/locale-store'
 import { Button } from './Button'
@@ -41,6 +41,7 @@ let entries: ToastStackEntry[] = []
 let counter = 0
 const listeners = new Set<() => void>()
 let mount: HTMLElement | null = null
+let stackRoot: Root | null = null
 
 function publish(next: ToastStackEntry[]) {
   entries = next
@@ -54,8 +55,11 @@ function subscribe(listener: () => void) {
 
 function ensureStack() {
   if (mount?.isConnected) return
+  // 宿主被移走后旧栈不能留着：它的计时器会替新栈关掉条目
+  stackRoot?.unmount()
   mount = createInkOverlayMount()
-  createRoot(mount).render(<ToastStack />)
+  stackRoot = createRoot(mount)
+  stackRoot.render(<ToastStack />)
 }
 
 export function dismissToast(id: number) {

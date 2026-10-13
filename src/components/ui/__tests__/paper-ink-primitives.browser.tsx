@@ -144,6 +144,64 @@ describe('Button 纸墨六种', () => {
     expect(tokens.color).toBe(value('--ink'))
   })
 
+  it.each(['light', 'dark'] as const)('%s 主题禁用按钮是没上墨的平面：不透明、墨色薄雾底、撤掉受光', async (theme) => {
+    const container = await mount(
+      <div style={{ display: 'flex', gap: 12 }}>
+        <Button variant="primary" disabled>写作此章</Button>
+        <Button variant="secondary" disabled>重新生成</Button>
+      </div>,
+      theme,
+    )
+    for (const button of container.querySelectorAll('button')) {
+      const style = getComputedStyle(button)
+      expect(style.opacity).toBe('1')
+      expect(style.backgroundColor).toBe(tokenColor(container, '--wash'))
+      expect(style.backgroundImage).toBe('none')
+      expect(style.color).toBe(tokenColor(container, '--ink-3'))
+    }
+  })
+
+  it('主按钮与次按钮带 ≤2% 的纵向受光，危险按钮是平的', async () => {
+    const container = await mount(six)
+    const [primary, secondary, , danger, dangerSolid] = [...container.querySelectorAll('button')].map((b) => getComputedStyle(b))
+    expect(primary.backgroundImage).toContain('linear-gradient')
+    expect(secondary.backgroundImage).toContain('linear-gradient')
+    for (const flat of [danger, dangerSolid]) {
+      expect(flat.backgroundImage).toBe('none')
+      expect(flat.boxShadow.match(/rgba?\([^)]*\)/g)!.every((color) => color === 'rgba(0, 0, 0, 0)')).toBe(true)
+    }
+  })
+
+  it('加载中的按钮保留原样并在底沿画墨线', async () => {
+    const container = await mount(<Button variant="primary" disabled aria-busy>保存中</Button>)
+    const button = container.querySelector('button')!
+    expect(getComputedStyle(button).backgroundColor).toBe(ACCENT.light)
+    expect(getComputedStyle(button, '::after').animationName).toBe('pi-ink-draw')
+  })
+
+  it('在新外壳里 Tab 到主按钮，焦点环与材质同时在 box-shadow 里', async () => {
+    const container = await mount(<div className="stage-shell"><Button variant="primary">写作此章</Button></div>)
+    await userEvent.tab()
+    const shadow = getComputedStyle(focused()).boxShadow
+    expect(shadow).toContain(ACCENT.light)
+    expect(shadow).toContain(tokenColor(container, '--hi'))
+  })
+
+  it('拆分按钮主体禁用时整组退成未上墨，箭头仍可点', async () => {
+    const onToggle = vi.fn()
+    const container = await mount(
+      <div className="pi-split pi-split--main-off">
+        <Button variant="primary" className="pi-split-main" disabled>按 0 项意见修稿</Button>
+        <Button variant="primary" className="pi-split-toggle" aria-label="更多修稿方式" onClick={onToggle}><Ellipsis aria-hidden /></Button>
+      </div>,
+    )
+    const toggle = container.querySelector<HTMLButtonElement>('.pi-split-toggle')!
+    expect(getComputedStyle(toggle).backgroundColor).toBe(tokenColor(container, '--wash'))
+    expect(getComputedStyle(container.querySelector('.pi-split')!).boxShadow).toBe('none')
+    await userEvent.click(toggle)
+    expect(onToggle).toHaveBeenCalledTimes(1)
+  })
+
   it('旧外壳变体不受影响，仍走旧样式', async () => {
     const container = await mount(<Button variant="outline">旧按钮</Button>)
     const button = container.querySelector('button')!
@@ -566,6 +624,9 @@ describe('StatGrid、Notice、Lifecycle', () => {
     const notice = container.querySelector('[role="status"]')!
     expect(notice.getAttribute('data-tone')).toBe('warn')
     expect(notice.querySelector('svg')!.getAttribute('aria-hidden')).toBe('true')
+    expect(getComputedStyle(notice).backgroundColor).toBe('rgba(0, 0, 0, 0)')
+    expect(getComputedStyle(notice).boxShadow).toBe('none')
+    expect(getComputedStyle(notice.querySelector('.pi-notice-title')!).fontFamily).toContain('Noto Serif SC')
     await userEvent.tab()
     expect(focused().textContent).toBe('查看')
     expectFocusRing(focused())
@@ -642,6 +703,8 @@ describe('DangerConfirm', () => {
     const confirm = [...dialog.querySelectorAll('button')].find((b) => b.textContent === '永久删除')!
     expect(focused()).toBe(input)
     expect(confirm.className).toContain('pi-btn--danger-solid')
+    expect(getComputedStyle(dialog.querySelector('.pi-dialog-recover')!).color).toBe(DANGER.light)
+    expect(getComputedStyle(dialog.querySelector('.pi-dialog-title')!).color).not.toBe(DANGER.light)
 
     await userEvent.keyboard('灯')
     expect(confirm.disabled).toBe(true)
