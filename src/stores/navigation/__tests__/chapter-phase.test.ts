@@ -131,14 +131,15 @@ describe('流程脊先出 work、facts 后到：打开作品的落点与落在�
     runningChapters: new Set<number>(),
   }
 
-  it('有无 facts，落点都是正文、落在第 2 章；facts 只改动中间几章的阶段', () => {
+  it('有无 facts，落点都是正文、落在第 2 章，正文阶段进度相同；facts 只改动中间几章的阶段', () => {
     const open = (chapterFacts?: Record<number, ChapterFacts>) => {
       const chapters = deriveChapters({ ...work, chapterFacts })
-      return { landing: landingStage(deriveStages({ ...work, chapterFacts }, chapters)), focus: focusChapter(chapters)?.number,
-        phases: chapters.map(row => row.phase) }
+      const stages = deriveStages({ ...work, chapterFacts }, chapters)
+      return { landing: landingStage(stages), manuscript: stages.at(-1), focus: focusChapter(chapters)?.number, phases: chapters.map(row => row.phase) }
     }
-    expect(open()).toEqual({ landing: 'manuscript', focus: 2, phases: ['final', 'draft', 'revised', 'draft', 'todo', 'todo'] })
-    expect(open({ 12: reviewed, 13: reviewed, 14: merge })).toEqual({ landing: 'manuscript', focus: 2,
+    const manuscript = { stage: 'manuscript', finalized: 1, total: 6, progress: { state: 'active', ratio: 1 / 6 } }
+    expect(open()).toEqual({ landing: 'manuscript', manuscript, focus: 2, phases: ['final', 'draft', 'revised', 'draft', 'todo', 'todo'] })
+    expect(open({ 12: reviewed, 13: reviewed, 14: merge })).toEqual({ landing: 'manuscript', manuscript, focus: 2,
       phases: ['final', 'reviewed', 'reviewed', 'merge', 'todo', 'todo'] })
   })
 })
