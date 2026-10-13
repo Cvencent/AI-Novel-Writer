@@ -143,7 +143,7 @@ async function reviewReviseMergeFinalize(page) {
   await waitRunDone(page)
 }
 
-/** 计时：点击 target 到正文出现 text 且所在滚动区可以滚动。frameMs 按动画帧检查，domMs 在 DOM 变化回调里记，不依赖动画帧。 */
+/** 计时：点击 target 到正文出现 text 且所在滚动区可以滚动，毫秒，不取整。frameMs 按动画帧检查，domMs 在 DOM 变化回调里记，不依赖动画帧。 */
 async function openTiming(page, target, text) {
   const handle = await target.elementHandle()
   await page.evaluate(({ element, text }) => {
@@ -160,7 +160,7 @@ async function openTiming(page, target, text) {
       return false
     }
     const observer = new MutationObserver(() => {
-      if (clickedAt !== null && domMs === null && ready()) domMs = Math.round(performance.now() - clickedAt)
+      if (clickedAt !== null && domMs === null && ready()) domMs = performance.now() - clickedAt
     })
     observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true })
     window.__driveOpen = new Promise((resolve, reject) => {
@@ -169,7 +169,7 @@ async function openTiming(page, target, text) {
         if (clickedAt !== null && ready()) {
           clearTimeout(deadline)
           observer.disconnect()
-          const frameMs = Math.round(performance.now() - clickedAt)
+          const frameMs = performance.now() - clickedAt
           resolve({ frameMs, domMs: domMs ?? frameMs })
         } else requestAnimationFrame(tick)
       }
