@@ -136,9 +136,13 @@ export function useChapterBlueprints({
 
   const [recoveringLegacyImportedText, setRecoveringLegacyImportedText] = useState(false)
 
-  useEffect(() => {
-    if (initialChapterNumber !== undefined) setSelectedChapter(initialChapterNumber)
-  }, [initialChapterNumber, selectRequest])
+  // 标签请求选中某章（含再次请求同一章）时才改选中；之后的重新加载不再改回去。
+  const selectKey = initialChapterNumber === undefined ? null : `${initialChapterNumber}:${selectRequest ?? ''}`
+  const [appliedSelectKey, setAppliedSelectKey] = useState<string | null>(null)
+  if (initialChapterNumber !== undefined && selectKey !== appliedSelectKey) {
+    setAppliedSelectKey(selectKey)
+    setSelectedChapter(initialChapterNumber)
+  }
 
   const selectedIdx = useMemo(
     () => Math.max(0, blueprints.findIndex(blueprint => blueprint.chapterNumber === selectedChapter)),
