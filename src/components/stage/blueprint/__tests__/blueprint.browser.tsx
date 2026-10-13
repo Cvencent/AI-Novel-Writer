@@ -315,6 +315,19 @@ describe('蓝图阶段', () => {
     await vi.waitFor(() => expect(calls('db:blueprint-delete').map(call => call[1])).toEqual([3]))
   })
 
+  it('删除确认期间这一章已被别处删掉：确认后不会改删别的章', async () => {
+    await renderPage()
+    await act(async () => page.getByRole('button', { name: /^3\D/ }).click())
+    await act(async () => page.getByRole('button', { name: '第 3 章更多操作' }).click())
+    await act(async () => page.getByRole('group', { name: '危险' }).getByRole('menuitem', { name: '删除此章…' }).click())
+    stored = stored.filter(item => item.chapterNumber !== 3)
+    await refreshBlueprints()
+    const confirm = page.getByRole('dialog', { name: '删除第 3 章蓝图？' })
+    await act(async () => confirm.getByRole('button', { name: '删除此章' }).click())
+    await expect.element(confirm).not.toBeInTheDocument()
+    expect(calls('db:blueprint-delete')).toEqual([])
+  })
+
   it('下一章变了，写作弹层按新的一章重建，上一章没用掉的指导不带过去', async () => {
     await renderPage()
     await act(async () => page.getByRole('button', { name: '本次写作选项' }).click())
