@@ -267,6 +267,67 @@ export const ARCH_SCENARIOS = {
     for (let number = 1; number <= 16; number++) assert.equal(after[number], before[number], `第 ${number} 章没有被改动`)
   } },
 
+  /**
+   * 修复第 2 轮补的 lane：真实主进程下大纲分批写到 16 / 24 章后重写第 1–5 章，对话框标「将覆盖第 1–5 章」并能提交；
+   * after 生成并核对第 6 章起的正文逐字不变，大纲仍是部分完成 16 / 24，页头、流程脊同为 3 / 4。
+   */
+  'arch-rewrite': { model: true, shell: 'stage', setup: seedArch({ clear: ['synopsis'], totalChapters: 24 }), run: async context => {
+    const { page } = context
+    await openArchitecture(page)
+    await arch.primary(page).click()
+    await arch.selectOnly(page, ['synopsis'])
+    await arch.setRange(page, 1, 10)
+    await arch.startGenerate(page)
+    await waitForRunDone(page)
+    await arch.badge(page, 'synopsis').filter({ hasText: '部分完成 · 10 / 24 章' }).waitFor({ timeout: 30_000 })
+    await arch.section(page, 'synopsis').getByRole('button', { name: '续写第 11 章起' }).click()
+    await arch.setRange(page, 11, 16)
+    await arch.startGenerate(page)
+    await waitForRunDone(page)
+    await arch.badge(page, 'synopsis').filter({ hasText: '部分完成 · 16 / 24 章' }).waitFor({ timeout: 30_000 })
+    // 夹具模型每章的输出固定不变，先把第 1–5 章改成作者的旧稿，重写后才看得出被替换。
+    const generated = (await readCore(context)).synopsis
+    context.before = generated.replace(/^(## 第[1-5]章：[^\n]*\n[^\n]*)/gmu, '$1（作者旧稿）')
+    const session = await uiSession(context.app)
+    const saved = await context.invoke(page, 'db:project-core-update', { synopsis: context.before }, session.projectPath, session)
+    assert.equal(saved.success, true, saved.error)
+    await root(page).getByRole('button', { name: '架构的更多操作' }).click()
+    await page.getByRole('menuitem', { name: '刷新状态' }).click()
+    await arch.badge(page, 'synopsis').filter({ hasText: '部分完成 · 16 / 24 章' }).waitFor({ timeout: 30_000 })
+    await arch.openSectionMenu(page, 'synopsis')
+    await page.getByRole('menuitem', { name: 'AI 重新生成此节…' }).click()
+    await arch.dialog(page).waitFor({ state: 'visible' })
+    assert.equal(await arch.dialog(page).getByRole('spinbutton', { name: '本次生成范围的起始章' }).inputValue(), '17', '默认接着已有大纲往后写')
+    await arch.selectOnly(page, ['synopsis'])
+    await arch.setRange(page, 1, 5)
+    assert.equal(await arch.mark(page, 'synopsis').innerText(), '将覆盖第 1–5 章')
+    assert.equal(await arch.dialog(page).locator('.arch-range-effect').innerText(), '第 1–5 章按本次结果替换，第 6–16 章原样保留。')
+    assert.equal(await arch.dialog(page).locator('.arch-range-issue').count(), 0, '没有范围无效的提示')
+    assert.equal(await arch.dialog(page).getByRole('button', { name: /^开始生成 1 项$/ }).isDisabled(), false, '可以提交')
+    return { coveredBefore: 16 }
+  }, after: async context => {
+    const { page } = context
+    await arch.startGenerate(page)
+    await waitForRunDone(page)
+    let after
+    for (let attempt = 0; attempt < 120; attempt++) {
+      after = (await readCore(context)).synopsis
+      if (after !== context.before) break
+      await pause(500)
+    }
+    assert.notEqual(after, context.before, '第 1–5 章已重写')
+    for (let number = 1; number <= 5; number++) assert.doesNotMatch(outlineChapters(after)[number], /作者旧稿/, `第 ${number} 章换成了本次结果`)
+    const tail = text => text.slice(text.indexOf('## 第6章：'))
+    assert.ok(tail(context.before).length > 0 && context.before.includes('## 第6章：'))
+    assert.equal(tail(after), tail(context.before), '第 6 章起（含第 16 章与「已覆盖至第 16 章」说明）逐字不变')
+    assert.deepEqual(Object.keys(outlineChapters(after)).map(Number), Array.from({ length: 16 }, (_, index) => index + 1), '仍是第 1–16 章各一次')
+    await arch.badge(page, 'synopsis').filter({ hasText: '部分完成 · 16 / 24 章' }).waitFor({ timeout: 30_000 })
+    await arch.section(page, 'synopsis').getByRole('button', { name: '续写第 17 章起' }).waitFor({ state: 'visible' })
+    await arch.page(page).locator('.arch-eyebrow').filter({ hasText: '3 / 4 已确认' }).waitFor({ timeout: 30_000 })
+    assert.match(await stage.stageButton(page, '架构').innerText(), /3 \/ 4/, '流程脊与页头同为 3 / 4')
+    assert.equal(await arch.primary(page).innerText(), '继续生成架构')
+  } },
+
   /** lane 6：清空此节出现危险确认；after 取消，界面与数据库里的世界观都没变。 */
   'arch-clear': { model: false, shell: 'stage', setup: seedArch(), run: async context => {
     const { page } = context
