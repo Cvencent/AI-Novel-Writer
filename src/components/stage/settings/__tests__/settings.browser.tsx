@@ -12,6 +12,7 @@ import { useLLMStore } from '../../../../stores/llm-store'
 import { navigate } from '../../../../stores/navigation/navigation-intents'
 import { useProjectStore } from '../../../../stores/project-store'
 import { useThemeStore } from '../../../../stores/theme-store'
+import { useStageShortcuts } from '../../use-stage-shortcuts'
 import StageSettings from '../StageSettings'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -32,13 +33,18 @@ const LOCAL = { ...MODEL, id: 'local', name: '本机 Ollama', provider: 'ollama'
 let root: Root | undefined
 let host: HTMLDivElement | undefined
 
+function Shortcuts({ library }: { library: boolean }) {
+  useStageShortcuts({ library, focus: false })
+  return null
+}
+
 async function mount(library = false) {
   host = document.createElement('div')
   host.className = 'paper-ink stage-shell'
   host.style.cssText = 'width: 1200px; height: 860px; display: flex;'
   document.body.append(host)
   root = createRoot(host)
-  await act(async () => root!.render(<StageSettings library={library} />))
+  await act(async () => root!.render(<><Shortcuts library={library} /><StageSettings library={library} /></>))
 }
 
 const buttons = () => [...document.querySelectorAll<HTMLButtonElement>('button')]
@@ -50,9 +56,20 @@ async function click(element: HTMLElement | undefined) {
   await act(async () => element!.click())
 }
 
-async function key(name: string) {
-  await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true })) })
+async function key(name: string, target: EventTarget = window, init: KeyboardEventInit = {}) {
+  await act(async () => { target.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true, ...init })) })
 }
+
+async function type(input: HTMLInputElement, value: string) {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+}
+
+const input = (placeholder: string) => host!.querySelector<HTMLInputElement>(`input[placeholder="${placeholder}"]`)!
+const discardDialog = () => [...document.querySelectorAll('[role="dialog"]')].find(dialog => dialog.querySelector('h2')?.textContent === '放弃未保存的修改？')
+const dialogButton = (name: string) => [...discardDialog()!.querySelectorAll('button')].find(button => button.textContent === name)
 
 beforeEach(() => {
   win.aiNovelAPI = {
@@ -166,6 +183,60 @@ describe('设置页', () => {
     await act(async () => useLayoutStore.setState({ settingsOpen: true }))
     await click(byName('返回书房'))
     expect(useLayoutStore.getState().settingsOpen).toBe(false)
+  })
+
+  it('输入框里按 Esc 不关闭设置页', async () => {
+    await mount()
+    await click(byName('编辑「DeepSeek V4 Flash」'))
+    const name = input('如：DeepSeek 主力 / GPT-4o 备用')
+    name.focus()
+    await key('Escape', name)
+    expect(useLayoutStore.getState().settingsOpen).toBe(true)
+  })
+
+  it('模型改了没保存：Esc、返回、Ctrl W 先确认；继续编辑留着修改，放弃才关闭', async () => {
+    await mount()
+    await click(byName('编辑「DeepSeek V4 Flash」'))
+    await key('Escape')
+    expect(useLayoutStore.getState().settingsOpen).toBe(false)
+
+    await act(async () => root!.unmount())
+    host!.remove()
+    useLayoutStore.setState({ settingsOpen: true })
+    await mount()
+    await click(byName('编辑「DeepSeek V4 Flash」'))
+    await type(input('如：DeepSeek 主力 / GPT-4o 备用'), '主力模型')
+    await key('Escape')
+    expect(discardDialog()?.textContent).toContain('这一页有还没保存的修改，离开后会丢失。')
+    await click(dialogButton('继续编辑'))
+    expect(discardDialog()).toBeUndefined()
+    expect(useLayoutStore.getState().settingsOpen).toBe(true)
+    expect(input('如：DeepSeek 主力 / GPT-4o 备用').value).toBe('主力模型')
+
+    await key('w', window, { ctrlKey: true, code: 'KeyW' })
+    expect(discardDialog()).toBeTruthy()
+    await click(dialogButton('继续编辑'))
+
+    await click(byName('返回作品'))
+    expect(useLayoutStore.getState().settingsOpen).toBe(true)
+    await click(dialogButton('放弃修改'))
+    expect(useLayoutStore.getState().settingsOpen).toBe(false)
+  })
+
+  it('代理与写作 Skills 有没保存的输入时，切到别的设置页也先确认', async () => {
+    useLayoutStore.setState({ settingsSection: 'skills' })
+    await mount(true)
+    await type(host!.querySelector<HTMLInputElement>('input[aria-label="GitHub Skill 地址"]')!, 'https://github.com/owner/skill')
+    await click(byName('外观'))
+    expect(useLayoutStore.getState().settingsSection).toBe('skills')
+    await click(dialogButton('放弃修改'))
+    expect(useLayoutStore.getState().settingsSection).toBe('appearance')
+
+    await click(byName('网络代理'))
+    await click(host!.querySelector<HTMLElement>('[role="switch"]')!)
+    await click(byName('返回书房'))
+    expect(discardDialog()).toBeTruthy()
+    expect(useLayoutStore.getState().settingsOpen).toBe(true)
   })
 
   it('打开作品途中的默认落点不收起设置页；去具体的阶段才收起', async () => {
