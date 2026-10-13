@@ -37,8 +37,8 @@ export type ChapterPhase = 'todo' | 'draft' | 'reviewed' | 'merge' | 'revised' |
 export interface ChapterFacts {
   /** 可以合并的待合并修稿 id，按生成先后。 */
   mergeable: readonly number[]
-  /** 生成后正文或稿状态已经变了的待合并修稿 id：不能再合并，只能查看或丢弃。 */
-  stale: readonly number[]
+  /** 不能再合并、只能查看或丢弃的待合并修稿：edited 是生成后正文或稿状态变了，unsourced 是旧修稿没有记下生成时的源稿。 */
+  stale: readonly { id: number; reason: 'edited' | 'unsourced' }[]
   /** 这一稿最新的审稿；cycleStatus 是它所属复验周期的修稿进度，旧审稿与合并后的自动复验没有周期。 */
   latestReview: { createdAt: string; cycleStatus: ReviewCycleProjection['revisionStatus'] | null } | null
   /** 最近一次合并修稿的时间；没合并过为 null。 */

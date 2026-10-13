@@ -50,7 +50,8 @@ async function readChapterFacts(draftId: number, session: ProjectSessionContext)
   const merged = revisions.filter(revision => revision.status === 'merged').map(revision => revision.updatedAt).sort()
   return {
     mergeable: current.map(revision => revision.id),
-    stale: pending.filter(revision => !current.includes(revision)).map(revision => revision.id),
+    stale: pending.filter(revision => !current.includes(revision))
+      .map(revision => ({ id: revision.id, reason: sources[pending.indexOf(revision)]?.sourceDraft ? 'edited' as const : 'unsourced' as const })),
     latestReview,
     lastMergedAt: merged.at(-1) ?? null,
   }

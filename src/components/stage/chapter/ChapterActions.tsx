@@ -114,7 +114,8 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
   const selectedReviseModel = reviseModelId ?? preferredGenerationModelId(models, defaultModelId)
   // 有几份能合并时取最新的一份；过期的修稿不占主流程，只能查看或丢弃。
   const pending = draft.pendingRevisions.find(revision => revision.id === facts?.mergeable.at(-1))
-  const stale = draft.pendingRevisions.filter(revision => facts?.stale.includes(revision.id))
+  const stale = draft.pendingRevisions.filter(revision => facts?.stale.some(entry => entry.id === revision.id))
+  const staleReasons = new Set(facts?.stale.map(entry => entry.reason))
   const [opened, setOpened] = useState<RevisionEntry | null>(null)
   const versionLabel = text(`草稿 v${meta.version}`, `Draft v${meta.version}`)
 
@@ -323,7 +324,9 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
               </>
             )}
           >
-            {text('修稿生成之后正文又改过，合并会覆盖这些修改。可以查看修稿手动摘取，或丢弃后重新修稿。', 'The text changed after the revision was generated, so merging would overwrite those edits. View it to copy parts by hand, or discard it and revise again.')}
+            {staleReasons.has('edited') && text('修稿生成之后正文又改过，合并会覆盖这些修改。', 'The text changed after the revision was generated, so merging would overwrite those edits. ')}
+            {staleReasons.has('unsourced') && text('较早的修稿没有记下生成时依据的正文，无法确认合并会不会覆盖之后的修改。', 'An older revision did not record the text it was generated from, so there is no way to tell whether merging would overwrite later edits. ')}
+            {text('可以查看修稿手动摘取，或丢弃后重新修稿。', 'View it to copy parts by hand, or discard it and revise again.')}
           </Notice>
         )}
         {draft.finalizationConflict && (
