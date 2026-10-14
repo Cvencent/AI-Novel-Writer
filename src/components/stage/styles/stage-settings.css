@@ -22,7 +22,6 @@
 .stage-shell .stage-set-back {
   align-self: flex-start;
   margin: 0 0 var(--s-4) -2px;
-  gap: 6px;
 }
 
 .stage-set-nav-title {
@@ -61,6 +60,11 @@
 
 .stage-set-link:hover {
   background: var(--sunken);
+  color: var(--ink);
+}
+
+.stage-set-link:active {
+  background: var(--wash-strong);
   color: var(--ink);
 }
 
@@ -194,12 +198,16 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 
 .stage-set-theme > svg {
   grid-row: span 2;
   color: var(--ink-2);
+}
+
+.stage-set-theme:active {
+  background: var(--paper-press);
 }
 
 .stage-set-theme[aria-checked='true'] {

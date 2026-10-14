@@ -75,17 +75,30 @@
   border-radius: var(--radius-lg);
   background: var(--paper);
   color: var(--ink);
+  box-shadow: none;
   font: 400 var(--fs-13)/1.55 var(--font-ui);
+  letter-spacing: normal;
   text-align: left;
   white-space: normal;
   cursor: pointer;
-  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
 
-.stage-library .stage-start:hover {
+/* 导入卡是菜单触发的纸墨文字按钮，悬停、按下、展开都要在这里写全，才与另两张原生按钮的卡一个样子 */
+.stage-library .stage-start:hover:not(:active, [aria-expanded='true']) {
   background: var(--paper);
   border-color: color-mix(in srgb, var(--ink) 22%, transparent);
   box-shadow: var(--shadow-button);
+}
+
+/* 按下：纸片压进桌面，与次按钮同一个按下色 */
+.stage-library .stage-start:active,
+.stage-library .stage-start[aria-expanded='true'] {
+  background: var(--paper-press);
+  border-color: color-mix(in srgb, var(--ink) 22%, transparent);
+  box-shadow: inset 0 1px 2px var(--sink);
+  transform: translateY(1px);
 }
 
 .stage-library .stage-start:focus-visible {
@@ -194,6 +207,12 @@
 
 .stage-book-cover:hover {
   transform: translateY(-3px);
+}
+
+/* 按下：从悬停的抬起落回大半，像把书按回书架 */
+.stage-book-cover:active {
+  transform: translateY(-1px);
+  transition-duration: var(--dur-fast);
 }
 
 .stage-book[data-selected] .stage-book-cover {
@@ -405,9 +424,7 @@
 
 .stage-library .stage-ov-primary {
   margin-top: var(--s-5);
-  height: 44px;
   width: 100%;
-  border-radius: var(--radius-lg);
 }
 
 .stage-library .stage-ov-back {
@@ -540,13 +557,6 @@
   margin-top: 10px;
 }
 
-.stage-shell .stage-update-later {
-  height: 28px;
-  padding: 0 var(--s-3);
-  font-size: var(--fs-12);
-  border-radius: var(--radius);
-}
-
 .stage-update-spin {
   animation: stage-spin 1s linear infinite;
 }
@@ -570,4 +580,9 @@
   margin: 0;
   font-size: var(--fs-12);
   color: var(--ink-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-library .stage-start:is(:active, [aria-expanded='true']) { transform: none; }
+  .stage-book-cover:hover, .stage-book-cover:active { transform: none; }
 }

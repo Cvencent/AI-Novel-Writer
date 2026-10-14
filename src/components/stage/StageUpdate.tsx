@@ -76,7 +76,7 @@ function UpdateActions({ model, guard, compact }: { model: UpdateModel; guard: I
     ? (
       <Menu
         label={text('稍后提醒', 'Remind me later')}
-        trigger={{ content: text('稍后提醒', 'Remind me later'), className: 'stage-update-later' }}
+        trigger={{ content: text('稍后提醒', 'Remind me later'), size: 'sm' }}
         groups={[{ id: 'later', items: [
           { id: '7', label: text('7 天后提醒', 'In 7 days'), disabled: isDeferring, onSelect: () => void model.deferReminder(7) },
           { id: '30', label: text('30 天后提醒', 'In 30 days'), disabled: isDeferring, onSelect: () => void model.deferReminder(30) },

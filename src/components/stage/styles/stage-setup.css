@@ -150,9 +150,6 @@
 }
 
 .stage-shell .stage-setup-ai {
-  height: 26px;
-  padding: 0 var(--s-2);
-  gap: 5px;
   color: var(--accent);
 }
 
