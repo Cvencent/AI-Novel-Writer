@@ -231,7 +231,7 @@ node scripts/redesign/drive.mjs --scenario chapter-switch --shell stage --out <�
 
 ## 架构阶段与角色名单（RD-6 起）
 
-场景在 `scripts/redesign/arch-scenarios.mjs`，页面对象在 `scripts/redesign/pages/architecture.mjs`（四节是 `region`，按节名命名；角色名单左栏是 `complementary`「角色名单」；生成架构对话框是 `dialog`「生成架构」）。示例作品沿用「灯塔」，按场景清空架构的某几节；架构没齐时打开作品落在架构。驱动读库用界面那次打开作品的会话（在主进程里包一层 `project:open` 记下租约），不必重开作品。夹具模型对「本次只写第 N 章」的情节大纲请求回这一章的二级标题与正文。
+场景在 `scripts/redesign/arch-scenarios.mjs`，页面对象在 `scripts/redesign/pages/architecture.mjs`（四节是 `region`，按节名命名；角色名单左栏是 `complementary`「角色名单」；生成架构对话框是 `dialog`「生成架构」）。示例作品沿用「灯塔」，按场景清空架构的某几节；示例作品有蓝图与正文，打开后落在写作位置（用户决定 B，#394 §6），场景等落点定下后从流程脊进架构。驱动读库用界面那次打开作品的会话（在主进程里包一层 `project:open` 记下租约），不必重开作品。夹具模型对「本次只写第 N 章」的情节大纲请求回这一章的二级标题与正文。
 
 | 名称 | 检查 | 截图停在 | 夹具模型 | 对应计划 |
 |---|---|---|---|---|

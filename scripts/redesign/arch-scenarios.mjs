@@ -65,7 +65,8 @@ async function addCharacters({ page, invoke, path, session }, names) {
 }
 
 /**
- * 示例作品「灯塔」，按 clear 清空架构的几节；不等落到第 3 章（架构没齐时落点就是架构）。
+ * 示例作品「灯塔」，按 clear 清空架构的几节。清空过的作品不等落到第 3 章，等落点定下后从流程脊进架构：
+ * 用户决定 B（#394 §6）之后有蓝图与正文的作品打开落在写作位置，之前的版本落在架构，两边都等得到落点。
  * 会话追踪先挂上，界面重载后打开作品的那次会话就能拿来读库。
  */
 function seedArch({ clear = [], totalChapters, characters = [] } = {}) {
@@ -78,11 +79,17 @@ function seedArch({ clear = [], totalChapters, characters = [] } = {}) {
       }
       if (characters.length > 0) await addCharacters({ page, invoke, path, session }, characters)
     } })
-    if (clear.length > 0) await architectureSurface(context.page).waitFor({ state: 'visible', timeout: 20_000 })
+    if (clear.length === 0) return
+    const { page } = context
+    if (await stage.root(page).count() > 0) {
+      await page.getByRole('navigation', { name: '位置' }).waitFor({ state: 'visible', timeout: 20_000 })
+      await stage.stageButton(page, '架构').click()
+    }
+    await architectureSurface(page).waitFor({ state: 'visible', timeout: 20_000 })
   }
 }
 
-/** 架构没齐时打开作品会落到架构：head 是架构阶段，trunk 是旧的故事架构总览。 */
+/** 架构页：head 是架构阶段，trunk 是旧的故事架构总览（trunk 架构没齐时打开作品仍落在这里）。 */
 const architectureSurface = page => page.locator('.arch-page').or(page.getByRole('button', { name: 'AI 生成架构' })).first()
 
 async function openArchitecture(page) {
