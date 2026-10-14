@@ -391,6 +391,16 @@ describe('写作此章、标签顶替与跨作品的请求', () => {
     expect(useStageStore.getState().chapterRequest).toBeNull()
   })
 
+  it('审稿侧页属于打开它的那部作品：换作品或重新打开后收起，同一次打开里作品数据换新对象不收', async () => {
+    await mount()
+    const sheet = { kind: 'review' as const, filePath: formatResourceUri({ kind: 'draft', id: 1 }) }
+    await act(async () => useStageStore.setState({ sheet }))
+    await act(async () => useProjectStore.setState({ currentProject: { ...chapterProject(), novelConfig: { ...chapterProject().novelConfig, topic: '后台写回' } } }))
+    expect(useStageStore.getState().sheet).toEqual(sheet)
+    await act(async () => useProjectStore.setState({ currentProject: { ...chapterProject(), id: 'harbor', path: 'C:\\novels\\harbor', sessionLease: 'harbor-lease' } }))
+    expect(useStageStore.getState().sheet).toBeNull()
+  })
+
   it('删除正文的确认写的是新外壳里重试清理的位置', async () => {
     const draft = backend.addDraft({ status: 'finalized' })
     useAppearanceStore.setState({ resolvedShell: 'stage' })
