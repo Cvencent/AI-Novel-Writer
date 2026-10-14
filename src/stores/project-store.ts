@@ -846,7 +846,9 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
         ) })
         return false
       }
-      const opened = isCurrent() && await get().openProject(result.targetRoot).catch(() => false)
+      const { confirmLeaveSettings } = await import('../components/settings/unsaved-settings')
+      const opened = isCurrent() && await confirmLeaveSettings() && isCurrent()
+        && await get().openProject(result.targetRoot).catch(() => false)
       set({ legacyImportNotice: opened
         ? projectText('旧项目已导入为独立副本。两份项目的后续修改不会自动同步。', 'Legacy project imported as an independent copy. Future changes do not sync between the two projects.')
         : projectText(`副本已建立，但未能自动打开。请用“打开作品”选择：${result.targetRoot}`, `The copy was created but could not be opened. Use Open project to select: ${result.targetRoot}`) })
