@@ -55,7 +55,7 @@ async function untilHeld(app, channel, timeoutMs = 15_000) {
 const releaseChannel = (app, channel) => app.evaluate((_, channel) => globalThis.__driveHolds[channel].release(), channel)
 
 /** 记下这些通道之后每次调用所属的作品路径（取调用参数最后的项目会话）。 */
-async function recordCalls(app, channels) {
+export async function recordCalls(app, channels) {
   await app.evaluate(({ ipcMain }, channels) => {
     const calls = globalThis.__driveCalls = []
     for (const channel of channels) {
@@ -71,7 +71,7 @@ async function recordCalls(app, channels) {
 const recordedCalls = app => app.evaluate(() => globalThis.__driveCalls)
 
 /** 把主进程的 channel 换成固定回复，调用次数记进 globalThis.__driveStubs。 */
-async function stubChannel(app, channel, reply) {
+export async function stubChannel(app, channel, reply) {
   await app.evaluate(({ ipcMain }, [channel, reply]) => {
     const counts = globalThis.__driveStubs ??= {}
     counts[channel] = 0
