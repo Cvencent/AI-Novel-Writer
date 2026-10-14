@@ -161,9 +161,13 @@ export function focusChapter(rows: readonly ChapterRow[]): ChapterRow | null {
     ?? null
 }
 
-/** 打开作品时落在第一个未完成的阶段；四个阶段都完成时落在正文。 */
+/**
+ * 打开作品时落在第一个未完成的阶段；四个阶段都完成时落在正文。已有蓝图或正文时，架构没写完（比如大纲分批只写了一部分）
+ * 不把作者拉回架构：落点跳过架构，流程脊与架构页照旧显示部分完成。
+ */
 export function landingStage(stages: readonly StageStatus[]): WorkStage {
-  return stages.find(status => status.progress.state !== 'done')?.stage ?? 'manuscript'
+  const begun = stages.some(status => (status.stage === 'blueprint' || status.stage === 'manuscript') && status.progress.state !== 'todo')
+  return stages.find(status => status.progress.state !== 'done' && !(begun && status.stage === 'architecture'))?.stage ?? 'manuscript'
 }
 
 export type StageLocation =
