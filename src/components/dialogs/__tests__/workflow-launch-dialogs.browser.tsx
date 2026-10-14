@@ -556,7 +556,10 @@ it.each(['outline', 'blueprint'] as const)('rejects eleven chapters and target 1
     : <DirectoryConfigDialog isOpen onClose={() => {}} existingCount={0} onConfirm={onConfirm} />))
   const count = page.getByRole('spinbutton', { name: kind === 'outline' ? '本次生成范围的结束章' : '本次蓝图章数' })
   const submit = page.getByRole('button', { name: kind === 'outline' ? /确认生成/ : '开始生成' })
-  await act(async () => { await count.fill('11'); await submit.click() })
+  await act(async () => { await count.fill('11') })
+  // 大纲对话框按单批上限当场判无效，提交不可点；蓝图对话框在提交时拦。
+  if (kind === 'outline') await expect.element(submit).toBeDisabled()
+  else await act(async () => { await submit.click() })
   expect(onConfirm).not.toHaveBeenCalled()
   await act(async () => {
     await count.fill('10')

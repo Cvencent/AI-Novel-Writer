@@ -110,13 +110,22 @@ export function useArchitectureConfirmForm({
   const from = Number(synopsisFrom)
   const to = Number(synopsisTo)
 
+  const rangeFilled = Boolean(checked.synopsis && synopsisFrom.trim() && synopsisTo.trim()
+    && Number.isSafeInteger(from) && Number.isSafeInteger(to) && from >= 1 && to >= from)
+  // 超过单批上限或全书章数的范围，主进程开跑前就会拒绝，对话框里直接判无效。
+  const outOfBounds = rangeFilled && (to - from + 1 > PLANNING_ACTION_CHAPTER_LIMIT || (totalChapters > 0 && to > totalChapters))
+  const boundsIssue = text(
+    `情节大纲范围无效。请选择第 1–${totalChapters} 章内连续的 1–${PLANNING_ACTION_CHAPTER_LIMIT} 章。`,
+    `Invalid plot-outline range. Select 1-${PLANNING_ACTION_CHAPTER_LIMIT} consecutive chapters within chapters 1-${totalChapters}.`,
+  )
+
   /** 这一批交给主进程会怎样；范围本身不完整或越界时为 null，由提交时的范围校验报错。 */
-  const synopsisEffect: PlotOutlineRangeEffect | null = checked.synopsis && synopsisFrom.trim() && synopsisTo.trim()
-    && Number.isSafeInteger(from) && Number.isSafeInteger(to) && from >= 1 && to >= from
+  const synopsisEffect: PlotOutlineRangeEffect | null = rangeFilled && !outOfBounds
     ? plotOutlineRangeEffect(synopsisSource, { from, to })
     : null
 
-  const synopsisRangeIssue = synopsisEffect?.kind !== 'invalid' ? null
+  const synopsisRangeIssue = outOfBounds ? boundsIssue
+    : synopsisEffect?.kind !== 'invalid' ? null
     : !synopsisEffect.hasEntries
       ? text('已有大纲没有按章的标题，只能从第 1 章起整份重写。', 'The existing outline has no chapter headings, so it can only be rewritten whole from chapter 1.')
       : from > synopsisEffect.lastChapter + 1
@@ -143,7 +152,7 @@ export function useArchitectureConfirmForm({
   const stepMark = (key: ArchStepKey): ArchStepMark => {
     if (!checked[key]) return archStatus[key] ? 'keep' : 'new'
     if (key !== 'synopsis') return archStatus[key] ? 'overwrite' : 'new'
-    if (!synopsisEffect) return archStatus.synopsis ? 'overwrite' : 'new'
+    if (!synopsisEffect) return outOfBounds ? 'invalid' : archStatus.synopsis ? 'overwrite' : 'new'
     return synopsisEffect.kind
   }
 
@@ -183,10 +192,7 @@ export function useArchitectureConfirmForm({
       // 范围合法性（超出总章数或起大于止）
       const resolution = resolveSynopsisRange()
       if (!resolution.ok) {
-        setGuardError(resolution.message ?? text(
-          `情节大纲范围无效。请选择第 1–${totalChapters} 章内连续的 1–${PLANNING_ACTION_CHAPTER_LIMIT} 章。`,
-          `Invalid plot-outline range. Select 1-${PLANNING_ACTION_CHAPTER_LIMIT} consecutive chapters within chapters 1-${totalChapters}.`,
-        ))
+        setGuardError(resolution.message ?? boundsIssue)
         return
       }
 
