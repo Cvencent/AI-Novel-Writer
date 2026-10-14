@@ -248,7 +248,7 @@ node scripts/redesign/drive.mjs --scenario chapter-switch --shell stage --out <�
 | `arch-graph` | 关系图谱放大、滚轮、拖拽（画面变化）都生效；`after` 点中心节点打开档案 | 关系图谱 | 否 | lane 8 |
 | `arch-cards` | 角色名单里粘贴两张角色卡，运行侧页确认后守塔人进名单、林岚仍只有一个 | 角色名单 | 是 | lane 9 |
 | `arch-import-dialog` | 导入角色卡对话框与外发确认是同一个纸墨对话框的两步（`.pi-dialog`、底色等于 `--surface`，不另弹确认框）；`after` 返回并关闭 | 外发确认 | 是 | lane 9 |
-| `arch-dark` | 用 `--theme dark` 跑：架构页文字对比度达标（名称与正文 4.5:1，说明 3:1），分节卡底色等于 `--paper` 的计算值 | 架构页 | 否 | lane 10 |
+| `arch-dark` | 用 `--theme dark` 跑（漏传时开头的主题断言失败）：架构页文字对比度达标（名称与正文 4.5:1，说明 3:1），分节卡底色等于 `--paper` 的计算值 | 架构页 | 否 | lane 10 |
 | `arch-timing` | 从点流程脊「架构」到四节可交互的毫秒数（`measured.openMs` 按动画帧轮询；`openDomMs` 是 DOM 达到就绪的时刻，屏幕外窗口的动画帧会被节流；`ipcDuringOpen` 是这段时间主进程按通道收到的 invoke 数），200 位角色时角色列表第 1 页滚动帧率（`measured.scrollFps`）。trunk 是旧故事架构标签与旧角色列表，head 是架构阶段与角色名单 | 角色列表 | 否 | perf |
 | `arch-tour` | 30～60 秒的导览：四节与主按钮、对话框的覆盖与保留、清空此节的危险确认、角色名单保存与关系图谱。配 `--video` 录评审视频 | 架构页 | 否 | Review gate |
 
@@ -407,3 +407,15 @@ node scripts/redesign/drive.mjs --scenario refs-timing --shell stage --out <目�
 | `x2-recheck` | `replyReview` 让审稿回第 4 章关键事件未完成（带证据）；审稿、按意见修稿、全部用修稿合并，自动复验跑完：提示「复验完成：x / y 项意见已解决」，审稿报告逐项标复验结果 | 审稿报告 | 是 | #392 T3 |
 | `x2-blueprint-save` | 蓝图页改第 5 章标题并「保存此章」，流程脊第 5 章显示新标题 | 第 3 章 | 否 | #377 R1 |
 | `x2-open-chapter` | 读第 4 章正文卡住时点流程脊「设定」，放行后仍在设定 | 设定页 | 否 | #377 R2 |
+
+## 外部审查修复（RD-X3）
+
+场景在 `scripts/redesign/rdx3-scenarios.mjs`，都走新外壳。要看修复前的样子，用 `--app-root` 指向 RD-V 栈顶（`87097dbb`）的构建再跑一次：这些场景在那边应当失败。
+
+| 名称 | 检查 | 截图停在 | 夹具模型 |
+|---|---|---|---|
+| `rdx3-popover-1280`、`rdx3-popover-1024` | 视口设成 1280×720 或 1024×640，第 3 章出场三人，主进程的 `db:continuity-list-before` 换成三人都已死的事实：写作弹层出三条预检提醒，停在视口内（下沿留 8px）并在内部滚动，滚到底「仅本次忽略」在视口内点得到，内部滚动不关弹层；中途拍 `-top`，`after` 换回原处理函数并按 Esc | 滚到底的写作弹层 | 是 |
+| `rdx3-keyboard` | 按 Tab 走到流程脊当前阶段行、激活的内容标签、拆分主按钮两半、运行侧页分段页签的选中项，各自 `:focus-visible` 且 `box-shadow` 含强调色，逐个截图；`measured` 是五处的 `box-shadow` | 运行侧页的分段页签 | 否 |
+| `rdx3-import-dialog` | 作品菜单「小说拆解与仿写…」：对话框里只有一个 `.pi-btn--primary`，带 `aria-pressed` 的切换按钮都是次按钮；`after` 按 Esc | 拆解对话框 | 否 |
+| `rdx3-toast-resize` | 推入 11 条常驻出错通知（推入函数的找法同 `rdv-toast-flood`），1440×900 下不溢出；视口缩到 1100×640 后栈标 `data-overflow`、最新一条露在栈底、卡片右缘到窗口右缘的距离不变。`measured.shiftWithoutCompensation` 是去掉滚动条补偿时卡片会左移的像素 | 缩窗后的满栈 | 否 |
+| `rdx3-long-title` | 主进程把 `project:open` 返回的作品名换成 80 个字（项目文件夹不能这么长），视口 1024×640：顶栏作品名以省略号收尾，关闭按钮右缘在窗口内 | 顶栏 | 否 |

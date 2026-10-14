@@ -2,9 +2,7 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { randomUUID } from 'node:crypto'
 
-import { chooseProjectDirectoryGrant } from '../project-directory-grant.mjs'
 import * as blueprint from './pages/blueprint.mjs'
 import * as runSheet from './pages/run-sheet.mjs'
 import * as stage from './pages/stage.mjs'
@@ -12,6 +10,7 @@ import { STAGE_SAMPLE } from './stage-sample.mjs'
 import { seedStageSample } from './scenarios.mjs'
 
 const DEAD = ['林岚', '守塔人', '阿潮']
+const LONG_NAME = '雾钟每晚提前一刻响起'.repeat(8)
 
 /** 第 3 章的出场人物是三位，主进程的连续性事实写他们都已死：写作弹层里出三条一致性预检提醒。 */
 const withThreeFindings = context => seedStageSample(context, { beforeReload: async ({ page, invoke, path: projectPath, session }) => {
@@ -138,7 +137,7 @@ export const RDX3_SCENARIOS = {
     await page.getByRole('dialog').first().waitFor({ state: 'hidden' })
   } },
 
-  /** 1440×900 下放得下的 9 条常驻通知，缩到 1100×640 后栈改成可滚动、最新一条露在底部，卡片右缘不因滚动条左移。 */
+  /** 1440×900 下放得下的 11 条常驻通知，缩到 1100×640 后栈改成可滚动、最新一条露在底部，卡片右缘不因滚动条左移。 */
   'rdx3-toast-resize': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ app, page, shoot }) => {
     const appPath = await app.evaluate(({ app: electronApp }) => electronApp.getAppPath())
     const chunk = fs.readdirSync(path.join(appPath, 'dist', 'assets')).find(name => /^ToastStack-.*\.js$/.test(name))
@@ -149,7 +148,7 @@ export const RDX3_SCENARIOS = {
       if (!push) return 'no-push'
       for (let i = 1; i <= count; i++) push({ tone: 'danger', message: `第 ${i} 章保存失败`, duration: 0 })
       return 'ok'
-    }, { chunkName: chunk, count: 9 })
+    }, { chunkName: chunk, count: 11 })
     assert.equal(pushed, 'ok')
     await page.mouse.move(4, 4)
     await page.waitForTimeout(400)
@@ -162,7 +161,7 @@ export const RDX3_SCENARIOS = {
         newestInside: newest.top >= box.top - 0.5 && newest.bottom <= box.bottom + 0.5, marginRight: element.style.marginRight }
     })
     const before = await geometry()
-    assert.equal(before.overflow, false, `1440×900 下 9 条放得下：${JSON.stringify(before)}`)
+    assert.equal(before.overflow, false, `1440×900 下 11 条放得下：${JSON.stringify(before)}`)
     await setViewport(page, 1100, 640)
     await page.waitForTimeout(300)
     const after = await geometry()
@@ -183,22 +182,28 @@ export const RDX3_SCENARIOS = {
   } },
 
   /** 80 个字的作品名：顶栏标题收成省略号，窗口控制按钮仍在窗口内。 */
-  'rdx3-long-title': { model: false, shell: 'stage', setup: async ({ app, page, roots, invoke, reload }) => {
-    const name = '雾钟每晚提前一刻响起'.repeat(8)
-    const created = await invoke(page, 'project:create', { parentGrantId: (await chooseProjectDirectoryGrant(app, page, roots.projects)).grantId,
-      name, genre: '悬疑', targetAudience: '成年读者', writingLanguage: 'zh-CN' }, randomUUID(), null)
-    assert.equal(created.success, true, created.error)
-    await reload()
-    await stage.openFromLibrary(page, name)
+  'rdx3-long-title': { model: false, shell: 'stage', setup: async context => {
+    // 项目文件夹以作品名命名，隔离目录加数据库路径会超出 Windows 路径上限：建普通的示例作品，打开时由主进程把作品名换成长名字
+    await seedStageSample(context, { open: false })
+    await context.app.evaluate(({ ipcMain }, name) => {
+      const handlers = ipcMain._invokeHandlers
+      const open = handlers.get('project:open')
+      handlers.set('project:open', async (...args) => {
+        const result = await open(...args)
+        if (result?.project) result.project.name = name
+        return result
+      })
+    }, LONG_NAME)
+    await stage.openFromLibrary(context.page, STAGE_SAMPLE.name)
   }, run: async ({ page }) => {
     await setViewport(page, 1024, 640)
     const layout = await stage.root(page).getByRole('banner').evaluate(banner => {
       const title = banner.querySelector('.stage-work-name')
       const close = banner.querySelector('.stage-window-close').getBoundingClientRect()
-      return { closeRight: close.right, viewport: innerWidth, ellipsis: getComputedStyle(title).textOverflow, clipped: title.scrollWidth > title.clientWidth }
+      return { title: title.textContent, closeRight: close.right, viewport: innerWidth, ellipsis: getComputedStyle(title).textOverflow, clipped: title.scrollWidth > title.clientWidth }
     })
     assert.ok(layout.closeRight <= layout.viewport, `关闭按钮在窗口内：${layout.closeRight} / ${layout.viewport}`)
-    assert.deepEqual([layout.ellipsis, layout.clipped], ['ellipsis', true], '作品名以省略号收尾')
+    assert.deepEqual([layout.title, layout.ellipsis, layout.clipped], [LONG_NAME, 'ellipsis', true], '作品名以省略号收尾')
     return layout
   } },
 }
