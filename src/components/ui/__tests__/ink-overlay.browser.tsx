@@ -243,6 +243,26 @@ describe('提示栈', () => {
     expect(liveToasts()).toHaveLength(0)
   })
 
+  it('动作回调失败时通知照样关闭，失败原因报成一条出错通知', async () => {
+    await act(async () => {
+      actionToast.show({ message: '发现新版本 v1.3', duration: 0, actions: [{ label: '查看更新', onClick: () => Promise.reject(new Error('更新服务不可用')) }] })
+    })
+    await userEvent.click(page.getByRole('button', { name: '查看更新' }))
+    await wait(200)
+    expect(toastTitles()).toEqual(['操作失败'])
+    const [item] = liveToasts()
+    expect(item.querySelector('.pi-toast-text')!.textContent).toBe('更新服务不可用')
+    expect(item.dataset.tone).toBe('danger')
+  })
+
+  it('窄窗口里通知收窄到视口内，不越过左沿', async () => {
+    await page.viewport(360, 640)
+    await act(async () => toast.info('已复制本章正文'))
+    const rect = liveToasts()[0].getBoundingClientRect()
+    expect(rect.width).toBe(320)
+    expect(rect.left).toBe(20)
+  })
+
   it('点通知上的动作先执行回调再关闭', async () => {
     const open = vi.fn()
     await act(async () => actionToast.workflowComplete('「第 4 章」已完成', open))

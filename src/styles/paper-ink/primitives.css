@@ -318,7 +318,7 @@
 .pi-toast {
   pointer-events: auto; position: relative; display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: start;
   column-gap: var(--s-3); row-gap: var(--s-2);
-  width: 360px; padding: var(--s-3) var(--s-2) var(--s-3) var(--s-3); border-radius: var(--radius-lg);
+  width: 360px; max-width: calc(100vw - 2 * var(--s-5)); padding: var(--s-3) var(--s-2) var(--s-3) var(--s-3); border-radius: var(--radius-lg);
   background: var(--layer); color: var(--ink); box-shadow: var(--shadow-pop);
   font: 400 var(--fs-13)/1.55 var(--font-ui); font-variant-numeric: tabular-nums;
   opacity: 1; transform: none; transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);

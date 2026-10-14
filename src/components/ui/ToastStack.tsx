@@ -135,8 +135,15 @@ function ToastCard({ entry, paused }: { entry: ToastStackEntry; paused: boolean 
   }, [paused, entry.exiting, entry.duration, entry.id])
 
   const run = async (action: ToastStackAction) => {
-    await action.onClick?.()
-    dismissToast(entry.id)
+    try {
+      await action.onClick?.()
+    } catch (error) {
+      pushToast({ tone: 'danger', message: `${text('操作失败', 'Action failed')}
+
+${error instanceof Error ? error.message : String(error)}`, duration: 8000 })
+    } finally {
+      dismissToast(entry.id)
+    }
   }
 
   return (
