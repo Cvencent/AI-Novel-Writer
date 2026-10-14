@@ -229,7 +229,7 @@ export default function App() {
 
   // 全局快捷键: Cmd+N 新建项目，Cmd+O 打开项目，Cmd+= / Cmd+- / Cmd+0 缩放；两种外壳共用
   useEffect(() => {
-    const handleKeyDown = async (e: KeyboardEvent) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey
       if (!mod) return
       if (e.key === 'n' || e.key === 'N') {
@@ -237,10 +237,9 @@ export default function App() {
         leaveSettingsThen(() => useLayoutStore.getState().openNewProject())
       } else if (e.key === 'o' || e.key === 'O') {
         e.preventDefault()
-        const folder = await ipc.invoke('dialog:select-folder', 'project-open')
-        if (folder) {
-          leaveSettingsThen(() => void useProjectStore.getState().openProject(folder))
-        }
+        leaveSettingsThen(() => void ipc.invoke('dialog:select-folder', 'project-open').then(folder => {
+          if (folder) return useProjectStore.getState().openProject(folder)
+        }))
       } else if (e.key === '=' || e.key === '+') {
         e.preventDefault()
         useThemeStore.getState().zoomIn()
