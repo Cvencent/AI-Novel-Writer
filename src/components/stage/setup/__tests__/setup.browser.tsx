@@ -156,6 +156,12 @@ describe('设定页', () => {
     expect([length().textContent, length().hasAttribute('data-missing')]).toEqual(['篇幅 · 必填', true])
   })
 
+  it('篇幅超出安全整数时仍算没填全，与预览卡（主进程按安全整数判断）一致', async () => {
+    project({ totalChapters: 2 ** 53 })
+    await mount()
+    expect([...host!.querySelectorAll('.stage-setup-label')][2].textContent).toBe('篇幅 · 必填')
+  })
+
   it('点开一项更多设定：面板滚进视野，焦点落在面板的输入框里', async () => {
     project({})
     await mount()
