@@ -366,6 +366,30 @@ export const X1_SCENARIOS = {
     return after
   } },
 
+  // #405 r2 C1：灯塔第 4 章审稿后每条意见都选不修改，确认还没返回时换到港口并打开运行侧页；
+  // 确认回来后运行侧页还开着，没有被换成灯塔那一稿的审稿侧页。第 3 章的预置审稿没有复验周期，重新审稿又被生成源校验拒绝，所以用第 4 章。
+  'x1-waiver-switch': { model: true, shell: 'stage', setup: seedTwoBooks(), run: async ({ app, page }) => {
+    await chapterView.open(page, 4)
+    await chapterView.review(page)
+    const sheet = chapterView.reviewSheet(page)
+    const waive = sheet.getByRole('button', { name: '不修改此项' })
+    await waive.first().waitFor({ state: 'visible' })
+    while (await waive.count() > 0) await waive.first().click()
+    const confirm = chapterView.view(page).getByRole('button', { name: '确认不修改', exact: true })
+    await confirm.waitFor({ state: 'visible', timeout: 5000 })
+    await holdChannel(app, 'db:review-get-full')
+    await confirm.click()
+    await untilHeld(app, 'db:review-get-full')
+    await stage.backToLibrary(page, STAGE_SAMPLE.name)
+    await stage.openFromPalette(page, HARBOR)
+    await runSheet.openFromPalette(page)
+    await releaseChannel(app, 'db:review-get-full')
+    await page.waitForTimeout(1500)
+    const after = { runSheet: await runSheet.sheet(page).isVisible(), reviewSheet: await sheet.isVisible() }
+    assert.deepEqual(after, { runSheet: true, reviewSheet: false }, '确认回来后港口里作者开的运行侧页还开着')
+    return after
+  } },
+
   // #404-1：书房里导入旧项目副本，复制期间作者开了设置页并输入；复制完成要自动打开作品时先确认，继续编辑就不打开。
   'x1-import-settings': { model: false, shell: 'stage', setup: seedTwoBooks({ open: false }), run: async context => {
     const { app, page } = context
