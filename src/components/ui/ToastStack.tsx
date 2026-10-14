@@ -233,7 +233,15 @@ function ToastStack() {
   }, [])
 
   return (
-    <div ref={stackRef} className="pi-toast-stack" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+    // 模态的滚动锁在 document 上拦掉锁外的滚轮与触摸滚动；栈画在模态之上，滚动不该被锁，在冒泡到 document 之前截住
+    <div
+      ref={stackRef}
+      className="pi-toast-stack"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onWheel={event => event.stopPropagation()}
+      onTouchMove={event => event.stopPropagation()}
+    >
       {items.map(entry => <ToastCard key={entry.id} entry={entry} paused={paused} />)}
     </div>
   )
