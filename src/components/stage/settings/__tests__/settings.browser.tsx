@@ -341,4 +341,23 @@ describe('设置页', () => {
     expect(useLayoutStore.getState().settingsOpen).toBe(false)
     expect(useEditorStore.getState().tabs.map(tab => tab.name)).toEqual(['剧情树与叙事线索'])
   })
+
+  it('书房里的设置页有没保存的输入时，回到作品、打开运行侧页这类会离开书房的导航也先确认', async () => {
+    setActiveProjectSessionContext({ projectId: 'p', leaseId: 'l', projectPath: 'C:\\novels\\p' })
+    useProjectStore.setState({ currentProject: { id: 'p', sessionLease: 'l', name: '灯塔', path: 'C:\\novels\\p', novelConfig: {} } as unknown as ProjectData })
+    useLayoutStore.setState({ sidebarView: 'home' })
+    await mount(true)
+    await click(byName('编辑「DeepSeek V4 Flash」'))
+    await type(input('如：DeepSeek 主力 / GPT-4o 备用'), '主力模型')
+
+    for (const intent of [{ kind: 'stage' }, { kind: 'run', facet: 'output' }] as const) {
+      await act(async () => navigate(intent))
+      expect(discardDialog(), intent.kind).toBeTruthy()
+      await click(dialogButton('继续编辑'))
+      expect(useLayoutStore.getState()).toMatchObject({ sidebarView: 'home', settingsOpen: true })
+    }
+    await act(async () => navigate({ kind: 'stage' }))
+    await click(dialogButton('放弃修改'))
+    expect(useLayoutStore.getState()).toMatchObject({ sidebarView: 'project', settingsOpen: false })
+  })
 })
