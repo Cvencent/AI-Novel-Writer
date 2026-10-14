@@ -7,7 +7,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import type { ModelProfile, ProjectData } from '../../../../shared/ipc-channels'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
 import { useAppearanceStore } from '../../../../stores/appearance-bootstrap'
-import { useEditorStore } from '../../../../stores/editor-store'
+import { registerEditorExitSaveHandler, useEditorStore } from '../../../../stores/editor-store'
 import { useLayoutStore } from '../../../../stores/layout-store'
 import { useLLMStore } from '../../../../stores/llm-store'
 import { navigate } from '../../../../stores/navigation/navigation-intents'
@@ -149,6 +149,19 @@ describe('设置页', () => {
     await act(async () => useLLMStore.setState({ models: [MODEL, LOCAL], defaultEmbeddingModelId: null }))
     await vi.waitFor(() => expect(index()).toContain('配置并启用检索模型后'))
     expect(byName('检查并重建向量索引')).toBeUndefined()
+  })
+
+  it('设置页开着时 Ctrl S 不保存藏在后面的标签', async () => {
+    const save = vi.fn(async () => undefined)
+    const off = registerEditorExitSaveHandler({ tabId: 'config-tab', type: 'config', save })
+    try {
+      useEditorStore.setState({ tabs: [{ id: 'config-tab', name: '设定', type: 'config', dirty: true }], activeTabId: 'config-tab' })
+      await mount()
+      await key('s', window, { ctrlKey: true })
+      expect(save).not.toHaveBeenCalled()
+    } finally {
+      off()
+    }
   })
 
   it('删除模型先出现危险确认，写明后果；取消不删，确认才删', async () => {
