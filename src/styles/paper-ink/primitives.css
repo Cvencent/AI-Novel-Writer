@@ -213,14 +213,17 @@
 
 /* ================= 弹层与菜单 ================= */
 .pi-anchor { display: inline-flex; }
-/* 浮层 Portal 到 .paper-ink 根，top/left/right 由 use-anchored-layer 按触发按钮写入 */
+/* 浮层 Portal 到 .paper-ink 根，位置与 max-height 由 use-anchored-layer 按触发按钮写入，放不下的在浮层内部滚动 */
 .pi-popover, .pi-menu {
+  overflow-y: auto; overscroll-behavior: contain;
   position: fixed; z-index: var(--z-popover);
   border-radius: var(--radius-panel); background: var(--layer); color: var(--ink); box-shadow: var(--shadow-pop);
 }
 .pi-popover:focus { outline: none; }
 /* 弹层偶尔出现，140ms 浮现；菜单每天几十次且常由键盘打开，不做进场动画 */
 .pi-popover { width: 340px; padding: var(--s-5); display: flex; flex-direction: column; gap: var(--s-3); animation: pi-rise var(--dur-fast) var(--ease); }
+/* 弹层到了 max-height 时内容在里面滚动，不被 flex 压扁 */
+.pi-popover > * { flex-shrink: 0; }
 .pi-popover-title { margin: 0; font: 600 var(--fs-16)/1.4 var(--font-display); letter-spacing: .02em; }
 .pi-menu { min-width: 232px; padding: 6px; display: flex; flex-direction: column; }
 .pi-menu-item {

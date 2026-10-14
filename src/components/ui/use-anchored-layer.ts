@@ -2,11 +2,18 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type 
 import { createPortal } from 'react-dom'
 
 const GAP = 6
-const TABBABLE = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]'
+/** 浮层与视口边缘至少留的距离。 */
+const MARGIN = 8
+const TABBABLE = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex]'
+
+/** 浏览器按 Tab 会停的控件：折叠的 <details> 里、display:none 与 visibility:hidden 的控件不算。 */
+const tabbablesIn = (layer: HTMLElement) =>
+  [...layer.querySelectorAll<HTMLElement>(TABBABLE)].filter((element) => element.tabIndex >= 0 && element.checkVisibility({ visibilityProperty: true }))
 
 /**
  * Menu 与 Popover 共用：浮层 Portal 到最近的 .paper-ink 根，按触发按钮位置 fixed 定位，
- * 不被侧页等滚动容器裁切。点击外部、滚动外部容器、改变窗口大小时关闭；
+ * 不被侧页等滚动容器裁切。下方放不下且上方更宽裕时向上展开，高度不超过所在一侧的视口空间，再多就在浮层内部滚动。
+ * 点击外部、焦点移到外部、滚动外部容器、改变窗口大小时关闭；
  * Esc 关闭并把焦点还给触发按钮；Tab 离开浮层时先回到触发按钮，再由浏览器继续移动焦点。
  */
 export function useAnchoredLayer(align: 'start' | 'end'): {
@@ -39,9 +46,16 @@ export function useAnchoredLayer(align: 'start' | 'end'): {
     const trigger = triggerRef.current
     if (!open || !layer || !trigger) return
     const rect = trigger.getBoundingClientRect()
-    layer.style.top = `${rect.bottom + GAP}px`
-    if (align === 'end') layer.style.right = `${document.documentElement.clientWidth - rect.right}px`
-    else layer.style.left = `${rect.left}px`
+    const { clientWidth, clientHeight } = document.documentElement
+    const below = clientHeight - rect.bottom - GAP - MARGIN
+    const above = rect.top - GAP - MARGIN
+    const upward = layer.offsetHeight > below && above > below
+    layer.style.maxHeight = `${upward ? above : below}px`
+    if (upward) layer.style.bottom = `${clientHeight - rect.top + GAP}px`
+    else layer.style.top = `${rect.bottom + GAP}px`
+    const widest = clientWidth - layer.offsetWidth - MARGIN
+    if (align === 'end') layer.style.right = `${Math.min(Math.max(MARGIN, clientWidth - rect.right), widest)}px`
+    else layer.style.left = `${Math.min(Math.max(MARGIN, rect.left), widest)}px`
   }, [open, align])
 
   useEffect(() => {
@@ -50,6 +64,10 @@ export function useAnchoredLayer(align: 'start' | 'end'): {
     if (!open || !layer || !anchor) return
     const inside = (target: EventTarget | null) => target instanceof Node && (anchor.contains(target) || layer.contains(target))
     const onPointerDown = (event: PointerEvent) => {
+      if (!inside(event.target)) close(false)
+    }
+    // 鼠标打开时焦点留在触发按钮上，Tab 会直接走到页面下一项，浮层不能还开着
+    const onFocusIn = (event: FocusEvent) => {
       if (!inside(event.target)) close(false)
     }
     const onScroll = (event: Event) => {
@@ -64,7 +82,7 @@ export function useAnchoredLayer(align: 'start' | 'end'): {
     }
     const onLayerKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Tab') return
-      const tabbables = [...layer.querySelectorAll<HTMLElement>(TABBABLE)].filter((element) => element.tabIndex >= 0)
+      const tabbables = tabbablesIn(layer)
       const active = document.activeElement
       if (event.shiftKey && (tabbables.length === 0 || active === layer || active === tabbables[0])) {
         event.preventDefault()
@@ -74,6 +92,7 @@ export function useAnchoredLayer(align: 'start' | 'end'): {
       }
     }
     document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('focusin', onFocusIn)
     document.addEventListener('scroll', onScroll, true)
     window.addEventListener('resize', onResize)
     anchor.addEventListener('keydown', onKeyDown)
@@ -81,6 +100,7 @@ export function useAnchoredLayer(align: 'start' | 'end'): {
     layer.addEventListener('keydown', onLayerKeyDown)
     return () => {
       document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('focusin', onFocusIn)
       document.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('resize', onResize)
       anchor.removeEventListener('keydown', onKeyDown)

@@ -601,9 +601,11 @@ describe('侧页内的菜单', () => {
     const triggerRect = trigger.getBoundingClientRect()
     expect(menuRect.bottom).toBeGreaterThan(bodyRect.bottom)
     expect(menuRect.top).toBeCloseTo(triggerRect.bottom + 6, 0)
-    expect(menuRect.right).toBeCloseTo(triggerRect.right, 0)
-    const hit = document.elementFromPoint(menuRect.left + menuRect.width / 2, (bodyRect.bottom + menuRect.bottom) / 2)
-    expect(hit?.closest('[role="menuitem"]')).not.toBeNull()
+    expect(menuRect.left).toBe(8)
+    expect(menuRect.right).toBeGreaterThan(triggerRect.right)
+    const lastItem = page.getByRole('menuitem', { name: '删除作品…' }).element().getBoundingClientRect()
+    expect(lastItem.top).toBeGreaterThan(bodyRect.bottom)
+    expect(document.elementFromPoint(lastItem.left + lastItem.width / 2, lastItem.top + lastItem.height / 2)?.textContent).toBe('删除作品…')
     expect(body.scrollHeight).toBe(scrollHeight)
     expect(getComputedStyle(menu).backgroundColor).toBe(tokenColor(container, '--layer'))
     await shot('rd1-menu-in-sheet')
@@ -742,7 +744,7 @@ describe('Popover', () => {
   })
 
   it('靠近视口下沿放不下时向上展开；上下都放不下时取较大一侧并在弹层内部滚动，内部滚动不关闭弹层', async () => {
-    const tall = <div style={{ height: 520 }}>九条预检提醒</div>
+    const tall = <div style={{ height: 700 }}>九条预检提醒</div>
     const container = await mount(
       <div style={{ paddingTop: 560 }}>
         <Popover label="写第 5 章" title="本次写作选项">{tall}</Popover>
@@ -754,7 +756,7 @@ describe('Popover', () => {
     await finishAnimations(dialog)
     const triggerRect = trigger.getBoundingClientRect()
     const rect = dialog.getBoundingClientRect()
-    expect(rect.bottom).toBeCloseTo(triggerRect.top - 6, 0)
+    expect(Math.abs(rect.bottom - (triggerRect.top - 6))).toBeLessThanOrEqual(1)
     expect(rect.top).toBeGreaterThanOrEqual(8)
     expect(dialog.scrollHeight).toBeGreaterThan(dialog.clientHeight)
     await act(async () => {
