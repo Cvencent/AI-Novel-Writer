@@ -886,6 +886,57 @@ describe('InlineConfirm', () => {
     await userEvent.keyboard('{Escape}')
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
+
+  /** 照运行侧页「清空日志…」：确认条出现期间触发按钮禁用，清空后再也不可用。 */
+  function ClearLog() {
+    const [lines, setLines] = useState(12)
+    const [confirming, setConfirming] = useState(false)
+    return (
+      <aside tabIndex={-1} aria-label="运行侧页">
+        <Button variant="text" disabled={lines === 0 || confirming} onClick={() => setConfirming(true)}>清空日志…</Button>
+        {confirming && (
+          <InlineConfirm message={`清空后这 ${lines} 行日志无法找回。`} confirmLabel="清空" cancelLabel="保留"
+            onConfirm={() => { setConfirming(false); setLines(0) }} onCancel={() => setConfirming(false)} />
+        )}
+      </aside>
+    )
+  }
+
+  it('取消后焦点回到打开它的按钮；确认后那个按钮不可用时，焦点落到最近的可聚焦祖先，不落到 body', async () => {
+    const container = await mount(<ClearLog />)
+    const trigger = page.getByRole('button', { name: '清空日志…' }).element()
+    await userEvent.tab()
+    await userEvent.keyboard('{Enter}')
+    expect(focused().textContent).toBe('保留')
+    await userEvent.keyboard('{Escape}')
+    expect(focused()).toBe(trigger)
+
+    await userEvent.keyboard('{Enter}')
+    await userEvent.tab()
+    expect(focused().textContent).toBe('清空')
+    await userEvent.keyboard('{Enter}')
+    expect(container.querySelector('[role="group"]')).toBeNull()
+    expect(focused()).toBe(container.querySelector('aside'))
+  })
+
+  it('确认条替换掉了打开它的按钮时，取消后焦点也不落到 body', async () => {
+    function Discard() {
+      const [confirming, setConfirming] = useState(false)
+      return (
+        <article tabIndex={-1} aria-label="可恢复的内容">
+          {confirming
+            ? <InlineConfirm message="放弃后这 300 字无法找回。" confirmLabel="放弃" cancelLabel="保留" onConfirm={() => setConfirming(false)} onCancel={() => setConfirming(false)} />
+            : <Button variant="danger" onClick={() => setConfirming(true)}>放弃…</Button>}
+        </article>
+      )
+    }
+    const container = await mount(<Discard />)
+    await userEvent.tab()
+    await userEvent.keyboard('{Enter}')
+    await userEvent.keyboard('{Escape}')
+    expect(focused()).not.toBe(document.body)
+    expect(container.contains(focused())).toBe(true)
+  })
 })
 
 describe('DangerConfirm', () => {
@@ -959,6 +1010,74 @@ describe('DangerConfirm', () => {
     await userEvent.keyboard('{Escape}')
     expect(container.querySelector('[role="dialog"]')).toBeNull()
     expect(onConfirm).not.toHaveBeenCalled()
+  })
+
+  function Opener({ onConfirm = () => {} }: { onConfirm?: () => void }) {
+    const [open, setOpen] = useState(false)
+    return (
+      <div style={{ minHeight: 440 }}>
+        <Button variant="danger" onClick={() => setOpen(true)}>关闭标签</Button>
+        <DangerConfirm open={open} onOpenChange={setOpen} title="放弃未保存的修改？" consequence="修改会丢失。" recoverability="无法恢复。"
+          confirmLabel="放弃并关闭" cancelLabel="继续编辑" onConfirm={onConfirm} />
+      </div>
+    )
+  }
+
+  it('没有 Dialog.Trigger 时，Esc 或取消关闭后焦点回到打开前的元素，不落到 body', async () => {
+    const container = await mount(<Opener />)
+    const opener = container.querySelector('button')!
+    await userEvent.tab()
+    await userEvent.keyboard('{Enter}')
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull()
+    await userEvent.keyboard('{Escape}')
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+    expect(focused()).toBe(opener)
+
+    await userEvent.keyboard('{Enter}')
+    await userEvent.click(page.getByRole('button', { name: '继续编辑' }))
+    expect(focused()).toBe(opener)
+  })
+
+  it('确认后打开它的元素已被移除时，焦点落到最近仍在的可聚焦祖先', async () => {
+    function RemovedOnConfirm() {
+      const [tabs, setTabs] = useState(['第 3 章'])
+      const [open, setOpen] = useState(false)
+      return (
+        <section tabIndex={-1} aria-label="内容区" style={{ minHeight: 440 }}>
+          {tabs.map((tab) => <Button key={tab} variant="text" onClick={() => setOpen(true)}>{tab}</Button>)}
+          <DangerConfirm open={open} onOpenChange={setOpen} title="放弃未保存的修改？" consequence="修改会丢失。" recoverability="无法恢复。"
+            confirmLabel="放弃并关闭" cancelLabel="继续编辑" onConfirm={() => setTabs([])} />
+        </section>
+      )
+    }
+    const container = await mount(<RemovedOnConfirm />)
+    await userEvent.tab()
+    await userEvent.keyboard('{Enter}')
+    await userEvent.click(page.getByRole('button', { name: '放弃并关闭' }))
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+    expect(focused()).toBe(container.querySelector('section'))
+  })
+
+  it('父组件不经 onOpenChange 直接关闭再打开，输入框是空的', async () => {
+    let setOpen: (open: boolean) => void = () => {}
+    function ParentControlled() {
+      const [open, set] = useState(true)
+      setOpen = set
+      return (
+        <div style={{ minHeight: 440 }}>
+          <DangerConfirm open={open} onOpenChange={set} title="删除《灯塔》" consequence="将删除全部章节。" recoverability="删除后无法恢复。"
+            confirmLabel="永久删除" cancelLabel="取消" onConfirm={() => {}} typeToConfirm={{ expected: '灯塔', label: '输入作品名「灯塔」以确认' }} />
+        </div>
+      )
+    }
+    const container = await mount(<ParentControlled />)
+    await settle()
+    await userEvent.keyboard('灯塔')
+    expect(container.querySelector('input')!.value).toBe('灯塔')
+    await act(async () => setOpen(false))
+    await act(async () => setOpen(true))
+    expect(container.querySelector('input')!.value).toBe('')
+    expect(page.getByRole('button', { name: '永久删除' }).element()).toHaveProperty('disabled', true)
   })
 })
 
