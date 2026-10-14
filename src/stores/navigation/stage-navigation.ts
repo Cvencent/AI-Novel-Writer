@@ -1,4 +1,4 @@
-import { leaveSettingsThen } from '../../components/settings/unsaved-settings'
+import { leaveSettings, leaveSettingsThen } from '../../components/settings/unsaved-settings'
 import { toast } from '../../components/ui/Toast'
 import type { DraftMeta } from '../../services/draft-index'
 import { chapterTabName } from '../../shared/chapter-label'
@@ -135,7 +135,11 @@ async function openManuscript(): Promise<void> {
  */
 export function stageNavigate(intent: NavigationIntent): void {
   if (intent.kind === 'settings') {
-    useLayoutStore.setState({ settingsOpen: true, settingsSection: intent.section })
+    const open = () => useLayoutStore.setState({ settingsOpen: true, settingsSection: intent.section })
+    const { settingsOpen, settingsSection } = useLayoutStore.getState()
+    // 设置页开着时换分区会卸掉当前分区的输入，与设置页里点侧栏换页一样先确认。
+    if (settingsOpen && settingsSection !== intent.section) leaveSettings(open)
+    else open()
     return
   }
   if (intent.kind === 'chapter' && intent.write) {
