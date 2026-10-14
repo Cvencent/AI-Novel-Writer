@@ -87,7 +87,7 @@ describe('打开作品时的落点', () => {
     const current = session('current')
     await open(current, READY)
     await act(async () => {
-      useStageStore.setState({ work: { session: current, architecture: { premise: true }, blueprints: [{ chapterNumber: 1, title: '旧港' }] } })
+      useStageStore.setState({ work: { session: current, architecture: { premise: true }, blueprints: [] } })
       useDraftStore.setState({ dataProjectSession: session('stale'), loading: false })
     })
     await act(async () => root!.render(<Landing />))
@@ -104,7 +104,7 @@ describe('打开作品时的落点', () => {
     const current = session('current')
     await open(current, READY)
     await act(async () => {
-      useStageStore.setState({ work: { session: current, architecture: { premise: true }, blueprints: [{ chapterNumber: 1, title: '旧港' }] } })
+      useStageStore.setState({ work: { session: current, architecture: { premise: true }, blueprints: [] } })
       useDraftStore.setState({ dataProjectSession: current, loading: true })
     })
     await act(async () => root!.render(<Landing />))
@@ -113,6 +113,47 @@ describe('打开作品时的落点', () => {
     await act(async () => useDraftStore.setState({ loading: false }))
     expect(tabTypes()).toEqual(['world-building'])
     expect(useStageStore.getState().palette).toBe('commands')
+  })
+
+  const PARTIAL_ARCHITECTURE = { premise: true, characters: true, worldbuilding: true, synopsis: false }
+  const BLUEPRINTS = [1, 2, 3].map(chapterNumber => ({ chapterNumber, title: `第${chapterNumber}章` }))
+  const draft = (chapterNumber: number, status: 'draft' | 'finalized') => ({ id: chapterNumber * 10, chapterNumber, version: 1, status,
+    createdAt: '2026-10-13 20:00:00', updatedAt: '2026-10-13 20:00:00', source: 'write', filePath: `ai-novel://draft/${chapterNumber * 10}`, fileName: 'draft_v1.md' })
+  async function landWith(blueprints: typeof BLUEPRINTS, drafts: Record<number, ReturnType<typeof draft>[]>) {
+    const current = session('current')
+    await open(current, READY)
+    await act(async () => {
+      useStageStore.setState({ work: { session: current, architecture: PARTIAL_ARCHITECTURE, blueprints } })
+      useDraftStore.setState({ draftsByChapter: drafts as never, dataProjectSession: current, loading: false })
+    })
+    Object.defineProperty(window, 'aiNovelAPI', { configurable: true, value: { invoke: async (channel: string) => {
+      if (channel === 'db:draft-get-full') return { content: '雾钟又提前响了一刻。' }
+      throw new Error(`unexpected IPC ${channel}`)
+    }, on: () => () => {} } })
+    try {
+      await act(async () => root!.render(<Landing />))
+      await vi.waitFor(() => expect(useEditorStore.getState().activeTabId).not.toBeNull())
+    } finally {
+      Reflect.deleteProperty(window, 'aiNovelAPI')
+    }
+    const active = useEditorStore.getState().tabs.find(tab => tab.id === useEditorStore.getState().activeTabId)
+    return { type: active?.type, chapter: active?.chapterNumber }
+  }
+
+  it('大纲没写完、也还没有蓝图与正文：落在架构', async () => {
+    expect(await landWith([], {})).toEqual({ type: 'world-building', chapter: undefined })
+  })
+
+  it('大纲没写完但已有蓝图：落在当前该写的那一章，不拉回架构', async () => {
+    expect(await landWith(BLUEPRINTS, {})).toEqual({ type: 'chapter', chapter: 1 })
+  })
+
+  it('大纲没写完但已有正文：落在写到一半的那一章', async () => {
+    expect(await landWith(BLUEPRINTS, { 1: [draft(1, 'finalized')], 2: [draft(2, 'draft')] })).toEqual({ type: 'chapter', chapter: 2 })
+  })
+
+  it('大纲没写完、有正文却没有蓝图：落在蓝图，不拉回架构', async () => {
+    expect(await landWith([], { 1: [draft(1, 'finalized')] })).toEqual({ type: 'chapter-card', chapter: undefined })
   })
 
   it('上一次打开留下的架构与蓝图数据不算这次的', async () => {
