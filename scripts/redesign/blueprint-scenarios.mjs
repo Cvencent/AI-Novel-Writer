@@ -1,6 +1,6 @@
 // RD-7 蓝图阶段与写作此章弹层的实机场景：对应计划 RD-7 的 live lane 1～10、perf 的 blueprint-timing 与评审导览。
 import assert from 'node:assert/strict'
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 
 import { FAKE_MODEL, FIXTURE_PROSE } from './fake-model.mjs'
 import * as blueprint from './pages/blueprint.mjs'
@@ -76,15 +76,19 @@ async function proseRequest(fake, timeoutMs = 30_000) {
 
 /** 在渲染进程里计时：点击 target 到 ready 选择器出现，单位毫秒，帧粒度。 */
 async function msFromClick(page, target, readySelector, readyText) {
-  const handle = await target.elementHandle()
-  await page.evaluate(({ element, readySelector, readyText }) => {
+  await page.evaluate(({ readySelector, readyText }) => {
     let clickedAt = null
     let handledMs = null
     window.addEventListener('click', () => { clickedAt ??= performance.now() }, { capture: true, once: true })
     document.addEventListener('click', () => { handledMs ??= performance.now() - clickedAt }, { once: true })
     window.__driveReady = new Promise((resolve, reject) => {
-      const deadline = setTimeout(() => reject(new Error('20 秒内没有出现')), 20_000)
+      let expired = false
+      const deadline = setTimeout(() => {
+        expired = true
+        reject(new Error('20 秒内没有出现'))
+      }, 20_000)
       const tick = frameAt => {
+        if (expired) return
         const checkAt = performance.now()
         const shown = [...document.querySelectorAll(readySelector)].some(node =>
           (readyText === null || (node instanceof HTMLInputElement ? node.value : node.textContent).includes(readyText)) && node.getClientRects().length > 0)
@@ -96,7 +100,7 @@ async function msFromClick(page, target, readySelector, readyText) {
       }
       requestAnimationFrame(tick)
     })
-  }, { element: handle, readySelector, readyText })
+  }, { readySelector, readyText })
   await target.click()
   return page.evaluate(() => window.__driveReady)
 }

@@ -128,7 +128,7 @@ function outlineChapters(synopsis) {
 
 /**
  * 对比用的文字对比度：名称与正文类至少 4.5:1，说明类至少 3:1，底色沿祖先叠加求出。
- * 另核对卡片、提示条与对话框的底色都来自纸墨令牌（计算值与令牌的计算值相同）。
+ * 另核对分节卡片的底色来自纸墨令牌 --paper（计算值与令牌的计算值相同）。
  */
 async function archContrastFailures(page) {
   return page.evaluate(() => {
@@ -514,6 +514,7 @@ export const ARCH_SCENARIOS = {
 
   /** lane 10：深色主题下的架构页（含一条大纲提示条）：文字对比度达标，卡片底色来自纸墨令牌。用 --theme dark 跑。 */
   'arch-dark': { model: false, shell: 'stage', setup: seedArch({ clear: ['worldbuilding'] }), run: async ({ page }) => {
+    assert.equal(await stage.root(page).getAttribute('data-theme'), 'dark', '用 --theme dark 跑；浅色下这条 lane 测不到深色')
     await openArchitecture(page)
     assert.deepEqual(await archContrastFailures(page), [], '对比度不足或底色不是令牌')
     return { theme: await stage.root(page).getAttribute('data-theme') }

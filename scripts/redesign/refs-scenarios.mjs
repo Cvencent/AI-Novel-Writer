@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 
-import * as chapter from './pages/chapter.mjs'
 import * as chapterView from './pages/chapter-view.mjs'
 import * as refs from './pages/refs.mjs'
 import * as runSheet from './pages/run-sheet.mjs'

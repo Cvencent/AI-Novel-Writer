@@ -349,5 +349,3 @@ export function useDirectoryConfigForm({ isOpen, onClose, existingCount, onConfi
     handleCharacterSyncRecovery, handleConfirm, continueOperation,
   }
 }
-
-export type DirectoryConfigForm = NonNullable<ReturnType<typeof useDirectoryConfigForm>>

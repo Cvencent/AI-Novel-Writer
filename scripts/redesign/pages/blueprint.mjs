@@ -33,11 +33,6 @@ export async function pageMenu(page, item) {
   await page.getByRole('menuitem', { name: item }).click()
 }
 
-export async function chapterMenu(page, number, item) {
-  await page.getByRole('button', { name: `第 ${number} 章更多操作` }).click()
-  await page.getByRole('menuitem', { name: item }).click()
-}
-
 export const confirmDialog = (page, title) => page.getByRole('dialog', { name: title })
 
 export const generateDialog = page => page.getByRole('dialog', { name: 'AI 生成蓝图' })
