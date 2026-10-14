@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 
+import * as blueprint from './pages/blueprint.mjs'
 import * as bookshelf from './pages/bookshelf.mjs'
-import * as chapter from './pages/chapter.mjs'
 import * as materials from './pages/materials.mjs'
 import * as runSheet from './pages/run-sheet.mjs'
 import * as stage from './pages/stage.mjs'
@@ -27,8 +27,8 @@ const inPaperInk = locator => locator.evaluate(element => element.closest('.pape
 
 /** 写一章后打开诊断分页，返回第一条调用的「复制安全诊断」按钮。 */
 async function diagnosticsCopyButton(page) {
-  await stage.stageButton(page, '蓝图').click()
-  await chapter.writeNextChapter(page, 100)
+  await blueprint.open(page)
+  await blueprint.writeNext(page)
   await runSheet.waitUntilOpen(page)
   await runSheet.waitForRunDone(page)
   await runSheet.tab(page, '诊断').click()
@@ -77,11 +77,12 @@ export const VISUAL_SCENARIOS = {
     await stage.backToLibrary(page, '雾岛')
     // 同一目录里再建一部同名作品，主进程拒绝，界面用命令式 alertError 报错
     await page.getByRole('button', { name: '新建作品', exact: true }).click()
-    const form = page.getByRole('dialog', { name: '新建小说项目' })
-    await form.getByPlaceholder('如：斗破苍穹').fill('雾岛')
+    // RD-5 起新建作品是纸墨对话框（NewWorkDialog）；旧外壳仍是「新建小说项目」
+    const form = page.getByRole('dialog', { name: /^(新建小说项目|新建作品)$/ })
+    await form.getByRole('textbox').first().fill('雾岛')
     await form.getByRole('button', { name: '选择', exact: true }).click()
-    assert.ok(await inPaperInk(form), '旧新建作品对话框也在纸墨宿主里')
-    await form.getByRole('button', { name: '创建项目', exact: true }).click()
+    assert.ok(await inPaperInk(form), '新建作品对话框在纸墨根或宿主里')
+    await form.getByRole('button', { name: /^(创建项目|创建作品)$/ }).click()
     const alert = page.getByRole('alertdialog')
     await alert.waitFor({ state: 'visible' })
     assert.ok(await inPaperInk(alert), '命令式错误弹框渲染进纸墨宿主')
@@ -259,8 +260,8 @@ export const VISUAL_SCENARIOS = {
     await page.getByRole('dialog', { name: '导出项目' }).waitFor({ state: 'visible' })
     await pause()
     await page.keyboard.press('Escape')
-    await stage.stageButton(page, '蓝图').click()
-    await chapter.writeNextChapter(page, 100)
+    await blueprint.open(page)
+    await blueprint.writeNext(page)
     await runSheet.waitUntilOpen(page)
     await runSheet.waitForRunDone(page)
     await pause()
