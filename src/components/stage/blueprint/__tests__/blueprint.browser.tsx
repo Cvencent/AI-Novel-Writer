@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 
@@ -326,6 +326,20 @@ describe('蓝图阶段', () => {
     await expect.element(dialog.getByRole('button', { name: '开始写 4 章' })).toBeVisible()
     await act(async () => dialog.getByRole('radio', { name: /自动定稿/ }).click())
     await expect.element(dialog.getByRole('button', { name: '继续确认自动定稿' })).toBeVisible()
+  })
+
+  it('「写几章」清空后重新输入：删掉 1 再输 3 得 3，不是 13；空着离开回到 1', async () => {
+    await renderPage()
+    await act(async () => page.getByRole('button', { name: '批量创作' }).click())
+    const count = page.getByRole('dialog', { name: '批量创作' }).getByLabelText(/写几章/)
+    const input = count.element() as HTMLInputElement
+    await act(async () => input.focus())
+    await userEvent.keyboard('{End}{Backspace}')
+    await userEvent.keyboard('3')
+    expect(input.value).toBe('3')
+    await userEvent.keyboard('{Backspace}')
+    await act(async () => input.blur())
+    expect(input.value).toBe('1')
   })
 
   it('更多蓝图操作里新建章节：新章接在权威下一章已有蓝图之后并被选中', async () => {
