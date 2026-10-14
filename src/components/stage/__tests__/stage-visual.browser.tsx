@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { page, userEvent } from 'vitest/browser'
 import { act, type ReactElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 
@@ -76,6 +77,51 @@ describe('新外壳的外观细节', () => {
     expect(container.querySelector('[role="status"]')?.textContent).toBe('未保存')
     useEditorStore.setState(restore[0], true)
     useProjectStore.setState(restore[1], true)
+  })
+
+  it('Tab 到激活标签时焦点环画在标签内侧，不被标签底边的裁切吃掉', async () => {
+    const tabs = [tab({ id: 'a', type: 'chapter', name: '第 1 章' }), tab({ id: 'b', type: 'chapter', name: '第 2 章' })]
+    const container = await mount(<StageTabs tabs={tabs} activeTabId="b" onSelect={() => undefined} onClose={() => undefined} tabDomId={id => `tab-${id}`} panelId="panel" />)
+    await userEvent.tab()
+    const label = container.querySelector<HTMLElement>('#tab-b')!
+    expect(document.activeElement).toBe(label)
+    expect(getComputedStyle(label.parentElement!).clipPath).toBe('inset(-1px -1px 0px)')
+    expect(getComputedStyle(label).boxShadow).toBe('rgb(44, 74, 140) 0px 0px 0px 2px inset')
+  })
+
+  it('激活标签在标签条可视区外时滚进来', async () => {
+    const tabs = Array.from({ length: 24 }, (_, index) => tab({ id: `t${index}`, type: 'chapter', name: `第 ${index + 1} 章 · 很长很长的章节名` }))
+    const props = { tabs, onSelect: () => undefined, onClose: () => undefined, tabDomId: (id: string) => `tab-${id}`, panelId: 'panel' }
+    const container = await mount(<div style={{ width: 640 }}><StageTabs {...props} activeTabId="t0" /></div>)
+    const strip = container.querySelector<HTMLElement>('.stage-tabs')!
+    const visible = (id: string) => {
+      const box = strip.getBoundingClientRect()
+      const rect = container.querySelector(`#tab-${id}`)!.parentElement!.getBoundingClientRect()
+      return rect.left >= box.left - 1 && rect.right <= box.right + 1
+    }
+    expect(visible('t23')).toBe(false)
+    await act(async () => root!.render(<div style={{ width: 640 }}><StageTabs {...props} activeTabId="t23" /></div>))
+    expect(visible('t23')).toBe(true)
+    await act(async () => root!.render(<div style={{ width: 640 }}><StageTabs {...props} activeTabId="t0" /></div>))
+    expect(visible('t0')).toBe(true)
+  })
+
+  it('作品名很长时顶栏标题以省略号收尾，窗口按钮仍在视口内', async () => {
+    await page.viewport(1024, 640)
+    const restore = useProjectStore.getState()
+    const name = '雾钟'.repeat(40)
+    useProjectStore.setState({ currentProject: { id: 'long', sessionLease: 'l', name, path: 'C:\novels\long', novelConfig: {} } as unknown as ProjectData })
+    try {
+      const container = await mount(<div style={{ width: 1024 }}><StageTopBar crumbs={['正文', '第 3 章']} library={false} focus={false} focusTitle={{ title: '' }} workMenu={[]} onToggleFocus={() => undefined} /></div>)
+      const close = page.getByRole('button', { name: '关闭', exact: true }).element().getBoundingClientRect()
+      expect(close.right).toBeLessThanOrEqual(1024)
+      const title = container.querySelector<HTMLElement>('.stage-work-name')!
+      expect(title.textContent).toBe(name)
+      expect(getComputedStyle(title).textOverflow).toBe('ellipsis')
+      expect(title.scrollWidth).toBeGreaterThan(title.clientWidth)
+    } finally {
+      useProjectStore.setState(restore, true)
+    }
   })
 
   it('进度环半径按画板取 size / 2 - stroke：流程脊 22 / 2.5 为 8.5，运行胶囊 18 / 2 为 7', async () => {
