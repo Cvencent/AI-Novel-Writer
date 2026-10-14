@@ -40,7 +40,7 @@ export function barsFromStages(stages: readonly StageStatus[], text: Text): Stag
 
 /**
  * 只预览、未打开的书：设定按主进程返回的必填是否齐全（与流程脊同一口径，只说齐没齐），
- * 架构按四节，蓝图有 1 章即完成，正文写定稿章数与规划章数。
+ * 架构按四节，蓝图有 1 章即完成，正文写定稿章数与规划章数，定稿达到规划章数即完成（同流程脊）。
  */
 export function barsFromOverview(overview: ReadyProjectOverview, text: Text): StageBar[] {
   const find = (id: ReadyProjectOverview['stages'][number]['id']) => overview.stages.find(stage => stage.id === id)
@@ -53,13 +53,14 @@ export function barsFromOverview(overview: ReadyProjectOverview, text: Text): St
   const setupReady = overview.setupReady ?? configuration?.status === 'completed'
   const setupState = setupReady ? 'done' : configuration?.count ? 'active' : 'todo'
   const planned = overview.plannedChapters ?? 0
+  const written = planned > 0 && finalized >= planned
   return [
     bar('setup', setupState, setupReady ? 1 : 0, setupReady ? name('setup') : text(`${name('setup')} 未齐`, `${name('setup')}: incomplete`)),
     bar('architecture', architecture >= 4 ? 'done' : architecture > 0 ? 'active' : 'todo', architecture / 4,
       architecture >= 4 ? name('architecture') : `${name('architecture')} ${architecture} / 4`),
     bar('blueprint', blueprints > 0 ? 'done' : 'todo', blueprints > 0 ? 1 : 0,
       blueprints > 0 ? text(`${name('blueprint')} ${blueprints} 章`, `${name('blueprint')} ${blueprints} ch.`) : name('blueprint')),
-    bar('manuscript', finalized > 0 || drafted > 0 ? 'active' : 'todo', planned > 0 ? finalized / planned : 0, planned > 0
+    bar('manuscript', written ? 'done' : finalized > 0 || drafted > 0 ? 'active' : 'todo', written ? 1 : planned > 0 ? finalized / planned : 0, planned > 0
       ? `${name('manuscript')} ${finalized} / ${planned}`
       : text(`${name('manuscript')} ${finalized} 章定稿`, `${name('manuscript')} ${finalized} final`)),
   ]
