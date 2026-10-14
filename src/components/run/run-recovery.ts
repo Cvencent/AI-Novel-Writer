@@ -7,7 +7,7 @@ import type { EditorInlineRecovery } from '../../shared/editor-inline-generation
 import type { GenerationBatchHistory, GenerationRecoveryContext } from '../../shared/generation-owner-contract'
 import type { RecoveryCandidate } from '../../shared/recovery-candidate'
 import type { ReviewRevisionRecovery } from '../../shared/review-revision-generation'
-import type { WorkflowRun } from '../../stores/workflow-store'
+import { workflowResourceKey, type WorkflowRun } from '../../stores/workflow-store'
 
 /**
  * 运行中断后可以接着做的事。两种外壳的运行界面都从这里取标题、提示、可复制的文字与动作是否可用，
@@ -66,6 +66,7 @@ export interface EditorEntry extends Usage {
 export interface ReviewEntry extends Usage {
   kind: 'review'
   key: string
+  chapterNumber: number
   title: string
   notes: string[]
   artifacts: RecoveryText[]
@@ -92,6 +93,7 @@ export interface BatchEntry {
 export interface DraftEntry extends Usage {
   kind: 'draft'
   key: string
+  chapterNumber?: number
   title: string
   artifacts: (RecoveryText & { selectable: boolean })[]
   tails: RecoveryText[]
@@ -220,6 +222,7 @@ function reviewEntry({ view, recovery }: RecoverySources['reviews'][number], loc
   return {
     kind: 'review',
     key: view.handle.runId,
+    chapterNumber: recovery.context.source.chapterNumber,
     title: t(`第${recovery.context.source.chapterNumber}章${review ? '审稿' : '修稿'}候选`,
       `Chapter ${recovery.context.source.chapterNumber} ${review ? 'review' : 'revision'} candidate`),
     ...usageOf(view, locale),
@@ -259,6 +262,7 @@ function draftEntry({ view, recovery }: RecoverySources['drafts'][number], local
   return {
     kind: 'draft',
     key: view.handle.runId,
+    chapterNumber: recovery.chapterNumber,
     title: changed ? t(`第${recovery.chapterNumber}章生成记录`, `Chapter ${recovery.chapterNumber} generation history`)
       : t(`第${recovery.chapterNumber}章候选`, `Chapter ${recovery.chapterNumber} candidate`),
     ...usageOf(view, locale),
@@ -283,13 +287,17 @@ function draftEntry({ view, recovery }: RecoverySources['drafts'][number], local
 
 /**
  * 这次打开作品后还在进行的工作：它正显示在运行卡片里，不是中断留下的。
- * 单章、审修与选区生成看 epoch：上次打开时没写完的换过会话，仍算可恢复。
+ * 单章与审修要这次打开里有运行正占着这一章：会话内失败时持久状态不会改，仍记为 running，不能当作还在写。
+ * 选区生成不是工作流运行，看 epoch：上次打开时没写完的换过会话，仍算可恢复。
  * 批量看进行中（含暂停）的批量运行：资源锁让同一批章同时只有一个批量运行在写，范围相同就是它在推进这一批。
  */
 export function isInFlight(entry: RecoveryEntry, leaseId: string | undefined, liveRuns: readonly Pick<WorkflowRun, 'type' | 'resourceKeys'>[]): boolean {
   if (entry.kind === 'batch') return liveRuns.some(run => run.type === 'batch_generate' && sameChapters(run.resourceKeys, entry.range))
-  const view = entry.kind === 'draft' || entry.kind === 'review' ? entry.view : entry.kind === 'editor' ? entry.recovery.view : undefined
-  return view?.status === 'running' && view.handle.epoch === leaseId
+  if (entry.kind === 'editor') return entry.recovery.view.status === 'running' && entry.recovery.view.handle.epoch === leaseId
+  if ((entry.kind !== 'draft' && entry.kind !== 'review') || entry.chapterNumber === undefined) return false
+  const chapter = workflowResourceKey('chapter', entry.chapterNumber)
+  return entry.view.status === 'running' && entry.view.handle.epoch === leaseId
+    && liveRuns.some(run => run.resourceKeys?.includes(chapter))
 }
 
 function sameChapters(keys: readonly string[] | undefined, range: BatchEntry['range']): boolean {
