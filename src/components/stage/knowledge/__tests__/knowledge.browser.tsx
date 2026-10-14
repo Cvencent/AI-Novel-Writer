@@ -233,6 +233,51 @@ describe('知识库', () => {
       .toEqual([['三号站台 失踪', 10], ['三号站台 失踪', 5]]))
   })
 
+  describe('连续改「最多显示」，两次查找乱序返回', () => {
+    const hits = (count: number) => Array.from({ length: count }, (_, index) => ({ text: `……三号站台第 ${index + 1} 段……`, score: 0.5, fileName: '车站档案.md' }))
+    let replies: Map<number, (count: number) => void>
+
+    async function searchThenChange(limits: number[]) {
+      await renderPage()
+      await type(document.querySelector<HTMLInputElement>('form[role="search"] input')!, '三号站台')
+      await act(async () => document.querySelector<HTMLFormElement>('form[role="search"]')!.requestSubmit())
+      await vi.waitFor(() => expect(document.body.textContent).toContain('找到 2 条'))
+      replies = new Map()
+      const base = invoke.getMockImplementation()!
+      invoke.mockImplementation(async (channel, ...args) => channel === 'kb:search'
+        ? new Promise(resolve => replies.set(args[1] as number, count => resolve(hits(count))))
+        : base(channel, ...args))
+      const limit = document.querySelector<HTMLSelectElement>('.stage-kb-topk')!
+      for (const value of limits) {
+        await act(async () => {
+          Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(limit, String(value))
+          limit.dispatchEvent(new Event('change', { bubbles: true }))
+        })
+      }
+      await vi.waitFor(() => expect([...replies.keys()]).toEqual(limits))
+    }
+    const findButton = () => [...document.querySelectorAll('button')].find(button => button.textContent === '查找')!
+    const reply = async (limit: number, count: number) => act(async () => replies.get(limit)!(count))
+
+    it('先改的那次晚到，不盖掉后改的结果', async () => {
+      await searchThenChange([5, 20])
+      await reply(20, 7)
+      await vi.waitFor(() => expect(document.body.textContent).toContain('找到 7 条'))
+      await reply(5, 5)
+      expect(document.body.textContent).toContain('找到 7 条')
+      expect(document.querySelector<HTMLSelectElement>('.stage-kb-topk')!.value).toBe('20')
+    })
+
+    it('先改的那次先到，后改的还在查：仍在查找中，查找按钮不可点', async () => {
+      await searchThenChange([5, 20])
+      await reply(5, 5)
+      expect(findButton().disabled).toBe(true)
+      await reply(20, 7)
+      await vi.waitFor(() => expect(document.body.textContent).toContain('找到 7 条'))
+      expect(findButton().disabled).toBe(false)
+    })
+  })
+
   it('定稿章节按定稿登记分架：有项目副本也不进「我导入的」，旧版无副本的导入资料不算定稿', async () => {
     await renderPage()
     expect(button(/我导入的 3/)).toBeTruthy()
