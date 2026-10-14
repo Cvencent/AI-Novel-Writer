@@ -31,11 +31,12 @@ let root: Root | undefined
 let host: HTMLDivElement | undefined
 let drafts: Draft[]
 let readGate: Promise<void> | null
+let listGates: Map<number, Promise<void>>
 let beforeCreate: (() => void) | null
 let invoke: ReturnType<typeof vi.fn<(channel: string, ...args: unknown[]) => Promise<unknown>>>
 
 const meta = (draft: Draft) => ({ id: draft.id, chapterNumber: draft.chapterNumber, version: draft.version, status: draft.status,
-  wordCount: draft.content.length, createdAt: `2026-10-0${draft.version}T12:00:00.000Z`, dependenciesStale: false })
+  wordCount: draft.content.length, createdAt: `2026-10-0${draft.version} 21:05:00`, dependenciesStale: false })
 
 beforeEach(() => {
   drafts = [
@@ -44,7 +45,10 @@ beforeEach(() => {
   ]
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
     if (channel === 'db:blueprint-get-all') return [{ chapterNumber: 3, title: '雨夜车站' }, { chapterNumber: 4, title: '第三节车厢' }]
-    if (channel === 'db:draft-list') return drafts.filter(draft => draft.chapterNumber === args[0]).map(meta)
+    if (channel === 'db:draft-list') {
+      await listGates.get(args[0] as number)
+      return drafts.filter(draft => draft.chapterNumber === args[0]).map(meta)
+    }
     if (channel === 'db:draft-get-full') {
       if (readGate) await readGate
       return drafts.find(draft => draft.id === args[0]) ?? null
@@ -72,6 +76,7 @@ beforeEach(() => {
   useLocaleStore.setState({ locale: 'zh-CN' })
   useEditorStore.setState({ tabs: [], activeTabId: null })
   readGate = null
+  listGates = new Map()
   beforeCreate = null
   host = document.createElement('div')
   host.className = 'paper-ink stage-shell'
@@ -202,5 +207,51 @@ describe('版本历史', () => {
     await click(/草稿 v2/)
     await vi.waitFor(() => expect(host!.textContent).toContain('与当前稿相同'))
     expect(button('回退到此版本…')).toBeUndefined()
+  })
+
+  const versionsColumn = () => document.querySelector('.stage-hist-versions')!.textContent ?? ''
+  const gateList = (chapter: number) => {
+    let release = () => {}
+    listGates.set(chapter, new Promise<void>(resolve => { release = resolve }))
+    return () => release()
+  }
+
+  it('再点一次当前章：各稿列表留着，不变成「这一章还没有稿」', async () => {
+    await openChapterThree()
+    await click(/雨夜车站/)
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)) })
+    expect(versionsColumn()).not.toContain('这一章还没有稿')
+    expect(button(/草稿 v1/)).toBeTruthy()
+    expect(button(/草稿 v2/)).toBeTruthy()
+  })
+
+  it('换章时各稿读到之前显示正在读取，不闪「这一章还没有稿」', async () => {
+    await openChapterThree()
+    const release = gateList(4)
+    await click(/第三节车厢/)
+    expect(versionsColumn()).toContain('正在读取…')
+    expect(versionsColumn()).not.toContain('这一章还没有稿')
+    await act(async () => release())
+    await vi.waitFor(() => expect(versionsColumn()).toContain('这一章还没有稿'))
+  })
+
+  it('连续点两章：先点那章的各稿晚到，不显示在后点那章下面', async () => {
+    await act(async () => root!.render(<StageHistory projectKey={session.projectPath} />))
+    await vi.waitFor(() => expect(button(/雨夜车站/)).toBeTruthy())
+    const release = gateList(3)
+    await click(/雨夜车站/)
+    await click(/第三节车厢/)
+    await vi.waitFor(() => expect(versionsColumn()).toContain('这一章还没有稿'))
+    await act(async () => release())
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)) })
+    expect(document.querySelector('.stage-hist-chapter-title')?.textContent).toBe('第三节车厢')
+    expect(versionsColumn()).toContain('这一章还没有稿')
+    expect(button(/草稿 v1/)).toBeUndefined()
+  })
+
+  it('各稿时间按数据库的 UTC 换成本地时间显示', async () => {
+    await openChapterThree()
+    const expected = new Date(Date.UTC(2026, 9, 1, 21, 5)).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+    expect(button(/草稿 v1/)!.querySelector('.stage-hist-meta')?.textContent).toBe(`${drafts[0].content.length} 字 · ${expected}`)
   })
 })
