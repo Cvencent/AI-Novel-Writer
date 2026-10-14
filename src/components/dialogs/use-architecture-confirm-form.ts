@@ -126,6 +126,8 @@ export function useArchitectureConfirmForm({
 
   const synopsisRangeIssue = outOfBounds ? boundsIssue
     : synopsisEffect?.kind !== 'invalid' ? null
+    : !synopsisSource.synopsis.trim()
+      ? text('还没有情节大纲，请从第 1 章起生成。', 'There is no plot outline yet. Start from chapter 1.')
     : !synopsisEffect.hasEntries
       ? text('已有大纲没有按章的标题，只能从第 1 章起整份重写。', 'The existing outline has no chapter headings, so it can only be rewritten whole from chapter 1.')
       : from > synopsisEffect.lastChapter + 1
