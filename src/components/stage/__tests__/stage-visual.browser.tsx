@@ -9,7 +9,9 @@ import type { ProjectData } from '../../../shared/ipc-channels'
 import { useAppearanceStore } from '../../../stores/appearance-bootstrap'
 import { useEditorStore, type EditorTab } from '../../../stores/editor-store'
 import { useProjectStore } from '../../../stores/project-store'
+import { ChevronDown } from 'lucide-react'
 import { Button } from '../../ui/Button'
+import { withReducedMotion } from '../../ui/__tests__/reduced-motion'
 import { ProgressRing } from '../ProgressRing'
 import StageTabs from '../StageTabs'
 import StageTopBar from '../StageTopBar'
@@ -199,6 +201,61 @@ describe('新外壳的外观细节', () => {
     } finally {
       useAppearanceStore.setState(restore, true)
     }
+  })
+
+  it('鼠标停在书房起步卡上再按 Tab 聚焦它，焦点环仍画得出来，不被悬停样式盖掉', async () => {
+    const container = await mount(
+      <div className="stage-library">
+        <button type="button" className="stage-start">新建作品</button>
+      </div>,
+    )
+    const start = container.querySelector<HTMLElement>('.stage-start')!
+    await userEvent.hover(start)
+    await userEvent.tab()
+    expect(document.activeElement).toBe(start)
+    expect(getComputedStyle(start).boxShadow).toContain('rgb(44, 74, 140) 0px 0px 0px 4px')
+  })
+
+  it('减少动态效果时书封悬停仍有反馈：不抬起，但投影变了', async () => {
+    await withReducedMotion(async () => {
+      const container = await mount(
+        <div style={{ display: 'flex', gap: 40 }}>
+          <button type="button">别处</button>
+          <div className="stage-book" data-tone="paper" style={{ width: 120 }}><button type="button" className="stage-book-cover">灯塔</button></div>
+        </div>,
+      )
+      const cover = container.querySelector<HTMLElement>('.stage-book-cover')!
+      // 指针可能还停在上一条用例留下的位置，先挪到别处
+      await userEvent.hover(page.getByRole('button', { name: '别处' }))
+      await new Promise(resolve => setTimeout(resolve, 300))
+      const resting = getComputedStyle(cover).boxShadow
+      await userEvent.hover(cover)
+      await new Promise(resolve => setTimeout(resolve, 300))
+      expect([getComputedStyle(cover).transform, getComputedStyle(cover).boxShadow === resting]).toEqual(['none', false])
+    })
+  })
+
+  it('外壳里的菜单项聚焦时是菜单自己的内侧环，不是压到相邻项上的外圈', async () => {
+    const container = await mount(
+      <div role="menu" aria-label="作品">
+        <button type="button" role="menuitem" className="pi-menu-item">导出…</button>
+        <button type="button" role="menuitem" className="pi-menu-item">回到书房</button>
+      </div>,
+    )
+    await userEvent.tab()
+    const item = container.querySelector<HTMLElement>('.pi-menu-item')!
+    expect(document.activeElement).toBe(item)
+    expect(getComputedStyle(item).boxShadow).toBe('rgb(44, 74, 140) 0px 0px 0px 2px inset')
+  })
+
+  it('拆分主按钮的下拉箭头居中，不吃图标加文字时的 2px 左移', async () => {
+    const container = await mount(
+      <Button variant="primary" className="pi-split-toggle" aria-label="本次写作选项"><ChevronDown size={14} aria-hidden /></Button>,
+    )
+    const button = container.querySelector('button')!.getBoundingClientRect()
+    const icon = container.querySelector('svg')!.getBoundingClientRect()
+    // 按钮与图标宽度奇偶不同时居中差半像素
+    expect(Math.abs((icon.left + icon.right) / 2 - (button.left + button.right) / 2)).toBeLessThanOrEqual(0.5)
   })
 
   it('激活标签在标签条可视区外时滚进来', async () => {

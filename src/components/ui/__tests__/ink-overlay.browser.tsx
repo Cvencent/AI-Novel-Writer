@@ -8,6 +8,7 @@ import type { ProjectData } from '../../../shared/ipc-channels'
 import { setActiveProjectSessionContext } from '../../../shared/project-session-context'
 import { useAppearanceStore } from '../../../stores/appearance-bootstrap'
 import { useProjectStore } from '../../../stores/project-store'
+import { useLocaleStore } from '../../../stores/locale-store'
 import { useThemeStore } from '../../../stores/theme-store'
 import { actionToast } from '../ActionToast'
 import { alertError } from '../AlertDialog'
@@ -138,6 +139,17 @@ describe('命令式弹窗', () => {
     expect(dialog.querySelector('.pi-dialog-consequence')!.textContent).toContain('删除后无法恢复')
     await page.screenshot({ path: `${SHOTS}/rdv-confirm-danger-light.png` })
     await userEvent.keyboard('{Enter}')
+    await promptClosed()
+    expect(answer).toBe(false)
+  })
+
+  it('淡出期间再点另一个按钮不改写结果：先点取消、趁对话框还没消失又点到删除，得到的仍是 false', async () => {
+    let answer: boolean | undefined
+    await act(async () => { void confirm('将删除第 3 章的定稿正文。删除后无法恢复。', { title: '删除定稿正文？', confirmText: '删除', danger: true }).then(value => { answer = value }) })
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!
+    await act(async () => buttonNamed(dialog, '取消').click())
+    expect(dialog.isConnected).toBe(true)
+    await act(async () => buttonNamed(dialog, '删除').click())
     await promptClosed()
     expect(answer).toBe(false)
   })
@@ -730,6 +742,20 @@ describe('清除生成内容', () => {
     await userEvent.click(boxes[2])
     expect(consequence.textContent).toBe('请至少选择一类内容。')
     expect(buttonNamed(dialog, '清除所选').disabled).toBe(true)
+  })
+
+  it('英文界面只选一类时写 1 kind，不写 1 kinds', async () => {
+    const locale = useLocaleStore.getState()
+    useLocaleStore.setState({ locale: 'en-US' })
+    try {
+      const dialog = await renderClear()
+      const boxes = [...dialog.querySelectorAll<HTMLElement>('.pi-check-row > .pi-check')]
+      await userEvent.click(boxes[0])
+      await userEvent.click(boxes[1])
+      expect(dialog.querySelector('.pi-dialog-consequence > p')!.textContent).toMatch(/^Clears 1 kind of data: /)
+    } finally {
+      useLocaleStore.setState(locale, true)
+    }
   })
 
   it('按勾选清除；清除中按钮写「清除中…」，Esc 与点外部关不掉；失败走 alertError 后可再试', async () => {
