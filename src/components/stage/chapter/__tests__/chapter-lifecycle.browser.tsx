@@ -236,6 +236,21 @@ describe('单章视图的主按钮随五种状态变化', () => {
     expect(activeTab()?.content).toBe(REVISED)
   })
 
+  it('合并后自动复验成功：写明复验完成几项，审稿报告打开的是原审稿与逐项复验结果', async () => {
+    const draft = backend.addDraft({ status: 'revised' })
+    const review = backend.addReview(draft)
+    backend.addRecheck(draft, review, ['resolved', 'unresolved', 'resolved'])
+    await mount()
+    await openDraft(draft.id)
+    await expect.element(page.getByText('复验完成：2 / 3 项意见已解决')).toBeVisible()
+    await click('更多操作')
+    await act(async () => page.getByRole('menuitem', { name: '审稿报告' }).click())
+    const sheet = page.getByRole('complementary', { name: /审稿/ })
+    await expect.element(sheet.getByText('第 2 章写明母亲在他出生前离开。').first()).toBeVisible()
+    expect(sheet.getByText('复验：已解决').elements()).toHaveLength(2)
+    expect(sheet.getByText('复验：未解决').elements()).toHaveLength(1)
+  })
+
   it('已修稿：主按钮是定稿，确认后以当前正文（含未保存修改）提交定稿', async () => {
     const draft = backend.addDraft({ status: 'revised' })
     await mount()
