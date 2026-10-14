@@ -356,10 +356,10 @@ node scripts/redesign/drive.mjs --scenario refs-timing --shell stage --out <目�
 | `rdv-clear` | 作品菜单「清除生成内容…」：标准危险确认，焦点在「取消」，三类内容是勾选行，取消一项后后果句改成「将清除 2 类内容」；`after` 按 Esc 关闭 | 危险确认 | 否 |
 | `rdv-alert` | 书房里在同一目录再建一部同名作品，主进程拒绝，命令式 `alertError` 渲染进纸墨宿主，焦点在「确定」，旧「新建小说项目」对话框也在宿主里；`after` 点「确定」 | 叠在新建作品对话框上的错误弹框 | 否 |
 | `rdv-toasts` | 预置两条调用记录后写一章，在诊断分页连点三次「复制安全诊断」再让剪贴板失败点一次：三次成功合并成一条，出错的另起一条，只有一个提示栈，通知互不重叠，`measured.toasts` 是栈里的条数 | 右下角提示栈 | 是 |
-| `rdv-toast-error` | 同上写一章，先复制成功一次让提示栈出现，再打开 Ctrl K 面板（Radix 模态）后让复制失败：出错通知是 `role="alert"`、八角符号，不在 `aria-hidden` 子树里而在 `aria-live` 挂载点里，面板仍开着；`after` 按 Esc | 面板上方的出错通知 | 是 |
+| `rdv-toast-error` | 同上写一章，先复制成功一次让提示栈出现，再打开 Ctrl K 面板（Radix 模态）后让复制失败：出错通知是八角符号，卡片自身不带 `role`，不在 `aria-hidden` 子树里，经挂载点 `#ai-novel-ink-toasts` 的 `aria-live="polite"` 播报（挂载点内没有任何 `role="alert"`），面板仍开着；`after` 按 Esc | 面板上方的出错通知 | 是 |
 | `rdv-clear-busy` | 主进程的 `db:project-clear-generated-data` 换成永不返回，点「清除所选」：按钮写「清除中…」、`aria-busy`、禁用，三个勾选禁用，Esc 关不掉，指针停在按钮上 | 清除中的危险确认 | 否 |
 | `rdv-run-failure` | 粘贴一张角色卡但假模型不回提取 JSON：运行失败，运行卡里的失败提示是朱批（没有底色）；关掉导入对话框 | 运行侧页的失败提示 | 是 |
 | `rdv-export` | 作品菜单「导出…」：旧导出对话框 Portal 进纸墨宿主，外壳是 `pi-dialog` | 导出对话框 | 否 |
 | `rdv-import-novel` | 作品菜单「小说拆解与仿写…」：旧拆解对话框 Portal 进纸墨宿主 | 拆解对话框 | 否 |
-| `rdv-settings` | 从流程脊打开设置 | 设置 | 否 |
+| `rdv-settings` | 从流程脊打开设置，先进「提示词模板」中途拍 `rdv-settings-prompts`，再进「项目备份」；`after` 点「返回作品」。两页都是旧面板，看旧按钮变体在新外壳下换成纸墨按钮 | 项目备份（中途一张提示词模板） | 否 |
 | `rdv-tour` | 30–60 秒的评审导览：清除生成内容的危险确认（勾掉一项）、旧导出对话框、写一章后连点「复制安全诊断」看提示栈（两次成功合并，一次失败另起出错通知）、粘贴角色卡看运行失败的朱批提示。配 `--video` 录评审视频 | 运行失败提示 | 是 |
