@@ -122,6 +122,22 @@ describe('剧情与伏笔', () => {
     expect(button(/打开来源：第 2 章定稿/)).toBeTruthy()
   })
 
+  it('内容区窄于 1040px 时页边距收窄，宽时照常；整理记录的收起按钮靠在标题行右端', async () => {
+    host!.style.width = '960px'
+    await render('plot-tree')
+    await vi.waitFor(() => expect(document.querySelector('table[aria-label="剧情树"]')).toBeTruthy())
+    const page = () => getComputedStyle(document.querySelector('.stage-plot')!)
+    expect([page().paddingLeft, page().paddingRight]).toEqual(['24px', '24px'])
+    await act(async () => { host!.style.width = '1200px' })
+    expect([page().paddingLeft, page().paddingRight]).toEqual(['48px', '48px'])
+
+    await click('剧情树的更多操作')
+    await click('查看整理记录')
+    const head = document.querySelector('.stage-plot-records-head')!.getBoundingClientRect()
+    const hide = button('收起整理记录')!.getBoundingClientRect()
+    expect(Math.abs(hide.right - head.right)).toBeLessThanOrEqual(1)
+  })
+
   it('清除剧情树先危险确认：取消不清，确认才清', async () => {
     await render('plot-tree')
     await vi.waitFor(() => expect(document.querySelector('table[aria-label="剧情树"]')).toBeTruthy())
