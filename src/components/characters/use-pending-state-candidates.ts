@@ -72,5 +72,5 @@ export function usePendingStateCandidates(session: ProjectSessionContext) {
   }
 
   const current = candidate && characters.find(character => character.characterId === candidate.characterId)?.currentState?.[candidate.field]
-  return { summaries, candidate, current, busy, error, read, decide }
+  return { summaries, candidate, current, busy, error, read, decide, reload: loadSummaries }
 }

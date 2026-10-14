@@ -26,21 +26,24 @@ function SessionSuggestions({ session }: { session: ProjectSessionContext }) {
   const busy = proposals.busy || states.busy
   const errors = [proposals.error, states.error].filter(Boolean)
   if (count === 0 && errors.length === 0) return null
+  // 一项都没读到时提示条只剩错误，不给收起，给重读。
+  const open = !collapsed || count === 0
+  const reload = () => { void proposals.reload(); void states.reload() }
 
   return (
     <div className="cast-suggestions" role="region" aria-label={text('待处理的角色建议', 'Pending character suggestions')}>
       <Notice
         title={count > 0 ? text(`${count} 项待处理的角色建议`, `${count} pending character suggestions`) : text('角色建议读取失败', 'Could not read character suggestions')}
-        actions={(
+        actions={count > 0 ? (
           <Button variant="text" size="sm" aria-expanded={!collapsed} onClick={() => setCollapsed(value => !value)}>
             {collapsed ? text('展开', 'Show') : text('收起', 'Hide')}
             {collapsed ? <ChevronDown size={14} aria-hidden /> : <ChevronUp size={14} aria-hidden />}
           </Button>
-        )}
+        ) : <Button variant="secondary" size="sm" onClick={reload}>{text('重新读取', 'Read again')}</Button>}
       >
         {text('来自定稿与导入的角色卡。接受前不会改动角色名单。', 'From finalized chapters and imported cards. Nothing changes in the cast until you accept.')}
       </Notice>
-      {!collapsed && (
+      {open && (
         <ul className="cast-suggestion-list">
           {!proposals.batch && proposals.summaries.map(summary => (
             <li key={summary.proposalBatchId} className="cast-suggestion" data-kind="decision">
