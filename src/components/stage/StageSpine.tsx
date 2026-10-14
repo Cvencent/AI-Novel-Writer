@@ -5,7 +5,7 @@ import type { ResourcePage, WorkStage } from '../../stores/navigation/navigation
 import { chapterLabel } from '../../shared/chapter-label'
 import type { ChapterRow, StageLocation, StageProgress, StageStatus } from '../../stores/navigation/stage-progress'
 import { ProgressRing } from './ProgressRing'
-import { CHAPTER_PHASE_TEXT, CHAPTER_RUNNING_TEXT, RESOURCE_NAMES, STAGE_NAMES } from './stage-text'
+import { CHAPTER_PHASE_TEXT, CHAPTER_RUNNING_TEXT, chaptersEn, RESOURCE_NAMES, STAGE_NAMES } from './stage-text'
 
 type Text = (zh: string, en: string) => string
 
@@ -22,8 +22,8 @@ function stageMeta(status: StageStatus, text: Text): string {
     case 'blueprint':
       if (todo) return text('逐章规划', 'Plan each chapter')
       return status.total > status.planned
-        ? text(`${status.planned} / ${status.total} 章`, `${status.planned} / ${status.total} chapters`)
-        : text(`${status.planned} 章`, `${status.planned} chapters`)
+        ? text(`${status.planned} / ${status.total} 章`, `${status.planned} / ${status.total} ${chaptersEn(status.total)}`)
+        : text(`${status.planned} 章`, `${status.planned} ${chaptersEn(status.planned)}`)
     case 'manuscript':
       if (todo) return text('写作、审稿、修稿、定稿', 'Write, review, revise, finalize')
       return status.total > 0

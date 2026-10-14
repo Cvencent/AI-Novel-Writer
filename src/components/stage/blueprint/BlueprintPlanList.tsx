@@ -3,7 +3,7 @@ import { NotebookPen, Sparkle } from 'lucide-react'
 import type { ChapterBlueprint } from '../../../services/workflows/directory-workflow'
 import type { ChapterRow } from '../../../stores/navigation/stage-progress'
 import { useLocaleStore } from '../../../stores/locale-store'
-import { CHAPTER_PHASE_TEXT, CHAPTER_RUNNING_TEXT } from '../stage-text'
+import { CHAPTER_PHASE_TEXT, CHAPTER_RUNNING_TEXT, chaptersEn } from '../stage-text'
 
 interface BlueprintPlanListProps {
   blueprints: readonly ChapterBlueprint[]
@@ -48,7 +48,7 @@ export default function BlueprintPlanList({ blueprints, rows, selectedIdx, nextW
   const text = useLocaleStore(s => s.text)
   return (
     <aside className="stage-bp-plan" aria-label={text('章节规划', 'Chapter plan')}>
-      <div className="stage-bp-plan-top">{text(`${blueprints.length} 章`, `${blueprints.length} chapters`)}</div>
+      <div className="stage-bp-plan-top">{text(`${blueprints.length} 章`, `${blueprints.length} ${chaptersEn(blueprints.length)}`)}</div>
       <ol className="stage-bp-plan-list">
         {blueprints.map((blueprint, index) => (
           <PlanItem

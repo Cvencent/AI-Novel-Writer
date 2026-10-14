@@ -6,6 +6,7 @@ import { useLocaleStore } from '../../../stores/locale-store'
 import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useProjectStore } from '../../../stores/project-store'
 import { deleteCurrentProject, removeRecentProject } from '../../project-delete-action'
+import { chaptersEn } from '../stage-text'
 import { Button } from '../../ui/Button'
 import { DangerConfirm } from '../../ui/DangerConfirm'
 import { Menu, type MenuGroupSpec } from '../../ui/Menu'
@@ -135,7 +136,7 @@ export default function StageLibrary() {
 
   const metaParts = config ? [
     config.genre,
-    config.totalChapters > 0 ? text(`${config.totalChapters} 章`, `${config.totalChapters} chapters`) : '',
+    config.totalChapters > 0 ? text(`${config.totalChapters} 章`, `${config.totalChapters} ${chaptersEn(config.totalChapters)}`) : '',
     config.wordsPerChapter > 0 ? text(`每章约 ${config.wordsPerChapter.toLocaleString('zh-CN')} 字`, `~${config.wordsPerChapter.toLocaleString('en-US')} words each`) : '',
   ].filter(Boolean) : []
 
