@@ -25,8 +25,11 @@ import { toast } from '../../ui/Toast'
 const EMPTY_STATS: KBStatsData = { documentCount: 0, totalChunks: 0, vectorDimension: 0 }
 export const EMPTY_DRAFT: KnowledgeDraft = { docId: null, copy: null, content: '' }
 
-/** 所选资料与改动存放的位置：旧外壳放在页面里，新外壳放在知识库标签上。 */
-export type KnowledgeDraftSlot = readonly [KnowledgeDraft, (next: KnowledgeDraft) => void]
+/**
+ * 所选资料与改动存放的位置：旧外壳放在页面里，新外壳放在知识库标签上。
+ * 第三项读此刻的值：读写返回时页面可能已换了实例，只认这一格里现在放着的。
+ */
+export type KnowledgeDraftSlot = readonly [KnowledgeDraft, (next: KnowledgeDraft) => void, () => KnowledgeDraft]
 
 /** 定稿章节由定稿自动收入，要改就改正文；其余都是作者导入的资料。 */
 export function isImportedDocument(document: KBDocument): boolean {
@@ -113,16 +116,22 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
   const [clearing, setClearing] = useState(false)
   const [importing, setImporting] = useState(false)
   const [loadError, setLoadError] = useState('')
-  const localDraft = useState<KnowledgeDraft>(EMPTY_DRAFT)
-  const [draft, setDraft] = draftSlot ?? localDraft
-  const [documentBusy, setDocumentBusy] = useState(false)
-  const documentRequest = useRef(0)
-  const saving = useRef(false)
+  const [localDraft, setLocalDraft] = useState<KnowledgeDraft>(EMPTY_DRAFT)
+  const localDraftRef = useRef(localDraft)
+  const writeLocalDraft = useCallback((next: KnowledgeDraft) => { localDraftRef.current = next; setLocalDraft(next) }, [])
+  const readLocalDraft = useCallback(() => localDraftRef.current, [])
+  const [draft, setDraft, readDraft] = draftSlot ?? [localDraft, writeLocalDraft, readLocalDraft]
   const openedSession = useRef<string | null>(null)
   const restoredDraft = useRef<KnowledgeDraft | null>(draft)
   const selectedDocId = draft.docId
   const documentCopy = draft.copy
   const draftContent = draft.content
+  const documentBusy = Boolean(draft.busy)
+
+  /** 读写在途时作者可能换了资料、改了字，或另一个页面实例接手了这一格；只有它仍是发起时那一份才写回。 */
+  const replaceDraft = (expected: KnowledgeDraft, next: KnowledgeDraft) => {
+    if (readDraft() === expected) setDraft(next)
+  }
 
   const loadData = useCallback(async () => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
@@ -147,15 +156,14 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
   const openDocument = async (docId: string, reload = false) => {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
     if (!session) return
-    if (!reload && docId === selectedDocId) return
-    const request = ++documentRequest.current
-    setDraft({ docId, copy: null, content: '' })
+    if (!reload && docId === readDraft().docId) return
+    const loading: KnowledgeDraft = { docId, copy: null, content: '' }
+    setDraft(loading)
     try {
       const result = unwrapKnowledgeValue(await ipc.invokeWithProjectSession(session, 'kb:read-document-copy', docId, session.projectPath))
-      if (!isProjectSessionCurrent(session) || request !== documentRequest.current) return
-      setDraft({ docId, copy: result, content: result.content ?? '' })
+      if (isProjectSessionCurrent(session)) replaceDraft(loading, { docId, copy: result, content: result.content ?? '' })
     } catch (error) {
-      if (isProjectSessionCurrent(session) && request === documentRequest.current) toast.error(appErrorMessage(locale, error))
+      if (isProjectSessionCurrent(session) && readDraft() === loading) toast.error(appErrorMessage(locale, error))
     }
   }
   const openDocumentRef = useRef(openDocument)
@@ -174,13 +182,11 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
         setDocuments([])
         setStats(EMPTY_STATS)
         setSearchResults([])
-        documentRequest.current++
         setDraft(EMPTY_DRAFT)
         resetIndex()
         setLoadError('')
         setSearching(false)
         setClearing(false)
-        setDocumentBusy(false)
       } else if (restoredDraft.current) {
         // 标签切回来时重读所选资料，刷新检索状态；有未保存改动就原样留着，保存时由副本校验发现冲突。
         const restored = restoredDraft.current
@@ -226,40 +232,45 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
   /** 保存项目副本。新外壳的 Ctrl S 与退出前保存在页面卸载后也会调到这里；正在保存时再调不重复发送。 */
   const saveDocument = async () => {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
-    if (saving.current || !session || !selectedDocId || !documentCopy?.available || !documentCopy.contentHash) return
-    saving.current = true
-    setDocumentBusy(true)
+    const current = readDraft()
+    const { docId, copy } = current
+    if (current.busy || !session || !docId || !copy?.available || !copy.contentHash) return
+    const saving = { ...current, busy: true }
+    setDraft(saving)
     try {
-      const result = unwrapKnowledgeValue(await ipc.invokeWithProjectSession(session, 'kb:save-document-copy', selectedDocId, draftContent, documentCopy.contentHash, session.projectPath))
+      const result = unwrapKnowledgeValue(await ipc.invokeWithProjectSession(session, 'kb:save-document-copy', docId, current.content, copy.contentHash, session.projectPath))
       if (!isProjectSessionCurrent(session)) return
       if (!result.success) { toast.error(result.error || text('保存失败', 'Save failed')); return }
-      await openDocument(selectedDocId, true)
+      if (readDraft() === saving) await openDocument(docId, true)
       setSearchResults([])
       toast.success(text('项目副本已保存；更新检索后，写作时才能查到新内容', 'Project copy saved. Update search so writing can find the new text.'))
     } catch (error) {
       if (isProjectSessionCurrent(session)) toast.error(appErrorMessage(locale, error))
     } finally {
-      saving.current = false
-      if (isProjectSessionCurrent(session)) setDocumentBusy(false)
+      replaceDraft(saving, current)
     }
   }
 
   const reindexDocument = async () => {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
-    if (!session || !selectedDocId) return
-    setDocumentBusy(true)
+    const current = readDraft()
+    if (current.busy || !session || !current.docId) return
+    const reindexing = { ...current, busy: true }
+    setDraft(reindexing)
     try {
-      const result = unwrapKnowledgeValue(await ipc.invokeWithProjectSession(session, 'kb:reindex-document-copy', selectedDocId, session.projectPath))
+      const result = unwrapKnowledgeValue(await ipc.invokeWithProjectSession(session, 'kb:reindex-document-copy', current.docId, session.projectPath))
       if (!isProjectSessionCurrent(session)) return
       if (!result.success || !result.docId) { toast.error(result.error || text('更新检索失败', 'Could not update search')); return }
       await loadData()
       await loadStatus()
-      await openDocument(result.docId, true)
+      if (readDraft() === reindexing) await openDocument(result.docId, true)
       setSearchResults([])
       toast.success(text('检索已更新，写作时能查到新内容', 'Search updated. Writing can now find the new text.'))
     } catch (error) {
       if (isProjectSessionCurrent(session)) toast.error(appErrorMessage(locale, error))
-    } finally { if (isProjectSessionCurrent(session)) setDocumentBusy(false) }
+    } finally {
+      replaceDraft(reindexing, current)
+    }
   }
 
   const search = async () => {
@@ -290,7 +301,6 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
       const result = await ipc.invokeWithProjectSession(projectSession, 'kb:clear-all', expectedProjectPath)
       if (!isProjectSessionCurrent(projectSession)) return
       if (result.success) {
-        documentRequest.current++
         setDraft(EMPTY_DRAFT)
         setDocuments([])
         setStats(EMPTY_STATS)

@@ -39,6 +39,8 @@ export interface KnowledgeDraft {
   docId: string | null
   copy: KnowledgeDocumentCopy | null
   content: string
+  /** 保存或更新检索在途。放在标签上，页面切走再切回也认得出。 */
+  busy?: boolean
 }
 
 export function knowledgeDraftDirty(draft: KnowledgeDraft): boolean {

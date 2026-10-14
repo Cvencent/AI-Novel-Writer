@@ -42,7 +42,8 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
   const project = useProjectStore(s => s.currentProject)
   const tabDraft = useEditorStore(s => s.tabs.find(tab => tab.id === tabId)?.knowledgeDraft)
   const setTabDraft = useCallback((draft: KnowledgeDraft) => useEditorStore.getState().setKnowledgeDraft(tabId, draft), [tabId])
-  const kb = useKnowledgeBase([tabDraft ?? EMPTY_DRAFT, setTabDraft])
+  const readTabDraft = useCallback(() => useEditorStore.getState().tabs.find(tab => tab.id === tabId)?.knowledgeDraft ?? EMPTY_DRAFT, [tabId])
+  const kb = useKnowledgeBase([tabDraft ?? EMPTY_DRAFT, setTabDraft, readTabDraft])
   const { documents, stats, documentCopy, draftContent, dirty, documentBusy, searchResults, index } = kb
   const [shelf, setShelf] = useState<Shelf>('imported')
   const [pendingDocId, setPendingDocId] = useState<string | null>(null)
