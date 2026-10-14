@@ -229,10 +229,16 @@ export const EXTRA_SCENARIOS = {
     await shell.clickRail(page, '角色')
     await assertBottomOpensOn(page, () => materials.importCharacterCards(page, '姓名：守塔人\n身份：灯塔看守，记得每一次钟声。'))
   }, after: ({ page }) => runPanel.cancelActiveRuns(page) },
-  'nav-batch': { model: true, setup: seedWithoutDraft, run: async ({ page }) => {
+  // 卡住模型让截图停在「批量创作运行中」，与 verify/SKILL.md 的说明一致；不卡时截图可能已是完成后的画面。
+  'nav-batch': { model: true, setup: seedWithoutDraft, run: async ({ page, fake }) => {
+    fake.gate.hold()
     await project.openBlueprints(page)
     await assertBottomOpensOn(page, () => chapter.startBatch(page, FAKE_MODEL.id, 100))
-  }, after: ({ page }) => runPanel.waitForWorkflowDone(page) },
+    while (fake.gate.waiting === 0) await page.waitForTimeout(100)
+  }, after: async ({ page, fake }) => {
+    fake.gate.release()
+    await runPanel.waitForWorkflowDone(page)
+  } },
   'nav-home-import': { model: true, setup: seedWithoutDraft, run: async ({ app, page, roots, fake }) => {
     const file = path.join(roots.temp, '参考小说.txt')
     fs.writeFileSync(file, `第1章 旧港\n${FIXTURE_PROSE}\n\n第2章 北堤\n${FIXTURE_PROSE}\n`)
