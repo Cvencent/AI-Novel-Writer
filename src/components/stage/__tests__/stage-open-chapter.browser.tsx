@@ -69,6 +69,19 @@ describe('在新外壳里打开一章', () => {
     expect(activeTab()).toMatchObject({ chapterNumber: 5, content: '第 5 章的正文', name: '第 5 章 · 第5章标题' })
   })
 
+  it.each([
+    ['设定', { kind: 'stage', stage: 'setup' } as const, 'config'],
+    ['版本历史', { kind: 'resource', page: 'history' } as const, 'version-history'],
+  ])('点了一章、正文还没读完就去%s：读完的那一章不抢回标签', async (_name, intent, type) => {
+    installDrafts({ 4: { delayMs: 80 } })
+    navigate({ kind: 'chapter', chapterNumber: 4 })
+    navigate(intent)
+    await vi.waitFor(() => expect(activeTab()?.type).toBe(type))
+    await settle(150)
+    expect(activeTab()?.type).toBe(type)
+    expect(useEditorStore.getState().tabs.map(tab => tab.type)).toEqual([type])
+  })
+
   it('读取失败时提示作者，而不是点了没反应', async () => {
     installDrafts({ 6: { error: '磁盘读取失败' } })
     const error = vi.spyOn(toast, 'error').mockImplementation(() => undefined)
