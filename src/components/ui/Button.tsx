@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import * as React from 'react'
 import { Slot } from '@radix-ui/react-slot'
+import { Check } from 'lucide-react'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { clsx } from 'clsx'
 import { cn } from '../../lib/utils'
@@ -71,7 +72,8 @@ type LegacySize = NonNullable<LegacyButtonProps['size']>
 /**
  * 新外壳里仍有旧对话框与旧面板（导入、导出、项目备份、模型表单、架构编辑等）用旧变体。
  * 旧 default/ai 读旧强调色，弹窗里与页面里的主按钮颜色不一样；新外壳下一律换成纸墨六种，旧外壳不变。
- * 旧面板拿 default 标切换按钮的选中项（带 aria-pressed 或 aria-selected），那不是这一层的主操作：一律换成次按钮，选中时按下不弹起。
+ * 旧面板拿 default 标切换按钮的选中项（带 aria-pressed 或 aria-selected），那不是这一层的主操作：一律换成次按钮，
+ * 选中时强调色边线加淡底；aria-pressed 的选中项前面再加对勾，不只靠颜色区分（标签页不加）。
  */
 const LEGACY_INK_VARIANT: Record<LegacyVariant, Exclude<InkButtonVariant, 'icon'>> = {
   default: 'primary', ai: 'primary', success: 'primary', outline: 'secondary', ghost: 'text', destructive: 'danger-solid',
@@ -89,19 +91,27 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>((props, ref) => 
     const { className, variant, size = 'md', type = 'button', ...rest } = props
     return <button ref={ref} type={type} className={inkClasses(variant, size, className)} {...rest} />
   }
-  const { className, variant, size, asChild = false, ...rest } = props
+  const { className, variant, size, asChild = false, children, ...rest } = props
   const Comp = asChild ? Slot : 'button'
   if (stage) {
     const toggle = rest['aria-pressed'] !== undefined || rest['aria-selected'] !== undefined
     const inkVariant = size === 'icon' ? 'icon' : toggle ? 'secondary' : LEGACY_INK_VARIANT[variant ?? 'default']
-    return <Comp ref={ref} className={inkClasses(inkVariant, LEGACY_INK_SIZE[size ?? 'default'], className)} {...rest} />
+    const checked = !asChild && (rest['aria-pressed'] === true || rest['aria-pressed'] === 'true')
+    return (
+      <Comp ref={ref} className={inkClasses(inkVariant, LEGACY_INK_SIZE[size ?? 'default'], className)} {...rest}>
+        {checked && <Check aria-hidden />}
+        {children}
+      </Comp>
+    )
   }
   return (
     <Comp
       className={cn(buttonVariants({ variant, size, className }))}
       ref={ref}
       {...rest}
-    />
+    >
+      {children}
+    </Comp>
   )
 })
 Button.displayName = 'Button'

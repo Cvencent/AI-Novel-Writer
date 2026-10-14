@@ -87,11 +87,12 @@
   --pi-top: var(--paper-press); --pi-foot: var(--paper-press); background-color: var(--paper-press); border-color: var(--edge-strong); transform: translateY(1px);
   --pi-shadow: inset 0 2px 4px var(--sink);
 }
-/* 切换按钮的选中项按下不弹起；不下沉，免得与同组没选中的按钮错开一像素 */
+/* 旧面板的切换按钮：选中项是强调色边线加淡底，aria-pressed 的还带对勾（Button 加），不靠底色深浅区分；不下沉，免得与同组错开一像素 */
 .pi-btn--secondary:is([aria-pressed="true"], [aria-selected="true"]) {
-  --pi-top: var(--paper-press); --pi-foot: var(--paper-press); background-color: var(--paper-press); border-color: var(--edge-strong);
-  --pi-shadow: inset 0 2px 4px var(--sink);
+  --pi-top: transparent; --pi-foot: transparent; background-color: var(--accent-soft); border-color: var(--accent);
+  --pi-shadow: 0 0 0 0 transparent;
 }
+.pi-btn--secondary:is([aria-pressed="true"], [aria-selected="true"]) > svg { color: var(--accent); }
 
 .pi-btn--text { padding: 0 var(--s-3); color: var(--ink-2); }
 .pi-btn--icon { width: 36px; padding: 0; color: var(--ink-2); }

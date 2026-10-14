@@ -649,11 +649,11 @@ export default function ImportNovelDialog({ open, onClose }: ImportNovelDialogPr
                     size="sm"
                     variant={run.id === resumableRun.id ? 'default' : 'outline'}
                     aria-pressed={run.id === resumableRun.id}
-                    className="w-full justify-between"
+                    className="w-full"
                     data-testid={`import-resumable-choice-${run.id}`}
                     onClick={() => setSelectedResumableRunId(run.id)}
                   >
-                    <span className="truncate">{
+                    <span className="min-w-0 flex-1 truncate text-left">{
                       (run.stage === 'parsing' ? run.unfinishedSourceDisplay?.[0]?.displayName : undefined)
                       ?? run.sourceDisplay[0]?.displayName
                       ?? run.id

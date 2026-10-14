@@ -1176,7 +1176,7 @@ describe('current-project reference import', () => {
 })
 
 describe('新外壳里的导入对话框', () => {
-  it('同屏只有一个上墨的主按钮：用途、目标与可续导入的选中项是按下的次按钮', async () => {
+  it('同屏只有一个上墨的主按钮：用途、目标与可续导入的选中项是带对勾的次按钮', async () => {
     const restore = useAppearanceStore.getState()
     useAppearanceStore.setState({ resolvedShell: 'stage' })
     try {
@@ -1203,7 +1203,7 @@ describe('新外壳里的导入对话框', () => {
       const pressed = getComputedStyle(page.getByTestId('import-target-current').element())
       const raised = getComputedStyle(page.getByTestId('import-target-new').element())
       expect(pressed.backgroundColor).not.toBe(raised.backgroundColor)
-      expect(pressed.boxShadow).toContain('inset')
+      expect(pressed.borderTopColor).not.toBe(raised.borderTopColor)
       await page.screenshot({ path: '../../../../.runtime/rdx3-shots/import-dialog-stage.png' })
     } finally {
       useAppearanceStore.setState(restore, true)
