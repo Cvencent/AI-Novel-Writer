@@ -64,6 +64,7 @@ export function useNovelConfigForm(projectKey: string) {
     if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
     updateNovelConfig({ [key]: value }, projectSession)
     setSaveOutcome('idle')
+    setGenerateError(error => (error?.field === key ? null : error))
   }
 
   /** Store 已是最新数据，这里只持久化到磁盘。 */
