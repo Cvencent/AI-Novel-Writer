@@ -9,6 +9,7 @@ import type { DraftMeta } from '../../../services/draft-index'
 import {
   deriveChapters, deriveStages, focusChapter, landingStage, type WorkFacts,
 } from '../../../stores/navigation/stage-progress'
+import { useLocaleStore } from '../../../stores/locale-store'
 import StageSpine from '../StageSpine'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -244,6 +245,26 @@ describe('流程脊', () => {
     const rect = current.getBoundingClientRect()
     expect(list.scrollTop).toBeGreaterThan(0)
     expect(rect.top >= box.top - 1 && rect.bottom <= box.bottom + 1).toBe(true)
+  })
+
+  it('英文界面里只规划了一章时写 1 chapter，不写 1 chapters', async () => {
+    useLocaleStore.setState({ locale: 'en-US' })
+    try {
+      host = document.createElement('div')
+      host.className = 'paper-ink stage-shell'
+      document.body.append(host)
+      root = createRoot(host)
+      const meta = async (total: number) => {
+        const one = facts({ config: { ...READY_CONFIG, totalChapters: total }, blueprints: blueprints(1) })
+        await act(async () => root!.render(<StageSpine stages={deriveStages(one)} chapters={deriveChapters(one)} location={null}
+          onStage={() => undefined} onChapter={() => undefined} onResource={() => undefined} onSettings={() => undefined} />))
+        return host!.querySelector('[data-stage="blueprint"] .stage-row-meta')?.textContent
+      }
+      expect(await meta(1)).toBe('1 chapter')
+      expect(await meta(0)).toBe('1 chapter')
+    } finally {
+      useLocaleStore.setState({ locale: 'zh-CN' })
+    }
   })
 
   it('点击阶段、章节、作品资料与设置时，回调收到对应的去处', async () => {

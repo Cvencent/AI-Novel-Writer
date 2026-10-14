@@ -137,6 +137,13 @@ describe('蓝图阶段', () => {
     expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1)
   })
 
+  it('英文界面里只有一章蓝图时写 1 chapter，不写 1 chapters', async () => {
+    stored = [blueprint(1, '旧港')]
+    await renderPage()
+    await act(async () => useLocaleStore.setState({ locale: 'en-US' }))
+    expect(document.querySelector('.stage-bp-plan-top')?.textContent).toBe('1 chapter')
+  })
+
   it('清空全部蓝图在危险分组里，确认前不清空，确认后列表为空并出现空状态', async () => {
     await renderPage()
     await act(async () => page.getByRole('button', { name: '更多蓝图操作' }).click())

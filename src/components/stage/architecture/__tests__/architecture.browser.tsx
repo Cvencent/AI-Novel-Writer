@@ -556,6 +556,16 @@ describe('架构阶段', () => {
     expect(document.activeElement).toBe(cast)
   })
 
+  it('英文界面里截断的摘要用英文省略号', async () => {
+    useLocaleStore.setState({ locale: 'en-US' })
+    core = { ...core, premise: 'A stranger mails Lin Zhou a train ticket dated 1998, and every night the fog bell rings a quarter hour early. '.repeat(2) }
+    filledSpine(['premise'])
+    await render()
+    const summary = host!.querySelector('[data-section="premise"] .arch-section-summary')!.textContent!
+    expect(summary.endsWith('…')).toBe(true)
+    expect(summary).not.toContain('……')
+  })
+
   it('分节摘要不带文档的 Markdown 标题行', async () => {
     core = { ...core, premise: `# 故事前提\n\n## 核心钩子\n\n${PREMISE}` }
     filledSpine(['premise'])
