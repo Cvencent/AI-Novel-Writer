@@ -411,7 +411,7 @@
   max-height: calc(100vh - 2 * var(--s-12));
 }
 /* 常驻与出错不受条数上限约束，栈最高到顶栏以下（上沿留 48px，窗口按钮仍点得到），再高就栈内滚动（ToastStack 量出溢出才标记，平时不裁卡片投影）；左侧留出投影的位置 */
-.pi-toast-stack[data-overflow] { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-left: var(--s-6); }
+.pi-toast-stack[data-overflow] { overflow-y: auto; overscroll-behavior: contain; padding-left: var(--s-6); }
 
 /* ================= 空状态 ================= */
 .pi-empty { display: flex; flex-direction: column; align-items: center; gap: var(--s-3); padding: var(--s-12) var(--s-6);
