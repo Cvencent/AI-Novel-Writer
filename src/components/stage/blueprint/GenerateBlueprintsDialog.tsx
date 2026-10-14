@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import { RotateCcw, Sparkles } from 'lucide-react'
 import { getBlueprintBatchAdvice } from '../../../services/workflows/blueprint-batch-policy'
+import { chaptersEn } from '../../../shared/chapter-label'
 import { resolveWritingLanguage } from '../../../shared/writing-language'
 import { PLANNING_ACTION_CHAPTER_LIMIT, PLANNING_TARGET_UNITS_LIMIT } from '../../../shared/plot-outline-contract'
 import { useDirectoryConfigForm, type DirectoryConfigProps } from '../../dialogs/use-directory-config-form'
@@ -116,7 +117,7 @@ export default function GenerateBlueprintsDialog(props: DirectoryConfigProps) {
           </label>
           <label className="stage-bp-option">
             <input type="radio" name={ids.range} checked={form.rangeMode === 'full'} onChange={() => form.setRangeMode('full')} />
-            {text(`全部 ${total} 章`, `All ${total} chapters`)}
+            {text(`全部 ${total} 章`, `All ${total} ${chaptersEn(total)}`)}
           </label>
           <p className="stage-bp-dialog-hint">
             {text(getBlueprintBatchAdvice('zh-CN', form.previewCost.chapterCount), getBlueprintBatchAdvice('en-US', form.previewCost.chapterCount))}

@@ -3,7 +3,8 @@ import { NotebookPen, Sparkle } from 'lucide-react'
 import type { ChapterBlueprint } from '../../../services/workflows/directory-workflow'
 import type { ChapterRow } from '../../../stores/navigation/stage-progress'
 import { useLocaleStore } from '../../../stores/locale-store'
-import { CHAPTER_PHASE_TEXT, CHAPTER_RUNNING_TEXT, chaptersEn } from '../stage-text'
+import { chaptersEn } from '../../../shared/chapter-label'
+import { CHAPTER_PHASE_TEXT, CHAPTER_RUNNING_TEXT } from '../stage-text'
 
 interface BlueprintPlanListProps {
   blueprints: readonly ChapterBlueprint[]

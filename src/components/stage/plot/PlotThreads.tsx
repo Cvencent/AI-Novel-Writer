@@ -1,5 +1,6 @@
 import { useId, useState, type ReactNode } from 'react'
 import { Check, MoreHorizontal, Plus, Sparkles, TriangleAlert } from 'lucide-react'
+import { chaptersEn } from '../../../shared/chapter-label'
 import type { NarrativeThreadEventType, NarrativeThreadView } from '../../../shared/narrative-thread'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { Button } from '../../ui/Button'
@@ -41,7 +42,7 @@ function Route({ thread, text }: { thread: NarrativeThreadView; text: Text }) {
 function threadNote(thread: NarrativeThreadView, dormantThreshold: number, text: Text) {
   const open = thread.status !== 'resolved' && thread.status !== 'abandoned'
   if (open && thread.overdue) return <span className="stage-thread-sub" data-tone="warn"><TriangleAlert size={12} aria-hidden="true" />{text('已过计划章节，还没有推进到位', 'Past its planned chapter and not advanced yet')}</span>
-  if (open && thread.dormantChapters >= dormantThreshold) return <span className="stage-thread-sub" data-tone="warn"><TriangleAlert size={12} aria-hidden="true" />{text(`已沉寂 ${thread.dormantChapters} 章`, `Quiet for ${thread.dormantChapters} chapters`)}</span>
+  if (open && thread.dormantChapters >= dormantThreshold) return <span className="stage-thread-sub" data-tone="warn"><TriangleAlert size={12} aria-hidden="true" />{text(`已沉寂 ${thread.dormantChapters} 章`, `Quiet for ${thread.dormantChapters} ${chaptersEn(thread.dormantChapters)}`)}</span>
   return <span className="stage-thread-sub">{thread.type} · {text(...STATUS_LABELS[thread.status])}</span>
 }
 

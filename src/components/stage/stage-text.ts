@@ -49,5 +49,3 @@ export function stageTabName(tab: Pick<EditorTab, 'type' | 'name' | 'planningRec
   return name ? text(...name) : tab.name
 }
 
-/** 英文章数：1 章写 chapter，其余写 chapters。 */
-export const chaptersEn = (count: number) => (count === 1 ? 'chapter' : 'chapters')

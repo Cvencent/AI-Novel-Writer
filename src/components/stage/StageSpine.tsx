@@ -5,7 +5,8 @@ import type { ResourcePage, WorkStage } from '../../stores/navigation/navigation
 import { chapterLabel } from '../../shared/chapter-label'
 import type { ChapterRow, StageLocation, StageProgress, StageStatus } from '../../stores/navigation/stage-progress'
 import { ProgressRing } from './ProgressRing'
-import { CHAPTER_PHASE_TEXT, CHAPTER_RUNNING_TEXT, chaptersEn, RESOURCE_NAMES, STAGE_NAMES } from './stage-text'
+import { chaptersEn } from '../../shared/chapter-label'
+import { CHAPTER_PHASE_TEXT, CHAPTER_RUNNING_TEXT, RESOURCE_NAMES, STAGE_NAMES } from './stage-text'
 
 type Text = (zh: string, en: string) => string
 

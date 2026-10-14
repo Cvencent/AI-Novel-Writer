@@ -12,6 +12,7 @@ import type {
   ImportRunPrepareFromInspectionRequest,
   ImportRunSnapshot,
 } from '../../shared/import-run'
+import { chaptersEn } from '../../shared/chapter-label'
 import { AUTHOR_IMPORT_PREVIEW_STALE } from '../../shared/import-run'
 import type { AuthorManuscriptImportPreview } from '../../shared/author-manuscript-import'
 import {
@@ -773,7 +774,7 @@ export default function ImportNovelDialog({ open, onClose }: ImportNovelDialogPr
               <div className="flex items-center gap-4 px-3 py-2"
                 style={{ backgroundColor: 'var(--color-hover)' }}>
                 <span className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>
-                  {text(`共 ${inspection.chapterCount} 章`, `${inspection.chapterCount} chapters`)}
+                  {text(`共 ${inspection.chapterCount} 章`, `${inspection.chapterCount} ${chaptersEn(inspection.chapterCount)}`)}
                 </span>
                 <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
                   {text(`${inspection.totalWords.toLocaleString()} 字`, `${inspection.totalWords.toLocaleString()} words`)}
@@ -935,10 +936,10 @@ export default function ImportNovelDialog({ open, onClose }: ImportNovelDialogPr
             {importing
               ? (purpose === 'author-manuscript' ? text('导入中...', 'Importing...') : text('拆解中...', 'Analyzing...'))
               : purpose === 'author-manuscript'
-                ? text(`确认导入（${inspection?.chapterCount ?? 0} 章）`, `Confirm import (${inspection?.chapterCount ?? 0} chapters)`)
+                ? text(`确认导入（${inspection?.chapterCount ?? 0} 章）`, `Confirm import (${inspection?.chapterCount ?? 0} ${chaptersEn(inspection?.chapterCount ?? 0)})`)
               : targetMode === 'current'
-                ? text(`导入当前项目（${inspection?.chapterCount ?? 0} 章）`, `Import into current project (${inspection?.chapterCount ?? 0} chapters)`)
-                : text(`开始拆解仿写（${inspection?.chapterCount ?? 0} 章）`, `Start analysis (${inspection?.chapterCount ?? 0} chapters)`)}
+                ? text(`导入当前项目（${inspection?.chapterCount ?? 0} 章）`, `Import into current project (${inspection?.chapterCount ?? 0} ${chaptersEn(inspection?.chapterCount ?? 0)})`)
+                : text(`开始拆解仿写（${inspection?.chapterCount ?? 0} 章）`, `Start analysis (${inspection?.chapterCount ?? 0} ${chaptersEn(inspection?.chapterCount ?? 0)})`)}
           </Button>
         </DialogFooter>
       </DialogContent>
