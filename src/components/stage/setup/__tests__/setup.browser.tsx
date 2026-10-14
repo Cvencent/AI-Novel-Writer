@@ -132,6 +132,46 @@ describe('设定页', () => {
     expect(useEditorStore.getState().tabs.map(tab => tab.type)).toContain('world-building')
   })
 
+  it('新作品三项必填先用中性的「必填」；离开空着的一项或只差最后一项时才标红', async () => {
+    project({})
+    await mount()
+    const labels = () => [...host!.querySelectorAll('.stage-setup-label')].slice(0, 4).map(label => [label.textContent, label.hasAttribute('data-missing')])
+    expect(labels()).toEqual([['核心大纲 · 必填', false], ['类型 · 必填', false], ['篇幅', false], ['目标读者 · 必填', false]])
+
+    const outline = field(/^核心大纲/) as HTMLTextAreaElement
+    await act(async () => { outline.focus(); outline.blur() })
+    expect(labels()[0]).toEqual(['核心大纲 · 必填', true])
+    expect(labels()[1]).toEqual(['类型 · 必填', false])
+  })
+
+  it('点开一项更多设定：面板滚进视野，焦点落在面板的输入框里', async () => {
+    project({})
+    await mount()
+    const scrolled = vi.spyOn(Element.prototype, 'scrollIntoView')
+    await click(byName(/^世界观/))
+    const panel = host!.querySelector('[aria-label="世界观"]')!
+    expect(scrolled.mock.contexts).toContain(panel)
+    expect(scrolled).toHaveBeenCalledWith({ block: 'nearest' })
+    expect(document.activeElement).toBe(panel.querySelector('textarea'))
+  })
+
+  it('AI 按钮不可用时读屏能听到原因', async () => {
+    useLLMStore.setState({ loaded: true, defaultModelId: null })
+    project({ coreOutline: '雾钟提前一刻响起。' })
+    await mount()
+    const reason = (button: HTMLButtonElement | undefined) => document.getElementById(button!.getAttribute('aria-describedby') ?? '')?.textContent
+    expect(reason(byName('AI 补全其余设定'))).toBe('先在设置里添加 AI 模型')
+    expect(reason(byName('AI 生成「核心大纲」'))).toBe('先在设置里添加 AI 模型')
+    await act(async () => root!.unmount())
+    host!.remove()
+
+    useLLMStore.setState({ loaded: true, defaultModelId: 'model' })
+    project({})
+    await mount()
+    expect(reason(byName('AI 补全其余设定'))).toBe('先写核心大纲，AI 按它补全其余设定')
+    expect(byName('AI 生成「核心大纲」')?.hasAttribute('aria-describedby')).toBe(false)
+  })
+
   it('保存失败时页面写明设定还在、可以再保存；点保存、Ctrl S 都一样', async () => {
     project({ coreOutline: '雾钟提前一刻响起。', genre: '悬疑', targetAudience: '全龄' })
     dirtyConfigTab()
