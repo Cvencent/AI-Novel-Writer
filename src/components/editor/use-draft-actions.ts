@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { formatResourceUri, parseResourceUri, resourceWriteAllowed } from '../../shared/project-paths'
 import { useProjectStore } from '../../stores/project-store'
 import { registerEditorExitSaveHandler, useEditorStore } from '../../stores/editor-store'
-import { useWorkflowStore } from '../../stores/workflow-store'
+import { useWorkflowStore, workflowResourceKey } from '../../stores/workflow-store'
 import { useLocaleStore } from '../../stores/locale-store'
 import { toast } from '../ui/Toast'
 import {
@@ -131,11 +131,12 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
   const isReadonly = status === 'finalized' || status === 'archived' || !resourceWriteAllowed(filePath)
 
   const activeRuns = useWorkflowStore(s => s.activeRuns)
+  // 按运行占用的章节资源判断归属；标题随界面语言变化，英文界面里没有「第N章」。
   const activeChapterRun = activeRuns.find(r =>
     r.projectPath === projectKey
     && r.type === 'chapter_creation'
     && meta
-    && (r.title.includes(`第${meta.chapterNumber}章`) || r.title.includes(`第 ${meta.chapterNumber} 章`))
+    && r.resourceKeys?.includes(workflowResourceKey('chapter', meta.chapterNumber))
   )
   const isChapterBusy = !!activeChapterRun
   const isDirty = editorTab?.dirty ?? false
