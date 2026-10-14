@@ -1,7 +1,11 @@
 /* ================= 剧情与伏笔 ================= */
-.stage-plot {
+/* 容器查询只作用于后代：查询容器放在外框上，页面本身的页边距才能随内容区宽度收窄 */
+.stage-plot-frame {
   container-type: inline-size;
   overflow: auto;
+}
+
+.stage-plot {
   padding: var(--s-8) var(--s-12) var(--s-12);
   display: flex;
   flex-direction: column;
@@ -351,6 +355,11 @@ tr[data-role='subplot'] .stage-plot-cell[data-inside]::before {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--s-2);
+}
+
+/* 把收起按钮推到标题行右端 */
+.stage-plot-gap {
+  flex: 1;
 }
 
 .stage-plot-runs {

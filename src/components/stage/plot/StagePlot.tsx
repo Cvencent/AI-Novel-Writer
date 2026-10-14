@@ -96,52 +96,54 @@ export default function StagePlot({ projectKey, initialView, viewRequest }: Stag
   const pinnedRecords = plot.plotBusy || plot.aiBusy || (plot.graphRecovery?.result?.kind === 'plot' && plot.graphRecovery.effects.length === 0)
 
   return (
-    <div className="stage-plot">
-      <header className="stage-plot-head">
-        <div>
-          <div className="stage-plot-eyebrow">{text('作品资料', 'Reference')}</div>
-          <h1 className="stage-plot-title">{text('剧情与伏笔', 'Plot & threads')}</h1>
-        </div>
-        <SegmentedControl<View>
-          label={text('剧情与伏笔的视图', 'Plot views')}
-          value={plot.view}
-          onChange={plot.setView}
-          options={[
-            { value: 'plot-tree', label: text('剧情树', 'Plot tree') },
-            { value: 'plans', label: text('伏笔线索', 'Threads') },
-          ]}
+    <div className="stage-plot-frame">
+      <div className="stage-plot">
+        <header className="stage-plot-head">
+          <div>
+            <div className="stage-plot-eyebrow">{text('作品资料', 'Reference')}</div>
+            <h1 className="stage-plot-title">{text('剧情与伏笔', 'Plot & threads')}</h1>
+          </div>
+          <SegmentedControl<View>
+            label={text('剧情与伏笔的视图', 'Plot views')}
+            value={plot.view}
+            onChange={plot.setView}
+            options={[
+              { value: 'plot-tree', label: text('剧情树', 'Plot tree') },
+              { value: 'plans', label: text('伏笔线索', 'Threads') },
+            ]}
+          />
+        </header>
+
+        {(recordsOpen || pinnedRecords) && <GenerationRecords plot={plot} onClose={pinnedRecords ? undefined : () => setRecordsOpen(false)} />}
+
+        {plot.view === 'plot-tree'
+          ? <PlotTimeline plot={plot} onShowRecords={() => setRecordsOpen(true)} onClear={() => setClearOpen(true)} />
+          : <PlotThreads plot={plot} onDelete={setDeleting} />}
+
+        <DangerConfirm
+          open={clearOpen}
+          onOpenChange={setClearOpen}
+          title={text('清除剧情树？', 'Clear the plot tree?')}
+          consequence={text('会删除当前的剧情树快照。蓝图、定稿和伏笔线索都不受影响。', 'The current plot tree snapshot is removed. The blueprint, finals and threads are kept.')}
+          recoverability={text('清除后无法恢复这一份快照，之后可以随时重新生成。', 'This snapshot cannot be restored, but you can build a new one at any time.')}
+          confirmLabel={text('清除剧情树', 'Clear plot tree')}
+          cancelLabel={text('取消', 'Cancel')}
+          onConfirm={() => void plot.clearPlotTree()}
         />
-      </header>
-
-      {(recordsOpen || pinnedRecords) && <GenerationRecords plot={plot} onClose={pinnedRecords ? undefined : () => setRecordsOpen(false)} />}
-
-      {plot.view === 'plot-tree'
-        ? <PlotTimeline plot={plot} onShowRecords={() => setRecordsOpen(true)} onClear={() => setClearOpen(true)} />
-        : <PlotThreads plot={plot} onDelete={setDeleting} />}
-
-      <DangerConfirm
-        open={clearOpen}
-        onOpenChange={setClearOpen}
-        title={text('清除剧情树？', 'Clear the plot tree?')}
-        consequence={text('会删除当前的剧情树快照。蓝图、定稿和伏笔线索都不受影响。', 'The current plot tree snapshot is removed. The blueprint, finals and threads are kept.')}
-        recoverability={text('清除后无法恢复这一份快照，之后可以随时重新生成。', 'This snapshot cannot be restored, but you can build a new one at any time.')}
-        confirmLabel={text('清除剧情树', 'Clear plot tree')}
-        cancelLabel={text('取消', 'Cancel')}
-        onConfirm={() => void plot.clearPlotTree()}
-      />
-      <DangerConfirm
-        open={deleting !== null}
-        onOpenChange={open => { if (!open) setDeleting(null) }}
-        title={text('删除这条线索？', 'Delete this thread?')}
-        consequence={text(
-          `会删除线索「${deleting?.title ?? ''}」和它已确认的 ${deleting?.events.length ?? 0} 个定稿事件。写作时不再提醒它。`,
-          `The thread “${deleting?.title ?? ''}” and its ${deleting?.events.length ?? 0} confirmed events are removed. Writing will no longer keep it in mind.`,
-        )}
-        recoverability={text('删除后无法恢复，只能重新建这条线索。', 'This cannot be undone. You would have to create the thread again.')}
-        confirmLabel={text('删除线索', 'Delete thread')}
-        cancelLabel={text('取消', 'Cancel')}
-        onConfirm={() => { if (deleting) void plot.deletePlan(deleting.id) }}
-      />
+        <DangerConfirm
+          open={deleting !== null}
+          onOpenChange={open => { if (!open) setDeleting(null) }}
+          title={text('删除这条线索？', 'Delete this thread?')}
+          consequence={text(
+            `会删除线索「${deleting?.title ?? ''}」和它已确认的 ${deleting?.events.length ?? 0} 个定稿事件。写作时不再提醒它。`,
+            `The thread “${deleting?.title ?? ''}” and its ${deleting?.events.length ?? 0} confirmed events are removed. Writing will no longer keep it in mind.`,
+          )}
+          recoverability={text('删除后无法恢复，只能重新建这条线索。', 'This cannot be undone. You would have to create the thread again.')}
+          confirmLabel={text('删除线索', 'Delete thread')}
+          cancelLabel={text('取消', 'Cancel')}
+          onConfirm={() => { if (deleting) void plot.deletePlan(deleting.id) }}
+        />
+      </div>
     </div>
   )
 }
