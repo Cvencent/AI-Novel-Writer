@@ -444,7 +444,7 @@ describe('current-project reference import', () => {
     await act(async () => page.getByRole('button', { name: 'Choose' }).first().click())
 
     await expect.element(page.getByText('1 files selected', { exact: true })).toBeVisible()
-    await expect.element(page.getByText('1 chapters', { exact: true })).toBeVisible()
+    await expect.element(page.getByText('1 chapter', { exact: true })).toBeVisible()
     expect(invoke.mock.calls.some(([channel]) => channel === 'import:inspect-source')).toBe(false)
   })
 
@@ -709,7 +709,7 @@ describe('current-project reference import', () => {
 
     await expect.element(page.getByText('Chapter 1 Start', { exact: true })).toBeVisible()
     await expect.element(page.getByTestId('author-preview-target-1')).toHaveTextContent('Target: authoritative manuscript / finalized')
-    await expect.element(page.getByRole('button', { name: 'Confirm import (1 chapters)' })).toBeVisible()
+    await expect.element(page.getByRole('button', { name: 'Confirm import (1 chapter)' })).toBeVisible()
   })
 
   it('blocks a non-contiguous author manifest with an actionable first missing chapter', async () => {
@@ -745,7 +745,7 @@ describe('current-project reference import', () => {
     await act(async () => useLocaleStore.setState({ locale: 'en-US' }))
     await act(async () => page.getByTestId('import-purpose-author').click())
     await act(async () => page.getByTestId('import-source-choose').click())
-    await act(async () => page.getByRole('button', { name: 'Confirm import (1 chapters)' }).click())
+    await act(async () => page.getByRole('button', { name: 'Confirm import (1 chapter)' }).click())
 
     await expect.element(page.getByText(
       'The project or author manuscript changed. Select the files again and confirm the preview.',

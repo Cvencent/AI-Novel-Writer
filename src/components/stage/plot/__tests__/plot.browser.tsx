@@ -164,6 +164,15 @@ describe('剧情与伏笔', () => {
     expect(document.body.textContent).toContain('还没有剧情树')
   })
 
+  it('英文界面里线索沉寂一章写 Quiet for 1 chapter', async () => {
+    threads = [{ ...thread(), dormantChapters: 1 }]
+    const current = useProjectStore.getState().currentProject!
+    useProjectStore.setState({ currentProject: { ...current, novelConfig: { ...current.novelConfig, narrativeThreadDormantChapterThreshold: 1 } } })
+    useLocaleStore.setState({ locale: 'en-US' })
+    await render('plans')
+    await vi.waitFor(() => expect(document.querySelector('.stage-thread-sub[data-tone="warn"]')?.textContent).toBe('Quiet for 1 chapter'))
+  })
+
   it('删除线索计划先危险确认：取消不删，确认才删', async () => {
     await render('plans')
     await vi.waitFor(() => expect(document.body.textContent).toContain('灰色的信是谁寄的'))

@@ -272,6 +272,16 @@ describe('蓝图阶段', () => {
     await expect.element(dialog.getByRole('button', { name: '开始生成' })).not.toHaveAttribute('aria-busy')
   })
 
+  it('英文界面里作品只有一章时生成范围写 All 1 chapter', async () => {
+    useProjectStore.setState({ currentProject: { ...project(), novelConfig: { ...project().novelConfig, totalChapters: 1 } } })
+    stored = [blueprint(1, '旧港')]
+    await renderPage()
+    await act(async () => useLocaleStore.setState({ locale: 'en-US' }))
+    await act(async () => page.getByRole('button', { name: 'Generate blueprints' }).click())
+    const full = await vi.waitFor(() => [...document.querySelectorAll('[role="dialog"] .stage-bp-option')].find(option => option.textContent?.startsWith('All'))!)
+    expect(full.textContent).toBe('All 1 chapter')
+  })
+
   it('出场人物可以逐个添加与移除', async () => {
     await renderPage()
     await act(async () => page.getByRole('button', { name: '移除 守塔人' }).click())
