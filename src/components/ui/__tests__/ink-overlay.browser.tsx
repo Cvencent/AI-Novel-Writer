@@ -24,7 +24,16 @@ const wait = (ms: number) => act(async () => { await new Promise(resolve => setT
 const host = () => document.getElementById('ai-novel-ink-overlay')
 const focused = () => document.activeElement as HTMLElement
 const liveToasts = () => [...document.querySelectorAll<HTMLElement>('.pi-toast:not([data-exiting])')]
+const toastTitles = () => liveToasts().map(item => item.querySelector('.pi-toast-title')!.textContent)
 const buttonNamed = (scope: ParentNode, name: string) => [...scope.querySelectorAll('button')].find(b => b.textContent === name)!
+
+/** 排队的通知要等前面的关掉才露面，所以一轮一轮关到栈空。 */
+async function clearToasts() {
+  for (let round = 0; round < 8 && liveToasts().length > 0; round++) {
+    for (const close of document.querySelectorAll<HTMLButtonElement>('.pi-toast:not([data-exiting]) button[aria-label="关闭通知"]')) await act(async () => close.click())
+    await wait(200)
+  }
+}
 
 let root: Root | undefined
 let container: HTMLDivElement | undefined
@@ -37,8 +46,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
-  for (const close of document.querySelectorAll<HTMLButtonElement>('.pi-toast button[aria-label="关闭通知"]')) await act(async () => close.click())
-  await wait(200)
+  await clearToasts()
   await act(async () => root?.unmount())
   container?.remove()
   root = undefined
@@ -127,7 +135,7 @@ describe('命令式弹窗', () => {
 })
 
 describe('提示栈', () => {
-  it('toast 与 actionToast 进同一个栈，最多 4 条、新的在下、互不重叠', async () => {
+  it('toast 与 actionToast 进同一个栈，最多 4 条、新的在下、互不重叠，栈满时先挤普通通知', async () => {
     await act(async () => {
       toast.success('第 1 章已定稿')
       actionToast.show({ type: 'success', message: '「第 2 章」已完成', actions: [{ label: '打开查看' }, { label: '忽略', variant: 'ghost' }] })
@@ -140,13 +148,43 @@ describe('提示栈', () => {
     expect(document.querySelectorAll('.pi-toast-stack')).toHaveLength(1)
     const items = liveToasts()
     expect(items).toHaveLength(4)
-    expect(items.map(item => item.querySelector('.pi-toast-title')!.textContent)).toEqual(['字数超出限制', '保存失败', '第 3 章审稿失败', '已复制本章正文'])
+    expect(toastTitles()).toEqual(['「第 2 章」已完成', '保存失败', '第 3 章审稿失败', '已复制本章正文'])
     expect(items[1].querySelector('.pi-toast-text')!.textContent).toBe('磁盘已满')
     const rects = items.map(item => item.getBoundingClientRect())
     for (let i = 1; i < rects.length; i++) expect(rects[i].top).toBeGreaterThanOrEqual(rects[i - 1].bottom)
     expect(document.getElementById('ai-novel-toast-root')).toBeNull()
     expect(document.getElementById('ai-novel-action-toast-root')).toBeNull()
     await page.screenshot({ path: `${SHOTS}/rdv-toast-stack-light.png` })
+  })
+
+  it('常驻、出错与带动作的通知不被挤掉；挤不动时新来的排队，前面关掉一条再露面', async () => {
+    await act(async () => {
+      actionToast.show({ message: '发现新版本 v1.3', duration: 0 })
+      toast.error('保存失败')
+      actionToast.show({ type: 'success', message: '「第 2 章」已完成', actions: [{ label: '打开查看' }] })
+      toast.warning('字数超出限制')
+      toast.success('已保存')
+    })
+    await wait(200)
+    expect(toastTitles()).toEqual(['发现新版本 v1.3', '保存失败', '「第 2 章」已完成', '已保存'])
+
+    await act(async () => toast.error('导出失败'))
+    await wait(200)
+    expect(toastTitles()).toEqual(['发现新版本 v1.3', '保存失败', '「第 2 章」已完成', '导出失败'])
+
+    await act(async () => {
+      actionToast.show({ type: 'error', message: '第 3 章审稿失败', actions: [{ label: '查看' }] })
+      toast.info('已复制本章正文')
+    })
+    await wait(200)
+    expect(toastTitles()).toEqual(['发现新版本 v1.3', '保存失败', '「第 2 章」已完成', '导出失败'])
+
+    await userEvent.click(liveToasts()[1].querySelector('button')!)
+    await wait(200)
+    expect(toastTitles()).toEqual(['发现新版本 v1.3', '「第 2 章」已完成', '导出失败', '第 3 章审稿失败'])
+    await userEvent.click(liveToasts()[2].querySelector('button')!)
+    await wait(200)
+    expect(toastTitles()).toEqual(['发现新版本 v1.3', '「第 2 章」已完成', '第 3 章审稿失败', '已复制本章正文'])
   })
 
   it('actionToast 的 error 语气是危险色八角符号，以 alert 播报', async () => {
