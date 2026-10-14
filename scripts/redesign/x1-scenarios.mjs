@@ -16,14 +16,14 @@ import { importMaterials, MATERIALS } from './refs-scenarios.mjs'
 import { seedStageSample } from './scenarios.mjs'
 import { countUnits, STAGE_SAMPLE, stageChapterTitle } from './stage-sample.mjs'
 
-const HARBOR = '港口'
+export const HARBOR = '港口'
 const SKILL_URL = 'https://github.com/owner/skill'
 
 /**
  * 卡住主进程 channel 接下来的 times 次调用，releaseChannel 之后放行。after 为 true 时先交给原处理函数、卡住的是回复：
  * 主进程已经做完，渲染进程迟迟收不到，正是「保存往返期间作者换了作品」的样子。
  */
-async function holdChannel(app, channel, { times = 1, after = false } = {}) {
+export async function holdChannel(app, channel, { times = 1, after = false } = {}) {
   const ok = await app.evaluate(({ ipcMain }, [channel, times, after]) => {
     const handlers = ipcMain._invokeHandlers
     if (!(handlers instanceof Map) || !handlers.has(channel)) return false
@@ -44,7 +44,7 @@ async function holdChannel(app, channel, { times = 1, after = false } = {}) {
   assert.ok(ok, `能在主进程里卡住 ${channel}`)
 }
 
-async function untilHeld(app, channel, timeoutMs = 15_000) {
+export async function untilHeld(app, channel, timeoutMs = 15_000) {
   const deadline = Date.now() + timeoutMs
   while (await app.evaluate((_, channel) => globalThis.__driveHolds[channel].waiting, channel) === 0) {
     assert.ok(Date.now() < deadline, `${timeoutMs} ms 内 ${channel} 没有卡在门上`)
@@ -52,7 +52,7 @@ async function untilHeld(app, channel, timeoutMs = 15_000) {
   }
 }
 
-const releaseChannel = (app, channel) => app.evaluate((_, channel) => globalThis.__driveHolds[channel].release(), channel)
+export const releaseChannel = (app, channel) => app.evaluate((_, channel) => globalThis.__driveHolds[channel].release(), channel)
 
 /** 记下这些通道之后每次调用所属的作品路径（取调用参数最后的项目会话）。 */
 export async function recordCalls(app, channels) {
@@ -118,7 +118,7 @@ async function paletteAction(page, query) {
  * 另建一部作品「港口」：三章蓝图、三章定稿，第 3 章定稿带一份历史审稿。
  * 每部作品的库各自从 1 编号，它第 3 章定稿的稿 id 与灯塔第 3 章草稿相同，稿的 filePath 也就相同。
  */
-async function seedHarbor(context) {
+export async function seedHarbor(context) {
   const { app, page, roots, invoke } = context
   const created = await invoke(page, 'project:create', { parentGrantId: (await chooseProjectDirectoryGrant(app, page, roots.projects)).grantId,
     name: HARBOR, genre: '悬疑', targetAudience: '成年读者', writingLanguage: 'zh-CN' }, randomUUID(), null)
