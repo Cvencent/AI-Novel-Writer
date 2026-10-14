@@ -187,6 +187,21 @@ describe('提示栈', () => {
     expect(toastTitles()).toEqual(['发现新版本 v1.3', '「第 2 章」已完成', '第 3 章审稿失败', '已复制本章正文'])
   })
 
+  it('鼠标停在栈上时已过期的通知最先让位，哪怕它是提醒', async () => {
+    await act(async () => {
+      toast.warning('字数超出限制', 300)
+      toast.info('已复制第 1 章')
+      toast.info('已复制第 2 章')
+      toast.info('已复制第 3 章')
+    })
+    await userEvent.hover(liveToasts()[3])
+    await wait(400)
+    await act(async () => toast.info('已复制第 4 章'))
+    await wait(200)
+    expect(toastTitles()).toEqual(['已复制第 1 章', '已复制第 2 章', '已复制第 3 章', '已复制第 4 章'])
+    await userEvent.unhover(liveToasts()[3])
+  })
+
   it('actionToast 的 error 语气是危险色八角符号，以 alert 播报', async () => {
     useThemeStore.setState({ resolvedTheme: 'dark' })
     await act(async () => { actionToast.show({ type: 'error', message: '第 3 章审稿失败', actions: [{ label: '查看' }] }) })
