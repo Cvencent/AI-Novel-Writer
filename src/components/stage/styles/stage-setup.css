@@ -399,19 +399,11 @@
     margin: 10px 0 6px;
   }
 
-  .stage-setup .pi-notice {
-    align-items: center;
-    padding-block: 8px;
-  }
-
   .stage-setup .pi-notice-body {
     flex-direction: row;
     flex-wrap: wrap;
-    column-gap: 8px;
-  }
-
-  .stage-setup .pi-notice > svg {
-    margin-top: 0;
+    align-items: baseline;
+    column-gap: var(--s-2);
   }
 
   .stage-setup-outline {

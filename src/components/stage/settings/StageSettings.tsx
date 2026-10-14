@@ -44,7 +44,7 @@ function PageBody({ page }: { page: SettingsPage }) {
       return (
         <>
           <ModelsSection purposes={['embedding']} header={action => <PageHeader page="embedding" action={action} />} />
-          <Legacy><KnowledgeIndexSection /></Legacy>
+          <KnowledgeIndexSection />
         </>
       )
     case 'appearance':
