@@ -59,10 +59,6 @@
 }
 
 /* ================= 对话框 ================= */
-.stage-dialog-title {
-  color: var(--ink);
-}
-
 .stage-dialog-error {
   margin: 0;
   color: var(--danger);
