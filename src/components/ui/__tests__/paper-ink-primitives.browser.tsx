@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, StrictMode, useState, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { cdp, page, userEvent } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { Ellipsis } from 'lucide-react'
 
 import '../../../index.css'
@@ -17,6 +17,7 @@ import { Popover } from '../Popover'
 import { SegmentedControl } from '../SegmentedControl'
 import { Sheet } from '../Sheet'
 import { StatGrid } from '../StatGrid'
+import { withReducedMotion } from './reduced-motion'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -218,13 +219,9 @@ describe('Button 纸墨六种', () => {
     }
     expect(await pressedTransform(primary)).toBe('matrix(1, 0, 0, 1, 0, 1)')
     expect(await pressedTransform(icon)).toBe('matrix(0.96, 0, 0, 0.96, 0, 0)')
-    const session = cdp()
-    await session.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
-    try {
+    await withReducedMotion(async () => {
       for (const button of [primary, secondary, icon]) expect(await pressedTransform(button)).toBe('none')
-    } finally {
-      await session.send('Emulation.setEmulatedMedia', { features: [] })
-    }
+    })
   })
 
   it('加载中的按钮保留原样并在底沿画墨线', async () => {

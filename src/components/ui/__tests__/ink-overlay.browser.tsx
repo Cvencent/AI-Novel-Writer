@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { cdp, page, userEvent } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 
 import '../../../index.css'
 import type { ProjectData } from '../../../shared/ipc-channels'
@@ -17,6 +17,7 @@ import { toast } from '../Toast'
 import ClearProjectDataDialog from '../../dialogs/ClearProjectDataDialog'
 import StagePalette from '../../stage/StagePalette'
 import { DangerConfirm } from '../DangerConfirm'
+import { withReducedMotion } from './reduced-motion'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -158,18 +159,14 @@ describe('命令式弹窗', () => {
     expect(dialog.isConnected).toBe(false)
     expect(answer).toBe(false)
 
-    const session = cdp()
-    await session.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
-    try {
+    await withReducedMotion(async () => {
       answer = undefined
       await act(async () => { void confirm('切换项目？').then(value => { answer = value }) })
       await userEvent.keyboard('{Escape}')
       await wait(40)
       expect(answer).toBe(false)
       expect(document.querySelector('[role="dialog"]')).toBeNull()
-    } finally {
-      await session.send('Emulation.setEmulatedMedia', { features: [] })
-    }
+    })
   })
 
   it('两个 confirm 同时开着：Esc 只关上面那个，各自拿到自己的结果', async () => {
