@@ -363,7 +363,7 @@ describe('运行侧页', () => {
     const open = async () => {
       trigger.element().focus()
       await userEvent.keyboard('{Enter}')
-      await new Promise(resolve => setTimeout(resolve, 300))
+      await vi.waitFor(() => expect(document.activeElement?.textContent).toBe('保留'))
     }
     await open()
     await userEvent.keyboard('{Escape}')
@@ -371,6 +371,19 @@ describe('运行侧页', () => {
     await open()
     await userEvent.click(page.getByRole('button', { name: '保留' }))
     expect(document.activeElement).toBe(trigger.element())
+  })
+
+  it('恢复候选「放弃…」的确认条选「保留」或按 Esc 后，焦点回到重新出现的「放弃…」按钮', async () => {
+    candidates = [candidate()]
+    await render()
+    const discard = page.getByRole('button', { name: '放弃…' })
+    await expect.element(discard).toBeVisible()
+    await userEvent.click(discard)
+    await userEvent.click(page.getByRole('button', { name: '保留' }))
+    expect(document.activeElement?.textContent).toBe('放弃…')
+    await userEvent.click(discard)
+    await userEvent.keyboard('{Escape}')
+    expect(document.activeElement?.textContent).toBe('放弃…')
   })
 })
 

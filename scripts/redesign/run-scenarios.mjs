@@ -78,7 +78,7 @@ function conversation(recovery) {
 }
 
 /** 示例作品加一条第 5 章的旧恢复候选（写作中断时留下的正文）。 */
-const seedWithCandidate = context => seedStageSample(context, { beforeReload: async ({ page, invoke, path: projectPath, session }) => {
+export const seedWithCandidate = context => seedStageSample(context, { beforeReload: async ({ page, invoke, path: projectPath, session }) => {
   const recorded = await invoke(page, 'db:recovery-candidate-record', { runId: randomUUID(), stepId: '写稿', chapterNumber: 5, chapterTitle: '潮汐表',
     source: { chapterNumber: 5, title: '潮汐表', role: '发展', purpose: '推进灯塔与沉船的线索', keyEvents: '林岚在灯塔里找到新的线索', characters: [] },
     sourceDraft: null, visibleText: '潮水退去，钟声早了一刻。林岚把潮汐表翻到三十年前那一页。', failureCode: 'timeout', failureReason: '模型长时间没有响应' },

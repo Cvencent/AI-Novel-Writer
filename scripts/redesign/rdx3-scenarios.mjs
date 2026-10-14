@@ -8,6 +8,7 @@ import * as blueprint from './pages/blueprint.mjs'
 import * as chapterView from './pages/chapter-view.mjs'
 import * as runSheet from './pages/run-sheet.mjs'
 import * as stage from './pages/stage.mjs'
+import { seedWithCandidate } from './run-scenarios.mjs'
 import { STAGE_SAMPLE } from './stage-sample.mjs'
 import { seedStageSample } from './scenarios.mjs'
 
@@ -126,6 +127,21 @@ const recordPopoverAndFocus = page => page.evaluate(() => {
   }).observe(document.body, { childList: true, subtree: true })
   document.addEventListener('focusin', event => log.push({ t: Math.round(performance.now()), focus: describe(event.target) }), true)
   document.addEventListener('focusout', event => { if (!event.relatedTarget) log.push({ t: Math.round(performance.now()), blur: describe(event.target) }) }, true)
+})
+
+const describeActive = page => page.evaluate(() => {
+  const element = document.activeElement
+  if (!element || element === document.body) return 'body'
+  return `${element.tagName.toLowerCase()}「${(element.getAttribute('aria-label') ?? element.textContent ?? '').trim().slice(0, 16)}」`
+})
+
+/** 每次焦点移动按时间记在页面里；失焦且没有去处（relatedTarget 为空）单独记一笔。 */
+const recordFocusMoves = page => page.evaluate(() => {
+  const log = []
+  window.__rdx3FocusLog = log
+  const describe = element => element === document.body ? 'body' : `${element.tagName.toLowerCase()}「${(element.getAttribute('aria-label') ?? element.textContent ?? '').trim().slice(0, 16)}」${element.disabled ? '(disabled)' : ''}`
+  document.addEventListener('focusin', event => log.push(`${Math.round(performance.now())} in ${describe(event.target)}`), true)
+  document.addEventListener('focusout', event => { if (!event.relatedTarget) log.push(`${Math.round(performance.now())} out ${describe(event.target)}`) }, true)
 })
 
 export const RDX3_SCENARIOS = {
@@ -302,6 +318,66 @@ export const RDX3_SCENARIOS = {
     return { before, after }
   }, after: async ({ page }) => {
     await page.keyboard.press('Escape')
+  } },
+
+  /**
+   * 就地确认条关掉后焦点回到打开它的按钮：先写一章让诊断分页有日志，「清空日志…」用鼠标点「保留」、按 Esc、键盘打开后 Esc 与回车「保留」；
+   * 恢复卡的「放弃…」用鼠标点「保留」与按 Esc。
+   */
+  'rdx3-inline-confirm-focus': { model: true, shell: 'stage', setup: seedWithCandidate, run: async ({ page, shoot }) => {
+    await recordFocusMoves(page)
+    await blueprint.open(page)
+    await blueprint.writeNext(page)
+    await runSheet.waitForRunDone(page)
+    await runSheet.tab(page, '诊断').click()
+    const clear = runSheet.sheet(page).getByRole('button', { name: '清空日志…', exact: true })
+    await runSheet.sheet(page).getByRole('list', { name: '日志内容' }).getByRole('listitem').first().waitFor({ state: 'visible' })
+    const confirmBar = runSheet.sheet(page).getByRole('group').filter({ hasText: /^清空后这 \d+ 行日志无法找回。/ })
+    const results = {}
+    const settle = async (key, trigger) => {
+      await confirmBar.waitFor({ state: 'detached' })
+      await page.waitForFunction(() => document.activeElement !== document.body || !document.hasFocus(), undefined, { timeout: 2_000 }).catch(() => undefined)
+      results[key] = { onTrigger: await trigger.evaluate(element => element === document.activeElement), active: await describeActive(page) }
+    }
+    const openClear = async how => {
+      if (how === 'mouse') await clear.click()
+      else { await clear.focus(); await page.keyboard.press('Enter') }
+      await confirmBar.waitFor({ state: 'visible' })
+    }
+    await openClear('mouse')
+    results.focusOnKeep = await page.evaluate(() => document.activeElement?.textContent)
+    await confirmBar.getByRole('button', { name: '保留', exact: true }).click()
+    await settle('clearMouseKeep', clear)
+    await openClear('mouse')
+    await page.keyboard.press('Escape')
+    await settle('clearMouseEsc', clear)
+    await openClear('keyboard')
+    await page.keyboard.press('Escape')
+    await settle('clearKeyEsc', clear)
+    await openClear('keyboard')
+    await page.keyboard.press('Enter')
+    await settle('clearKeyKeep', clear)
+    await shoot('rdx3-inline-confirm-focus')
+
+    await runSheet.tab(page, '进行中').click()
+    const card = runSheet.recovery(page).getByRole('article', { name: '原始候选 · 第5章 潮汐表' })
+    const discard = card.getByRole('button', { name: '放弃…', exact: true })
+    const cardBar = card.getByRole('group')
+    for (const [key, close] of [['discardMouseKeep', 'keep'], ['discardMouseEsc', 'Escape']]) {
+      await discard.click()
+      await cardBar.waitFor({ state: 'visible' })
+      if (close === 'keep') await cardBar.getByRole('button', { name: '保留', exact: true }).click()
+      else await page.keyboard.press('Escape')
+      await cardBar.waitFor({ state: 'detached' })
+      await page.waitForTimeout(100)
+      results[key] = { onTrigger: await discard.evaluate(element => element === document.activeElement), active: await describeActive(page) }
+    }
+    results.focusLog = await page.evaluate(() => window.__rdx3FocusLog)
+    assert.equal(results.focusOnKeep, '保留', '确认条出现时焦点在「保留」')
+    const landed = Object.fromEntries(Object.entries(results).filter(([, value]) => value?.onTrigger !== undefined).map(([key, value]) => [key, value.onTrigger]))
+    assert.deepEqual(landed, { clearMouseKeep: true, clearMouseEsc: true, clearKeyEsc: true, clearKeyKeep: true, discardMouseKeep: true, discardMouseEsc: true },
+      `关掉确认条后焦点回到打开它的按钮：${JSON.stringify(results)}`)
+    return results
   } },
 
   'rdx3-write-after-discard': writeAfterDiscard(),
