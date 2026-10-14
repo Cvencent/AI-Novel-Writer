@@ -322,6 +322,29 @@ describe('架构阶段', () => {
     await vi.waitFor(() => expect(launchedSteps()[0]).toContain('synopsis'))
   })
 
+  it('超过单批上限或全书章数的范围在对话框里直接标无效，提交不可点', async () => {
+    seedPartialOutline()
+    await render()
+    await openOutlineRegenerate()
+    const limitIssue = '情节大纲范围无效。请选择第 1–24 章内连续的 1–10 章。'
+
+    await range(1, 16)
+    expect(mark('synopsis')).toBe('范围无效')
+    expect(issue()).toBe(limitIssue)
+    expect(effect()).toBeNull()
+    expect(submit().disabled).toBe(true)
+
+    await range(17, 30)
+    expect(mark('synopsis')).toBe('范围无效')
+    expect(issue()).toBe(limitIssue)
+    expect(submit().disabled).toBe(true)
+
+    await range(7, 16)
+    expect(mark('synopsis')).toBe('将覆盖第 7–16 章')
+    expect(issue()).toBeNull()
+    expect(submit().disabled).toBe(false)
+  })
+
   it('大纲分批写满全书后仍可重写其中一段', async () => {
     const body = outlineBody(1, 24)
     core = { ...core, synopsis: renderPlotOutlineSynopsis(body, 24, OUTLINE_SOURCE) }
