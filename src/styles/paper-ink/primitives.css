@@ -227,6 +227,8 @@
 .pi-popover:focus { outline: none; }
 /* 弹层偶尔出现，140ms 浮现；菜单每天几十次且常由键盘打开，不做进场动画 */
 .pi-popover { width: 340px; padding: var(--s-5); display: flex; flex-direction: column; gap: var(--s-3); animation: pi-rise var(--dur-fast) var(--ease); }
+/* 向上展开时从上方落进来：两种方向的起点都在离触发按钮远的一侧 */
+.pi-popover[data-upward] { animation-name: pi-drop; }
 /* 弹层到了 max-height 时内容在里面滚动，不被 flex 压扁 */
 .pi-popover > * { flex-shrink: 0; }
 .pi-popover-title { margin: 0; font: 600 var(--fs-16)/1.4 var(--font-display); letter-spacing: .02em; }
@@ -429,6 +431,7 @@
 
 @keyframes pi-sheet-in { from { transform: translateX(12px); opacity: 0; } }
 @keyframes pi-rise { from { transform: translateY(6px); opacity: 0; } }
+@keyframes pi-drop { from { transform: translateY(-6px); opacity: 0; } }
 @keyframes pi-fade { from { opacity: 0; } }
 @keyframes pi-vanish { to { opacity: 0; } }
 @keyframes pi-ink-draw {

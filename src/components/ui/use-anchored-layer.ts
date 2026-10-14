@@ -51,6 +51,7 @@ export function useAnchoredLayer(align: 'start' | 'end'): {
     const above = rect.top - GAP - MARGIN
     const upward = layer.offsetHeight > below && above > below
     layer.style.maxHeight = `${upward ? above : below}px`
+    layer.toggleAttribute('data-upward', upward)
     if (upward) layer.style.bottom = `${clientHeight - rect.top + GAP}px`
     else layer.style.top = `${rect.bottom + GAP}px`
     const widest = clientWidth - layer.offsetWidth - MARGIN
