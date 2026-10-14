@@ -150,6 +150,27 @@ describe('单章视图的主按钮随五种状态变化', () => {
       .toEqual({ reviewSourceId: backend.state.reviews.at(-1)!.id, model: 'glm', content: ORIGINAL })
   })
 
+  it('已审稿：每条意见都选「不修改此项」时，主按钮变成确认不修改，确认后弃修决定写进审稿记录', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    const review = backend.addReview(draft)
+    backend.state.cycles.set(review.id, {
+      ...backend.state.cycles.get(review.id)!,
+      findings: [0, 1, 2].map(index => ({ findingId: `finding-${index}`, reviewItemIndex: index, category: '', kind: 'literary' as const, status: 'unverified' as const })),
+    })
+    await mount()
+    await openDraft(draft.id)
+    await expect.element(page.getByRole('button', { name: '按 2 项意见修稿' })).toBeVisible()
+    for (let left = 3; left > 0; left--) await act(async () => page.getByRole('button', { name: '不修改此项' }).first().click())
+    await expect.element(page.getByText('0 / 3')).toBeVisible()
+    await click('确认不修改')
+    await vi.waitFor(() => expect(backend.writes('db:review-create')).toHaveLength(1))
+    const [created] = backend.writes('db:review-create')
+    const confirmed = parseHumanConfirmedReviewSnapshot((created[0] as { content: string }).content)!
+    expect(confirmed.items.filter(item => item.severity !== 'pass').map(item => [item.category, item.decision]))
+      .toEqual([['前后矛盾', 'waive'], ['节奏', 'waive'], ['本章必现', 'waive']])
+    expect(workflows.createRefineFromReviewWorkflow).not.toHaveBeenCalled()
+  })
+
   it('人工意见进入修稿输入：添加我的意见后，它在确认的清单里并被纳入', async () => {
     const draft = backend.addDraft({ status: 'draft' })
     backend.addReview(draft)
