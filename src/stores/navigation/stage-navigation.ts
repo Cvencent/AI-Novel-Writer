@@ -97,11 +97,13 @@ export async function openChapter(chapterNumber: number): Promise<void> {
 }
 
 // 写作与重读请求可能在接手的页面挂载前一直留着（比如作者在书房里）；换作品或重新打开后，它们不能落在新作品的同一章上。
-useProjectStore.subscribe(({ currentProject }) => {
+// 审稿侧页按稿的 filePath 归属，稿 id 在各作品里各自递增会撞，换作品或重新打开时一并收起。
+useProjectStore.subscribe(({ currentProject }, previous) => {
   const session = projectSessionContextFromProject(currentProject)
-  const { writeRequest, chapterRequest } = useStageStore.getState()
+  const { writeRequest, chapterRequest, sheet } = useStageStore.getState()
   if (writeRequest && !sameProjectSessionContext(writeRequest.session, session)) useStageStore.setState({ writeRequest: null })
   if (chapterRequest && !sameProjectSessionContext(chapterRequest.session, session)) useStageStore.setState({ chapterRequest: null })
+  if (sheet?.kind === 'review' && !sameProjectSessionContext(projectSessionContextFromProject(previous.currentProject), session)) useStageStore.setState({ sheet: null })
 })
 
 function openKnowledge(): void {

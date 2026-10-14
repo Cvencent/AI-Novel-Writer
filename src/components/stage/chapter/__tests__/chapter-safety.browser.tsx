@@ -395,7 +395,7 @@ describe('写作此章、标签顶替与跨作品的请求', () => {
     await mount()
     const sheet = { kind: 'review' as const, filePath: formatResourceUri({ kind: 'draft', id: 1 }) }
     await act(async () => useStageStore.setState({ sheet }))
-    await act(async () => useProjectStore.setState({ currentProject: { ...chapterProject(), novelConfig: { ...chapterProject().novelConfig, topic: '后台写回' } } }))
+    await act(async () => useProjectStore.setState({ currentProject: { ...chapterProject(), novelConfig: { ...chapterProject().novelConfig, coreOutline: '后台写回' } } }))
     expect(useStageStore.getState().sheet).toEqual(sheet)
     await act(async () => useProjectStore.setState({ currentProject: { ...chapterProject(), id: 'harbor', path: 'C:\\novels\\harbor', sessionLease: 'harbor-lease' } }))
     expect(useStageStore.getState().sheet).toBeNull()
