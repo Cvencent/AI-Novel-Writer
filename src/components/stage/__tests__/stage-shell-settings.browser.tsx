@@ -85,7 +85,7 @@ describe('书房里的设置页有没保存的输入时，导入旧项目副本�
     expect(opens()).toEqual([])
     expect(useLayoutStore.getState().settingsOpen).toBe(true)
     expect(skillUrl().value).toBe('https://github.com/owner/skill')
-    expect(useProjectStore.getState().legacyImportNotice).toContain(TARGET)
+    expect(useProjectStore.getState().legacyImportNotice).toBe(`副本已建立。你选了继续编辑设置，所以没有自动打开；之后可用“打开作品”选择：${TARGET}`)
   })
 
   it('命令面板「打开作品」先问放弃，再弹选文件夹；继续编辑就不弹', async () => {
