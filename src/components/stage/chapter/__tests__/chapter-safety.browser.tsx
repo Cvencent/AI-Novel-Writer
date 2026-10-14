@@ -250,6 +250,18 @@ describe('定稿冲突与定稿进行中', () => {
     await expect.element(page.getByRole('button', { name: '定稿', exact: true })).toBeDisabled()
   })
 
+  it('英文界面下这一章有运行在跑：正文只读，定稿不可用（按章节资源判断，不按显示标题）', async () => {
+    const draft = backend.addDraft({ status: 'revised' })
+    useLocaleStore.setState({ locale: 'en-US' })
+    await mount()
+    await openDraft(draft.id)
+    await expect.element(page.getByRole('button', { name: 'Finalize', exact: true })).toBeEnabled()
+    await act(async () => useWorkflowStore.setState({ activeRuns: [{ id: 'finalize-run', type: 'chapter_creation', title: 'Finalize chapter 3',
+      status: 'running', projectPath: SESSION.projectPath, resourceKeys: ['chapter:3'], steps: [], currentStepIndex: 0, logs: [] } as never] }))
+    await expect.element(page.getByRole('button', { name: 'Finalize', exact: true })).toBeDisabled()
+    expect(document.querySelector('.stage-ch-prose')?.getAttribute('data-readonly')).toBe('true')
+  })
+
   it('确认框开着时冲突到达：确认定稿不可用，不启动定稿，冲突仍保留', async () => {
     const draft = backend.addDraft({ status: 'draft' })
     await mount()
