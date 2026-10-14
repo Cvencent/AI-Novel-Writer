@@ -24,6 +24,7 @@ import ImportNovelDialog from './components/dialogs/ImportNovelDialog'
 import ChapterCreationDialog from './components/dialogs/ChapterCreationDialog'
 import ExportDialog from './components/dialogs/ExportDialog'
 import SettingsModal from './components/settings/SettingsModal'
+import { leaveSettingsThen } from './components/settings/unsaved-settings'
 import { ANIME_SKIN_URL } from './components/settings/AppearanceSettings'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import StageRoot from './components/stage/StageRoot'
@@ -233,12 +234,12 @@ export default function App() {
       if (!mod) return
       if (e.key === 'n' || e.key === 'N') {
         e.preventDefault()
-        useLayoutStore.getState().openNewProject()
+        leaveSettingsThen(() => useLayoutStore.getState().openNewProject())
       } else if (e.key === 'o' || e.key === 'O') {
         e.preventDefault()
         const folder = await ipc.invoke('dialog:select-folder', 'project-open')
         if (folder) {
-          useProjectStore.getState().openProject(folder)
+          leaveSettingsThen(() => void useProjectStore.getState().openProject(folder))
         }
       } else if (e.key === '=' || e.key === '+') {
         e.preventDefault()

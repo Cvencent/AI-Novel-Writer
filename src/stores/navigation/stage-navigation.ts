@@ -1,3 +1,4 @@
+import { leaveSettingsThen } from '../../components/settings/unsaved-settings'
 import { toast } from '../../components/ui/Toast'
 import type { DraftMeta } from '../../services/draft-index'
 import { chapterTabName } from '../../shared/chapter-label'
@@ -19,12 +20,9 @@ import { useStageStore } from './stage-store'
 /**
  * 回到作品：离开书房、退出沉浸。不收起搜索：搜索是模态层，作者在里面选中一项时它自己先关；
  * 搜索开着时还能到这里的只有自动跳转（打开作品后的落点、工作流开始时打开运行侧页），它们不该关掉作者正在输入的搜索。
- * 去往具体的阶段、资料页或章节时同时收起设置页；不带去处的「回到作品」（打开作品后的默认落点）不收，
- * 打开作品途中点开的设置页不会被它关掉。
  */
-function enterWork(destination: boolean): void {
+function enterWork(): void {
   useStageStore.setState({ focus: false })
-  if (destination && useLayoutStore.getState().settingsOpen) useLayoutStore.setState({ settingsOpen: false })
   if (useLayoutStore.getState().sidebarView === 'home') useLayoutStore.setState({ sidebarView: 'project', activeRailItem: 'project' })
 }
 
@@ -115,7 +113,13 @@ export function stageNavigate(intent: NavigationIntent): void {
     useLayoutStore.setState(chapterWritePrefill(intent.chapterNumber, intent.write))
     return
   }
-  enterWork(intent.kind !== 'run' && !(intent.kind === 'stage' && !intent.stage))
+  // 去具体的阶段、资料页或章节会收起设置页，有没保存的输入时先确认；只回到作品（打开作品后的默认落点）或打开运行侧页时设置页留着。
+  if (intent.kind === 'run' || (intent.kind === 'stage' && !intent.stage)) arrive(intent)
+  else leaveSettingsThen(() => arrive(intent))
+}
+
+function arrive(intent: Exclude<NavigationIntent, { kind: 'settings' }>): void {
+  enterWork()
   switch (intent.kind) {
     case 'stage':
       if (!intent.stage) useStageStore.setState({ sheet: null })

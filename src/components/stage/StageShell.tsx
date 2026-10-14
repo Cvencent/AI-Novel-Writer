@@ -10,7 +10,7 @@ import { chapterLabel } from '../../shared/chapter-label'
 import type { Theme } from '../../stores/theme-store'
 import { ipc } from '../../services/ipc-client'
 import ClearProjectDataDialog from '../dialogs/ClearProjectDataDialog'
-import { leaveSettings } from '../settings/unsaved-settings'
+import { leaveSettingsThen } from '../settings/unsaved-settings'
 import type { MenuGroupSpec } from '../ui/Menu'
 import NewWorkDialog from './library/NewWorkDialog'
 import { SETTINGS_PAGES, settingsPageOf } from './settings/settings-pages'
@@ -29,8 +29,12 @@ type Text = (zh: string, en: string) => string
 
 async function openProjectFolder(): Promise<void> {
   const folder = await ipc.invoke('dialog:select-folder', 'project-open')
-  if (folder) await useProjectStore.getState().openProject(folder)
+  if (folder) leaveSettingsThen(() => void useProjectStore.getState().openProject(folder))
 }
+
+const backToLibrary = () => leaveSettingsThen(() => useLayoutStore.getState().setSidebarView('home'))
+const newBook = () => leaveSettingsThen(() => useLayoutStore.getState().openNewProject())
+const importNovel = () => leaveSettingsThen(() => useLayoutStore.getState().openImportNovel())
 
 function crumbsFor(view: StageView, library: boolean, activeName: string | undefined, text: Text): string[] {
   if (library) return []
@@ -85,14 +89,14 @@ export default function StageShell({ theme }: { theme: Theme }) {
 
   const workMenu = useMemo<MenuGroupSpec[]>(() => [
     { id: 'work', items: [
-      { id: 'library', label: text('回到书房', 'Back to library'), onSelect: () => useLayoutStore.getState().setSidebarView('home') },
+      { id: 'library', label: text('回到书房', 'Back to library'), onSelect: backToLibrary },
       { id: 'open', label: text('打开其他作品…', 'Open another book…'), onSelect: () => void openProjectFolder() },
-      { id: 'new', label: text('新建作品…', 'New book…'), onSelect: () => useLayoutStore.getState().openNewProject() },
+      { id: 'new', label: text('新建作品…', 'New book…'), onSelect: newBook },
     ] },
     { id: 'files', items: [
       { id: 'export', label: text('导出…', 'Export…'), onSelect: () => useLayoutStore.getState().openExport() },
       { id: 'backup', label: text('项目备份', 'Project backup'), onSelect: () => navigate({ kind: 'settings', section: 'backup' }) },
-      { id: 'import', label: text('小说拆解与仿写…', 'Novel breakdown & imitation…'), onSelect: () => useLayoutStore.getState().openImportNovel() },
+      { id: 'import', label: text('小说拆解与仿写…', 'Novel breakdown & imitation…'), onSelect: importNovel },
     ] },
     { id: 'danger', tone: 'danger', items: [
       { id: 'clear', label: text('清除生成内容…', 'Clear generated content…'), onSelect: () => setClearOpen(true) },
@@ -116,21 +120,18 @@ export default function StageShell({ theme }: { theme: Theme }) {
         run: () => navigate({ kind: 'resource', page }),
       })),
       paletteItem('reference', { id: 'characters', label: text('角色', 'Characters'), keywords: 'roster 名单',
-        run: () => leaveSettings(() => {
-          useLayoutStore.getState().closeSettings()
-          openBuiltinEditor('character-editor', text('角色', 'Characters'), 'character')
-        }) }),
+        run: () => leaveSettingsThen(() => openBuiltinEditor('character-editor', text('角色', 'Characters'), 'character')) }),
     ] : []
     const books = recentProjects.map(project => paletteItem('action', {
       id: `book-${project.path}`, label: text(`打开《${project.name}》`, `Open “${project.name}”`), keywords: project.name,
-      run: () => void useProjectStore.getState().openProject(project.path),
+      run: () => leaveSettingsThen(() => void useProjectStore.getState().openProject(project.path)),
     }))
     const actions = [
-      paletteItem('action', { id: 'new', label: text('新建作品', 'New book'), run: () => useLayoutStore.getState().openNewProject() }),
+      paletteItem('action', { id: 'new', label: text('新建作品', 'New book'), run: newBook }),
       paletteItem('action', { id: 'open', label: text('打开作品', 'Open a book'), run: () => void openProjectFolder() }),
-      paletteItem('action', { id: 'import', label: text('小说拆解与仿写', 'Novel breakdown & imitation'), run: () => useLayoutStore.getState().openImportNovel() }),
+      paletteItem('action', { id: 'import', label: text('小说拆解与仿写', 'Novel breakdown & imitation'), run: importNovel }),
       ...(hasProject ? [
-        paletteItem('action', { id: 'library', label: text('回到书房', 'Back to library'), run: () => useLayoutStore.getState().setSidebarView('home') }),
+        paletteItem('action', { id: 'library', label: text('回到书房', 'Back to library'), run: backToLibrary }),
         paletteItem('action', { id: 'run', label: text('运行侧页', 'Run sheet'), keywords: 'AI 输出 任务 日志', run: () => navigate({ kind: 'run', facet: 'output' }) }),
         paletteItem('action', { id: 'export', label: text('导出', 'Export'), run: () => useLayoutStore.getState().openExport() }),
         paletteItem('action', { id: 'backup', label: text('项目备份', 'Project backup'), run: () => navigate({ kind: 'settings', section: 'backup' }) }),
