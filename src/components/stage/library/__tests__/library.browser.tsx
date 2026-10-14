@@ -96,7 +96,7 @@ beforeEach(async () => {
   win.aiNovelAPI = { invoke, on: () => () => undefined }
   useAppearanceStore.setState({ resolvedShell: 'stage' })
   useLayoutStore.setState({ sidebarView: 'home' })
-  useStageStore.setState({ work: null })
+  useStageStore.setState({ work: null, spineFacts: null })
   useLLMStore.setState({ loaded: true, defaultModelId: 'model' })
   useProjectStore.setState({
     currentProject: null,
@@ -249,7 +249,7 @@ describe('书房', () => {
 
     const session = { projectId: 'lighthouse', leaseId: 'lease-1', projectPath: LIGHTHOUSE.path }
     await act(async () => {
-      useStageStore.setState({ work: { session, architecture: { premise: true, characters: true }, blueprints: [] } })
+      useStageStore.setState({ work: { session, architecture: { premise: true, characters: true }, blueprints: [] }, spineFacts: session })
       useDraftStore.setState({ draftsByChapter: {}, dataProjectSession: session, loading: false })
     })
     expect(primary()).toEqual(['继续写作 · 架构'])
