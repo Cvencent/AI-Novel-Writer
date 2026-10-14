@@ -494,6 +494,22 @@ describe('纸面', () => {
     expect(activeTab()?.content).toBe(content)
   })
 
+  it('中文分节符整行不缩进；以破折号开头的对白、以符号开头的正文仍缩进', async () => {
+    const breaks = ['＊＊＊', '※※※', '◇ ◇ ◇', '◇◆◇', '○●○', '———', '——————', '·····', '～～～', '~ ~ ~', '＊　＊　＊']
+    const prose = ['——他说，钟声提前了。', '※注：钟声提前了一刻。', '○', '——', '◇雾从海面升起。']
+    const content = [...breaks, ...prose].join('\n\n')
+    const draft = backend.addDraft({ status: 'draft', content })
+    await mount()
+    await openDraft(draft.id)
+    await expect.element(page.getByText('——他说，钟声提前了。')).toBeVisible()
+    const lines = [...host!.querySelectorAll<HTMLElement>('.stage-ch-prose .cm-line')].filter(line => line.textContent)
+    expect(lines.map(line => [line.textContent, getComputedStyle(line).textIndent])).toEqual([
+      ...breaks.map(line => [line, '0px']),
+      ...prose.map(line => [line, '36px']),
+    ])
+    expect(activeTab()?.content).toBe(content)
+  })
+
   it('沉浸写作：纸面全出血，底部写出字数与设定里的每章目标字数及进度', async () => {
     const draft = backend.addDraft({ status: 'draft' })
     host = document.createElement('div')
