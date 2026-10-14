@@ -41,7 +41,7 @@ const buttonNamed = (scope: ParentNode, name: string) => [...scope.querySelector
 /** 遮罩在对话框底下，点它的左上角才算点在对话框外。 */
 const clickScrim = () => userEvent.click(document.querySelector<HTMLElement>('.pi-scrim')!, { position: { x: 8, y: 8 } })
 
-/** 排队的通知要等前面的关掉才露面，所以一轮一轮关到栈空。 */
+/** 动作失败会再推一条出错通知，所以一轮一轮关到栈空。 */
 async function clearToasts() {
   for (let round = 0; round < 8 && liveToasts().length > 0; round++) {
     for (const close of document.querySelectorAll<HTMLButtonElement>('.pi-toast:not([data-exiting]) button[aria-label="关闭通知"]')) await act(async () => close.click())
@@ -197,13 +197,37 @@ describe('命令式弹窗', () => {
     await userEvent.keyboard('{Escape}')
   })
 
-  it('命令式弹窗开着时到达的通知仍在读屏读得到的 live region 里', async () => {
+  it('命令式弹窗开着时到达的通知仍在读屏读得到的 live region 里，每条只经这一个通道播报', async () => {
     await act(async () => toast.info('已复制本章正文'))
     await act(async () => { void confirm('切换项目？') })
-    await act(async () => toast.error('保存失败'))
-    const item = liveToasts().find(toastItem => toastItem.textContent!.includes('保存失败'))!
-    expect(item.closest('[aria-hidden="true"]')).toBeNull()
-    expect(item.closest('[aria-live="polite"]')).not.toBeNull()
+    await act(async () => {
+      toast.error('保存失败')
+      actionToast.show({ type: 'error', message: '第 3 章审稿失败', actions: [{ label: '查看' }] })
+    })
+    const mount = document.getElementById('ai-novel-ink-toasts')!
+    expect(mount.getAttribute('aria-live')).toBe('polite')
+    expect(mount.closest('[aria-hidden="true"]')).toBeNull()
+    expect(liveToasts().map(item => item.closest('[aria-live]'))).toEqual([mount, mount, mount])
+    expect(mount.querySelectorAll('[role="alert"], [role="status"], [role="log"], [aria-live]')).toHaveLength(0)
+    await userEvent.keyboard('{Escape}')
+  })
+
+  it('模态开着时卡片之间的空隙仍算在栈上，栈外照旧点到遮罩', async () => {
+    await act(async () => { void confirm('切换项目？') })
+    await act(async () => {
+      toast.info('已复制第 1 章')
+      toast.info('已复制第 2 章')
+    })
+    await wait(300)
+    expect(getComputedStyle(document.body).pointerEvents).toBe('none')
+    const stack = document.querySelector<HTMLElement>('.pi-toast-stack')!
+    expect(getComputedStyle(stack).pointerEvents).toBe('auto')
+    const [upper, lower] = liveToasts().map(item => item.getBoundingClientRect())
+    const gap = document.elementFromPoint(upper.left + upper.width / 2, (upper.bottom + lower.top) / 2)!
+    expect(gap.closest('.pi-toast-stack')).toBe(stack)
+    const box = stack.getBoundingClientRect()
+    expect(document.elementFromPoint(box.left - 6, box.top + 20)!.classList.contains('pi-scrim')).toBe(true)
+    expect(document.elementFromPoint(box.left + 60, box.top - 6)!.classList.contains('pi-scrim')).toBe(true)
     await userEvent.keyboard('{Escape}')
   })
 
@@ -303,7 +327,7 @@ describe('提示栈', () => {
     await page.screenshot({ path: `${SHOTS}/rdv-toast-stack-light.png` })
   })
 
-  it('常驻、出错与带动作的通知不被挤掉；挤不动时新来的排队，前面关掉一条再露面', async () => {
+  it('常驻、出错与带动作的通知不被挤掉，到达时就露面；4 条上限只约束普通通知', async () => {
     await act(async () => {
       actionToast.show({ message: '发现新版本 v1.3', duration: 0 })
       toast.error('保存失败')
@@ -323,14 +347,41 @@ describe('提示栈', () => {
       toast.info('已复制本章正文')
     })
     await wait(200)
-    expect(toastTitles()).toEqual(['发现新版本 v1.3', '保存失败', '「第 2 章」已完成', '导出失败'])
+    expect(toastTitles()).toEqual(['发现新版本 v1.3', '保存失败', '「第 2 章」已完成', '导出失败', '第 3 章审稿失败', '已复制本章正文'])
+  })
 
-    await userEvent.click(liveToasts()[1].querySelector('button')!)
+  it('4 条常驻占满时，后到的出错通知与普通通知立即露面，出错的照常计时消失', async () => {
+    await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
+    await act(async () => {
+      for (let i = 1; i <= 4; i++) actionToast.show({ message: `常驻 ${i}`, duration: 0 })
+    })
+    await act(async () => {
+      toast.error('关键错误\n\n后到的出错通知', 800)
+      toast.success('已保存')
+    })
     await wait(200)
-    expect(toastTitles()).toEqual(['发现新版本 v1.3', '「第 2 章」已完成', '导出失败', '第 3 章审稿失败'])
+    expect(toastTitles()).toEqual(['常驻 1', '常驻 2', '常驻 3', '常驻 4', '关键错误', '已保存'])
+    await wait(900)
+    expect(toastTitles()).toEqual(['常驻 1', '常驻 2', '常驻 3', '常驻 4', '已保存'])
+  })
+
+  it('常驻与出错之后连来 6 条普通通知：每条到达时都露面，被挤掉的就此拿掉，不留在暗处排队', async () => {
+    await act(async () => {
+      actionToast.show({ message: '发现新版本 v1.3', duration: 0 })
+      actionToast.show({ type: 'error', message: '保存失败\n\n磁盘已满', actions: [{ label: '重试' }] })
+    })
+    for (let i = 1; i <= 6; i++) {
+      await act(async () => toast.success(`已复制第 ${i} 章`))
+      expect(toastTitles().at(-1)).toBe(`已复制第 ${i} 章`)
+    }
+    await wait(200)
+    expect(toastTitles()).toEqual(['发现新版本 v1.3', '保存失败', '已复制第 5 章', '已复制第 6 章'])
+    expect(document.querySelectorAll('.pi-toast')).toHaveLength(4)
+
+    await userEvent.click(liveToasts()[3].querySelector('button')!)
     await userEvent.click(liveToasts()[2].querySelector('button')!)
     await wait(200)
-    expect(toastTitles()).toEqual(['发现新版本 v1.3', '「第 2 章」已完成', '第 3 章审稿失败', '已复制本章正文'])
+    expect(toastTitles()).toEqual(['发现新版本 v1.3', '保存失败'])
   })
 
   it('鼠标停在栈上时已过期的通知最先让位，哪怕它是提醒', async () => {
@@ -384,12 +435,11 @@ describe('提示栈', () => {
     expect(gap.closest('.pi-toast-stack')).not.toBeNull()
   })
 
-  it('actionToast 的 error 语气是危险色八角符号，以 alert 播报', async () => {
+  it('actionToast 的 error 语气是危险色八角符号', async () => {
     useThemeStore.setState({ resolvedTheme: 'dark' })
     await act(async () => { actionToast.show({ type: 'error', message: '第 3 章审稿失败', actions: [{ label: '查看' }] }) })
     const [item] = liveToasts()
     expect(item.dataset.tone).toBe('danger')
-    expect(item.getAttribute('role')).toBe('alert')
     const mark = item.querySelector('.pi-toast-mark')!
     expect(mark.querySelector('svg')!.getAttribute('class')).toContain('octagon-alert')
     expect(getComputedStyle(mark).color).toBe(DARK.danger)

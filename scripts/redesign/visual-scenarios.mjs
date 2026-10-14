@@ -123,9 +123,10 @@ export const VISUAL_SCENARIOS = {
     await copy.dispatchEvent('click')
     const failure = page.locator('.pi-toast[data-tone="danger"]')
     await failure.waitFor({ state: 'visible' })
-    assert.equal(await failure.getAttribute('role'), 'alert', '出错通知以 alert 播报')
-    assert.equal(await failure.evaluate(element => element.closest('[aria-hidden="true"]') === null && element.closest('[aria-live="polite"]') !== null), true,
-      '模态开着时出错通知不在 aria-hidden 子树里，读屏读得到')
+    assert.equal(await failure.evaluate(element => element.closest('[aria-hidden="true"]') === null && element.closest('[aria-live]')?.id === 'ai-novel-ink-toasts'), true,
+      '模态开着时出错通知不在 aria-hidden 子树里，经提示栈挂载点这一个 live region 播报')
+    assert.equal(await page.locator('#ai-novel-ink-toasts').evaluate(mount => mount.querySelectorAll('[role="alert"], [role="status"], [aria-live]').length), 0,
+      '卡片不再自带播报角色，不会读两遍')
     assert.match(await failure.locator('.pi-toast-mark svg').evaluate(svg => svg.getAttribute('class')), /octagon-alert/, '八角符号')
     assert.ok(await stage.paletteInput(page).isVisible(), '面板仍开着')
     await settle(page)

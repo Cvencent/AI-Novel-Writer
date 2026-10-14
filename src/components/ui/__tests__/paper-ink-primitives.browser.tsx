@@ -24,6 +24,10 @@ import { withReducedMotion } from './reduced-motion'
 const SHOTS = '../../../../.runtime/rd1-shots'
 const ACCENT = { light: 'rgb(44, 74, 140)', dark: 'rgb(169, 190, 240)' }
 const DANGER = { light: 'rgb(180, 35, 24)', dark: 'rgb(240, 138, 126)' }
+const PRESS = {
+  light: { primary: 'color(srgb 0.115922 0.196314 0.37851)', dangerSolid: 'color(srgb 0.545804 0.12502 0.0961569)', sink: 'rgba(23, 23, 26, 0.2)' },
+  dark: { primary: 'color(srgb 0.567373 0.636549 0.80251)', dangerSolid: 'color(srgb 0.766275 0.446275 0.410196)', sink: 'rgba(0, 0, 0, 0.45)' },
+}
 
 let root: Root | undefined
 let host: HTMLDivElement | undefined
@@ -44,7 +48,11 @@ const shot = (name: string) => page.screenshot({ path: `${SHOTS}/${name}.png`, e
 const focused = () => document.activeElement as HTMLElement
 const finishAnimations = (element: Element) => Promise.all(element.getAnimations().map((animation) => animation.finished))
 
-const channels = (color: string) => color.match(/[\d.]+/g)!.map(Number)
+/** rgb() 的 0–255 通道；color-mix 得出的 color(srgb …) 是 0–1，换算到同一刻度。 */
+function channels(color: string) {
+  const values = color.match(/[\d.]+/g)!.map(Number)
+  return color.startsWith('color(srgb') ? [...values.slice(0, 3).map((value) => value * 255), ...values.slice(3)] : values
+}
 
 function luminance(color: string) {
   const [r, g, b] = channels(color).slice(0, 3).map((value) => {
@@ -198,6 +206,46 @@ describe('Button 纸墨六种', () => {
     secondary.focus()
     await midway(secondary, () => userEvent.keyboard('[Space>]'))
     await userEvent.keyboard('[/Space]')
+  })
+
+  it.each(['light', 'dark'] as const)('%s 主题指针停在按钮上按下：按下态压过悬停态，实心按钮比悬停更深，次按钮内凹', async (theme) => {
+    const container = await mount(six, theme)
+    const [primary, secondary, text, , dangerSolid, icon] = [...container.querySelectorAll('button')]
+    const look = (button: HTMLButtonElement) => {
+      button.getAnimations().forEach((animation) => animation.finish())
+      const style = getComputedStyle(button)
+      return { bg: style.backgroundColor, shadow: style.boxShadow }
+    }
+    const pressed = async (button: HTMLButtonElement) => {
+      button.focus()
+      await userEvent.keyboard('[Space>]')
+      const state = look(button)
+      await userEvent.keyboard('[/Space]')
+      return state
+    }
+    for (const button of [primary, secondary, text, dangerSolid, icon]) {
+      await userEvent.hover(container, { position: { x: 4, y: 4 } })
+      const pressOnly = await pressed(button)
+      await userEvent.hover(button)
+      const hover = look(button)
+      const hoverAndPress = await pressed(button)
+      expect(hoverAndPress).toEqual(pressOnly)
+      expect(hoverAndPress.bg).not.toBe(hover.bg)
+    }
+    const darker = async (button: HTMLButtonElement) => {
+      await userEvent.hover(button)
+      const hover = look(button)
+      const press = await pressed(button)
+      return luminance(press.bg) < luminance(hover.bg)
+    }
+    expect(await darker(primary)).toBe(true)
+    expect(await darker(dangerSolid)).toBe(true)
+    await userEvent.hover(primary)
+    expect((await pressed(primary)).bg).toBe(PRESS[theme].primary)
+    await userEvent.hover(dangerSolid)
+    expect((await pressed(dangerSolid)).bg).toBe(PRESS[theme].dangerSolid)
+    await userEvent.hover(secondary)
+    expect((await pressed(secondary)).shadow).toContain(`${PRESS[theme].sink} 0px 2px 4px 0px inset`)
   })
 
   it('减少动态效果设置下按下不再下沉或缩小', async () => {
