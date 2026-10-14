@@ -248,6 +248,29 @@ export const X1_SCENARIOS = {
     return after
   } },
 
+  // #405 r2 低项 7：设定页 Ctrl S 的保存还没返回时切到第 3 章标签再切回，下一步仍不可点，再按 Ctrl S 也不重发，保存只写一次。
+  'x1-setup-save-remount': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ app, page }) => {
+    await stage.stageButton(page, '设定').click()
+    await stage.setupOutline(page).waitFor({ state: 'visible' })
+    await stage.dirtySetup(page)
+    await recordCalls(app, ['project:save'])
+    await holdChannel(app, 'project:save')
+    await page.keyboard.press('Control+S')
+    await untilHeld(app, 'project:save')
+    await stage.tab(page, /^第 3 章/).click()
+    await stage.setupOutline(page).waitFor({ state: 'hidden' })
+    await stage.tab(page, '设定').click()
+    await stage.setupOutline(page).waitFor({ state: 'visible' })
+    const nextDisabled = await stage.setupNext(page).isDisabled()
+    await page.keyboard.press('Control+S')
+    await page.waitForTimeout(500)
+    await releaseChannel(app, 'project:save')
+    await page.waitForTimeout(2000)
+    const after = { nextDisabled, saves: (await recordedCalls(app)).length }
+    assert.deepEqual(after, { nextDisabled: true, saves: 1 }, '切回后下一步仍不可点，保存只写一次')
+    return after
+  } },
+
   // #380 C1：设置页里有没保存的输入时，命令面板「设置」、作品菜单「项目备份」换分区先确认。
   'x1-settings-section': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
     await stage.openSettings(page)
