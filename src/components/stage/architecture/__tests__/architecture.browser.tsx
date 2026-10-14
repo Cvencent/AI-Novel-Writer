@@ -402,7 +402,7 @@ describe('架构阶段', () => {
     expect(['premise', 'characters', 'worldbuilding', 'synopsis'].map(stepChecked)).toEqual([false, false, false, true])
     expect(inputValue('本次生成范围的起始章')).toBe('17')
     expect(inputValue('本次生成范围的结束章')).toBe('21')
-    expect(document.querySelector('[data-step="synopsis"] .arch-step-status')?.textContent).toBe('未完成')
+    expect(document.querySelector('[data-step="synopsis"] .arch-step-status')?.textContent).toBe('不完整')
     expect(mark('synopsis')).toBe('续写')
     await act(async () => submit().click())
     await vi.waitFor(() => expect(launchedSteps()).toEqual([['synopsis']]))
