@@ -96,14 +96,14 @@ export default function CharacterProfile({ projectKey }: { projectKey: string })
             {card.currentState && card.currentState.updatedAtChapter > 0 && (
               <p className="cast-profile-sub">{text(`第 ${card.currentState.updatedAtChapter} 章更新了当前状态`, `Current state updated in chapter ${card.currentState.updatedAtChapter}`)}</p>
             )}
-            <div className="cast-avatar-actions">
+            {view === 'edit' && <div className="cast-avatar-actions">
               <Button variant="text" size="sm" disabled={avatar.busy || !card.characterId || card.characterId.startsWith('draft:')} onClick={() => { void avatar.chooseAvatar() }}>
                 {avatar.avatarUrl ? text('更换头像', 'Replace avatar') : text('选择头像', 'Choose avatar')}
               </Button>
               {avatar.avatarUrl && <Button variant="text" size="sm" disabled={avatar.busy} onClick={avatar.stageRemoval}>{text('移除头像', 'Remove avatar')}</Button>}
               {avatar.staged && <Button variant="text" size="sm" disabled={avatar.busy} onClick={avatar.discardStaged}>{text('取消头像更改', 'Discard avatar change')}</Button>}
-            </div>
-            {(!card.characterId || card.characterId.startsWith('draft:')) && <p className="cast-profile-note">{text('先保存角色，再选择头像。', 'Save the character before choosing an avatar.')}</p>}
+            </div>}
+            {view === 'edit' && (!card.characterId || card.characterId.startsWith('draft:')) && <p className="cast-profile-note">{text('先保存角色，再选择头像。', 'Save the character before choosing an avatar.')}</p>}
             {avatar.staged && <p className="cast-profile-note">{text('头像更改在保存角色时提交。', 'The avatar change is committed when you save the character.')}</p>}
             {avatar.notice && <p className="cast-profile-error" role="alert">{avatar.notice}</p>}
             {profile.saveError && <p className="cast-profile-error" role="alert">{profile.saveError}</p>}
