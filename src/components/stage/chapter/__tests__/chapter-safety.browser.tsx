@@ -209,6 +209,18 @@ describe('标签与外壳', () => {
     await vi.waitFor(() => expect(backend.writes('chapter:retry-deletion').map(args => args[0])).toEqual(['deletion-1']))
     await expect.element(page.getByText('删除正文后的清理没有完成')).not.toBeInTheDocument()
   })
+
+  it('删除正文后清理没做完、这一章另有未定稿的稿：那一稿的单章视图也提示并可以重试清理', async () => {
+    backend.state.incompleteDeletions = [{ operationId: 'deletion-1', chapterNumber: 3, draftId: 9, chapterTitle: '雨夜车站', status: 'failed',
+      manuscriptStatus: 'failed', manuscriptError: '正文文件被占用', knowledgeStatus: 'done', legacyKnowledgeAuthorization: 'not-required' }]
+    const draft = backend.addDraft({ status: 'draft' })
+    await mount()
+    await openDraft(draft.id)
+    await expect.element(page.getByText('删除正文后的清理没有完成')).toBeVisible()
+    await click('重试清理')
+    await vi.waitFor(() => expect(backend.writes('chapter:retry-deletion').map(args => args[0])).toEqual(['deletion-1']))
+    await expect.element(page.getByText('删除正文后的清理没有完成')).not.toBeInTheDocument()
+  })
 })
 
 describe('定稿冲突与定稿进行中', () => {
