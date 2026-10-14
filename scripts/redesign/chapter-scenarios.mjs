@@ -107,11 +107,16 @@ async function runsStarted(page) {
   })
 }
 
+/**
+ * 审稿或修稿结果送到单章视图时运行侧页已收起：等这次运行的胶囊挂上来过、且顶栏不再有进行中的胶囊（完成后的胶囊带 data-tone="ok"）。
+ * 不一定起运行的步骤（完成合并只在需要复验时才起）不给 startedBefore，只等没有进行中的胶囊。
+ */
 async function waitRunDone(page, startedBefore) {
   if (!await isStage(page)) return runPanel.waitForWorkflowDone(page)
   if (await runSheet.sheet(page).isVisible()) return runSheet.waitForRunDone(page)
-  // 审稿或修稿结果送到单章视图时运行侧页已收起：等这次运行的胶囊挂上来过、且顶栏不再有进行中的胶囊（完成后的胶囊带 data-tone="ok"）。
-  await page.waitForFunction(before => window.__rdRunsStarted.count > before && !document.querySelector('.stage-capsule:not([data-tone="ok"])'), startedBefore, { timeout: 90_000 })
+  const running = '.stage-capsule:not([data-tone="ok"])'
+  if (startedBefore === undefined) return stage.root(page).locator(running).waitFor({ state: 'detached', timeout: 90_000 })
+  await page.waitForFunction(({ before, selector }) => window.__rdRunsStarted.count > before && !document.querySelector(selector), { before: startedBefore, selector: running }, { timeout: 90_000 })
 }
 
 /** 两种外壳各自写第 3 章：新外壳在待写章的单章视图点「写作此章」，旧外壳从章节蓝图的「写作第3章」对话框直接开始。 */
@@ -148,10 +153,9 @@ async function reviewReviseMergeFinalize(page) {
   if (await isStage(page)) {
     await reviewAndRevise(page)
     await chapterView.merge(page).getByRole('button', { name: '全部用修稿' }).click()
-    const rechecking = await runsStarted(page)
     await chapterView.merge(page).getByRole('button', { name: '完成合并' }).click()
     await chapterView.view(page).getByRole('button', { name: '定稿', exact: true }).waitFor({ state: 'visible', timeout: 30_000 })
-    await waitRunDone(page, rechecking)
+    await waitRunDone(page)
     const finalizing = await runsStarted(page)
     await chapterView.finalize(page, 3)
     await chapterView.postProcess(page).waitFor({ state: 'visible', timeout: 60_000 })
@@ -580,10 +584,9 @@ export const CHAPTER_SCENARIOS = {
     await pause(2500)
     await chapterView.merge(page).getByRole('group', { name: /用哪一版$/ }).first().getByRole('button', { name: '用修稿' }).click()
     await pause(2000)
-    const rechecking = await runsStarted(page)
     await chapterView.merge(page).getByRole('button', { name: '完成合并' }).click()
     await chapterView.view(page).getByRole('button', { name: '定稿', exact: true }).waitFor({ state: 'visible', timeout: 30_000 })
-    await waitRunDone(page, rechecking)
+    await waitRunDone(page)
     await pause(2000)
     await chapterView.view(page).getByRole('button', { name: '定稿', exact: true }).click()
     await pause(3000)
