@@ -56,27 +56,35 @@ const releaseChannel = (app, channel) => app.evaluate((_, channel) => globalThis
 
 /** 记下这些通道之后每次调用所属的作品路径（取调用参数最后的项目会话）。 */
 export async function recordCalls(app, channels) {
-  await app.evaluate(({ ipcMain }, channels) => {
+  const missing = await app.evaluate(({ ipcMain }, channels) => {
+    const handlers = ipcMain._invokeHandlers
+    const missing = channels.filter(channel => !handlers.has(channel))
+    if (missing.length > 0) return missing
     const calls = globalThis.__driveCalls = []
     for (const channel of channels) {
-      const original = ipcMain._invokeHandlers.get(channel)
-      ipcMain._invokeHandlers.set(channel, (event, ...args) => {
+      const original = handlers.get(channel)
+      handlers.set(channel, (event, ...args) => {
         calls.push({ channel, projectPath: args.at(-1)?.projectPath ?? null, at: Date.now() })
         return original(event, ...args)
       })
     }
+    return []
   }, channels)
+  assert.deepEqual(missing, [], `主进程里有要记录的通道：${missing.join('、')}`)
 }
 
 const recordedCalls = app => app.evaluate(() => globalThis.__driveCalls)
 
 /** 把主进程的 channel 换成固定回复，调用次数记进 globalThis.__driveStubs。 */
 export async function stubChannel(app, channel, reply) {
-  await app.evaluate(({ ipcMain }, [channel, reply]) => {
+  const ok = await app.evaluate(({ ipcMain }, [channel, reply]) => {
+    if (!ipcMain._invokeHandlers.has(channel)) return false
     const counts = globalThis.__driveStubs ??= {}
     counts[channel] = 0
     ipcMain._invokeHandlers.set(channel, () => { counts[channel]++; return reply })
+    return true
   }, [channel, reply])
+  assert.ok(ok, `能在主进程里替换 ${channel}`)
 }
 
 const stubCalls = (app, channel) => app.evaluate((_, channel) => globalThis.__driveStubs[channel], channel)
