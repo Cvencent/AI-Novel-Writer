@@ -1,7 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, type ReactNode } from 'react'
+import { act, useState, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { page, userEvent } from 'vitest/browser'
 
 import '../../../index.css'
 import { APPEARANCE_STORAGE_KEY } from '../../../shared/appearance-profile'
@@ -74,6 +75,34 @@ describe('新外壳渲染出错', () => {
     const save = [...dialog.querySelectorAll('button')].find(candidate => candidate.textContent === '保存并退出')!
     await act(async () => save.click())
     expect(saveAndExit).toHaveBeenCalledOnce()
+  })
+
+  it('退出确认点「取消」或按 Esc 关闭后，焦点回到弹出它之前的元素', async () => {
+    useAppearanceStore.setState({ resolvedShell: 'stage' })
+    function Harness() {
+      const [exitRequest, setExitRequest] = useState<WindowCloseGuard['exitRequest']>(null)
+      return (
+        <StageRoot theme="paper" exitGuard={idleGuard({ exitRequest, cancelExit: async () => setExitRequest(null) })}>
+          <button type="button" onClick={() => setExitRequest({ requestId: 'close-3' })}>第 3 章</button>
+        </StageRoot>
+      )
+    }
+    host = document.createElement('div')
+    document.body.append(host)
+    root = createRoot(host)
+    await act(async () => root!.render(<Harness />))
+    const chapter = page.getByRole('button', { name: '第 3 章' })
+    const landed: boolean[] = []
+    for (const close of ['取消', 'Escape']) {
+      await userEvent.click(chapter)
+      await expect.element(page.getByRole('dialog')).toBeVisible()
+      if (close === 'Escape') await userEvent.keyboard('{Escape}')
+      else await userEvent.click(page.getByRole('button', { name: close }))
+      await expect.element(page.getByRole('dialog')).not.toBeInTheDocument()
+      await new Promise(resolve => setTimeout(resolve, 20))
+      landed.push(document.activeElement === chapter.element())
+    }
+    expect(landed).toEqual([true, true])
   })
 
   it('导出等旧对话框开着时关窗，退出确认与遮罩画在它上面', async () => {

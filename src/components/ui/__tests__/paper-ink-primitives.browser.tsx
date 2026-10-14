@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, StrictMode, useRef, useState, type ReactNode } from 'react'
+import { act, StrictMode, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { page, userEvent } from 'vitest/browser'
 import { Ellipsis } from 'lucide-react'
@@ -18,6 +18,7 @@ import { SegmentedControl } from '../SegmentedControl'
 import { Sheet } from '../Sheet'
 import { StatGrid } from '../StatGrid'
 import { composite, contrast, luminance } from './color-contrast'
+import { useAnchoredLayer } from '../use-anchored-layer'
 import { withReducedMotion } from './reduced-motion'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -1116,6 +1117,33 @@ describe('DangerConfirm', () => {
     await userEvent.click(page.getByRole('button', { name: '放弃并关闭' }))
     expect(container.querySelector('[role="dialog"]')).toBeNull()
     expect(focused()).toBe(container.querySelector('section'))
+  })
+
+  it('确认关掉对话框的同时打开了拿焦点的弹层：对话框不把焦点还回打开前的元素，弹层不被这次还焦点关掉', async () => {
+    function OpensPopoverOnConfirm() {
+      const [open, setOpen] = useState(false)
+      const layer = useAnchoredLayer('start')
+      useEffect(() => {
+        if (layer.open) layer.layerRef.current?.focus()
+      }, [layer.open, layer.layerRef])
+      return (
+        <div style={{ minHeight: 440 }}>
+          <Button variant="text" onClick={() => setOpen(true)}>历史</Button>
+          <div className="pi-anchor" ref={layer.anchorRef}>
+            <Button ref={layer.triggerRef} variant="secondary">写第 4 章</Button>
+            {layer.open && layer.renderLayer(<div ref={layer.layerRef} role="dialog" aria-label="本次写作选项" tabIndex={-1} className="pi-popover">弹层</div>)}
+          </div>
+          <DangerConfirm open={open} onOpenChange={setOpen} title="放弃未保存的修改？" consequence="修改会丢失。" recoverability="无法恢复。"
+            confirmLabel="放弃修改" cancelLabel="继续编辑" onConfirm={() => { setOpen(false); layer.show() }} />
+        </div>
+      )
+    }
+    await mount(<OpensPopoverOnConfirm />)
+    await userEvent.click(page.getByRole('button', { name: '历史' }))
+    await userEvent.click(page.getByRole('button', { name: '放弃修改' }))
+    await new Promise(resolve => setTimeout(resolve, 50))
+    const popover = document.querySelector('[aria-label="本次写作选项"]')
+    expect([popover !== null, focused().getAttribute('aria-label')]).toEqual([true, '本次写作选项'])
   })
 
   it('父组件不经 onOpenChange 直接关闭再打开，输入框是空的', async () => {
