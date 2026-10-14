@@ -1,6 +1,11 @@
-process.env.TZ = 'Asia/Shanghai'
+import { afterAll, describe, expect, it } from 'vitest'
 
-import { describe, expect, it } from 'vitest'
+const previousTimeZone = process.env.TZ
+process.env.TZ = 'Asia/Shanghai'
+afterAll(() => {
+  if (previousTimeZone === undefined) delete process.env.TZ
+  else process.env.TZ = previousTimeZone
+})
 
 import { sqliteTime } from '../sqlite-time'
 
