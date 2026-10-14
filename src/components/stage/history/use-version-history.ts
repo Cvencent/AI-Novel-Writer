@@ -61,8 +61,11 @@ export function useVersionHistory(projectKey: string) {
   /** 读这一章的各稿；只有最后一次读取写进列表，连续点几章时先点那章的结果晚到也不会盖住后点的。 */
   const loadVersions = useCallback(async (chapterNumber: number): Promise<VersionRecord[]> => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
-    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return []
     const request = ++versionRequest.current
+    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) {
+      setLoaded({ chapter: chapterNumber, versions: [] })
+      return []
+    }
     const latest = () => request === versionRequest.current && isProjectSessionCurrent(projectSession)
     try {
       const drafts = await ipc.invokeWithProjectSession(projectSession, 'db:draft-list', chapterNumber, projectSession.projectPath)
