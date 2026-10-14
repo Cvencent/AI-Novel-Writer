@@ -502,6 +502,21 @@ describe('提示栈', () => {
     expect(toastTitles()).toHaveLength(23)
   })
 
+  it('模态开着时溢出的栈仍能用滚轮滚动：滚动锁不拦栈上的滚轮', async () => {
+    await act(async () => { void confirm('切换项目？') })
+    await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
+    await act(async () => {
+      for (let i = 1; i <= 24; i++) toast.error(`出错 ${i}`, 0)
+    })
+    await wait(200)
+    const stack = document.querySelector<HTMLElement>('.pi-toast-stack')!
+    expect(stack.hasAttribute('data-overflow')).toBe(true)
+    const wheel = new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true })
+    liveToasts()[20].dispatchEvent(wheel)
+    expect(wheel.defaultPrevented).toBe(false)
+    await userEvent.keyboard('{Escape}')
+  })
+
   it('缩窗后栈重新判断溢出：改成可滚动、最新一条露在底部，卡片不因滚动条左移', async () => {
     await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
     await act(async () => {
