@@ -110,7 +110,7 @@ describe('新外壳的外观细节', () => {
     await page.viewport(1024, 640)
     const restore = useProjectStore.getState()
     const name = '雾钟'.repeat(40)
-    useProjectStore.setState({ currentProject: { id: 'long', sessionLease: 'l', name, path: 'C:\novels\long', novelConfig: {} } as unknown as ProjectData })
+    useProjectStore.setState({ currentProject: { id: 'long', sessionLease: 'l', name, path: 'C:\\novels\\long', novelConfig: {} } as unknown as ProjectData })
     try {
       const container = await mount(<div style={{ width: 1024 }}><StageTopBar crumbs={['正文', '第 3 章']} library={false} focus={false} focusTitle={{ title: '' }} workMenu={[]} onToggleFocus={() => undefined} /></div>)
       const close = page.getByRole('button', { name: '关闭', exact: true }).element().getBoundingClientRect()
