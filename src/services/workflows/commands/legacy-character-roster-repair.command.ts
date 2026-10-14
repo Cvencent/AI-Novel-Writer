@@ -241,7 +241,7 @@ export class RepairLegacyCharacterRosterCommand extends BaseWorkflowCommand<stri
       this.assertNotCancelled(context)
       assertLegacyRepairSessionCurrent(session)
       handle = runs.find(run => run.operation === 'legacy-character-roster-repair')?.handle
-      if (handle) throw new Error('已有旧角色修复运行，请明确查看或恢复；重新开始须单独选择。')
+      if (handle) throw new Error('已有旧版角色名单修复运行，请明确查看或恢复；重新开始须单独选择。')
     }
     const client = createLegacyRosterGeneration(session, () => { this.assertNotCancelled(context); assertLegacyRepairSessionCurrent(session) })
     const timer = setInterval(() => { if (context.cancelled) void client.cancel().catch(() => {}) }, 50)

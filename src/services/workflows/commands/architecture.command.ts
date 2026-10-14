@@ -1613,7 +1613,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     ))
     if (!char_dyn || char_dyn.includes('待生成')) throw new Error(text(
       '角色名单未生成',
-      'The character graph has not been generated.',
+      'The cast has not been generated.',
     ))
     if (!world_b || world_b.includes('待生成')) throw new Error(text(
       '世界观未生成',

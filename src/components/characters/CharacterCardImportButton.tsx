@@ -148,7 +148,7 @@ function SessionImportButton({ session, compact, disabled, ink }: Props & { sess
       toast.warning(text('未采用任何角色，输入内容已保留。', 'No characters were adopted; your input was kept.'))
     } else if (run?.status === 'completed') {
       clearImportDraftIfCurrent(sessionKey, submittedDraft)
-      toast.success(text('角色卡已导入角色名单', 'Character cards imported into the roster'))
+      toast.success(text('角色卡已导入角色名单', 'Character cards imported into the cast'))
     } else {
       setOpen(true)
       toast.warning(text('导入未完成，输入内容已保留；请查看任务详情。', 'Import did not complete. Your input has been kept; check the task details.'))
