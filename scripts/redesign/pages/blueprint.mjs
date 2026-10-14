@@ -55,9 +55,11 @@ export async function generateRange(page, from, to) {
   await dialog.getByLabel('蓝图起始章').fill(String(from))
   await dialog.getByLabel('蓝图结束章').fill(String(to))
   await dialog.getByRole('button', { name: '开始生成' }).click()
+  // 生成对话框收起后警告才出现（约 30 ms）；等「对话框或警告」会先命中还在卸载的对话框，漏掉警告。
+  await dialog.waitFor({ state: 'hidden' })
   const warning = page.getByRole('dialog', { name: '架构还不完整' })
-  await warning.or(dialog).first().waitFor({ state: 'visible' })
-  if (await warning.isVisible()) await warning.getByRole('button', { name: '继续生成' }).click()
+  const warned = await warning.waitFor({ state: 'visible', timeout: 3000 }).then(() => true, () => false)
+  if (warned) await warning.getByRole('button', { name: '继续生成' }).click()
 }
 
 /** 批量创作 count 章，模型用默认，写完留作草稿。 */

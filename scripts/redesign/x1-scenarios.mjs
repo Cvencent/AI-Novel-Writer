@@ -78,6 +78,14 @@ async function stubChannel(app, channel, reply) {
 
 const stubCalls = (app, channel) => app.evaluate((_, channel) => globalThis.__driveStubs[channel], channel)
 
+async function untilStubCalls(app, channel, count, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs
+  while (await stubCalls(app, channel) < count) {
+    assert.ok(Date.now() < deadline, `${timeoutMs} ms 内 ${channel} 没有调到第 ${count} 次`)
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+}
+
 const discardDialog = page => page.getByRole('dialog', { name: '放弃未保存的修改？' })
 
 /** 设置页「写作 Skills」里填一个没保存的 GitHub 地址。 */
@@ -359,6 +367,39 @@ export const X1_SCENARIOS = {
     return after
   } },
 
+  // #405 r1-2：导入完成要自动打开作品时的放弃确认开着，作者又按 Ctrl N；选继续编辑后导入照样收尾（不再占着导入入口），也不弹新建。
+  'x1-import-overlap': { model: false, shell: 'stage', setup: seedTwoBooks({ open: false }), run: async context => {
+    const { app, page } = context
+    await stubChannel(app, 'dialog:select-legacy-project', { grantId: 'drive-legacy', displayName: '旧港口' })
+    await stubChannel(app, 'dialog:select-project-restore-target', { grantId: 'drive-target', displayName: '港口' })
+    await stubChannel(app, 'project:import-legacy-copy', { state: 'ready', projectId: 'drive-harbor', targetRoot: context.harbor.path })
+    await holdChannel(app, 'project:import-legacy-copy')
+    const importMenu = stage.root(page).getByRole('button', { name: /^导入/ })
+    await importMenu.click()
+    await page.getByRole('menuitem', { name: '导入旧项目副本…' }).click()
+    await untilHeld(app, 'project:import-legacy-copy')
+    await stage.root(page).getByRole('banner').getByRole('button', { name: '设置', exact: true }).click()
+    await stage.settingsNav(page).waitFor({ state: 'visible' })
+    const url = await dirtySkillsPage(page)
+    await releaseChannel(app, 'project:import-legacy-copy')
+    await discardDialog(page).waitFor({ state: 'visible', timeout: 10_000 })
+    await page.keyboard.press('Control+N')
+    await page.waitForTimeout(300)
+    await discardDialog(page).getByRole('button', { name: '继续编辑' }).click()
+    await page.waitForTimeout(1000)
+    const dialogs = await page.locator('[role="dialog"]:visible, [role="alertdialog"]:visible').count()
+    const typed = await url.inputValue()
+    await url.fill('')
+    await stage.root(page).getByRole('button', { name: '返回书房' }).click()
+    await importMenu.click()
+    const importItem = page.getByRole('menuitem', { name: '导入旧项目副本…' })
+    await importItem.waitFor({ state: 'visible' })
+    const after = { dialogs, url: typed, importEnabled: await importItem.isEnabled() }
+    await page.keyboard.press('Escape')
+    assert.deepEqual(after, { dialogs: 0, url: SKILL_URL, importEnabled: true }, '继续编辑后没有弹新建，导入入口不再占着')
+    return after
+  } },
+
   // #404-2：设置页里有没保存的输入时，Ctrl O 与作品菜单「打开其他作品…」先问放弃，再弹选文件夹。
   'x1-open-folder-order': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ app, page }) => {
     await stubChannel(app, 'dialog:select-folder', null)
@@ -373,6 +414,34 @@ export const X1_SCENARIOS = {
     }
     const after = { folderDialogsBeforeAnswer: asked, folderDialogs: await stubCalls(app, 'dialog:select-folder'), url: await url.inputValue() }
     assert.deepEqual(after, { folderDialogsBeforeAnswer: [0, 0], folderDialogs: 0, url: SKILL_URL }, '先问放弃，继续编辑就不弹选文件夹')
+    return after
+  } },
+
+  // #405 r1-1：设置页开着时打开作品，选文件夹时取消，设置页与输入都留着。有没保存的输入时先选放弃修改（不问的版本直接弹选文件夹）；
+  // Ctrl O、作品菜单各一次，再清空输入后 Ctrl O 一次。
+  'x1-open-folder-cancel': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ app, page }) => {
+    await stubChannel(app, 'dialog:select-folder', null)
+    await stage.openSettings(page)
+    const url = await dirtySkillsPage(page)
+    const opens = [() => page.keyboard.press('Control+O'), () => stage.openWorkMenuItem(page, STAGE_SAMPLE.name, '打开其他作品…'), async () => {
+      await url.fill('')
+      await page.keyboard.press('Control+O')
+    }]
+    const after = []
+    for (const [index, open] of opens.entries()) {
+      await open()
+      const asked = await discardDialog(page).waitFor({ state: 'visible', timeout: 3000 }).then(() => true, () => false)
+      if (asked) await discardDialog(page).getByRole('button', { name: '放弃修改' }).click()
+      await untilStubCalls(app, 'dialog:select-folder', index + 1)
+      await page.waitForTimeout(800)
+      after.push({ settings: await stage.settingsNav(page).isVisible(), url: await url.isVisible() ? await url.inputValue() : null })
+      if (!after.at(-1).settings) break
+    }
+    assert.deepEqual(after, [
+      { settings: true, url: SKILL_URL },
+      { settings: true, url: SKILL_URL },
+      { settings: true, url: '' },
+    ], '取消选文件夹后设置页还开着，放弃过的输入也还在')
     return after
   } },
 
