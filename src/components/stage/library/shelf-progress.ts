@@ -38,12 +38,9 @@ export function barsFromStages(stages: readonly StageStatus[], text: Text): Stag
   })
 }
 
-/** 主进程概览统计的设定项：类型、细分类型、目标读者、核心大纲、世界观、金手指、主角人设、全局写作要求、文风。 */
-const SETUP_ITEMS = 9
-
 /**
- * 只预览、未打开的书：主进程的概览只有各阶段计数，没有设定必填项与规划总章数，所以按计数近似：
- * 设定写已填的设定项数，架构按四节，蓝图有 1 章即完成，正文写定稿章数。
+ * 只预览、未打开的书：设定按主进程返回的必填是否齐全（与流程脊同一口径，只说齐没齐），
+ * 架构按四节，蓝图有 1 章即完成，正文写定稿章数与规划章数。
  */
 export function barsFromOverview(overview: ReadyProjectOverview, text: Text): StageBar[] {
   const find = (id: ReadyProjectOverview['stages'][number]['id']) => overview.stages.find(stage => stage.id === id)
@@ -53,16 +50,18 @@ export function barsFromOverview(overview: ReadyProjectOverview, text: Text): St
   const drafted = find('drafting')?.count ?? 0
   const finalized = find('finalization')?.count ?? 0
   const name = (stage: WorkStage) => text(...STAGE_NAMES[stage])
-  const filled = configuration?.count ?? 0
-  const setupState = configuration?.status === 'completed' ? 'done' : filled ? 'active' : 'todo'
+  const setupReady = overview.setupReady ?? configuration?.status === 'completed'
+  const setupState = setupReady ? 'done' : configuration?.count ? 'active' : 'todo'
+  const planned = overview.plannedChapters ?? 0
   return [
-    bar('setup', setupState, setupState === 'done' ? 1 : filled / SETUP_ITEMS, setupState === 'done' ? name('setup') : `${name('setup')} ${filled} / ${SETUP_ITEMS}`),
+    bar('setup', setupState, setupReady ? 1 : 0, setupReady ? name('setup') : text(`${name('setup')} 未齐`, `${name('setup')}: incomplete`)),
     bar('architecture', architecture >= 4 ? 'done' : architecture > 0 ? 'active' : 'todo', architecture / 4,
       architecture >= 4 ? name('architecture') : `${name('architecture')} ${architecture} / 4`),
     bar('blueprint', blueprints > 0 ? 'done' : 'todo', blueprints > 0 ? 1 : 0,
       blueprints > 0 ? text(`${name('blueprint')} ${blueprints} 章`, `${name('blueprint')} ${blueprints} ch.`) : name('blueprint')),
-    bar('manuscript', finalized > 0 || drafted > 0 ? 'active' : 'todo', 0,
-      text(`${name('manuscript')} ${finalized} 章定稿`, `${name('manuscript')} ${finalized} final`)),
+    bar('manuscript', finalized > 0 || drafted > 0 ? 'active' : 'todo', planned > 0 ? finalized / planned : 0, planned > 0
+      ? `${name('manuscript')} ${finalized} / ${planned}`
+      : text(`${name('manuscript')} ${finalized} 章定稿`, `${name('manuscript')} ${finalized} final`)),
   ]
 }
 

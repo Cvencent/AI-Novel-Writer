@@ -32,9 +32,9 @@ export default function ShelfBook({ book, selected, kicker, figure, caption, men
         onClick={onSelect}
         onDoubleClick={onOpen}
       >
-        <span className="stage-book-kicker">{kicker}</span>
+        {kicker && <span className="stage-book-kicker">{kicker}</span>}
         <span className="stage-book-title" data-script={CJK.test(book.name) ? 'cjk' : 'latin'}>{book.name}</span>
-        <span className="stage-book-figure pi-num">{figure}</span>
+        {figure && <span className="stage-book-figure pi-num">{figure}</span>}
       </button>
       <div className="stage-book-foot">
         <div className="stage-book-caption">
