@@ -7,9 +7,9 @@ import { Button } from './Button'
 import { toastStackMount } from './ink-overlay'
 
 /**
- * 新外壳下 toast.* 与 actionToast.* 共用的提示栈：右下角一列，新的在下，同时最多露出 4 条；
- * 鼠标停在栈上时所有计时暂停。两个公共 API 的签名不变，只是往这里推条目。
- * 栈满时新来的按 yieldRank 挤掉已有的一条；没有可挤的就排在后面，前面关掉一条再露面。
+ * 新外壳下 toast.* 与 actionToast.* 共用的提示栈：右下角一列，新的在下；鼠标停在栈上时所有计时暂停。
+ * 两个公共 API 的签名不变，只是往这里推条目。每条一到就露面，没有暗处排队：
+ * 常驻、出错与带动作的通知从不让位，4 条上限只约束普通通知，超出时按 yieldRank 把已有的普通通知挤掉（播退场后拿掉）。
  * 同一句话再来一次不新起一条，原来那条重新计时。
  */
 export type ToastTone = 'ok' | 'info' | 'warn' | 'danger'
@@ -74,23 +74,16 @@ function ensureStack() {
 const liveEntries = (list: ToastStackEntry[]) => list.filter(entry => !entry.exiting)
 
 function dismissToast(id: number) {
-  const at = liveEntries(entries).findIndex(entry => entry.id === id)
-  if (at < 0) return
-  // 还在排队、没露过面的直接拿掉，不播退场
-  if (at >= TOAST_STACK_LIMIT) {
-    publish(entries.filter(entry => entry.id !== id))
-    return
-  }
+  if (!liveEntries(entries).some(entry => entry.id === id)) return
   publish(entries.map(entry => (entry.id === id ? { ...entry, exiting: true } : entry)))
   setTimeout(() => publish(entries.filter(entry => entry.id !== id)), EXIT_MS)
 }
 
-/**
- * 栈满时谁先让位，数小的先走：已过期，再是普通的完成与信息，再是提醒。
- * 常驻、出错与带动作的通知不让位：常驻的「发现新版本」被挤掉后不会再弹，出错与动作没处找回。
- */
-function yieldRank(entry: ToastStackEntry, now: number): number | undefined {
-  if (entry.duration <= 0 || entry.tone === 'danger' || entry.actions?.length) return undefined
+/** 常驻的「发现新版本」被挤掉后不会再弹，出错与动作没处找回，所以这三种不让位。 */
+const isPinned = (entry: ToastStackInput) => entry.duration <= 0 || entry.tone === 'danger' || Boolean(entry.actions?.length)
+
+/** 普通通知超出上限时谁先让位，数小的先走：已过期，再是完成与信息，再是提醒。 */
+function yieldRank(entry: ToastStackEntry, now: number) {
   if (now - entry.postedAt >= entry.duration) return 0
   return entry.tone === 'warn' ? 2 : 1
 }
@@ -105,13 +98,13 @@ export function pushToast(input: ToastStackInput): () => void {
     publish(entries.map(entry => (entry === same ? { ...entry, postedAt: now } : entry)))
     return () => dismissToast(same.id)
   }
-  const victims = live
-    .flatMap(entry => {
-      const rank = yieldRank(entry, now)
-      return rank === undefined ? [] : [{ id: entry.id, rank }]
-    })
+  // 新来的这条一定露面、不当受害者，它与不让位的各占一个名额，剩下的才留给已有的普通通知
+  const ordinary = live.filter(entry => !isPinned(entry))
+  const keep = Math.max(0, TOAST_STACK_LIMIT - 1 - (live.length - ordinary.length))
+  const victims = ordinary
+    .map(entry => ({ id: entry.id, rank: yieldRank(entry, now) }))
     .sort((a, b) => a.rank - b.rank || a.id - b.id)
-    .slice(0, Math.max(0, live.length + 1 - TOAST_STACK_LIMIT))
+    .slice(0, Math.max(0, ordinary.length - keep))
   const id = ++counter
   publish([...entries, { ...input, id, postedAt: now, exiting: false }])
   victims.forEach(victim => dismissToast(victim.id))
@@ -193,7 +186,6 @@ function ToastStack() {
   const [paused, setPaused] = useState(false)
   // 关掉最后一条时指针下已没有元素，mouseleave 不一定触发
   if (paused && items.length === 0) setPaused(false)
-  const shown = new Set(liveEntries(items).slice(0, TOAST_STACK_LIMIT).map(entry => entry.id))
 
   // 增删一条时其余卡片从旧位置滑到新位置（FLIP）。只借用 CSS 的 transform 过渡，所以可打断，减少动态效果时也随之关掉
   useLayoutEffect(() => {
@@ -214,7 +206,7 @@ function ToastStack() {
 
   return (
     <div className="pi-toast-stack" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
-      {items.filter(entry => entry.exiting || shown.has(entry.id)).map(entry => <ToastCard key={entry.id} entry={entry} paused={paused} />)}
+      {items.map(entry => <ToastCard key={entry.id} entry={entry} paused={paused} />)}
     </div>
   )
 }
