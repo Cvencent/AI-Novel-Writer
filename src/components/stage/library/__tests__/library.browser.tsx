@@ -30,6 +30,7 @@ const LIGHTHOUSE = { name: '灯塔', path: 'C:\\novels\\lighthouse', updatedAt: 
 const ISLAND = { name: '雾岛', path: 'C:\\novels\\island', updatedAt: '2026-10-02T09:00:00.000Z', previewCapabilityId: 'cap-island' }
 const READY: ProjectOverview = {
   state: 'ready', projectId: 'island', revision: 'r1', name: '雾岛', totalWords: 6214, characters: 3, finalizedChapters: 2,
+  setupReady: false, plannedChapters: 24,
   stages: [
     { id: 'configuration', status: 'in-progress', count: 5 }, { id: 'architecture', status: 'completed', count: 4 },
     { id: 'blueprint', status: 'in-progress', count: 12 }, { id: 'drafting', status: 'in-progress', count: 3 },
@@ -150,14 +151,26 @@ describe('书房', () => {
 
     const bars = [...host!.querySelectorAll<HTMLElement>('[data-stage]')].map(row => [row.dataset.stage, row.dataset.state, row.textContent])
     expect(bars).toEqual([
-      ['setup', 'active', '设定 5 / 9'], ['architecture', 'done', '架构'], ['blueprint', 'done', '蓝图 12 章'], ['manuscript', 'active', '正文 2 章定稿'],
+      ['setup', 'active', '设定 未齐'], ['architecture', 'done', '架构'], ['blueprint', 'done', '蓝图 12 章'], ['manuscript', 'active', '正文 2 / 24'],
     ])
+    const cover = (name: string) => button(`预览《${name}》`)!
+    expect([...cover('雾岛').children].map(part => part.className)).toEqual(['stage-book-title'])
     expect([...host!.querySelectorAll('.pi-btn--primary')].map(element => element.textContent)).toEqual(['打开《雾岛》'])
 
     await click(button('预览《雾岛》'))
     expect(useProjectStore.getState().openProject).not.toHaveBeenCalled()
     await click(button('打开《雾岛》'))
     expect(useProjectStore.getState().openProject).toHaveBeenCalledWith(ISLAND.path)
+  })
+
+  it('设定必填齐了的书，预览里设定是完成，与打开后一致', async () => {
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel: string, ...args: unknown[]) => channel === 'project:peek-overview' ? { ...READY, setupReady: true } : base(channel, ...args))
+    useProjectStore.setState({ recentProjects: [ISLAND] })
+    await mount()
+    await click(button('预览《雾岛》'))
+    expect(host!.querySelector<HTMLElement>('[data-stage="setup"]')?.dataset.state).toBe('done')
+    expect(host!.querySelector('[data-stage="setup"]')?.textContent).toBe('设定')
   })
 
   it('从最近项目移除先确认，取消时不移除，确认后只移除书架记录', async () => {
