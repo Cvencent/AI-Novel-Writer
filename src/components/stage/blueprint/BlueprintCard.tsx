@@ -31,7 +31,7 @@ export default function BlueprintCard({ blueprint, row, saving, onField, onSave,
   const number = blueprint.chapterNumber
 
   const addPeople = () => {
-    const names = person.split(/[,，、\s]+/u).map(name => name.trim()).filter(name => name && !blueprint.characters.includes(name))
+    const names = [...new Set(person.split(/[,，、\s]+/u).map(name => name.trim()))].filter(name => name && !blueprint.characters.includes(name))
     setPerson('')
     if (names.length > 0) onField('characters', [...blueprint.characters, ...names])
   }
@@ -89,14 +89,15 @@ export default function BlueprintCard({ blueprint, row, saving, onField, onSave,
         <div className="stage-bp-field">
           <label htmlFor={ids.person}>{text('出场人物', 'Characters')}</label>
           <div className="stage-bp-people">
-            {blueprint.characters.map(name => (
-              <span key={name} className="stage-bp-person">
+            {/* 旧数据里可能有重名：按位置区分，移除只去掉点的那一个。 */}
+            {blueprint.characters.map((name, index) => (
+              <span key={`${index}:${name}`} className="stage-bp-person">
                 {name}
                 <Button
                   variant="icon"
                   size="sm"
                   aria-label={text(`移除 ${name}`, `Remove ${name}`)}
-                  onClick={() => onField('characters', blueprint.characters.filter(item => item !== name))}
+                  onClick={() => onField('characters', blueprint.characters.filter((_, at) => at !== index))}
                 >
                   <X size={12} aria-hidden />
                 </Button>
