@@ -12,6 +12,7 @@ import { useThemeStore } from '../../../stores/theme-store'
 import { actionToast } from '../ActionToast'
 import { alertError } from '../AlertDialog'
 import { confirm } from '../Confirm'
+import { Button } from '../Button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../Dialog'
 import { toast } from '../Toast'
 import ClearProjectDataDialog from '../../dialogs/ClearProjectDataDialog'
@@ -707,3 +708,39 @@ describe('新外壳的普通对话框', () => {
     expect(onOpenChange).not.toHaveBeenCalled()
   })
 })
+
+describe('新外壳下的旧按钮变体', () => {
+  it('旧对话框与旧面板里的默认、AI、描边、幽灵、危险、图标按钮换成纸墨六种，主按钮与页面同为黛蓝', async () => {
+    container = document.createElement('div')
+    container.className = 'paper-ink'
+    container.dataset.theme = 'light'
+    document.body.append(container)
+    root = createRoot(container)
+    await act(async () => root!.render(
+      <Dialog open onOpenChange={onOpenChange}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>导出</DialogTitle></DialogHeader>
+          <Button size="lg">导出</Button>
+          <Button variant="ai" size="sm">AI 生成</Button>
+          <Button variant="outline">选择文件夹</Button>
+          <Button variant="ghost">取消</Button>
+          <Button variant="destructive">取消当前云操作</Button>
+          <Button variant="ghost" size="icon" aria-label="折叠">×</Button>
+        </DialogContent>
+      </Dialog>,
+    ))
+    const named = (name: string) => buttonNamed(host()!, name) ?? [...host()!.querySelectorAll('button')].find(b => b.getAttribute('aria-label') === name)!
+    expect(named('导出').className).toContain('pi-btn pi-btn--primary')
+    expect(named('导出').className).not.toContain('btn-primary ')
+    expect(getComputedStyle(named('导出')).backgroundColor).toBe(LIGHT.accent)
+    expect(getComputedStyle(named('导出')).height).toBe('36px')
+    expect(named('AI 生成').className).toContain('pi-btn--primary pi-btn--sm')
+    expect(named('AI 生成').className).not.toContain('ai-glow')
+    expect(named('选择文件夹').className).toContain('pi-btn--secondary pi-btn--sm')
+    expect(named('取消').className).toContain('pi-btn--text')
+    expect(named('取消当前云操作').className).toContain('pi-btn--danger-solid')
+    expect(named('折叠').className).toContain('pi-btn--icon pi-btn--sm')
+    expect(getComputedStyle(named('选择文件夹')).height).toBe('28px')
+  })
+})
+
