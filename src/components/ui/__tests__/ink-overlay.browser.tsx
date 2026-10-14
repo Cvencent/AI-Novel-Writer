@@ -431,7 +431,7 @@ describe('旧 ui/Dialog 在新外壳下', () => {
 })
 
 describe('清除生成内容', () => {
-  const project = { id: 'lighthouse', path: 'C:\novels\lighthouse', sessionLease: 'lease-clear' } as ProjectData
+  const project = { id: 'lighthouse', path: 'C:/novels/lighthouse', sessionLease: 'lease-clear' } as ProjectData
   const originalProject = useProjectStore.getState()
   let invoke: ReturnType<typeof vi.fn>
   let finishClear: (result: { success: boolean; error?: string }) => void = () => {}
