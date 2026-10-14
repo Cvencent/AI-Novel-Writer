@@ -55,10 +55,19 @@
   font-weight: 500;
 }
 
-/* 激活标签用 clip-path 盖住底边接缝，外圈焦点环会被裁掉，所以标签的焦点环画在内侧 */
+/* 焦点在文字按钮上，环套住整个标签（含关闭按钮）。激活标签的 clip-path 会裁掉外圈，所以画在内侧，底边离开接缝 */
 .stage-shell .stage-tab-label:focus-visible {
-  border-radius: 9px 9px 0 0;
-  box-shadow: inset 0 0 0 2px var(--accent);
+  outline: none;
+  box-shadow: none;
+}
+
+.stage-tab:has(> .stage-tab-label:focus-visible)::after {
+  content: '';
+  position: absolute;
+  inset: 2px 2px 3px;
+  border: 2px solid var(--accent);
+  border-radius: 7px 7px 4px 4px;
+  pointer-events: none;
 }
 
 .stage-tab-close {
