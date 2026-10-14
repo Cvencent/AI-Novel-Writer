@@ -1,7 +1,10 @@
 // RD-X1 外部审查修复的实机场景：会丢数据、写错对象、会话与导航错位的缺陷，各按作者的操作在真实 Electron 里走一遍。
 // 竞态用主进程通道上的门卡住（holdChannel），让「保存或读取还没返回时作者已经离开」稳定发生。
 import assert from 'node:assert/strict'
+import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { existsSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 
 import { chooseProjectDirectoryGrant } from '../project-directory-grant.mjs'
 import * as blueprint from './pages/blueprint.mjs'
@@ -179,20 +182,23 @@ async function openWithSlowFileTree(app, page) {
   await enterWorkAfterOpening(page)
 }
 
-/** 主进程的未完成删除列表与重试换成桩：第 2 章定稿删除后正文清理失败；重试一次就清掉。 */
-async function stubIncompleteDeletion(app) {
-  await app.evaluate(({ ipcMain }, chapterTitle) => {
-    const state = globalThis.__driveDeletion = { retries: 0, operations: [{ operationId: 'drive-deletion', draftId: 2, chapterNumber: 2, chapterTitle,
-      finalizationId: 'drive-final', targetFileName: '', knowledgeDocumentId: '', postProcessRunIds: [], manuscriptStatus: 'failed',
-      manuscriptError: '正文文件被占用', knowledgeStatus: 'done', knowledgeError: '', legacyKnowledgeAuthorization: 'not-required',
-      legacyKnowledgeAuthorizedAt: '', status: 'failed', attemptCount: 1 }] }
-    ipcMain._invokeHandlers.set('chapter:list-incomplete-deletions', () => ({ success: true, operations: state.operations }))
-    ipcMain._invokeHandlers.set('chapter:retry-deletion', () => {
-      state.retries++
-      state.operations = []
-      return { success: true, committed: true }
-    })
-  }, stageChapterTitle(2))
+/**
+ * 另起一个 PowerShell 进程以只共享读的方式打开文件（不带 FileShare.Delete），Windows 上删除它会得到 EBUSY。
+ * 返回释放函数：按这个子进程的 PID 结束它。
+ */
+async function lockFile(path) {
+  const child = spawn('powershell.exe', ['-NoProfile', '-Command',
+    `$f = [System.IO.File]::Open($env:DRIVE_LOCK_PATH, 'Open', 'Read', 'Read'); [Console]::Out.WriteLine('locked'); [Console]::Out.Flush(); Start-Sleep -Seconds 600`],
+  { env: { ...process.env, DRIVE_LOCK_PATH: path }, stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true })
+  const exited = new Promise(resolve => child.once('exit', resolve))
+  await Promise.race([
+    new Promise(resolve => child.stdout.on('data', chunk => { if (String(chunk).includes('locked')) resolve() })),
+    exited.then(code => { throw new Error(`占住文件的进程提前退出：${code}`) }),
+  ])
+  return () => {
+    child.kill()
+    return exited
+  }
 }
 
 export const X1_SCENARIOS = {
@@ -296,25 +302,40 @@ export const X1_SCENARIOS = {
     return { reopened: await chapterView.hint(page).innerText() }
   } },
 
-  // #392 T2：第 2 章定稿删除后清理没做完（主进程的未完成删除列表打桩），第 2 章另有未定稿 v2：打开第 2 章落在 v2 上，提示与重试都在。
-  // 夹具作品的定稿不写正文文件，真实删除走不出清理失败，所以只把列表与重试换成桩，单章视图之后的路径都是真的。
-  'x1-cleanup-retry': { model: false, shell: 'stage', setup: async context => {
-    await stubIncompleteDeletion(context.app)
-    await seedStageSample(context, { landOnChapter3: false, beforeReload: async ({ page, invoke, path: projectPath, session }) => {
-      const text = `${STAGE_SAMPLE.finalized[2]}\n\n堤脚的刻痕旁边，又多了一道新刻的线。`
-      assert.equal((await invoke(page, 'db:draft-create', { chapterNumber: 2, version: 2, source: 'write', content: text, wordCount: countUnits(text) },
-        projectPath, session)).success, true)
-    } })
-  }, run: async ({ app, page, shoot }) => {
-    await chapterView.open(page, 2)
-    const notice = chapterView.view(page).getByText('删除正文后的清理没有完成')
-    await notice.waitFor({ state: 'visible', timeout: 15_000 })
-    const onDraft = await chapterView.versionButton(page).innerText()
-    assert.match(onDraft, /草稿 v2/, '落在第 2 章的未定稿 v2 上')
-    await shoot('x1-cleanup-retry-notice')
-    await chapterView.view(page).getByRole('button', { name: '重试清理' }).click()
-    await notice.waitFor({ state: 'hidden', timeout: 15_000 })
-    return { onDraft, retries: await app.evaluate(() => globalThis.__driveDeletion.retries) }
+  // #392 T2：第 3 章另有草稿 v1，把 v2 定稿（真实的定稿后处理写出正文文件并入知识库），正文文件被另一个进程占着时删除正文：
+  // 数据库已删、正文清理失败。落在 v1 的单章视图上有「删除正文后的清理没有完成」；放开文件后点重试清理，提示消失、文件删掉。
+  'x1-cleanup-retry': { model: true, shell: 'stage', setup: context => seedStageSample(context, { beforeReload: async ({ page, invoke, path: projectPath, session }) => {
+    const text = `${STAGE_SAMPLE.drafts[3].text}\n\n堤脚的刻痕旁边，又多了一道新刻的线。`
+    assert.equal((await invoke(page, 'db:draft-create', { chapterNumber: 3, version: 2, source: 'write', content: text, wordCount: countUnits(text) },
+      projectPath, session)).success, true)
+  } }), run: async ({ page, shoot, samplePath }) => {
+    await chapterView.open(page, 3)
+    await chapterView.finalize(page, 3)
+    await chapterView.postProcess(page).getByText('4 / 4 完成').waitFor({ state: 'visible', timeout: 90_000 })
+    const manuscript = readdirSync(samplePath).find(name => name.startsWith('第3章') && name.endsWith('.txt'))
+    assert.ok(manuscript, '定稿写出了第 3 章的正文文件')
+    const file = join(samplePath, manuscript)
+    const release = await lockFile(file)
+    try {
+      await chapterView.more(page, '删除正文…')
+      await page.getByRole('button', { name: '删除', exact: true }).click()
+      const legacy = page.getByRole('button', { name: '我已人工核对/清理，继续删除' })
+      if (await legacy.waitFor({ state: 'visible', timeout: 3000 }).then(() => true, () => false)) await legacy.click()
+      const notice = chapterView.view(page).getByText('删除正文后的清理没有完成')
+      await notice.waitFor({ state: 'visible', timeout: 15_000 })
+      const onDraft = await chapterView.versionButton(page).innerText()
+      assert.match(onDraft, /草稿 v1/, '落在第 3 章的未定稿 v1 上')
+      const failure = await chapterView.view(page).locator('[role="alert"], [role="status"]').filter({ hasText: '删除正文后的清理没有完成' }).innerText()
+      assert.match(failure, /EBUSY/, '清理失败的原因是正文文件被占用')
+      await shoot('x1-cleanup-retry-notice')
+      await release()
+      await chapterView.view(page).getByRole('button', { name: '重试清理' }).click()
+      await notice.waitFor({ state: 'hidden', timeout: 15_000 })
+      assert.equal(existsSync(file), false, '重试清理后正文文件已删除')
+      return { onDraft, failure: failure.replace(/\s+/g, ' ').slice(0, 200), fileRemoved: true }
+    } finally {
+      await release()
+    }
   } },
 
   // #381 C1：会话内写稿失败后，运行侧页「可恢复的内容」立即列出这一章的候选，不必重开作品。
