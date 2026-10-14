@@ -217,6 +217,22 @@ describe('知识库', () => {
 
   })
 
+  it('改「最多显示」按上次查找的词重查，不用输入框里还没提交的字', async () => {
+    await renderPage()
+    const input = document.querySelector<HTMLInputElement>('form[role="search"] input')!
+    await type(input, '三号站台 失踪')
+    await act(async () => document.querySelector<HTMLFormElement>('form[role="search"]')!.requestSubmit())
+    await vi.waitFor(() => expect(document.body.textContent).toContain('找到 2 条'))
+    await type(input, '还没提交')
+    const limit = document.querySelector<HTMLSelectElement>('.stage-kb-topk')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(limit, '5')
+      limit.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    await vi.waitFor(() => expect(invoke.mock.calls.filter(([channel]) => channel === 'kb:search').map(call => call.slice(1, 3)))
+      .toEqual([['三号站台 失踪', 10], ['三号站台 失踪', 5]]))
+  })
+
   it('定稿章节按定稿登记分架：有项目副本也不进「我导入的」，旧版无副本的导入资料不算定稿', async () => {
     await renderPage()
     expect(button(/我导入的 3/)).toBeTruthy()
