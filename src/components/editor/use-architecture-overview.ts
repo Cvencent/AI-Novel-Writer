@@ -84,6 +84,8 @@ export function useArchitectureOverview(projectKey: string) {
   const [loading, setLoading] = useState(true)
   /** 第一次读三节结束（含失败）后置真且不再复位；读取失败时 loading 照旧停在加载态。 */
   const [coreReadEnded, setCoreReadEnded] = useState(false)
+  /** 三节与名单都第一次读完后锁住：名单的 settled 换作品时会复位，这里不跟着复位。 */
+  const [firstReadEnded, setFirstReadEnded] = useState(false)
   /** 生成对话框由哪个入口打开、预选哪几节；null 为关闭。每个入口整体替换，取消后不残留到下一次打开。 */
   const [generateIntent, setGenerateIntent] = useState<GenerateIntent | null>(null)
   const lastCompletedArchitectureRunRef = useRef<string | null>(null)
@@ -219,6 +221,8 @@ export function useArchitectureOverview(projectKey: string) {
     setLoading(false)
     setCoreReadEnded(true)
   }, [currentProject, projectKey, projectMatches])
+
+  if (!firstReadEnded && coreReadEnded && (!projectMatches || rosterSettled)) setFirstReadEnded(true)
 
   const archStatus = useMemo<Record<string, boolean>>(() => ({
     ...coreStatus,
@@ -448,7 +452,7 @@ export function useArchitectureOverview(projectKey: string) {
     /** 三节正文与名单都读完之前为真；名单读不到时也算读完，按没有名单显示。 */
     loading: loading || (projectMatches && !rosterSettled),
     /** 第一次读状态已结束（成功或失败）：之前各节还没有真实状态；之后刷新、或读取失败停在加载态时都为真。 */
-    firstReadEnded: coreReadEnded && (!projectMatches || rosterSettled),
+    firstReadEnded,
     archStatus,
     confirmed,
     wordCounts,
