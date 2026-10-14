@@ -12,6 +12,7 @@ import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore, type WorkflowDefinition, type WorkflowRun } from '../../../stores/workflow-store'
 import { useLayoutStore } from '../../../stores/layout-store'
 import { useDraftStore } from '../../../stores/draft-store'
+import { useAppearanceStore } from '../../../stores/appearance-bootstrap'
 import type { ImportRunPreparationResult, ImportRunSnapshot } from '../../../shared/import-run'
 import type { AuthorManuscriptImportPreview } from '../../../shared/author-manuscript-import'
 
@@ -1169,5 +1170,41 @@ describe('current-project reference import', () => {
 
     expect(startWorkflow).toHaveBeenCalledOnce()
     expect(startWorkflow.mock.calls[0][0]).toMatchObject({ runId: 'restarted-second', uiLocale: 'en-US' })
+  })
+})
+
+describe('新外壳里的导入对话框', () => {
+  it('同屏只有一个上墨的主按钮：用途、目标与可续导入的选中项是按下的次按钮', async () => {
+    const restore = useAppearanceStore.getState()
+    useAppearanceStore.setState({ resolvedShell: 'stage' })
+    try {
+      await act(async () => root.render(<div className="paper-ink"><ImportNovelDialog open onClose={vi.fn()} /></div>))
+      expect([...document.querySelectorAll('[role="dialog"] .pi-btn--primary')].map(button => button.textContent)).toEqual(['开始拆解仿写（0 章）'])
+      await act(async () => root.render(<div />))
+      invoke.mockImplementation(async (channel: string) => {
+        if (channel === 'db:import-run-list-resumable') return [importRun({ id: 'first-run', status: 'failed' }), importRun({ id: 'second-run', status: 'failed' })]
+        if (channel === 'db:project-core-get') return null
+        if (channel === 'db:blueprint-get-all') return []
+        return { success: true }
+      })
+      await act(async () => root.render(<div className="paper-ink"><ImportNovelDialog open onClose={vi.fn()} /></div>))
+      await act(async () => page.getByTestId('import-target-current').click())
+      await expect.element(page.getByTestId('import-resumable-runs')).toBeVisible()
+      const dialog = document.querySelector('[role="dialog"]')!
+      expect([...dialog.querySelectorAll('.pi-btn--primary:not(:disabled)')].map(button => button.textContent)).toEqual(['继续导入'])
+      const toggles = [...dialog.querySelectorAll<HTMLButtonElement>('button[aria-pressed]')]
+      expect(toggles.map(button => [button.dataset.testid, button.getAttribute('aria-pressed'), button.classList.contains('pi-btn--secondary')])).toEqual([
+        ['import-purpose-reference', 'true', true], ['import-purpose-author', 'false', true],
+        ['import-target-new', 'false', true], ['import-target-current', 'true', true],
+        ['import-resumable-choice-first-run', 'true', true], ['import-resumable-choice-second-run', 'false', true],
+      ])
+      const pressed = getComputedStyle(page.getByTestId('import-target-current').element())
+      const raised = getComputedStyle(page.getByTestId('import-target-new').element())
+      expect(pressed.backgroundColor).not.toBe(raised.backgroundColor)
+      expect(pressed.boxShadow).toContain('inset')
+      await page.screenshot({ path: '../../../../.runtime/rdx3-shots/import-dialog-stage.png' })
+    } finally {
+      useAppearanceStore.setState(restore, true)
+    }
   })
 })
