@@ -1,5 +1,7 @@
 // RD-V 统一视觉层的实机场景：危险确认（含清除中）、命令式错误弹框、提示栈（含出错通知）、运行失败提示，以及新外壳下的旧对话框。
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
 
 import * as bookshelf from './pages/bookshelf.mjs'
 import * as chapter from './pages/chapter.mjs'
@@ -108,6 +110,44 @@ export const VISUAL_SCENARIOS = {
     for (let i = 1; i < boxes.length; i++) assert.ok(boxes[i].top >= boxes[i - 1].bottom, '通知互不重叠')
     assert.ok(await inPaperInk(stack), '提示栈在纸墨宿主里')
     return { toasts: boxes.length }
+  } },
+
+  // 常驻与出错不受条数上限约束：24 条出错时栈收在视口内、栈内滚动，最新一条露在底部，滚到顶能关掉最早那条
+  'rdv-toast-flood': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ app, page, shoot }) => {
+    const appPath = await app.evaluate(({ app: electronApp }) => electronApp.getAppPath())
+    const chunk = fs.readdirSync(path.join(appPath, 'dist', 'assets')).find(name => /^ToastStack-.*\.js$/.test(name))
+    assert.ok(chunk, '构建产物里有提示栈模块')
+    const pushed = await page.evaluate(async ({ chunkName, count }) => {
+      // 提示栈模块在新外壳启动时已载入；同一个 URL 再 import 拿到的是同一份栈状态
+      const module = await import(new URL(`./assets/${chunkName}`, location.href).href)
+      const push = Object.values(module).find(value => typeof value === 'function' && String(value).includes('exiting:!1'))
+      if (!push) return 'no-push'
+      for (let i = 1; i <= count; i++) push({ tone: 'danger', message: `第 ${i} 章保存失败\n\n磁盘只读，第 ${i} 次重试仍失败`, duration: 0 })
+      return 'ok'
+    }, { chunkName: chunk, count: 24 })
+    assert.equal(pushed, 'ok', '在提示栈模块里找到推入函数并推入 24 条')
+    await page.waitForTimeout(600)
+    const stack = page.locator('.pi-toast-stack')
+    const geometry = () => stack.evaluate(element => {
+      const cards = [...element.querySelectorAll('.pi-toast:not([data-exiting])')]
+      const box = element.getBoundingClientRect()
+      const newest = cards.at(-1).getBoundingClientRect()
+      return { count: cards.length, top: box.top, bottom: box.bottom, viewport: innerHeight, overflow: element.hasAttribute('data-overflow'),
+        newestInside: newest.top >= box.top - 0.5 && newest.bottom <= box.bottom + 0.5 }
+    })
+    const flooded = await geometry()
+    assert.equal(flooded.count, 24, '24 条都在')
+    assert.ok(flooded.top >= 48 && flooded.bottom <= flooded.viewport, `栈收在顶栏以下、视口以内：${flooded.top}–${flooded.bottom}`)
+    assert.ok(flooded.overflow, '栈高过上限时改为可滚动')
+    assert.ok(flooded.newestInside, '最新一条露在栈底')
+    await stack.evaluate(element => { element.scrollTop = 0 })
+    const oldest = stack.locator('.pi-toast', { hasText: '第 1 章保存失败' })
+    await shoot('rdv-toast-flood-top')
+    await oldest.getByRole('button', { name: '关闭通知' }).click()
+    await oldest.waitFor({ state: 'detached' })
+    assert.equal((await geometry()).count, 23, '滚到顶能关掉最早那条')
+    await stack.evaluate(element => { element.scrollTop = element.scrollHeight })
+    return flooded
   } },
 
   'rdv-toast-error': { model: true, shell: 'stage', setup: context => seedStageSample(context, { beforeReload: seedCalls }), run: async ({ page }) => {

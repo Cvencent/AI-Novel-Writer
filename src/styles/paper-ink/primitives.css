@@ -397,9 +397,9 @@
 .pi-toast-stack {
   pointer-events: auto; position: fixed; right: var(--s-5); bottom: var(--s-12); z-index: var(--z-toast);
   display: flex; flex-direction: column; align-items: flex-end; gap: var(--s-2);
-  max-height: calc(100vh - var(--s-12) - var(--s-5));
+  max-height: calc(100vh - 2 * var(--s-12));
 }
-/* 常驻与出错不受条数上限约束，栈高过视口时改为可滚动（ToastStack 量出溢出才标记，平时不裁卡片投影）；左侧留出投影的位置 */
+/* 常驻与出错不受条数上限约束，栈最高到顶栏以下（上沿留 48px，窗口按钮仍点得到），再高就栈内滚动（ToastStack 量出溢出才标记，平时不裁卡片投影）；左侧留出投影的位置 */
 .pi-toast-stack[data-overflow] { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-left: var(--s-6); }
 
 /* ================= 空状态 ================= */

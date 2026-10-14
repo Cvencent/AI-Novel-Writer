@@ -476,7 +476,7 @@ describe('提示栈', () => {
     expect(item.dataset.tone).toBe('danger')
   })
 
-  it('24 条出错通知时栈收在视口内可滚动，最新一条露在底部，滚到顶能关掉最早的', async () => {
+  it('24 条出错通知时栈收在顶栏以下、视口以内可滚动，最新一条露在底部，滚到顶能关掉最早的', async () => {
     await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
     await act(async () => {
       for (let i = 1; i <= 24; i++) toast.error(`出错 ${i}`, 0)
@@ -485,7 +485,7 @@ describe('提示栈', () => {
     expect(liveToasts()).toHaveLength(24)
     const stack = document.querySelector<HTMLElement>('.pi-toast-stack')!
     const box = stack.getBoundingClientRect()
-    expect(box.top).toBeGreaterThanOrEqual(0)
+    expect(box.top).toBeGreaterThanOrEqual(48)
     expect(box.bottom).toBeLessThanOrEqual(window.innerHeight)
     expect(stack.scrollHeight).toBeGreaterThan(stack.clientHeight)
     const newest = liveToasts().at(-1)!.getBoundingClientRect()
