@@ -513,6 +513,18 @@ describe('提示栈', () => {
     expect([getComputedStyle(stack).scrollbarWidth, getComputedStyle(stack, '::-webkit-scrollbar').width]).toEqual(['auto', '6px'])
   })
 
+  it('溢出的栈上沿淡出而不是硬切；滚到顶时最早一条在淡出带下面，整张露出来', async () => {
+    await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
+    await act(async () => {
+      for (let i = 1; i <= 24; i++) toast.error(`出错 ${i}`, 0)
+    })
+    await wait(200)
+    const stack = document.querySelector<HTMLElement>('.pi-toast-stack')!
+    expect(getComputedStyle(stack).maskImage).toMatch(/^linear-gradient\(rgba\(0, 0, 0, 0\), rgb\(.+\) 16px\)$/)
+    await act(async () => { stack.scrollTop = 0 })
+    expect(liveToasts()[0].getBoundingClientRect().top - stack.getBoundingClientRect().top).toBeGreaterThanOrEqual(16)
+  })
+
   it('模态开着时溢出的栈仍能用滚轮滚动：滚动锁不拦栈上的滚轮', async () => {
     await act(async () => { void confirm('切换项目？') })
     await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
