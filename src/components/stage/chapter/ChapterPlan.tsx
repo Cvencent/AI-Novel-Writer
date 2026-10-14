@@ -9,11 +9,11 @@ import { useProjectStore } from '../../../stores/project-store'
 import { captureProjectSession } from '../../project-session-gate'
 import { Button } from '../../ui/Button'
 import { Notice } from '../../ui/Notice'
-import { useIncompleteDeletions } from '../../panels/sidebar/use-incomplete-deletions'
 import { useStageView } from '../use-stage-work'
 import WriteChapterPopover from '../write/WriteChapterPopover'
 import { openDraftInChapterView, swapChapterTab } from './chapter-tab-routing'
 import ChapterHead from './ChapterHead'
+import DeletionCleanupNotices from './DeletionCleanupNotices'
 import { useChapterBlueprint } from './use-chapter-blueprint'
 
 /**
@@ -29,8 +29,6 @@ export default function ChapterPlan({ tab, chapterNumber, projectKey }: { tab: E
   const { chapters } = useStageView()
   const row = chapters.find(candidate => candidate.number === chapterNumber)
   const draft = row?.draft ?? null
-  const deletions = useIncompleteDeletions(projectKey)
-  const unfinished = deletions.operations.filter(operation => operation.chapterNumber === chapterNumber)
 
   useEffect(() => {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
@@ -73,23 +71,7 @@ export default function ChapterPlan({ tab, chapterNumber, projectKey }: { tab: E
             </div>
           )}
           <div className="stage-ch-notices">
-            {unfinished.map(operation => {
-              const manual = operation.legacyKnowledgeAuthorization === 'required'
-              return (
-                <Notice
-                  key={operation.operationId}
-                  tone="warn"
-                  title={manual ? text('删除正文后待人工核对知识投影', 'The deleted manuscript needs a manual knowledge check') : text('删除正文后的清理没有完成', 'Cleanup after deleting the manuscript is unfinished')}
-                  actions={(
-                    <Button variant="secondary" size="sm" onClick={() => void (manual ? deletions.confirmLegacyDeletion(operation) : deletions.retryDeletion(operation))}>
-                      {manual ? text('确认人工核对并继续', 'Confirm and continue') : text('重试清理', 'Retry cleanup')}
-                    </Button>
-                  )}
-                >
-                  {[operation.manuscriptStatus === 'failed' ? operation.manuscriptError : '', operation.knowledgeStatus === 'failed' ? operation.knowledgeError : ''].filter(Boolean).join('；') || null}
-                </Notice>
-              )
-            })}
+            <DeletionCleanupNotices projectKey={projectKey} chapterNumber={chapterNumber} />
             {row?.running && (
               <Notice
                 tone="info"

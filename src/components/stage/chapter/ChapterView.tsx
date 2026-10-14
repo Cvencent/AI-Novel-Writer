@@ -15,6 +15,7 @@ import { sameProjectSessionContext } from '../../../shared/project-session-conte
 import { captureProjectSession, isProjectSessionCurrent, isProjectSessionPath } from '../../project-session-gate'
 import ChapterActions from './ChapterActions'
 import ChapterHead from './ChapterHead'
+import DeletionCleanupNotices from './DeletionCleanupNotices'
 import { useChapterBlueprint } from './use-chapter-blueprint'
 import ChapterPlan from './ChapterPlan'
 import { STAGE_STEP } from './chapter-lifecycle'
@@ -124,6 +125,9 @@ function DraftChapter({ tab, filePath, projectKey }: { tab: EditorTab; filePath:
               review={latest ? { report: latest.content, reviewId: latest.id, snapshot: review.snapshot, cycle: review.cycle, reloadCycle: review.reloadCycle } : null}
               focus={focus}
             />
+          )}
+          {chapterNumber !== undefined && (
+            <div className="stage-ch-notices"><DeletionCleanupNotices projectKey={projectKey} chapterNumber={chapterNumber} /></div>
           )}
           {!draft.mergeData && (
             <div className="stage-ch-prose" data-readonly={!editable || undefined}>
