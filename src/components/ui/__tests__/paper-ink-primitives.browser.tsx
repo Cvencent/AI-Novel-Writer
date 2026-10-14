@@ -670,6 +670,17 @@ describe('侧页内的菜单', () => {
     })
     expect(container.querySelector('[role="menu"]')).toBeNull()
   })
+
+  it('别处的滚动区自己滚动（比如运行日志跟到最新一行）时菜单不关，触发按钮没有动', async () => {
+    const container = await mount(<><Harness /><div className="log" style={{ height: 80, overflow: 'auto' }}><div style={{ height: 400 }} /></div></>)
+    await openMenu(container)
+    const log = container.querySelector<HTMLElement>('.log')!
+    await act(async () => {
+      log.scrollTop = 200
+      await new Promise((resolve) => log.addEventListener('scroll', resolve, { once: true }))
+    })
+    expect(container.querySelector('[role="menu"]')).not.toBeNull()
+  })
 })
 
 describe('Popover', () => {
