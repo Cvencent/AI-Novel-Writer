@@ -74,12 +74,16 @@ const popoverIn = (width, height) => ({ model: true, shell: 'stage', setup: with
   await page.keyboard.press('Escape')
 } })
 
-/** 按 Tab 直到焦点落在 target 上，读它的 box-shadow，截一张它周围的图。 */
+/** 按 Tab 直到焦点落在 target 上，读它的 box-shadow（内容标签的环画在整个标签的 ::after 上，读那条边），截一张它周围的图。 */
 async function tabTo(page, target, shoot, name, limit = 60) {
   const handle = await target.elementHandle()
   for (let step = 0; step < limit; step++) {
     if (await handle.evaluate(element => element === document.activeElement)) {
-      const ring = await handle.evaluate(element => ({ boxShadow: getComputedStyle(element).boxShadow, focusVisible: element.matches(':focus-visible') }))
+      const ring = await handle.evaluate(element => {
+        const tab = element.closest('.stage-tab')
+        const boxShadow = tab ? `${getComputedStyle(tab, '::after').borderTopColor} ${getComputedStyle(tab, '::after').borderTopWidth}` : getComputedStyle(element).boxShadow
+        return { boxShadow, focusVisible: element.matches(':focus-visible') }
+      })
       await shoot(name)
       return ring
     }
@@ -248,6 +252,58 @@ export const RDX3_SCENARIOS = {
    * 定稿后自动打开下一章遇上设置页里没保存的输入：放弃确认 → 收起设置 → 第 4 章单章视图自动弹出写作弹层。
    * 放弃确认关掉后还焦点不能把刚弹出的写作弹层关掉。
    */
+  /** 作品菜单打开的导出、小说拆解与仿写、清除生成内容，取消或 Esc 关闭后焦点回到作品菜单按钮。 */
+  'rdx3-work-menu-focus': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page, shoot }) => {
+    const trigger = stage.root(page).getByRole('banner').getByRole('button', { name: `《${STAGE_SAMPLE.name}》作品菜单` })
+    const landed = () => trigger.evaluate(element => element === document.activeElement)
+    const dialog = page.getByRole('dialog').first()
+    const results = {}
+    for (const [item, close] of [
+      ['导出…', 'Escape'], ['小说拆解与仿写…', 'Escape'], ['清除生成内容…', 'Escape'], ['清除生成内容…', '取消'], ['导出…', '关闭'],
+    ]) {
+      await stage.openWorkMenuItem(page, STAGE_SAMPLE.name, item)
+      await dialog.waitFor({ state: 'visible' })
+      if (close === 'Escape') await page.keyboard.press('Escape')
+      else await dialog.getByRole('button', { name: close, exact: true }).click()
+      await dialog.waitFor({ state: 'detached' })
+      results[`${item} ${close}`] = await landed()
+    }
+    await shoot('rdx3-work-menu-focus')
+    assert.deepEqual(Object.values(results), [true, true, true, true, true], `关闭后焦点都回到作品菜单按钮：${JSON.stringify(results)}`)
+    return results
+  } },
+
+  /** 模态开着时溢出的提示栈用真滚轮滚得动；栈的滚动条是全局 6px 细条。 */
+  'rdx3-toast-wheel': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ app, page, shoot }) => {
+    const appPath = await app.evaluate(({ app: electronApp }) => electronApp.getAppPath())
+    const chunk = fs.readdirSync(path.join(appPath, 'dist', 'assets')).find(name => /^ToastStack-.*\.js$/.test(name))
+    await stage.openWorkMenuItem(page, STAGE_SAMPLE.name, '清除生成内容…')
+    await page.getByRole('dialog').first().waitFor({ state: 'visible' })
+    const pushed = await page.evaluate(async ({ chunkName, count }) => {
+      const module = await import(new URL(`./assets/${chunkName}`, location.href).href)
+      const push = Object.values(module).find(value => typeof value === 'function' && String(value).includes('exiting:!1'))
+      if (!push) return 'no-push'
+      for (let i = 1; i <= count; i++) push({ tone: 'danger', message: `第 ${i} 章保存失败`, duration: 0 })
+      return 'ok'
+    }, { chunkName: chunk, count: 24 })
+    assert.equal(pushed, 'ok')
+    await page.waitForTimeout(400)
+    const stack = page.locator('.pi-toast-stack')
+    const before = await stack.evaluate(element => ({ overflow: element.hasAttribute('data-overflow'), top: element.scrollTop, scrollbar: element.offsetWidth - element.clientWidth }))
+    const box = await stack.boundingBox()
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.wheel(0, -600)
+    await page.waitForTimeout(400)
+    const after = await stack.evaluate(element => element.scrollTop)
+    await shoot('rdx3-toast-wheel')
+    assert.equal(before.overflow, true, '24 条时栈可滚动')
+    assert.equal(before.scrollbar, 6, `栈的滚动条是 6px：${before.scrollbar}`)
+    assert.ok(after < before.top - 100, `模态开着时滚轮把栈往上滚了：${before.top} → ${after}`)
+    return { before, after }
+  }, after: async ({ page }) => {
+    await page.keyboard.press('Escape')
+  } },
+
   'rdx3-write-after-discard': writeAfterDiscard(),
   /** 同上，但放弃确认弹出前作者点过运行侧页的「历史」页签：确认关掉后焦点要还给这个还在的页签。 */
   'rdx3-write-after-discard-sheet': writeAfterDiscard({ focusBefore: page => runSheet.tab(page, '历史').click() }),
