@@ -172,6 +172,33 @@ describe('Button 纸墨六种', () => {
     }
   })
 
+  it('主按钮悬停、次按钮按下时受光渐变与底色、投影同步过渡，不瞬切', async () => {
+    const container = await mount(
+      <div style={{ display: 'flex', gap: 12 }}>
+        <Button variant="primary">写作此章</Button>
+        <Button variant="secondary">重新生成</Button>
+      </div>,
+    )
+    const [primary, secondary] = container.querySelectorAll('button')
+    const midway = async (button: HTMLButtonElement, change: () => Promise<unknown>) => {
+      const rest = getComputedStyle(button).backgroundImage
+      await change()
+      const transitions = button.getAnimations()
+      expect(new Set(transitions.map((animation) => animation.effect!.getTiming().duration))).toEqual(new Set([140]))
+      transitions.forEach((animation) => { animation.pause(); animation.currentTime = 70 })
+      const middle = getComputedStyle(button).backgroundImage
+      transitions.forEach((animation) => animation.finish())
+      const end = getComputedStyle(button).backgroundImage
+      expect(end).not.toBe(rest)
+      expect(middle).not.toBe(end)
+      expect(middle).not.toBe(rest)
+    }
+    await midway(primary, () => userEvent.hover(primary))
+    secondary.focus()
+    await midway(secondary, () => userEvent.keyboard('[Space>]'))
+    await userEvent.keyboard('[/Space]')
+  })
+
   it('加载中的按钮保留原样并在底沿画墨线', async () => {
     const container = await mount(<Button variant="primary" disabled aria-busy>保存中</Button>)
     const button = container.querySelector('button')!

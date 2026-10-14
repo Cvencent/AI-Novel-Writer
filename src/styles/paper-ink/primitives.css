@@ -20,7 +20,10 @@
  * 主按钮是压印块：顶沿受光、底边更深、≤2% 同色相纵向受光、一片带黛蓝色相的投影。次按钮是纸片：侧沿与上沿刚过 3:1，
  * 底沿更深，底下贴一线墨。幽灵与图标按钮只有墨色薄雾。危险按钮是平的方肩朱印：不受光、不投影、不下沉。
  * box-shadow = --pi-ring（键盘焦点）+ --pi-shadow（材质），任何状态都不会互相盖掉。
+ * 受光渐变的两端是注册成颜色的 --pi-top/--pi-foot：background-image 本身不可插值，换两端颜色才能与底色、投影同步过渡。
  */
+@property --pi-top { syntax: '<color>'; inherits: false; initial-value: transparent; }
+@property --pi-foot { syntax: '<color>'; inherits: false; initial-value: transparent; }
 .pi-btn {
   --pi-radius: var(--radius-control);
   --pi-ring: 0 0 0 0 transparent;
@@ -34,13 +37,13 @@
   cursor: pointer; user-select: none; outline: none;
   box-shadow: var(--pi-ring), var(--pi-shadow);
   transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
-    box-shadow var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+    box-shadow var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease), --pi-top var(--dur-fast) var(--ease), --pi-foot var(--dur-fast) var(--ease);
 }
 .pi-btn > svg { flex: none; width: 15px; height: 15px; stroke-width: 1.75; }
 /* 图标一侧少 2px，图标加文字看起来才居中 */
 .pi-btn:not(.pi-btn--icon) > svg:first-child { margin-inline-start: -2px; }
 /* 键盘焦点环要立即出现：聚焦期间 box-shadow 不参与过渡 */
-.pi-btn:focus-visible { --pi-ring: var(--focus-ring); transition-property: background-color, border-color, color, transform; }
+.pi-btn:focus-visible { --pi-ring: var(--focus-ring); transition-property: background-color, border-color, color, transform, --pi-top, --pi-foot; }
 
 .pi-btn--sm { height: 28px; padding: 0 var(--s-3); gap: 6px; font-size: var(--fs-12); --pi-radius: var(--radius); }
 .pi-btn--sm > svg { width: 14px; height: 14px; }
@@ -48,25 +51,27 @@
 .pi-btn--lg > svg { width: 16px; height: 16px; }
 
 .pi-btn--primary {
-  background-color: var(--accent); background-image: linear-gradient(180deg, var(--accent-top), var(--accent));
+  --pi-top: var(--accent-top); --pi-foot: var(--accent);
+  background-color: var(--accent); background-image: linear-gradient(180deg, var(--pi-top), var(--pi-foot));
   color: var(--accent-ink); border-color: var(--accent-edge); border-bottom-color: var(--accent-base); font-weight: 600;
   --pi-shadow: inset 0 1px 0 var(--hi), inset 0 -1px 0 color-mix(in srgb, var(--accent-base) 65%, transparent),
     0 1px 1px var(--lift), 0 5px 11px -5px var(--lift-accent);
 }
 .pi-btn--primary:hover {
-  background-color: var(--accent-hover); background-image: linear-gradient(180deg, var(--accent-hover-top), var(--accent-hover));
+  --pi-top: var(--accent-hover-top); --pi-foot: var(--accent-hover); background-color: var(--accent-hover);
   --pi-shadow: inset 0 1px 0 var(--hi), inset 0 -1px 0 color-mix(in srgb, var(--accent-base) 65%, transparent),
     0 1px 1px var(--lift), 0 7px 14px -7px var(--lift-accent);
 }
 /* 按下：块被压平，上下边颜色对调，受光撤掉 */
 .pi-btn--primary:active, .pi-btn--primary[aria-expanded="true"] {
-  background-color: var(--accent-press); background-image: none; transform: translateY(1px);
+  --pi-top: var(--accent-press); --pi-foot: var(--accent-press); background-color: var(--accent-press); transform: translateY(1px);
   border-top-color: var(--accent-base); border-bottom-color: var(--accent-edge);
   --pi-shadow: inset 0 2px 4px var(--sink);
 }
 
 .pi-btn--secondary {
-  background-color: var(--paper); background-image: linear-gradient(180deg, var(--paper-top), var(--paper-foot));
+  --pi-top: var(--paper-top); --pi-foot: var(--paper-foot);
+  background-color: var(--paper); background-image: linear-gradient(180deg, var(--pi-top), var(--pi-foot));
   color: var(--ink); border-color: var(--edge) var(--edge) var(--edge-strong);
   --pi-shadow: inset 0 1px 0 var(--paper-hi), 0 1px 0 var(--paper-edge), 0 3px 5px -3px var(--lift-soft);
 }
@@ -77,7 +82,7 @@
 }
 .pi-btn--secondary:hover > svg { color: var(--ink); }
 .pi-btn--secondary:active, .pi-btn--secondary[aria-expanded="true"] {
-  background-color: var(--surface-2); background-image: none; border-color: var(--edge-strong); transform: translateY(1px);
+  --pi-top: var(--surface-2); --pi-foot: var(--surface-2); background-color: var(--surface-2); border-color: var(--edge-strong); transform: translateY(1px);
   --pi-shadow: inset 0 2px 4px var(--sink);
 }
 
