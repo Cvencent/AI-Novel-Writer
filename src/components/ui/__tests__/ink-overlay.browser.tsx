@@ -504,7 +504,7 @@ describe('提示栈', () => {
   it('缩窗后栈重新判断溢出：改成可滚动、最新一条露在底部，卡片不因滚动条左移', async () => {
     await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
     await act(async () => {
-      for (let i = 1; i <= 5; i++) toast.error(`出错 ${i}`, 0)
+      for (let i = 1; i <= 8; i++) toast.error(`出错 ${i}`, 0)
     })
     await wait(200)
     const stack = document.querySelector<HTMLElement>('.pi-toast-stack')!
