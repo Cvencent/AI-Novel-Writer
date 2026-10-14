@@ -108,6 +108,8 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
   const index = useKnowledgeIndex()
   const { loadStatus, reset: resetIndex } = index
   const [documents, setDocuments] = useState<KBDocument[]>([])
+  // 这次打开的资料列表读过一次（成功或失败）之前，空列表不等于知识库是空的。
+  const [documentsLoaded, setDocumentsLoaded] = useState(false)
   const [stats, setStats] = useState<KBStatsData>(EMPTY_STATS)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
@@ -159,6 +161,7 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
       if (!isProjectSessionCurrent(projectSession)) return
       setLoadError(appErrorMessage(locale, error))
     }
+    setDocumentsLoaded(true)
   }, [locale])
 
   /** 打开一份资料的项目副本。有未保存的修改时调用方须先征得作者同意。 */
@@ -192,6 +195,7 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
       if (!mounted) return
       if (switched) {
         setDocuments([])
+        setDocumentsLoaded(false)
         setStats(EMPTY_STATS)
         clearResults()
         setDraft(EMPTY_DRAFT)
@@ -381,7 +385,7 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
 
   return {
     index, reload: loadData,
-    documents, stats, loadError,
+    documents, documentsLoaded, stats, loadError,
     selectedDocId, documentCopy, draftContent, setDraftContent, documentBusy, dirty,
     openDocument, saveDocument, reindexDocument,
     searchQuery, setSearchQuery, topK, setTopK, searchResults, setSearchResults, searchedQuery, clearResults, searching, search,

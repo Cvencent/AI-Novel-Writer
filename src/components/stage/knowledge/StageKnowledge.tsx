@@ -151,7 +151,8 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
         <section className="stage-kb-col stage-kb-reader" aria-label={text('资料原文', 'Material text')}>
           {loadError && <Notice tone="danger" title={text('读取知识库失败', 'Could not read the knowledge base')}>{loadError}</Notice>}
           {!selected ? (
-            documents.length === 0 ? (
+            !kb.documentsLoaded ? <p className="stage-kb-help stage-kb-hint" role="status">{text('正在读取资料…', 'Loading materials…')}</p>
+            : documents.length === 0 ? (
               <EmptyState
                 icon={<BookOpen />}
                 heading={text('知识库里还没有资料', 'No material yet')}
