@@ -872,7 +872,8 @@ export const STAGE_SCENARIOS = {
     }
     await stage.showSettingsPage(page, '项目备份')
     await stage.root(page).getByText('WebDAV', { exact: true }).waitFor({ state: 'visible' })
-    const solid = await stage.root(page).locator('.stage-set-legacy .btn-primary').evaluateAll(buttons => buttons.map(button => button.textContent.trim()))
+    // RD-V 起新外壳里的旧按钮变体换成纸墨按钮，旧 default 成了 pi-btn--primary
+    const solid = await stage.root(page).locator('.stage-set-legacy .pi-btn--primary').evaluateAll(buttons => buttons.map(button => button.textContent.trim()))
     assert.deepEqual(solid, ['导出本地存档'], '项目备份页只有一个实心主按钮')
   } },
   'stage-settings-leave': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
