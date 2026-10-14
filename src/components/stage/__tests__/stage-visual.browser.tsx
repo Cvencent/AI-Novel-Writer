@@ -111,6 +111,26 @@ describe('新外壳的外观细节', () => {
     expect(getComputedStyle(other.parentElement!, '::after').content).toBe('none')
   })
 
+  it('Tab 到选中的书与当前章规划行时，焦点环叠在选中态之上，与只选中时看得出不同', async () => {
+    const container = await mount(
+      <div>
+        <div className="stage-book" data-tone="paper" data-selected=""><button type="button" className="stage-book-cover">灯塔</button></div>
+        <button type="button" className="stage-bp-plan-item" aria-current="true">雾钟</button>
+      </div>,
+    )
+    const book = container.querySelector<HTMLElement>('.stage-book-cover')!
+    const row = container.querySelector<HTMLElement>('.stage-bp-plan-item')!
+    const resting = [getComputedStyle(book).boxShadow, getComputedStyle(row).boxShadow]
+    await userEvent.tab()
+    expect(document.activeElement).toBe(book)
+    const focusedBook = getComputedStyle(book).boxShadow
+    await userEvent.tab()
+    expect(document.activeElement).toBe(row)
+    const focusedRow = getComputedStyle(row).boxShadow
+    expect([focusedBook === resting[0], focusedRow.includes('rgb(44, 74, 140) 0px 0px 0px 4px')]).toEqual([false, true])
+    expect(focusedRow).toContain('0px 0px 0px 1px')
+  })
+
   it('激活标签在标签条可视区外时滚进来', async () => {
     const tabs = Array.from({ length: 24 }, (_, index) => tab({ id: `t${index}`, type: 'chapter', name: `第 ${index + 1} 章 · 很长很长的章节名` }))
     const props = { tabs, onSelect: () => undefined, onClose: () => undefined, tabDomId: (id: string) => `tab-${id}`, panelId: 'panel' }
