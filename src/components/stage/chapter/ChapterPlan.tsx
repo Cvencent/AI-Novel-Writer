@@ -36,10 +36,11 @@ export default function ChapterPlan({ tab, chapterNumber, projectKey }: { tab: E
     void swapChapterTab(tab.id, () => openDraftInChapterView(draft, row?.title ?? '', session))
   }, [draft, row?.title, tab.id])
 
-  // 没有蓝图就没有写作按钮来接手写作请求；留着它，等这一章补上蓝图后会在蓝图页突然弹出写作弹层。
+  // 没有蓝图就没有写作按钮来接手写作请求；留着它，等这一章补上蓝图后会在蓝图页突然弹出写作弹层。页面开着之后才到的请求也一样。
+  const writeRequest = useStageStore(s => s.writeRequest)
   useEffect(() => {
-    if (blueprint === null && useStageStore.getState().writeRequest?.chapterNumber === chapterNumber) useStageStore.setState({ writeRequest: null })
-  }, [blueprint, chapterNumber])
+    if (blueprint === null && writeRequest?.chapterNumber === chapterNumber) useStageStore.setState({ writeRequest: null })
+  }, [blueprint, chapterNumber, writeRequest])
 
   const editBlueprint = () => openBuiltinEditor('chapter-card-editor', text('章节蓝图', 'Chapter blueprint'), 'chapter-card', undefined, chapterNumber)
   const target = wordsPerChapter && wordsPerChapter > 0 ? wordsPerChapter.toLocaleString(locale) : null
