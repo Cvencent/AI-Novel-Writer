@@ -2,6 +2,7 @@ import { useId, useState, type KeyboardEvent } from 'react'
 import { MoreHorizontal, X } from 'lucide-react'
 import type { ChapterBlueprint } from '../../../services/workflows/directory-workflow'
 import { chapterRoleOptions, chapterRoleSelectValue } from '../../../shared/chapter-role'
+import { sqliteTime } from '../../../shared/sqlite-time'
 import type { ChapterRow } from '../../../stores/navigation/stage-progress'
 import { useLocaleStore } from '../../../stores/locale-store'
 import type { EditableChapterBlueprintField } from '../../editor/chapter-card-draft-ledger'
@@ -147,7 +148,7 @@ export default function BlueprintCard({ blueprint, row, saving, onField, onSave,
           <label htmlFor={ids.notes}>
             {text('章节要点', 'Chapter notes')}{' '}
             <em>{blueprint.notesUpdatedAt
-              ? text(`定稿后自动生成 · ${new Date(blueprint.notesUpdatedAt).toLocaleDateString(locale)}`, `Generated after finalization · ${new Date(blueprint.notesUpdatedAt).toLocaleDateString(locale)}`)
+              ? text(`定稿后自动生成 · ${sqliteTime(blueprint.notesUpdatedAt).toLocaleDateString(locale)}`, `Generated after finalization · ${sqliteTime(blueprint.notesUpdatedAt).toLocaleDateString(locale)}`)
               : text('定稿后自动生成，也可以先手写给 AI 参考', 'Generated after finalization; you can also write them first for reference')}</em>
           </label>
           <textarea id={ids.notes} className="stage-bp-ctl" rows={3} value={blueprint.notes || ''} onChange={event => onField('notes', event.target.value)} />
