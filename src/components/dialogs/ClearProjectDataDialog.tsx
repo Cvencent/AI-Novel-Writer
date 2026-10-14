@@ -6,6 +6,7 @@ import { clearProjectData, type ClearProjectDataOptions } from '../../services/p
 import { alertError } from '../ui/AlertDialog'
 import { Button } from '../ui/Button'
 import { Check } from '../ui/Check'
+import { useDialogFocusReturn } from '../ui/focus-return'
 import { keepToastStackClickable } from '../ui/ToastStack'
 import { usePaperInkRoot } from '../ui/use-paper-ink-root'
 import { useLocaleStore } from '../../stores/locale-store'
@@ -83,6 +84,7 @@ function ClearProjectDataDialogContents({
   const sentinelRef = useRef<HTMLSpanElement>(null)
   // 新外壳里挂在 .paper-ink 下，走标准危险确认；旧外壳的项目树里找不到纸墨根，保留旧样式
   const inkRoot = usePaperInkRoot(sentinelRef)
+  const focusReturn = useDialogFocusReturn()
   const text = useLocaleStore(s => s.text)
 
   const selectedCount = useMemo(
@@ -138,9 +140,11 @@ function ClearProjectDataDialogContents({
             className="pi-dialog pi-dialog--marked"
             onPointerDownOutside={keepToastStackClickable}
             onOpenAutoFocus={event => {
+              focusReturn.remember()
               event.preventDefault()
               cancelRef.current?.focus()
             }}
+            onCloseAutoFocus={focusReturn.onCloseAutoFocus}
           >
             <div className="pi-dialog-head">
               <span className="pi-dialog-mark" aria-hidden><OctagonAlert /></span>

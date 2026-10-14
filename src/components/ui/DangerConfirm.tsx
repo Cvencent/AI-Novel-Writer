@@ -2,7 +2,7 @@ import { useId, useRef, useState } from 'react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { OctagonAlert } from 'lucide-react'
 import { Button } from './Button'
-import { rememberFocus } from './focus-return'
+import { useDialogFocusReturn } from './focus-return'
 import { keepToastStackClickable } from './ToastStack'
 import { usePaperInkRoot } from './use-paper-ink-root'
 
@@ -30,7 +30,7 @@ interface DangerConfirmProps {
 export function DangerConfirm({ open, onOpenChange, title, ...content }: DangerConfirmProps) {
   const sentinelRef = useRef<HTMLSpanElement>(null)
   const root = usePaperInkRoot(sentinelRef)
-  const restoreFocus = useRef<() => void>(() => {})
+  const focusReturn = useDialogFocusReturn()
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
@@ -41,11 +41,8 @@ export function DangerConfirm({ open, onOpenChange, title, ...content }: DangerC
           <DialogPrimitive.Content
             className="pi-dialog pi-dialog--marked"
             onPointerDownOutside={keepToastStackClickable}
-            onOpenAutoFocus={() => { restoreFocus.current = rememberFocus(document.activeElement) }}
-            onCloseAutoFocus={(event) => {
-              event.preventDefault()
-              restoreFocus.current()
-            }}
+            onOpenAutoFocus={focusReturn.remember}
+            onCloseAutoFocus={focusReturn.onCloseAutoFocus}
           >
             <div className="pi-dialog-head">
               <span className="pi-dialog-mark" aria-hidden><OctagonAlert /></span>
