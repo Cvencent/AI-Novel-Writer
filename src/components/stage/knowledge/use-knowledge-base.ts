@@ -171,7 +171,10 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
       const result = unwrapKnowledgeValue(await ipc.invokeWithProjectSession(session, 'kb:read-document-copy', docId, session.projectPath))
       if (isProjectSessionCurrent(session)) replaceDraft(loading, { docId, copy: result, content: result.content ?? '' })
     } catch (error) {
-      if (isProjectSessionCurrent(session) && readDraft() === loading) toast.error(appErrorMessage(locale, error))
+      if (!isProjectSessionCurrent(session) || readDraft() !== loading) return
+      // 读不出来就回到没选资料的样子：不留「正在读取」，作者再点这一份会重读。
+      setDraft(EMPTY_DRAFT)
+      toast.error(appErrorMessage(locale, error))
     }
   }
   const openDocumentRef = useRef(openDocument)
