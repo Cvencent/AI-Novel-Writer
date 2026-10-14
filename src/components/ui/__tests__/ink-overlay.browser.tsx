@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act } from 'react'
+import { act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { page, userEvent } from 'vitest/browser'
 
@@ -19,6 +19,7 @@ import ClearProjectDataDialog from '../../dialogs/ClearProjectDataDialog'
 import StagePalette from '../../stage/StagePalette'
 import { DangerConfirm } from '../DangerConfirm'
 import { InkDialog } from '../../stage/InkDialog'
+import { Menu } from '../Menu'
 import { withReducedMotion } from './reduced-motion'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -670,6 +671,54 @@ describe('清除生成内容', () => {
     await userEvent.click(buttonNamed(alert, '确定'))
     await vi.waitFor(() => expect(buttonNamed(dialog, '清除所选').disabled).toBe(false))
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  /** 照顶栏作品菜单的接法：菜单项打开受控的旧对话框与清除确认，都没有 Dialog.Trigger。 */
+  function WorkMenu() {
+    const [open, setOpen] = useState<'export' | 'clear' | null>(null)
+    return (
+      <>
+        <Menu label="作品菜单" groups={[{ id: 'files', items: [
+          { id: 'export', label: '导出…', onSelect: () => setOpen('export') },
+          { id: 'clear', label: '清除生成内容…', onSelect: () => setOpen('clear') },
+        ] }]} />
+        <Dialog open={open === 'export'} onOpenChange={next => { if (!next) setOpen(null) }}>
+          <DialogContent><DialogHeader><DialogTitle>导出项目</DialogTitle></DialogHeader></DialogContent>
+        </Dialog>
+        <ClearProjectDataDialog open={open === 'clear'} onClose={() => setOpen(null)} />
+      </>
+    )
+  }
+
+  it('从作品菜单打开的导出与清除确认，取消或 Esc 关闭后焦点回到作品菜单按钮，不落到 body', async () => {
+    container = document.createElement('div')
+    container.className = 'paper-ink'
+    container.dataset.theme = 'light'
+    document.body.append(container)
+    root = createRoot(container)
+    await act(async () => root!.render(<WorkMenu />))
+    const trigger = page.getByRole('button', { name: '作品菜单' })
+    const pick = async (item: string) => {
+      await userEvent.click(trigger)
+      await userEvent.click(page.getByRole('menuitem', { name: item }))
+      return vi.waitFor(() => document.querySelector<HTMLElement>('[role="dialog"]')!)
+    }
+    const closed = () => vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull())
+
+    await pick('导出…')
+    await userEvent.keyboard('{Escape}')
+    await closed()
+    expect(focused()).toBe(trigger.element())
+
+    const clear = await pick('清除生成内容…')
+    await userEvent.click(buttonNamed(clear, '取消'))
+    await closed()
+    expect(focused()).toBe(trigger.element())
+
+    await pick('清除生成内容…')
+    await userEvent.keyboard('{Escape}')
+    await closed()
+    expect(focused()).toBe(trigger.element())
   })
 })
 
