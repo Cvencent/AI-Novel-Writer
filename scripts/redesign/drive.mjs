@@ -287,17 +287,28 @@ async function seedShelf({ app, page }, roots, count) {
  * Playwright 的 recordVideo 需要另外下载它自带的 ffmpeg，这里不依赖它。
  */
 async function startScreencast(page) {
-  const session = await page.context().newCDPSession(page)
   const frames = []
-  session.on('Page.screencastFrame', ({ data, metadata, sessionId }) => {
-    frames.push({ data, time: metadata.timestamp })
-    session.send('Page.screencastFrameAck', { sessionId }).catch(() => {})
-  })
-  await session.send('Page.startScreencast', { format: 'jpeg', quality: 92, maxWidth: VIEWPORT.width, maxHeight: VIEWPORT.height })
+  let session
+  const attach = async target => {
+    session = await target.context().newCDPSession(target)
+    const own = session
+    own.on('Page.screencastFrame', ({ data, metadata, sessionId }) => {
+      frames.push({ data, time: metadata.timestamp })
+      own.send('Page.screencastFrameAck', { sessionId }).catch(() => {})
+    })
+    await own.send('Page.startScreencast', { format: 'jpeg', quality: 92, maxWidth: VIEWPORT.width, maxHeight: VIEWPORT.height })
+  }
+  const detach = async () => {
+    await session.send('Page.stopScreencast')
+    await session.detach().catch(() => {})
+  }
+  await attach(page)
   return {
+    /** context.restart() 退出应用前停在旧页面上，冷启动后接到新页面接着录，帧都进同一段视频。 */
+    pause: detach,
+    resume: attach,
     async stop(file, scratch) {
-      await session.send('Page.stopScreencast')
-      await session.detach().catch(() => {})
+      await detach()
       assert.ok(frames.length > 1, '录屏没有收到画面')
       const directory = fs.mkdtempSync(path.join(scratch, 'frames-'))
       const lines = ['ffconcat version 1.0']
@@ -344,6 +355,7 @@ async function runSession(sessionName, names, options) {
   let failedAt = null
   let current = null
   let launched
+  let recording = null
   const restartRequests = []
   const shell = names.map(name => SCENARIOS[name]?.shell).find(Boolean) ?? options.shell
   try {
@@ -365,10 +377,12 @@ async function runSession(sessionName, names, options) {
         /** 退出应用再用同一隔离目录冷启动（真正的重启，不重写外观），context 换成新的 app 与 page。 */
         restart: async () => {
           restartRequests.push(...await launched.app.evaluate(() => globalThis.__driveExternalRequests))
+          await recording?.pause()
           const exited = await quit(launched.app)
           assert.equal(exited.forced, false, '重启前应用没有正常退出')
           launched = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics, failureBase })
           Object.assign(context, launched)
+          await recording?.resume(context.page)
         },
       }
       current = 0
@@ -376,9 +390,10 @@ async function runSession(sessionName, names, options) {
       for (const [index, name] of names.entries()) {
         current = index
         results[index].screenshot = `${base(name)}.png`
-        const recording = options.video ? await startScreencast(context.page) : null
+        recording = options.video ? await startScreencast(context.page) : null
         const measured = await SCENARIOS[name].run(context)
         if (recording) results[index].video = await recording.stop(`${base(name)}.mp4`, roots.temp)
+        recording = null
         if (measured) results[index].measured = measured
         await shoot(context.page, results[index].screenshot)
         if (options.dumpDom) await dumpDom(context.page, base(name))
