@@ -24,6 +24,8 @@ export function rememberFocus(container: Element | null, openerRef?: RefObject<H
 /**
  * 受控打开、没有 Dialog.Trigger 的 Radix 对话框用：Radix 关闭时只把焦点还给 Trigger，没有就落到 body。
  * remember 在 onOpenAutoFocus 里调（此时焦点还在打开它的按钮上），onCloseAutoFocus 直接交给 Content。
+ * Radix 卸载后隔一个 setTimeout(0) 才调 onCloseAutoFocus：这期间确认动作可能已经把焦点交给别处（自动弹出的写作弹层），
+ * 只有焦点还在对话框里或掉到了 body 时才还。
  */
 export function useDialogFocusReturn() {
   const restore = useRef<() => void>(() => {})
@@ -31,7 +33,9 @@ export function useDialogFocusReturn() {
     remember: () => { restore.current = rememberFocus(document.activeElement) },
     onCloseAutoFocus: (event: Event) => {
       event.preventDefault()
-      restore.current()
+      const active = document.activeElement
+      const dialog = event.currentTarget
+      if (!active || active === document.body || (dialog instanceof Node && dialog.contains(active))) restore.current()
     },
   }
 }
