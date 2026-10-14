@@ -13,6 +13,8 @@ import { useWorkflowStore, type WorkflowDefinition, type WorkflowRun } from '../
 import { useLayoutStore } from '../../../stores/layout-store'
 import { useDraftStore } from '../../../stores/draft-store'
 import { useAppearanceStore } from '../../../stores/appearance-bootstrap'
+import { useThemeStore } from '../../../stores/theme-store'
+import { composite, contrast } from '../../ui/__tests__/color-contrast'
 import type { ImportRunPreparationResult, ImportRunSnapshot } from '../../../shared/import-run'
 import type { AuthorManuscriptImportPreview } from '../../../shared/author-manuscript-import'
 
@@ -1205,6 +1207,38 @@ describe('新外壳里的导入对话框', () => {
       await page.screenshot({ path: '../../../../.runtime/rdx3-shots/import-dialog-stage.png' })
     } finally {
       useAppearanceStore.setState(restore, true)
+    }
+  })
+
+  const INK = {
+    paper: { layer: 'rgb(255, 254, 251)', accent: 'rgb(44, 74, 140)' },
+    dark: { layer: 'rgb(29, 29, 34)', accent: 'rgb(169, 190, 240)' },
+  }
+
+  it.each(['paper', 'dark'] as const)('选中项有对勾和强调色边线，边线对底色不低于 3:1，文字不低于 4.5:1（%s）', async (theme) => {
+    const restore = [useAppearanceStore.getState(), useThemeStore.getState()] as const
+    useAppearanceStore.setState({ resolvedShell: 'stage' })
+    useThemeStore.setState({ resolvedTheme: theme })
+    try {
+      await act(async () => root.render(<div className="paper-ink"><ImportNovelDialog open onClose={vi.fn()} /></div>))
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!
+      const layer = getComputedStyle(dialog).backgroundColor
+      const on = page.getByTestId('import-purpose-reference').element()
+      const off = page.getByTestId('import-purpose-author').element()
+      const style = getComputedStyle(on)
+      const fill = composite(style.backgroundColor, layer)
+      expect({
+        layer,
+        border: style.borderTopColor,
+        check: on.querySelector('svg.lucide-check') !== null,
+        offCheck: off.querySelector('svg.lucide-check') !== null,
+        edge: contrast(style.borderTopColor, layer) >= 3,
+        text: contrast(style.color, fill) >= 4.5,
+      }).toEqual({ layer: INK[theme].layer, border: INK[theme].accent, check: true, offCheck: false, edge: true, text: true })
+      await page.screenshot({ path: `../../../../.runtime/rdx3-shots/import-dialog-selected-${theme}.png` })
+    } finally {
+      useAppearanceStore.setState(restore[0], true)
+      useThemeStore.setState(restore[1], true)
     }
   })
 })
