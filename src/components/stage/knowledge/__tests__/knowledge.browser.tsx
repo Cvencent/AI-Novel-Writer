@@ -479,6 +479,24 @@ describe('知识库', () => {
     await vi.waitFor(() => expect(invoke.mock.calls.map(([channel]) => channel)).toContain('kb:clear-all'))
   })
 
+  it('查找之后清空知识库，或查找出错：不说「没有找到相关的资料」', async () => {
+    vi.spyOn(toast, 'error').mockImplementation(() => undefined)
+    await renderPage()
+    await type(document.querySelector<HTMLInputElement>('form[role="search"] input')!, '三号站台')
+    await act(async () => document.querySelector<HTMLFormElement>('form[role="search"]')!.requestSubmit())
+    await vi.waitFor(() => expect(document.body.textContent).toContain('找到 2 条'))
+    await click('清空知识库…')
+    await click('清空知识库')
+    await vi.waitFor(() => expect(document.body.textContent).not.toContain('找到 2 条'))
+    expect(document.body.textContent).not.toContain('没有找到相关的资料。')
+
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel, ...args) => channel === 'kb:search' ? Promise.reject(new Error('检索服务不可用')) : base(channel, ...args))
+    await act(async () => document.querySelector<HTMLFormElement>('form[role="search"]')!.requestSubmit())
+    await vi.waitFor(() => expect(toast.error).toHaveBeenCalled())
+    expect(document.body.textContent).not.toContain('没有找到相关的资料。')
+  })
+
   it('知识库页没有重建索引；它在设置的检索模型页里', async () => {
     await renderPage()
     expect(button(/重建/)).toBeUndefined()
