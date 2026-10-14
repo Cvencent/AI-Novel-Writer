@@ -443,6 +443,8 @@
 
 .cast-import-source {
   width: 100%;
+  height: auto;
+  padding: 10px 12px;
   resize: vertical;
   font: var(--fs-13)/1.7 var(--font-ui);
 }
