@@ -150,7 +150,7 @@ export function useNovelConfigForm(projectKey: string) {
         : text(`生成失败：${e}`, `Generation failed: ${e}`))
       setGenerateError({ field: fieldKey, message: draftChanged
         ? text('生成期间设定改过了，已保留你的修改，请再生成一次', 'The setup changed while generating. Your edits are kept; generate again')
-        : e instanceof Error ? e.message : String(e) })
+        : (e instanceof Error ? e.message : String(e)).replace(/[。.]\s*$/, '') })
     } finally {
       if (isProjectSessionCurrent(projectSession)) setGeneratingField(null)
     }

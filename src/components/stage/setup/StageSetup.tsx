@@ -90,7 +90,7 @@ function AiButton({ field, label, form, disabledReason }: { field: GeneratableFi
   )
 }
 
-/** 单项 AI 生成失败时写在那一项下面；下次生成或改动内容前一直留着。 */
+/** 单项 AI 生成失败时写在那一项下面，直到下次生成。 */
 function GenerateError({ field, label, form }: { field: GeneratableField; label: string; form: Form }) {
   const text = useLocaleStore(s => s.text)
   if (form.generateError?.field !== field) return null

@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StoreApi } from 'zustand'
 import { act } from 'react'
