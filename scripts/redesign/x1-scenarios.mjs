@@ -398,6 +398,19 @@ export const X1_SCENARIOS = {
     return after
   } },
 
+  // #405 r2 O8：生成蓝图前读架构的那次 IPC 慢了 4.5 秒，「架构还不完整」晚于 3 秒才出现；generateRange 仍等到它并点继续生成，运行开始。
+  'x1-generate-slow-warning': { model: true, shell: 'stage', setup: context => seedStageSample(context, { totalChapters: 16 }), run: async ({ app, page }) => {
+    await blueprint.open(page)
+    await holdChannel(app, 'db:project-core-get')
+    const generating = blueprint.generateRange(page, 13, 16)
+    await untilHeld(app, 'db:project-core-get')
+    await page.waitForTimeout(4500)
+    await releaseChannel(app, 'db:project-core-get')
+    await generating
+    await runSheet.waitUntilOpen(page)
+    return { runSheet: await runSheet.sheet(page).isVisible() }
+  } },
+
   // #404-1：书房里导入旧项目副本，复制期间作者开了设置页并输入；复制完成要自动打开作品时先确认，继续编辑就不打开。
   'x1-import-settings': { model: false, shell: 'stage', setup: seedTwoBooks({ open: false }), run: async context => {
     const { app, page } = context
