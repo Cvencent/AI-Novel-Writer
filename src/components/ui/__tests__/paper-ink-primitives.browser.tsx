@@ -448,6 +448,25 @@ describe('Sheet', () => {
     await shot('rd1-sheet')
   })
 
+  it.each(['light', 'dark'] as const)('%s 主题下分段页签的选中项 Tab 聚焦时焦点环叠在浮起的阴影上', async (theme) => {
+    const container = await mount(
+      <div style={{ display: 'flex', height: 400 }}>
+        <Sheet open title="第 4 章" closeLabel="关闭侧页" onClose={() => {}}
+          tabs={{ items: [{ id: 'a', label: '运行' }, { id: 'b', label: '诊断' }], active: 'a', onChange: () => {}, style: 'segmented' }}>
+          正文
+        </Sheet>
+      </div>,
+      theme,
+    )
+    const selected = container.querySelector<HTMLElement>('.pi-sheet-tab[aria-selected="true"]')!
+    await userEvent.tab()
+    await userEvent.tab()
+    expect(focused()).toBe(selected)
+    const paper = tokenColor(container, '--paper')
+    const seg = { light: 'rgba(23, 23, 26, 0.12) 0px 1px 2px 0px', dark: 'rgba(0, 0, 0, 0.5) 0px 1px 2px 0px' }[theme]
+    expect(getComputedStyle(selected).boxShadow).toBe(`${paper} 0px 0px 0px 2px, ${ACCENT[theme]} 0px 0px 0px 4px, ${seg}`)
+  })
+
   it('滑入动画只在状态变化时出现，并在减少动态效果设置下关闭', async () => {
     const container = await mount(<Harness initiallyOpen />)
     expect(getComputedStyle(container.querySelector('aside')!).animationName).toBe('pi-sheet-in')
