@@ -501,6 +501,29 @@ describe('提示栈', () => {
     expect(toastTitles()).toHaveLength(23)
   })
 
+  it('缩窗后栈重新判断溢出：改成可滚动、最新一条露在底部，卡片不因滚动条左移', async () => {
+    await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
+    await act(async () => {
+      for (let i = 1; i <= 5; i++) toast.error(`出错 ${i}`, 0)
+    })
+    await wait(200)
+    const stack = document.querySelector<HTMLElement>('.pi-toast-stack')!
+    expect(stack.hasAttribute('data-overflow')).toBe(false)
+    const rightBefore = liveToasts().at(-1)!.getBoundingClientRect().right
+
+    await page.viewport(1100, 420)
+    await vi.waitFor(() => expect(window.innerHeight).toBe(420))
+    await wait(100)
+    expect(stack.hasAttribute('data-overflow')).toBe(true)
+    expect(stack.scrollHeight).toBeGreaterThan(stack.clientHeight)
+    const box = stack.getBoundingClientRect()
+    const newest = liveToasts().at(-1)!.getBoundingClientRect()
+    expect(newest.bottom).toBeLessThanOrEqual(box.bottom + 0.5)
+    expect(newest.top).toBeGreaterThanOrEqual(box.top)
+    expect(Math.abs(newest.right - rightBefore)).toBeLessThanOrEqual(0.5)
+    await page.screenshot({ path: '../../../../.runtime/rdx3-shots/toast-stack-resized.png' })
+  })
+
   it('栈没满时不裁卡片的投影', async () => {
     await act(async () => toast.error('导出失败', 0))
     expect(getComputedStyle(document.querySelector('.pi-toast-stack')!).overflowY).toBe('visible')
