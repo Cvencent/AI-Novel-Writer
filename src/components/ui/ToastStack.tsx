@@ -160,7 +160,6 @@ function ToastCard({ entry, paused }: { entry: ToastStackEntry; paused: boolean 
       className="pi-toast"
       data-tone={entry.tone}
       data-exiting={entry.exiting || undefined}
-      role={entry.tone === 'danger' ? 'alert' : undefined}
     >
       <span className="pi-toast-mark" aria-hidden><Icon /></span>
       <div className="pi-toast-body">
