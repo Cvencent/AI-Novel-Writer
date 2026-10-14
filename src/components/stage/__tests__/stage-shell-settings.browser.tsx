@@ -14,6 +14,7 @@ import { useLLMStore } from '../../../stores/llm-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useStageStore } from '../../../stores/navigation/stage-store'
 import { useProjectStore } from '../../../stores/project-store'
+import { toast } from '../../ui/Toast'
 import StageShell from '../StageShell'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -72,6 +73,7 @@ afterEach(async () => {
   Reflect.deleteProperty(window, 'aiNovelAPI')
   setActiveProjectSessionContext(null)
   for (const restore of restores) restore()
+  vi.restoreAllMocks()
 })
 
 describe('书房里的设置页有没保存的输入时，导入旧项目副本完成后要自动打开作品', () => {
@@ -162,5 +164,35 @@ describe('书房里的设置页有没保存的输入时，导入旧项目副本�
     await act(async () => dialogButton('放弃修改')!.click())
     await vi.waitFor(() => expect(opens().map(([, path]) => path)).toEqual([TARGET]))
     expect(useLayoutStore.getState().settingsOpen).toBe(false)
+  })
+})
+
+describe('放弃确认开着时又来了离开请求', () => {
+  const toastTitles = () => [...document.querySelectorAll('.pi-toast-title')].map(node => node.textContent)
+
+  it('作者又点了新建作品：提示先处理开着的确认，原来的确认还在', async () => {
+    await act(async () => useStageStore.setState({ palette: 'commands' }))
+    await act(async () => paletteOption('打开作品').click())
+    expect(discardDialog()).toBeTruthy()
+    await act(async () => useStageStore.setState({ palette: 'commands' }))
+    await act(async () => paletteOption('新建作品').click())
+    await vi.waitFor(() => expect(toastTitles()).toContain('请先处理「放弃未保存的修改？」'))
+    expect(discardDialog()).toBeTruthy()
+    expect(useLayoutStore.getState().newProjectOpen).toBe(false)
+  })
+
+  it('导入完成要自动打开作品：不打开，提示写明是另一个确认还开着，不说作者选了继续编辑', async () => {
+    await act(async () => useStageStore.setState({ palette: 'commands' }))
+    await act(async () => paletteOption('打开作品').click())
+    expect(discardDialog()).toBeTruthy()
+    const info = vi.spyOn(toast, 'info')
+    let importing!: Promise<boolean>
+    await act(async () => { importing = useProjectStore.getState().importLegacyProject() })
+    await expect(importing).resolves.toBe(false)
+    expect(opens()).toEqual([])
+    expect(useProjectStore.getState().legacyImportNotice)
+      .toBe(`副本已建立。另一个「放弃未保存的修改？」确认还开着，所以没有自动打开；之后可用“打开作品”选择：${TARGET}`)
+    expect(info).not.toHaveBeenCalled()
+    expect(discardDialog()).toBeTruthy()
   })
 })
