@@ -391,9 +391,9 @@
  * 提示栈：toast 与 actionToast 共用的一个栈（右下角、新的在下），画在模态之上。
  */
 .paper-ink.pi-overlay-host { display: contents; }
-/* 栈本身接指针：卡片之间的空隙也算在栈上，指针经过时悬停暂停不会断 */
+/* 栈本身接指针：卡片之间的空隙也算在栈上，指针经过时悬停暂停不会断。模态给 body 设 pointer-events: none，栈会继承，所以显式写 auto */
 .pi-toast-stack {
-  position: fixed; right: var(--s-5); bottom: var(--s-12); z-index: var(--z-toast);
+  pointer-events: auto; position: fixed; right: var(--s-5); bottom: var(--s-12); z-index: var(--z-toast);
   display: flex; flex-direction: column; align-items: flex-end; gap: var(--s-2);
 }
 
