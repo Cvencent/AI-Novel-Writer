@@ -72,7 +72,7 @@ export default function StageTopBar({ crumbs, library, focus, focusTitle, workMe
         : (
           <Menu
             label={text(`《${projectName}》作品菜单`, `“${projectName}” menu`)}
-            trigger={{ className: 'stage-work-title', content: <><span className="stage-work-name">{projectName}</span><ChevronDown size={14} aria-hidden="true" /></> }}
+            trigger={{ className: 'stage-work-title', content: <><span className="stage-work-name" title={projectName}>{projectName}</span><ChevronDown size={14} aria-hidden="true" /></> }}
             groups={workMenu}
           />
         )}
