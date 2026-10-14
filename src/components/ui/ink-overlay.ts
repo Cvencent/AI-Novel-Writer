@@ -3,6 +3,7 @@ import { useThemeStore } from '../../stores/theme-store'
 import { inkTheme } from '../stage/ink-theme'
 
 const HOST_ID = 'ai-novel-ink-overlay'
+const TOAST_MOUNT_ID = 'ai-novel-ink-toasts'
 let unsubscribeTheme: (() => void) | undefined
 
 /** 命令式弹窗、提示栈与全局旧对话框只在新外壳下改用纸墨样式；旧外壳原样保留，RD-10 随旧外壳删除这个判断。 */
@@ -23,8 +24,19 @@ export function inkOverlayHost(): HTMLElement {
   host.dataset.theme = inkTheme(useThemeStore.getState().resolvedTheme)
   unsubscribeTheme?.()
   unsubscribeTheme = useThemeStore.subscribe(state => { host.dataset.theme = inkTheme(state.resolvedTheme) })
+  // 提示栈的挂载点随宿主一起建并且是 live region：Radix 模态用 hideOthers 把其余节点标 aria-hidden 时放过已有的 [aria-live]，
+  // 模态开着时到达的通知读屏仍读得到
+  const toasts = document.createElement('div')
+  toasts.id = TOAST_MOUNT_ID
+  toasts.setAttribute('aria-live', 'polite')
+  host.append(toasts)
   document.body.append(host)
   return host
+}
+
+export function toastStackMount(): HTMLElement {
+  inkOverlayHost()
+  return document.getElementById(TOAST_MOUNT_ID)!
 }
 
 /** 宿主里放一个独立的挂载点：命令式弹窗用完即删，提示栈常驻。 */

@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { CircleCheck, Info, OctagonAlert, TriangleAlert, X, type LucideIcon } from 'lucide-react'
 import { useLocaleStore } from '../../stores/locale-store'
 import { Button } from './Button'
-import { createInkOverlayMount } from './ink-overlay'
+import { toastStackMount } from './ink-overlay'
 
 /**
  * 新外壳下 toast.* 与 actionToast.* 共用的提示栈：右下角一列，新的在下，同时最多露出 4 条；
@@ -57,11 +57,12 @@ function subscribe(listener: () => void) {
 }
 
 function ensureStack() {
-  if (mount?.isConnected) return
+  const target = toastStackMount()
+  if (target === mount) return
   // 宿主被移走后旧栈不能留着：它的计时器会替新栈关掉条目
   stackRoot?.unmount()
-  mount = createInkOverlayMount()
-  stackRoot = createRoot(mount)
+  mount = target
+  stackRoot = createRoot(target)
   stackRoot.render(<ToastStack />)
 }
 
@@ -139,7 +140,7 @@ function ToastCard({ entry, paused }: { entry: ToastStackEntry; paused: boolean 
   }
 
   return (
-    <div className="pi-toast" data-tone={entry.tone} data-exiting={entry.exiting || undefined} role={entry.tone === 'danger' ? 'alert' : 'status'}>
+    <div className="pi-toast" data-tone={entry.tone} data-exiting={entry.exiting || undefined} role={entry.tone === 'danger' ? 'alert' : undefined}>
       <span className="pi-toast-mark" aria-hidden><Icon /></span>
       <div className="pi-toast-body">
         <p className="pi-toast-title">{title}</p>

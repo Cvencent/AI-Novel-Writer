@@ -124,6 +124,16 @@ describe('命令式弹窗', () => {
     await userEvent.keyboard('{Escape}')
   })
 
+  it('命令式弹窗开着时到达的通知仍在读屏读得到的 live region 里', async () => {
+    await act(async () => toast.info('已复制本章正文'))
+    await act(async () => { void confirm('切换项目？') })
+    await act(async () => toast.error('保存失败'))
+    const item = liveToasts().find(toastItem => toastItem.textContent!.includes('保存失败'))!
+    expect(item.closest('[aria-hidden="true"]')).toBeNull()
+    expect(item.closest('[aria-live="polite"]')).not.toBeNull()
+    await userEvent.keyboard('{Escape}')
+  })
+
   it('旧外壳仍走旧弹窗，不建纸墨宿主', async () => {
     useAppearanceStore.setState({ resolvedShell: 'classic' })
     await act(async () => { void alertError('写入失败') })
@@ -307,5 +317,25 @@ describe('页面里的危险确认', () => {
     await wait(200)
     expect(liveToasts()).toHaveLength(0)
     expect(onOpenChange).not.toHaveBeenCalled()
+  })
+
+  it('纸墨根里的危险确认开着时，宿主已在也不会把新通知藏起来', async () => {
+    await act(async () => { void alertError('写入失败') })
+    await userEvent.keyboard('{Escape}')
+    await wait(250)
+    container = document.createElement('div')
+    container.className = 'paper-ink'
+    container.dataset.theme = 'light'
+    document.body.append(container)
+    root = createRoot(container)
+    await act(async () => root!.render(
+      <DangerConfirm open onOpenChange={onOpenChange} title="删除《灯塔》" consequence="将删除全部章节。" recoverability="删除后无法恢复。"
+        confirmLabel="永久删除" cancelLabel="取消" onConfirm={() => {}} />,
+    ))
+    await act(async () => toast.error('导出失败'))
+    const [item] = liveToasts()
+    expect(item.textContent).toContain('导出失败')
+    expect(item.closest('[aria-hidden="true"]')).toBeNull()
+    expect(item.closest('[aria-live="polite"]')).not.toBeNull()
   })
 })
