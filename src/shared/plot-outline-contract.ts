@@ -229,7 +229,8 @@ export function plotOutlineRangeEffect(source: PlotOutlineRangeSource, range: Pl
   if (!entries.length) return { kind: 'overwrite', whole: true, from: range.from, to: range.to, lastChapter }
   const replaced = entries.filter(entry => entry.from >= range.from && entry.from <= range.to)
   if (!replaced.length) return range.from > 1 ? { kind: 'continue', after: range.from - 1 } : { kind: 'new' }
-  return { kind: 'overwrite', whole: false, from: replaced[0].from, to: replaced[replaced.length - 1].to, lastChapter }
+  // 作者手动调过章节顺序时条目不按章号排，按章号的最小与最大算。
+  return { kind: 'overwrite', whole: false, from: Math.min(...replaced.map(entry => entry.from)), to: Math.max(...replaced.map(entry => entry.to)), lastChapter }
 }
 
 /** 下一批的默认起始章：已有大纲能紧接着往后写时取最后一章的下一章，否则从第 1 章起。 */
