@@ -360,7 +360,7 @@
 .pi-dialog--marked .pi-dialog-body { padding-left: calc(var(--s-6) + 18px + var(--s-3)); }
 .pi-dialog-consequence { display: flex; flex-direction: column; gap: 6px; color: var(--ink); }
 .pi-dialog-consequence > p { margin: 0; }
-/* 全应用唯一一处用语气色排正文：用户最需要读到的那句话最显眼 */
+/* 用语气色排正文的白名单之一（design-system.md「语气色排正文只限白名单」）：用户最需要读到的那句话最显眼 */
 .pi-dialog-recover { font: 500 var(--fs-14)/1.7 var(--font-display); letter-spacing: .02em; color: var(--danger); }
 .pi-dialog-foot {
   display: flex; align-items: center; justify-content: flex-end; gap: var(--s-2);
