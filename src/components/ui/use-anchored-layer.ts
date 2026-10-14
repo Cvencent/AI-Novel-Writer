@@ -13,7 +13,7 @@ const tabbablesIn = (layer: HTMLElement) =>
 /**
  * Menu 与 Popover 共用：浮层 Portal 到最近的 .paper-ink 根，按触发按钮位置 fixed 定位，
  * 不被侧页等滚动容器裁切。下方放不下且上方更宽裕时向上展开，高度不超过所在一侧的视口空间，再多就在浮层内部滚动。
- * 点击外部、焦点移到外部、滚动外部容器、改变窗口大小时关闭；
+ * 点击外部、焦点移到外部、触发按钮被滚动带走、改变窗口大小时关闭；
  * Esc 关闭并把焦点还给触发按钮；Tab 离开浮层时先回到触发按钮，再由浏览器继续移动焦点。
  */
 export function useAnchoredLayer(align: 'start' | 'end'): {
@@ -71,8 +71,11 @@ export function useAnchoredLayer(align: 'start' | 'end'): {
     const onFocusIn = (event: FocusEvent) => {
       if (!inside(event.target)) close(false)
     }
-    const onScroll = (event: Event) => {
-      if (!layer.contains(event.target as Node)) close(false)
+    // 只看触发按钮动没动：别处的滚动区（跟到最新一行的运行日志）滚动时浮层不必关
+    const anchoredAt = anchor.getBoundingClientRect()
+    const onScroll = () => {
+      const now = anchor.getBoundingClientRect()
+      if (now.top !== anchoredAt.top || now.left !== anchoredAt.left) close(false)
     }
     const onResize = () => close(false)
     const onKeyDown = (event: KeyboardEvent) => {

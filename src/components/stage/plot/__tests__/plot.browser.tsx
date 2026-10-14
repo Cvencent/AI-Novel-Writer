@@ -100,9 +100,12 @@ const button = (name: string | RegExp) => [...document.querySelectorAll('button'
     ? candidate.textContent?.trim() === name || candidate.getAttribute('aria-label') === name
     : name.test(candidate.textContent ?? ''))
 const click = async (name: string | RegExp) => {
-  const target = button(name)
-  expect(target, String(name)).toBeTruthy()
-  await act(async () => target!.click())
+  const target = await vi.waitFor(() => {
+    const found = button(name)
+    expect(found, String(name)).toBeTruthy()
+    return found!
+  })
+  await act(async () => target.click())
 }
 const called = (channel: string) => invoke.mock.calls.filter(([name]) => name === channel)
 
