@@ -8,7 +8,7 @@ import '../../../../styles/paper-ink/index.css'
 import '../../stage.css'
 import type { ProjectData } from '../../../../shared/ipc-channels'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
-import { synopsisFactsFingerprint } from '../../../../shared/plot-outline-checkpoint'
+import { renderSynopsisDbText, synopsisFactsFingerprint } from '../../../../shared/plot-outline-checkpoint'
 import { PLOT_OUTLINE_PROTOCOL, renderPlotOutlineSynopsis } from '../../../../shared/plot-outline-contract'
 import { EMPTY_CARD, useCharacterStore } from '../../../../stores/character-store'
 import { useEditorStore } from '../../../../stores/editor-store'
@@ -228,6 +228,27 @@ describe('架构阶段', () => {
     expect(Number(to?.value)).toBeGreaterThanOrEqual(17)
     expect(Number(to?.value)).toBeLessThanOrEqual(24)
     expect(mark('synopsis')).toBe('续写')
+  })
+
+  it.each([
+    ['检查点缺失', () => {
+      core = { ...core, synopsis: renderSynopsisDbText(outlineBody(1, 16), 'zh-CN', 24, { synopsis_incomplete: true }) }
+      partial = null
+    }],
+    ['末尾多一个换行', () => {
+      seedPartialOutline()
+      core = { ...core, synopsis: `${core.synopsis as string}\n` }
+    }],
+  ])('大纲带分批尾标但%s、接不上续写：不算已确认，页头 3 / 4，下一步不可点', async (_case, seed) => {
+    seed()
+    core = { ...core, worldbuilding: '世界观。'.repeat(30) }
+    rosterStatus = 'ready'
+    await render()
+    const outline = host!.querySelector('[data-section="synopsis"]')!
+    expect(outline.querySelector('.arch-badge')?.textContent).toBe('不完整')
+    expect(outline.textContent).toContain('大纲末尾还留着分批生成的说明，但正文已和它对不上（可能手动改过）。')
+    expect(host!.querySelector('.arch-progress')?.textContent).toBe(' · 3 / 4 已确认')
+    expect(primary()).toBe('继续生成架构')
   })
 
   it('续写入口只预选情节大纲：先在别的节打开「AI 重新生成此节」再取消，不会把那一节带进续写', async () => {
