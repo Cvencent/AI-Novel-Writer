@@ -210,6 +210,22 @@ describe('角色名单', () => {
     expect(duplicateKey.mock.calls.some(call => String(call[0]).includes('same key'))).toBe(false)
   })
 
+  it('读取失败后点「重新读取」重读两份列表，读到就换成待处理的建议', async () => {
+    pendingDecisions = 1
+    const base = invoke.getMockImplementation()!
+    let failing = true
+    invoke.mockImplementation(async (channel, ...args) => failing && (channel === 'character-proposal:list-pending-finalized' || channel === 'finalized-character:list-state-candidates')
+      ? Promise.reject(new Error('项目会话已失效')) : base(channel, ...args))
+    await render()
+    await vi.waitFor(() => expect(banner()?.querySelectorAll('[role="alert"]')).toHaveLength(2))
+    failing = false
+    const retry = [...banner()!.querySelectorAll('button')].find(button => button.textContent === '重新读取')
+    expect(retry, '重新读取按钮').toBeTruthy()
+    await act(async () => retry!.click())
+    await vi.waitFor(() => expect(banner()!.querySelector('.pi-notice-title')?.textContent).toBe('1 项待处理的角色建议'))
+    expect(banner()!.querySelectorAll('[role="alert"]')).toHaveLength(0)
+  })
+
   it('没有待处理的建议时不显示提示条', async () => {
     await render()
     await vi.waitFor(() => expect(invoke.mock.calls.some(([channel]) => channel === 'finalized-character:list-state-candidates')).toBe(true))
