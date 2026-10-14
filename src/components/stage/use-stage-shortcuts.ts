@@ -58,7 +58,8 @@ export function useStageShortcuts({ library, focus, mac = IS_MAC }: { library: b
         useStageStore.setState({ focus: false })
       } else if (!library && isCommand(event, 's', mac) && !isModalOpen()) {
         event.preventDefault()
-        saveActiveTab()
+        // 设置页盖在标签上面，作者看不到当前标签，Ctrl S 不替它保存。
+        if (!useLayoutStore.getState().settingsOpen) saveActiveTab()
       }
     }
     window.addEventListener('keydown', onCommand, true)
