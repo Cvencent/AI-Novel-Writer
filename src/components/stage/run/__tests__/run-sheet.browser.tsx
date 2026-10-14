@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { page, userEvent } from 'vitest/browser'
 import type { StoreApi } from 'zustand'
 
 import '../../../../index.css'
@@ -353,6 +354,23 @@ describe('运行侧页', () => {
     expect(host!.querySelector('[role="group"]')?.textContent).toContain('清空后这 2 行日志无法找回。')
     await click('清空')
     expect(useWorkflowStore.getState().globalLogs).toEqual([])
+  })
+
+  it('清空日志选「保留」或按 Esc 后，焦点回到「清空日志…」按钮', async () => {
+    useWorkflowStore.setState({ globalLogs: [{ time: '08:10:00', level: 'info', message: '开始' }] })
+    await render({ kind: 'run', tab: 'diagnostics' })
+    const trigger = page.getByRole('button', { name: '清空日志…' })
+    const open = async () => {
+      trigger.element().focus()
+      await userEvent.keyboard('{Enter}')
+      await new Promise(resolve => setTimeout(resolve, 300))
+    }
+    await open()
+    await userEvent.keyboard('{Escape}')
+    expect(document.activeElement).toBe(trigger.element())
+    await open()
+    await userEvent.click(page.getByRole('button', { name: '保留' }))
+    expect(document.activeElement).toBe(trigger.element())
   })
 })
 
