@@ -17,6 +17,14 @@ import { seedStageSample } from './scenarios.mjs'
 import { STAGE_SAMPLE, stageChapterTitle } from './stage-sample.mjs'
 import { HARBOR, holdChannel, releaseChannel, seedHarbor, untilHeld } from './x1-scenarios.mjs'
 
+const EMBEDDING_MODEL = Object.freeze({ ...FAKE_MODEL, id: 'x2-embedding', name: '驱动检索模型', modelName: 'text-embedding-3-small', purposes: ['embedding'] })
+
+/** 与 chapter-scenarios 相同：运行侧页开着时等「上一次运行」完成；侧页已收起时等顶栏不再有进行中的胶囊。 */
+async function waitRunDone(page) {
+  if (await runSheet.sheet(page).isVisible()) return runSheet.waitForRunDone(page)
+  await stage.root(page).locator('.stage-capsule:not([data-tone="ok"])').waitFor({ state: 'detached', timeout: 90_000 })
+}
+
 /** 情节大纲分批写到第 6 章（全书 12 章），尾标与主进程写入的一字不差：能从第 7 章续写，架构部分完成。 */
 const partialOutline = () => renderPlotOutlineSynopsis(
   Array.from({ length: 6 }, (_, index) => `## 第${index + 1}章：${stageChapterTitle(index + 1)}\n林岚在第${index + 1}夜核对雾钟与潮位。`).join('\n\n'),
@@ -207,6 +215,133 @@ export const X2_SCENARIOS = {
     const measured = { ...shown, expected, stored: { createdAt: draft.createdAt, updatedAt: draft.updatedAt } }
     assert.deepEqual(shown, { reclicked: { timeline: true }, whileLoading: '正在读取…', times: expected }, JSON.stringify(measured))
     return measured
+  } },
+
+  // #388 T3：设置的「检索模型」页里删掉检索模型，同一页的索引区随之回到未配置，不再留着重建按钮。
+  'x2-index-model': { model: true, shell: 'stage', setup: context => seedStageSample(context, { beforeReload: async ({ page, invoke }) => {
+    assert.equal((await invoke(page, 'llm:save-model', EMBEDDING_MODEL)).success, true)
+    assert.equal((await invoke(page, 'llm:set-default-embedding-model', EMBEDDING_MODEL.id)).success, true)
+  } }), run: async context => {
+    const { page, invoke, shoot } = context
+    await importMaterials(context)
+    // 主进程在没有默认检索模型时退回默认生成模型；去掉生成模型，删掉检索模型后才真的没有检索模型。
+    assert.equal((await invoke(page, 'llm:delete-model', FAKE_MODEL.id)).success, true)
+    await stage.openSettings(page)
+    await stage.showSettingsPage(page, '检索模型')
+    const index = stage.root(page).getByRole('region', { name: '当前作品的检索索引' })
+    await index.getByRole('button').first().waitFor({ state: 'visible', timeout: 15_000 })
+    const before = { buttons: await index.getByRole('button').allInnerTexts() }
+    await stage.root(page).getByRole('button', { name: `「${EMBEDDING_MODEL.name}」更多操作` }).click()
+    await page.getByRole('menuitem', { name: '删除模型…' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: '删除模型', exact: true }).click()
+    await stage.root(page).getByRole('heading', { name: '还没有检索模型' }).waitFor({ state: 'visible' })
+    await page.waitForTimeout(2000)
+    await shoot('x2-index-model-deleted')
+    const after = { buttons: await index.getByRole('button').allInnerTexts(), text: await index.innerText() }
+    const measured = { before, after }
+    assert.deepEqual({ before: before.buttons.length > 0, after: after.buttons, unconfigured: after.text.includes('配置并启用检索模型后') },
+      { before: true, after: [], unconfigured: true }, JSON.stringify(measured))
+    return measured
+  } },
+
+  // #388 T15：知识库查找后改「最多显示」，按上次查找的词与新的条数重查。
+  'x2-kb-limit': { model: true, shell: 'stage', setup: seedStageSample, run: async context => {
+    const { app, page } = context
+    await importMaterials(context)
+    await recordArgs(app, 'kb:search')
+    await refs.search(page, '守塔人')
+    await refs.searchInput(page).fill('还没提交的字')
+    await stage.root(page).locator('.stage-kb-topk').selectOption('5')
+    await page.waitForTimeout(2000)
+    const searches = (await recordedArgs(app, 'kb:search')).map(args => args.slice(0, 2))
+    assert.deepEqual(searches, [['守塔人', 10], ['守塔人', 5]], JSON.stringify(searches))
+    return { searches }
+  } },
+
+  // #389 X1+O#27：当前状态、关系图谱视图没有点了没反应的头像按钮；O#2：粘贴角色卡的全文框按 9 行高显示。
+  'x2-cast': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page, shoot }) => {
+    await architecture.open(page)
+    await architecture.openCast(page)
+    const avatar = stage.root(page).getByRole('button', { name: /^(选择|更换)头像$/ })
+    const views = {}
+    for (const view of ['基础设定', '当前状态', '关系图谱']) {
+      await stage.root(page).getByRole('group', { name: '档案视图' }).getByRole('button', { name: view, exact: true }).click()
+      await page.waitForTimeout(300)
+      views[view] = await avatar.count()
+    }
+    await stage.root(page).getByRole('button', { name: '粘贴 / 导入角色卡' }).click()
+    const source = page.getByRole('dialog').getByRole('textbox', { name: '角色卡全文' })
+    await source.waitFor({ state: 'visible' })
+    const box = await source.evaluate(element => ({ rows: element.rows, height: Math.round(element.getBoundingClientRect().height),
+      lines: Math.round(element.getBoundingClientRect().height / parseFloat(getComputedStyle(element).lineHeight)) }))
+    await shoot('x2-cast-paste')
+    await page.getByRole('dialog').getByRole('button', { name: '暂不导入' }).click()
+    const measured = { views, box }
+    assert.deepEqual({ views, atLeastNineLines: box.lines >= 9 }, { views: { 基础设定: 1, 当前状态: 0, 关系图谱: 0 }, atLeastNineLines: true }, JSON.stringify(measured))
+    return measured
+  } },
+
+  // #392 T3：第 4 章审稿、按意见修稿、全部用修稿合并，自动复验跑完后单章视图写明复验完成几项，审稿报告逐项标着复验结果。
+  // 只有带正文证据的本章目标意见才进复验：审稿回第 4 章蓝图关键事件未完成，证据取自第 4 章正文。
+  'x2-recheck': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page, fake, shoot }) => {
+    fake.replyReview(JSON.stringify({ summary: '本章目标还没落地。', items: [
+      { category: '连续性', severity: 'warning', description: '核对钟声提前一刻与潮位的关系。', quote: '他给林岚倒了一杯很淡的茶' },
+    ], goalReviews: [{ id: 'ch4:keyEvents:1', status: 'unmet', description: '林岚还没有在灯塔里找到新的线索。',
+      evidence: [{ quote: '守塔人的屋子在灯塔背风的一侧' }] }] }))
+    await chapterView.open(page, 4)
+    await chapterView.review(page)
+    await waitRunDone(page)
+    await chapterView.reviseButton(page).click()
+    await chapterView.merge(page).waitFor({ state: 'visible', timeout: 60_000 })
+    await waitRunDone(page)
+    await chapterView.merge(page).getByRole('button', { name: '全部用修稿' }).click()
+    await chapterView.merge(page).getByRole('button', { name: '完成合并' }).click()
+    await chapterView.view(page).getByRole('button', { name: '定稿', exact: true }).waitFor({ state: 'visible', timeout: 30_000 })
+    // 合并后的复验是第三次对话请求；等它发出、顶栏不再有进行中的运行，再读提示。
+    const deadline = Date.now() + 60_000
+    while (fake.chats.length < 3) {
+      assert.ok(Date.now() < deadline, `60 秒内没有发出合并后的复验（对话请求 ${fake.chats.map(chat => chat.kind).join('、')}）`)
+      await page.waitForTimeout(250)
+    }
+    await stage.root(page).locator('.stage-capsule:not([data-tone="ok"])').waitFor({ state: 'detached', timeout: 90_000 })
+    await page.waitForTimeout(3000)
+    const hint = await chapterView.hint(page).innerText()
+    await chapterView.more(page, '审稿报告')
+    await chapterView.reviewSheet(page).waitFor({ state: 'visible' })
+    await shoot('x2-recheck-sheet')
+    const statuses = await chapterView.reviewSheet(page).getByText(/^复验：/).allInnerTexts()
+    const measured = { hint, statuses }
+    assert.match(hint, /^复验完成：\d+ \/ \d+ 项意见已解决$/, JSON.stringify(measured))
+    assert.ok(statuses.length > 0, JSON.stringify(measured))
+    return measured
+  } },
+
+  // #377 R1：蓝图页改了第 5 章标题并「保存此章」，流程脊的章节列表随之显示新标题。
+  'x2-blueprint-save': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+    await blueprint.open(page)
+    await blueprint.planItem(page, 5).click()
+    await blueprint.titleInput(page).fill('潮汐表的背面')
+    await blueprint.card(page).getByRole('button', { name: '保存此章' }).click()
+    await blueprint.card(page).getByRole('button', { name: '保存此章' }).waitFor({ state: 'visible' })
+    await page.waitForTimeout(2000)
+    await stage.tab(page, /^第 3 章/).click()
+    const row = await stage.chapterButton(page, 5).innerText()
+    assert.match(row, /潮汐表的背面/, row)
+    return { row }
+  } },
+
+  // #377 R2：点了第 4 章、正文还没读完就去设定，读完后第 4 章不把标签抢回来。
+  'x2-open-chapter': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ app, page }) => {
+    await holdChannel(app, 'db:draft-get-full')
+    await stage.chapterButton(page, 4).click()
+    await untilHeld(app, 'db:draft-get-full')
+    await stage.stageButton(page, '设定').click()
+    await stage.setupOutline(page).waitFor({ state: 'visible' })
+    await releaseChannel(app, 'db:draft-get-full')
+    await page.waitForTimeout(2000)
+    const after = { setup: await stage.setupOutline(page).isVisible(), crumbs: (await stage.landing(page)).crumbs.join(' / ') }
+    assert.deepEqual(after, { setup: true, crumbs: '设定' }, JSON.stringify(after))
+    return after
   } },
 }
 
