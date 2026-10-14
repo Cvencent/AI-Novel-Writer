@@ -14,7 +14,7 @@ import * as runSheet from './pages/run-sheet.mjs'
 import * as stage from './pages/stage.mjs'
 import { importMaterials } from './refs-scenarios.mjs'
 import { seedStageSample } from './scenarios.mjs'
-import { STAGE_SAMPLE, stageChapterTitle } from './stage-sample.mjs'
+import { countUnits, STAGE_SAMPLE, stageChapterTitle } from './stage-sample.mjs'
 import { HARBOR, holdChannel, releaseChannel, seedHarbor, untilHeld } from './x1-scenarios.mjs'
 
 const EMBEDDING_MODEL = Object.freeze({ ...FAKE_MODEL, id: 'x2-embedding', name: '驱动检索模型', modelName: 'text-embedding-3-small', purposes: ['embedding'] })
@@ -36,8 +36,8 @@ const updateSynopsis = synopsis => async ({ page, invoke, path: projectPath, ses
   assert.equal(updated.success, true, updated.error)
 }
 
-/** 另建一部只有设定与架构（大纲分批没写完）的作品；blueprints 为 true 时再加前三章蓝图，没有正文。 */
-async function seedOutlineBook(context, name, { blueprints }) {
+/** 另建一部只有设定与架构（大纲分批没写完）的作品；blueprints 为 true 时再加前三章蓝图，finalized 为 true 时导入第 1 章定稿（没有蓝图）。 */
+async function seedOutlineBook(context, name, { blueprints = false, finalized = false }) {
   const { app, page, roots, invoke } = context
   const created = await invoke(page, 'project:create', { parentGrantId: (await chooseProjectDirectoryGrant(app, page, roots.projects)).grantId,
     name, genre: '悬疑', targetAudience: '成年读者', writingLanguage: 'zh-CN' }, randomUUID(), null)
@@ -47,6 +47,12 @@ async function seedOutlineBook(context, name, { blueprints }) {
   const session = { projectId: created.projectId, projectPath: created.projectPath, leaseId: opened.project.sessionLease }
   assert.equal((await invoke(page, 'db:project-core-update', { ...STAGE_SAMPLE.core, synopsis: partialOutline(),
     totalChapters: STAGE_SAMPLE.totalChapters, wordsPerChapter: STAGE_SAMPLE.wordsPerChapter }, created.projectPath, session)).success, true)
+  if (finalized) {
+    const content = STAGE_SAMPLE.finalized[1]
+    const imported = await invoke(page, 'db:draft-import-finalized-batch', { operationId: randomUUID(),
+      chapters: [{ chapterNumber: 1, title: stageChapterTitle(1), content, wordCount: countUnits(content) }] }, created.projectPath, session)
+    assert.equal(imported.success, true, imported.error)
+  }
   if (!blueprints) return
   for (const number of [1, 2, 3]) {
     assert.equal((await invoke(page, 'db:blueprint-upsert', { chapterNumber: number, title: stageChapterTitle(number), role: '发展',
@@ -101,14 +107,15 @@ const localTime = (page, value, options) => page.evaluate(([value, options]) =>
 
 export const X2_SCENARIOS = {
   // #394 §6（用户决定 B）：大纲分批没写完时，只有蓝图与正文都没有才落在架构；有蓝图或正文就落到当前写作位置。
-  // 书房打开三部作品，再用「打开作品」选文件夹打开灯塔。
+  // 南湾只有第 1 章定稿、没有蓝图，落在第 1 章而不是空的蓝图页。书房打开四部作品，再用「打开作品」选文件夹打开灯塔。
   'x2-landing': { model: false, shell: 'stage', setup: async context => {
     await seedOutlineBook(context, '荒岛', { blueprints: false })
     await seedOutlineBook(context, '北堤', { blueprints: true })
+    await seedOutlineBook(context, '南湾', { finalized: true })
     await seedStageSample(context, { open: false, beforeReload: updateSynopsis(partialOutline()) })
   }, run: async ({ app, page, samplePath, shoot }) => {
     const landed = {}
-    for (const name of ['荒岛', '北堤', STAGE_SAMPLE.name]) {
+    for (const name of ['荒岛', '北堤', '南湾', STAGE_SAMPLE.name]) {
       await stage.openFromLibrary(page, name)
       landed[name] = (await settledLanding(page)).join(' / ')
       await shoot(`x2-landing-${name}`)
@@ -119,7 +126,7 @@ export const X2_SCENARIOS = {
     const architectureState = (await stage.stageStates(page)).architecture
     const measured = { landed, architectureState }
     assert.deepEqual(landed, {
-      荒岛: '架构', 北堤: '正文 / 第 1 章', [STAGE_SAMPLE.name]: '正文 / 第 3 章', '灯塔（打开作品）': '正文 / 第 3 章',
+      荒岛: '架构', 北堤: '正文 / 第 1 章', 南湾: '正文 / 第 1 章', [STAGE_SAMPLE.name]: '正文 / 第 3 章', '灯塔（打开作品）': '正文 / 第 3 章',
     }, JSON.stringify(measured))
     return measured
   } },

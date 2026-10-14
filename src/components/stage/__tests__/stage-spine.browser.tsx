@@ -75,6 +75,10 @@ describe('四个阶段的状态由项目数据派生', () => {
     // 用户决定 B（#394 §6）：已有蓝图时架构没写完不拉回架构，落点跳到下一个未完成的阶段。
     expect(landingStage(stages)).toBe('manuscript')
     expect(landingStage(deriveStages(facts({ architecture: { premise: true, characters: true }, blueprints: [] })))).toBe('architecture')
+    // 已有正文就落在写作位置：没有蓝图（大纲没写完或已写完）也不落到空的蓝图页。
+    const written = { blueprints: [], drafts: { 1: [draft(1, 1, 'finalized')] } }
+    expect(landingStage(deriveStages(facts({ ...written, architecture: { premise: true, characters: true } })))).toBe('manuscript')
+    expect(landingStage(deriveStages(facts(written)))).toBe('manuscript')
     expect(deriveStages(facts({ blueprints: [] }))[2].progress).toEqual({ state: 'todo' })
   })
 

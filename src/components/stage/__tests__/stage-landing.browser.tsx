@@ -152,8 +152,8 @@ describe('打开作品时的落点', () => {
     expect(await landWith(BLUEPRINTS, { 1: [draft(1, 'finalized')], 2: [draft(2, 'draft')] })).toEqual({ type: 'chapter', chapter: 2 })
   })
 
-  it('大纲没写完、有正文却没有蓝图：落在蓝图，不拉回架构', async () => {
-    expect(await landWith([], { 1: [draft(1, 'finalized')] })).toEqual({ type: 'chapter-card', chapter: undefined })
+  it('大纲没写完、有正文却没有蓝图：落在写到的那一章，不落到空的蓝图页', async () => {
+    expect(await landWith([], { 1: [draft(1, 'finalized')] })).toEqual({ type: 'chapter', chapter: 1 })
   })
 
   it('上一次打开留下的架构与蓝图数据不算这次的', async () => {
