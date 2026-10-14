@@ -126,6 +126,31 @@ describe('设置页', () => {
     expect(host!.querySelector('[aria-label="当前作品的检索索引"]')?.textContent).toContain('打开一部作品后，可以在这里检查它的检索索引。')
   })
 
+  it('同一页里配好检索模型后，索引区重新检查，出现补全按钮；删掉后又回到未配置', async () => {
+    const session = { projectId: '灯塔', projectPath: 'C:/novels/lighthouse', leaseId: '本次打开' }
+    let configured = false
+    win.aiNovelAPI!.invoke = async channel => channel === 'kb:get-vector-rebuild-status'
+      ? { embeddingConfigured: configured, canRebuild: configured, totalChunks: 9, vectorlessCount: 4, activeVectorDimension: 0 }
+      : channel === 'config:get' ? {} : undefined
+    useProjectStore.setState({ currentProject: { id: session.projectId, path: session.projectPath, sessionLease: session.leaseId, name: '灯塔', novelConfig: {} } as unknown as ProjectData })
+    setActiveProjectSessionContext(session)
+    useLayoutStore.setState({ settingsSection: 'embedding' })
+    await mount()
+    const index = () => host!.querySelector('[aria-label="当前作品的检索索引"]')?.textContent ?? ''
+    await vi.waitFor(() => expect(index()).toContain('配置并启用检索模型后'))
+
+    const embedding = { ...LOCAL, id: 'embed', name: '本机向量', purposes: ['embedding'] } as ModelProfile
+    configured = true
+    await act(async () => useLLMStore.setState({ models: [MODEL, LOCAL, embedding], defaultEmbeddingModelId: 'embed' }))
+    await vi.waitFor(() => expect(byName('检查并重建向量索引')).toBeTruthy())
+    expect(index()).toContain('当前作品有 4 段资料还没有按检索模型建立索引')
+
+    configured = false
+    await act(async () => useLLMStore.setState({ models: [MODEL, LOCAL], defaultEmbeddingModelId: null }))
+    await vi.waitFor(() => expect(index()).toContain('配置并启用检索模型后'))
+    expect(byName('检查并重建向量索引')).toBeUndefined()
+  })
+
   it('删除模型先出现危险确认，写明后果；取消不删，确认才删', async () => {
     await mount()
     expect([...host!.querySelectorAll('[aria-label="AI 模型"] li')].map(item => item.querySelector('.stage-set-model-name')?.textContent))
