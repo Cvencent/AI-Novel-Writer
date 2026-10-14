@@ -3,7 +3,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 
+import { FAKE_MODEL } from './fake-model.mjs'
 import * as blueprint from './pages/blueprint.mjs'
+import * as chapterView from './pages/chapter-view.mjs'
 import * as runSheet from './pages/run-sheet.mjs'
 import * as stage from './pages/stage.mjs'
 import { STAGE_SAMPLE } from './stage-sample.mjs'
@@ -87,6 +89,40 @@ async function tabTo(page, target, shoot, name, limit = 60) {
 }
 
 const hasRing = ({ boxShadow, focusVisible }, accent) => focusVisible && boxShadow.includes(accent)
+
+/** 主进程里把第 4 章最新稿的读取扣住，直到 release：定稿后自动打开下一章的那一步停在这里，等作者在设置页里改出未保存的输入。 */
+async function holdNextChapterLookup(app) {
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = ipcMain._invokeHandlers
+    const original = handlers.get('db:draft-get-latest')
+    let release
+    const gate = { hit: false, released: false, opened: new Promise(resolve => { release = resolve }) }
+    gate.release = () => { gate.released = true; release() }
+    globalThis.__rdx3NextChapterGate = gate
+    handlers.set('db:draft-get-latest', async (event, chapterNumber, ...rest) => {
+      if (chapterNumber === 4 && !gate.released) {
+        gate.hit = true
+        await gate.opened
+      }
+      return original(event, chapterNumber, ...rest)
+    })
+  })
+}
+
+/** 写作弹层的出现与消失、每次焦点移动，按时间记在页面里。 */
+const recordPopoverAndFocus = page => page.evaluate(() => {
+  const log = []
+  window.__rdx3Log = log
+  const describe = element => element === document.body ? 'body' : `${element.tagName.toLowerCase()}${element.className ? '.' + String(element.className).split(' ')[0] : ''}「${(element.getAttribute('aria-label') ?? element.textContent ?? '').trim().slice(0, 16)}」`
+  let open = false
+  new MutationObserver(() => {
+    const now = Boolean(document.querySelector('.pi-popover'))
+    if (now !== open) log.push({ t: Math.round(performance.now()), popover: now })
+    open = now
+  }).observe(document.body, { childList: true, subtree: true })
+  document.addEventListener('focusin', event => log.push({ t: Math.round(performance.now()), focus: describe(event.target) }), true)
+  document.addEventListener('focusout', event => { if (!event.relatedTarget) log.push({ t: Math.round(performance.now()), blur: describe(event.target) }) }, true)
+})
 
 export const RDX3_SCENARIOS = {
   'rdx3-popover-1280': popoverIn(1280, 720),
@@ -207,4 +243,47 @@ export const RDX3_SCENARIOS = {
     assert.deepEqual([layout.title, layout.ellipsis, layout.clipped], [LONG_NAME, 'ellipsis', true], '作品名以省略号收尾')
     return layout
   } },
+
+  /**
+   * 定稿后自动打开下一章遇上设置页里没保存的输入：放弃确认 → 收起设置 → 第 4 章单章视图自动弹出写作弹层。
+   * 放弃确认关掉后还焦点不能把刚弹出的写作弹层关掉。
+   */
+  'rdx3-write-after-discard': writeAfterDiscard(),
+  /** 同上，但放弃确认弹出前作者点过运行侧页的「历史」页签：确认关掉后焦点要还给这个还在的页签。 */
+  'rdx3-write-after-discard-sheet': writeAfterDiscard({ focusBefore: page => runSheet.tab(page, '历史').click() }),
+}
+
+function writeAfterDiscard({ focusBefore } = {}) {
+  return { model: true, shell: 'stage', setup: context => seedStageSample(context, { beforeReload: async ({ page, invoke, path: projectPath, session }) => {
+    assert.equal((await invoke(page, 'config:set', { autoOpenNextChapterAfterFinalize: true })).success, true)
+    // 下一章还没动笔，定稿后才会自动弹出写作
+    for (const draft of await invoke(page, 'db:draft-list', 4, projectPath, session)) {
+      assert.equal((await invoke(page, 'db:draft-delete', draft.id, projectPath, session)).success, true)
+    }
+  } }), run: async ({ app, page, shoot }) => {
+    await holdNextChapterLookup(app)
+    await chapterView.open(page, 3)
+    await chapterView.finalize(page, 3)
+    for (let i = 0; i < 100 && !(await app.evaluate(() => globalThis.__rdx3NextChapterGate.hit)); i++) await page.waitForTimeout(100)
+    assert.equal(await app.evaluate(() => globalThis.__rdx3NextChapterGate.hit), true, '定稿后自动打开下一章走到了读取第 4 章')
+    await stage.openSettings(page)
+    await page.getByRole('button', { name: `编辑「${FAKE_MODEL.name}」` }).click()
+    await stage.root(page).getByPlaceholder('如：DeepSeek 主力 / GPT-4o 备用').fill('还没保存的名字')
+    await focusBefore?.(page)
+    await recordPopoverAndFocus(page)
+    await app.evaluate(() => globalThis.__rdx3NextChapterGate.release())
+    const discard = page.getByRole('dialog', { name: '放弃未保存的修改？' })
+    await discard.waitFor({ state: 'visible' })
+    await discard.getByRole('button', { name: '放弃修改', exact: true }).click()
+    await blueprint.popover(page).waitFor({ state: 'visible', timeout: 15_000 }).catch(() => undefined)
+    await page.waitForTimeout(1200)
+    const outcome = {
+      popover: await blueprint.popover(page).count(),
+      active: await page.evaluate(() => document.activeElement === document.body ? 'body' : document.activeElement?.outerHTML.slice(0, 120)),
+      log: await page.evaluate(() => window.__rdx3Log),
+    }
+    await shoot(focusBefore ? 'rdx3-write-after-discard-sheet' : 'rdx3-write-after-discard')
+    assert.equal(outcome.popover, 1, `放弃修改后写作弹层还开着：${JSON.stringify(outcome)}`)
+    return outcome
+  } }
 }
