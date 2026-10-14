@@ -193,11 +193,16 @@ export const VISUAL_SCENARIOS = {
     await page.getByRole('dialog').first().waitFor({ state: 'hidden' })
   } },
 
-  'rdv-settings': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+  // RD-5 起设置是整页；项目备份与提示词模板仍是旧面板，用来看旧按钮变体在新外壳下换成纸墨按钮
+  'rdv-settings': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page, shoot }) => {
     await stage.openSettings(page)
+    await page.getByRole('button', { name: '提示词模板' }).click()
+    await settle(page)
+    await shoot('rdv-settings-prompts')
+    await page.getByRole('button', { name: '项目备份' }).click()
     await settle(page)
   }, after: async ({ page }) => {
-    await page.getByRole('button', { name: '关闭设置' }).click()
+    await page.getByRole('button', { name: '返回作品' }).click()
   } },
   'rdv-tour': { model: true, shell: 'stage', setup: context => seedStageSample(context, { beforeReload: seedCalls }), run: async ({ page }) => {
     const pause = () => page.waitForTimeout(2600)
