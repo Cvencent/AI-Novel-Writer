@@ -133,6 +133,42 @@ describe('设定页', () => {
     expect(useEditorStore.getState().tabs.map(tab => tab.type)).toContain('world-building')
   })
 
+  describe('下一步的保存还没返回时作者已经离开，保存完成后不把作者拉去架构', () => {
+    let finishSave: (saved: boolean) => void = () => {}
+    async function clickNextWithSlowSave() {
+      project({ coreOutline: '雾钟提前一刻响起。', genre: '悬疑', targetAudience: '全龄' })
+      dirtyConfigTab()
+      useProjectStore.setState({ saveProject: vi.fn(() => new Promise<boolean>(resolve => { finishSave = resolve })) } as never)
+      await mount()
+      await click(next())
+    }
+
+    it('回到了书房', async () => {
+      await clickNextWithSlowSave()
+      await act(async () => useLayoutStore.getState().setSidebarView('home'))
+      await act(async () => finishSave(true))
+      expect(useLayoutStore.getState().sidebarView).toBe('home')
+      expect(useEditorStore.getState().tabs.map(tab => tab.type)).toEqual(['config'])
+    })
+
+    it('打开了设置页', async () => {
+      await clickNextWithSlowSave()
+      await act(async () => useLayoutStore.setState({ settingsOpen: true, settingsSection: 'llm' }))
+      await act(async () => finishSave(true))
+      expect(useLayoutStore.getState().settingsOpen).toBe(true)
+      expect(useEditorStore.getState().tabs.map(tab => tab.type)).toEqual(['config'])
+    })
+
+    it('打开了另一部作品', async () => {
+      await clickNextWithSlowSave()
+      const other = { projectId: 'harbor', leaseId: 'lease-2', projectPath: 'C:\\novels\\harbor' }
+      setActiveProjectSessionContext(other)
+      await act(async () => useProjectStore.setState({ currentProject: { id: 'harbor', sessionLease: 'lease-2', name: '港口', path: other.projectPath, novelConfig: { ...BLANK } } as unknown as ProjectData }))
+      await act(async () => finishSave(true))
+      expect(useEditorStore.getState().tabs.filter(tab => tab.projectKey === other.projectPath)).toEqual([])
+    })
+  })
+
   it('新作品三项必填先用中性的「必填」；离开空着的一项或只差最后一项时才标红', async () => {
     project({})
     await mount()
