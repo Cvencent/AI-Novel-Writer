@@ -199,8 +199,7 @@
 }
 
 .stage-setup-length:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: var(--focus-ring);
 }
 
 .stage-setup-length > span {
@@ -306,8 +305,7 @@
 
 .stage-setup-textarea:focus-visible {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: var(--focus-ring);
 }
 
 .stage-setup-adv-row {
@@ -333,6 +331,11 @@
   border: 1px solid var(--rule-strong);
   border-radius: var(--radius-control);
   background: var(--paper);
+}
+
+.stage-setup-adv-ctl .stage-setup-num-input:focus-visible {
+  background: var(--paper);
+  box-shadow: var(--focus-ring);
 }
 
 /* ---------- 底部操作栏 ---------- */

@@ -565,3 +565,9 @@
   flex: 1;
   min-width: 0;
 }
+
+.stage-dialog-hint {
+  margin: 0;
+  font-size: var(--fs-12);
+  color: var(--ink-3);
+}

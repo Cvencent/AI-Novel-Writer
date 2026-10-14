@@ -14,6 +14,10 @@ export default function NewWorkDialog() {
   const form = useNewProjectForm(open, close)
   const nameId = useId()
   const folderId = useId()
+  const reasonId = useId()
+  const reason = form.creating ? null
+    : !form.path ? text('先选保存位置，作品会建在那个文件夹里。', 'Choose a location first; the book is created in that folder.')
+      : !form.name.trim() ? text('先起个作品名。', 'Give the book a title first.') : null
 
   return (
     <InkDialog
@@ -24,7 +28,7 @@ export default function NewWorkDialog() {
       footer={(
         <>
           <Button variant="secondary" onClick={close}>{text('取消', 'Cancel')}</Button>
-          <Button variant="primary" disabled={!form.canCreate} onClick={() => void form.create()}>
+          <Button variant="primary" disabled={!form.canCreate} aria-describedby={reason ? reasonId : undefined} onClick={() => void form.create()}>
             {form.creating ? text('正在创建…', 'Creating…') : text('创建作品', 'Create book')}
           </Button>
         </>
@@ -61,6 +65,7 @@ export default function NewWorkDialog() {
           </Button>
         </div>
       </div>
+      {reason && <p id={reasonId} className="stage-dialog-hint">{reason}</p>}
     </InkDialog>
   )
 }

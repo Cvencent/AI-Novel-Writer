@@ -40,8 +40,7 @@
 .stage-shell .stage-setup .pi-input:focus-visible,
 .stage-shell .stage-settings .pi-input:focus-visible {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: var(--focus-ring);
 }
 
 .stage-chip {

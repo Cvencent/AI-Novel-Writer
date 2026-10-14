@@ -177,7 +177,6 @@ export default function StageLibrary() {
       <section className="stage-ov stage-ov--hint">
         <p className="stage-eyebrow">{text('概览', 'Overview')}</p>
         <h2 className="stage-ov-title">{text('选一本书，看看写到哪里了', 'Pick a book to see how far it has come')}</h2>
-        <p className="stage-ov-meta">{text('点封面只是预览，不会打开作品。', 'Selecting a cover only previews it; nothing is opened.')}</p>
       </section>
     )
   })()
