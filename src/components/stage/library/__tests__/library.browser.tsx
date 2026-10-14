@@ -13,6 +13,7 @@ import { useLayoutStore } from '../../../../stores/layout-store'
 import { useLLMStore } from '../../../../stores/llm-store'
 import { useStageStore } from '../../../../stores/navigation/stage-store'
 import { useProjectStore } from '../../../../stores/project-store'
+import NewWorkDialog from '../NewWorkDialog'
 import StageLibrary from '../StageLibrary'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -171,6 +172,20 @@ describe('书房', () => {
     await click(button('预览《雾岛》'))
     expect(host!.querySelector<HTMLElement>('[data-stage="setup"]')?.dataset.state).toBe('done')
     expect(host!.querySelector('[data-stage="setup"]')?.textContent).toBe('设定')
+  })
+
+  it('新建作品没选保存位置时「创建作品」不可用，并写明原因', async () => {
+    useLayoutStore.setState({ newProjectOpen: true })
+    host = document.createElement('div')
+    host.className = 'paper-ink stage-shell'
+    document.body.append(host)
+    root = createRoot(host)
+    await act(async () => root!.render(<NewWorkDialog />))
+    await type(document.querySelector<HTMLInputElement>('[role="dialog"] input')!, '雨夜列车')
+    const create = button('创建作品')!
+    expect(create.disabled).toBe(true)
+    const reason = document.getElementById(create.getAttribute('aria-describedby') ?? '')
+    expect(reason?.textContent).toBe('先选保存位置，作品会建在那个文件夹里。')
   })
 
   it('从最近项目移除先确认，取消时不移除，确认后只移除书架记录', async () => {

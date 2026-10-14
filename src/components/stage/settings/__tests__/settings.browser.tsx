@@ -174,6 +174,24 @@ describe('设置页', () => {
     expect([zoomIn.mock.calls.length, zoomOut.mock.calls.length, zoomReset.mock.calls.length]).toEqual([1, 1, 1])
   })
 
+  it('主题单选组只占一个 Tab 停靠点，方向键换主题并移动焦点，带修饰键时不动', async () => {
+    const setTheme = vi.fn((theme: string) => useThemeStore.setState({ theme } as never))
+    useThemeStore.setState({ theme: 'paper', setTheme } as never)
+    useLayoutStore.setState({ settingsSection: 'appearance' })
+    await mount()
+    const radios = () => [...host!.querySelectorAll<HTMLButtonElement>('[role="radiogroup"][aria-label="主题"] [role="radio"]')]
+    expect(radios().map(radio => [radio.textContent, radio.getAttribute('aria-checked'), radio.tabIndex]))
+      .toEqual([['浅色纸面与墨色', 'true', 0], ['深色夜里写作', 'false', -1]])
+
+    radios()[0].focus()
+    await key('ArrowRight', radios()[0], { altKey: true })
+    expect(setTheme).not.toHaveBeenCalled()
+    await key('ArrowRight', radios()[0])
+    expect(setTheme).toHaveBeenCalledWith('dark')
+    expect(document.activeElement).toBe(radios()[1])
+    expect(radios().map(radio => radio.tabIndex)).toEqual([-1, 0])
+  })
+
   it('返回或 Esc 关闭设置页；书房里写「返回书房」', async () => {
     await mount(true)
     expect(byName('返回书房')).toBeTruthy()
