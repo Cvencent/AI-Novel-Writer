@@ -66,6 +66,15 @@ describe('新外壳的外观细节', () => {
     expect(container.querySelector('[aria-label="退出沉浸写作"]')?.className).toContain('pi-btn--secondary')
   })
 
+  it('顶栏作品名被省略号截断时，悬停能看到全名', async () => {
+    const restore = useProjectStore.getState()
+    const name = '雾钟每晚提前一刻响起'.repeat(8)
+    useProjectStore.setState({ currentProject: { id: 'long', sessionLease: 'l', name, path: 'C:/novels/long', novelConfig: {} } as unknown as ProjectData })
+    const container = await mount(<div style={{ width: 1024 }}><StageTopBar crumbs={[]} library={false} focus={false} focusTitle={{ title: '' }} workMenu={[]} onToggleFocus={() => undefined} /></div>)
+    expect(container.querySelector('.stage-work-name')?.getAttribute('title')).toBe(name)
+    useProjectStore.setState(restore, true)
+  })
+
   it('顶栏的保存状态只看这部作品：别的作品留着的未保存草稿不算', async () => {
     const restore = [useEditorStore.getState(), useProjectStore.getState()] as const
     const here = 'C:\\novels\\here'
