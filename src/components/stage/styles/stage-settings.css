@@ -341,6 +341,35 @@
   color: var(--ink);
 }
 
+/*
+ * 沿用旧组件的几页（提示词模板、写作 Skills、项目备份、模型编辑）向新页的骨架靠：卡片是纸面加细边、14px 圆角，
+ * 输入框与下拉 40px 高、大圆角，聚焦用 --focus-ring。按钮外观由 RD-V 的统一视觉层处理，这里不动。
+ */
+.stage-shell .stage-set-legacy {
+  --color-panel: var(--paper);
+  --color-border: var(--rule);
+}
+
+.stage-shell .stage-set-legacy .rounded-xl {
+  border-radius: 14px;
+}
+
+.stage-shell .stage-set-legacy :is(input:not([type='checkbox'], [type='radio'], [type='range']), select, textarea) {
+  border-color: var(--rule-strong);
+  border-radius: var(--radius-lg);
+  background-color: var(--paper);
+  font-size: 13.5px;
+}
+
+.stage-shell .stage-set-legacy :is(input:not([type='checkbox'], [type='radio'], [type='range']), select) {
+  height: 40px;
+}
+
+.stage-shell .stage-set-legacy :is(input, select, textarea):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 /* ---------- 网络代理 ---------- */
 .stage-set-form {
   display: grid;
@@ -433,4 +462,9 @@
 
 .stage-update-settings > .stage-set-row {
   padding-bottom: 0;
+}
+
+.stage-shell .stage-set-legacy .relative:has(> input) > svg.absolute {
+  top: 50%;
+  transform: translateY(-50%);
 }
