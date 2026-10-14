@@ -387,6 +387,37 @@ describe('知识库', () => {
       expect(invoke.mock.calls.filter(([channel]) => channel === 'kb:save-document-copy')).toHaveLength(1)
     })
 
+    it('更新检索还没返回时切走再切回，按钮仍禁用、不重复发起；返回后恢复', async () => {
+      let finishReindex: (value: unknown) => void = () => {}
+      let indexStatus = 'stale'
+      const plain = invoke.getMockImplementation()!
+      invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+        if (channel === 'kb:reindex-document-copy') return new Promise(resolve => { finishReindex = resolve })
+        const result = await plain(channel, ...args)
+        return channel === 'kb:read-document-copy' ? { ...(result as object), indexStatus } : result
+      })
+      const reindexes = () => invoke.mock.calls.filter(([channel]) => channel === 'kb:reindex-document-copy')
+      await act(async () => root!.render(<StageWorkspace library={false} focus={false} />))
+      await vi.waitFor(() => expect(button(/车站档案/)).toBeTruthy())
+      await click(/车站档案/)
+      await vi.waitFor(() => expect(document.querySelector('textarea')?.value).toBe(copies.station))
+      await click('更新检索')
+      await act(async () => useEditorStore.getState().setActiveTab(`version-history:${encodeURIComponent(session.projectPath)}`))
+      await act(async () => useEditorStore.getState().setActiveTab(KB_TAB))
+      await vi.waitFor(() => expect(document.querySelector('textarea')?.value).toBe(copies.station))
+      await act(async () => new Promise(resolve => setTimeout(resolve, 50)))
+      expect(button('更新检索')?.disabled).toBe(true)
+      await act(async () => button('更新检索')!.click())
+      expect(reindexes()).toHaveLength(1)
+      indexStatus = 'current'
+      await act(async () => finishReindex({ success: true, docId: 'station', chunkCount: 3 }))
+      await vi.waitFor(() => expect(button('更新检索')).toBeUndefined())
+      expect(document.querySelector('textarea')?.disabled).toBe(false)
+      expect(document.querySelector('[aria-current="true"]')?.textContent).toContain('车站档案')
+      expect(document.querySelector('textarea')?.value).toBe(copies.station)
+      expect(reindexes()).toHaveLength(1)
+    })
+
     it('同一次打开里作品数据换成新对象（后台运行写回设定），修改还在', async () => {
       await renderPage()
       await click(/车站档案/)
