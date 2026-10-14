@@ -20,7 +20,7 @@ import { includedCount, useReviewChecklist } from '../../editor/review-checklist
 import { reviewDimensions, type useDraftActions } from '../../editor/use-draft-actions'
 import { deleteDraftVersion } from '../../panels/sidebar/draft-deletion'
 import { deleteFinalizedChapter } from '../../panels/sidebar/finalized-chapter-deletion'
-import { captureProjectSession } from '../../project-session-gate'
+import { captureProjectSession, isProjectSessionCurrent } from '../../project-session-gate'
 import { Button } from '../../ui/Button'
 import { Check } from '../../ui/Check'
 import { DangerConfirm } from '../../ui/DangerConfirm'
@@ -135,19 +135,25 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
 
   const startReview = () => void draft.review(dims.filter(dim => checkedDims[dim.key]).map(dim => dim.promptLabel).join('、') || undefined)
 
-  /** 按勾选的意见修稿：清单改过或还没确认就先确认成新快照，再按它启动修稿；失败原因写在侧页里。 */
+  /**
+   * 按勾选的意见修稿：清单改过或还没确认就先确认成新快照，再按它启动修稿；失败原因写在侧页里。
+   * 每次等待回来先核对发起时那次打开：换了作品或重新打开后，侧页属于新的那次打开，旧稿的结果不碰它。
+   */
   const revise = async () => {
     if (!selectedReviseModel) {
       checklist.setChecklistError(text('没有可用于文本生成的模型。请在设置中添加或启用一项生成模型。', 'No model can generate text. Add or enable a generation model in Settings.'))
       setSheet(true)
       return
     }
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
     const confirmed = checklist.editingChecklist || !checklist.confirmed ? await checklist.confirmChecklist() : checklist.confirmed
+    if (!isProjectSessionCurrent(session)) return
     if (!confirmed) {
       setSheet(true)
       return
     }
     const error = await checklist.startConfirmedRevision(selectedReviseModel, confirmed)
+    if (!isProjectSessionCurrent(session)) return
     if (error) {
       checklist.setChecklistError(error)
       setSheet(true)
@@ -160,7 +166,9 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
   const waived = checklist.items.some(item => item.decision === 'waive')
   const confirmWaived = included === 0 && waived && (checklist.editingChecklist || !checklist.confirmed)
   const confirmWaiver = async () => {
-    if (!await checklist.confirmChecklist()) setSheet(true)
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    const confirmed = await checklist.confirmChecklist()
+    if (isProjectSessionCurrent(session) && !confirmed) setSheet(true)
   }
 
   const copyBody = () => {
