@@ -191,8 +191,9 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
         setClearing(false)
       } else if (restoredDraft.current) {
         // 标签切回来时重读所选资料，刷新检索状态；有未保存改动就原样留着，保存时由副本校验发现冲突。
+        // 保存或更新检索在途时也不重读：这一格归在途的那次，它返回时自己重读并结算 busy。
         const restored = restoredDraft.current
-        if (restored.docId && !knowledgeDraftDirty(restored)) void openDocumentRef.current(restored.docId, true)
+        if (restored.docId && !restored.busy && !knowledgeDraftDirty(restored)) void openDocumentRef.current(restored.docId, true)
       }
       restoredDraft.current = null
       void loadData()
