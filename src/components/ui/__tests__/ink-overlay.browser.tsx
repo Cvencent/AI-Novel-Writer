@@ -4,7 +4,10 @@ import { createRoot, type Root } from 'react-dom/client'
 import { page, userEvent } from 'vitest/browser'
 
 import '../../../index.css'
+import type { ProjectData } from '../../../shared/ipc-channels'
+import { setActiveProjectSessionContext } from '../../../shared/project-session-context'
 import { useAppearanceStore } from '../../../stores/appearance-bootstrap'
+import { useProjectStore } from '../../../stores/project-store'
 import { useThemeStore } from '../../../stores/theme-store'
 import { actionToast } from '../ActionToast'
 import { alertError } from '../AlertDialog'
@@ -275,19 +278,46 @@ describe('旧 ui/Dialog 在新外壳下', () => {
 })
 
 describe('清除生成内容', () => {
-  it('新外壳里是标准危险确认：焦点在取消，勾选行改写后果句，全不选时不能确认', async () => {
+  const project = { id: 'lighthouse', path: 'C:\novels\lighthouse', sessionLease: 'lease-clear' } as ProjectData
+  const originalProject = useProjectStore.getState()
+  let invoke: ReturnType<typeof vi.fn>
+  let finishClear: (result: { success: boolean; error?: string }) => void = () => {}
+
+  beforeEach(() => {
+    invoke = vi.fn((channel: string) => channel === 'db:project-clear-generated-data'
+      ? new Promise(resolve => { finishClear = resolve })
+      : Promise.resolve({ success: true }))
+    Object.defineProperty(window, 'aiNovelAPI', { configurable: true, value: { invoke, on: vi.fn(() => () => {}), once: vi.fn(), send: vi.fn() } })
+    useProjectStore.setState({ currentProject: project })
+    setActiveProjectSessionContext({ projectId: project.id, projectPath: project.path, leaseId: project.sessionLease! })
+  })
+
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'aiNovelAPI')
+    setActiveProjectSessionContext(null)
+    useProjectStore.setState(originalProject)
+  })
+
+  async function renderClear(onClose: () => void = () => {}) {
     container = document.createElement('div')
     container.className = 'paper-ink'
     container.dataset.theme = 'light'
     document.body.append(container)
     root = createRoot(container)
-    await act(async () => root!.render(<ClearProjectDataDialog open onClose={() => {}} />))
-    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!
+    await act(async () => root!.render(<ClearProjectDataDialog open onClose={onClose} />))
+    return document.querySelector<HTMLElement>('[role="dialog"]')!
+  }
+
+  it('新外壳里是标准危险确认：焦点在取消，勾选行改写后果句，全不选时不能确认', async () => {
+    const dialog = await renderClear()
     expect(dialog.className).toContain('pi-dialog--marked')
     expect(focused().textContent).toBe('取消')
-    const consequence = dialog.querySelector('.pi-dialog-consequence > p')!
+    const [consequence, recover, advice] = dialog.querySelectorAll<HTMLElement>('.pi-dialog-consequence > p')
     expect(consequence.textContent).toBe('将清除 3 类内容：故事架构与大纲、章节蓝图、草稿、定稿与审稿产物。')
-    expect(getComputedStyle(dialog.querySelector('.pi-dialog-recover')!).color).toBe('rgb(180, 35, 24)')
+    expect(recover.textContent).toBe('清除后不会自动恢复。')
+    expect(getComputedStyle(recover).color).toBe('rgb(180, 35, 24)')
+    expect(advice.textContent).toBe('若需要保留当前内容，请先复制到外部文件或导出项目备份。')
+    expect(getComputedStyle(advice).color).toBe(LIGHT.ink)
     const boxes = [...dialog.querySelectorAll<HTMLElement>('.pi-check-row > .pi-check')]
     expect(boxes).toHaveLength(3)
     await page.screenshot({ path: `${SHOTS}/rdv-clear-light.png` })
@@ -298,6 +328,36 @@ describe('清除生成内容', () => {
     await userEvent.click(boxes[2])
     expect(consequence.textContent).toBe('请至少选择一类内容。')
     expect(buttonNamed(dialog, '清除所选').disabled).toBe(true)
+  })
+
+  it('按勾选清除；清除中按钮写「清除中…」，Esc 与点外部关不掉；失败走 alertError 后可再试', async () => {
+    const onClose = vi.fn()
+    const dialog = await renderClear(onClose)
+    await userEvent.click(dialog.querySelectorAll<HTMLElement>('.pi-check-row > .pi-check')[1])
+    await userEvent.click(buttonNamed(dialog, '清除所选'))
+    expect(invoke.mock.calls.find(call => call[0] === 'db:project-clear-generated-data')).toEqual([
+      'db:project-clear-generated-data',
+      { creativeFields: true, blueprints: false, generatedText: true },
+      project.path,
+      { projectId: project.id, leaseId: project.sessionLease, projectPath: project.path },
+    ])
+    const busy = dialog.querySelector<HTMLButtonElement>('.pi-dialog-foot [aria-busy="true"]')!
+    expect(busy.textContent).toBe('清除中…')
+    expect(busy.disabled).toBe(true)
+
+    await userEvent.keyboard('{Escape}')
+    await userEvent.click(document.querySelector<HTMLElement>('.pi-scrim')!, { position: { x: 8, y: 8 } })
+    await wait(200)
+    expect(onClose).not.toHaveBeenCalled()
+    expect(dialog.isConnected).toBe(true)
+
+    await act(async () => finishClear({ success: false, error: '磁盘只读' }))
+    const alert = await vi.waitFor(() => document.querySelector<HTMLElement>('[role="alertdialog"]')!)
+    expect(alert.querySelector('.pi-dialog-title')!.textContent).toBe('清除失败')
+    expect(alert.querySelector('.pi-dialog-message')!.textContent).toBe('Error: 磁盘只读')
+    await userEvent.click(buttonNamed(alert, '确定'))
+    await vi.waitFor(() => expect(buttonNamed(dialog, '清除所选').disabled).toBe(false))
+    expect(onClose).not.toHaveBeenCalled()
   })
 })
 
