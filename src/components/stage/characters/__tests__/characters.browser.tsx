@@ -120,11 +120,12 @@ describe('角色名单', () => {
   it.each([
     { cast: [linzhou], count: '1 character · page 1 / 1' },
     { cast: [linzhou, shenyan], count: '2 characters · page 1 / 1' },
-  ])('英文名单底栏按人数用单复数：$count', async ({ cast, count }) => {
+  ])('英文名单底栏按人数用单复数，悬停能看到完整的人数与页码：$count', async ({ cast, count }) => {
     useLocaleStore.setState({ locale: 'en-US' })
     useCharacterStore.setState({ characters: cast })
     await render()
-    expect(host!.querySelector('.cast-roster-foot span')?.textContent).toBe(count)
+    const foot = host!.querySelector<HTMLElement>('.cast-roster-foot span')!
+    expect([foot.textContent, foot.title]).toEqual([count, count])
   })
 
   it('英文名单页两个按钮不重叠，底栏人数与页码不折行', async () => {
