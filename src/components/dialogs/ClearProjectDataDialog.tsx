@@ -6,6 +6,7 @@ import { clearProjectData, type ClearProjectDataOptions } from '../../services/p
 import { alertError } from '../ui/AlertDialog'
 import { Button } from '../ui/Button'
 import { Check } from '../ui/Check'
+import { keepToastStackClickable } from '../ui/ToastStack'
 import { usePaperInkRoot } from '../ui/use-paper-ink-root'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useProjectStore } from '../../stores/project-store'
@@ -135,6 +136,7 @@ function ClearProjectDataDialogContents({
           <DialogPrimitive.Overlay className="pi-scrim" />
           <DialogPrimitive.Content
             className="pi-dialog pi-dialog--marked"
+            onPointerDownOutside={keepToastStackClickable}
             onOpenAutoFocus={event => {
               event.preventDefault()
               cancelRef.current?.focus()

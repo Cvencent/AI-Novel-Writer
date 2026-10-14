@@ -12,6 +12,7 @@ import { confirm } from '../Confirm'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../Dialog'
 import { toast } from '../Toast'
 import ClearProjectDataDialog from '../../dialogs/ClearProjectDataDialog'
+import { DangerConfirm } from '../DangerConfirm'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -27,6 +28,7 @@ const buttonNamed = (scope: ParentNode, name: string) => [...scope.querySelector
 
 let root: Root | undefined
 let container: HTMLDivElement | undefined
+const onOpenChange = vi.fn()
 
 beforeEach(async () => {
   await page.viewport(1100, 760)
@@ -233,5 +235,24 @@ describe('清除生成内容', () => {
     await userEvent.click(boxes[2])
     expect(consequence.textContent).toBe('请至少选择一类内容。')
     expect(buttonNamed(dialog, '清除所选').disabled).toBe(true)
+  })
+})
+
+describe('页面里的危险确认', () => {
+  it('DangerConfirm 开着时点通知的关闭按钮，通知关闭而确认框不关', async () => {
+    container = document.createElement('div')
+    container.className = 'paper-ink'
+    container.dataset.theme = 'light'
+    document.body.append(container)
+    root = createRoot(container)
+    await act(async () => root!.render(
+      <DangerConfirm open onOpenChange={onOpenChange} title="删除《灯塔》" consequence="将删除全部章节。" recoverability="删除后无法恢复。"
+        confirmLabel="永久删除" cancelLabel="取消" onConfirm={() => {}} />,
+    ))
+    await act(async () => toast.success('已保存'))
+    await userEvent.click(page.getByRole('button', { name: '关闭通知' }))
+    await wait(200)
+    expect(liveToasts()).toHaveLength(0)
+    expect(onOpenChange).not.toHaveBeenCalled()
   })
 })

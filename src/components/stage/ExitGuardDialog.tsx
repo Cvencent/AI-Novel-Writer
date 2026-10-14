@@ -1,6 +1,7 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { useLocaleStore } from '../../stores/locale-store'
 import { Button } from '../ui/Button'
+import { keepToastStackClickable } from '../ui/ToastStack'
 import type { WindowCloseGuard } from '../layout/use-window-close-guard'
 
 /** 关窗时还有未保存内容或运行中的任务。判定与处理在 useWindowCloseGuard，这里只是新外壳的呈现。 */
@@ -12,7 +13,7 @@ export default function ExitGuardDialog({ guard, container }: { guard: WindowClo
     <DialogPrimitive.Root open={exitRequest !== null} onOpenChange={open => { if (!open) void cancelExit() }}>
       <DialogPrimitive.Portal container={container}>
         <DialogPrimitive.Overlay className="pi-scrim" />
-        <DialogPrimitive.Content className="pi-dialog stage-dialog">
+        <DialogPrimitive.Content className="pi-dialog stage-dialog" onPointerDownOutside={keepToastStackClickable}>
           <div className="pi-dialog-head">
             <DialogPrimitive.Title className="pi-dialog-title stage-dialog-title">
               {blocked ? text('创作任务仍在运行', 'A writing task is still running') : text('退出前处理未保存的内容', 'Handle unsaved changes before exiting')}
