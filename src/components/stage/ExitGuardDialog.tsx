@@ -12,8 +12,8 @@ export default function ExitGuardDialog({ guard, container }: { guard: WindowClo
   return (
     <DialogPrimitive.Root open={exitRequest !== null} onOpenChange={open => { if (!open) void cancelExit() }}>
       <DialogPrimitive.Portal container={container}>
-        <DialogPrimitive.Overlay className="pi-scrim" />
-        <DialogPrimitive.Content className="pi-dialog stage-dialog" onPointerDownOutside={keepToastStackClickable}>
+        <DialogPrimitive.Overlay className="pi-scrim stage-exit-scrim" />
+        <DialogPrimitive.Content className="pi-dialog stage-dialog stage-exit-dialog" onPointerDownOutside={keepToastStackClickable}>
           <div className="pi-dialog-head">
             <DialogPrimitive.Title className="pi-dialog-title">
               {blocked ? text('创作任务仍在运行', 'A writing task is still running') : text('退出前处理未保存的内容', 'Handle unsaved changes before exiting')}

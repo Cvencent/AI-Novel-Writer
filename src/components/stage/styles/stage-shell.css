@@ -63,3 +63,6 @@
   margin: 0;
   color: var(--danger);
 }
+
+.pi-scrim.stage-exit-scrim { z-index: var(--z-exit-scrim); }
+.pi-dialog.stage-exit-dialog { z-index: var(--z-exit-dialog); }
