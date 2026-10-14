@@ -448,7 +448,7 @@ export const X1_SCENARIOS = {
     return after
   } },
 
-  // #405 r1-2：导入完成要自动打开作品时的放弃确认开着，作者又按 Ctrl N；选继续编辑后导入照样收尾（不再占着导入入口），也不弹新建。
+  // #405 r1-2：导入完成要自动打开作品时的放弃确认开着，作者又按 Ctrl N，提示先处理确认框（r2 低项 6）；选继续编辑后导入照样收尾（不再占着导入入口），也不弹新建。
   'x1-import-overlap': { model: false, shell: 'stage', setup: seedTwoBooks({ open: false }), run: async context => {
     const { app, page } = context
     await stubChannel(app, 'dialog:select-legacy-project', { grantId: 'drive-legacy', displayName: '旧港口' })
@@ -465,7 +465,8 @@ export const X1_SCENARIOS = {
     await releaseChannel(app, 'project:import-legacy-copy')
     await discardDialog(page).waitFor({ state: 'visible', timeout: 10_000 })
     await page.keyboard.press('Control+N')
-    await page.waitForTimeout(300)
+    const reminded = await page.locator('.pi-toast-title').filter({ hasText: '请先处理「放弃未保存的修改？」' })
+      .waitFor({ state: 'visible', timeout: 3000 }).then(() => true, () => false)
     await discardDialog(page).getByRole('button', { name: '继续编辑' }).click()
     await page.waitForTimeout(1000)
     const dialogs = await page.locator('[role="dialog"]:visible, [role="alertdialog"]:visible').count()
@@ -475,9 +476,9 @@ export const X1_SCENARIOS = {
     await importMenu.click()
     const importItem = page.getByRole('menuitem', { name: '导入旧项目副本…' })
     await importItem.waitFor({ state: 'visible' })
-    const after = { dialogs, url: typed, importEnabled: await importItem.isEnabled() }
+    const after = { reminded, dialogs, url: typed, importEnabled: await importItem.isEnabled() }
     await page.keyboard.press('Escape')
-    assert.deepEqual(after, { dialogs: 0, url: SKILL_URL, importEnabled: true }, '继续编辑后没有弹新建，导入入口不再占着')
+    assert.deepEqual(after, { reminded: true, dialogs: 0, url: SKILL_URL, importEnabled: true }, '按 Ctrl N 时提示先处理确认框；继续编辑后没有弹新建，导入入口不再占着')
     return after
   } },
 
