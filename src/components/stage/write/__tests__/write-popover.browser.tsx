@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 
@@ -368,6 +368,51 @@ describe('写作此章弹层', () => {
     await act(async () => popover.getByRole('button', { name: '仅本次忽略' }).click())
     await vi.waitFor(() => expect(startWorkflow).toHaveBeenCalledOnce())
     expect(launched().chapterInfo).toMatchObject({ userGuidance: '预检前写的指导', knowledgeQueryHint: '列车时刻表' })
+  })
+
+  it.each([[1280, 720], [1024, 640]])('%i×%i 下三条预检提醒时弹层停在视口内，内部滚到底点得到「仅本次忽略」，内部滚动不关闭弹层', async (width, height) => {
+    await page.viewport(width, height)
+    await vi.waitFor(() => expect([window.innerWidth, window.innerHeight]).toEqual([width, height]))
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    continuityProjections = [{
+      ...DEAD_KEEPER[0],
+      facts: ['老周', '阿满', '林舟'].map(name => ({ category: 'character-state', entities: [name], statement: `${name}已经死亡。`, sourceChapter: 1, evidence: `${name}停止了呼吸。` })),
+    }]
+    await act(async () => root?.render(
+      <div className="paper-ink stage-shell" style={{ paddingTop: 120, display: 'flex', justifyContent: 'flex-end' }}>
+        <WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" />
+      </div>,
+    ))
+    await act(async () => page.getByRole('button', { name: '写第 5 章' }).click())
+    const popover = page.getByRole('dialog', { name: '本次写作选项' })
+    await expect.element(popover.getByText(/一致性预检 · 3 条线索提醒/)).toBeVisible()
+    const layer = popover.element() as HTMLElement
+    await Promise.all(layer.getAnimations().map(animation => animation.finished))
+    expect(layer.getBoundingClientRect().bottom).toBeLessThanOrEqual(height - 8)
+    await act(async () => {
+      layer.scrollTop = layer.scrollHeight
+      await new Promise(resolve => layer.addEventListener('scroll', resolve, { once: true }))
+    })
+    const ignore = popover.getByRole('button', { name: '仅本次忽略' }).element()
+    const rect = ignore.getBoundingClientRect()
+    expect(rect.bottom).toBeLessThanOrEqual(layer.getBoundingClientRect().bottom)
+    expect(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)).toBe(ignore)
+    await page.screenshot({ path: `../../../../../.runtime/rdx3-shots/write-popover-${width}x${height}.png` })
+    await act(async () => (ignore as HTMLButtonElement).click())
+    await vi.waitFor(() => expect(startWorkflow).toHaveBeenCalledOnce())
+  })
+
+  it('在新外壳里 Tab 到拆分主按钮的两半，各自都有焦点环', async () => {
+    await act(async () => root?.render(
+      <div className="paper-ink stage-shell"><WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" /></div>,
+    ))
+    const ring = (element: Element) => getComputedStyle(element).boxShadow
+    await userEvent.tab()
+    expect(document.activeElement?.textContent).toBe('写第 5 章')
+    expect(ring(document.activeElement!)).toMatch(/^rgb\(255, 254, 251\) 0px 0px 0px 2px, rgb\(44, 74, 140\) 0px 0px 0px 4px, /)
+    await userEvent.tab()
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('本次写作选项')
+    expect(ring(document.activeElement!)).toMatch(/^rgb\(255, 254, 251\) 0px 0px 0px 2px, rgb\(44, 74, 140\) 0px 0px 0px 4px, /)
   })
 
   it('拆分主按钮：开始写作期间主体是加载中（aria-busy）而不是退成未上墨，箭头半边不带 aria-busy', async () => {

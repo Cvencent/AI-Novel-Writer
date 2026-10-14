@@ -632,6 +632,32 @@ describe('侧页内的菜单', () => {
     expect(focused()).toBe(trigger)
   })
 
+  it('鼠标打开菜单后焦点留在触发按钮，按 Tab 菜单关闭，焦点到下一项', async () => {
+    const container = await mount(<Harness />)
+    await finishAnimations(container.querySelector('aside')!)
+    const trigger = container.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!
+    await userEvent.click(trigger)
+    expect(container.querySelector('[role="menu"]')).not.toBeNull()
+    expect(focused()).toBe(trigger)
+    await userEvent.tab()
+    expect(container.querySelector('[role="menu"]')).toBeNull()
+    expect(focused().textContent).toBe('下一项')
+  })
+
+  it('菜单项多到视口放不下时菜单停在视口内，项在菜单内部滚动', async () => {
+    const many = [{ id: 'all', items: Array.from({ length: 30 }, (_, index) => ({ id: `ch-${index}`, label: `第 ${index + 1} 章`, onSelect: () => {} })) }]
+    const container = await mount(<div style={{ paddingTop: 120 }}><Menu label="跳到章节" groups={many} /></div>)
+    await act(async () => container.querySelector<HTMLButtonElement>('button')!.click())
+    const menu = container.querySelector<HTMLElement>('[role="menu"]')!
+    expect(menu.getBoundingClientRect().bottom).toBeLessThanOrEqual(document.documentElement.clientHeight - 8)
+    expect(menu.scrollHeight).toBeGreaterThan(menu.clientHeight)
+    const last = page.getByRole('menuitem', { name: '第 30 章' }).element()
+    last.scrollIntoView({ block: 'nearest' })
+    await settle()
+    expect(container.querySelector('[role="menu"]')).not.toBeNull()
+    expect(document.elementFromPoint(last.getBoundingClientRect().left + 20, last.getBoundingClientRect().top + 10)).toBe(last)
+  })
+
   it('滚动侧页时菜单关闭，不与触发按钮脱节', async () => {
     const container = await mount(<Harness />)
     await openMenu(container)
@@ -692,6 +718,50 @@ describe('Popover', () => {
     await userEvent.tab()
     expect(container.querySelector('[role="dialog"]')).toBeNull()
     expect(focused().textContent).toBe('下一项')
+  })
+
+  it('Tab 跳过折叠起来的控件：最后一个看得见的控件之后再 Tab，弹层关闭，焦点到触发按钮的下一项', async () => {
+    const container = await mount(
+      <div style={{ display: 'flex', gap: 8 }}>
+        <Popover label="本次写作选项" title="本次写作选项">
+          <Button variant="text" size="sm">恢复默认</Button>
+          <details><summary>更多</summary><input aria-label="知识库检索关键词" /></details>
+        </Popover>
+        <Button variant="text">下一项</Button>
+      </div>,
+    )
+    await userEvent.tab()
+    await userEvent.keyboard('{Enter}')
+    await settle()
+    await userEvent.tab()
+    await userEvent.tab()
+    expect(focused().textContent).toBe('更多')
+    await userEvent.tab()
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+    expect(focused().textContent).toBe('下一项')
+  })
+
+  it('靠近视口下沿放不下时向上展开；上下都放不下时取较大一侧并在弹层内部滚动，内部滚动不关闭弹层', async () => {
+    const tall = <div style={{ height: 520 }}>九条预检提醒</div>
+    const container = await mount(
+      <div style={{ paddingTop: 560 }}>
+        <Popover label="写第 5 章" title="本次写作选项">{tall}</Popover>
+      </div>,
+    )
+    const trigger = container.querySelector<HTMLButtonElement>('button')!
+    await act(async () => trigger.click())
+    const dialog = container.querySelector<HTMLElement>('[role="dialog"]')!
+    await finishAnimations(dialog)
+    const triggerRect = trigger.getBoundingClientRect()
+    const rect = dialog.getBoundingClientRect()
+    expect(rect.bottom).toBeCloseTo(triggerRect.top - 6, 0)
+    expect(rect.top).toBeGreaterThanOrEqual(8)
+    expect(dialog.scrollHeight).toBeGreaterThan(dialog.clientHeight)
+    await act(async () => {
+      dialog.scrollTop = dialog.scrollHeight
+      await new Promise((resolve) => dialog.addEventListener('scroll', resolve, { once: true }))
+    })
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull()
   })
 
   it('点击弹层外部关闭', async () => {
