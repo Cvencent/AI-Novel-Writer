@@ -169,6 +169,7 @@ describe('单章视图的主按钮随五种状态变化', () => {
     expect(confirmed.items.filter(item => item.severity !== 'pass').map(item => [item.category, item.decision]))
       .toEqual([['前后矛盾', 'waive'], ['节奏', 'waive'], ['本章必现', 'waive']])
     expect(workflows.createRefineFromReviewWorkflow).not.toHaveBeenCalled()
+    await expect.element(page.getByText('已确认不修改，可以在「更多」里定稿')).toBeVisible()
   })
 
   it('人工意见进入修稿输入：添加我的意见后，它在确认的清单里并被纳入', async () => {
