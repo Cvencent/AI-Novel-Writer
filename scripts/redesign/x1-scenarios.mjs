@@ -374,9 +374,16 @@ export const X1_SCENARIOS = {
     return after
   } },
 
-  // #403：从书房打开作品后、读完文件树前回到书房，读完后不被换回作品。
-  'x1-library-return': { model: false, shell: 'stage', setup: context => seedStageSample(context, { open: false }), run: async ({ app, page }) => {
-    await openWithSlowFileTree(app, page)
+  // #403：作者回过一次书房（书房的布局与之后再回书房完全相同），从书房的 Ctrl K 重新打开作品，读完文件树前进作品又回书房，
+  // 读完后不被换回作品。落点晚到的版本只比较提交前后的布局，两次都是作者亲手回的书房，比较通过。
+  'x1-library-return': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ app, page }) => {
+    await stage.backToLibrary(page, STAGE_SAMPLE.name)
+    await holdChannel(app, 'fs:list-dir')
+    await page.keyboard.press('Control+K')
+    await stage.paletteInput(page).fill(STAGE_SAMPLE.name)
+    await stage.palette(page).getByRole('option', { name: `打开《${STAGE_SAMPLE.name}》` }).click()
+    await untilHeld(app, 'fs:list-dir')
+    await enterWorkAfterOpening(page)
     await stage.backToLibrary(page, STAGE_SAMPLE.name)
     await releaseChannel(app, 'fs:list-dir')
     await page.waitForTimeout(2000)
