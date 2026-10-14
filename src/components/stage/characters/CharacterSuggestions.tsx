@@ -30,7 +30,7 @@ function SessionSuggestions({ session }: { session: ProjectSessionContext }) {
   return (
     <div className="cast-suggestions" role="region" aria-label={text('待处理的角色建议', 'Pending character suggestions')}>
       <Notice
-        title={text(`${count} 项待处理的角色建议`, `${count} pending character suggestions`)}
+        title={count > 0 ? text(`${count} 项待处理的角色建议`, `${count} pending character suggestions`) : text('角色建议读取失败', 'Could not read character suggestions')}
         actions={(
           <Button variant="text" size="sm" aria-expanded={!collapsed} onClick={() => setCollapsed(value => !value)}>
             {collapsed ? text('展开', 'Show') : text('收起', 'Hide')}
@@ -86,7 +86,7 @@ function SessionSuggestions({ session }: { session: ProjectSessionContext }) {
               </div>
             </li>
           )}
-          {errors.map(error => <li key={error} role="alert" className="cast-suggestion-error">{error}</li>)}
+          {errors.map((error, index) => <li key={index} role="alert" className="cast-suggestion-error">{error}</li>)}
         </ul>
       )}
     </div>
