@@ -272,4 +272,20 @@ describe('版本历史', () => {
     await vi.waitFor(() => expect(error).toHaveBeenCalledWith('读取这一稿失败：数据库忙'))
     expect(document.querySelector('.stage-hist-diff')!.textContent).toBe('选一稿，与当前稿逐字对比。')
   })
+
+  it('回退已新建草稿但随后重读列表失败：照样关掉对话框并说已新建，不会让作者再点一次多建一稿', async () => {
+    const success = vi.spyOn(toast, 'success').mockImplementation(() => undefined)
+    await openChapterThree()
+    await click(/草稿 v1/)
+    await vi.waitFor(() => expect(button('回退到此版本…')).toBeTruthy())
+    await click('回退到此版本…')
+    const base = invoke.getMockImplementation()!
+    beforeCreate = () => {
+      invoke.mockImplementation(async (channel, ...args) => channel === 'db:draft-list' ? Promise.reject(new Error('数据库忙')) : base(channel, ...args))
+    }
+    await click('新建回滚草稿')
+    await vi.waitFor(() => expect(success).toHaveBeenCalledWith('已新建回滚草稿，原有各稿都保留'))
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+    expect(invoke.mock.calls.filter(([channel]) => channel === 'db:draft-create')).toHaveLength(1)
+  })
 })
