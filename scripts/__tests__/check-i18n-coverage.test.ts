@@ -106,6 +106,52 @@ describe('i18n coverage boundary scanner', () => {
     }
   })
 
+  it('rejects English copy that writes a count with a fixed plural noun, and accepts the plural helper', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ai-novel-i18n-plural-'))
+    try {
+      writeFixture(root, 'src/components/stage/Counts.tsx', `
+        const text = (zh: string, en: string) => zh || en
+        const pluralEn = (count: number, noun: string) => count === 1 ? noun : noun + 's'
+        export function Counts({ total, lines }: { total: number; lines: number }) {
+          return <p title={text(\`共 \${total} 章\`, \`The book has \${total} chapters.\`)}>
+            {text(\`\${lines} 行\`, \`\${lines} \${pluralEn(lines, 'line')}\`)}
+            {text(\`\${lines} 个文件\`, lines > 1 ? \`\${lines} files selected\` : 'One file')}
+          </p>
+        }
+      `)
+
+      const result = runChecker(root)
+
+      expect(result.status).toBe(1)
+      expect(result.output).toContain('Found 2 unlocalized visible strings')
+      expect(result.output).toContain('src/components/stage/Counts.tsx:4 [english-plural] `The book has ${total} chapters.`')
+      expect(result.output).toContain('src/components/stage/Counts.tsx:6 [english-plural] `${lines} files selected`')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('checks visible copy in review-checklist.ts like the review report it was moved out of', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ai-novel-i18n-review-checklist-'))
+    try {
+      writeFixture(root, 'src/components/editor/review-checklist.ts', `
+        const text = (zh: string, en: string) => zh || en
+        export const dimensions = [
+          { id: 'plot', label: '情节推进' },
+          { id: 'voice', label: text('人物声音', 'Character voice') },
+        ]
+      `)
+
+      const result = runChecker(root)
+
+      expect(result.status).toBe(1)
+      expect(result.output).toContain("src/components/editor/review-checklist.ts:4 [workflow:label] '情节推进'")
+      expect(result.output).not.toContain('人物声音')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('permits localized boundary copy while ignoring prompts, parsers, and internal logs', () => {
     const root = mkdtempSync(join(tmpdir(), 'ai-novel-i18n-policy-'))
     try {
