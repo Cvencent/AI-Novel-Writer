@@ -213,6 +213,26 @@ describe('角色名单', () => {
     expect(legacyConfirm).not.toHaveBeenCalled()
   })
 
+  it('粘贴角色卡的全文框按 9 行高显示，不被单行输入框的高度压成一行', async () => {
+    await render()
+    await click('粘贴 / 导入角色卡')
+    const source = document.querySelector<HTMLTextAreaElement>('[role="dialog"] textarea')!
+    const line = parseFloat(getComputedStyle(source).lineHeight)
+    expect(source.rows).toBe(9)
+    expect(source.getBoundingClientRect().height).toBeGreaterThanOrEqual(line * 9)
+  })
+
+  it('头像按钮只在基础设定视图里；当前状态与关系图谱视图没有点了没反应的头像按钮', async () => {
+    await render()
+    expect(button('选择头像')).toBeTruthy()
+    for (const view of ['当前状态', '关系图谱']) {
+      await click(view)
+      expect(button('选择头像'), view).toBeUndefined()
+    }
+    await click('基础设定')
+    expect(button('选择头像')).toBeTruthy()
+  })
+
   it('外发确认不能被第一步按钮上的双击或连按回车跳过，只有在第二步单独确认才发送', async () => {
     useLLMStore.setState({ models: [{ id: 'm1', name: '夹具模型', modelName: 'fixture-1', baseUrl: 'https://fixture.example/v1' }], defaultModelId: 'm1' } as never)
     const startWorkflow = vi.fn(async () => 'r1')
