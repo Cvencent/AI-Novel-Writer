@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StoreApi } from 'zustand'
 import { act } from 'react'
+import { userEvent } from 'vitest/browser'
 import { createRoot, type Root } from 'react-dom/client'
 
 import type { NovelConfig, ProjectData } from '../../../../shared/ipc-channels'
@@ -355,6 +356,21 @@ describe('设定页', () => {
     expect(host!.querySelector<HTMLInputElement>('[aria-label="细分类型"] input')?.value).toBe('海港悬疑')
     await click(byName('收起「细分类型」'))
     expect(host!.querySelector('[aria-label="细分类型"]')).toBeNull()
+  })
+
+  it('伏笔沉寂提醒清空后重新输入：退格删掉 5 再输 7 得 7，不是 17；空着离开回到默认的 3 章', async () => {
+    project({ narrativeThreadDormantChapterThreshold: 5 })
+    await mount()
+    await click(byName(/^高级/))
+    const input = host!.querySelector<HTMLInputElement>('.stage-setup-adv-ctl input')!
+    // 上一条用例留下的提示会挡住指针，直接聚焦后用键盘输入。
+    await act(async () => input.focus())
+    await userEvent.keyboard('{End}{Backspace}')
+    await userEvent.keyboard('7')
+    expect(input.value).toBe('7')
+    await userEvent.keyboard('{Backspace}')
+    await act(async () => input.blur())
+    expect(input.value).toBe('3')
   })
 })
 
