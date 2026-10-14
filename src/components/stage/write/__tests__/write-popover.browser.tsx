@@ -413,6 +413,24 @@ describe('写作此章弹层', () => {
     expect(startWorkflow).not.toHaveBeenCalled()
   })
 
+  it('保存安排还没返回时换了作品：保存成功后不在新作品里按旧蓝图开始写', async () => {
+    continuityProjections = DEAD_KEEPER
+    let finishSave: (result: { success: boolean }) => void = () => {}
+    exemptionSave = () => new Promise(resolve => { finishSave = resolve })
+    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" />)
+    await act(async () => page.getByRole('button', { name: '写第 5 章' }).click())
+    const popover = page.getByRole('dialog', { name: '本次写作选项' })
+    await act(async () => popover.getByLabelText('安排说明').fill('老周以幽灵身份出现，是刻意安排。'))
+    await act(async () => popover.getByRole('button', { name: '保存安排' }).click())
+    const other = { projectId: 'harbor', leaseId: 'harbor-lease', projectPath: 'C:\\novels\\harbor' }
+    setActiveProjectSessionContext(other)
+    await act(async () => useProjectStore.setState({ currentProject: { ...project(), id: 'harbor', sessionLease: 'harbor-lease', name: '港口', path: other.projectPath } }))
+    await act(async () => finishSave({ success: true }))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)) })
+    expect(createChapterWorkflow).not.toHaveBeenCalled()
+    expect(startWorkflow).not.toHaveBeenCalled()
+  })
+
   it('批量创作的预检里保存安排失败也写明原因，保存中不可再点', async () => {
     continuityProjections = DEAD_KEEPER
     let finishSave: (result: { success: boolean; error?: string }) => void = () => {}
