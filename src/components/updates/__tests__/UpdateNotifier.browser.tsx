@@ -2,6 +2,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { useAppearanceStore } from '../../../stores/appearance-bootstrap'
 import { useLayoutStore } from '../../../stores/layout-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 
@@ -74,11 +75,9 @@ describe('UpdateNotifier locale changes', () => {
 })
 
 describe('UpdateNotifier 查看更新', () => {
-  it('书房里开着设置页时收起设置页，露出书房里的更新卡', async () => {
-    const restore = useLayoutStore.getState()
-    useLayoutStore.setState({ sidebarView: 'home', sidebarOpen: true, settingsOpen: true })
+  async function viewUpdate(version: string) {
     vi.mocked(window.aiNovelAPI!.invoke).mockImplementation(async (channel: string) => channel === 'update:get-state'
-      ? { status: 'available', currentVersion: '0.9.2', availableVersion: '9.9.0', updateAction: 'download', isReminderDeferred: false }
+      ? { status: 'available', currentVersion: '0.9.2', availableVersion: version, updateAction: 'download', isReminderDeferred: false }
       : null)
     const { actionToast } = await import('../../ui/ActionToast')
     const show = vi.spyOn(actionToast, 'show').mockReturnValue(vi.fn())
@@ -87,7 +86,25 @@ describe('UpdateNotifier 查看更新', () => {
     await vi.waitFor(() => expect(show).toHaveBeenCalled())
     const [{ actions }] = show.mock.lastCall!
     act(() => actions?.[0]?.onClick?.())
+  }
+
+  it('新外壳书房里开着设置页时收起设置页，露出书房里的更新卡', async () => {
+    const restore = [useLayoutStore.getState(), useAppearanceStore.getState()] as const
+    useAppearanceStore.setState({ resolvedShell: 'stage' })
+    useLayoutStore.setState({ sidebarView: 'home', sidebarOpen: true, settingsOpen: true })
+    await viewUpdate('9.9.0')
     expect(useLayoutStore.getState()).toMatchObject({ sidebarView: 'home', settingsOpen: false })
-    useLayoutStore.setState(restore, true)
+    useLayoutStore.setState(restore[0], true)
+    useAppearanceStore.setState(restore[1], true)
+  })
+
+  it('旧外壳只切到书房视图，不关设置弹窗', async () => {
+    const restore = [useLayoutStore.getState(), useAppearanceStore.getState()] as const
+    useAppearanceStore.setState({ resolvedShell: 'writer' })
+    useLayoutStore.setState({ sidebarView: 'project', sidebarOpen: true, settingsOpen: true })
+    await viewUpdate('9.9.1')
+    expect(useLayoutStore.getState()).toMatchObject({ sidebarView: 'home', settingsOpen: true })
+    useLayoutStore.setState(restore[0], true)
+    useAppearanceStore.setState(restore[1], true)
   })
 })

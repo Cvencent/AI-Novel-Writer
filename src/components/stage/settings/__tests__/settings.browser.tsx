@@ -214,6 +214,33 @@ describe('设置页', () => {
     expect(useLayoutStore.getState().settingsOpen).toBe(true)
   })
 
+  it('下拉框、复选框、单选上的 Esc 照常关闭设置页；有没保存的输入时先确认', async () => {
+    useLayoutStore.setState({ settingsSection: 'appearance' })
+    await mount()
+    const language = host!.querySelector<HTMLSelectElement>('select')!
+    language.focus()
+    await key('Escape', language)
+    expect(useLayoutStore.getState().settingsOpen).toBe(false)
+
+    for (const type of ['checkbox', 'radio']) {
+      await act(async () => useLayoutStore.setState({ settingsOpen: true }))
+      const box = document.createElement('input')
+      box.type = type
+      host!.querySelector('.stage-set-body')!.append(box)
+      await key('Escape', box)
+      expect(useLayoutStore.getState().settingsOpen, type).toBe(false)
+      box.remove()
+    }
+
+    await act(async () => useLayoutStore.setState({ settingsOpen: true }))
+    await click(byName('网络代理'))
+    await click(host!.querySelector<HTMLElement>('[role="switch"]')!)
+    const proxyType = host!.querySelector<HTMLSelectElement>('select')!
+    await key('Escape', proxyType)
+    expect(discardDialog()).toBeTruthy()
+    expect(useLayoutStore.getState().settingsOpen).toBe(true)
+  })
+
   it('模型改了没保存：Esc、返回、Ctrl W 先确认；继续编辑留着修改，放弃才关闭', async () => {
     await mount()
     await click(byName('编辑「DeepSeek V4 Flash」'))
@@ -283,5 +310,35 @@ describe('设置页', () => {
     expect(useLayoutStore.getState().settingsOpen).toBe(true)
     navigate({ kind: 'stage', stage: 'setup' })
     expect(useLayoutStore.getState().settingsOpen).toBe(false)
+  })
+
+  it('有没保存的输入时，去别的阶段、章节或资料页先确认：继续编辑不走、输入还在；放弃才收起并打开去处', async () => {
+    setActiveProjectSessionContext({ projectId: 'p', leaseId: 'l', projectPath: 'C:\\novels\\p' })
+    useProjectStore.setState({ currentProject: { id: 'p', sessionLease: 'l', name: '灯塔', path: 'C:\\novels\\p', novelConfig: {} } as unknown as ProjectData })
+    useEditorStore.setState({ tabs: [], activeTabId: null })
+    await mount()
+    await click(byName('编辑「DeepSeek V4 Flash」'))
+    await type(input('如：DeepSeek 主力 / GPT-4o 备用'), '主力模型')
+
+    await act(async () => navigate({ kind: 'stage', stage: 'architecture' }))
+    expect(discardDialog()?.textContent).toContain('这一页有还没保存的修改，离开后会丢失。')
+    await click(dialogButton('继续编辑'))
+    expect(useLayoutStore.getState().settingsOpen).toBe(true)
+    expect(useEditorStore.getState().tabs).toEqual([])
+    expect(input('如：DeepSeek 主力 / GPT-4o 备用').value).toBe('主力模型')
+
+    await act(async () => navigate({ kind: 'chapter', chapterNumber: 3 }))
+    await click(dialogButton('继续编辑'))
+    expect(useLayoutStore.getState().settingsOpen).toBe(true)
+
+    await act(async () => navigate({ kind: 'run', facet: 'output' }))
+    expect(discardDialog()).toBeUndefined()
+    expect(useLayoutStore.getState().settingsOpen).toBe(true)
+
+    await act(async () => navigate({ kind: 'resource', page: 'plot' }))
+    expect(useLayoutStore.getState().settingsOpen).toBe(true)
+    await click(dialogButton('放弃修改'))
+    expect(useLayoutStore.getState().settingsOpen).toBe(false)
+    expect(useEditorStore.getState().tabs.map(tab => tab.name)).toEqual(['剧情树与叙事线索'])
   })
 })
