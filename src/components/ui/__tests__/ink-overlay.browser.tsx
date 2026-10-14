@@ -15,6 +15,7 @@ import { confirm } from '../Confirm'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../Dialog'
 import { toast } from '../Toast'
 import ClearProjectDataDialog from '../../dialogs/ClearProjectDataDialog'
+import StagePalette from '../../stage/StagePalette'
 import { DangerConfirm } from '../DangerConfirm'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -59,6 +60,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await clearToasts()
+  // 正在退场的卡片 140ms 后才从栈里拿掉，等它走完再拆宿主
+  await wait(200)
   await act(async () => root?.unmount())
   container?.remove()
   root = undefined
@@ -348,6 +351,42 @@ describe('提示栈', () => {
     await userEvent.unhover(liveToasts()[3])
   })
 
+  it('相同文案的通知合并成一条并重新计时', async () => {
+    await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
+    await act(async () => toast.success('已复制安全诊断', 1000))
+    await wait(600)
+    await act(async () => toast.success('已复制安全诊断', 1000))
+    expect(liveToasts()).toHaveLength(1)
+    await wait(600)
+    expect(toastTitles()).toEqual(['已复制安全诊断'])
+    await wait(700)
+    expect(liveToasts()).toHaveLength(0)
+  })
+
+  it('关掉一条后其上的通知滑下来，而不是瞬移', async () => {
+    await act(async () => {
+      toast.info('已复制第 1 章')
+      toast.info('已复制第 2 章')
+    })
+    await wait(300)
+    const [upper, lower] = liveToasts()
+    await act(async () => lower.querySelector('button')!.click())
+    await vi.waitFor(() => expect(lower.isConnected).toBe(false), { interval: 5 })
+    const moving = upper.getAnimations().filter(animation => animation instanceof CSSTransition && animation.transitionProperty === 'transform')
+    expect(moving).toHaveLength(1)
+  })
+
+  it('卡片之间的空隙也算在栈上，指针经过不会恢复计时', async () => {
+    await act(async () => {
+      toast.info('已复制第 1 章')
+      toast.info('已复制第 2 章')
+    })
+    await wait(300)
+    const [upper, lower] = liveToasts().map(item => item.getBoundingClientRect())
+    const gap = document.elementFromPoint(upper.left + upper.width / 2, (upper.bottom + lower.top) / 2)!
+    expect(gap.closest('.pi-toast-stack')).not.toBeNull()
+  })
+
   it('actionToast 的 error 语气是危险色八角符号，以 alert 播报', async () => {
     useThemeStore.setState({ resolvedTheme: 'dark' })
     await act(async () => { actionToast.show({ type: 'error', message: '第 3 章审稿失败', actions: [{ label: '查看' }] }) })
@@ -403,6 +442,24 @@ describe('提示栈', () => {
     await wait(10)
     expect(open).toHaveBeenCalledTimes(1)
     expect(liveToasts()).toHaveLength(0)
+  })
+})
+
+describe('Ctrl K 面板', () => {
+  it('面板开着时点通知的关闭按钮，通知关闭而面板不关', async () => {
+    const onClose = vi.fn()
+    container = document.createElement('div')
+    container.className = 'paper-ink'
+    container.dataset.theme = 'light'
+    document.body.append(container)
+    root = createRoot(container)
+    await act(async () => root!.render(<StagePalette mode="commands" items={[]} container={container!} onClose={onClose} />))
+    await act(async () => toast.success('已保存'))
+    await userEvent.click(page.getByRole('button', { name: '关闭通知' }))
+    await wait(200)
+    expect(liveToasts()).toHaveLength(0)
+    expect(onClose).not.toHaveBeenCalled()
+    expect(document.querySelector('[role="combobox"]')).not.toBeNull()
   })
 })
 

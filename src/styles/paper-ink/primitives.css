@@ -40,6 +40,8 @@
     box-shadow var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease), --pi-top var(--dur-fast) var(--ease), --pi-foot var(--dur-fast) var(--ease);
 }
 .pi-btn > svg { flex: none; width: 15px; height: 15px; stroke-width: 1.75; }
+/* .05em 是给汉字留的气口，拉丁字母这么排会散 */
+:lang(en) .pi-btn { letter-spacing: .01em; }
 /* 图标一侧少 2px，图标加文字看起来才居中 */
 .pi-btn:not(.pi-btn--icon) > svg:first-child { margin-inline-start: -2px; }
 /* 键盘焦点环要立即出现：聚焦期间 box-shadow 不参与过渡 */
@@ -57,7 +59,7 @@
   --pi-shadow: inset 0 1px 0 var(--hi), inset 0 -1px 0 color-mix(in srgb, var(--accent-base) 65%, transparent),
     0 1px 1px var(--lift), 0 5px 11px -5px var(--lift-accent);
 }
-.pi-btn--primary:hover {
+.pi-btn--primary:hover:not(:disabled) {
   --pi-top: var(--accent-hover-top); --pi-foot: var(--accent-hover); background-color: var(--accent-hover);
   --pi-shadow: inset 0 1px 0 var(--hi), inset 0 -1px 0 color-mix(in srgb, var(--accent-base) 65%, transparent),
     0 1px 1px var(--lift), 0 7px 14px -7px var(--lift-accent);
@@ -76,11 +78,11 @@
   --pi-shadow: inset 0 1px 0 var(--paper-hi), 0 1px 0 var(--paper-edge), 0 3px 5px -3px var(--lift-soft);
 }
 .pi-btn--secondary > svg { color: var(--ink-2); }
-.pi-btn--secondary:hover {
+.pi-btn--secondary:hover:not(:disabled) {
   border-color: var(--edge-strong);
   --pi-shadow: inset 0 1px 0 var(--paper-hi), 0 1px 0 var(--paper-edge), 0 5px 9px -5px var(--lift);
 }
-.pi-btn--secondary:hover > svg { color: var(--ink); }
+.pi-btn--secondary:hover:not(:disabled) > svg { color: var(--ink); }
 .pi-btn--secondary:active, .pi-btn--secondary[aria-expanded="true"] {
   --pi-top: var(--surface-2); --pi-foot: var(--surface-2); background-color: var(--surface-2); border-color: var(--edge-strong); transform: translateY(1px);
   --pi-shadow: inset 0 2px 4px var(--sink);
@@ -93,7 +95,7 @@
 .pi-btn--icon > svg { width: 16px; height: 16px; }
 .pi-btn--icon.pi-btn--sm > svg { width: 14px; height: 14px; }
 .pi-btn--icon.pi-btn--lg > svg { width: 18px; height: 18px; }
-.pi-btn--text:hover, .pi-btn--icon:hover { background-color: var(--wash); color: var(--ink); }
+.pi-btn--text:hover:not(:disabled), .pi-btn--icon:hover:not(:disabled) { background-color: var(--wash); color: var(--ink); }
 .pi-btn--text:active, .pi-btn--icon:active,
 .pi-btn--text[aria-expanded="true"], .pi-btn--icon[aria-expanded="true"], .pi-btn--icon[aria-pressed="true"] {
   background-color: var(--wash-strong); color: var(--ink);
@@ -104,10 +106,10 @@
 /* 去掉颜色，方肩、单线框、不投影的朱印与圆角带影的压印块仍然不是一个东西；单线框也不会与焦点环混淆 */
 .pi-btn--danger, .pi-btn--danger-solid { --pi-radius: var(--radius-sm); }
 .pi-btn--danger { color: var(--danger); border-color: var(--danger-edge); }
-.pi-btn--danger:hover { background-color: var(--danger-soft); border-color: var(--danger); }
+.pi-btn--danger:hover:not(:disabled) { background-color: var(--danger-soft); border-color: var(--danger); }
 .pi-btn--danger:active { background-color: var(--danger-soft); border-color: var(--danger); --pi-shadow: inset 0 1px 2px var(--sink); }
 .pi-btn--danger-solid { background-color: var(--danger); color: var(--danger-ink); border-color: var(--danger-press); font-weight: 600; }
-.pi-btn--danger-solid:hover { background-color: var(--danger-hover); }
+.pi-btn--danger-solid:hover:not(:disabled) { background-color: var(--danger-hover); }
 .pi-btn--danger-solid:active { background-color: var(--danger-press); --pi-shadow: inset 0 1px 2px var(--sink); }
 
 /* 禁用是一块没上墨的平面：撤掉材质与受光，外形保留，不用 opacity */
@@ -118,15 +120,15 @@
 .pi-btn:disabled:not([aria-busy="true"]) > svg { color: inherit; }
 .pi-btn--text:disabled:not([aria-busy="true"]), .pi-btn--icon:disabled:not([aria-busy="true"]) { background-color: transparent; }
 
-/* 加载中：调用方给 disabled 再加 aria-busy="true"。外观不变，底沿一道墨线画过去再淡出；不吞悬停提示 */
+/* 加载中：调用方给 disabled 再加 aria-busy="true"。外观不变，悬停也不变（悬停样式只给可用的按钮）；底沿一道墨线画过去再淡出；不吞悬停提示 */
 .pi-btn[aria-busy="true"] { cursor: progress; }
 .pi-btn[aria-busy="true"]::before, .pi-btn[aria-busy="true"]::after {
-  content: ""; position: absolute; left: 12px; right: 12px; bottom: 4px; height: 2px; border-radius: 2px; background: currentColor; pointer-events: none;
+  content: ""; position: absolute; left: 12px; right: 12px; bottom: 3px; height: 2px; border-radius: 2px; background: currentColor; pointer-events: none;
 }
 .pi-btn[aria-busy="true"]::before { opacity: .24; }
 .pi-btn[aria-busy="true"]::after { transform-origin: 0 50%; transform: scaleX(.5); animation: pi-ink-draw 1.2s var(--ease) infinite; }
-.pi-btn--sm[aria-busy="true"]::before, .pi-btn--sm[aria-busy="true"]::after { left: 10px; right: 10px; bottom: 3px; }
-.pi-btn--icon[aria-busy="true"]::before, .pi-btn--icon[aria-busy="true"]::after { left: 9px; right: 9px; bottom: 5px; }
+.pi-btn--sm[aria-busy="true"]::before, .pi-btn--sm[aria-busy="true"]::after { left: 10px; right: 10px; bottom: 2px; }
+.pi-btn--icon[aria-busy="true"]::before, .pi-btn--icon[aria-busy="true"]::after { left: 9px; right: 9px; bottom: 3px; }
 
 /* ================= 拆分主按钮 ================= */
 /*
@@ -172,12 +174,13 @@
   transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 .pi-input::placeholder { color: var(--ink-3); }
-.pi-input:hover:not(:focus-visible) { border-color: var(--edge-strong); }
+.pi-input:hover:not(:focus-visible, :disabled) { border-color: var(--edge-strong); }
 .pi-input:focus-visible {
   outline: none; border-color: var(--accent);
   box-shadow: inset 0 1px 2px -1px var(--sink), 0 0 0 1px var(--accent), 0 0 0 4px var(--accent-soft);
 }
-.pi-input:disabled { color: var(--ink-3); border-color: var(--rule-strong); box-shadow: none; cursor: not-allowed; }
+/* 禁用与按钮同一规则：没上墨的平面，撤掉边线与内凹 */
+.pi-input:disabled { background: var(--wash); color: var(--ink-3); border-color: transparent; box-shadow: none; cursor: not-allowed; }
 
 /* ================= 侧页 ================= */
 .pi-sheet {
@@ -248,7 +251,9 @@
 .pi-check-input:checked + .pi-check-box { background: var(--accent); border-color: var(--accent); }
 .pi-check-input:checked + .pi-check-box > svg { visibility: visible; }
 .pi-check-input:focus-visible + .pi-check-box { box-shadow: var(--focus-ring); }
-.pi-check-input:disabled + .pi-check-box, .pi-check-input:disabled ~ .pi-check-label { opacity: .38; }
+/* 禁用是没上墨的平面，不用 opacity */
+.pi-check-input:disabled + .pi-check-box { background: var(--wash-strong); border-color: transparent; color: var(--ink-3); }
+.pi-check-input:disabled ~ .pi-check-label, .pi-check-input:disabled ~ .pi-check-label :is(.pi-check-title, .pi-check-desc) { color: var(--ink-3); }
 .pi-switch { position: relative; flex: none; width: 32px; height: 18px; border-radius: var(--radius-pill); background: var(--rule-strong);
   transition: background var(--dur-fast) var(--ease); }
 .pi-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
@@ -385,9 +390,10 @@
  * 提示栈：toast 与 actionToast 共用的一个栈（右下角、新的在下），画在模态之上。
  */
 .paper-ink.pi-overlay-host { display: contents; }
+/* 栈本身接指针：卡片之间的空隙也算在栈上，指针经过时悬停暂停不会断 */
 .pi-toast-stack {
   position: fixed; right: var(--s-5); bottom: var(--s-12); z-index: var(--z-toast);
-  display: flex; flex-direction: column; align-items: flex-end; gap: var(--s-2); pointer-events: none;
+  display: flex; flex-direction: column; align-items: flex-end; gap: var(--s-2);
 }
 
 /* ================= 空状态 ================= */

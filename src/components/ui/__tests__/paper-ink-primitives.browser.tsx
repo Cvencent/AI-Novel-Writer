@@ -234,6 +234,35 @@ describe('Button 纸墨六种', () => {
     expect(getComputedStyle(button, '::after').animationName).toBe('pi-ink-draw')
   })
 
+  it('加载中的按钮悬停不变色，墨线落在底沿 3px 内', async () => {
+    const container = await mount(
+      <div style={{ display: 'flex', gap: 12 }}>
+        <Button variant="primary" disabled aria-busy>保存中</Button>
+        <Button variant="secondary" size="sm" disabled aria-busy>导出中</Button>
+      </div>,
+    )
+    const [primary, small] = container.querySelectorAll('button')
+    await userEvent.hover(primary)
+    primary.getAnimations().forEach((animation) => animation.finish())
+    expect(getComputedStyle(primary).backgroundColor).toBe(ACCENT.light)
+    expect(getComputedStyle(primary, '::after').bottom).toBe('3px')
+    expect(getComputedStyle(small, '::after').bottom).toBe('2px')
+  })
+
+  it('英文界面下按钮字距收到 .01em', async () => {
+    const container = await mount(<Button variant="primary">Write chapter</Button>)
+    const button = container.querySelector('button')!
+    const original = document.documentElement.lang
+    try {
+      document.documentElement.lang = 'zh-CN'
+      expect(getComputedStyle(button).letterSpacing).toBe('0.65px')
+      document.documentElement.lang = 'en-US'
+      expect(getComputedStyle(button).letterSpacing).toBe('0.13px')
+    } finally {
+      document.documentElement.lang = original
+    }
+  })
+
   it('在新外壳里 Tab 到主按钮，焦点环与材质同时在 box-shadow 里', async () => {
     const container = await mount(<div className="stage-shell"><Button variant="primary">写作此章</Button></div>)
     await userEvent.tab()
@@ -658,6 +687,29 @@ describe('SegmentedControl 与 Check', () => {
     expect(toggle.checked).toBe(true)
     ;(document.activeElement as HTMLElement).blur()
     await shot('rd1-seg')
+  })
+})
+
+describe('禁用的勾选与输入框', () => {
+  it.each(['light', 'dark'] as const)('%s 主题是没上墨的平面：不用 opacity，墨色薄雾底，字退到 --ink-3', async (theme) => {
+    const container = await mount(
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'flex-start' }}>
+        <Check checked={false} disabled onChange={() => {}} label="故事架构与大纲" />
+        <Check checked disabled onChange={() => {}} label="章节蓝图" />
+        <input className="pi-input" disabled defaultValue="灯塔" />
+      </div>,
+      theme,
+    )
+    for (const box of container.querySelectorAll<HTMLElement>('.pi-check-box')) {
+      expect(getComputedStyle(box).opacity).toBe('1')
+      expect(getComputedStyle(box).backgroundColor).toBe(tokenColor(container, '--wash-strong'))
+      expect(getComputedStyle(box.nextElementSibling!).opacity).toBe('1')
+      expect(getComputedStyle(box.nextElementSibling!).color).toBe(tokenColor(container, '--ink-3'))
+    }
+    const input = container.querySelector<HTMLInputElement>('.pi-input')!
+    expect(getComputedStyle(input).backgroundColor).toBe(tokenColor(container, '--wash'))
+    expect(getComputedStyle(input).borderTopColor).toBe('rgba(0, 0, 0, 0)')
+    expect(getComputedStyle(input).color).toBe(tokenColor(container, '--ink-3'))
   })
 })
 

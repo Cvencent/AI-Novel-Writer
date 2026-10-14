@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { CircleCheck, Info, OctagonAlert, TriangleAlert, X, type LucideIcon } from 'lucide-react'
 import { useLocaleStore } from '../../stores/locale-store'
@@ -10,6 +10,7 @@ import { toastStackMount } from './ink-overlay'
  * 新外壳下 toast.* 与 actionToast.* 共用的提示栈：右下角一列，新的在下，同时最多露出 4 条；
  * 鼠标停在栈上时所有计时暂停。两个公共 API 的签名不变，只是往这里推条目。
  * 栈满时新来的按 yieldRank 挤掉已有的一条；没有可挤的就排在后面，前面关掉一条再露面。
+ * 同一句话再来一次不新起一条，原来那条重新计时。
  */
 export type ToastTone = 'ok' | 'info' | 'warn' | 'danger'
 
@@ -30,7 +31,7 @@ interface ToastStackInput {
 
 interface ToastStackEntry extends ToastStackInput {
   id: number
-  /** 推入的时刻。暂停期间已超过时长的算已过期。 */
+  /** 推入或被同一句话刷新的时刻。暂停期间已超过时长的算已过期。 */
   postedAt: number
   exiting: boolean
 }
@@ -45,8 +46,12 @@ let counter = 0
 const listeners = new Set<() => void>()
 let mount: HTMLElement | null = null
 let stackRoot: Root | null = null
+const cards = new Map<number, HTMLElement>()
+/** 每次改栈之前卡片在屏幕上的位置（含正在进行的位移），重排后从这里补间到新位置。 */
+let lastTops = new Map<number, number>()
 
 function publish(next: ToastStackEntry[]) {
+  lastTops = new Map([...cards].map(([id, card]) => [id, card.getBoundingClientRect().top]))
   entries = next
   listeners.forEach(listener => listener())
 }
@@ -95,6 +100,11 @@ export function pushToast(input: ToastStackInput): () => void {
   ensureStack()
   const now = Date.now()
   const live = liveEntries(entries)
+  const same = !input.actions?.length && live.find(entry => !entry.actions?.length && entry.tone === input.tone && entry.message === input.message)
+  if (same) {
+    publish(entries.map(entry => (entry === same ? { ...entry, postedAt: now } : entry)))
+    return () => dismissToast(same.id)
+  }
   const victims = live
     .flatMap(entry => {
       const rank = yieldRank(entry, now)
@@ -125,6 +135,10 @@ function ToastCard({ entry, paused }: { entry: ToastStackEntry; paused: boolean 
   const { title, text: detail } = splitMessage(entry.message)
 
   useEffect(() => {
+    remaining.current = entry.duration
+  }, [entry.postedAt, entry.duration])
+
+  useEffect(() => {
     if (paused || entry.exiting || entry.duration <= 0) return
     const startedAt = Date.now()
     const timer = setTimeout(() => dismissToast(entry.id), remaining.current)
@@ -132,7 +146,7 @@ function ToastCard({ entry, paused }: { entry: ToastStackEntry; paused: boolean 
       clearTimeout(timer)
       remaining.current -= Date.now() - startedAt
     }
-  }, [paused, entry.exiting, entry.duration, entry.id])
+  }, [paused, entry.exiting, entry.duration, entry.id, entry.postedAt])
 
   const run = async (action: ToastStackAction) => {
     try {
@@ -147,7 +161,16 @@ ${error instanceof Error ? error.message : String(error)}`, duration: 8000 })
   }
 
   return (
-    <div className="pi-toast" data-tone={entry.tone} data-exiting={entry.exiting || undefined} role={entry.tone === 'danger' ? 'alert' : undefined}>
+    <div
+      ref={card => {
+        if (card) cards.set(entry.id, card)
+        return () => { cards.delete(entry.id) }
+      }}
+      className="pi-toast"
+      data-tone={entry.tone}
+      data-exiting={entry.exiting || undefined}
+      role={entry.tone === 'danger' ? 'alert' : undefined}
+    >
       <span className="pi-toast-mark" aria-hidden><Icon /></span>
       <div className="pi-toast-body">
         <p className="pi-toast-title">{title}</p>
@@ -173,6 +196,24 @@ function ToastStack() {
   // 关掉最后一条时指针下已没有元素，mouseleave 不一定触发
   if (paused && items.length === 0) setPaused(false)
   const shown = new Set(liveEntries(items).slice(0, TOAST_STACK_LIMIT).map(entry => entry.id))
+
+  // 增删一条时其余卡片从旧位置滑到新位置（FLIP）。只借用 CSS 的 transform 过渡，所以可打断，减少动态效果时也随之关掉
+  useLayoutEffect(() => {
+    for (const [id, card] of cards) {
+      const before = lastTops.get(id)
+      if (before === undefined || card.dataset.exiting !== undefined) continue
+      card.style.transitionProperty = 'opacity'
+      card.style.transform = ''
+      const shift = before - card.getBoundingClientRect().top
+      if (Math.abs(shift) >= 1) {
+        card.style.transform = `translateY(${shift}px)`
+        card.getBoundingClientRect()
+      }
+      card.style.transitionProperty = ''
+      card.style.transform = ''
+    }
+  }, [items])
+
   return (
     <div className="pi-toast-stack" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
       {items.filter(entry => entry.exiting || shown.has(entry.id)).map(entry => <ToastCard key={entry.id} entry={entry} paused={paused} />)}
