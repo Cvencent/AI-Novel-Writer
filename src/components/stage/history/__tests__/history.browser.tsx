@@ -254,4 +254,22 @@ describe('版本历史', () => {
     const expected = new Date(Date.UTC(2026, 9, 1, 21, 5)).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
     expect(button(/草稿 v1/)!.querySelector('.stage-hist-meta')?.textContent).toBe(`${drafts[0].content.length} 字 · ${expected}`)
   })
+
+  it('正文为空的一稿也能对比，不停在正在读取', async () => {
+    drafts[0].content = ''
+    await openChapterThree()
+    await click(/草稿 v1/)
+    await vi.waitFor(() => expect(button('回退到此版本…')).toBeTruthy())
+    expect(document.querySelector('.stage-hist-diff')!.textContent).not.toContain('正在读取…')
+  })
+
+  it('读取这一稿失败时提示作者，对比区不停在正在读取', async () => {
+    const error = vi.spyOn(toast, 'error').mockImplementation(() => undefined)
+    await openChapterThree()
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel, ...args) => channel === 'db:draft-get-full' ? Promise.reject(new Error('数据库忙')) : base(channel, ...args))
+    await click(/草稿 v1/)
+    await vi.waitFor(() => expect(error).toHaveBeenCalledWith('读取这一稿失败：数据库忙'))
+    expect(document.querySelector('.stage-hist-diff')!.textContent).toBe('选一稿，与当前稿逐字对比。')
+  })
 })
