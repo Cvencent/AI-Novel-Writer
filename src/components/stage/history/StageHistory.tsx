@@ -90,8 +90,14 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
     const request = ++comparisonRequest.current
     setSelectedVersionId(versionId)
     setComparison(null)
-    const next = await readComparison(versionId)
-    if (request === comparisonRequest.current) setComparison(next)
+    try {
+      const next = await readComparison(versionId)
+      if (request === comparisonRequest.current) setComparison(next)
+    } catch (error) {
+      if (request !== comparisonRequest.current) return
+      setSelectedVersionId(null)
+      toast.error(text(`读取这一稿失败：${error instanceof Error ? error.message : String(error)}`, `Could not read this version: ${error instanceof Error ? error.message : String(error)}`))
+    }
   }
 
   const revert = async () => {
