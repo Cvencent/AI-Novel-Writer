@@ -127,6 +127,21 @@ describe('角色名单', () => {
     expect(host!.querySelector('.cast-roster-foot span')?.textContent).toBe(count)
   })
 
+  it('英文名单页两个按钮不重叠，底栏人数与页码不折行', async () => {
+    useLocaleStore.setState({ locale: 'en-US' })
+    useCharacterStore.setState({ characters: [linzhou] })
+    await render()
+    const [add, paste] = [...host!.querySelectorAll<HTMLElement>('.cast-roster-actions .pi-btn')]
+    const a = add.getBoundingClientRect()
+    const b = paste.getBoundingClientRect()
+    const overlap = a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+    const clipped = [add, paste].filter(button => button.scrollWidth > button.clientWidth + 1).map(button => button.textContent)
+    const foot = host!.querySelector<HTMLElement>('.cast-roster-foot span')!
+    const lines = Math.round(foot.getBoundingClientRect().height / parseFloat(getComputedStyle(foot).lineHeight))
+    const footClipped = foot.scrollWidth > foot.clientWidth + 1
+    expect({ overlap, clipped, lines, footClipped }).toEqual({ overlap: false, clipped: [], lines: 1, footClipped: false })
+  })
+
   it('名单列出全部角色，改动后保存角色走名单的保存', async () => {
     await render()
     const rows = [...host!.querySelectorAll('.cast-row')].map(row => row.querySelector('.cast-row-name')?.textContent)
