@@ -63,7 +63,7 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
   const project = useProjectStore(s => s.currentProject)
   const draftsByChapter = useDraftStore(s => s.draftsByChapter)
   const draftSession = useDraftStore(s => s.dataProjectSession)
-  const { chapters, loading, selectedChapter, selectChapter, versions, readComparison, createRollbackDraft } = useVersionHistory(projectKey)
+  const { chapters, loading, selectedChapter, selectChapter, versions, versionsLoading, readComparison, createRollbackDraft } = useVersionHistory(projectKey)
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null)
   const [comparison, setComparison] = useState<VersionComparison | null>(null)
   const [reverting, setReverting] = useState(false)
@@ -159,7 +159,9 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
           {chapter ? <>
             <div className="stage-hist-eyebrow">{text(`第 ${chapter.number} 章`, `Chapter ${chapter.number}`)}</div>
             <h2 className="stage-hist-chapter-title">{chapter.title}</h2>
-            {ordered.length === 0
+            {versionsLoading
+              ? <p className="stage-hist-help" role="status">{text('正在读取…', 'Loading…')}</p>
+              : ordered.length === 0
               ? <p className="stage-hist-help">{text('这一章还没有稿。写出第一稿后会出现在这里。', 'No drafts yet. The first draft will appear here.')}</p>
               : (
                 <ol className="stage-hist-timeline" aria-label={text('版本时间线', 'Version timeline')}>

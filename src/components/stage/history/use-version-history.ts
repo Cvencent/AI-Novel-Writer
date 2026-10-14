@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ipc } from '../../../services/ipc-client'
 import { requireIpcSuccess } from '../../../services/ipc-result'
 import type { VersionRecord } from '../../../services/version-service'
@@ -18,6 +18,8 @@ export interface VersionComparison {
   current: string | null
 }
 
+const NO_VERSIONS: VersionRecord[] = []
+
 /**
  * 版本历史的数据：章节列表、所选章的各稿，以及读取对比两边与回退。新外壳的版本历史页与旧外壳的 VersionHistory 共用。
  * 回退不覆盖任何一稿，而是用旧稿的正文新建一稿，返回新稿的版本号。
@@ -27,7 +29,9 @@ export function useVersionHistory(projectKey: string) {
   const text = useLocaleStore(s => s.text)
   const [chapters, setChapters] = useState<VersionChapter[]>([])
   const [selectedChapter, setSelectedChapter] = useState<number | null>(null)
-  const [versions, setVersions] = useState<VersionRecord[]>([])
+  // 各稿按章号记下：再点当前章不必清空，换章时还没读到的章就是「正在读取」。
+  const [loaded, setLoaded] = useState<{ chapter: number; versions: VersionRecord[] } | null>(null)
+  const versionRequest = useRef(0)
   const [loading, setLoading] = useState(true)
 
   const loadChapters = useCallback(async () => {
@@ -54,9 +58,12 @@ export function useVersionHistory(projectKey: string) {
     return () => { mounted = false }
   }, [loadChapters])
 
+  /** 读这一章的各稿；只有最后一次读取写进列表，连续点几章时先点那章的结果晚到也不会盖住后点的。 */
   const loadVersions = useCallback(async (chapterNumber: number): Promise<VersionRecord[]> => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return []
+    const request = ++versionRequest.current
+    const latest = () => request === versionRequest.current && isProjectSessionCurrent(projectSession)
     try {
       const drafts = await ipc.invokeWithProjectSession(projectSession, 'db:draft-list', chapterNumber, projectSession.projectPath)
       if (!isProjectSessionCurrent(projectSession)) return []
@@ -68,10 +75,10 @@ export function useVersionHistory(projectKey: string) {
         created_at: draft.createdAt,
         dependencies_stale: draft.dependenciesStale,
       }))
-      setVersions(loaded)
+      if (latest()) setLoaded({ chapter: chapterNumber, versions: loaded })
       return loaded
     } catch {
-      if (isProjectSessionCurrent(projectSession)) setVersions([])
+      if (latest()) setLoaded({ chapter: chapterNumber, versions: [] })
       return []
     }
   }, [projectKey])
@@ -83,10 +90,6 @@ export function useVersionHistory(projectKey: string) {
     return () => { mounted = false }
   }, [loadVersions, selectedChapter])
 
-  const selectChapter = useCallback((chapterNumber: number) => {
-    setVersions([])
-    setSelectedChapter(chapterNumber)
-  }, [])
 
   /** 读出这一稿与这一章最新一稿的正文；会话已切换或这一稿读不到时返回 null。 */
   const readComparison = useCallback(async (versionId: number): Promise<VersionComparison | null> => {
@@ -124,5 +127,7 @@ export function useVersionHistory(projectKey: string) {
     return refreshed.find(version => version.id === created.id)?.version ?? null
   }, [loadVersions, projectKey, selectedChapter, text])
 
-  return { chapters, loading, selectedChapter, selectChapter, versions, readComparison, createRollbackDraft }
+  const versionsLoading = selectedChapter !== null && loaded?.chapter !== selectedChapter
+  const versions = !versionsLoading && loaded ? loaded.versions : NO_VERSIONS
+  return { chapters, loading, selectedChapter, selectChapter: setSelectedChapter, versions, versionsLoading, readComparison, createRollbackDraft }
 }
