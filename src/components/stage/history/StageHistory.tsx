@@ -107,7 +107,9 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
       const created = await createRollbackDraft(selected.id)
       if (created === null) return
       setRevertOpen(false)
-      toast.success(text(`已新建草稿 v${created}，原有各稿都保留`, `Draft v${created} created. Every earlier version is kept.`))
+      toast.success(created.version === null
+        ? text('已新建回滚草稿，原有各稿都保留', 'Rollback draft created. Every earlier version is kept.')
+        : text(`已新建草稿 v${created.version}，原有各稿都保留`, `Draft v${created.version} created. Every earlier version is kept.`))
       const session = projectSessionContextFromProject(useProjectStore.getState().currentProject)
       if (session) void useDraftStore.getState().loadAllDrafts(session.projectPath, session)
       comparisonRequest.current++

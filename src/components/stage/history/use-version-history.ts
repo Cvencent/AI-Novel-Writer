@@ -106,8 +106,11 @@ export function useVersionHistory(projectKey: string) {
     return { older, current: current?.content ?? '' }
   }, [projectKey, selectedChapter])
 
-  /** 用这一稿的正文新建一稿（回滚草稿），原有各稿都保留。返回数据库给新稿分配的版本号；会话已切换或旧稿为空时返回 null。 */
-  const createRollbackDraft = useCallback(async (versionId: number): Promise<number | null> => {
+  /**
+   * 用这一稿的正文新建一稿（回滚草稿），原有各稿都保留。没有新建（会话已切换、旧稿为空）时返回 null；
+   * 已新建时返回数据库分配的版本号，重读列表失败、读不到版本号时 version 为 null。
+   */
+  const createRollbackDraft = useCallback(async (versionId: number): Promise<{ version: number | null } | null> => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession || !isProjectSessionPath(projectSession, projectKey) || selectedChapter === null) return null
     const content = (await ipc.invokeWithProjectSession(projectSession, 'db:draft-get-full', versionId, projectSession.projectPath))?.content
@@ -124,7 +127,7 @@ export function useVersionHistory(projectKey: string) {
     if (!isProjectSessionCurrent(projectSession)) return null
     // 版本号在数据库事务里分配，估算值可能被同时写入的稿占掉，以刷新后的列表为准。
     const refreshed = await loadVersions(selectedChapter)
-    return refreshed.find(version => version.id === created.id)?.version ?? null
+    return { version: refreshed.find(version => version.id === created.id)?.version ?? null }
   }, [loadVersions, projectKey, selectedChapter, text])
 
   const versionsLoading = selectedChapter !== null && loaded?.chapter !== selectedChapter
