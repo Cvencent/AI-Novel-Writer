@@ -192,6 +192,30 @@ describe('蓝图阶段', () => {
     await vi.waitFor(() => expect(calls('db:blueprint-upsert').map(call => call[1])).toMatchObject([{ chapterNumber: 1, title: '旧港潮汐' }]))
   })
 
+  it('保存此章与保存全部成功后通知流程脊、Ctrl P 重读蓝图；保存失败不通知', async () => {
+    const refreshes: string[][] = []
+    const off = globalEventBus.on('REFRESH_RESOURCE', ({ resources }) => { refreshes.push([...resources]) })
+    try {
+      await renderPage()
+      await act(async () => page.getByRole('textbox', { name: '章节标题' }).fill('旧港潮汐'))
+      await act(async () => page.getByRole('button', { name: '保存此章' }).click())
+      await vi.waitFor(() => expect(refreshes).toEqual([['blueprints', 'fileTree']]))
+
+      const save = editorSaveHandler({ id: 'chapter-card-editor', type: 'chapter-card', projectKey: PROJECT_PATH })
+      await act(async () => { await save!() })
+      expect(refreshes).toEqual([['blueprints', 'fileTree'], ['blueprints', 'fileTree']])
+
+      const base = invoke.getMockImplementation() as (channel: string, ...args: unknown[]) => Promise<unknown>
+      invoke.mockImplementation(async (channel: string, ...args: unknown[]) => channel === 'db:blueprint-upsert'
+        ? { success: false, error: '磁盘已满' } : base(channel, ...args))
+      await act(async () => page.getByRole('button', { name: '保存此章' }).click())
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)) })
+      expect(refreshes).toHaveLength(2)
+    } finally {
+      off()
+    }
+  })
+
   it('保存此章与开始生成进行中时按钮带 aria-busy，结束后撤掉', async () => {
     await renderPage()
     const base = invoke.getMockImplementation() as (channel: string, ...args: unknown[]) => Promise<unknown>
