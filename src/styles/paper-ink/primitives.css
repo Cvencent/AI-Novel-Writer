@@ -424,7 +424,7 @@
   content: ''; position: sticky; top: 0; z-index: 1; flex: none; pointer-events: none;
   width: 360px; max-width: calc(100vw - 2 * var(--s-5)); height: var(--s-4); margin-bottom: calc(-1 * (var(--s-4) + var(--s-2)));
   background: linear-gradient(var(--layer), transparent);
-  animation: pi-fade linear both; animation-timeline: scroll(self); animation-range: 0 var(--s-4);
+  animation: pi-fade linear both; animation-timeline: scroll(); animation-range: 0 var(--s-4);
 }
 
 /* ================= 空状态 ================= */
