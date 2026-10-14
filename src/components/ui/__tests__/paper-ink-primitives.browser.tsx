@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, StrictMode, useState, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { page, userEvent } from 'vitest/browser'
+import { cdp, page, userEvent } from 'vitest/browser'
 import { Ellipsis } from 'lucide-react'
 
 import '../../../index.css'
@@ -197,6 +197,34 @@ describe('Button 纸墨六种', () => {
     secondary.focus()
     await midway(secondary, () => userEvent.keyboard('[Space>]'))
     await userEvent.keyboard('[/Space]')
+  })
+
+  it('减少动态效果设置下按下不再下沉或缩小', async () => {
+    const container = await mount(
+      <div style={{ display: 'flex', gap: 12 }}>
+        <Button variant="primary">写作此章</Button>
+        <Button variant="secondary">重新生成</Button>
+        <Button variant="icon" aria-label="更多"><Ellipsis aria-hidden /></Button>
+      </div>,
+    )
+    const [primary, secondary, icon] = container.querySelectorAll('button')
+    const pressedTransform = async (button: HTMLButtonElement) => {
+      button.focus()
+      await userEvent.keyboard('[Space>]')
+      button.getAnimations().forEach((animation) => animation.finish())
+      const transform = getComputedStyle(button).transform
+      await userEvent.keyboard('[/Space]')
+      return transform
+    }
+    expect(await pressedTransform(primary)).toBe('matrix(1, 0, 0, 1, 0, 1)')
+    expect(await pressedTransform(icon)).toBe('matrix(0.96, 0, 0, 0.96, 0, 0)')
+    const session = cdp()
+    await session.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
+    try {
+      for (const button of [primary, secondary, icon]) expect(await pressedTransform(button)).toBe('none')
+    } finally {
+      await session.send('Emulation.setEmulatedMedia', { features: [] })
+    }
   })
 
   it('加载中的按钮保留原样并在底沿画墨线', async () => {

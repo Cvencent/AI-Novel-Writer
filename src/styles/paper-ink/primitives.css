@@ -414,4 +414,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .paper-ink, .paper-ink *, .paper-ink *::before, .paper-ink *::after { animation: none !important; transition: none !important; }
+  /* 按下的下沉与缩小也是位移；按下的反馈留给颜色与内凹投影 */
+  .paper-ink .pi-btn:is(:active, [aria-expanded="true"]) { transform: none; }
 }
