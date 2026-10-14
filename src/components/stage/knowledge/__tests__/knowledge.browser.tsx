@@ -233,6 +233,23 @@ describe('知识库', () => {
       .toEqual([['三号站台 失踪', 10], ['三号站台 失踪', 5]]))
   })
 
+  it('资料列表读完之前不说「知识库里还没有资料」，读完才列出', async () => {
+    let release!: () => void
+    const listed = new Promise<void>(resolve => { release = resolve })
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel, ...args) => {
+      if (channel === 'kb:list-documents') await listed
+      return base(channel, ...args)
+    })
+    await act(async () => root!.render(<StageKnowledge tabId={KB_TAB} />))
+    await vi.waitFor(() => expect(invoke.mock.calls.some(([channel]) => channel === 'kb:list-documents')).toBe(true))
+    expect(document.body.textContent).not.toContain('知识库里还没有资料')
+    expect(host!.querySelector('[aria-label="资料原文"] [role="status"]')?.textContent).toBe('正在读取资料…')
+    await act(async () => release())
+    await vi.waitFor(() => expect(button(/车站档案/)).toBeTruthy())
+    expect(host!.querySelector('[aria-label="资料原文"] [role="status"]')).toBeNull()
+  })
+
   describe('连续改「最多显示」，两次查找乱序返回', () => {
     const hits = (count: number) => Array.from({ length: count }, (_, index) => ({ text: `……三号站台第 ${index + 1} 段……`, score: 0.5, fileName: '车站档案.md' }))
     let replies: Map<number, (count: number) => void>
