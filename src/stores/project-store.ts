@@ -720,12 +720,8 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
           return false
         }
         if (!sameRendererProject(rendererProject, get().currentProject)) return false
-        const [{ useLayoutStore }, { navigate }] = await Promise.all([
-          import('./layout-store'),
-          import('./navigation/navigation-intents'),
-        ])
+        const { navigate } = await import('./navigation/navigation-intents')
         if (!isLatestRequest() || !sameRendererProject(rendererProject, get().currentProject)) return false
-        const layoutBeforeCommit = useLayoutStore.getState()
         if (rendererProjectPath) {
           if (preparedTransition?.decision === 'discard') {
             discardProjectTransitionDrafts(rendererProjectPath)
@@ -738,6 +734,8 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
             ? result.project!.novelConfig : restored.value },
           projectSessionEpoch: state.projectSessionEpoch + 1,
         }))
+        // 默认落点与提交同步落下：之后读文件树、最近项目期间作者的导航（回书房、开运行侧页、换侧栏）都在它之后，不会被改回。
+        navigate({ kind: 'stage' })
         const partialLoadWarnings: string[] = []
         // Opening a project revokes old shelf preview capabilities in main.
         // Refresh the visible shelf handles without turning a successful open into a failure.
@@ -766,17 +764,6 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
         }
         // 此后渲染进程已经提交返回项目；过期状态只影响派生视图，可以安全退出。
         if (!isLatestRequest()) return false
-        // 文件树加载期间的显式导航优先于项目打开时的默认侧栏。
-        const layout = useLayoutStore.getState()
-        if (
-          layout.sidebarView === layoutBeforeCommit.sidebarView
-          && layout.activeRailItem === layoutBeforeCommit.activeRailItem
-          && layout.sidebarOpen === layoutBeforeCommit.sidebarOpen
-        ) {
-          navigate({ kind: 'stage' })
-        } else {
-          useLayoutStore.setState({ immersive: false, preImmersivePanels: null })
-        }
         // 统一初始化第二层状态仓库（角色卡、草稿等）
         let layer2Warnings: string[] = []
         try {
