@@ -58,9 +58,12 @@ function PageBody({ page }: { page: SettingsPage }) {
 
 const close = () => leaveSettings(() => useLayoutStore.getState().closeSettings())
 
-/** 输入框里的 Esc 属于输入（撤销联想、收起下拉），不关闭设置页。 */
+const TEXT_INPUT_TYPES = new Set(['text', 'search', 'email', 'url', 'password', 'number', 'tel'])
+
+/** 打字的地方的 Esc 属于输入（撤销联想、清空搜索），不关闭设置页；下拉框、开关、复选框、按钮上的 Esc 照常关闭。 */
 const isTyping = (target: EventTarget | null) =>
-  target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+  target instanceof HTMLElement && (target.isContentEditable || target instanceof HTMLTextAreaElement
+    || (target instanceof HTMLInputElement && TEXT_INPUT_TYPES.has(target.type)))
 
 /**
  * 设置页：左侧按常用、高级、其他分组，右侧是当前一页。占满内容面板，书房与作品里都能打开；
