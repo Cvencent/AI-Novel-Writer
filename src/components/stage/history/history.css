@@ -45,6 +45,11 @@
   color: var(--ink-3);
 }
 
+/* 读得快的章不闪「正在读取」：晚 150ms 才淡入。 */
+.stage-hist-loading {
+  animation: pi-fade var(--dur-fast) var(--ease) 150ms both;
+}
+
 .stage-hist-list,
 .stage-hist-timeline {
   list-style: none;

@@ -169,7 +169,7 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
             <div className="stage-hist-eyebrow">{text(`第 ${chapter.number} 章`, `Chapter ${chapter.number}`)}</div>
             <h2 className="stage-hist-chapter-title">{chapter.title}</h2>
             {versionsLoading
-              ? <p className="stage-hist-help" role="status">{text('正在读取…', 'Loading…')}</p>
+              ? <p className="stage-hist-help stage-hist-loading" role="status">{text('正在读取…', 'Loading…')}</p>
               : ordered.length === 0
               ? <p className="stage-hist-help">{text('这一章还没有稿。写出第一稿后会出现在这里。', 'No drafts yet. The first draft will appear here.')}</p>
               : (
