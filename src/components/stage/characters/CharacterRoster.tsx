@@ -76,9 +76,9 @@ export default function CharacterRoster({ projectKey }: { projectKey: string }) 
       </ul>
       <footer className="cast-roster-foot">
         <span>{text(`${visibleCharacters.length} 位角色 · 第 ${list.page + 1} / ${list.pageCount} 页`, `${visibleCharacters.length} ${visibleCharacters.length === 1 ? 'character' : 'characters'} · page ${list.page + 1} / ${list.pageCount}`)}</span>
-        <Button variant="icon" aria-label={text('上一页角色', 'Previous character page')} disabled={list.page === 0} onClick={list.previousPage}><ChevronLeft size={14} /></Button>
-        <Button variant="icon" aria-label={text('下一页角色', 'Next character page')} disabled={list.page + 1 >= list.pageCount} onClick={list.nextPage}><ChevronRight size={14} /></Button>
-        <Button variant="icon" aria-label={text('刷新列表', 'Refresh list')} disabled={identityBusy || list.loadingProjectKey !== null}
+        <Button variant="icon" size="sm" aria-label={text('上一页角色', 'Previous character page')} disabled={list.page === 0} onClick={list.previousPage}><ChevronLeft size={14} /></Button>
+        <Button variant="icon" size="sm" aria-label={text('下一页角色', 'Next character page')} disabled={list.page + 1 >= list.pageCount} onClick={list.nextPage}><ChevronRight size={14} /></Button>
+        <Button variant="icon" size="sm" aria-label={text('刷新列表', 'Refresh list')} disabled={identityBusy || list.loadingProjectKey !== null}
           onClick={() => { void useCharacterStore.getState().load(projectKey) }}>
           <RotateCw size={14} />
         </Button>
