@@ -38,6 +38,28 @@ async function promptClosed() {
 }
 const host = () => document.getElementById('ai-novel-ink-overlay')
 const focused = () => document.activeElement as HTMLElement
+/** 截 element 所在区域的图；返回按视口坐标取像素与数像素的函数（截图可能按测试页缩放）。 */
+async function stackPixels(element: HTMLElement) {
+  const box = element.getBoundingClientRect()
+  const base64 = await page.screenshot({ element, save: false })
+  const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${base64}`)).blob())
+  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
+  const context = canvas.getContext('2d')!
+  context.drawImage(bitmap, 0, 0)
+  const { data } = context.getImageData(0, 0, bitmap.width, bitmap.height)
+  const scale = bitmap.width / box.width
+  const at = (x: number, y: number) => {
+    const index = (Math.floor((y - box.top) * scale) * bitmap.width + Math.floor((x - box.left) * scale)) * 4
+    return [data[index], data[index + 1], data[index + 2]]
+  }
+  const count = (left: number, top: number, right: number, bottom: number, match: (rgb: number[]) => boolean) => {
+    let found = 0
+    for (let y = top; y < bottom; y += 1 / scale) for (let x = left; x < right; x += 1 / scale) if (match(at(x, y))) found++
+    return found
+  }
+  return { at, count }
+}
+
 const liveToasts = () => [...document.querySelectorAll<HTMLElement>('.pi-toast:not([data-exiting])')]
 const toastTitles = () => liveToasts().map(item => item.querySelector('.pi-toast-title')!.textContent)
 const buttonNamed = (scope: ParentNode, name: string) => [...scope.querySelectorAll('button')].find(b => b.textContent === name)!
@@ -513,16 +535,43 @@ describe('提示栈', () => {
     expect([getComputedStyle(stack).scrollbarWidth, getComputedStyle(stack, '::-webkit-scrollbar').width]).toEqual(['auto', '6px'])
   })
 
-  it('溢出的栈上沿淡出而不是硬切；滚到顶时最早一条在淡出带下面，整张露出来', async () => {
-    await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
-    await act(async () => {
-      for (let i = 1; i <= 24; i++) toast.error(`出错 ${i}`, 0)
-    })
-    await wait(200)
-    const stack = document.querySelector<HTMLElement>('.pi-toast-stack')!
-    expect(getComputedStyle(stack).maskImage).toMatch(/^linear-gradient\(rgba\(0, 0, 0, 0\), rgb\(.+\) 16px\)$/)
-    await act(async () => { stack.scrollTop = 0 })
-    expect(liveToasts()[0].getBoundingClientRect().top - stack.getBoundingClientRect().top).toBeGreaterThanOrEqual(16)
+  it.each(['light', 'dark'] as const)('%s 主题溢出的栈滚到底时，最上面露出半截的卡片仍不透明，页面不从卡片里透出；上沿有提示还有更多的淡出带，滚到顶时消失', async (theme) => {
+    await act(async () => useThemeStore.setState({ resolvedTheme: theme === 'dark' ? 'dark' : 'paper' }))
+    // 卡片背后铺一层纯红：卡片哪里变透明，截图里那里就带红
+    const backdrop = document.createElement('div')
+    backdrop.style.cssText = 'position: fixed; inset: 0; background: rgb(255, 0, 0);'
+    document.body.prepend(backdrop)
+    try {
+      await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
+      await act(async () => {
+        for (let i = 1; i <= 24; i++) toast.error(`出错 ${i}`, 0)
+      })
+      await wait(400)
+      const stack = document.querySelector<HTMLElement>('.pi-toast-stack')!
+      expect(stack.hasAttribute('data-overflow')).toBe(true)
+      const stackBox = stack.getBoundingClientRect()
+      const topCard = liveToasts().find(card => card.getBoundingClientRect().bottom > stackBox.top + 24)!
+      const card = topCard.getBoundingClientRect()
+      expect(card.top).toBeLessThan(stackBox.top + 16)
+      const sample = await stackPixels(stack)
+      const red = ([r, g, b]: number[]) => r - g > 40 && r - b > 40
+      // 卡片里没有字的一段（标题只有「出错 N」，右边留到关闭按钮之前），上下避开圆角边的抗锯齿；文字的彩色抗锯齿边会被当成红
+      const reddish = sample.count(card.left + 160, Math.max(card.top, stackBox.top) + 2, card.right - 48, card.bottom - 2, red)
+      // 栈的上沿（卡片列中间）被淡出带盖着，不是背后的页面
+      const bandTop = sample.at((card.left + card.right) / 2, stackBox.top + 3)
+      expect([reddish, red(bandTop)], JSON.stringify({ bandTop, card: [card.top, card.bottom], stack: [stackBox.top, stackBox.bottom] })).toEqual([0, false])
+
+      await act(async () => { stack.scrollTop = 0 })
+      await wait(50)
+      expect(liveToasts()[0].getBoundingClientRect().top - stack.getBoundingClientRect().top).toBeGreaterThanOrEqual(16)
+      const atTop = await stackPixels(stack)
+      const firstCard = liveToasts()[0].getBoundingClientRect()
+      expect(atTop.count(firstCard.left + 160, firstCard.top + 2, firstCard.right - 48, firstCard.top + 12, red)).toBe(0)
+      // 滚到顶时上面没有卡片，淡出带消失，栈的上沿露出背后的页面
+      expect(red(atTop.at((firstCard.left + firstCard.right) / 2, stackBox.top + 3))).toBe(true)
+    } finally {
+      backdrop.remove()
+    }
   })
 
   it('模态开着时溢出的栈仍能用滚轮滚动：滚动锁不拦栈上的滚轮', async () => {
