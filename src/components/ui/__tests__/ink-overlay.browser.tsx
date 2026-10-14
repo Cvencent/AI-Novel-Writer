@@ -559,7 +559,8 @@ describe('提示栈', () => {
       const reddish = sample.count(card.left + 160, Math.max(card.top, stackBox.top) + 2, card.right - 48, card.bottom - 2, red)
       // 栈的上沿（卡片列中间）被淡出带盖着，不是背后的页面
       const bandTop = sample.at((card.left + card.right) / 2, stackBox.top + 3)
-      expect([reddish, red(bandTop)], JSON.stringify({ bandTop, card: [card.top, card.bottom], stack: [stackBox.top, stackBox.bottom] })).toEqual([0, false])
+      expect([reddish, red(bandTop), getComputedStyle(stack, '::before').opacity], JSON.stringify({ bandTop, card: [card.top, card.bottom], stack: [stackBox.top, stackBox.bottom] }))
+        .toEqual([0, false, '1'])
 
       await act(async () => { stack.scrollTop = 0 })
       await wait(50)
@@ -567,8 +568,9 @@ describe('提示栈', () => {
       const atTop = await stackPixels(stack)
       const firstCard = liveToasts()[0].getBoundingClientRect()
       expect(atTop.count(firstCard.left + 160, firstCard.top + 2, firstCard.right - 48, firstCard.top + 12, red)).toBe(0)
-      // 滚到顶时上面没有卡片，淡出带消失，栈的上沿露出背后的页面
-      expect(red(atTop.at((firstCard.left + firstCard.right) / 2, stackBox.top + 3))).toBe(true)
+      // 滚到顶时上面没有卡片，淡出带消失：栈的上沿与最早一条的圆角外都露出背后的页面，卡片顶上没有盖着东西
+      expect([getComputedStyle(stack, '::before').opacity, red(atTop.at((firstCard.left + firstCard.right) / 2, stackBox.top + 3)), red(atTop.at(firstCard.left + 1, firstCard.top + 1))])
+        .toEqual(['0', true, true])
     } finally {
       backdrop.remove()
     }
