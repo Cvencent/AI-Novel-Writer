@@ -499,6 +499,71 @@ async function assertSpineMatchesSample(page) {
 }
 
 /** 新外壳场景只在 head 上跑（trunk 没有新外壳）；chapter-switch 两种外壳都能跑，用于性能对照。 */
+/** 设置页里改了模型名、没有保存：作品里从流程脊、书房里从顶栏的设置按钮打开。 */
+async function dirtyModelName(page) {
+  if (!(await stage.settingsNav(page).count())) {
+    if (await stage.spine(page).count()) await stage.openSettings(page)
+    else {
+      await stage.root(page).getByRole('banner').getByRole('button', { name: '设置', exact: true }).click()
+      await stage.settingsNav(page).waitFor({ state: 'visible' })
+    }
+  }
+  if (await stage.currentSettingsPage(page) !== 'AI 模型') await stage.showSettingsPage(page, 'AI 模型')
+  const name = stage.root(page).getByPlaceholder('如：DeepSeek 主力 / GPT-4o 备用')
+  if (!(await name.count())) await page.getByRole('button', { name: `编辑「${FAKE_MODEL.name}」` }).click()
+  await name.fill('还没保存的名字')
+}
+
+const discardDialog = page => page.getByRole('dialog', { name: '放弃未保存的修改？' })
+
+/** 离开设置页的确认出现；选「继续编辑」后设置页还在、输入还在。 */
+async function keepEditing(page, entry, context) {
+  await discardDialog(page).waitFor({ state: 'visible' })
+  // 模态确认打开时其余节点是 aria-hidden，按角色找不到设置导航，按类名看它还在不在。
+  assert.equal(await stage.root(page).locator('.stage-set-nav').isVisible(), true, `${entry}：确认出现时设置页还在`)
+  await context.shoot?.(`leave-${entry}`)
+  await discardDialog(page).getByRole('button', { name: '继续编辑', exact: true }).click()
+  await discardDialog(page).waitFor({ state: 'detached' })
+  assert.equal(await stage.settingsNav(page).isVisible(), true, `${entry}：继续编辑后不导航`)
+  assert.equal(await stage.root(page).getByPlaceholder('如：DeepSeek 主力 / GPT-4o 备用').inputValue(), '还没保存的名字', `${entry}：继续编辑后输入还在`)
+}
+
+async function discardChanges(page) {
+  await discardDialog(page).getByRole('button', { name: '放弃修改', exact: true }).click()
+  await stage.settingsNav(page).waitFor({ state: 'detached' })
+}
+
+async function pickFromPalette(page, query, option) {
+  await page.keyboard.press('Control+K')
+  await stage.paletteInput(page).fill(query)
+  await stage.palette(page).getByRole('option', { name: option }).first().click()
+}
+
+/**
+ * 等打开作品整个做完：落到该写的那一章，并且收尾的资源载入也结束了。打开作品收尾时还会回到作品一次，
+ * 没等它就回书房，晚到的这一下会再次离开书房。
+ */
+function bookOpened(page) {
+  const loaded = page.waitForEvent('console', { predicate: message => message.text().includes('项目数据加载完成'), timeout: 30_000 })
+  return async () => {
+    await loaded
+    await page.getByRole('navigation', { name: '位置' }).getByText('第 3 章').waitFor({ state: 'visible' })
+  }
+}
+
+/** 书房里当前作品的概览：「继续写作」回到作品。 */
+async function continueBook(page) {
+  await stage.overview(page, STAGE_SAMPLE.name).getByRole('button', { name: /^继续写作/ }).click()
+  await stage.spine(page).waitFor({ state: 'visible' })
+}
+
+async function closeDialog(page, name) {
+  const dialog = page.getByRole('dialog', { name })
+  await dialog.waitFor({ state: 'visible' })
+  await page.keyboard.press('Escape')
+  await dialog.waitFor({ state: 'detached' })
+}
+
 export const STAGE_SCENARIOS = {
   'stage-open-sample': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
     await assertSpineMatchesSample(page)
@@ -819,6 +884,65 @@ export const STAGE_SCENARIOS = {
     await stage.palette(page).getByRole('option', { name: /^角色/ }).click()
     await stage.settingsNav(page).waitFor({ state: 'detached' })
     await stage.tab(page, '角色').and(page.locator('[aria-selected="true"]')).waitFor({ state: 'visible' })
+  } },
+  'stage-settings-leave-work': { model: false, shell: 'stage', setup: seedStageSample, run: async context => {
+    const { page } = context
+    await stage.stageButton(page, '蓝图').click()
+    await stage.tab(page, '蓝图').waitFor({ state: 'visible' })
+    const crumbs = () => page.getByRole('navigation', { name: '位置' }).locator('span').allInnerTexts()
+    const entries = [
+      ['流程脊阶段', () => stage.stageButton(page, '架构').click(), async () => assert.deepEqual(await crumbs(), ['架构'])],
+      ['流程脊资料', () => stage.stageButton(page, '剧情与伏笔').click(), async () => assert.deepEqual(await crumbs(), ['作品资料', '剧情与伏笔'])],
+      ['命令面板阶段', () => pickFromPalette(page, '蓝图', /^蓝图/), async () => assert.deepEqual(await crumbs(), ['蓝图'])],
+      ['Ctrl P 章节', () => stage.findChapter(page, '旧港'), () => stage.waitForProse(page, firstLine(STAGE_SAMPLE.finalized[1]))],
+      ['命令面板回到书房', () => pickFromPalette(page, '回到书房', /^回到书房/), () => stage.shelf(page).waitFor({ state: 'visible' })],
+    ]
+    for (const [name, go, arrived] of entries) {
+      if (await stage.shelf(page).count()) await continueBook(page)
+      await dirtyModelName(page)
+      assert.equal(await stage.tabList(page).count(), 0, `${name}：设置页开着时没有标签条可切换`)
+      await go()
+      await keepEditing(page, name, context)
+      await go()
+      await discardChanges(page)
+      await arrived()
+    }
+    await continueBook(page)
+    await dirtyModelName(page)
+    await stage.openWorkMenuItem(page, STAGE_SAMPLE.name, '回到书房')
+    await keepEditing(page, '作品菜单回到书房', context)
+    await stage.openWorkMenuItem(page, STAGE_SAMPLE.name, '回到书房')
+    await discardChanges(page)
+    await stage.shelf(page).waitFor({ state: 'visible' })
+  } },
+  'stage-settings-leave-library': { model: false, shell: 'stage', setup: context => seedStageSample(context, { open: false }), run: async context => {
+    const { app, page } = context
+    const entries = [
+      ['命令面板打开作品', () => pickFromPalette(page, STAGE_SAMPLE.name, new RegExp(`打开《${STAGE_SAMPLE.name}》`)), null],
+      ['Ctrl O 打开作品', async () => {
+        await stubOpenDialog(app, context.samplePath)
+        await page.keyboard.press('Control+O')
+      }, null],
+      ['命令面板打开文件夹', async () => {
+        await stubOpenDialog(app, context.samplePath)
+        await pickFromPalette(page, '打开作品', /^打开作品$/)
+      }, null],
+      ['Ctrl N 新建作品', () => page.keyboard.press('Control+N'), () => closeDialog(page, '新建作品')],
+      ['命令面板新建作品', () => pickFromPalette(page, '新建作品', /^新建作品$/), () => closeDialog(page, '新建作品')],
+      ['命令面板拆解与仿写', () => pickFromPalette(page, '小说拆解与仿写', /^小说拆解与仿写$/), () => closeDialog(page, /小说拆解/)],
+    ]
+    // arrived 为空的几项会打开作品，等打开整个做完再进下一项。
+    for (const [name, go, arrived] of entries) {
+      if (await stage.spine(page).count()) await stage.backToLibrary(page, STAGE_SAMPLE.name)
+      await dirtyModelName(page)
+      await go()
+      await keepEditing(page, name, context)
+      const opened = arrived ? null : bookOpened(page)
+      await go()
+      await discardChanges(page)
+      await (arrived ?? opened)()
+      await context.shoot(`arrived-${name}`)
+    }
   } },
   'stage-run': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page, fake }) => {
     fake.gate.hold()

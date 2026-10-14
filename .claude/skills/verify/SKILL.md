@@ -215,6 +215,8 @@ node scripts/redesign/drive.mjs --scenario chapter-switch --shell stage --out <�
 | `stage-setup-short` | 新建「雾岛」：必填项先不标红；1440×900、1280×800、1280×720 下「类型」「目标读者」都在底栏之上；`after` 点开「全局写作要求」，面板不在底栏后面、焦点在它的输入框里 | 1280×720 设定页 | 否 | RD-5 修复第 1 轮 |
 | `stage-settings-legacy` | 模型编辑表单的输入框 40px 高；`context.shoot` 中途拍下模型编辑、提示词模板、写作 Skills；项目备份页只有「导出本地存档」一个实心主按钮 | 项目备份 | 否 | RD-5 修复第 1 轮 |
 | `stage-settings-leave` | 编辑夹具模型改名，输入框里按 Esc 设置页不关；焦点移出后 Esc 弹「放弃未保存的修改？」；`after` 继续编辑修改还在，「返回作品」再确认放弃才关；再开设置页从 Ctrl K 选「角色」，设置页收起、「角色」标签选中 | 放弃确认 | 否 | RD-5 修复第 1 轮 |
+| `stage-settings-leave-work` | 作品里开着两个标签，设置页改了夹具模型名、不保存：标签条不显示；依次从流程脊阶段「架构」、流程脊资料「剧情与伏笔」、Ctrl K「蓝图」、Ctrl P「旧港」、Ctrl K「回到书房」、作品菜单「回到书房」离开，每次先弹「放弃未保存的修改？」，「继续编辑」后设置页与输入都在，再走一次选「放弃修改」才到去处 | 每个入口的确认（`leave-<入口>`） | 否 | RD-5 修复第 2 轮 |
+| `stage-settings-leave-library` | 书房里从顶栏打开设置、改模型名不保存：Ctrl K「打开《灯塔》」、Ctrl O、Ctrl K「打开作品」（系统对话框打桩为示例作品）、Ctrl N、Ctrl K「新建作品」、Ctrl K「小说拆解与仿写」，每次先确认、继续编辑不走；放弃后打开作品（等「项目数据加载完成」）或弹出新建、拆解对话框 | 每个入口的确认与到达（`leave-`、`arrived-<入口>`） | 否 | RD-5 修复第 2 轮 |
 | `new-project-files` | 新建作品后列出作品文件夹里建出的文件（`measured.files`）与 `.ai-novel/project.json` 去掉标识、时间后的形状（`measured.manifest`）。trunk 与 head、两种外壳（`--shell stage`）各跑一次，两项都应一致 | 新建作品后 | 否 | RD-5 lane 1 |
 
 ## 页面内计时
