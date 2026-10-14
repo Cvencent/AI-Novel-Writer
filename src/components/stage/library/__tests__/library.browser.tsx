@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { page } from 'vitest/browser'
 import type { StoreApi } from 'zustand'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -83,7 +84,9 @@ async function type(input: HTMLInputElement, value: string) {
   })
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  // 书房按桌面宽度排版。默认 414 宽的视口放不下，对话框关闭后焦点回到菜单按钮会横向滚动页面，晚到的滚动把刚打开的菜单关掉。
+  await page.viewport(1440, 900)
   invoke = vi.fn(async (channel: string) => {
     if (channel === 'project:peek-overview') return READY
     if (channel === 'project:overview-current') return { ...READY, projectId: 'lighthouse', name: '灯塔', excerpt: '守塔人把灯又擦了一遍。' }
