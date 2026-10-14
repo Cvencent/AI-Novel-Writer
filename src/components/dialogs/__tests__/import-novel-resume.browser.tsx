@@ -445,7 +445,7 @@ describe('current-project reference import', () => {
     await act(async () => page.getByTestId('import-target-current').click())
     await act(async () => page.getByRole('button', { name: 'Choose' }).first().click())
 
-    await expect.element(page.getByText('1 files selected', { exact: true })).toBeVisible()
+    await expect.element(page.getByText('1 file selected', { exact: true })).toBeVisible()
     await expect.element(page.getByText('1 chapter', { exact: true })).toBeVisible()
     expect(invoke.mock.calls.some(([channel]) => channel === 'import:inspect-source')).toBe(false)
   })

@@ -24,6 +24,7 @@ import { ipc } from '../ipc-client'
 import { CANONICAL_PROJECT_DIRECTORY } from '../../shared/project-format'
 import { architectureRecoveryHandle } from '../../shared/architecture-recovery-navigation'
 import { ARCH_STEP_NAMES } from '../architecture-step-selection'
+import { pluralEn } from '../../shared/plural-en'
 
 // ==========================================
 // 1. 类型定义
@@ -255,7 +256,7 @@ export function createConfigGenerationWorkflow(params: ConfigGenerationWorkflowP
         name: text('智能分析并填充配置', 'Analyze and fill the configuration'),
         description: text(
           `根据创作脑洞生成小说配置（全书规划约 ${params.totalChapters} 章）`,
-          `Generate a novel configuration from the idea (about ${params.totalChapters} chapters total)`,
+          `Generate a novel configuration from the idea (about ${params.totalChapters} ${pluralEn(params.totalChapters, 'chapter')} total)`,
         ),
         executor: async (step, context, callbacks) => {
           const { GenerateConfigCommand } = await import('./commands/architecture.command')

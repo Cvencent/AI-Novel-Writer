@@ -1,3 +1,4 @@
+import { pluralEn } from '../../../shared/plural-en'
 type Text = (zh: string, en: string) => string
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -15,7 +16,7 @@ export function shelfTime(iso: string, now: Date, text: Text): string {
   const days = Math.round((startOfDay(now) - startOfDay(date)) / DAY_MS)
   if (days <= 0) return text(`今天 ${pad(date.getHours())}:${pad(date.getMinutes())}`, `Today ${pad(date.getHours())}:${pad(date.getMinutes())}`)
   if (days === 1) return text('昨天', 'Yesterday')
-  if (days < 7) return text(`${days} 天前`, `${days} days ago`)
+  if (days < 7) return text(`${days} 天前`, `${days} ${pluralEn(days, 'day')} ago`)
   const month = date.getMonth() + 1
   const day = date.getDate()
   const monthEn = date.toLocaleString('en-US', { month: 'short' })

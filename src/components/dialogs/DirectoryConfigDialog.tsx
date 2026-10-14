@@ -9,6 +9,7 @@ import { getBlueprintBatchAdvice } from '../../services/workflows/blueprint-batc
 import { resolveWritingLanguage } from '../../shared/writing-language'
 import { PLANNING_ACTION_CHAPTER_LIMIT, PLANNING_TARGET_UNITS_LIMIT } from '../../shared/plot-outline-contract'
 import { useDirectoryConfigForm, type DirectoryConfigProps } from './use-directory-config-form'
+import { pluralEn } from '../../shared/plural-en'
 
 /** 蓝图生成配置弹框 — 选择生成范围和模式 */
 export default function DirectoryConfigDialog(props: DirectoryConfigProps) {
@@ -36,7 +37,7 @@ export default function DirectoryConfigDialog(props: DirectoryConfigProps) {
               ? text(`当前已存在 ${existingCount} 章蓝图，选择下一步操作：`, `${existingCount} chapter blueprints already exist. Choose what to do next:`)
               : hasPriorAuthority
                 ? text(`权威正文已定稿至第 ${appendStart - 1} 章，下一章蓝图从第 ${appendStart} 章开始。`, `Finalized manuscript authority ends at Chapter ${appendStart - 1}; the next blueprint starts at Chapter ${appendStart}.`)
-              : text(`项目共 ${total} 章，请选择生成范围：`, `The project has ${total} chapters. Choose a generation range:`)}
+              : text(`项目共 ${total} 章，请选择生成范围：`, `The project has ${total} ${pluralEn(total, 'chapter')}. Choose a generation range:`)}
           </DialogDescription>
         </DialogHeader>
 
@@ -158,7 +159,7 @@ export default function DirectoryConfigDialog(props: DirectoryConfigProps) {
               <RadioOption
                 checked={rangeMode === 'full'}
                 onChange={() => setRangeMode('full')}
-                label={text(`全量生成（共 ${total} 章）`, `Generate all ${total} chapters`)}
+                label={text(`全量生成（共 ${total} 章）`, `Generate all ${total} ${pluralEn(total, 'chapter')}`)}
               />
             </div>
             <p

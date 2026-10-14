@@ -9,6 +9,7 @@ import { Check } from '../../ui/Check'
 import { Notice } from '../../ui/Notice'
 import { InkDialog } from '../InkDialog'
 import { SECTION_ORDER } from './architecture-sections'
+import { pluralEn } from '../../../shared/plural-en'
 
 /** 生成架构的确认对话框。表单与校验沿用 ArchitectureConfirmDialog 的 useArchitectureConfirmForm，这里只换成纸墨样式。 */
 export default function ArchitectureGenerateDialog(props: ArchitectureConfirmFormOptions) {
@@ -81,7 +82,7 @@ export default function ArchitectureGenerateDialog(props: ArchitectureConfirmFor
                       {unit}
                     </label>
                     <p className="arch-range-note">
-                      {text(`全书 ${totalChapters} 章，每次最多 ${PLANNING_ACTION_CHAPTER_LIMIT} 章；目标字数只作参考。`, `${totalChapters} chapters in all, up to ${PLANNING_ACTION_CHAPTER_LIMIT} per run; the target is a guide.`)}
+                      {text(`全书 ${totalChapters} 章，每次最多 ${PLANNING_ACTION_CHAPTER_LIMIT} 章；目标字数只作参考。`, `${totalChapters} ${pluralEn(totalChapters, 'chapter')} in all, up to ${PLANNING_ACTION_CHAPTER_LIMIT} per run; the target is a guide.`)}
                     </p>
                     {form.synopsisEffectNote && <p className="arch-range-effect">{form.synopsisEffectNote}</p>}
                     {form.synopsisRangeIssue && <p className="arch-range-issue" role="alert">{form.synopsisRangeIssue}</p>}

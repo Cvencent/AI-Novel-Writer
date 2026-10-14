@@ -124,8 +124,8 @@ describe('i18n coverage boundary scanner', () => {
 
       expect(result.status).toBe(1)
       expect(result.output).toContain('Found 2 unlocalized visible strings')
-      expect(result.output).toContain('src/components/stage/Counts.tsx:4 [english-plural] `The book has ${total} chapters.`')
-      expect(result.output).toContain('src/components/stage/Counts.tsx:6 [english-plural] `${lines} files selected`')
+      expect(result.output).toContain('src/components/stage/Counts.tsx:5 [english-plural] `The book has ${total} chapters.`')
+      expect(result.output).toContain('src/components/stage/Counts.tsx:7 [english-plural] `${lines} files selected`')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

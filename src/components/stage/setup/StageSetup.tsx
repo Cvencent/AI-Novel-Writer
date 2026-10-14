@@ -28,6 +28,7 @@ import ModelMissingNotice from '../ModelMissingNotice'
 import { commandLabel } from '../shortcut-keys'
 import { useModelMissing } from '../use-model-missing'
 import { MORE_FIELDS, ONE_MISSING_HINT, POV_OPTIONS, REQUIRED_NAMES, STRUCTURE_OPTIONS, type MoreField } from './setup-fields'
+import { pluralEn } from '../../../shared/plural-en'
 
 type Form = ReturnType<typeof useNovelConfigForm>
 type Text = (zh: string, en: string) => string
@@ -355,7 +356,7 @@ function SetupSession({ projectKey }: { projectKey: string }) {
                   <option value="en-US">English</option>
                 </select>
               </label>
-              <span className="pi-num-ui">{text(`${countDraftUnits(config.coreOutline)} 字`, `${countDraftUnits(config.coreOutline)} words`)}</span>
+              <span className="pi-num-ui">{text(`${countDraftUnits(config.coreOutline)} 字`, `${countDraftUnits(config.coreOutline)} ${pluralEn(countDraftUnits(config.coreOutline), 'word')}`)}</span>
             </div>
             <GenerateError field="coreOutline" label={text('核心大纲', 'Core outline')} form={form} />
           </section>

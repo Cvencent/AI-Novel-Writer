@@ -22,6 +22,7 @@ import { useChapterBlueprint } from './use-chapter-blueprint'
 import ChapterPlan from './ChapterPlan'
 import { STAGE_STEP } from './chapter-lifecycle'
 import VersionSwitcher from './VersionSwitcher'
+import { pluralEn } from '../../../shared/plural-en'
 
 /**
  * 这一稿显示哪份审稿与原文：最新一份有复验周期的审稿（确认后的清单按它指向的原审稿算），都没有周期（旧审稿）时取最新一份。
@@ -111,10 +112,10 @@ function DraftChapter({ tab, filePath, projectKey }: { tab: EditorTab; filePath:
   const title = blueprint?.title || draft.meta?.chapterTitle || ''
   const units = charCount.toLocaleString(locale)
   const versionLabel = !draft.meta ? text('读取中…', 'Loading…')
-    : stage === 'final' ? text(`定稿 · ${units} 字`, `Final · ${units} words`)
-      : stage === 'archived' ? text(`已归档 v${draft.meta.version} · ${units} 字`, `Archived v${draft.meta.version} · ${units} words`)
-        : stage === 'revised' ? text(`修稿已合并 v${draft.meta.version} · ${units} 字`, `Revised v${draft.meta.version} · ${units} words`)
-          : text(`草稿 v${draft.meta.version} · ${units} 字`, `Draft v${draft.meta.version} · ${units} words`)
+    : stage === 'final' ? text(`定稿 · ${units} 字`, `Final · ${units} ${pluralEn(charCount, 'word')}`)
+      : stage === 'archived' ? text(`已归档 v${draft.meta.version} · ${units} 字`, `Archived v${draft.meta.version} · ${units} ${pluralEn(charCount, 'word')}`)
+        : stage === 'revised' ? text(`修稿已合并 v${draft.meta.version} · ${units} 字`, `Revised v${draft.meta.version} · ${units} ${pluralEn(charCount, 'word')}`)
+          : text(`草稿 v${draft.meta.version} · ${units} 字`, `Draft v${draft.meta.version} · ${units} ${pluralEn(charCount, 'word')}`)
   const editable = !draft.isReadonly && !draft.isChapterBusy
 
   return (
@@ -173,13 +174,13 @@ function DraftChapter({ tab, filePath, projectKey }: { tab: EditorTab; filePath:
         <footer className="stage-ch-focusbar" aria-label={text('写作状态', 'Writing status')}>
           {target ? (
             <>
-              <span>{text(`${units} / ${target.toLocaleString(locale)} 字`, `${units} / ${target.toLocaleString(locale)} words`)}</span>
+              <span>{text(`${units} / ${target.toLocaleString(locale)} 字`, `${units} / ${target.toLocaleString(locale)} ${pluralEn(target, 'word')}`)}</span>
               <span className="stage-ch-focus-progress" role="progressbar" aria-label={text('本章目标字数进度', 'Progress toward the chapter target')}
                 aria-valuemin={0} aria-valuemax={target} aria-valuenow={Math.min(charCount, target)}>
                 <span style={{ width: `${Math.min(100, charCount / target * 100)}%` }} />
               </span>
             </>
-          ) : <span>{text(`${units} 字`, `${units} words`)}</span>}
+          ) : <span>{text(`${units} 字`, `${units} ${pluralEn(charCount, 'word')}`)}</span>}
           <span>{tab.dirty ? text('有未保存的修改', 'Unsaved changes') : text('已保存', 'Saved')}</span>
         </footer>
       )}

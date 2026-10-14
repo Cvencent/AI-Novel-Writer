@@ -4,6 +4,7 @@ import { useLocaleStore } from '../../stores/locale-store'
 import { Button } from '../ui/Button'
 import { cn } from '../../lib/utils'
 import { useVersionHistory } from '../stage/history/use-version-history'
+import { pluralEn } from '../../shared/plural-en'
 
 /** 版本历史面板 — 查看章节版本并与当前内容对比 */
 export default function VersionHistory({ projectKey }: { projectKey: string }) {
@@ -137,7 +138,7 @@ export default function VersionHistory({ projectKey }: { projectKey: string }) {
                       <span className="text-[0.7rem] text-[var(--color-text-muted)]">
                         {text(
                           `${ver.word_count.toLocaleString(locale)} 字`,
-                          `${ver.word_count.toLocaleString(locale)} words`,
+                          `${ver.word_count.toLocaleString(locale)} ${pluralEn(ver.word_count, 'word')}`,
                         )}
                       </span>
                       <span className="text-[0.7rem] text-[var(--color-text-muted)]">

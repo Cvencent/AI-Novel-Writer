@@ -12,6 +12,7 @@ import { Button } from '../ui/Button'
 import { Label } from '../ui/Label'
 import { NativeSelect } from '../ui/NativeSelect'
 import { chapterWindow, plotChapters } from '../stage/plot/plot-shape'
+import { pluralEn } from '../../shared/plural-en'
 
 const CHAPTER_WIDTH = 128
 const CHAPTER_WINDOW_SIZE = 40
@@ -134,7 +135,7 @@ export default function PlotTreeView({
             </Button>
             <span>{text(
               `显示 ${chapters[0]}–${chapters.at(-1)} 章（共 ${allChapters.length} 个有内容的章节）`,
-              `Showing Chapters ${chapters[0]}–${chapters.at(-1)} (${allChapters.length} chapters with content)`,
+              `Showing Chapters ${chapters[0]}–${chapters.at(-1)} (${allChapters.length} ${pluralEn(allChapters.length, 'chapter')} with content)`,
             )}</span>
             <Button
               size="sm"

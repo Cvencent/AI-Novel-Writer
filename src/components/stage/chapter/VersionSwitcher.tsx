@@ -12,6 +12,7 @@ import { Button } from '../../ui/Button'
 import { useAnchoredLayer } from '../../ui/use-anchored-layer'
 import { InkDialog } from '../InkDialog'
 import { openDraftInChapterView, swapChapterTab } from './chapter-tab-routing'
+import { pluralEn } from '../../../shared/plural-en'
 
 type Text = (zh: string, en: string) => string
 
@@ -117,7 +118,7 @@ export default function VersionSwitcher({ tab, current, label, title, onSave }: 
     >
       <span>{versionName(draft, text)}{draft.id === current.id ? text(' · 当前', ' · open') : ''}</span>
       <small>
-        {draft.wordCount !== undefined ? text(`${draft.wordCount.toLocaleString(locale)} 字 · `, `${draft.wordCount.toLocaleString(locale)} words · `) : ''}
+        {draft.wordCount !== undefined ? text(`${draft.wordCount.toLocaleString(locale)} 字 · `, `${draft.wordCount.toLocaleString(locale)} ${pluralEn(draft.wordCount, 'word')} · `) : ''}
         {sqliteTime(draft.updatedAt ?? draft.createdAt).toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
       </small>
     </button>

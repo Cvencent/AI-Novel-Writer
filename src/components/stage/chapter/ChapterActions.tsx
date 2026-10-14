@@ -36,6 +36,7 @@ import type { ChapterStage } from './chapter-lifecycle'
 import MergeView from './MergeView'
 import PostProcessSteps from './PostProcessSteps'
 import ReviewSheet from './ReviewSheet'
+import { pluralEn } from '../../../shared/plural-en'
 
 type DraftActions = ReturnType<typeof useDraftActions>
 
@@ -229,7 +230,7 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
   const recheck = checklist.cycle?.revisionStatus === 'merge-committed' ? checklist.cycle : null
   const resolved = recheck?.findings.filter(finding => finding.status === 'resolved').length ?? 0
   const revisedHint = recheck?.recheckDisposition === 'completed'
-    ? text(`复验完成：${resolved} / ${recheck.findings.length} 项意见已解决`, `Recheck done: ${resolved} of ${recheck.findings.length} notes resolved`)
+    ? text(`复验完成：${resolved} / ${recheck.findings.length} 项意见已解决`, `Recheck done: ${resolved} of ${recheck.findings.length} ${pluralEn(recheck.findings.length, 'note')} resolved`)
     : recheck?.recheckDisposition === 'required'
       ? text('合并后复验还没完成，可在审稿报告里重试', 'The post-merge recheck is incomplete; retry it in the review report')
       : text('修稿已合并，可以定稿', 'The revision is merged and ready to finalize')
@@ -332,7 +333,8 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
     }
   })()
 
-  const units = countDraftUnits(tab.content ?? '').toLocaleString(locale)
+  const unitCount = countDraftUnits(tab.content ?? '')
+  const units = unitCount.toLocaleString(locale)
 
   return (
     <>
@@ -424,7 +426,7 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
         )}
       >
         <ul className="stage-ch-commit">
-          <li><b>{text('写入正文。', 'Writes the manuscript.')}</b>{text(`这 ${units} 字成为第 ${chapterNumber} 章正文，同时保存为正文文件。`, `These ${units} words become chapter ${chapterNumber} and are saved as the manuscript file.`)}</li>
+          <li><b>{text('写入正文。', 'Writes the manuscript.')}</b>{text(`这 ${units} 字成为第 ${chapterNumber} 章正文，同时保存为正文文件。`, `These ${units} ${pluralEn(unitCount, 'word')} become chapter ${chapterNumber} and are saved as the manuscript file.`)}</li>
           <li><b>{text('自动做定稿后处理。', 'Runs post-finalization steps.')}</b>{text('完成后在本章页面显示每一步的结果，失败的步骤可以单独重试。', 'Each step’s result appears on this chapter; a failed step can be retried on its own.')}</li>
           <li><b>{text('之后不能直接修改。', 'No direct edits afterwards.')}</b>{text('要再改，从版本历史回退为新草稿。', 'To change it again, roll back to a new draft from version history.')}</li>
         </ul>

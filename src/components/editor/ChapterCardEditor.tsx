@@ -30,6 +30,7 @@ import CodeMirrorEditor from './CodeMirrorEditor'
 import { requireIpcSuccess } from '../../services/ipc-result'
 import { SaveFeedback } from './save-feedback'
 import { currentProjectSessionForPath, isCurrentProjectSession, useChapterBlueprints } from './use-chapter-blueprints'
+import { pluralEn } from '../../shared/plural-en'
 
 const ROLE_COLORS: Record<string, string> = {
   高潮: 'bg-red-500/20 text-[var(--color-error-text)]',
@@ -297,7 +298,7 @@ function ChapterCardEditorSession({
             {text('章节蓝图', 'Chapter blueprints')}
             {visibleBlueprints.length > 0 && (
               <span style={{ color: 'var(--color-text-muted)' }} className="ml-1 font-normal">
-                {text(`(${visibleBlueprints.length} 章)`, `(${visibleBlueprints.length} chapters)`)}
+                {text(`(${visibleBlueprints.length} 章)`, `(${visibleBlueprints.length} ${pluralEn(visibleBlueprints.length, 'chapter')})`)}
               </span>
             )}
           </span>

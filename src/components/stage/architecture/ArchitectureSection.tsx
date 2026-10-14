@@ -8,6 +8,7 @@ import { Button } from '../../ui/Button'
 import { Menu, type MenuGroupSpec } from '../../ui/Menu'
 import { Notice } from '../../ui/Notice'
 import { badgeText, badgeTone, SECTION_NUMERALS, type SectionBadge } from './architecture-sections'
+import { pluralEn } from '../../../shared/plural-en'
 
 interface SectionProps {
   sectionKey: ArchStepKey
@@ -87,7 +88,7 @@ function OutlineNotice({ overview, onGenerate }: { overview: ArchitectureOvervie
             <Sparkles size={14} aria-hidden />{text(`续写第 ${coveredTo + 1} 章起`, `Continue from ch. ${coveredTo + 1}`)}
           </Button>
         )}>
-        {text(`已生成的 ${coveredTo} 章保留不动，续写只追加缺少的章节。`, `The first ${coveredTo} chapters stay as they are; only missing chapters are added.`)}
+        {text(`已生成的 ${coveredTo} 章保留不动，续写只追加缺少的章节。`, `The first ${coveredTo} ${pluralEn(coveredTo, 'chapter')} stay as they are; only missing chapters are added.`)}
       </Notice>
     )
   }

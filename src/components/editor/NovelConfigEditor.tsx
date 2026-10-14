@@ -22,6 +22,7 @@ import { useLocaleStore } from '../../stores/locale-store'
 import { AUDIENCE_EN, GENRE_EN } from './novel-config-labels'
 import { SaveFeedback } from './save-feedback'
 import { NOVEL_GENRES, novelConfigSessionKey, useNovelConfigForm } from './use-novel-config-form'
+import { pluralEn } from '../../shared/plural-en'
 
 /** 小说配置编辑器 — Tab 内的可视化配置面板 */
 export default function NovelConfigEditor({ projectKey }: { projectKey: string }) {
@@ -239,11 +240,11 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
               <span>{text('作用范围：当前项目', 'Scope: this project')}</span>
               <span>{text(
                 `产品默认值：${DEFAULT_NARRATIVE_THREAD_DORMANT_THRESHOLD} 章`,
-                `Product default: ${DEFAULT_NARRATIVE_THREAD_DORMANT_THRESHOLD} chapters`,
+                `Product default: ${DEFAULT_NARRATIVE_THREAD_DORMANT_THRESHOLD} ${pluralEn(DEFAULT_NARRATIVE_THREAD_DORMANT_THRESHOLD, 'chapter')}`,
               )}</span>
               <span>{text(
                 `当前生效值：${dormantThreshold} 章`,
-                `Effective now: ${dormantThreshold} chapters`,
+                `Effective now: ${dormantThreshold} ${pluralEn(dormantThreshold, 'chapter')}`,
               )}</span>
             </div>
           </Section>

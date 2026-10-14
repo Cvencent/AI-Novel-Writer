@@ -7,6 +7,8 @@ import ts from 'typescript'
 
 const han = /\p{Script=Han}/u
 const latinWord = /[A-Za-z]{2,}/
+/** 英文里紧跟在数量后的复数名词：数量是 1 时读成「1 chapters」，要走 pluralEn。 */
+const fixedPluralAfterCount = /^ (?:chapters|files|characters|items|lines|log lines|calls|drafts|words|documents|chunks|days|notes|versions|entries)\b/
 
 /**
  * The broad renderer roots preserve the existing visible-copy check.  The
@@ -248,6 +250,17 @@ function isUnsafeErrorForward(node, sourceFile, bindings, seen = new Set()) {
   return false
 }
 
+/** text(中文, 英文) 的英文一侧里，`${n} chapters` 这类数量后跟固定复数的模板。 */
+function inspectEnglishCounts(violations, root, file, sourceFile, node) {
+  if (
+    ts.isTemplateExpression(node)
+    && node.templateSpans.some(span => fixedPluralAfterCount.test(span.literal.text))
+  ) {
+    add(violations, root, file, sourceFile, node, node.getText(sourceFile), 'english-plural')
+  }
+  ts.forEachChild(node, child => inspectEnglishCounts(violations, root, file, sourceFile, child))
+}
+
 function inspectVisibleExpression(violations, root, file, sourceFile, node, kind) {
   if (isLocalizedCall(node, sourceFile)) return
   if (nodeContainsHan(node, sourceFile)) {
@@ -312,6 +325,9 @@ function inspectRendererFile(violations, root, file, sourceFile) {
   const bindings = collectBindings(sourceFile)
 
   const visit = (node) => {
+    if (isLocalizedCall(node, sourceFile) && node.arguments.length >= 2) {
+      inspectEnglishCounts(violations, root, file, sourceFile, node.arguments[1])
+    }
     if (
       promptSettings
       && ts.isJsxExpression(node)

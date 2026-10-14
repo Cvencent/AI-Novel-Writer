@@ -17,6 +17,7 @@ import { InkDialog } from '../InkDialog'
 import { commandLabel } from '../shortcut-keys'
 import { highlight } from './search-highlight'
 import { EMPTY_DRAFT, isImportedDocument, useKnowledgeBase } from './use-knowledge-base'
+import { pluralEn } from '../../../shared/plural-en'
 
 type Shelf = 'imported' | 'chapters'
 
@@ -182,7 +183,7 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
                 ) : <>
                   <p className="stage-kb-meta">
                     {documentCopy.edited ? text('已改过的项目副本', 'Edited project copy') : text('项目副本', 'Project copy')}
-                    {' · '}{text(`${countDraftUnits(draftContent).toLocaleString(locale)} 字`, `${countDraftUnits(draftContent).toLocaleString(locale)} words`)}
+                    {' · '}{text(`${countDraftUnits(draftContent).toLocaleString(locale)} 字`, `${countDraftUnits(draftContent).toLocaleString(locale)} ${pluralEn(countDraftUnits(draftContent), 'word')}`)}
                     {' · '}{text('修改不会影响你电脑上的原文件', 'Edits never change the original file on your computer')}
                   </p>
                   <textarea

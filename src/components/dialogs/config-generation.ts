@@ -6,6 +6,7 @@ import { useProjectStore } from '../../stores/project-store'
 import { useWorkflowStore, workflowResourceConflictMessage } from '../../stores/workflow-store'
 import { toast } from '../ui/Toast'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
+import { pluralEn } from '../../shared/plural-en'
 
 type Text = (zh: string, en: string) => string
 
@@ -53,7 +54,7 @@ export function startConfigGeneration({ idea, projectSession, onGenerated }: {
     return false
   }
   toast.info(text('正在根据脑洞生成小说配置...', 'Generating novel configuration from your idea...'))
-  addLog('info', text(`正在根据创作脑洞生成小说配置（规模：${totalChapters} 章 / ${wordsPerChapter} 字/章）...`, `Generating novel configuration (${totalChapters} chapters / ${wordsPerChapter} words per chapter)...`))
+  addLog('info', text(`正在根据创作脑洞生成小说配置（规模：${totalChapters} 章 / ${wordsPerChapter} 字/章）...`, `Generating novel configuration (${totalChapters} ${pluralEn(totalChapters, 'chapter')} / ${wordsPerChapter} ${pluralEn(wordsPerChapter, 'word')} per chapter)...`))
   // 后台执行 LLM 调用，由 WorkflowEngine 接管并显示运行状态。
   void startWorkflow(workflow)
   return true
