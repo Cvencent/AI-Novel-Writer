@@ -370,6 +370,14 @@ describe('写作此章、标签顶替与跨作品的请求', () => {
     expect([activeTab()?.type, activeTab()?.chapterNumber, useStageStore.getState().writeRequest]).toEqual(['chapter', 5, null])
   })
 
+  it('没有蓝图的待写章已经开着，之后再来的写作请求也落空', async () => {
+    await mount()
+    await act(async () => stageNavigate({ kind: 'chapter', chapterNumber: 5 }))
+    await expect.element(page.getByText('这一章还没有蓝图')).toBeVisible()
+    await act(async () => stageNavigate({ kind: 'chapter', chapterNumber: 5, write: blueprintWritePrefill({ ...BLUEPRINT, chapterNumber: 5 }) }))
+    await vi.waitFor(() => expect(useStageStore.getState().writeRequest).toBeNull())
+  })
+
   it('换上另一稿期间旧标签又有了修改：旧标签留着不关', async () => {
     const draft = backend.addDraft({ status: 'draft' })
     await mount()
