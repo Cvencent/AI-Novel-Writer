@@ -363,7 +363,7 @@ async function main() {
     await page.getByRole('button', { name: 'AI 生成架构' }).click()
     const generationDialog = page.getByRole('dialog')
     await generationDialog.getByRole('button', { name: '全选' }).click()
-    for (const label of ['角色图谱', '情节大纲']) {
+    for (const label of ['角色名单', '情节大纲']) {
       await generationDialog.locator('label').filter({ hasText: label }).click()
     }
     await generationDialog.getByRole('button', { name: '确认生成（2/4）' }).click()
