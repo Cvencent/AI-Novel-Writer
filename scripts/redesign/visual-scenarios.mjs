@@ -101,7 +101,9 @@ export const VISUAL_SCENARIOS = {
     await stack.locator('.pi-toast[data-tone="danger"]').waitFor({ state: 'visible' })
     await page.waitForTimeout(300)
     assert.equal(await stack.count(), 1, '只有一个提示栈')
-    assert.deepEqual(await liveToastTitles(page), ['已复制安全诊断', '复制安全诊断失败'], '同一句话合并成一条，出错的另起一条')
+    // 写完一章的「已完成」通知带动作，也在栈里
+    assert.deepEqual((await liveToastTitles(page)).filter(title => title.includes('安全诊断')), ['已复制安全诊断', '复制安全诊断失败'],
+      '同一句话合并成一条，出错的另起一条')
     const boxes = await stack.locator('.pi-toast:not([data-exiting])').evaluateAll(items => items.map(item => item.getBoundingClientRect().toJSON()))
     for (let i = 1; i < boxes.length; i++) assert.ok(boxes[i].top >= boxes[i - 1].bottom, '通知互不重叠')
     assert.ok(await inPaperInk(stack), '提示栈在纸墨宿主里')
@@ -109,10 +111,11 @@ export const VISUAL_SCENARIOS = {
   } },
 
   'rdv-toast-error': { model: true, shell: 'stage', setup: context => seedStageSample(context, { beforeReload: seedCalls }), run: async ({ page }) => {
-    const copy = await diagnosticsCopyButton(page)
+    // 面板打开后侧页被标 aria-hidden，按角色找不到复制按钮，先拿住元素
+    const copy = await (await diagnosticsCopyButton(page)).elementHandle()
     await stubClipboard(page, true)
     await copy.dispatchEvent('click')
-    await page.locator('.pi-toast').first().waitFor({ state: 'visible' })
+    await page.locator('.pi-toast', { hasText: '已复制安全诊断' }).waitFor({ state: 'visible' })
     // 提示栈已在时打开 Ctrl K 面板（Radix 模态），面板开着时复制失败
     await page.keyboard.press('Control+K')
     await stage.paletteInput(page).waitFor({ state: 'visible' })
