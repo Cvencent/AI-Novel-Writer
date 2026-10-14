@@ -119,14 +119,19 @@ async function holdNextChapterLookup(app) {
 const recordPopoverAndFocus = page => page.evaluate(() => {
   const log = []
   window.__rdx3Log = log
-  const describe = element => element === document.body ? 'body' : `${element.tagName.toLowerCase()}${element.className ? '.' + String(element.className).split(' ')[0] : ''}「${(element.getAttribute('aria-label') ?? element.textContent ?? '').trim().slice(0, 16)}」`
+  const describe = element => element === document.body ? 'body' : `${element.tagName.toLowerCase()}「${(element.getAttribute('aria-label') ?? element.textContent ?? '').trim().slice(0, 16)}」`
+  const popoverOf = element => {
+    const dialog = element.closest?.('[role="dialog"]')
+    const name = dialog && (dialog.getAttribute('aria-label') ?? document.getElementById(dialog.getAttribute('aria-labelledby') ?? '')?.textContent)
+    return name === '本次写作选项' ? dialog : null
+  }
   let open = false
   new MutationObserver(() => {
-    const now = Boolean(document.querySelector('.pi-popover'))
+    const now = [...document.querySelectorAll('[role="dialog"]')].some(popoverOf)
     if (now !== open) log.push({ t: Math.round(performance.now()), popover: now })
     open = now
   }).observe(document.body, { childList: true, subtree: true })
-  document.addEventListener('focusin', event => log.push({ t: Math.round(performance.now()), focus: describe(event.target) }), true)
+  document.addEventListener('focusin', event => log.push({ t: Math.round(performance.now()), focus: describe(event.target), inPopover: Boolean(popoverOf(event.target)) }), true)
   document.addEventListener('focusout', event => { if (!event.relatedTarget) log.push({ t: Math.round(performance.now()), blur: describe(event.target) }) }, true)
 })
 
@@ -319,10 +324,6 @@ export const RDX3_SCENARIOS = {
     return layout
   } },
 
-  /**
-   * 定稿后自动打开下一章遇上设置页里没保存的输入：放弃确认 → 收起设置 → 第 4 章单章视图自动弹出写作弹层。
-   * 放弃确认关掉后还焦点不能把刚弹出的写作弹层关掉。
-   */
   /** 作品菜单打开的导出、小说拆解与仿写、清除生成内容，取消或 Esc 关闭后焦点回到作品菜单按钮。 */
   'rdx3-work-menu-focus': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page, shoot }) => {
     const trigger = stage.root(page).getByRole('banner').getByRole('button', { name: `《${STAGE_SAMPLE.name}》作品菜单` })
@@ -435,8 +436,15 @@ export const RDX3_SCENARIOS = {
     return results
   } },
 
+  /**
+   * 定稿后自动打开下一章遇上设置页里没保存的输入：放弃确认 → 收起设置 → 第 4 章单章视图自动弹出写作弹层。
+   * 放弃确认关掉后还焦点不能把刚弹出的写作弹层关掉。
+   */
   'rdx3-write-after-discard': writeAfterDiscard(),
-  /** 同上，但放弃确认弹出前作者点过运行侧页的「历史」页签：确认关掉后焦点要还给这个还在的页签。 */
+  /**
+   * 同上，但放弃确认弹出前作者点过运行侧页的「历史」页签（它在确认关掉后还在）：还焦点不抢走写作弹层的焦点。
+   * 还焦点与弹层打开谁先谁后不定，所以只断言与先后无关的结果：「历史」若拿到焦点必须在弹层打开之前，弹层打开后焦点没有落到弹层外。
+   */
   'rdx3-write-after-discard-sheet': writeAfterDiscard({ focusBefore: page => runSheet.tab(page, '历史').click() }),
 }
 
@@ -464,13 +472,22 @@ function writeAfterDiscard({ focusBefore } = {}) {
     await discard.getByRole('button', { name: '放弃修改', exact: true }).click()
     await blueprint.popover(page).waitFor({ state: 'visible', timeout: 15_000 }).catch(() => undefined)
     await page.waitForTimeout(1200)
+    const popover = blueprint.popover(page)
     const outcome = {
-      popover: await blueprint.popover(page).count(),
-      active: await page.evaluate(() => document.activeElement === document.body ? 'body' : document.activeElement?.outerHTML.slice(0, 120)),
+      popover: await popover.count(),
+      focusInPopover: await popover.evaluate(element => element.contains(document.activeElement)).catch(() => false),
       log: await page.evaluate(() => window.__rdx3Log),
     }
     await shoot(focusBefore ? 'rdx3-write-after-discard-sheet' : 'rdx3-write-after-discard')
-    assert.equal(outcome.popover, 1, `放弃修改后写作弹层还开着：${JSON.stringify(outcome)}`)
+    const opened = outcome.log.findIndex(entry => entry.popover === true)
+    const report = JSON.stringify(outcome)
+    assert.equal(outcome.popover, 1, `放弃修改后写作弹层还开着：${report}`)
+    assert.ok(outcome.focusInPopover, `焦点在写作弹层里：${report}`)
+    assert.deepEqual(outcome.log.slice(opened + 1).filter(entry => entry.focus && !entry.inPopover), [], `弹层打开后焦点没有落到弹层外：${report}`)
+    if (focusBefore) {
+      const history = outcome.log.findIndex(entry => entry.focus?.includes('历史'))
+      assert.ok(history < opened, `「历史」若拿到焦点，是在弹层打开之前：${report}`)
+    }
     return outcome
   } }
 }
