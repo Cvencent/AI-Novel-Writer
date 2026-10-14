@@ -89,7 +89,7 @@ function EmptyLibrary({ modelMissing }: { modelMissing: boolean }) {
       </div>
       <div className="stage-library-empty-notes">
         <LegacyImportNotice />
-        {modelMissing && <ModelMissingNotice detail={text('写作、审稿、修稿和 AI 填充设定都要用到它。先添加一个，再新建作品。', 'Writing, reviews, revisions and AI setup all need one. Add a model first, then start a book.')} />}
+        {modelMissing && <ModelMissingNotice />}
         <LibraryUpdateCard />
       </div>
     </div>
@@ -220,7 +220,7 @@ export default function StageLibrary() {
       {!waiting && (
         <aside className="stage-lib-aside" aria-label={text('作品概览', 'Book overview')}>
           {overviewCard}
-          {modelMissing && <ModelMissingNotice detail={text('写作、审稿、修稿和 AI 填充设定都要用到它。', 'Writing, reviews, revisions and AI setup all need one.')} />}
+          {modelMissing && <ModelMissingNotice />}
           <LibraryUpdateCard />
         </aside>
       )}

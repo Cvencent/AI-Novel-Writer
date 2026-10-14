@@ -51,6 +51,7 @@
   max-width: 34em;
   font-size: var(--fs-14);
   color: var(--ink-2);
+  text-wrap: balance;
 }
 
 /* ---------- 核心大纲 ---------- */
@@ -382,4 +383,39 @@
 .stage-setup-error {
   margin: 8px 0 0;
   font-size: var(--fs-12);
+}
+
+/* 矮窗口（1280×720 等）：首屏要放下核心大纲与三项必填，收紧留白，缺模型提示并成一行，大纲输入框先矮一些（随内容长高）。 */
+@media (max-height: 760px) {
+  .stage-setup-inner {
+    padding-top: 24px;
+    gap: 18px;
+  }
+
+  .stage-setup-title {
+    margin: 10px 0 6px;
+  }
+
+  .stage-setup .pi-notice {
+    align-items: center;
+    padding-block: 8px;
+  }
+
+  .stage-setup .pi-notice-body {
+    flex-direction: row;
+    flex-wrap: wrap;
+    column-gap: 8px;
+  }
+
+  .stage-setup .pi-notice > svg {
+    margin-top: 0;
+  }
+
+  .stage-setup-outline {
+    padding-top: 16px;
+  }
+
+  .stage-setup-outline-input {
+    min-height: 68px;
+  }
 }
