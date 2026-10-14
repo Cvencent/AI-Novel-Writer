@@ -49,12 +49,12 @@ export function useNovelConfigForm(projectKey: string) {
   const dirty = useEditorStore(state => state.tabs.some(
     tab => tab.type === 'config' && tab.projectKey === projectKey && tab.dirty,
   ))
-  const exitSaveRef = useRef<(propagateFailure?: boolean) => Promise<void>>(async () => undefined)
+  const exitSaveRef = useRef<(propagateFailure?: boolean) => Promise<boolean>>(async () => false)
   useEffect(() => {
     registerEditorExitSaveHandler({
       type: 'config',
       projectKey,
-      save: () => exitSaveRef.current(true),
+      save: async () => { await exitSaveRef.current(true) },
     })
   }, [projectKey])
 
@@ -67,21 +67,22 @@ export function useNovelConfigForm(projectKey: string) {
     setGenerateError(error => (error?.field === key ? null : error))
   }
 
-  /** Store 已是最新数据，这里只持久化到磁盘。 */
-  const save = async (propagateFailure = false) => {
+  /** Store 已是最新数据，这里只持久化到磁盘。返回是否写进了这次打开的作品：没发出、作品已切换或写入失败都是 false。 */
+  const save = async (propagateFailure = false): Promise<boolean> => {
     const projectSession = captureProjectSession(currentProject)
-    if (!config || saving || !projectSession || !isProjectSessionPath(projectSession, projectKey)) return
+    if (!config || saving || !projectSession || !isProjectSessionPath(projectSession, projectKey)) return false
     setSaving(true)
     setSaveOutcome('idle')
     try {
       const saved = await saveProject(projectSession)
-      if (!isProjectSessionCurrent(projectSession)) return
+      if (!isProjectSessionCurrent(projectSession)) return false
       if (!saved) throw new Error(text('项目配置未能写入磁盘', 'The project configuration could not be written to disk.'))
       addLog('info', text('小说配置已保存', 'Novel configuration saved'))
       const stillDirty = useEditorStore.getState().tabs.some(
         tab => tab.type === 'config' && tab.projectKey === projectKey && tab.dirty,
       )
       setSaveOutcome(stillDirty ? 'idle' : 'saved')
+      return true
     } catch (error) {
       if (isProjectSessionCurrent(projectSession)) {
         setSaveOutcome('failed')
@@ -89,6 +90,7 @@ export function useNovelConfigForm(projectKey: string) {
         addLog('error', text(`保存失败：${error}`, `Save failed: ${error}`))
       }
       if (propagateFailure) throw error
+      return false
     } finally {
       if (isProjectSessionCurrent(projectSession)) setSaving(false)
     }
