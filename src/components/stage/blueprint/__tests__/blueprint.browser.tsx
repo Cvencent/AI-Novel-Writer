@@ -252,6 +252,18 @@ describe('蓝图阶段', () => {
     expect((saved as ChapterBlueprint[])[0].characters).toEqual(['林岚', '沈砺'])
   })
 
+  it('出场人物重名：一次输入两遍只加一个；已有重名时移除一个只少一个', async () => {
+    stored = [{ ...blueprint(1, '旧港'), characters: ['林岚', '守塔人', '守塔人'] }, blueprint(2, '北堤')]
+    await renderPage()
+    await act(async () => page.getByRole('button', { name: '移除 守塔人' }).first().click())
+    await act(async () => page.getByLabelText('出场人物').fill('沈砺、沈砺'))
+    await act(async () => page.getByLabelText('出场人物').element().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+    const save = editorSaveHandler({ id: 'chapter-card-editor', type: 'chapter-card', projectKey: PROJECT_PATH })
+    await act(async () => { await save!() })
+    const [[, saved]] = calls('db:blueprint-upsert-many')
+    expect((saved as ChapterBlueprint[])[0].characters).toEqual(['林岚', '守塔人', '沈砺'])
+  })
+
   it('输入法组字时按回车是选词，不把拼音当人物加进来', async () => {
     await renderPage()
     const input = page.getByLabelText('出场人物')
