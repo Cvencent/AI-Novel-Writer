@@ -103,6 +103,45 @@ describe('书房里的设置页有没保存的输入时，导入旧项目副本�
     expect(skillUrl().value).toBe('https://github.com/owner/skill')
   })
 
+  describe('从命令面板「打开作品」，选文件夹时取消', () => {
+    const folderDialogs = () => invoke.mock.calls.filter(([channel]) => channel === 'dialog:select-folder')
+    async function openFromPalette() {
+      await act(async () => useStageStore.setState({ palette: 'commands' }))
+      await act(async () => paletteOption('打开作品').click())
+    }
+
+    it('没有没保存的输入：设置页留着', async () => {
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(skillUrl(), '')
+        skillUrl().dispatchEvent(new Event('input', { bubbles: true }))
+      })
+      await openFromPalette()
+      await vi.waitFor(() => expect(folderDialogs()).toHaveLength(1))
+      expect(discardDialog()).toBeUndefined()
+      expect(useLayoutStore.getState().settingsOpen).toBe(true)
+      expect(skillUrl()).toBeTruthy()
+    })
+
+    it('选了放弃修改再取消选文件夹：设置页与输入都留着', async () => {
+      await openFromPalette()
+      await act(async () => dialogButton('放弃修改')!.click())
+      await vi.waitFor(() => expect(folderDialogs()).toHaveLength(1))
+      expect(useLayoutStore.getState().settingsOpen).toBe(true)
+      expect(skillUrl().value).toBe('https://github.com/owner/skill')
+      expect(opens()).toEqual([])
+    })
+
+    it('选了放弃修改并选到文件夹：收起设置页，打开选到的作品，只问一次', async () => {
+      const plain = invoke.getMockImplementation()!
+      invoke.mockImplementation(async (channel: string, ...args: unknown[]) => channel === 'dialog:select-folder' ? TARGET : plain(channel, ...args))
+      await openFromPalette()
+      await act(async () => dialogButton('放弃修改')!.click())
+      await vi.waitFor(() => expect(opens().map(([, path]) => path)).toEqual([TARGET]))
+      expect(useLayoutStore.getState().settingsOpen).toBe(false)
+      expect(discardDialog()).toBeUndefined()
+    })
+  })
+
   it('确认框开着时又点了新建作品，原来的导入照样收尾：继续编辑后导入不再占着，也不弹新建', async () => {
     let importing!: Promise<boolean>
     await act(async () => { importing = useProjectStore.getState().importLegacyProject() })
