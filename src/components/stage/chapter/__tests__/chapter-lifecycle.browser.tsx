@@ -343,7 +343,7 @@ describe('流程脊与单章视图同一个阶段', () => {
 })
 
 describe('确认审稿清单的往返期间换了作品，回来的结果不碰新作品的侧页', () => {
-  const HARBOR = { projectId: 'harbor', leaseId: 'harbor-lease', projectPath: 'C:\novels\harbor' }
+  const HARBOR = { projectId: 'harbor', leaseId: 'harbor-lease', projectPath: 'C:\\novels\\harbor' }
   const RUN_SHEET = { kind: 'run' as const, tab: 'active' as const }
 
   /** 卡住确认清单读审稿原文的那次 db:review-get-full，返回放行函数。 */
