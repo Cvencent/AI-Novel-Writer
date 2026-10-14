@@ -72,7 +72,9 @@ describe('四个阶段的状态由项目数据派生', () => {
     expect(stages[1]).toMatchObject({ filled: 2, total: 4, progress: { state: 'active', ratio: 0.5 } })
     expect(stages[2]).toMatchObject({ planned: 3, total: 12, progress: { state: 'done' } })
     expect(stages[3].progress).toEqual({ state: 'todo' })
-    expect(landingStage(stages)).toBe('architecture')
+    // 用户决定 B（#394 §6）：已有蓝图时架构没写完不拉回架构，落点跳到下一个未完成的阶段。
+    expect(landingStage(stages)).toBe('manuscript')
+    expect(landingStage(deriveStages(facts({ architecture: { premise: true, characters: true }, blueprints: [] })))).toBe('architecture')
     expect(deriveStages(facts({ blueprints: [] }))[2].progress).toEqual({ state: 'todo' })
   })
 
