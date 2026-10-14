@@ -354,7 +354,7 @@ export const ARCH_SCENARIOS = {
   'arch-names-en': { model: false, shell: 'stage', setup: seedArch(), run: async ({ page, invoke, reload }) => {
     assert.equal((await invoke(page, 'config:set', { locale: 'en-US' })).success, true)
     await reload()
-    await stage.shelfButton(page, 'Open 灯塔').click()
+    await stage.openFromLibraryEn(page, '灯塔')
     await page.getByRole('navigation', { name: 'Writing flow' }).getByRole('button', { name: /^Architecture/ }).click()
     await root(page).locator('.arch-page:not([data-loading]):not([data-cast-loading])').waitFor({ state: 'visible', timeout: 30_000 })
     const regions = ['Premise', 'Cast', 'World', 'Outline']
