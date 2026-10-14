@@ -11,6 +11,7 @@ import { useEditorStore } from '../../../../stores/editor-store'
 import { useLayoutStore } from '../../../../stores/layout-store'
 import { useLLMStore } from '../../../../stores/llm-store'
 import { navigate } from '../../../../stores/navigation/navigation-intents'
+import { useStageStore } from '../../../../stores/navigation/stage-store'
 import { useProjectStore } from '../../../../stores/project-store'
 import { useThemeStore } from '../../../../stores/theme-store'
 import { leaveSettings, useSettingsLeave, useUnsavedSettings } from '../../../settings/unsaved-settings'
@@ -330,6 +331,13 @@ describe('设置页', () => {
     await act(async () => navigate({ kind: 'chapter', chapterNumber: 3 }))
     await click(dialogButton('继续编辑'))
     expect(useLayoutStore.getState().settingsOpen).toBe(true)
+
+    const write = { title: '夜雨', role: '发展', purpose: '交代来信', keyEvents: '收到密信', characters: '林岚', userGuidance: '' }
+    await act(async () => navigate({ kind: 'chapter', chapterNumber: 3, write }))
+    expect(discardDialog()).toBeTruthy()
+    await click(dialogButton('继续编辑'))
+    expect(useLayoutStore.getState().settingsOpen).toBe(true)
+    expect(useStageStore.getState().writeRequest).toBeNull()
 
     await act(async () => navigate({ kind: 'run', facet: 'output' }))
     expect(discardDialog()).toBeUndefined()

@@ -120,14 +120,15 @@ async function openManuscript(): Promise<void> {
   else openPageTab('blueprint')
 }
 
-/** 新外壳下各意图的落点。设置是内容面板里的设置页；写作此章仍由旧对话框承接，RD-7 换成新弹层。 */
+/** 新外壳下各意图的落点。设置是内容面板里的设置页；写作此章落到蓝图上的写作弹层。 */
 export function stageNavigate(intent: NavigationIntent): void {
   if (intent.kind === 'settings') {
     useLayoutStore.setState({ settingsOpen: true, settingsSection: intent.section })
     return
   }
   if (intent.kind === 'chapter' && intent.write) {
-    requestChapterWrite(intent.chapterNumber)
+    const { chapterNumber } = intent
+    leaveSettingsThen(() => requestChapterWrite(chapterNumber))
     return
   }
   // 去具体的阶段、资料页或章节，或从书房进作品，都会收起设置页，有没保存的输入时先确认；
