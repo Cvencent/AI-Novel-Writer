@@ -99,8 +99,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>((props, ref) => 
     const checked = !asChild && (rest['aria-pressed'] === true || rest['aria-pressed'] === 'true')
     return (
       <Comp ref={ref} className={inkClasses(inkVariant, LEGACY_INK_SIZE[size ?? 'default'], className)} {...rest}>
-        {checked && <Check aria-hidden />}
-        {children}
+        {checked ? <><Check aria-hidden />{children}</> : children}
       </Comp>
     )
   }
