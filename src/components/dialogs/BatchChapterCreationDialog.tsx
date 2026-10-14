@@ -80,7 +80,7 @@ function BatchChapterCreationDialogSession(props: BatchChapterProps) {
                 value={chapterCount}
                 disabled={starting}
                 onChange={(event) => {
-                  setChapterCount(Number(event.target.value) || MIN_BATCH_CHAPTERS)
+                  setChapterCount(event.target.value === '' ? '' : Number(event.target.value))
                   setConfirmingAutoFinalize(false)
                 }}
                 onBlur={() => setChapterCount(normalizeBatchChapterCount(chapterCount))}
