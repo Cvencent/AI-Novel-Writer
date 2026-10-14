@@ -194,7 +194,7 @@ describe('蓝图阶段', () => {
 
   it('保存此章与开始生成进行中时按钮带 aria-busy，结束后撤掉', async () => {
     await renderPage()
-    const base = invoke.getMockImplementation()!
+    const base = invoke.getMockImplementation() as (channel: string, ...args: unknown[]) => Promise<unknown>
     const gates = new Map<string, () => void>()
     invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
       if (channel === 'db:blueprint-upsert' || channel === 'config:set') await new Promise<void>(resolve => gates.set(channel, resolve))
