@@ -93,6 +93,9 @@
   --pi-shadow: 0 0 0 0 transparent;
 }
 .pi-btn--secondary:is([aria-pressed="true"], [aria-selected="true"]) > svg { color: var(--accent); }
+/* 选中项的对勾替下功能图标，两个图标不挤在一起；标签页没有对勾，底边加一道强调色线，同样不只靠颜色区分 */
+.pi-btn--secondary[aria-pressed="true"] > .lucide-check ~ svg { display: none; }
+.pi-btn--secondary[aria-selected="true"] { --pi-shadow: inset 0 -2px 0 var(--accent); }
 
 .pi-btn--text { padding: 0 var(--s-3); color: var(--ink-2); }
 .pi-btn--icon { width: 36px; padding: 0; color: var(--ink-2); }
