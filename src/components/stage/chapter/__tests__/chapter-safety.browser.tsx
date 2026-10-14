@@ -483,6 +483,17 @@ describe('纸面', () => {
     expect(activeTab()?.content).toBe(indented)
   })
 
+  it('分节线与 # 标题行不缩进，只有正文段落缩进两字', async () => {
+    const content = ['# 第三章 雾钟', '雨从傍晚开始就没有停过。', '---', '最后一班列车晚点了十七分钟。', '***', '* * *', '## 尾声', '车门在身后合上。'].join('\n\n')
+    const draft = backend.addDraft({ status: 'draft', content })
+    await mount()
+    await openDraft(draft.id)
+    await expect.element(page.getByText('雨从傍晚开始就没有停过。')).toBeVisible()
+    const lines = [...host!.querySelectorAll<HTMLElement>('.stage-ch-prose .cm-line')].filter(line => line.textContent)
+    expect(lines.map(line => getComputedStyle(line).textIndent)).toEqual(['0px', '36px', '0px', '36px', '0px', '0px', '0px', '36px'])
+    expect(activeTab()?.content).toBe(content)
+  })
+
   it('沉浸写作：纸面全出血，底部写出字数与设定里的每章目标字数及进度', async () => {
     const draft = backend.addDraft({ status: 'draft' })
     host = document.createElement('div')
