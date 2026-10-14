@@ -85,7 +85,9 @@ export default function ChapterPlan({ tab, chapterNumber, projectKey }: { tab: E
                 tone="warn"
                 title={text('读取本章蓝图失败', 'Could not read this chapter’s blueprint')}
                 actions={<Button variant="secondary" size="sm" onClick={reloadBlueprint}>{text('重新读取', 'Read again')}</Button>}
-              />
+              >
+                {text('写作此章按本章蓝图写，读到之后才能开始。', 'Writing follows this chapter’s blueprint, so it can start once the blueprint is read.')}
+              </Notice>
             )}
             {blueprint === null && (
               <Notice
