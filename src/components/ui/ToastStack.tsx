@@ -152,9 +152,7 @@ function ToastCard({ entry, paused }: { entry: ToastStackEntry; paused: boolean 
     try {
       await action.onClick?.()
     } catch (error) {
-      pushToast({ tone: 'danger', message: `${text('操作失败', 'Action failed')}
-
-${error instanceof Error ? error.message : String(error)}`, duration: 8000 })
+      pushToast({ tone: 'danger', message: `${text('操作失败', 'Action failed')}\n\n${error instanceof Error ? error.message : String(error)}`, duration: 8000 })
     } finally {
       dismissToast(entry.id)
     }

@@ -1,4 +1,4 @@
-// RD-V 统一视觉层的实机场景：危险确认、命令式错误弹框、提示栈、运行失败提示，以及新外壳下的旧对话框。
+// RD-V 统一视觉层的实机场景：危险确认（含清除中）、命令式错误弹框、提示栈（含出错通知）、运行失败提示，以及新外壳下的旧对话框。
 import assert from 'node:assert/strict'
 
 import * as bookshelf from './pages/bookshelf.mjs'
@@ -22,6 +22,25 @@ const focusedText = page => page.evaluate(() => document.activeElement?.textCont
 
 /** 浮层是否渲染进带 .paper-ink 的纸墨根或宿主里：只有那样才取得到纸墨令牌与深色。 */
 const inPaperInk = locator => locator.evaluate(element => element.closest('.paper-ink') !== null)
+
+/** 写一章后打开诊断分页，返回第一条调用的「复制安全诊断」按钮。 */
+async function diagnosticsCopyButton(page) {
+  await stage.stageButton(page, '蓝图').click()
+  await chapter.writeNextChapter(page, 100)
+  await runSheet.waitUntilOpen(page)
+  await runSheet.waitForRunDone(page)
+  await runSheet.tab(page, '诊断').click()
+  const copy = runSheet.sheet(page).getByRole('table').getByRole('button', { name: '复制安全诊断' }).first()
+  await copy.waitFor({ state: 'visible', timeout: 10_000 })
+  return copy
+}
+
+/** 剪贴板写入成功或失败：失败时 copySafeDiagnostic 报出错通知。 */
+const stubClipboard = (page, ok) => page.evaluate(succeed => {
+  navigator.clipboard.writeText = async () => { if (!succeed) throw new Error('clipboard denied') }
+}, ok)
+
+const liveToastTitles = page => page.locator('.pi-toast:not([data-exiting]) .pi-toast-title').allInnerTexts()
 
 /** 预置两条调用记录，诊断分页的调用表才有「复制安全诊断」。 */
 async function seedCalls({ page, invoke, path: projectPath, session }) {
@@ -72,23 +91,65 @@ export const VISUAL_SCENARIOS = {
   } },
 
   'rdv-toasts': { model: true, shell: 'stage', setup: context => seedStageSample(context, { beforeReload: seedCalls }), run: async ({ page }) => {
-    await page.evaluate(() => { navigator.clipboard.writeText = async () => {} })
-    await stage.stageButton(page, '蓝图').click()
-    await chapter.writeNextChapter(page, 100)
-    await runSheet.waitUntilOpen(page)
-    await runSheet.waitForRunDone(page)
-    await runSheet.tab(page, '诊断').click()
-    const copy = runSheet.sheet(page).getByRole('table').getByRole('button', { name: '复制安全诊断' }).first()
-    await copy.waitFor({ state: 'visible', timeout: 10_000 })
-    // 第一条通知会盖住侧页下方的复制按钮，后两次直接派发点击
+    const copy = await diagnosticsCopyButton(page)
+    await stubClipboard(page, true)
+    // 第一条通知会盖住侧页下方的复制按钮，之后都直接派发点击
     for (let i = 0; i < 3; i++) await copy.dispatchEvent('click')
+    await stubClipboard(page, false)
+    await copy.dispatchEvent('click')
     const stack = page.locator('.pi-toast-stack')
-    await stack.locator('.pi-toast').nth(2).waitFor({ state: 'visible' })
+    await stack.locator('.pi-toast[data-tone="danger"]').waitFor({ state: 'visible' })
+    await page.waitForTimeout(300)
     assert.equal(await stack.count(), 1, '只有一个提示栈')
+    assert.deepEqual(await liveToastTitles(page), ['已复制安全诊断', '复制安全诊断失败'], '同一句话合并成一条，出错的另起一条')
     const boxes = await stack.locator('.pi-toast:not([data-exiting])').evaluateAll(items => items.map(item => item.getBoundingClientRect().toJSON()))
     for (let i = 1; i < boxes.length; i++) assert.ok(boxes[i].top >= boxes[i - 1].bottom, '通知互不重叠')
     assert.ok(await inPaperInk(stack), '提示栈在纸墨宿主里')
     return { toasts: boxes.length }
+  } },
+
+  'rdv-toast-error': { model: true, shell: 'stage', setup: context => seedStageSample(context, { beforeReload: seedCalls }), run: async ({ page }) => {
+    const copy = await diagnosticsCopyButton(page)
+    await stubClipboard(page, true)
+    await copy.dispatchEvent('click')
+    await page.locator('.pi-toast').first().waitFor({ state: 'visible' })
+    // 提示栈已在时打开 Ctrl K 面板（Radix 模态），面板开着时复制失败
+    await page.keyboard.press('Control+K')
+    await stage.paletteInput(page).waitFor({ state: 'visible' })
+    await stubClipboard(page, false)
+    await copy.dispatchEvent('click')
+    const failure = page.locator('.pi-toast[data-tone="danger"]')
+    await failure.waitFor({ state: 'visible' })
+    assert.equal(await failure.getAttribute('role'), 'alert', '出错通知以 alert 播报')
+    assert.equal(await failure.evaluate(element => element.closest('[aria-hidden="true"]') === null && element.closest('[aria-live="polite"]') !== null), true,
+      '模态开着时出错通知不在 aria-hidden 子树里，读屏读得到')
+    assert.match(await failure.locator('.pi-toast-mark svg').evaluate(svg => svg.getAttribute('class')), /octagon-alert/, '八角符号')
+    assert.ok(await stage.paletteInput(page).isVisible(), '面板仍开着')
+    await settle(page)
+  }, after: async ({ page }) => {
+    await page.keyboard.press('Escape')
+  } },
+
+  'rdv-clear-busy': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ app, page }) => {
+    // 主进程里的清除处理器换成永不返回，界面停在清除中
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('db:project-clear-generated-data')
+      ipcMain.handle('db:project-clear-generated-data', () => new Promise(() => {}))
+    })
+    await openWorkMenuItem(page, '清除生成内容…')
+    const dialog = page.getByRole('dialog', { name: '清除项目生成内容' })
+    await dialog.waitFor({ state: 'visible' })
+    await dialog.getByRole('button', { name: '清除所选', exact: true }).click()
+    const busy = dialog.locator('.pi-dialog-foot [aria-busy="true"]')
+    await busy.waitFor({ state: 'visible' })
+    assert.equal(await busy.innerText(), '清除中…', '按钮写清除中')
+    assert.equal(await busy.isDisabled(), true, '清除中按钮禁用')
+    assert.equal(await dialog.locator('.pi-check-input:disabled').count(), 3, '勾选在清除中禁用')
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(300)
+    assert.ok(await dialog.isVisible(), '清除中 Esc 关不掉')
+    await busy.hover()
+    await settle(page)
   } },
 
   'rdv-run-failure': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
@@ -157,7 +218,9 @@ export const VISUAL_SCENARIOS = {
     await runSheet.tab(page, '诊断').click()
     const copy = runSheet.sheet(page).getByRole('table').getByRole('button', { name: '复制安全诊断' }).first()
     await copy.waitFor({ state: 'visible', timeout: 10_000 })
-    for (let i = 0; i < 3; i++) { await copy.dispatchEvent('click'); await page.waitForTimeout(500) }
+    for (let i = 0; i < 2; i++) { await copy.dispatchEvent('click'); await page.waitForTimeout(500) }
+    await stubClipboard(page, false)
+    await copy.dispatchEvent('click')
     await pause()
     await page.keyboard.press('Control+K')
     await stage.paletteInput(page).fill('角色')
