@@ -820,6 +820,16 @@ describe('新外壳的普通对话框', () => {
 })
 
 describe('新外壳下的旧按钮变体', () => {
+  it('旧 asChild 按钮在新外壳下仍渲染成它包着的元素，带纸墨类名', async () => {
+    container = document.createElement('div')
+    container.className = 'paper-ink'
+    document.body.append(container)
+    root = createRoot(container)
+    await act(async () => root!.render(<Button asChild variant="outline"><a href="#export">导出</a></Button>))
+    const link = container.querySelector('a')!
+    expect([link.textContent, link.classList.contains('pi-btn--secondary'), container.querySelector('button')]).toEqual(['导出', true, null])
+  })
+
   it('旧对话框与旧面板里的默认、AI、描边、幽灵、危险、图标按钮换成纸墨六种，主按钮与页面同为黛蓝', async () => {
     container = document.createElement('div')
     container.className = 'paper-ink'
