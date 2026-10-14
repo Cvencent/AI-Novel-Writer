@@ -382,6 +382,21 @@ describe('写作此章、标签顶替与跨作品的请求', () => {
     expect([activeTab()?.type, activeTab()?.chapterNumber, useStageStore.getState().writeRequest]).toEqual(['chapter', 5, null])
   })
 
+  it('读本章蓝图失败：写明读取失败并可重试，不当成没有蓝图，写作请求留着；重试读到后弹出写作弹层', async () => {
+    const base = backend.invoke.getMockImplementation()!
+    let failing = true
+    backend.invoke.mockImplementation(async (channel: string, ...args: unknown[]) => channel === 'db:blueprint-get' && failing
+      ? Promise.reject(new Error('数据库忙')) : base(channel, ...args))
+    await mount()
+    await act(async () => stageNavigate({ kind: 'chapter', chapterNumber: 3, write: blueprintWritePrefill(BLUEPRINT) }))
+    await expect.element(page.getByText('读取本章蓝图失败')).toBeVisible()
+    expect(page.getByText('这一章还没有蓝图').elements()).toHaveLength(0)
+    expect(useStageStore.getState().writeRequest?.chapterNumber).toBe(3)
+    failing = false
+    await act(async () => page.getByRole('button', { name: '重新读取' }).click())
+    await expect.element(page.getByRole('dialog', { name: '本次写作选项' })).toBeVisible()
+  })
+
   it('没有蓝图的待写章已经开着，之后再来的写作请求也落空', async () => {
     await mount()
     await act(async () => stageNavigate({ kind: 'chapter', chapterNumber: 5 }))
