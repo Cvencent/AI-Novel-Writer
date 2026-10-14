@@ -113,8 +113,11 @@ export function stageNavigate(intent: NavigationIntent): void {
     useLayoutStore.setState(chapterWritePrefill(intent.chapterNumber, intent.write))
     return
   }
-  // 去具体的阶段、资料页或章节会收起设置页，有没保存的输入时先确认；只回到作品（打开作品后的默认落点）或打开运行侧页时设置页留着。
-  if (intent.kind === 'run' || (intent.kind === 'stage' && !intent.stage)) arrive(intent)
+  // 去具体的阶段、资料页或章节，或从书房进作品，都会收起设置页，有没保存的输入时先确认；
+  // 已在作品里时只回到作品（打开作品后的默认落点）或打开运行侧页，设置页留着。
+  const staysInSettings = (intent.kind === 'run' || (intent.kind === 'stage' && !intent.stage))
+    && useLayoutStore.getState().sidebarView !== 'home'
+  if (staysInSettings) arrive(intent)
   else leaveSettingsThen(() => arrive(intent))
 }
 
