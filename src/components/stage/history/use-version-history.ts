@@ -110,14 +110,14 @@ export function useVersionHistory(projectKey: string) {
   }, [projectKey, selectedChapter])
 
   /**
-   * 用这一稿的正文新建一稿（回滚草稿），原有各稿都保留。没有新建（会话已切换、旧稿为空）时返回 null；
+   * 用这一稿的正文新建一稿（回滚草稿），原有各稿都保留；正文为空的旧稿照样回退成一份空稿。没有新建（会话已切换、旧稿不存在）时返回 null；
    * 已新建时返回数据库分配的版本号，重读列表失败、读不到版本号时 version 为 null。
    */
   const createRollbackDraft = useCallback(async (versionId: number): Promise<{ version: number | null } | null> => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession || !isProjectSessionPath(projectSession, projectKey) || selectedChapter === null) return null
     const content = (await ipc.invokeWithProjectSession(projectSession, 'db:draft-get-full', versionId, projectSession.projectPath))?.content
-    if (!isProjectSessionCurrent(projectSession) || !content) return null
+    if (!isProjectSessionCurrent(projectSession) || content === undefined) return null
     const nextVersion = await ipc.invokeWithProjectSession(projectSession, 'db:draft-next-version', selectedChapter, projectSession.projectPath)
     if (!isProjectSessionCurrent(projectSession)) return null
     const created = requireIpcSuccess(await ipc.invokeWithProjectSession(projectSession, 'db:draft-create', {
