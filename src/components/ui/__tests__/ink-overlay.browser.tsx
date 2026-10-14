@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { page, userEvent } from 'vitest/browser'
+import { cdp, page, userEvent } from 'vitest/browser'
 
 import '../../../index.css'
 import type { ProjectData } from '../../../shared/ipc-channels'
@@ -24,6 +24,13 @@ const DARK = { layer: 'rgb(29, 29, 34)', ink: 'rgb(230, 228, 223)', danger: 'rgb
 const LIGHT = { ink: 'rgb(23, 23, 26)', accent: 'rgb(44, 74, 140)' }
 
 const wait = (ms: number) => act(async () => { await new Promise(resolve => setTimeout(resolve, ms)) })
+/**
+ * 命令式弹窗关掉后先淡出 140ms，内容卸载后才 resolve。分几段等：一个 act 里的状态更新要等 act 结束才提交，
+ * 一口气等 350ms 时淡出结束后的卸载会拖到断言之后。
+ */
+async function promptClosed() {
+  for (let step = 0; step < 7; step++) await wait(50)
+}
 const host = () => document.getElementById('ai-novel-ink-overlay')
 const focused = () => document.activeElement as HTMLElement
 const liveToasts = () => [...document.querySelectorAll<HTMLElement>('.pi-toast:not([data-exiting])')]
@@ -79,7 +86,7 @@ describe('命令式弹窗', () => {
     await page.screenshot({ path: `${SHOTS}/rdv-alert-dark.png` })
 
     await userEvent.keyboard('{Enter}')
-    await wait(10)
+    await promptClosed()
     expect(resolved).toBe(true)
     expect(document.querySelector('[role="alertdialog"]')).toBeNull()
   })
@@ -102,7 +109,7 @@ describe('命令式弹窗', () => {
     expect(dialog.querySelector('.pi-dialog-consequence')!.textContent).toContain('删除后无法恢复')
     await page.screenshot({ path: `${SHOTS}/rdv-confirm-danger-light.png` })
     await userEvent.keyboard('{Enter}')
-    await wait(10)
+    await promptClosed()
     expect(answer).toBe(false)
   })
 
@@ -115,7 +122,7 @@ describe('命令式弹窗', () => {
     expect(getComputedStyle(dialog.querySelector('.pi-dialog-title')!).color).toBe(LIGHT.ink)
     expect(dialog.querySelector('.pi-dialog-mark')).toBeNull()
     await userEvent.click(focused())
-    await wait(10)
+    await promptClosed()
     expect(answer).toBe(true)
   })
 
@@ -125,14 +132,41 @@ describe('命令式弹窗', () => {
     for (const dismiss of [() => userEvent.keyboard('{Escape}'), clickScrim]) {
       await act(async () => { void confirm('切换项目？').then(value => { answers.push(value) }) })
       await dismiss()
-      await wait(250)
+      await promptClosed()
       await act(async () => { void alertError('写入失败').then(() => { alerts += 1 }) })
       await dismiss()
-      await wait(250)
+      await promptClosed()
     }
     expect(answers).toEqual([false, false])
     expect(alerts).toBe(2)
     expect(document.querySelector('.pi-dialog')).toBeNull()
+  })
+
+  it('关掉命令式弹窗时先淡出，淡完才拿到结果；减少动态效果时立即', async () => {
+    let answer: boolean | undefined
+    await act(async () => { void confirm('切换项目？').then(value => { answer = value }) })
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!
+    await userEvent.keyboard('{Escape}')
+    await wait(40)
+    expect(dialog.dataset.state).toBe('closed')
+    expect(dialog.isConnected).toBe(true)
+    expect(answer).toBeUndefined()
+    await promptClosed()
+    expect(dialog.isConnected).toBe(false)
+    expect(answer).toBe(false)
+
+    const session = cdp()
+    await session.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
+    try {
+      answer = undefined
+      await act(async () => { void confirm('切换项目？').then(value => { answer = value }) })
+      await userEvent.keyboard('{Escape}')
+      await wait(40)
+      expect(answer).toBe(false)
+      expect(document.querySelector('[role="dialog"]')).toBeNull()
+    } finally {
+      await session.send('Emulation.setEmulatedMedia', { features: [] })
+    }
   })
 
   it('两个 confirm 同时开着：Esc 只关上面那个，各自拿到自己的结果', async () => {
@@ -142,13 +176,13 @@ describe('命令式弹窗', () => {
     await act(async () => { void confirm('覆盖已有定稿？').then(value => { second = value }) })
     expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(2)
     await userEvent.keyboard('{Escape}')
-    await wait(250)
+    await promptClosed()
     expect(second).toBe(false)
     expect(first).toBeUndefined()
     const remaining = document.querySelector<HTMLElement>('[role="dialog"]')!
     expect(remaining.querySelector('.pi-dialog-message')!.textContent).toBe('先保存再切换？')
     await userEvent.click(buttonNamed(remaining, '确认'))
-    await wait(250)
+    await promptClosed()
     expect(first).toBe(true)
   })
 
@@ -501,7 +535,7 @@ describe('页面里的危险确认', () => {
   it('纸墨根里的危险确认开着时，宿主已在也不会把新通知藏起来', async () => {
     await act(async () => { void alertError('写入失败') })
     await userEvent.keyboard('{Escape}')
-    await wait(250)
+    await promptClosed()
     container = document.createElement('div')
     container.className = 'paper-ink'
     container.dataset.theme = 'light'

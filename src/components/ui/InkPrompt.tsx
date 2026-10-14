@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { OctagonAlert } from 'lucide-react'
@@ -25,10 +25,6 @@ function InkPrompt({ kind, title, message, confirmText, cancelText, onResolve }:
   const cancelRef = useRef<HTMLButtonElement>(null)
   const marked = kind !== 'confirm'
 
-  useEffect(() => {
-    if (!open) onResolve(result.current)
-  }, [open, onResolve])
-
   const close = (value: boolean) => {
     result.current = value
     setOpen(false)
@@ -36,15 +32,17 @@ function InkPrompt({ kind, title, message, confirmText, cancelText, onResolve }:
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={next => { if (!next) close(false) }}>
-      <DialogPrimitive.Overlay className="pi-scrim" />
+      <DialogPrimitive.Overlay className="pi-scrim pi-scrim--prompt" />
       <DialogPrimitive.Content
-        className={marked ? 'pi-dialog pi-dialog--marked' : 'pi-dialog'}
+        className={marked ? 'pi-dialog pi-dialog--prompt pi-dialog--marked' : 'pi-dialog pi-dialog--prompt'}
         role={kind === 'alert' ? 'alertdialog' : 'dialog'}
         onOpenAutoFocus={event => {
           event.preventDefault()
           ;(kind === 'danger' ? cancelRef : confirmRef).current?.focus()
         }}
         onPointerDownOutside={keepToastStackClickable}
+        // 关掉后 Radix 等 140ms 淡出走完、内容卸载才触发它（减少动态效果时立即），这时才把结果交给调用方
+        onCloseAutoFocus={() => onResolve(result.current)}
       >
         <div className="pi-dialog-head">
           {marked && <span className="pi-dialog-mark" aria-hidden><OctagonAlert /></span>}
