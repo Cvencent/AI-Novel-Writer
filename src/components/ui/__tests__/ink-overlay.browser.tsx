@@ -502,6 +502,17 @@ describe('提示栈', () => {
     expect(toastTitles()).toHaveLength(23)
   })
 
+  it('溢出时栈的滚动条用全局的 6px 细条，不换成系统的 thin 样式', async () => {
+    await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
+    await act(async () => {
+      for (let i = 1; i <= 24; i++) toast.error(`出错 ${i}`, 0)
+    })
+    await wait(200)
+    const stack = document.querySelector<HTMLElement>('.pi-toast-stack')!
+    expect(stack.hasAttribute('data-overflow')).toBe(true)
+    expect([getComputedStyle(stack).scrollbarWidth, getComputedStyle(stack, '::-webkit-scrollbar').width]).toEqual(['auto', '6px'])
+  })
+
   it('模态开着时溢出的栈仍能用滚轮滚动：滚动锁不拦栈上的滚轮', async () => {
     await act(async () => { void confirm('切换项目？') })
     await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
