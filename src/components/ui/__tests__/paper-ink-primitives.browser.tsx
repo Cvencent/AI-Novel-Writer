@@ -17,6 +17,7 @@ import { Popover } from '../Popover'
 import { SegmentedControl } from '../SegmentedControl'
 import { Sheet } from '../Sheet'
 import { StatGrid } from '../StatGrid'
+import { composite, contrast, luminance } from './color-contrast'
 import { withReducedMotion } from './reduced-motion'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -47,32 +48,6 @@ const settle = () => act(async () => {})
 const shot = (name: string) => page.screenshot({ path: `${SHOTS}/${name}.png`, element: host! })
 const focused = () => document.activeElement as HTMLElement
 const finishAnimations = (element: Element) => Promise.all(element.getAnimations().map((animation) => animation.finished))
-
-/** rgb() 的 0–255 通道；color-mix 得出的 color(srgb …) 是 0–1，换算到同一刻度。 */
-function channels(color: string) {
-  const values = color.match(/[\d.]+/g)!.map(Number)
-  return color.startsWith('color(srgb') ? [...values.slice(0, 3).map((value) => value * 255), ...values.slice(3)] : values
-}
-
-function luminance(color: string) {
-  const [r, g, b] = channels(color).slice(0, 3).map((value) => {
-    const channel = value / 255
-    return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
-  })
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b
-}
-
-function contrast(foreground: string, background: string) {
-  const [high, low] = [luminance(foreground), luminance(background)].sort((a, b) => b - a)
-  return (high + 0.05) / (low + 0.05)
-}
-
-/** 半透明前景色叠在不透明底色上的实际颜色。 */
-function composite(over: string, under: string) {
-  const [r, g, b, a = 1] = channels(over)
-  const base = channels(under)
-  return `rgb(${[r, g, b].map((value, i) => Math.round(value * a + base[i] * (1 - a))).join(', ')})`
-}
 
 function tokenColor(scope: HTMLElement, name: string) {
   const probe = document.createElement('span')
