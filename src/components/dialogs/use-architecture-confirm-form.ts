@@ -167,10 +167,10 @@ export function useArchitectureConfirmForm({
     return text(...MARK_TEXT[mark])
   }
 
-  /** 状态文字：已确认；有内容但未确认（大纲没写完或被打断、名单待修复）为未完成；没有内容为待生成。 */
+  /** 状态文字：已确认；有内容但未确认（大纲没写完或被打断、名单待修复）为不完整，与架构页徽标同一叫法；没有内容为待生成。 */
   const statusLabel = (key: ArchStepKey): string => confirmed[key]
     ? text('已确认', 'Confirmed')
-    : archStatus[key] ? text('未完成', 'Unfinished') : text('待生成', 'Not started')
+    : archStatus[key] ? text('不完整', 'Incomplete') : text('待生成', 'Not started')
 
   const resolveSynopsisRange = (): { ok: true; range?: { from: number; to: number } } | { ok: false; message?: string } => {
     if (!checked.synopsis) return { ok: true }
