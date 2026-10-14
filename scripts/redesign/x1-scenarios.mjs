@@ -406,9 +406,24 @@ export const X1_SCENARIOS = {
     await untilHeld(app, 'db:project-core-get')
     await page.waitForTimeout(4500)
     await releaseChannel(app, 'db:project-core-get')
-    await generating
+    assert.equal(await generating, true, '等到了晚出现的警告并点了继续生成')
     await runSheet.waitUntilOpen(page)
-    return { runSheet: await runSheet.sheet(page).isVisible() }
+    return { warned: true, runSheet: await runSheet.sheet(page).isVisible() }
+  } },
+
+  // #405 r2 O8 的正常路径：架构齐全（主进程读架构时补上角色名单）不弹警告，generateRange 在运行开始时就返回，不白等 3 秒。
+  'x1-generate-no-warning': { model: true, shell: 'stage', setup: context => seedStageSample(context, { totalChapters: 16 }), run: async ({ app, page }) => {
+    await app.evaluate(({ ipcMain }, cast) => {
+      const handlers = ipcMain._invokeHandlers
+      const original = handlers.get('db:project-core-get')
+      handlers.set('db:project-core-get', async (event, ...args) => ({ ...await original(event, ...args), charactersArch: cast }))
+    }, `林岚：守塔人的女儿，沿着父亲的地图寻找沉船。守塔人：在灯塔里守了三十年，知道雾钟坏过的那一次，也知道那条船的名字。`)
+    await blueprint.open(page)
+    const started = Date.now()
+    const warned = await blueprint.generateRange(page, 13, 16)
+    const elapsedMs = Date.now() - started
+    assert.equal(warned, false, '架构齐全时没有警告')
+    return { warned, elapsedMs, runSheet: await runSheet.sheet(page).isVisible() }
   } },
 
   // #404-1：书房里导入旧项目副本，复制期间作者开了设置页并输入；复制完成要自动打开作品时先确认，继续编辑就不打开。
