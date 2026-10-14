@@ -3,7 +3,9 @@ import { create } from 'zustand'
 import { ipc } from '../../services/ipc-client'
 import { useAppearanceStore } from '../../stores/appearance-bootstrap'
 import { useLayoutStore } from '../../stores/layout-store'
+import { useLocaleStore } from '../../stores/locale-store'
 import { useProjectStore } from '../../stores/project-store'
+import { toast } from '../ui/Toast'
 
 /** 设置页里还没保存的输入：各页用 useUnsavedSettings 登记，离开设置页或换页前由 leaveSettings 统一确认。 */
 const unsaved = new Set<symbol>()
@@ -42,12 +44,14 @@ export function useSettingsLeaveHost(): void {
 
 /**
  * 确认框开着时再来的离开请求（快捷键不受模态框拦）当作作者留下：确认框问的仍是原来那一个，
- * 新请求立即收到 stay，原请求由作者的回答结算，每个请求都恰好结算一次。
+ * 新请求立即收到 stay，原请求由作者的回答结算，每个请求都恰好结算一次。作者按了却没反应会以为没按到，所以提示他先处理确认框。
  */
 export function leaveSettings(action: () => void, stay?: () => void): void {
   if (unsaved.size === 0 || hosts === 0) action()
-  else if (useSettingsLeave.getState().pending) stay?.()
-  else useSettingsLeave.setState({ pending: { proceed: action, stay } })
+  else if (useSettingsLeave.getState().pending) {
+    stay?.()
+    toast.info(useLocaleStore.getState().text('请先处理「放弃未保存的修改？」', 'Resolve “Discard unsaved changes?” first'))
+  } else useSettingsLeave.setState({ pending: { proceed: action, stay } })
 }
 
 /**
