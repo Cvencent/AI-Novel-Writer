@@ -268,7 +268,7 @@ export const X1_SCENARIOS = {
 
   // #392 T1：每条意见都选「不修改此项」，主按钮变成确认不修改，确认后弃修决定落库，重开这一章仍在。
   // 意见要有复验周期的条目才能弃修，周期由 AI 审稿写回时建立，所以先对第 4 章跑一次审稿。
-  'x1-waive-all': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+  'x1-waive-all': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page, shoot }) => {
     await chapterView.open(page, 4)
     await chapterView.review(page)
     const sheet = chapterView.reviewSheet(page)
@@ -278,6 +278,7 @@ export const X1_SCENARIOS = {
     while (await waive.count() > 0) await waive.first().click()
     const confirm = chapterView.view(page).getByRole('button', { name: '确认不修改', exact: true })
     await confirm.waitFor({ state: 'visible', timeout: 5000 })
+    await shoot('x1-waive-all-confirm')
     await confirm.click()
     const confirmed = chapterView.hint(page).filter({ hasText: '已确认不修改' })
     await confirmed.waitFor({ state: 'visible' })
@@ -296,12 +297,13 @@ export const X1_SCENARIOS = {
       assert.equal((await invoke(page, 'db:draft-create', { chapterNumber: 2, version: 2, source: 'write', content: text, wordCount: countUnits(text) },
         projectPath, session)).success, true)
     } })
-  }, run: async ({ app, page }) => {
+  }, run: async ({ app, page, shoot }) => {
     await chapterView.open(page, 2)
     const notice = chapterView.view(page).getByText('删除正文后的清理没有完成')
     await notice.waitFor({ state: 'visible', timeout: 15_000 })
     const onDraft = await chapterView.versionButton(page).innerText()
     assert.match(onDraft, /草稿 v2/, '落在第 2 章的未定稿 v2 上')
+    await shoot('x1-cleanup-retry-notice')
     await chapterView.view(page).getByRole('button', { name: '重试清理' }).click()
     await notice.waitFor({ state: 'hidden', timeout: 15_000 })
     return { onDraft, retries: await app.evaluate(() => globalThis.__driveDeletion.retries) }
