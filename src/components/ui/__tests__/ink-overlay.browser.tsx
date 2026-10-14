@@ -29,6 +29,8 @@ const focused = () => document.activeElement as HTMLElement
 const liveToasts = () => [...document.querySelectorAll<HTMLElement>('.pi-toast:not([data-exiting])')]
 const toastTitles = () => liveToasts().map(item => item.querySelector('.pi-toast-title')!.textContent)
 const buttonNamed = (scope: ParentNode, name: string) => [...scope.querySelectorAll('button')].find(b => b.textContent === name)!
+/** 遮罩在对话框底下，点它的左上角才算点在对话框外。 */
+const clickScrim = () => userEvent.click(document.querySelector<HTMLElement>('.pi-scrim')!, { position: { x: 8, y: 8 } })
 
 /** 排队的通知要等前面的关掉才露面，所以一轮一轮关到栈空。 */
 async function clearToasts() {
@@ -56,6 +58,7 @@ afterEach(async () => {
   container = undefined
   host()?.remove()
   document.getElementById('ai-novel-toast-root')?.remove()
+  document.getElementById('ai-novel-action-toast-root')?.remove()
   useAppearanceStore.setState({ resolvedShell: 'classic' })
   useThemeStore.setState({ resolvedTheme: 'paper' })
 })
@@ -116,6 +119,39 @@ describe('命令式弹窗', () => {
     expect(answer).toBe(true)
   })
 
+  it('Esc 与点遮罩都当取消：confirm 得到 false，alertError 照样 resolve', async () => {
+    const answers: boolean[] = []
+    let alerts = 0
+    for (const dismiss of [() => userEvent.keyboard('{Escape}'), clickScrim]) {
+      await act(async () => { void confirm('切换项目？').then(value => { answers.push(value) }) })
+      await dismiss()
+      await wait(250)
+      await act(async () => { void alertError('写入失败').then(() => { alerts += 1 }) })
+      await dismiss()
+      await wait(250)
+    }
+    expect(answers).toEqual([false, false])
+    expect(alerts).toBe(2)
+    expect(document.querySelector('.pi-dialog')).toBeNull()
+  })
+
+  it('两个 confirm 同时开着：Esc 只关上面那个，各自拿到自己的结果', async () => {
+    let first: boolean | undefined
+    let second: boolean | undefined
+    await act(async () => { void confirm('先保存再切换？').then(value => { first = value }) })
+    await act(async () => { void confirm('覆盖已有定稿？').then(value => { second = value }) })
+    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(2)
+    await userEvent.keyboard('{Escape}')
+    await wait(250)
+    expect(second).toBe(false)
+    expect(first).toBeUndefined()
+    const remaining = document.querySelector<HTMLElement>('[role="dialog"]')!
+    expect(remaining.querySelector('.pi-dialog-message')!.textContent).toBe('先保存再切换？')
+    await userEvent.click(buttonNamed(remaining, '确认'))
+    await wait(250)
+    expect(first).toBe(true)
+  })
+
   it('对话框开着时点通知的关闭按钮，通知关闭而对话框不关', async () => {
     await act(async () => { void confirm('切换项目？') })
     await act(async () => toast.info('已复制安全诊断'))
@@ -144,6 +180,69 @@ describe('命令式弹窗', () => {
     expect(host()).toBeNull()
     await userEvent.keyboard('{Escape}')
     await wait(250)
+  })
+})
+
+describe('旧外壳原样', () => {
+  beforeEach(() => useAppearanceStore.setState({ resolvedShell: 'classic' }))
+
+  it('confirm 仍是旧弹窗，点确认得到 true，不建纸墨宿主', async () => {
+    let answer: boolean | undefined
+    await act(async () => { void confirm('切换项目？').then(value => { answer = value }) })
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!
+    expect(dialog.closest('.paper-ink')).toBeNull()
+    expect(dialog.className).not.toContain('pi-dialog')
+    await userEvent.click(buttonNamed(dialog, '确认'))
+    await wait(250)
+    expect(answer).toBe(true)
+    expect(host()).toBeNull()
+  })
+
+  it('toast 与 actionToast 仍进各自的旧容器，动作照常执行后关闭', async () => {
+    const open = vi.fn()
+    await act(async () => {
+      toast.success('已保存')
+      actionToast.show({ message: '「第 2 章」已完成', actions: [{ label: '打开查看', onClick: open }] })
+    })
+    await vi.waitFor(() => expect(document.getElementById('ai-novel-toast-root')!.textContent).toContain('已保存'))
+    const actionRoot = document.getElementById('ai-novel-action-toast-root')!
+    await vi.waitFor(() => expect(actionRoot.textContent).toContain('「第 2 章」已完成'))
+    expect(document.querySelector('.pi-toast')).toBeNull()
+    await userEvent.click(buttonNamed(actionRoot, '打开查看'))
+    expect(open).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => expect(actionRoot.textContent).not.toContain('「第 2 章」已完成'))
+  })
+
+  it('ui/Dialog 不进纸墨宿主，仍是旧外观', async () => {
+    container = document.createElement('div')
+    document.body.append(container)
+    root = createRoot(container)
+    await act(async () => root!.render(
+      <Dialog open>
+        <DialogContent className="max-w-[420px]">
+          <DialogHeader><DialogTitle>导出项目</DialogTitle></DialogHeader>
+        </DialogContent>
+      </Dialog>,
+    ))
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!
+    expect(dialog.closest('.paper-ink')).toBeNull()
+    expect(dialog.className).not.toContain('pi-dialog')
+    expect(dialog.className).toContain('rounded-2xl')
+    expect(host()).toBeNull()
+  })
+
+  it('清除生成内容仍是旧对话框，Esc 关闭', async () => {
+    const onClose = vi.fn()
+    container = document.createElement('div')
+    document.body.append(container)
+    root = createRoot(container)
+    await act(async () => root!.render(<ClearProjectDataDialog open onClose={onClose} />))
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!
+    expect(dialog.getAttribute('aria-labelledby')).toBe('clear-project-data-title')
+    expect(dialog.className).not.toContain('pi-dialog')
+    expect(dialog.querySelectorAll('input[type="checkbox"]')).toHaveLength(3)
+    await userEvent.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -366,7 +465,7 @@ describe('清除生成内容', () => {
     expect(busy.disabled).toBe(true)
 
     await userEvent.keyboard('{Escape}')
-    await userEvent.click(document.querySelector<HTMLElement>('.pi-scrim')!, { position: { x: 8, y: 8 } })
+    await clickScrim()
     await wait(200)
     expect(onClose).not.toHaveBeenCalled()
     expect(dialog.isConnected).toBe(true)
