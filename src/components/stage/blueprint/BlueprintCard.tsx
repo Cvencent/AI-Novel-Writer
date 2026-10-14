@@ -7,6 +7,7 @@ import { useLocaleStore } from '../../../stores/locale-store'
 import type { EditableChapterBlueprintField } from '../../editor/chapter-card-draft-ledger'
 import { Button } from '../../ui/Button'
 import { Menu } from '../../ui/Menu'
+import { isComposing } from '../shortcut-keys'
 import { CHAPTER_PHASE_TEXT, CHAPTER_RUNNING_TEXT } from '../stage-text'
 
 interface BlueprintCardProps {
@@ -36,6 +37,7 @@ export default function BlueprintCard({ blueprint, row, saving, onField, onSave,
   }
 
   const onPersonKey = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (isComposing({ isComposing: event.nativeEvent.isComposing, keyCode: event.keyCode })) return
     if (event.key === 'Enter' || event.key === ',' || event.key === '，' || event.key === '、') {
       event.preventDefault()
       addPeople()
