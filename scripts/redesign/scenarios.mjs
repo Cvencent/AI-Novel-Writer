@@ -752,6 +752,33 @@ export const STAGE_SCENARIOS = {
     await stage.saveStatus(page).filter({ hasText: '已保存' }).waitFor({ state: 'visible' })
     assert.equal(await stage.root(page).locator('.stage-setup-foot').getByRole('alert').count(), 0, '再保存成功后失败说明消失')
   } },
+  'stage-settings-leave': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+    await stage.openSettings(page)
+    await page.getByRole('button', { name: `编辑「${FAKE_MODEL.name}」` }).click()
+    const name = stage.root(page).getByPlaceholder('如：DeepSeek 主力 / GPT-4o 备用')
+    await name.fill('主力模型')
+    await page.keyboard.press('Escape')
+    assert.equal(await stage.settingsNav(page).isVisible(), true, '输入框里的 Esc 不关闭设置页')
+    await stage.root(page).getByRole('heading', { level: 1, name: 'AI 模型' }).click()
+    await page.keyboard.press('Escape')
+    await page.getByRole('dialog', { name: '放弃未保存的修改？' }).waitFor({ state: 'visible' })
+  }, after: async ({ page }) => {
+    const discard = page.getByRole('dialog', { name: '放弃未保存的修改？' })
+    await discard.getByRole('button', { name: '继续编辑', exact: true }).click()
+    await discard.waitFor({ state: 'detached' })
+    assert.equal(await stage.root(page).getByPlaceholder('如：DeepSeek 主力 / GPT-4o 备用').inputValue(), '主力模型', '继续编辑时修改还在')
+    await stage.settingsNav(page).getByRole('button', { name: '返回作品' }).click()
+    await discard.getByRole('button', { name: '放弃修改', exact: true }).click()
+    await stage.settingsNav(page).waitFor({ state: 'detached' })
+    await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
+
+    await stage.openSettings(page)
+    await page.keyboard.press('Control+K')
+    await stage.paletteInput(page).fill('角色')
+    await stage.palette(page).getByRole('option', { name: /^角色/ }).click()
+    await stage.settingsNav(page).waitFor({ state: 'detached' })
+    await stage.tab(page, '角色').and(page.locator('[aria-selected="true"]')).waitFor({ state: 'visible' })
+  } },
   'stage-run': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page, fake }) => {
     fake.gate.hold()
     await stage.stageButton(page, '蓝图').click()
