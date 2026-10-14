@@ -240,6 +240,7 @@ describe('Button 纸墨六种', () => {
     }
     expect(await darker(primary)).toBe(true)
     expect(await darker(dangerSolid)).toBe(true)
+    expect(await darker(secondary)).toBe(true)
     await userEvent.hover(primary)
     expect((await pressed(primary)).bg).toBe(PRESS[theme].primary)
     await userEvent.hover(dangerSolid)
@@ -514,6 +515,31 @@ describe('Menu', () => {
   })
 })
 
+describe('危险分组里的禁用项', () => {
+  it('悬停不显示危险底色，回到静止的未上墨样子', async () => {
+    const container = await mount(
+      <div style={{ height: 300 }}>
+        <Menu
+          label="作品操作"
+          icon={<Ellipsis size={16} aria-hidden />}
+          groups={[
+            { id: 'main', items: [{ id: 'rename', label: '重命名', onSelect: () => {} }] },
+            { id: 'danger', tone: 'danger', items: [{ id: 'delete', label: '删除作品…', disabled: true, onSelect: () => {} }] },
+          ]}
+        />
+      </div>,
+    )
+    await userEvent.click(container.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!)
+    await settle()
+    const item = [...container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((button) => button.textContent === '删除作品…')!
+    expect(item.disabled).toBe(true)
+    await userEvent.hover(item)
+    expect(item.matches(':hover')).toBe(true)
+    expect(getComputedStyle(item).backgroundColor).toBe('rgba(0, 0, 0, 0)')
+    expect(getComputedStyle(item).color).toBe(tokenColor(container, '--ink-3'))
+  })
+})
+
 describe('侧页内的菜单', () => {
   const onRename = vi.fn()
   const groups = [
@@ -755,6 +781,25 @@ describe('禁用的勾选与输入框', () => {
     expect(getComputedStyle(input).backgroundColor).toBe(tokenColor(container, '--wash'))
     expect(getComputedStyle(input).borderTopColor).toBe('rgba(0, 0, 0, 0)')
     expect(getComputedStyle(input).color).toBe(tokenColor(container, '--ink-3'))
+  })
+})
+
+describe('禁用的开关', () => {
+  it.each(['light', 'dark'] as const)('%s 主题开着也退成墨色薄雾的轨道，不留强调色，不用 opacity', async (theme) => {
+    const container = await mount(
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'flex-start' }}>
+        <Check kind="switch" checked disabled onChange={() => {}} label="写完自动打开下一章" />
+        <Check kind="switch" checked={false} disabled onChange={() => {}} label="启动时检查更新" />
+      </div>,
+      theme,
+    )
+    const [on, off] = [...container.querySelectorAll<HTMLElement>('.pi-switch')]
+    for (const track of [on, off]) {
+      expect(getComputedStyle(track).opacity).toBe('1')
+      expect(getComputedStyle(track).backgroundColor).toBe(tokenColor(container, '--wash-strong'))
+    }
+    expect(getComputedStyle(on, '::after').transform).not.toBe(getComputedStyle(off, '::after').transform)
+    expect(getComputedStyle(on.nextElementSibling!).color).toBe(tokenColor(container, '--ink-3'))
   })
 })
 

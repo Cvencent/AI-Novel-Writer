@@ -17,6 +17,7 @@ import { toast } from '../Toast'
 import ClearProjectDataDialog from '../../dialogs/ClearProjectDataDialog'
 import StagePalette from '../../stage/StagePalette'
 import { DangerConfirm } from '../DangerConfirm'
+import { InkDialog } from '../../stage/InkDialog'
 import { withReducedMotion } from './reduced-motion'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -474,6 +475,36 @@ describe('提示栈', () => {
     expect(item.dataset.tone).toBe('danger')
   })
 
+  it('24 条出错通知时栈收在视口内可滚动，最新一条露在底部，滚到顶能关掉最早的', async () => {
+    await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
+    await act(async () => {
+      for (let i = 1; i <= 24; i++) toast.error(`出错 ${i}`, 0)
+    })
+    await wait(200)
+    expect(liveToasts()).toHaveLength(24)
+    const stack = document.querySelector<HTMLElement>('.pi-toast-stack')!
+    const box = stack.getBoundingClientRect()
+    expect(box.top).toBeGreaterThanOrEqual(0)
+    expect(box.bottom).toBeLessThanOrEqual(window.innerHeight)
+    expect(stack.scrollHeight).toBeGreaterThan(stack.clientHeight)
+    const newest = liveToasts().at(-1)!.getBoundingClientRect()
+    expect(newest.top).toBeGreaterThanOrEqual(box.top)
+    expect(newest.bottom).toBeLessThanOrEqual(box.bottom + 0.5)
+
+    await act(async () => { stack.scrollTop = 0 })
+    const oldest = liveToasts()[0]
+    expect(oldest.getBoundingClientRect().top).toBeGreaterThanOrEqual(box.top - 0.5)
+    await userEvent.click(oldest.querySelector<HTMLButtonElement>('button[aria-label="关闭通知"]')!)
+    await wait(200)
+    expect(toastTitles()).not.toContain('出错 1')
+    expect(toastTitles()).toHaveLength(23)
+  })
+
+  it('栈没满时不裁卡片的投影', async () => {
+    await act(async () => toast.error('导出失败', 0))
+    expect(getComputedStyle(document.querySelector('.pi-toast-stack')!).overflowY).toBe('visible')
+  })
+
   it('窄窗口里通知收窄到视口内，不越过左沿', async () => {
     await page.viewport(360, 640)
     await act(async () => toast.info('已复制本章正文'))
@@ -654,5 +685,25 @@ describe('页面里的危险确认', () => {
     expect(item.textContent).toContain('导出失败')
     expect(item.closest('[aria-hidden="true"]')).toBeNull()
     expect(item.closest('[aria-live="polite"]')).not.toBeNull()
+  })
+})
+
+describe('新外壳的普通对话框', () => {
+  it('InkDialog 开着时点通知的关闭按钮，通知关闭而对话框不关；标题是墨色', async () => {
+    onOpenChange.mockClear()
+    container = document.createElement('div')
+    container.className = 'paper-ink'
+    container.dataset.theme = 'light'
+    document.body.append(container)
+    root = createRoot(container)
+    await act(async () => root!.render(
+      <InkDialog open onOpenChange={onOpenChange} title="新建作品" footer={<button type="button">创建</button>} />,
+    ))
+    expect(getComputedStyle(document.querySelector('.pi-dialog-title')!).color).toBe(LIGHT.ink)
+    await act(async () => toast.success('已保存'))
+    await userEvent.click(page.getByRole('button', { name: '关闭通知' }))
+    await wait(200)
+    expect(liveToasts()).toHaveLength(0)
+    expect(onOpenChange).not.toHaveBeenCalled()
   })
 })
