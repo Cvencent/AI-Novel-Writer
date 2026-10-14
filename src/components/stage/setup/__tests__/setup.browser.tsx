@@ -210,6 +210,11 @@ describe('设定页', () => {
     await expect.poll(alertText).toBe('「核心大纲」没有生成：桌面接口 aiNovelAPI 未就绪，请重新启动应用。原来的内容没有改动。')
     expect(host!.querySelector('.stage-setup-outline [role="alert"]')).not.toBeNull()
     expect((field(/^核心大纲/) as HTMLTextAreaElement).value).toBe('雾钟提前一刻响起。')
+
+    await choose(field(/^类型/) as HTMLSelectElement, '悬疑')
+    expect(alertText()).not.toBe('')
+    await write(field(/^核心大纲/) as HTMLTextAreaElement, '雾钟提前两刻响起。')
+    expect(alertText()).toBe('')
   })
 
   it('AI 补全以核心大纲为脑洞启动；已有作者内容时先确认扩写', async () => {
