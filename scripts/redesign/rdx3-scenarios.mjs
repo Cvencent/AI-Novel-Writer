@@ -236,6 +236,44 @@ export const RDX3_SCENARIOS = {
     return results
   } },
 
+  /**
+   * 键盘焦点环不被悬停与外壳规则盖掉（#402 OCR #6、#8）：书房里鼠标停在「新建作品」卡上再用 Tab 聚焦它，焦点环立即出现；
+   * 打开作品后用键盘打开作品菜单，方向键在菜单项间移动，聚焦项是菜单自己的 2px 内侧环（不是外圈），首项与末项各截一张图。
+   */
+  'rdx3-hover-focus': { model: false, shell: 'stage', setup: context => seedStageSample(context, { open: false }), run: async ({ page, shoot }) => {
+    const accent = (await accentColor(page)).join(', ')
+    const ringOf = locator => locator.evaluate(element => ({ focused: element === document.activeElement, focusVisible: element.matches(':focus-visible'), boxShadow: getComputedStyle(element).boxShadow }))
+    const start = stage.root(page).getByRole('button', { name: '新建作品', exact: true })
+    await start.hover()
+    await page.waitForTimeout(300)
+    const hovered = await ringOf(start)
+    await page.keyboard.press('Shift+Tab')
+    for (let step = 0; step < 20 && !(await ringOf(start)).focused; step++) await page.keyboard.press('Tab')
+    const startRing = await ringOf(start)
+    await shoot('rdx3-hover-focus-start')
+    await stage.openFromLibrary(page, STAGE_SAMPLE.name)
+    // 打开作品的收尾在文件树读完后还会回到作品一次，界面上没有可等的信号（同 chapter-scenarios 的 afterProjectOpenSettles）
+    await page.waitForTimeout(2000)
+    const menuButton = stage.root(page).getByRole('banner').getByRole('button', { name: `《${STAGE_SAMPLE.name}》作品菜单` })
+    await menuButton.focus()
+    await page.keyboard.press('Enter')
+    const items = page.getByRole('menuitem')
+    await items.first().waitFor({ state: 'visible' })
+    const first = await ringOf(items.first())
+    await shoot('rdx3-hover-focus-menu-first')
+    await page.keyboard.press('ArrowDown')
+    const second = await ringOf(items.nth(1))
+    await page.keyboard.press('End')
+    const last = await ringOf(items.last())
+    await shoot('rdx3-hover-focus-menu-last')
+    await page.keyboard.press('Escape')
+    const inset = `rgb(${accent}) 0px 0px 0px 2px inset`
+    const result = { hovered, startRing, first, second, last }
+    assert.ok(startRing.focusVisible && startRing.boxShadow.includes(`rgb(${accent}) 0px 0px 0px 4px`), `悬停后再 Tab，起步卡有焦点环：${JSON.stringify(result)}`)
+    assert.deepEqual([first, second, last].map(ring => [ring.focused, ring.boxShadow]), [[true, inset], [true, inset], [true, inset]], `菜单项聚焦是内侧环：${JSON.stringify(result)}`)
+    return result
+  } },
+
   /** 新外壳里的导入对话框：同屏只有一个上墨的主按钮，用途与目标的选中项是按下的次按钮。 */
   'rdx3-import-dialog': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
     await stage.root(page).getByRole('banner').getByRole('button', { name: `《${STAGE_SAMPLE.name}》作品菜单` }).click()
