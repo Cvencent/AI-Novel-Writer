@@ -276,12 +276,13 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
     }
   }
 
-  const search = async () => {
+  /** 查找；改「最多显示」时按上次查找的词与新的条数重查。 */
+  const search = async (query = searchQuery, limit = topK) => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession) return
     setSearching(true)
     try {
-      const result = await ipc.invokeWithProjectSession(projectSession, 'kb:search', searchQuery, topK, projectSession.projectPath)
+      const result = await ipc.invokeWithProjectSession(projectSession, 'kb:search', query, limit, projectSession.projectPath)
       if (!isProjectSessionCurrent(projectSession)) return
       setSearchResults(unwrapKnowledgeValue(result))
     } catch (error) {
