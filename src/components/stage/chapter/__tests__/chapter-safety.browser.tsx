@@ -407,6 +407,7 @@ describe('写作此章、标签顶替与跨作品的请求', () => {
     await mount()
     await act(async () => stageNavigate({ kind: 'chapter', chapterNumber: 3, write: blueprintWritePrefill(BLUEPRINT) }))
     await expect.element(page.getByText('读取本章蓝图失败')).toBeVisible()
+    await expect.element(page.getByText('写作此章按本章蓝图写，读到之后才能开始。')).toBeVisible()
     expect(page.getByText('这一章还没有蓝图').elements()).toHaveLength(0)
     expect(useStageStore.getState().writeRequest?.chapterNumber).toBe(3)
     failing = false
