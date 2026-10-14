@@ -144,15 +144,15 @@ export async function startFakeModel(diagnostics) {
     chats.push({ kind, model: body.model, messages: body.messages })
     record(kind, prompt.slice(0, 120).replace(/\s+/g, ' '))
     response.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    const finish = kind === 'prose' && failedProse ? 'content_filter' : 'stop'
     if (kind === 'prose' && stream) {
       for (const [index, chunk] of stream.chunks.entries()) {
         response.write(`data: ${JSON.stringify({ choices: [{ delta: { content: chunk }, finish_reason: null }] })}\n\n`)
         streamLog.push({ at: Date.now(), count: index + 1 })
         await new Promise(resolve => setTimeout(resolve, stream.intervalMs))
       }
-      response.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`)
+      response.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: finish }] })}\n\n`)
     } else {
-      const finish = kind === 'prose' && failedProse ? 'content_filter' : 'stop'
       response.write(`data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: finish }] })}\n\n`)
     }
     response.write('data: {"choices":[],"usage":{"prompt_tokens":400,"completion_tokens":200,"total_tokens":600}}\n\n')
