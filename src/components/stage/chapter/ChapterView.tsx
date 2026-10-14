@@ -82,7 +82,7 @@ function DraftChapter({ tab, filePath, projectKey }: { tab: EditorTab; filePath:
   const request = useStageStore(s => s.chapterRequest)
   const draft = useDraftActions({ tabId: tab.id, filePath, content: tab.content ?? '', projectKey })
   const chapterNumber = draft.meta?.chapterNumber ?? tab.chapterNumber
-  const blueprint = useChapterBlueprint(chapterNumber, projectKey)
+  const { blueprint } = useChapterBlueprint(chapterNumber, projectKey)
   const latest = useShownReview(draft.reviews, projectKey)
   const review = useReviewCycle({ reportText: latest?.content ?? '', reviewId: latest?.id, projectKey,
     // 复验完成时新增一份审稿而显示的仍是原审稿，审稿记录也算进来，周期随之重读。
