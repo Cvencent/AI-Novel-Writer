@@ -6,6 +6,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import '../../../index.css'
 import '../../../styles/paper-ink/index.css'
 import type { ProjectData } from '../../../shared/ipc-channels'
+import { useAppearanceStore } from '../../../stores/appearance-bootstrap'
 import { useEditorStore, type EditorTab } from '../../../stores/editor-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { Button } from '../../ui/Button'
@@ -180,6 +181,24 @@ describe('新外壳的外观细节', () => {
     const onOther = await ringShown()
     const whole = ({ shown, unclipped }: { shown: number; unclipped: number }) => shown >= unclipped * 0.95 && unclipped - resting > 200
     expect([whole(onCurrent), whole(onOther), resting < 20], JSON.stringify({ resting, onCurrent, onOther })).toEqual([true, true, true])
+  })
+
+  it('旧面板用旧按钮做的标签页：选中的那个除了强调色边线，底边还有一道强调色线，不只靠颜色区分', async () => {
+    const restore = useAppearanceStore.getState()
+    useAppearanceStore.setState({ resolvedShell: 'stage' })
+    try {
+      const container = await mount(
+        <div role="tablist" aria-label="剧情编辑器视图">
+          <Button size="sm" variant="default" role="tab" aria-selected>剧情树</Button>
+          <Button size="sm" variant="outline" role="tab" aria-selected={false}>计划清单</Button>
+        </div>,
+      )
+      const [selected, other] = [...container.querySelectorAll<HTMLElement>('[role="tab"]')].map(tab => getComputedStyle(tab).boxShadow)
+      const accent = getComputedStyle(container.querySelector('[role="tab"]')!).borderTopColor
+      expect([selected.includes(`${accent} 0px -2px 0px 0px inset`), other.includes('-2px 0px 0px inset')]).toEqual([true, false])
+    } finally {
+      useAppearanceStore.setState(restore, true)
+    }
   })
 
   it('激活标签在标签条可视区外时滚进来', async () => {

@@ -1235,6 +1235,10 @@ describe('新外壳里的导入对话框', () => {
         edge: contrast(style.borderTopColor, layer) >= 3,
         text: contrast(style.color, fill) >= 4.5,
       }).toEqual({ layer: INK[theme].layer, border: INK[theme].accent, check: true, offCheck: false, edge: true, text: true })
+      // 选中项只露对勾，不与「参考小说」的书本图标挤在一起；没选中的露自己的图标
+      const shownIcons = (button: Element) => [...button.querySelectorAll('svg')].filter(icon => getComputedStyle(icon).display !== 'none')
+        .map(icon => [...icon.classList].find(name => name.startsWith('lucide-') && name !== 'lucide-icon'))
+      expect([shownIcons(on), shownIcons(off)]).toEqual([['lucide-check'], ['lucide-file-text']])
       await page.screenshot({ path: `../../../../.runtime/rdx3-shots/import-dialog-selected-${theme}.png` })
     } finally {
       useAppearanceStore.setState(restore[0], true)
