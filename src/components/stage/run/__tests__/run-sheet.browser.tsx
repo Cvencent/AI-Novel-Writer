@@ -332,6 +332,17 @@ describe('运行侧页', () => {
     expect(host!.querySelector('table')!.textContent).toContain('坏时间模型')
   })
 
+  it('日志满 500 行之后新来的一行仍然自动滚到底', async () => {
+    useWorkflowStore.setState({ globalLogs: Array.from({ length: 500 }, (_, index) => ({ time: '08:10:00', level: 'info' as const, message: `第 ${index + 1} 行` })) })
+    await render({ kind: 'run', tab: 'diagnostics' })
+    const log = host!.querySelector<HTMLOListElement>('.run-log')!
+    await vi.waitFor(() => expect(log.scrollTop + log.clientHeight).toBeGreaterThanOrEqual(log.scrollHeight - 1))
+    log.scrollTop = 0
+    await act(async () => useWorkflowStore.getState().addLog('info', '第 501 行'))
+    expect(useWorkflowStore.getState().globalLogs).toHaveLength(500)
+    expect(log.scrollTop + log.clientHeight).toBeGreaterThanOrEqual(log.scrollHeight - 1)
+  })
+
   it('清空日志要就地确认，写明行数', async () => {
     useWorkflowStore.setState({ globalLogs: [
       { time: '08:10:00', level: 'info', message: '开始' },
