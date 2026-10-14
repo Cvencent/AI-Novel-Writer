@@ -145,6 +145,17 @@ describe('设定页', () => {
     expect(labels()[1]).toEqual(['类型 · 必填', false])
   })
 
+  it('篇幅没填全时，焦点离开篇幅也标红，与其他必填项同一时机', async () => {
+    project({ wordsPerChapter: 0 })
+    await mount()
+    const length = () => [...host!.querySelectorAll('.stage-setup-label')][2]
+    expect([length().textContent, length().hasAttribute('data-missing')]).toEqual(['篇幅 · 必填', false])
+
+    const chapters = host!.querySelector<HTMLInputElement>('input[aria-label="总章数"]')!
+    await act(async () => { chapters.focus(); chapters.blur() })
+    expect([length().textContent, length().hasAttribute('data-missing')]).toEqual(['篇幅 · 必填', true])
+  })
+
   it('点开一项更多设定：面板滚进视野，焦点落在面板的输入框里', async () => {
     project({})
     await mount()

@@ -174,6 +174,18 @@ describe('书房', () => {
     expect(host!.querySelector('[data-stage="setup"]')?.textContent).toBe('设定')
   })
 
+  it('定稿章数达到或超过规划章数时，预览里正文是完成，进度条不超出', async () => {
+    const base = invoke.getMockImplementation()!
+    const finalized = (count: number) => ({ ...READY, stages: READY.stages.map(stage => stage.id === 'finalization' ? { ...stage, count } : stage) })
+    invoke.mockImplementation(async (channel: string, ...args: unknown[]) => channel === 'project:peek-overview' ? finalized(30) : base(channel, ...args))
+    useProjectStore.setState({ recentProjects: [ISLAND] })
+    await mount()
+    await click(button('预览《雾岛》'))
+    const manuscript = host!.querySelector<HTMLElement>('[data-stage="manuscript"]')!
+    expect([manuscript.dataset.state, manuscript.textContent]).toEqual(['done', '正文 30 / 24'])
+    expect(manuscript.querySelector<HTMLElement>('[style]')!.style.getPropertyValue('--ratio')).toBe('1')
+  })
+
   it('新建作品没选保存位置时「创建作品」不可用，并写明原因', async () => {
     useLayoutStore.setState({ newProjectOpen: true })
     host = document.createElement('div')
