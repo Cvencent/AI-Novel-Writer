@@ -8,6 +8,7 @@ import * as blueprint from './pages/blueprint.mjs'
 import * as chapterView from './pages/chapter-view.mjs'
 import * as runSheet from './pages/run-sheet.mjs'
 import * as stage from './pages/stage.mjs'
+import { decodePng } from './png.mjs'
 import { seedWithCandidate } from './run-scenarios.mjs'
 import { STAGE_SAMPLE } from './stage-sample.mjs'
 import { seedStageSample } from './scenarios.mjs'
@@ -129,6 +130,25 @@ const recordPopoverAndFocus = page => page.evaluate(() => {
   document.addEventListener('focusout', event => { if (!event.relatedTarget) log.push({ t: Math.round(performance.now()), blur: describe(event.target) }) }, true)
 })
 
+/** 外壳里 --accent 的计算值，[r, g, b]。 */
+const accentColor = page => stage.root(page).evaluate(root => {
+  const probe = document.createElement('span')
+  probe.style.color = 'var(--accent)'
+  root.append(probe)
+  const color = getComputedStyle(probe).color
+  probe.remove()
+  return color.match(/\d+/g).slice(0, 3).map(Number)
+})
+
+/** 截图里接近 color 的像素数（三通道差之和不超过 60）。 */
+function countColor({ pixels }, [r, g, b]) {
+  let count = 0
+  for (let index = 0; index < pixels.length; index += 4) {
+    if (Math.abs(pixels[index] - r) + Math.abs(pixels[index + 1] - g) + Math.abs(pixels[index + 2] - b) <= 60) count++
+  }
+  return count
+}
+
 const describeActive = page => page.evaluate(() => {
   const element = document.activeElement
   if (!element || element === document.body) return 'body'
@@ -172,6 +192,41 @@ export const RDX3_SCENARIOS = {
     rings.segmentedTab = await tabTo(page, runSheet.sheet(page).getByRole('tab', { selected: true }), shoot, 'rdx3-focus-segmented-tab')
     for (const [name, ring] of Object.entries(rings)) assert.ok(hasRing(ring, accent), `${name} 有可见的焦点环：${JSON.stringify(ring)}`)
     return rings
+  } },
+
+  /**
+   * 章节规划的当前章行与普通行按 Tab 聚焦：截行四周的图数强调色像素，聚焦时比不聚焦多出一整圈 2px 环，
+   * 只选中不聚焦的当前章没有这圈环；`withoutContainment` 是去掉列表项的 content-visibility 后同一行聚焦时的像素数，用来对照是谁裁了环。
+   */
+  'rdx3-plan-ring': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page, shoot }) => {
+    const accent = await accentColor(page)
+    await blueprint.open(page)
+    await blueprint.planItem(page, 5).click()
+    const rows = { current: blueprint.plan(page).locator('[aria-current]').first(), other: blueprint.planItem(page, 6) }
+    const results = {}
+    for (const [name, row] of Object.entries(rows)) {
+      await row.scrollIntoViewIfNeeded()
+      const box = await row.boundingBox()
+      const clip = { x: box.x - 6, y: box.y - 6, width: box.width + 12, height: box.height + 12 }
+      const count = async () => countColor(decodePng(await page.screenshot({ clip, animations: 'disabled' })), accent)
+      await row.evaluate(element => element.blur())
+      const resting = await count()
+      await page.keyboard.press('Shift+Tab')
+      await page.keyboard.press('Tab')
+      await row.focus()
+      const focusVisible = await row.evaluate(element => element.matches(':focus-visible'))
+      const focused = await count()
+      await shoot(`rdx3-plan-ring-${name}`)
+      await row.evaluate(element => { element.parentElement.style.contentVisibility = 'visible' })
+      const withoutContainment = await count()
+      await row.evaluate(element => { element.parentElement.style.contentVisibility = '' })
+      results[name] = { focusVisible, resting, focused, withoutContainment, ringMin: Math.round(4 * (box.width + box.height) * 0.8), size: [box.width, box.height] }
+    }
+    for (const [name, { focusVisible, resting, focused, ringMin }] of Object.entries(results)) {
+      assert.ok(focusVisible && focused - resting >= ringMin, `${name} 聚焦时多出一整圈强调色环：${JSON.stringify(results[name])}`)
+    }
+    assert.ok(results.current.resting < results.current.ringMin / 10, `当前章只选中时没有这圈环：${JSON.stringify(results.current)}`)
+    return results
   } },
 
   /** 新外壳里的导入对话框：同屏只有一个上墨的主按钮，用途与目标的选中项是按下的次按钮。 */

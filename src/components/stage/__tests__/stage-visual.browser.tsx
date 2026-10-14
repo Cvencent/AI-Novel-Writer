@@ -34,6 +34,28 @@ afterEach(async () => {
   host = undefined
 })
 
+/** 返回一个函数：截 element 的图，数接近 --accent 的像素（每通道差之和不超过 60）。 */
+function accentPixels(element: HTMLElement) {
+  const probe = document.createElement('span')
+  probe.style.color = 'var(--accent)'
+  element.append(probe)
+  const [r, g, b] = getComputedStyle(probe).color.match(/\d+/g)!.map(Number)
+  probe.remove()
+  return async () => {
+    const base64 = await page.screenshot({ element, save: false })
+    const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${base64}`)).blob())
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
+    const context = canvas.getContext('2d')!
+    context.drawImage(bitmap, 0, 0)
+    const { data } = context.getImageData(0, 0, bitmap.width, bitmap.height)
+    let count = 0
+    for (let index = 0; index < data.length; index += 4) {
+      if (Math.abs(data[index] - r) + Math.abs(data[index + 1] - g) + Math.abs(data[index + 2] - b) <= 60) count++
+    }
+    return count
+  }
+}
+
 const tab = (fields: Partial<EditorTab> & Pick<EditorTab, 'id' | 'type' | 'name'>): EditorTab => ({ projectKey: 'C:\\novels\\visual', ...fields })
 
 describe('新外壳的外观细节', () => {
@@ -129,6 +151,36 @@ describe('新外壳的外观细节', () => {
     const focusedRow = getComputedStyle(row).boxShadow
     expect([focusedBook === resting[0], focusedRow.includes('rgb(44, 74, 140) 0px 0px 0px 4px')]).toEqual([false, true])
     expect(focusedRow).toContain('0px 0px 0px 1px')
+  })
+
+  it('章节规划行聚焦时整圈焦点环都画得出来（行在 content-visibility 的列表项里，环在行外会被裁得只剩四角），当前章只选中时没有这圈环', async () => {
+    const container = await mount(
+      <aside className="stage-bp-plan" style={{ height: 300 }}>
+        <ol className="stage-bp-plan-list">
+          <li><button type="button" className="stage-bp-plan-item" aria-current="true"><span className="stage-bp-plan-no">3</span><span className="stage-bp-plan-name">雾钟</span></button></li>
+          <li><button type="button" className="stage-bp-plan-item"><span className="stage-bp-plan-no">4</span><span className="stage-bp-plan-name">守塔人</span></button></li>
+        </ol>
+      </aside>,
+    )
+    const [current, other] = container.querySelectorAll<HTMLElement>('.stage-bp-plan-item')
+    const accent = accentPixels(container)
+    // 截图按测试页缩放，像素数不是固定值：拿同一时刻去掉列表项 content-visibility（不裁）的截图当整圈的参照
+    const ringShown = async () => {
+      const shown = await accent()
+      container.querySelectorAll('li').forEach(item => { item.style.contentVisibility = 'visible' })
+      const unclipped = await accent()
+      container.querySelectorAll('li').forEach(item => { item.style.contentVisibility = '' })
+      return { shown, unclipped }
+    }
+    const resting = await accent()
+    await userEvent.tab()
+    expect(document.activeElement).toBe(current)
+    const onCurrent = await ringShown()
+    await userEvent.tab()
+    expect(document.activeElement).toBe(other)
+    const onOther = await ringShown()
+    const whole = ({ shown, unclipped }: { shown: number; unclipped: number }) => shown >= unclipped * 0.95 && unclipped - resting > 200
+    expect([whole(onCurrent), whole(onOther), resting < 20], JSON.stringify({ resting, onCurrent, onOther })).toEqual([true, true, true])
   })
 
   it('激活标签在标签条可视区外时滚进来', async () => {
