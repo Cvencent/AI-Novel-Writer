@@ -82,6 +82,8 @@ export function useArchitectureOverview(projectKey: string) {
   const [worldBuildingBusy, setWorldBuildingBusy] = useState(false)
   const [showWorldBuildingCandidate, setShowWorldBuildingCandidate] = useState(false)
   const [loading, setLoading] = useState(true)
+  /** 第一次读三节结束（含失败）后置真且不再复位；读取失败时 loading 照旧停在加载态。 */
+  const [coreReadEnded, setCoreReadEnded] = useState(false)
   /** 生成对话框由哪个入口打开、预选哪几节；null 为关闭。每个入口整体替换，取消后不残留到下一次打开。 */
   const [generateIntent, setGenerateIntent] = useState<GenerateIntent | null>(null)
   const lastCompletedArchitectureRunRef = useRef<string | null>(null)
@@ -114,6 +116,7 @@ export function useArchitectureOverview(projectKey: string) {
       setWorldBuildingCandidate('')
       setShowWorldBuildingCandidate(false)
       setLoading(false)
+      setCoreReadEnded(true)
       return
     }
     const projectPath = projectSession.projectPath
@@ -124,7 +127,7 @@ export function useArchitectureOverview(projectKey: string) {
       'db:project-core-get',
       projectPath,
     ).catch((error: unknown) => {
-      if (archStatusRequestGate.current.isLatest(requestId)) setLoading(false)
+      if (archStatusRequestGate.current.isLatest(requestId)) setCoreReadEnded(true)
       throw error
     })
     let progress: OutlineProgress
@@ -214,6 +217,7 @@ export function useArchitectureOverview(projectKey: string) {
     setWorldBuildingCandidate(recoveredWorldBuildingCandidate)
     if (!recoveredWorldBuildingCandidate) setShowWorldBuildingCandidate(false)
     setLoading(false)
+    setCoreReadEnded(true)
   }, [currentProject, projectKey, projectMatches])
 
   const archStatus = useMemo<Record<string, boolean>>(() => ({
@@ -443,6 +447,8 @@ export function useArchitectureOverview(projectKey: string) {
     projectMatches,
     /** 三节正文与名单都读完之前为真；名单读不到时也算读完，按没有名单显示。 */
     loading: loading || (projectMatches && !rosterSettled),
+    /** 第一次读状态已结束（成功或失败）：之前各节还没有真实状态；之后刷新、或读取失败停在加载态时都为真。 */
+    firstReadEnded: coreReadEnded && (!projectMatches || rosterSettled),
     archStatus,
     confirmed,
     wordCounts,

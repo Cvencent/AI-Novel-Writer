@@ -413,7 +413,8 @@ describe('架构阶段', () => {
     await vi.waitFor(() => expect(host!.querySelector('.arch-page[data-loading]')).toBeNull())
   })
 
-  it('四节状态读取失败时动作区照常显示并可聚焦', async () => {
+  it('四节状态读取失败时动作区照常显示并可聚焦，页头停在加载态、主按钮不可用', async () => {
+    filledSpine(['premise', 'characters', 'worldbuilding', 'synopsis'])
     const answer = invoke.getMockImplementation()!
     invoke.mockImplementation(async (channel, ...args) => {
       if (channel === 'db:project-core-get') throw new Error('数据库读取失败')
@@ -433,7 +434,10 @@ describe('架构阶段', () => {
       .map(action => action.textContent || action.getAttribute('aria-label'))
     await vi.waitFor(() => expect(shown('premise')).toEqual(['自己写', 'AI 生成此节', '「故事前提」的更多操作']))
     expect(shown('characters')).toEqual(['打开角色名单', '「角色名单」的更多操作'])
-    expect(host!.querySelector('.arch-page[data-loading]')).toBeNull()
+    expect(host!.querySelector('.arch-page[data-loading]')).not.toBeNull()
+    expect(host!.querySelector('.arch-eyebrow')?.textContent).toBe('架构')
+    expect(primary()).toBe('AI 生成架构')
+    expect(host!.querySelector<HTMLButtonElement>('.arch-header .pi-btn--primary')!.disabled).toBe(true)
     const cast = button('打开角色名单') as HTMLButtonElement
     cast.focus()
     expect(document.activeElement).toBe(cast)
