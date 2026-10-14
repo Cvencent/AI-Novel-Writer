@@ -6,6 +6,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { blueprintWritePrefill } from '../../../../services/workflows/chapter-write-launch'
 import { countDraftUnits } from '../../../../shared/draft-units'
 import { formatResourceUri } from '../../../../shared/project-paths'
+import { toast } from '../../../ui/Toast'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
 import { useAppearanceStore } from '../../../../stores/appearance-bootstrap'
 import { useDraftStore } from '../../../../stores/draft-store'
@@ -170,6 +171,22 @@ describe('标签与外壳', () => {
     await expect.element(page.getByRole('heading', { name: '审稿报告' })).toBeVisible()
     await expect.element(page.getByRole('button', { name: '按 2 项意见修稿' })).toBeVisible()
     expect(tabs().map(tab => [tab.type, tab.filePath])).toEqual([['chapter', sourcePath]])
+  })
+
+  it('审稿报告标签改道时读这一章的稿失败：提示作者，而不是标签关了什么也没有', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    const review = backend.addReview(draft)
+    const error = vi.spyOn(toast, 'error').mockImplementation(() => undefined)
+    const base = backend.invoke.getMockImplementation()!
+    backend.invoke.mockImplementation(async (channel: string, ...args: unknown[]) => channel === 'db:draft-list'
+      ? Promise.reject(new Error('数据库忙')) : base(channel, ...args))
+    await mount()
+    const sourcePath = formatResourceUri({ kind: 'draft', id: draft.id })
+    await act(async () => useEditorStore.getState().openFile({
+      id: `review-${sourcePath}-1`, name: '审稿报告：第3章', type: 'review-report', content: AI_REVIEW, filePath: sourcePath,
+      reviewReport: AI_REVIEW, chapterNumber: 3, chapterDir: 'ai-novel://draft/ch3', reviewId: review.id, projectKey: SESSION.projectPath,
+    }))
+    await vi.waitFor(() => expect(error).toHaveBeenCalledWith('打开第 3 章失败：数据库忙'))
   })
 
   it('修稿完成时命令打开的合并标签改道到单章视图的合并视图', async () => {
