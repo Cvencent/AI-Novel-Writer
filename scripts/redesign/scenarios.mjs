@@ -648,6 +648,29 @@ export const STAGE_SCENARIOS = {
     await page.getByRole('navigation', { name: '位置' }).getByText('架构', { exact: true }).waitFor({ state: 'visible' })
     assert.equal(await stage.saveStatus(page).innerText(), '已保存', '下一步先保存设定')
   } },
+  'stage-setup-short': { model: false, shell: 'stage', run: async ({ app, page, roots }) => {
+    await stubOpenDialog(app, roots.projects)
+    await bookshelf.createProject(page, '雾岛')
+    await stage.setupOutline(page).waitFor({ state: 'visible' })
+    assert.equal(await stage.root(page).locator('.stage-setup-label[data-missing]').count(), 0, '新作品的必填项先不标红')
+    for (const size of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }, { width: 1280, height: 720 }]) {
+      await page.setViewportSize(size)
+      const foot = await stage.root(page).locator('.stage-setup-foot').boundingBox()
+      for (const name of ['类型', '目标读者']) {
+        const box = await stage.setupField(page, name).boundingBox()
+        assert.ok(box.y + box.height <= foot.y, `${size.width}×${size.height} 首屏看得到「${name}」：底边 ${box.y + box.height}，底栏 ${foot.y}`)
+      }
+    }
+  }, after: async ({ page }) => {
+    await stage.setupChip(page, '全局写作要求').click()
+    const panel = stage.setupPanel(page, '全局写作要求')
+    await panel.waitFor({ state: 'visible' })
+    const foot = await stage.root(page).locator('.stage-setup-foot').boundingBox()
+    const box = await panel.boundingBox()
+    assert.ok(box.y + box.height <= foot.y + 1, `点开的面板滚进视野，不在底栏后面：底边 ${box.y + box.height}，底栏 ${foot.y}`)
+    assert.equal(await panel.getByRole('textbox').evaluate(node => node === document.activeElement), true, '焦点落在面板的输入框里')
+    await page.setViewportSize({ width: 1440, height: 900 })
+  } },
   'stage-setup-fill': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
     await stage.stageButton(page, '设定').click()
     await stage.setupFill(page).click()
