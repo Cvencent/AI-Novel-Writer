@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { create } from 'zustand'
 import { useProjectStore } from '../../stores/project-store'
 import { registerEditorExitSaveHandler, useEditorStore } from '../../stores/editor-store'
 import { useLLMStore } from '../../stores/llm-store'
@@ -14,6 +15,9 @@ import {
   isProjectSessionPath,
 } from '../project-session-gate'
 import type { SaveOutcome } from './save-feedback'
+
+/** 正在写盘的设定保存，按作品会话记：设定页随切标签重挂，实例 state 会丢，在途的保存要跨重挂认得出，不能再发一次。 */
+const useSavesInFlight = create<Record<string, boolean>>(() => ({}))
 
 export const NOVEL_GENRES = ['玄幻', '仙侠', '都市', '科幻', '历史', '军事', '游戏', '末世', '悬疑', '灵异', '言情', '古言', '现言', '奇幻', '武侠', '轻小说', '同人', '职场']
 
@@ -36,7 +40,8 @@ export function useNovelConfigForm(projectKey: string) {
   const defaultModelId = useLLMStore(s => s.defaultModelId)
   // addLog 用 getState() 命令式调用，不订阅 workflow store，避免流式生成时高频更新导致表单重渲染。
   const addLog = useWorkflowStore.getState().addLog
-  const [saving, setSaving] = useState(false)
+  const sessionKey = novelConfigSessionKey(currentProject, projectKey)
+  const saving = useSavesInFlight(s => s[sessionKey] === true)
   const [saveOutcome, setSaveOutcome] = useState<SaveOutcome>('idle')
   const [showGenerateConfig, setShowGenerateConfig] = useState(false)
   const text = useLocaleStore(s => s.text)
@@ -70,8 +75,8 @@ export function useNovelConfigForm(projectKey: string) {
   /** Store 已是最新数据，这里只持久化到磁盘。返回是否写进了这次打开的作品：没发出、作品已切换或写入失败都是 false。 */
   const save = async (propagateFailure = false): Promise<boolean> => {
     const projectSession = captureProjectSession(currentProject)
-    if (!config || saving || !projectSession || !isProjectSessionPath(projectSession, projectKey)) return false
-    setSaving(true)
+    if (!config || useSavesInFlight.getState()[sessionKey] || !projectSession || !isProjectSessionPath(projectSession, projectKey)) return false
+    useSavesInFlight.setState({ [sessionKey]: true })
     setSaveOutcome('idle')
     try {
       const saved = await saveProject(projectSession)
@@ -92,7 +97,7 @@ export function useNovelConfigForm(projectKey: string) {
       if (propagateFailure) throw error
       return false
     } finally {
-      if (isProjectSessionCurrent(projectSession)) setSaving(false)
+      useSavesInFlight.setState({ [sessionKey]: false })
     }
   }
   useEffect(() => {
