@@ -8,7 +8,7 @@ import ts from 'typescript'
 const han = /\p{Script=Han}/u
 const latinWord = /[A-Za-z]{2,}/
 /** 英文里紧跟在数量后的复数名词：数量是 1 时读成「1 chapters」，要走 pluralEn。 */
-const fixedPluralAfterCount = /^ (?:chapters|files|characters|items|lines|log lines|calls|drafts|words|documents|chunks|days|notes|versions|entries)\b/
+const fixedPluralAfterCount = /^ (?:chapters|files|characters|items|lines|log lines|calls|drafts|words|documents|chunks|days|notes|versions|entries|kinds)\b/
 
 /**
  * The broad renderer roots preserve the existing visible-copy check.  The

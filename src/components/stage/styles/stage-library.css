@@ -86,7 +86,7 @@
 }
 
 /* 导入卡是菜单触发的纸墨文字按钮，悬停、按下、展开都要在这里写全，才与另两张原生按钮的卡一个样子 */
-.stage-library .stage-start:hover:not(:active, [aria-expanded='true']) {
+.stage-library .stage-start:hover:not(:active, [aria-expanded='true'], :focus-visible) {
   background: var(--paper);
   border-color: color-mix(in srgb, var(--ink) 22%, transparent);
   box-shadow: var(--shadow-button);
@@ -104,6 +104,8 @@
 .stage-library .stage-start:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
+  /* 键盘焦点环要立即出现，与纸墨按钮一样：聚焦期间 box-shadow 不参与过渡 */
+  transition-property: border-color, background-color, transform;
 }
 
 .stage-start-icon {
@@ -594,7 +596,21 @@
   color: var(--ink-3);
 }
 
+/* 减少动态效果：书封不抬起不落下，悬停改成投影加深、按下改成内凹，仍看得出指着哪本、按下了没有 */
 @media (prefers-reduced-motion: reduce) {
   .stage-library .stage-start:is(:active, [aria-expanded='true']) { transform: none; }
   .stage-book-cover:hover, .stage-book-cover:active { transform: none; }
+  .stage-book:not([data-selected]) .stage-book-cover:hover:not(:active, :focus-visible) {
+    box-shadow:
+      inset 6px 0 0 color-mix(in srgb, var(--cover-ink) 10%, transparent),
+      0 0 0 1px var(--rule-strong),
+      var(--stage-cover-drop),
+      0 10px 18px -10px var(--lift);
+  }
+  .stage-book:not([data-selected]) .stage-book-cover:active:not(:focus-visible) {
+    box-shadow:
+      inset 6px 0 0 color-mix(in srgb, var(--cover-ink) 10%, transparent),
+      inset 0 2px 6px var(--sink),
+      0 0 0 1px var(--rule-strong);
+  }
 }

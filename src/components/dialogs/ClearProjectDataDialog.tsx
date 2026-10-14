@@ -16,6 +16,7 @@ import {
   isProjectSessionCurrent,
 } from '../project-session-gate'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
+import { pluralEn } from '../../shared/plural-en'
 
 interface ClearProjectDataDialogProps {
   open: boolean
@@ -177,7 +178,7 @@ function ClearProjectDataDialogContents({
                 <p>
                   {selectedCount === 0
                     ? text('请至少选择一类内容。', 'Select at least one kind of data.')
-                    : text(`将清除 ${selectedCount} 类内容：${chosen.join('、')}。`, `Clears ${selectedCount} kinds of data: ${chosen.join(', ')}.`)}
+                    : text(`将清除 ${selectedCount} 类内容：${chosen.join('、')}。`, `Clears ${selectedCount} ${pluralEn(selectedCount, 'kind')} of data: ${chosen.join(', ')}.`)}
                 </p>
                 <p className="pi-dialog-recover">{text('清除后不会自动恢复。', 'Cleared data is not restored automatically.')}</p>
                 <p>{text('若需要保留当前内容，请先复制到外部文件或导出项目备份。', 'To keep the current content, copy it elsewhere or export a project backup first.')}</p>

@@ -43,7 +43,7 @@
 /* .05em 是给汉字留的气口，拉丁字母这么排会散 */
 :lang(en) .pi-btn { letter-spacing: .01em; }
 /* 图标一侧少 2px，图标加文字看起来才居中 */
-.pi-btn:not(.pi-btn--icon) > svg:first-child { margin-inline-start: -2px; }
+.pi-btn:not(.pi-btn--icon, .pi-split-toggle) > svg:first-child { margin-inline-start: -2px; }
 /* 键盘焦点环要立即出现：聚焦期间 box-shadow 不参与过渡 */
 .pi-btn:focus-visible { --pi-ring: var(--focus-ring); transition-property: background-color, border-color, color, transform, --pi-top, --pi-foot; }
 

@@ -25,7 +25,7 @@
 }
 
 /* 纸墨按钮自己把焦点环与材质合成到 box-shadow，这里只管外壳自己的按钮 */
-.stage-shell :where(button:not(.pi-btn), [role='option'], .stage-search):focus-visible {
+.stage-shell :where(button:not(.pi-btn, .pi-menu-item), [role='option'], .stage-search):focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
