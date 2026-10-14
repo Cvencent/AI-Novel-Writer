@@ -235,6 +235,16 @@ describe('版本历史', () => {
     await vi.waitFor(() => expect(versionsColumn()).toContain('这一章还没有稿'))
   })
 
+  it('换章时「正在读取」先不显示，读得慢才淡入：读得快的章不闪一下', async () => {
+    await openChapterThree()
+    const release = gateList(4)
+    await click(/第三节车厢/)
+    const loading = () => host!.querySelector<HTMLElement>('[aria-label="这一章的各稿"] [role="status"]')!
+    expect(getComputedStyle(loading()).opacity).toBe('0')
+    await vi.waitFor(() => expect(getComputedStyle(loading()).opacity).toBe('1'), { timeout: 1000 })
+    await act(async () => release())
+  })
+
   it('连续点两章：先点那章的各稿晚到，不显示在后点那章下面', async () => {
     await act(async () => root!.render(<StageHistory projectKey={session.projectPath} />))
     await vi.waitFor(() => expect(button(/雨夜车站/)).toBeTruthy())
