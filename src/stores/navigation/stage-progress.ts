@@ -60,8 +60,10 @@ function fraction(done: number, total: number): StageProgress {
 
 export function missingSetup(config: WorkFacts['config']): SetupField[] {
   const blank = (value: string | undefined) => !value?.trim()
+  // 与主进程的作品概览同一口径：章数、字数都得是正的安全整数。
+  const count = (value: number) => Number.isSafeInteger(value) && value > 0
   return SETUP_FIELDS.filter(field => field === 'length'
-    ? !(config.totalChapters > 0 && config.wordsPerChapter > 0)
+    ? !(count(config.totalChapters) && count(config.wordsPerChapter))
     : blank(config[field]))
 }
 
