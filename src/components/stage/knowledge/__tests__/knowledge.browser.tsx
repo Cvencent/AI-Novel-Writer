@@ -497,6 +497,20 @@ describe('知识库', () => {
     expect(document.body.textContent).not.toContain('没有找到相关的资料。')
   })
 
+  it('读资料的项目副本失败：提示后不停在正在读取，再点同一份会重读', async () => {
+    const error = vi.spyOn(toast, 'error').mockImplementation(() => undefined)
+    const base = invoke.getMockImplementation()!
+    let failing = true
+    invoke.mockImplementation(async (channel, ...args) => channel === 'kb:read-document-copy' && failing ? Promise.reject(new Error('磁盘忙')) : base(channel, ...args))
+    await renderPage()
+    await click(/车站档案/)
+    await vi.waitFor(() => expect(error).toHaveBeenCalled())
+    expect(document.body.textContent).not.toContain('正在读取…')
+    failing = false
+    await click(/车站档案/)
+    await vi.waitFor(() => expect(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="项目副本内容"]')?.value).toBe(copies.station))
+  })
+
   it('知识库页没有重建索引；它在设置的检索模型页里', async () => {
     await renderPage()
     expect(button(/重建/)).toBeUndefined()
