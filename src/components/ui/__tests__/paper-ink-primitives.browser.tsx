@@ -757,6 +757,7 @@ describe('Popover', () => {
     const triggerRect = trigger.getBoundingClientRect()
     const rect = dialog.getBoundingClientRect()
     expect(Math.abs(rect.bottom - (triggerRect.top - 6))).toBeLessThanOrEqual(1)
+    expect(getComputedStyle(dialog).animationName).toBe('pi-drop')
     expect(rect.top).toBeGreaterThanOrEqual(8)
     expect(dialog.scrollHeight).toBeGreaterThan(dialog.clientHeight)
     await act(async () => {
