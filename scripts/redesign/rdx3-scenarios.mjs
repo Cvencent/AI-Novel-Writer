@@ -198,7 +198,8 @@ export const RDX3_SCENARIOS = {
   }, run: async ({ page }) => {
     await setViewport(page, 1024, 640)
     const layout = await stage.root(page).getByRole('banner').evaluate(banner => {
-      const title = banner.querySelector('.stage-work-name')
+      // 修复前没有 .stage-work-name，作品名直接在按钮里：退回按钮本身，先比关闭按钮的位置
+      const title = banner.querySelector('.stage-work-name') ?? banner.querySelector('.stage-work-title')
       const close = banner.querySelector('.stage-window-close').getBoundingClientRect()
       return { title: title.textContent, closeRight: close.right, viewport: innerWidth, ellipsis: getComputedStyle(title).textOverflow, clipped: title.scrollWidth > title.clientWidth }
     })
