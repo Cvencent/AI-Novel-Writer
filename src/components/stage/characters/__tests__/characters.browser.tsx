@@ -184,6 +184,17 @@ describe('角色名单', () => {
     expect(banner()?.textContent).toContain('关键物品')
   })
 
+  it('两份待处理列表都读取失败：标题不写「0 项待处理」，两条错误各占一行', async () => {
+    const duplicateKey = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel, ...args) => channel === 'character-proposal:list-pending-finalized' || channel === 'finalized-character:list-state-candidates'
+      ? Promise.reject(new Error('项目会话已失效')) : base(channel, ...args))
+    await render()
+    await vi.waitFor(() => expect(banner()?.querySelectorAll('[role="alert"]')).toHaveLength(2))
+    expect(banner()!.querySelector('.pi-notice-title')?.textContent).toBe('角色建议读取失败')
+    expect(duplicateKey.mock.calls.some(call => String(call[0]).includes('same key'))).toBe(false)
+  })
+
   it('没有待处理的建议时不显示提示条', async () => {
     await render()
     await vi.waitFor(() => expect(invoke.mock.calls.some(([channel]) => channel === 'finalized-character:list-state-candidates')).toBe(true))

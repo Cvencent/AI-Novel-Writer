@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { validPlotOutlineEntry, plotOutlineConfirmedPrefix, renderPlotOutlineRange, renderPlotOutlineSynopsis, validPlotOutlineAuthorPrefix } from '../plot-outline-contract'
+import { validPlotOutlineEntry, plotOutlineConfirmedPrefix, plotOutlineRangeEffect, renderPlotOutlineRange, renderPlotOutlineSynopsis, validPlotOutlineAuthorPrefix } from '../plot-outline-contract'
 import type { ProjectCoreSynopsisExpected } from '../../../electron/repositories/project-core-repository'
 import { synopsisForDraftChapter } from '../../services/workflows/commands/generate-draft.command'
 
 describe('chapter Markdown outline contract', () => {
+  it('作者手动调过章节顺序时，覆盖范围按章号的最小与最大算，不写成「第 5–4 章」', () => {
+    const synopsis = `# 情节大纲\n\n${[1, 2, 5, 3, 4].map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}`
+    expect(plotOutlineRangeEffect({ synopsis, totalChapters: 12, writingLanguage: 'zh-CN' }, { from: 3, to: 5 }))
+      .toEqual({ kind: 'overwrite', whole: false, from: 3, to: 5, lastChapter: 5 })
+  })
+
   it.each([
     ['## 第一章：起点\n当前章事实。', '## 第二章：后续\n后续章事实。'],
     ['- 第1章：起点\n当前章事实。', '- 第2章：后续\n后续章事实。'],

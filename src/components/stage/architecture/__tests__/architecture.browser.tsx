@@ -345,6 +345,14 @@ describe('架构阶段', () => {
     expect(submit().disabled).toBe(false)
   })
 
+  it('还没有大纲时把起始章改成 2：提示从第 1 章起，不说「已有大纲没有按章的标题」', async () => {
+    await render()
+    await click('继续生成架构')
+    await range(2, 4)
+    expect(issue()).toBe('还没有情节大纲，请从第 1 章起生成。')
+    expect(submit().disabled).toBe(true)
+  })
+
   it('大纲分批写满全书后仍可重写其中一段', async () => {
     const body = outlineBody(1, 24)
     core = { ...core, synopsis: renderPlotOutlineSynopsis(body, 24, OUTLINE_SOURCE) }
