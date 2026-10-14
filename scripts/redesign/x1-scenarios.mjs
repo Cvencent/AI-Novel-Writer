@@ -466,6 +466,29 @@ export const X1_SCENARIOS = {
     return after
   } },
 
+  // #405 r1-1 选到文件夹的一路：灯塔设置页有没保存的输入时 Ctrl O，选放弃修改，系统选文件夹选到港口（只替换 Electron 的对话框，授权照常签发），
+  // 设置页收起、打开港口，确认只问一次。
+  'x1-open-folder-pick': { model: false, shell: 'stage', setup: seedTwoBooks(), run: async context => {
+    const { app, page } = context
+    await app.evaluate(({ dialog }, selectedPath) => {
+      globalThis.__drivePicks = 0
+      dialog.showOpenDialog = async () => { globalThis.__drivePicks++; return { canceled: false, filePaths: [selectedPath] } }
+    }, context.harbor.path)
+    await stage.openSettings(page)
+    await dirtySkillsPage(page)
+    await page.keyboard.press('Control+O')
+    await discardDialog(page).waitFor({ state: 'visible', timeout: 5000 })
+    const picksBeforeAnswer = await app.evaluate(() => globalThis.__drivePicks)
+    await discardDialog(page).getByRole('button', { name: '放弃修改' }).click()
+    const harborMenu = stage.root(page).getByRole('banner').getByRole('button', { name: `《${HARBOR}》作品菜单` })
+    await harborMenu.waitFor({ state: 'visible', timeout: 15_000 })
+    await page.waitForTimeout(1000)
+    const after = { picksBeforeAnswer, picks: await app.evaluate(() => globalThis.__drivePicks),
+      settings: await stage.settingsNav(page).isVisible(), askedAgain: await discardDialog(page).isVisible() }
+    assert.deepEqual(after, { picksBeforeAnswer: 0, picks: 1, settings: false, askedAgain: false }, '放弃后才选文件夹，选到港口就收起设置页打开它，不再问')
+    return after
+  } },
+
   // #403：作者回过一次书房（书房的布局与之后再回书房完全相同），从书房的 Ctrl K 重新打开作品，读完文件树前进作品又回书房，
   // 读完后不被换回作品。落点晚到的版本只比较提交前后的布局，两次都是作者亲手回的书房，比较通过。
   'x1-library-return': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ app, page }) => {
