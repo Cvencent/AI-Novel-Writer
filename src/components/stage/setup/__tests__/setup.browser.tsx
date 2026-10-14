@@ -357,3 +357,26 @@ describe('设定页', () => {
     expect(host!.querySelector('[aria-label="细分类型"]')).toBeNull()
   })
 })
+
+describe('设定页的保存跨切标签', () => {
+  it('Ctrl S 的保存还没返回时切到别的标签再切回：下一步仍不可点，再按 Ctrl S 也不重发，保存只发 1 次', async () => {
+    let finishSave: (saved: boolean) => void = () => {}
+    project({ coreOutline: '雾钟提前一刻响起。', genre: '悬疑', targetAudience: '全龄' })
+    dirtyConfigTab()
+    useProjectStore.setState({ saveProject: vi.fn(() => new Promise<boolean>(resolve => { finishSave = resolve })) } as never)
+    await mount()
+    const ctrlS = () => act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, bubbles: true, cancelable: true })) })
+    await ctrlS()
+    await act(async () => root!.render(<Shortcuts />))
+    await act(async () => root!.render(<><Shortcuts /><StageSetup projectKey={PATH} /></>))
+    expect(next().disabled).toBe(true)
+    await click(next())
+    await ctrlS()
+    expect(useProjectStore.getState().saveProject).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      useEditorStore.setState(state => ({ tabs: state.tabs.map(tab => ({ ...tab, dirty: false })) }))
+      finishSave(true)
+    })
+    expect(next().disabled).toBe(false)
+  })
+})
