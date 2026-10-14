@@ -40,7 +40,7 @@ function RunLog({ text }: { text: Text }) {
 
   useEffect(() => {
     if (follow && box.current) box.current.scrollTop = box.current.scrollHeight
-  }, [logs.length, follow])
+  }, [logs, follow])
 
   return (
     <section className="run-section" aria-labelledby={titleId}>
