@@ -365,6 +365,27 @@ describe('写作此章弹层', () => {
     expect(launched().chapterInfo).toMatchObject({ userGuidance: '预检前写的指导', knowledgeQueryHint: '列车时刻表' })
   })
 
+  it('拆分主按钮：开始写作期间主体是加载中（aria-busy）而不是退成未上墨，箭头半边不带 aria-busy', async () => {
+    let finishStart: (runId: string) => void = () => {}
+    startWorkflow.mockImplementation(() => new Promise(resolve => { finishStart = resolve }))
+    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" />)
+    const main = page.getByRole('button', { name: '写第 5 章' }).element() as HTMLButtonElement
+    const toggle = page.getByRole('button', { name: '本次写作选项' }).element() as HTMLButtonElement
+    const split = main.closest('.pi-split')!
+    expect(main.classList.contains('pi-split-main')).toBe(true)
+    expect(toggle.classList.contains('pi-split-toggle')).toBe(true)
+    expect(split.classList.contains('pi-split--main-off')).toBe(false)
+    await act(async () => main.click())
+    await vi.waitFor(() => expect(startWorkflow).toHaveBeenCalledOnce())
+    expect(main.disabled).toBe(true)
+    expect(main.getAttribute('aria-busy')).toBe('true')
+    expect(toggle.getAttribute('aria-busy')).toBeNull()
+    expect(split.classList.contains('pi-split--main-off')).toBe(false)
+    await act(async () => finishStart('write-popover-run'))
+    await vi.waitFor(() => expect(main.getAttribute('aria-busy')).toBeNull())
+    expect(main.disabled).toBe(false)
+  })
+
   it('保存安排时按钮不可再点；保存失败写明原因，不开始写', async () => {
     continuityProjections = DEAD_KEEPER
     let finishSave: (result: { success: boolean; error?: string }) => void = () => {}
@@ -376,6 +397,10 @@ describe('写作此章弹层', () => {
     await act(async () => popover.getByRole('button', { name: '保存安排' }).click())
     await expect.element(popover.getByRole('button', { name: '保存安排' })).toBeDisabled()
     await expect.element(popover.getByRole('button', { name: '仅本次忽略' })).toBeDisabled()
+    const main = page.getByRole('button', { name: '写第 5 章' }).element() as HTMLButtonElement
+    expect(main.disabled).toBe(true)
+    expect(main.getAttribute('aria-busy')).toBeNull()
+    expect(main.closest('.pi-split')!.classList.contains('pi-split--main-off')).toBe(true)
     await act(async () => finishSave({ success: false, error: '数据库只读' }))
     await expect.element(popover.getByRole('alert')).toHaveTextContent('数据库只读')
     await expect.element(popover.getByRole('button', { name: '保存安排' })).toBeEnabled()
