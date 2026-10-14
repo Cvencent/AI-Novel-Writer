@@ -83,11 +83,11 @@ async function tabTo(page, target, shoot, name, limit = 60) {
   const handle = await target.elementHandle()
   for (let step = 0; step < limit; step++) {
     if (await handle.evaluate(element => element === document.activeElement)) {
-      const ring = await handle.evaluate(element => {
-        const tab = element.closest('.stage-tab')
+      const ring = await handle.evaluate((element, contentTab) => {
+        const tab = element.closest(contentTab)
         const boxShadow = tab ? `${getComputedStyle(tab, '::after').borderTopColor} ${getComputedStyle(tab, '::after').borderTopWidth}` : getComputedStyle(element).boxShadow
         return { boxShadow, focusVisible: element.matches(':focus-visible') }
-      })
+      }, stage.CONTENT_TAB)
       await shoot(name)
       return ring
     }
@@ -243,10 +243,10 @@ export const RDX3_SCENARIOS = {
     const dialog = page.getByRole('dialog').first()
     await dialog.waitFor({ state: 'visible' })
     await page.waitForTimeout(400)
-    const buttons = await dialog.evaluate(element => ({
-      primary: [...element.querySelectorAll('.pi-btn--primary')].map(button => ({ text: button.textContent, disabled: button.disabled })),
-      toggles: [...element.querySelectorAll('button[aria-pressed]')].map(button => ({ text: button.textContent, pressed: button.getAttribute('aria-pressed'), secondary: button.classList.contains('pi-btn--secondary') })),
-    }))
+    const buttons = await dialog.evaluate((element, { primary, secondary }) => ({
+      primary: [...element.querySelectorAll(primary)].map(button => ({ text: button.textContent, disabled: button.disabled })),
+      toggles: [...element.querySelectorAll('button[aria-pressed]')].map(button => ({ text: button.textContent, pressed: button.getAttribute('aria-pressed'), secondary: button.classList.contains(secondary) })),
+    }), { primary: stage.PRIMARY_BUTTON, secondary: stage.SECONDARY_BUTTON_CLASS })
     assert.equal(buttons.primary.length, 1, `只有一个主按钮：${JSON.stringify(buttons.primary)}`)
     assert.ok(buttons.toggles.length >= 4 && buttons.toggles.every(toggle => toggle.secondary), `切换按钮都是次按钮：${JSON.stringify(buttons.toggles)}`)
     return buttons
@@ -270,14 +270,14 @@ export const RDX3_SCENARIOS = {
     assert.equal(pushed, 'ok')
     await page.mouse.move(4, 4)
     await page.waitForTimeout(400)
-    const stack = page.locator('.pi-toast-stack')
-    const geometry = () => stack.evaluate(element => {
-      const cards = [...element.querySelectorAll('.pi-toast:not([data-exiting])')]
+    const stack = stage.toastStack(page)
+    const geometry = () => stack.evaluate((element, liveToast) => {
+      const cards = [...element.querySelectorAll(liveToast)]
       const box = element.getBoundingClientRect()
       const newest = cards.at(-1).getBoundingClientRect()
       return { overflow: element.hasAttribute('data-overflow'), scrollbar: element.offsetWidth - element.clientWidth, right: newest.right,
         newestInside: newest.top >= box.top - 0.5 && newest.bottom <= box.bottom + 0.5, marginRight: element.style.marginRight }
-    })
+    }, stage.LIVE_TOAST)
     const before = await geometry()
     assert.equal(before.overflow, false, `1440×900 下 11 条放得下：${JSON.stringify(before)}`)
     await setViewport(page, 1100, 640)
@@ -286,15 +286,15 @@ export const RDX3_SCENARIOS = {
     assert.ok(after.overflow, `缩窗后改成可滚动：${JSON.stringify(after)}`)
     assert.ok(after.newestInside, '最新一条露在栈底')
     assert.ok(Math.abs(after.right - (before.right - 340)) <= 0.5, `卡片右缘与窗口右缘的距离不变：${before.right} → ${after.right}`)
-    const shift = await stack.evaluate(element => {
-      const card = element.querySelector('.pi-toast:not([data-exiting])')
+    const shift = await stack.evaluate((element, liveToast) => {
+      const card = element.querySelector(liveToast)
       const compensated = card.getBoundingClientRect().right
       const saved = element.style.marginRight
       element.style.marginRight = ''
       const uncompensated = card.getBoundingClientRect().right
       element.style.marginRight = saved
       return Math.round((compensated - uncompensated) * 10) / 10
-    })
+    }, stage.LIVE_TOAST)
     await shoot('rdx3-toast-resize')
     return { before, after, shiftWithoutCompensation: shift }
   } },
@@ -315,12 +315,12 @@ export const RDX3_SCENARIOS = {
     await stage.openFromLibrary(context.page, STAGE_SAMPLE.name)
   }, run: async ({ page }) => {
     await setViewport(page, 1024, 640)
-    const layout = await stage.root(page).getByRole('banner').evaluate(banner => {
-      // 修复前没有 .stage-work-name，作品名直接在按钮里：退回按钮本身，先比关闭按钮的位置
-      const title = banner.querySelector('.stage-work-name') ?? banner.querySelector('.stage-work-title')
-      const close = banner.querySelector('.stage-window-close').getBoundingClientRect()
+    const layout = await stage.root(page).getByRole('banner').evaluate((banner, { workName, windowClose }) => {
+      // 修复前作品名直接在按钮里，没有单独的一段：退回按钮本身，先比关闭按钮的位置
+      const title = banner.querySelector(workName[0]) ?? banner.querySelector(workName[1])
+      const close = banner.querySelector(windowClose).getBoundingClientRect()
       return { title: title.textContent, closeRight: close.right, viewport: innerWidth, ellipsis: getComputedStyle(title).textOverflow, clipped: title.scrollWidth > title.clientWidth }
-    })
+    }, { workName: stage.WORK_NAME, windowClose: stage.WINDOW_CLOSE })
     assert.ok(layout.closeRight <= layout.viewport, `关闭按钮在窗口内：${layout.closeRight} / ${layout.viewport}`)
     assert.deepEqual([layout.title, layout.ellipsis, layout.clipped], [LONG_NAME, 'ellipsis', true], '作品名以省略号收尾')
     return layout
@@ -362,7 +362,7 @@ export const RDX3_SCENARIOS = {
     }, { chunkName: chunk, count: 24 })
     assert.equal(pushed, 'ok')
     await page.waitForTimeout(400)
-    const stack = page.locator('.pi-toast-stack')
+    const stack = stage.toastStack(page)
     const before = await stack.evaluate(element => ({ overflow: element.hasAttribute('data-overflow'), top: element.scrollTop, scrollbar: element.offsetWidth - element.clientWidth }))
     const box = await stack.boundingBox()
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)

@@ -72,6 +72,33 @@ async function countMainInvokes(app) {
   assert.ok(wrapped > 0, '能在主进程里记下 invoke 通道')
 }
 
+/** 从现在起数主进程答完的恢复读取（中断的生成任务与旧恢复候选）。重新打开运行侧页后，两样都读完才算列表是新的。 */
+async function countRecoveryReads(app) {
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = ipcMain._invokeHandlers
+    globalThis.__driveRecoveryReads = { 'generation:list': 0, 'db:recovery-candidate-list': 0 }
+    globalThis.__driveRecoveryOriginals ??= {}
+    for (const channel of Object.keys(globalThis.__driveRecoveryReads)) {
+      const original = globalThis.__driveRecoveryOriginals[channel] ??= handlers.get(channel)
+      handlers.set(channel, async (...args) => {
+        const result = await original(...args)
+        globalThis.__driveRecoveryReads[channel] += 1
+        return result
+      })
+    }
+  })
+}
+
+async function recoveryReadsDone(app, page) {
+  for (const deadline = Date.now() + 10_000; ; await page.waitForTimeout(50)) {
+    const reads = await app.evaluate(() => globalThis.__driveRecoveryReads)
+    if (Object.values(reads).every(count => count > 0)) break
+    assert.ok(Date.now() < deadline, `10 秒内恢复列表没有重新读完：${JSON.stringify(reads)}`)
+  }
+  // 读到的结果交给 React 渲染，等两帧
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+}
+
 /** 助手任务里作者能看到的对话：输入、每一轮的可见回复与动作。运行状态与租约期限由主进程在重开作品时登记，不算对话内容。 */
 function conversation(recovery) {
   return JSON.stringify({ input: recovery.context.input, rounds: recovery.rounds.map(round => ({ visibleText: round.visibleText, actions: round.actions })) })
@@ -213,14 +240,15 @@ export const RUN_SCENARIOS = {
     await card.getByRole('button', { name: '放弃…' }).click()
     await card.getByRole('group').getByText(/^放弃后这 \d+ 字无法找回。$/).waitFor({ state: 'visible' })
     assert.equal(await page.evaluate(() => document.activeElement?.textContent), '保留', '就地确认出现时焦点在「保留」')
-  }, after: async ({ page }) => {
+  }, after: async ({ app, page }) => {
     const card = runSheet.recovery(page).getByRole('article', { name: '原始候选 · 第5章 潮汐表' })
     await card.getByRole('group').getByRole('button', { name: '放弃', exact: true }).click()
     await card.waitFor({ state: 'detached' })
     await runSheet.sheet(page).getByRole('button', { name: '收起运行侧页' }).first().click()
+    await countRecoveryReads(app)
     await runSheet.openFromPalette(page)
     await runSheet.tab(page, '进行中').waitFor({ state: 'visible' })
-    await page.waitForTimeout(800)
+    await recoveryReadsDone(app, page)
     assert.equal(await card.count(), 0, '重新读取后候选不再列出')
   } },
 
@@ -326,9 +354,10 @@ export const RUN_SCENARIOS = {
     for (const deadline = Date.now() + 20_000; !context.projectLoaded; await page.waitForTimeout(100)) {
       assert.ok(Date.now() < deadline, '20 秒内作品数据没有加载完')
     }
+    await countRecoveryReads(context.app)
     await runSheet.openFromPalette(page)
     await runSheet.tab(page, '进行中').waitFor({ state: 'visible' })
-    await page.waitForTimeout(1500)
+    await recoveryReadsDone(context.app, page)
     assert.doesNotMatch(await runSheet.visibleWords(page), /助手任务|恢复此助手任务|复制回复/, '运行侧页不列出助手任务')
     assert.doesNotMatch(await everyName(page), CHAT_WORDS)
   }, after: async context => {

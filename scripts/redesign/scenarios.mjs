@@ -135,10 +135,6 @@ async function assertBottomOpensOn(page, start) {
   await shell.bottomTabLabel(page, '任务').waitFor({ state: 'visible', timeout: 5_000 })
 }
 
-/**
- * 不进 baseline-all 的场景：性能测量，以及 RD-2 导航意图在旧外壳上的回归。run 的返回值写进结果的 measured。
- * nav- 场景对 trunk 与 head 各跑一次（--app-root 指向 trunk），两边都通过即行为一致。
- */
 /** 作品文件夹里的文件（相对路径），数据库这类每次内容不同的文件只比名字。 */
 function projectFiles(root) {
   return fs.readdirSync(root, { recursive: true, withFileTypes: true })
@@ -154,6 +150,10 @@ function stableShape(value, key = '') {
   return /(Id|At)$|^(id|path)$|[Tt]ime|[Ll]ease|[Hh]ash/.test(key) ? typeof value : value
 }
 
+/**
+ * 不进 baseline-all 的场景：性能测量，以及 RD-2 导航意图在旧外壳上的回归。run 的返回值写进结果的 measured。
+ * nav- 场景对 trunk 与 head 各跑一次（--app-root 指向 trunk），两边都通过即行为一致。
+ */
 export const EXTRA_SCENARIOS = {
   /** 计划 RD-5 lane 1：两种外壳、trunk 与 head 各跑一次新建作品，比较作品文件夹里建出的文件。 */
   'new-project-files': { model: false, run: async ({ app, page, roots }) => {
@@ -426,7 +426,7 @@ async function stubUpdates(app) {
   })
 }
 
-/** 在渲染进程里计时：从点击 trigger 指向的元素到正文编辑区出现 text，单位毫秒，帧粒度。 */
+/** 设定页保存失败时页脚的说明。 */
 const SETUP_SAVE_FAILED = '没能保存。设定还在这一页，没有丢，可以再保存一次。'
 
 /** 让主进程的 project:save 返回失败（模拟磁盘写不进去）；fail 为 false 时换回原来的处理函数。 */
@@ -456,6 +456,7 @@ async function blockChunks(app, pattern) {
   }, pattern)
 }
 
+/** 在渲染进程里计时：从点击 trigger 指向的元素到正文编辑区出现 text，单位毫秒，帧粒度。 */
 export async function msFromClickToProse(page, target, proseSelector, text, deadlineMs = 20_000) {
   const handle = await target.elementHandle()
   await page.evaluate(({ element, proseSelector, text, deadlineMs }) => {
@@ -561,8 +562,7 @@ const discardDialog = page => page.getByRole('dialog', { name: '放弃未保存�
 /** 离开设置页的确认出现；选「继续编辑」后设置页还在、输入还在。 */
 async function keepEditing(page, entry, context) {
   await discardDialog(page).waitFor({ state: 'visible' })
-  // 模态确认打开时其余节点是 aria-hidden，按角色找不到设置导航，按类名看它还在不在。
-  assert.equal(await stage.root(page).locator('.stage-set-nav').isVisible(), true, `${entry}：确认出现时设置页还在`)
+  assert.equal(await stage.settingsNavElement(page).isVisible(), true, `${entry}：确认出现时设置页还在`)
   await context.shoot?.(`leave-${entry}`)
   await discardDialog(page).getByRole('button', { name: '继续编辑', exact: true }).click()
   await discardDialog(page).waitFor({ state: 'detached' })
@@ -587,6 +587,8 @@ async function pickFromPalette(page, query, option) {
  */
 function bookOpened(page) {
   const loaded = page.waitForEvent('console', { predicate: message => message.text().includes('项目数据加载完成'), timeout: 30_000 })
+  // 场景在等它之前抛错时没人接这个拒绝，未处理的拒绝会让 Node 直接退出、诊断 JSON 写不出来
+  loaded.catch(() => {})
   return async () => {
     await loaded
     await page.getByRole('navigation', { name: '位置' }).getByText('第 4 章').waitFor({ state: 'visible' })
@@ -759,10 +761,10 @@ export const STAGE_SCENARIOS = {
     await stubOpenDialog(app, roots.projects)
     await bookshelf.createProject(page, '雾岛')
     await stage.setupOutline(page).waitFor({ state: 'visible' })
-    assert.equal(await stage.root(page).locator('.stage-setup-label[data-missing]').count(), 0, '新作品的必填项先不标红')
+    assert.equal(await stage.missingSetupLabels(page).count(), 0, '新作品的必填项先不标红')
     for (const size of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }, { width: 1280, height: 720 }]) {
       await page.setViewportSize(size)
-      const foot = await stage.root(page).locator('.stage-setup-foot').boundingBox()
+      const foot = await stage.setupFoot(page).boundingBox()
       for (const name of ['类型', '目标读者']) {
         const box = await stage.setupField(page, name).boundingBox()
         assert.ok(box.y + box.height <= foot.y, `${size.width}×${size.height} 首屏看得到「${name}」：底边 ${box.y + box.height}，底栏 ${foot.y}`)
@@ -772,7 +774,7 @@ export const STAGE_SCENARIOS = {
     await stage.setupChip(page, '全局写作要求').click()
     const panel = stage.setupPanel(page, '全局写作要求')
     await panel.waitFor({ state: 'visible' })
-    const foot = await stage.root(page).locator('.stage-setup-foot').boundingBox()
+    const foot = await stage.setupFoot(page).boundingBox()
     const box = await panel.boundingBox()
     assert.ok(box.y + box.height <= foot.y + 1, `点开的面板滚进视野，不在底栏后面：底边 ${box.y + box.height}，底栏 ${foot.y}`)
     assert.equal(await panel.getByRole('textbox').evaluate(node => node === document.activeElement), true, '焦点落在面板的输入框里')
@@ -868,7 +870,7 @@ export const STAGE_SCENARIOS = {
     await stage.stageButton(page, '设定').click()
     await stage.dirtySetup(page)
     await failProjectSaves(app, true)
-    const failed = stage.root(page).locator('.stage-setup-foot').getByRole('alert')
+    const failed = stage.setupFoot(page).getByRole('alert')
     await page.keyboard.press('Control+S')
     await failed.filter({ hasText: SETUP_SAVE_FAILED }).waitFor({ state: 'visible' })
     await stage.setupOutline(page).focus()
@@ -878,15 +880,15 @@ export const STAGE_SCENARIOS = {
     assert.equal(await stage.saveStatus(page).innerText(), '未保存')
   }, after: async ({ app, page }) => {
     await failProjectSaves(app, false)
-    await stage.root(page).locator('.stage-setup-foot').getByRole('button', { name: /^保存/ }).click()
+    await stage.setupFoot(page).getByRole('button', { name: /^保存/ }).click()
     await stage.saveStatus(page).filter({ hasText: '已保存' }).waitFor({ state: 'visible' })
-    assert.equal(await stage.root(page).locator('.stage-setup-foot').getByRole('alert').count(), 0, '再保存成功后失败说明消失')
+    assert.equal(await stage.setupFoot(page).getByRole('alert').count(), 0, '再保存成功后失败说明消失')
   } },
   'stage-settings-legacy': { model: false, shell: 'stage', setup: seedStageSample, run: async context => {
     const { page } = context
     await stage.openSettings(page)
     await page.getByRole('button', { name: `编辑「${FAKE_MODEL.name}」` }).click()
-    const heights = selector => stage.root(page).locator(`.stage-set-legacy ${selector}`).evaluateAll(nodes => nodes
+    const heights = selector => stage.legacySettings(page).locator(selector).evaluateAll(nodes => nodes
       .filter(node => node.getClientRects().length > 0).map(node => Math.round(node.getBoundingClientRect().height)))
     assert.deepEqual([...new Set(await heights('input:not([type="checkbox"]):not([type="radio"]):not([type="range"])'))], [40], '模型编辑的输入框与新页一样 40px 高')
     await context.shoot('stage-settings-legacy-model')
@@ -898,7 +900,7 @@ export const STAGE_SCENARIOS = {
     await stage.showSettingsPage(page, '项目备份')
     await stage.root(page).getByText('WebDAV', { exact: true }).waitFor({ state: 'visible' })
     // RD-V 起新外壳里的旧按钮变体换成纸墨按钮，旧 default 成了 pi-btn--primary
-    const solid = await stage.root(page).locator('.stage-set-legacy .pi-btn--primary').evaluateAll(buttons => buttons.map(button => button.textContent.trim()))
+    const solid = await stage.legacySettings(page).locator(stage.PRIMARY_BUTTON).evaluateAll(buttons => buttons.map(button => button.textContent.trim()))
     assert.deepEqual(solid, ['导出本地存档'], '项目备份页只有一个实心主按钮')
   } },
   'stage-settings-leave': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {

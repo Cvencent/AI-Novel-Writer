@@ -198,7 +198,15 @@ export const updateCard = page => root(page).getByRole('status', { name: '应用
 /** 设定页。核心大纲的名字在缺这一项时带「 · 必填」。 */
 export const setupOutline = page => root(page).getByRole('textbox', { name: /^核心大纲/ })
 export const setupNext = page => root(page).getByRole('button', { name: /^下一步：故事架构/ })
-export const setupHint = page => root(page).locator('.stage-setup-foot').getByRole('status')
+/** 设定页底栏：「下一步」旁的提示与保存失败说明都在这里。 */
+export const setupFoot = page => root(page).locator('.stage-setup-foot')
+export const setupHint = page => setupFoot(page).getByRole('status')
+/** 标红的必填项名称。 */
+export const missingSetupLabels = page => root(page).locator('.stage-setup-label[data-missing]')
+/** 设置页的分组导航。模态确认打开时其余节点是 aria-hidden，按角色找不到它，用这个看它还在不在。 */
+export const settingsNavElement = page => root(page).locator('.stage-set-nav')
+/** 设置里沿用旧面板的那几页（模型编辑、提示词模板、写作 Skills、项目备份）。 */
+export const legacySettings = page => root(page).locator('.stage-set-legacy')
 export const setupFill = page => root(page).getByRole('button', { name: /^(AI 补全其余设定|AI 正在补全…)$/ })
 export const setupChip = (page, name) => root(page).getByRole('group', { name: '更多设定' }).getByRole('button', { name: new RegExp(`^${escape(name)}`) })
 export const setupPanel = (page, name) => root(page).getByRole('region', { name })
@@ -211,3 +219,15 @@ export async function dirtySetup(page, addition = '还有一盏灯没有熄灭�
   await outline.fill(`${await outline.inputValue()}${addition}`)
   await saveStatus(page).filter({ hasText: '未保存' }).waitFor({ state: 'visible' })
 }
+
+/** 右下角的提示栈；栈里还没在退场的卡片。 */
+export const toastStack = page => page.locator('.pi-toast-stack')
+export const LIVE_TOAST = '.pi-toast:not([data-exiting])'
+/** 纸墨按钮的变体：上墨的主按钮与次按钮。 */
+export const PRIMARY_BUTTON = '.pi-btn--primary'
+export const SECONDARY_BUTTON_CLASS = 'pi-btn--secondary'
+/** 标签条里的一个内容标签（焦点环画在它的 ::after 上）。 */
+export const CONTENT_TAB = '.stage-tab'
+/** 顶栏作品名：RD-X3 起是按钮里单独的一段，之前是按钮本身。 */
+export const WORK_NAME = ['.stage-work-name', '.stage-work-title']
+export const WINDOW_CLOSE = '.stage-window-close'
