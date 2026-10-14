@@ -363,7 +363,8 @@ function SetupSession({ projectKey }: { projectKey: string }) {
                 {NOVEL_GENRES.map(value => <option key={value} value={value}>{text(value, GENRE_EN[value] ?? value)}</option>)}
               </select>
             </div>
-            <div className="stage-setup-field" role="group" aria-labelledby={lengthId}>
+            <div className="stage-setup-field" role="group" aria-labelledby={lengthId}
+              onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) leave('length') }}>
               <RequiredLabel id={lengthId} name={text('篇幅', 'Length')} missing={isMissing('length')} alert={alert('length')} />
               <div className="stage-setup-length">
                 <NumberInput value={config.totalChapters as number | ''} fallback={100} min={1} label={text('总章数', 'Total chapters')}
