@@ -6,6 +6,7 @@ import { useLocaleStore } from '../../../stores/locale-store'
 import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useProjectStore } from '../../../stores/project-store'
 import { sameProjectSessionContext, projectSessionContextFromProject } from '../../../shared/project-session-context'
+import { sqliteTime } from '../../../shared/sqlite-time'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
 import { toast } from '../../ui/Toast'
@@ -76,7 +77,7 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
   const selected = ordered.find(version => version.id === selectedVersionId) ?? null
   const chapter = chapters.find(candidate => candidate.number === selectedChapter)
 
-  const formatTime = (value: string) => new Date(value).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  const formatTime = (value: string) => sqliteTime(value).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 
   const pickChapter = (chapterNumber: number) => {
     comparisonRequest.current++

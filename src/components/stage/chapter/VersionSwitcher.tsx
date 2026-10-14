@@ -2,6 +2,7 @@ import { useEffect, useState, type KeyboardEvent } from 'react'
 import { ChevronDown } from 'lucide-react'
 import type { DraftMeta } from '../../../services/draft-index'
 import { sameProjectSessionContext } from '../../../shared/project-session-context'
+import { sqliteTime } from '../../../shared/sqlite-time'
 import { useDraftStore } from '../../../stores/draft-store'
 import { useEditorStore, type EditorTab } from '../../../stores/editor-store'
 import { useLocaleStore } from '../../../stores/locale-store'
@@ -117,7 +118,7 @@ export default function VersionSwitcher({ tab, current, label, title, onSave }: 
       <span>{versionName(draft, text)}{draft.id === current.id ? text(' · 当前', ' · open') : ''}</span>
       <small>
         {draft.wordCount !== undefined ? text(`${draft.wordCount.toLocaleString(locale)} 字 · `, `${draft.wordCount.toLocaleString(locale)} words · `) : ''}
-        {new Date(draft.updatedAt ?? draft.createdAt).toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+        {sqliteTime(draft.updatedAt ?? draft.createdAt).toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
       </small>
     </button>
   )
