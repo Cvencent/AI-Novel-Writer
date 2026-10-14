@@ -357,6 +357,7 @@ node scripts/redesign/drive.mjs --scenario refs-timing --shell stage --out <目�
 | `rdv-alert` | 书房里在同一目录再建一部同名作品，主进程拒绝，命令式 `alertError` 渲染进纸墨宿主，焦点在「确定」，旧「新建小说项目」对话框也在宿主里；`after` 点「确定」 | 叠在新建作品对话框上的错误弹框 | 否 |
 | `rdv-toasts` | 预置两条调用记录后写一章，在诊断分页连点三次「复制安全诊断」再让剪贴板失败点一次：三次成功合并成一条，出错的另起一条，只有一个提示栈，通知互不重叠，`measured.toasts` 是栈里的条数 | 右下角提示栈 | 是 |
 | `rdv-toast-error` | 同上写一章，先复制成功一次让提示栈出现，再打开 Ctrl K 面板（Radix 模态）后让复制失败：出错通知是八角符号，卡片自身不带 `role`，不在 `aria-hidden` 子树里，经挂载点 `#ai-novel-ink-toasts` 的 `aria-live="polite"` 播报（挂载点内没有任何 `role="alert"`），面板仍开着；`after` 按 Esc | 面板上方的出错通知 | 是 |
+| `rdv-toast-flood` | 打开样例作品，按 `app.getAppPath()` 找到构建产物 `dist/assets/ToastStack-*.js`，在页面里 import 同一模块（与应用共享栈状态），推入 24 条常驻出错通知：栈在顶栏以下（`top >= 48`）、视口以内，标 `data-overflow` 可滚动，最新一条露在栈底；滚到顶关掉最早那条剩 23 条，中途拍 `rdv-toast-flood-top`。推入函数是按压缩产物里的 `exiting:!1` 找到的，换压缩器或改了条目字段就要改这里 | 滚回底部的满栈 | 否 |
 | `rdv-clear-busy` | 主进程的 `db:project-clear-generated-data` 换成永不返回，点「清除所选」：按钮写「清除中…」、`aria-busy`、禁用，三个勾选禁用，Esc 关不掉，指针停在按钮上 | 清除中的危险确认 | 否 |
 | `rdv-run-failure` | 粘贴一张角色卡但假模型不回提取 JSON：运行失败，运行卡里的失败提示是朱批（没有底色）；关掉导入对话框 | 运行侧页的失败提示 | 是 |
 | `rdv-export` | 作品菜单「导出…」：旧导出对话框 Portal 进纸墨宿主，外壳是 `pi-dialog` | 导出对话框 | 否 |
