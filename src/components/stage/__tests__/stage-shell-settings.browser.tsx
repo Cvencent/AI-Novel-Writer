@@ -35,6 +35,7 @@ const discardDialog = () => [...document.querySelectorAll('[role="dialog"]')].fi
 const dialogButton = (name: string) => [...discardDialog()!.querySelectorAll('button')].find(button => button.textContent === name)
 const skillUrl = () => host!.querySelector<HTMLInputElement>('input[aria-label="GitHub Skill 地址"]')!
 const opens = () => invoke.mock.calls.filter(([channel]) => channel === 'project:open')
+const paletteOption = (name: string) => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(option => option.textContent?.includes(name))!
 
 beforeEach(async () => {
   invoke = vi.fn(async (channel: string) => {
@@ -99,6 +100,20 @@ describe('书房里的设置页有没保存的输入时，导入旧项目副本�
     expect(invoke.mock.calls.filter(([channel]) => channel === 'dialog:select-folder')).toEqual([])
     await act(async () => dialogButton('继续编辑')!.click())
     expect(invoke.mock.calls.filter(([channel]) => channel === 'dialog:select-folder')).toEqual([])
+    expect(skillUrl().value).toBe('https://github.com/owner/skill')
+  })
+
+  it('确认框开着时又点了新建作品，原来的导入照样收尾：继续编辑后导入不再占着，也不弹新建', async () => {
+    let importing!: Promise<boolean>
+    await act(async () => { importing = useProjectStore.getState().importLegacyProject() })
+    await vi.waitFor(() => expect(discardDialog()).toBeTruthy())
+    await act(async () => useStageStore.setState({ palette: 'commands' }))
+    await act(async () => paletteOption('新建作品').click())
+    await act(async () => dialogButton('继续编辑')!.click())
+    const stillWaiting = new Promise(resolve => setTimeout(() => resolve('导入还在等确认'), 1000))
+    await expect(Promise.race([importing, stillWaiting])).resolves.toBe(false)
+    expect(useProjectStore.getState().legacyImportBusy).toBe(false)
+    expect(useLayoutStore.getState().newProjectOpen).toBe(false)
     expect(skillUrl().value).toBe('https://github.com/owner/skill')
   })
 
