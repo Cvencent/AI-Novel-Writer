@@ -1,7 +1,7 @@
 import { lazyPage } from './lazy-page'
 
-const setup = lazyPage(() => import('./setup/StageSetup'))
-const settings = lazyPage(() => import('./settings/StageSettings'))
+const setup = lazyPage(() => import('./setup/StageSetup'), 'StageSetup')
+const settings = lazyPage(() => import('./settings/StageSettings'), 'StageSettings')
 
 export const SetupPage = setup.Page
 export const SettingsPage = settings.Page
