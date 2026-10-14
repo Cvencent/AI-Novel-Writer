@@ -5,7 +5,7 @@ import { useLocaleStore } from '../../../stores/locale-store'
 import ProjectBackupPanel from '../../backups/ProjectBackupPanel'
 import PromptSettings from '../../settings/PromptSettings'
 import SkillSettings from '../../settings/SkillSettings'
-import { leaveSettings, useSettingsLeave } from '../../settings/unsaved-settings'
+import { leaveSettings, useSettingsLeave, useSettingsLeaveHost } from '../../settings/unsaved-settings'
 import { Button } from '../../ui/Button'
 import { DangerConfirm } from '../../ui/DangerConfirm'
 import { ErrorBoundary } from '../../ErrorBoundary'
@@ -70,6 +70,7 @@ export default function StageSettings({ library }: { library: boolean }) {
   const text = useLocaleStore(s => s.text)
   const page = settingsPageOf(useLayoutStore(s => s.settingsSection))
   const pendingLeave = useSettingsLeave(s => s.pending)
+  useSettingsLeaveHost()
   const bodyRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
