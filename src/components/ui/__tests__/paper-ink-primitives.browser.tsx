@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, StrictMode, useEffect, useRef, useState, type ReactNode } from 'react'
+import { act, StrictMode, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { page, userEvent } from 'vitest/browser'
 import { Ellipsis } from 'lucide-react'
@@ -681,6 +681,34 @@ describe('Popover', () => {
     expect(container.querySelector('[role="dialog"]')).toBeNull()
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
     expect(focused()).toBe(trigger)
+  })
+
+  it('弹层定位之后、监听挂上之前触发按钮被滚走：弹层随后关闭，不留在旧位置与按钮脱节', async () => {
+    function ScrolledRightAfterOpen() {
+      const layer = useAnchoredLayer('start')
+      const scroller = useRef<HTMLDivElement>(null)
+      // 排在 useAnchoredLayer 的定位之后：打开的同一次提交里，弹层按旧位置定好，滚动区才把按钮带走
+      useLayoutEffect(() => {
+        if (layer.open && scroller.current) scroller.current.scrollTop = 80
+      }, [layer.open])
+      return (
+        <div ref={scroller} style={{ height: 200, overflow: 'auto' }}>
+          <div style={{ height: 600, paddingTop: 100 }}>
+            <div className="pi-anchor" ref={layer.anchorRef}>
+              <Button ref={layer.triggerRef} variant="secondary" onClick={layer.toggle}>版本 v3</Button>
+              {layer.open && layer.renderLayer(<div ref={layer.layerRef} role="dialog" aria-label="草稿版本" tabIndex={-1} className="pi-popover">v3</div>)}
+            </div>
+          </div>
+        </div>
+      )
+    }
+    const container = await mount(<ScrolledRightAfterOpen />)
+    await userEvent.click(page.getByRole('button', { name: '版本 v3' }))
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    const layer = container.querySelector<HTMLElement>('[role="dialog"]')
+    const trigger = container.querySelector('button')!.getBoundingClientRect()
+    expect(layer === null || Math.abs(layer.getBoundingClientRect().top - (trigger.bottom + 6)) < 1, JSON.stringify({ layerTop: layer?.getBoundingClientRect().top, triggerBottom: trigger.bottom }))
+      .toBe(true)
   })
 
   it('弹层 Portal 到纸墨根后，Tab 顺序仍接在触发按钮之后', async () => {
