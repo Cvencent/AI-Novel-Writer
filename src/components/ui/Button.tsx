@@ -71,6 +71,7 @@ type LegacySize = NonNullable<LegacyButtonProps['size']>
 /**
  * 新外壳里仍有旧对话框与旧面板（导入、导出、项目备份、模型表单、架构编辑等）用旧变体。
  * 旧 default/ai 读旧强调色，弹窗里与页面里的主按钮颜色不一样；新外壳下一律换成纸墨六种，旧外壳不变。
+ * 旧面板拿 default 标切换按钮的选中项（带 aria-pressed 或 aria-selected），那不是这一层的主操作：一律换成次按钮，选中时按下不弹起。
  */
 const LEGACY_INK_VARIANT: Record<LegacyVariant, Exclude<InkButtonVariant, 'icon'>> = {
   default: 'primary', ai: 'primary', success: 'primary', outline: 'secondary', ghost: 'text', destructive: 'danger-solid',
@@ -91,7 +92,8 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>((props, ref) => 
   const { className, variant, size, asChild = false, ...rest } = props
   const Comp = asChild ? Slot : 'button'
   if (stage) {
-    const inkVariant = size === 'icon' ? 'icon' : LEGACY_INK_VARIANT[variant ?? 'default']
+    const toggle = rest['aria-pressed'] !== undefined || rest['aria-selected'] !== undefined
+    const inkVariant = size === 'icon' ? 'icon' : toggle ? 'secondary' : LEGACY_INK_VARIANT[variant ?? 'default']
     return <Comp ref={ref} className={inkClasses(inkVariant, LEGACY_INK_SIZE[size ?? 'default'], className)} {...rest} />
   }
   return (
