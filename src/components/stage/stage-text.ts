@@ -48,4 +48,3 @@ export function stageTabName(tab: Pick<EditorTab, 'type' | 'name' | 'planningRec
   const name = tab.planningRecovery ? undefined : PAGE_TAB_NAMES[tab.type]
   return name ? text(...name) : tab.name
 }
-
