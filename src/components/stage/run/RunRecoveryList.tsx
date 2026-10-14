@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useId, useRef, useState, type ReactNode } from 'react'
 import { countDraftUnits } from '../../../shared/draft-units'
 import { useLocaleStore } from '../../../stores/locale-store'
 import GenerationBudgetDiagnostics from '../../panels/GenerationBudgetDiagnostics'
@@ -132,6 +132,7 @@ function DraftCard({ entry, recovery, text }: { entry: DraftEntry; recovery: Run
 /** 旧恢复候选：放弃前就地确认，写明放弃的字数无法找回。 */
 function CandidateCard({ entry, recovery, text }: { entry: CandidateEntry; recovery: RunRecovery; text: Text }) {
   const [confirming, setConfirming] = useState(false)
+  const discardButton = useRef<HTMLButtonElement>(null)
   const units = countDraftUnits(entry.text)
   return (
     <RecoveryShell title={entry.title} text={text} notes={[entry.staleNote]}
@@ -143,12 +144,13 @@ function CandidateCard({ entry, recovery, text }: { entry: CandidateEntry; recov
             cancelLabel={text('保留', 'Keep')}
             onConfirm={() => { setConfirming(false); recovery.discardCandidate(entry) }}
             onCancel={() => setConfirming(false)}
+            returnFocusRef={discardButton}
           />
         )
         : <>
           <Button variant="secondary" size="sm" disabled={!entry.canContinue} onClick={() => recovery.continueCandidate(entry)}>{text('继续编辑', 'Continue editing')}</Button>
           <Button variant="text" size="sm" onClick={() => recovery.copyCandidate(entry)}>{text('复制', 'Copy')}</Button>
-          <Button variant="danger" size="sm" onClick={() => setConfirming(true)}>{text('放弃…', 'Discard…')}</Button>
+          <Button ref={discardButton} variant="danger" size="sm" onClick={() => setConfirming(true)}>{text('放弃…', 'Discard…')}</Button>
         </>}>
       <Excerpt text={entry.text} />
     </RecoveryShell>

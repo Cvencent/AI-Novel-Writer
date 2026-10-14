@@ -35,6 +35,7 @@ function RunLog({ text }: { text: Text }) {
   const logs = useWorkflowStore(s => s.globalLogs)
   const [follow, setFollow] = useState(true)
   const [confirming, setConfirming] = useState(false)
+  const clearButton = useRef<HTMLButtonElement>(null)
   const box = useRef<HTMLOListElement>(null)
   const titleId = useId()
 
@@ -47,7 +48,7 @@ function RunLog({ text }: { text: Text }) {
       <header className="run-section-head">
         <h3 id={titleId} className="run-section-title">{text('日志', 'Log')}</h3>
         <Check kind="switch" checked={follow} onChange={setFollow} label={text('自动滚动', 'Auto-scroll')} />
-        <Button variant="text" size="sm" disabled={logs.length === 0 || confirming} onClick={() => setConfirming(true)}>
+        <Button ref={clearButton} variant="text" size="sm" disabled={logs.length === 0 || confirming} onClick={() => setConfirming(true)}>
           <Trash2 size={14} aria-hidden />{text('清空日志…', 'Clear log…')}
         </Button>
       </header>
@@ -58,6 +59,7 @@ function RunLog({ text }: { text: Text }) {
           cancelLabel={text('保留', 'Keep')}
           onConfirm={() => { setConfirming(false); useWorkflowStore.getState().clearLogs() }}
           onCancel={() => setConfirming(false)}
+          returnFocusRef={clearButton}
         />
       )}
       {logs.length === 0

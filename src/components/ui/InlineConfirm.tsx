@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type KeyboardEvent } from 'react'
+import { useEffect, useId, useRef, type KeyboardEvent, type RefObject } from 'react'
 import { Button } from './Button'
 import { rememberFocus } from './focus-return'
 
@@ -9,25 +9,29 @@ interface InlineConfirmProps {
   cancelLabel: string
   onConfirm: () => void
   onCancel: () => void
+  /**
+   * 打开确认条的按钮，关掉后焦点回到它。确认条出现时这个按钮常常已经失焦：禁用了（Electron 里禁用的按钮立即失焦），
+   * 或者被确认条替换掉了，所以由调用方指给它，不靠确认条出现那一刻的焦点。
+   */
+  returnFocusRef: RefObject<HTMLElement | null>
 }
 
 /**
  * 侧页内影响较小的危险操作用的就地确认条。出现时焦点落在取消上，Esc 取消。
- * 确认条一消失焦点就丢了：还给打开它的按钮，按钮已被替换或已禁用（清空后无日志可清）时落到最近的可聚焦祖先。
+ * 确认条一消失焦点就丢了：还给 returnFocusRef，按钮已不可用（清空后无日志可清）或已移除时落到最近的可聚焦祖先。
  */
-export function InlineConfirm({ message, confirmLabel, cancelLabel, onConfirm, onCancel }: InlineConfirmProps) {
+export function InlineConfirm({ message, confirmLabel, cancelLabel, onConfirm, onCancel, returnFocusRef }: InlineConfirmProps) {
   const messageId = useId()
   const groupRef = useRef<HTMLDivElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
-  const restoreFocus = useRef<(() => void) | null>(null)
 
   useEffect(() => {
-    restoreFocus.current ??= rememberFocus(groupRef.current)
+    const restoreFocus = rememberFocus(groupRef.current, returnFocusRef)
     cancelRef.current?.focus()
     return () => {
-      if (!document.activeElement || document.activeElement === document.body) restoreFocus.current?.()
+      if (!document.activeElement || document.activeElement === document.body) restoreFocus()
     }
-  }, [])
+  }, [returnFocusRef])
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') {

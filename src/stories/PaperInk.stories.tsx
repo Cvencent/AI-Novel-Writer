@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react' // eslint-disable-line storybook/no-renderer-packages
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { ChevronDown, Ellipsis, Feather, PenLine } from 'lucide-react'
 import { actionToast } from '../components/ui/ActionToast'
 import { alertError } from '../components/ui/AlertDialog'
@@ -176,6 +176,7 @@ export const Stats: Story = {
 
 function NoticesDemo() {
   const [confirming, setConfirming] = useState(true)
+  const clearButton = useRef<HTMLButtonElement>(null)
   return (
     <div style={column}>
       <Notice title="继续上次的写作" actions={<Button variant="secondary" size="sm">继续</Button>}>第 4 章停在第 3 段。</Notice>
@@ -186,8 +187,8 @@ function NoticesDemo() {
       </Notice>
       <Notice tone="danger" title="第 3 章审稿失败">模型连接超时，已保留草稿，未丢失任何内容。</Notice>
       {confirming
-        ? <InlineConfirm message="清空后无法恢复这 12 条日志。" confirmLabel="清空" cancelLabel="取消" onConfirm={() => setConfirming(false)} onCancel={() => setConfirming(false)} />
-        : <Button variant="text" onClick={() => setConfirming(true)}>清空日志…</Button>}
+        ? <InlineConfirm message="清空后无法恢复这 12 条日志。" confirmLabel="清空" cancelLabel="取消" onConfirm={() => setConfirming(false)} onCancel={() => setConfirming(false)} returnFocusRef={clearButton} />
+        : <Button ref={clearButton} variant="text" onClick={() => setConfirming(true)}>清空日志…</Button>}
     </div>
   )
 }

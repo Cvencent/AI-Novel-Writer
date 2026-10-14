@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, StrictMode, useState, type ReactNode } from 'react'
+import { act, StrictMode, useRef, useState, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { page, userEvent } from 'vitest/browser'
 import { Ellipsis } from 'lucide-react'
@@ -932,7 +932,7 @@ describe('InlineConfirm', () => {
     const onCancel = vi.fn()
     const onConfirm = vi.fn()
     const container = await mount(
-      <InlineConfirm message="清空后无法恢复这 12 条日志。" confirmLabel="清空" cancelLabel="取消" onConfirm={onConfirm} onCancel={onCancel} />,
+      <InlineConfirm message="清空后无法恢复这 12 条日志。" confirmLabel="清空" cancelLabel="取消" onConfirm={onConfirm} onCancel={onCancel} returnFocusRef={{ current: null }} />,
     )
     const group = container.querySelector('[role="group"]')!
     expect(document.getElementById(group.getAttribute('aria-labelledby')!)!.textContent).toBe('清空后无法恢复这 12 条日志。')
@@ -950,12 +950,13 @@ describe('InlineConfirm', () => {
   function ClearLog() {
     const [lines, setLines] = useState(12)
     const [confirming, setConfirming] = useState(false)
+    const trigger = useRef<HTMLButtonElement>(null)
     return (
       <aside tabIndex={-1} aria-label="运行侧页">
-        <Button variant="text" disabled={lines === 0 || confirming} onClick={() => setConfirming(true)}>清空日志…</Button>
+        <Button ref={trigger} variant="text" disabled={lines === 0 || confirming} onClick={() => setConfirming(true)}>清空日志…</Button>
         {confirming && (
           <InlineConfirm message={`清空后这 ${lines} 行日志无法找回。`} confirmLabel="清空" cancelLabel="保留"
-            onConfirm={() => { setConfirming(false); setLines(0) }} onCancel={() => setConfirming(false)} />
+            onConfirm={() => { setConfirming(false); setLines(0) }} onCancel={() => setConfirming(false)} returnFocusRef={trigger} />
         )}
       </aside>
     )
@@ -978,23 +979,23 @@ describe('InlineConfirm', () => {
     expect(focused()).toBe(container.querySelector('aside'))
   })
 
-  it('确认条替换掉了打开它的按钮时，取消后焦点也不落到 body', async () => {
+  it('确认条替换掉了打开它的按钮时，取消后焦点回到重新出现的按钮', async () => {
     function Discard() {
       const [confirming, setConfirming] = useState(false)
+      const trigger = useRef<HTMLButtonElement>(null)
       return (
         <article tabIndex={-1} aria-label="可恢复的内容">
           {confirming
-            ? <InlineConfirm message="放弃后这 300 字无法找回。" confirmLabel="放弃" cancelLabel="保留" onConfirm={() => setConfirming(false)} onCancel={() => setConfirming(false)} />
-            : <Button variant="danger" onClick={() => setConfirming(true)}>放弃…</Button>}
+            ? <InlineConfirm message="放弃后这 300 字无法找回。" confirmLabel="放弃" cancelLabel="保留" onConfirm={() => setConfirming(false)} onCancel={() => setConfirming(false)} returnFocusRef={trigger} />
+            : <Button ref={trigger} variant="danger" onClick={() => setConfirming(true)}>放弃…</Button>}
         </article>
       )
     }
-    const container = await mount(<Discard />)
+    await mount(<Discard />)
     await userEvent.tab()
     await userEvent.keyboard('{Enter}')
     await userEvent.keyboard('{Escape}')
-    expect(focused()).not.toBe(document.body)
-    expect(container.contains(focused())).toBe(true)
+    expect(focused().textContent).toBe('放弃…')
   })
 })
 
