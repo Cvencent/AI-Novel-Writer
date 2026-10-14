@@ -223,6 +223,18 @@
     var(--stage-cover-drop);
 }
 
+/* 选中的书本身就是一圈强调色，聚焦时在外面再套一圈，键盘停在哪本书上看得出来 */
+.stage-book[data-selected] .stage-book-cover:focus-visible {
+  outline: none;
+  box-shadow:
+    inset 6px 0 0 color-mix(in srgb, var(--cover-ink) 10%, transparent),
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--accent),
+    0 0 0 6px var(--surface),
+    0 0 0 8px var(--accent),
+    var(--stage-cover-drop);
+}
+
 .stage-book-cover:focus-visible {
   outline: none;
   box-shadow: inset 6px 0 0 color-mix(in srgb, var(--cover-ink) 10%, transparent), var(--focus-ring);
