@@ -38,8 +38,13 @@ export function useSettingsLeaveHost(): void {
   }, [])
 }
 
+/**
+ * 确认框开着时再来的离开请求（快捷键不受模态框拦）当作作者留下：确认框问的仍是原来那一个，
+ * 新请求立即收到 stay，原请求由作者的回答结算，每个请求都恰好结算一次。
+ */
 export function leaveSettings(action: () => void, stay?: () => void): void {
   if (unsaved.size === 0 || hosts === 0) action()
+  else if (useSettingsLeave.getState().pending) stay?.()
   else useSettingsLeave.setState({ pending: { proceed: action, stay } })
 }
 
