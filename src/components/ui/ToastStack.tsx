@@ -183,11 +183,24 @@ function ToastCard({ entry, paused }: { entry: ToastStackEntry; paused: boolean 
 function ToastStack() {
   const items = useSyncExternalStore(subscribe, () => entries)
   const [paused, setPaused] = useState(false)
+  const stackRef = useRef<HTMLDivElement>(null)
+  const newestId = useRef(0)
   // 关掉最后一条时指针下已没有元素，mouseleave 不一定触发
   if (paused && items.length === 0) setPaused(false)
 
   // 增删一条时其余卡片从旧位置滑到新位置（FLIP）。只借用 CSS 的 transform 过渡，所以可打断，减少动态效果时也随之关掉
   useLayoutEffect(() => {
+    const stack = stackRef.current
+    if (stack) {
+      // 栈高过上限才改成滚动容器，平时 overflow 保持 visible，不裁卡片投影；新到的在底部，滚过去让它露面
+      // 按布局高度量，不用 scrollHeight：进场与 FLIP 的位移也算进 scrollHeight，一条通知进场时就会误判
+      const last = stack.lastElementChild as HTMLElement | null
+      const overflowing = last !== null && last.offsetTop + last.offsetHeight > stack.clientHeight + 1
+      stack.toggleAttribute('data-overflow', overflowing)
+      const newest = items.at(-1)?.id ?? 0
+      if (overflowing && newest > newestId.current) stack.scrollTop = stack.scrollHeight
+      newestId.current = Math.max(newestId.current, newest)
+    }
     for (const [id, card] of cards) {
       const before = lastTops.get(id)
       if (before === undefined || card.dataset.exiting !== undefined) continue
@@ -204,7 +217,7 @@ function ToastStack() {
   }, [items])
 
   return (
-    <div className="pi-toast-stack" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+    <div ref={stackRef} className="pi-toast-stack" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
       {items.map(entry => <ToastCard key={entry.id} entry={entry} paused={paused} />)}
     </div>
   )

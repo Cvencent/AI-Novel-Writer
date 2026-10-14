@@ -84,7 +84,7 @@
 }
 .pi-btn--secondary:hover:not(:disabled, :active, [aria-expanded="true"]) > svg { color: var(--ink); }
 .pi-btn--secondary:active, .pi-btn--secondary[aria-expanded="true"] {
-  --pi-top: var(--surface-2); --pi-foot: var(--surface-2); background-color: var(--surface-2); border-color: var(--edge-strong); transform: translateY(1px);
+  --pi-top: var(--paper-press); --pi-foot: var(--paper-press); background-color: var(--paper-press); border-color: var(--edge-strong); transform: translateY(1px);
   --pi-shadow: inset 0 2px 4px var(--sink);
 }
 
@@ -231,7 +231,7 @@
 .pi-menu-item:focus-visible { outline: none; background: var(--wash); box-shadow: inset 0 0 0 2px var(--accent); }
 .pi-menu-item[data-tone="danger"] { color: var(--danger); }
 .pi-menu-item[data-tone="danger"]:hover, .pi-menu-item[data-tone="danger"]:focus-visible { background: var(--danger-soft); }
-.pi-menu-item:disabled { color: var(--ink-3); cursor: not-allowed; background: none; }
+.pi-menu-item:disabled, .pi-menu-item[data-tone="danger"]:disabled { color: var(--ink-3); cursor: not-allowed; background: none; }
 .pi-menu-sep { height: 1px; margin: 6px 4px; background: var(--rule); }
 .pi-menu-label { padding: 6px 10px 4px; font-size: var(--fs-11); letter-spacing: .14em; color: var(--ink-3); }
 
@@ -262,6 +262,8 @@
 .pi-check-input:checked + .pi-switch { background: var(--accent); }
 .pi-check-input:checked + .pi-switch::after { transform: translateX(14px); }
 .pi-check-input:focus-visible + .pi-switch { box-shadow: var(--focus-ring); }
+/* 禁用开关同样是没上墨的平面：开着也撤掉强调色，开关状态只由滑块位置说出 */
+.pi-check-input:disabled + .pi-switch { background: var(--wash-strong); }
 /*
  * 勾选行（例如清除生成内容的三类内容）：每个 <Check> 外包 div.pi-check-row。行容器向左让出 12px，标签再留 12px 内边距，
  * 勾选框正好落回正文左边线，悬停底色向左溢出 12px。
@@ -395,7 +397,10 @@
 .pi-toast-stack {
   pointer-events: auto; position: fixed; right: var(--s-5); bottom: var(--s-12); z-index: var(--z-toast);
   display: flex; flex-direction: column; align-items: flex-end; gap: var(--s-2);
+  max-height: calc(100vh - var(--s-12) - var(--s-5));
 }
+/* 常驻与出错不受条数上限约束，栈高过视口时改为可滚动（ToastStack 量出溢出才标记，平时不裁卡片投影）；左侧留出投影的位置 */
+.pi-toast-stack[data-overflow] { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-left: var(--s-6); }
 
 /* ================= 空状态 ================= */
 .pi-empty { display: flex; flex-direction: column; align-items: center; gap: var(--s-3); padding: var(--s-12) var(--s-6);

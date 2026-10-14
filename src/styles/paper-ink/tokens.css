@@ -86,6 +86,8 @@
   --paper-top: var(--paper);
   --paper-foot: color-mix(in oklab, var(--paper) 98.5%, var(--ink));
   --paper-edge: color-mix(in srgb, var(--ink) 16%, transparent);
+  /* 次按钮按下：纸片被压进桌面，比纸面（也就是悬停时的底色）更深 */
+  --paper-press: var(--surface-2);
   /* 控件边线：--edge 在外框、面板、纸面上都刚过 3:1，--edge-strong 用于底沿与悬停 */
   --edge: color-mix(in srgb, var(--ink) 49%, transparent);
   --edge-strong: color-mix(in srgb, var(--ink) 66%, transparent);
@@ -155,6 +157,8 @@
   --paper-top: color-mix(in oklab, var(--paper) 97%, var(--ink));
   --paper-foot: var(--paper);
   --paper-edge: rgba(0, 0, 0, .55);
+  /* 深色的 --surface-2 比纸面亮，按下要往 --frame 方向压 */
+  --paper-press: color-mix(in srgb, var(--paper) 55%, var(--frame));
   --edge: color-mix(in srgb, var(--ink) 40%, transparent);
   --edge-strong: color-mix(in srgb, var(--ink) 56%, transparent);
   --lift: rgba(0, 0, 0, .5);
