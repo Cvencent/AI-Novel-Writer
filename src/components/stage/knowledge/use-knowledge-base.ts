@@ -120,7 +120,9 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
   const localDraftRef = useRef(localDraft)
   const writeLocalDraft = useCallback((next: KnowledgeDraft) => { localDraftRef.current = next; setLocalDraft(next) }, [])
   const readLocalDraft = useCallback(() => localDraftRef.current, [])
-  const [draft, setDraft, readDraft] = draftSlot ?? [localDraft, writeLocalDraft, readLocalDraft]
+  const draft = draftSlot ? draftSlot[0] : localDraft
+  const setDraft = draftSlot ? draftSlot[1] : writeLocalDraft
+  const readDraft = draftSlot ? draftSlot[2] : readLocalDraft
   const openedSession = useRef<string | null>(null)
   const restoredDraft = useRef<KnowledgeDraft | null>(draft)
   const selectedDocId = draft.docId
