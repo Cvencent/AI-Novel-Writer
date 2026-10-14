@@ -118,6 +118,7 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
     setSearchedQuery('')
   }
   const [searching, setSearching] = useState(false)
+  const searchRequest = useRef(0)
   const [topK, setTopK] = useState(10)
   const [clearing, setClearing] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -285,22 +286,24 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
     }
   }
 
-  /** 查找；改「最多显示」时按上次查找的词与新的条数重查。 */
+  /** 查找；改「最多显示」时按上次查找的词与新的条数重查。只有最后一次查找写结果、结束「查找中」，先发的晚到不算。 */
   const search = async (query = searchQuery, limit = topK) => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession) return
+    const request = ++searchRequest.current
+    const latest = () => request === searchRequest.current && isProjectSessionCurrent(projectSession)
     setSearching(true)
     try {
       const result = await ipc.invokeWithProjectSession(projectSession, 'kb:search', query, limit, projectSession.projectPath)
-      if (!isProjectSessionCurrent(projectSession)) return
+      if (!latest()) return
       setSearchResults(unwrapKnowledgeValue(result))
       setSearchedQuery(query)
     } catch (error) {
-      if (!isProjectSessionCurrent(projectSession)) return
+      if (!latest()) return
       clearResults()
       toast.error(appErrorMessage(locale, error))
     } finally {
-      if (isProjectSessionCurrent(projectSession)) setSearching(false)
+      if (latest()) setSearching(false)
     }
   }
 
