@@ -325,6 +325,8 @@ async function runSession(sessionName, names, options) {
       shared.shell = await shellShown(launched.page)
       const context = {
         ...launched, roots, invoke, fake,
+        /** 场景中途多拍一张图，与收尾截图放在同一目录。 */
+        shoot: name => shoot(context.page, `${base(name)}.png`),
         reload: () => context.page.reload().then(() => waitForShell(context.page, TIMEOUT)),
         /** 退出应用再用同一隔离目录冷启动（真正的重启，不重写外观），context 换成新的 app 与 page。 */
         restart: async () => {

@@ -775,6 +775,24 @@ export const STAGE_SCENARIOS = {
     await stage.saveStatus(page).filter({ hasText: '已保存' }).waitFor({ state: 'visible' })
     assert.equal(await stage.root(page).locator('.stage-setup-foot').getByRole('alert').count(), 0, '再保存成功后失败说明消失')
   } },
+  'stage-settings-legacy': { model: false, shell: 'stage', setup: seedStageSample, run: async context => {
+    const { page } = context
+    await stage.openSettings(page)
+    await page.getByRole('button', { name: `编辑「${FAKE_MODEL.name}」` }).click()
+    const heights = selector => stage.root(page).locator(`.stage-set-legacy ${selector}`).evaluateAll(nodes => nodes
+      .filter(node => node.getClientRects().length > 0).map(node => Math.round(node.getBoundingClientRect().height)))
+    assert.deepEqual([...new Set(await heights('input:not([type="checkbox"]):not([type="radio"]):not([type="range"])'))], [40], '模型编辑的输入框与新页一样 40px 高')
+    await context.shoot('stage-settings-legacy-model')
+    await stage.root(page).getByRole('button', { name: '取消', exact: true }).click()
+    for (const [name, slug] of [['提示词模板', 'prompts'], ['写作 Skills', 'skills']]) {
+      await stage.showSettingsPage(page, name)
+      await context.shoot(`stage-settings-legacy-${slug}`)
+    }
+    await stage.showSettingsPage(page, '项目备份')
+    await stage.root(page).getByText('WebDAV', { exact: true }).waitFor({ state: 'visible' })
+    const solid = await stage.root(page).locator('.stage-set-legacy .btn-primary').evaluateAll(buttons => buttons.map(button => button.textContent.trim()))
+    assert.deepEqual(solid, ['导出本地存档'], '项目备份页只有一个实心主按钮')
+  } },
   'stage-settings-leave': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
     await stage.openSettings(page)
     await page.getByRole('button', { name: `编辑「${FAKE_MODEL.name}」` }).click()
