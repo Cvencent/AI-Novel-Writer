@@ -411,9 +411,18 @@
   display: flex; flex-direction: column; align-items: flex-end; gap: var(--s-2);
   max-height: calc(100vh - 2 * var(--s-12));
 }
-/* 常驻与出错不受条数上限约束，栈最高到顶栏以下（上沿留 48px，窗口按钮仍点得到），再高就栈内滚动（ToastStack 量出溢出才标记，平时不裁卡片投影）；左侧留出投影的位置；上沿 16px 淡出，滚到顶时留白正好让出淡出带 */
-.pi-toast-stack[data-overflow] { overflow-y: auto; overscroll-behavior: contain; padding: var(--s-4) 0 0 var(--s-6);
-  mask-image: linear-gradient(transparent, var(--ink) var(--s-4)); }
+/* 常驻与出错不受条数上限约束，栈最高到顶栏以下（上沿留 48px，窗口按钮仍点得到），再高就栈内滚动（ToastStack 量出溢出才标记，平时不裁卡片投影）；左侧留出投影的位置 */
+.pi-toast-stack[data-overflow] { overflow-y: auto; overscroll-behavior: contain; padding: var(--s-4) 0 0 var(--s-6); }
+/*
+ * 上面还有卡片的提示：卡片列上沿 16px 由卡片底色淡到透明，盖在卡片上而不是把卡片变透明（mask 会让页面文字从卡片里透出）。
+ * 粘在滚动区顶上，不占位；随滚动在头 16px 里淡入，滚到顶时消失，最早一条整张露出来。
+ */
+.pi-toast-stack[data-overflow]::before {
+  content: ''; position: sticky; top: 0; z-index: 1; flex: none; pointer-events: none;
+  width: 360px; max-width: calc(100vw - 2 * var(--s-5)); height: var(--s-4); margin-bottom: calc(-1 * (var(--s-4) + var(--s-2)));
+  background: linear-gradient(var(--layer), transparent);
+  animation: pi-fade linear both; animation-timeline: scroll(self); animation-range: 0 var(--s-4);
+}
 
 /* ================= 空状态 ================= */
 .pi-empty { display: flex; flex-direction: column; align-items: center; gap: var(--s-3); padding: var(--s-12) var(--s-6);
