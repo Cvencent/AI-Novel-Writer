@@ -1,12 +1,13 @@
 /* eslint-disable react-refresh/only-export-components */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act } from 'react'
+import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 
 import '../../../index.css'
 import { APPEARANCE_STORAGE_KEY } from '../../../shared/appearance-profile'
 import { useAppearanceStore } from '../../../stores/appearance-bootstrap'
 import type { WindowCloseGuard } from '../../layout/use-window-close-guard'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../ui/Dialog'
 import StageRoot from '../StageRoot'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -24,13 +25,13 @@ const idleGuard = (overrides: Partial<WindowCloseGuard> = {}): WindowCloseGuard 
   ...overrides,
 })
 
-async function mount(guard: WindowCloseGuard) {
+async function mount(guard: WindowCloseGuard, children: ReactNode = <Broken />) {
   host = document.createElement('div')
   host.style.cssText = 'width: 1280px; height: 800px;'
   document.body.append(host)
   root = createRoot(host)
   vi.spyOn(console, 'error').mockImplementation(() => undefined)
-  await act(async () => root!.render(<StageRoot theme="paper" exitGuard={guard}><Broken /></StageRoot>))
+  await act(async () => root!.render(<StageRoot theme="paper" exitGuard={guard}>{children}</StageRoot>))
 }
 
 afterEach(async () => {
@@ -40,6 +41,8 @@ afterEach(async () => {
   host = undefined
   vi.restoreAllMocks()
   localStorage.removeItem(APPEARANCE_STORAGE_KEY)
+  document.getElementById('ai-novel-ink-overlay')?.remove()
+  useAppearanceStore.setState({ resolvedShell: 'classic' })
 })
 
 describe('新外壳渲染出错', () => {
@@ -71,5 +74,24 @@ describe('新外壳渲染出错', () => {
     const save = [...dialog.querySelectorAll('button')].find(candidate => candidate.textContent === '保存并退出')!
     await act(async () => save.click())
     expect(saveAndExit).toHaveBeenCalledOnce()
+  })
+
+  it('导出等旧对话框开着时关窗，退出确认与遮罩画在它上面', async () => {
+    useAppearanceStore.setState({ resolvedShell: 'stage' })
+    await mount(idleGuard({ exitRequest: { requestId: 'close-2' } }), (
+      <Dialog open>
+        <DialogContent><DialogHeader><DialogTitle>导出项目</DialogTitle></DialogHeader></DialogContent>
+      </Dialog>
+    ))
+    const exit = [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].find(dialog => dialog.textContent?.includes('退出前处理未保存的内容'))!
+    const legacy = [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].find(dialog => dialog.textContent?.includes('导出项目'))!
+    // Radix 让下层的模态不接指针，elementFromPoint 会跳过它；放开之后取到的才是画在最上面的那一层
+    for (const layer of document.querySelectorAll<HTMLElement>('[role="dialog"], .pi-scrim')) layer.style.pointerEvents = 'auto'
+    const center = (element: Element) => {
+      const rect = element.getBoundingClientRect()
+      return document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+    }
+    expect(center(exit)?.closest('[role="dialog"]')).toBe(exit)
+    expect(center(legacy)?.closest('[role="dialog"]')).toBe(exit)
   })
 })
