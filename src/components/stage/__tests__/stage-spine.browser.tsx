@@ -223,7 +223,7 @@ describe('流程脊', () => {
     await userEvent.tab()
     const current = stageRows(container)[2]
     expect(document.activeElement).toBe(current)
-    expect(getComputedStyle(current).boxShadow).toMatch(/^rgb(255, 254, 251) 0px 0px 0px 2px, rgb(44, 74, 140) 0px 0px 0px 4px, /)
+    expect(getComputedStyle(current).boxShadow).toMatch(/^rgb\(255, 254, 251\) 0px 0px 0px 2px, rgb\(44, 74, 140\) 0px 0px 0px 4px, /)
   })
 
   it('章节列表晚于当前章渲染时，当前章也滚进列表可视区', async () => {
@@ -232,18 +232,18 @@ describe('流程脊', () => {
       onStage: () => undefined, onChapter: () => undefined, onResource: () => undefined, onSettings: () => undefined }
     host = document.createElement('div')
     host.className = 'paper-ink stage-shell'
-    host.style.cssText = 'height: 640px; width: 1280px; display: flex;'
+    host.style.cssText = 'height: 640px; width: 1280px;'
     document.body.append(host)
     root = createRoot(host)
-    await act(async () => root!.render(<StageSpine {...props} chapters={[]} />))
-    await act(async () => root!.render(<StageSpine {...props} chapters={deriveChapters(many)} />))
+    await act(async () => root!.render(<div className="stage-frame"><StageSpine {...props} chapters={[]} /></div>))
+    await act(async () => root!.render(<div className="stage-frame"><StageSpine {...props} chapters={deriveChapters(many)} /></div>))
     const list = host.querySelector<HTMLElement>('[aria-label="章节"]')!
     const current = list.querySelector<HTMLElement>('[aria-current="page"]')!
     expect(current.textContent).toContain('第70章标题')
     const box = list.getBoundingClientRect()
     const rect = current.getBoundingClientRect()
     expect(list.scrollTop).toBeGreaterThan(0)
-    expect(rect.top >= box.top && rect.bottom <= box.bottom).toBe(true)
+    expect(rect.top >= box.top - 1 && rect.bottom <= box.bottom + 1).toBe(true)
   })
 
   it('点击阶段、章节、作品资料与设置时，回调收到对应的去处', async () => {

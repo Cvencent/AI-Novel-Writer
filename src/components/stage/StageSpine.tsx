@@ -63,10 +63,12 @@ export default function StageSpine({ stages, chapters, location: activeLocation,
   const currentStage = location?.kind === 'stage' ? location.stage : null
   const currentChapter = location?.kind === 'stage' ? location.chapter : undefined
   const currentRow = useRef<HTMLButtonElement>(null)
+  const chapterListShown = currentStage === 'manuscript' && chapters.length > 0
 
+  // 章节列表可能晚于当前章出现（打开作品时草稿索引后到），列表出现时也要把当前章滚进来
   useEffect(() => {
     currentRow.current?.scrollIntoView({ block: 'nearest' })
-  }, [currentChapter])
+  }, [currentChapter, chapterListShown])
 
   const row = (key: string, current: boolean, onClick: () => void, children: ReactNode, attributes: Record<string, string> = {}) => (
     <li key={key}>
@@ -87,7 +89,7 @@ export default function StageSpine({ stages, chapters, location: activeLocation,
         </>, { 'data-state': status.progress.state, 'data-stage': status.stage }))}
       </ol>
 
-      {currentStage === 'manuscript' && chapters.length > 0 && (
+      {chapterListShown && (
         <ol className="stage-chapters" aria-label={text('章节', 'Chapters')}>
           {chapters.map(chapter => {
             const current = chapter.number === currentChapter
