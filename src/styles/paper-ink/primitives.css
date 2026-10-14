@@ -59,7 +59,7 @@
   --pi-shadow: inset 0 1px 0 var(--hi), inset 0 -1px 0 color-mix(in srgb, var(--accent-base) 65%, transparent),
     0 1px 1px var(--lift), 0 5px 11px -5px var(--lift-accent);
 }
-.pi-btn--primary:hover:not(:disabled) {
+.pi-btn--primary:hover:not(:disabled, :active, [aria-expanded="true"]) {
   --pi-top: var(--accent-hover-top); --pi-foot: var(--accent-hover); background-color: var(--accent-hover);
   --pi-shadow: inset 0 1px 0 var(--hi), inset 0 -1px 0 color-mix(in srgb, var(--accent-base) 65%, transparent),
     0 1px 1px var(--lift), 0 7px 14px -7px var(--lift-accent);
@@ -78,11 +78,11 @@
   --pi-shadow: inset 0 1px 0 var(--paper-hi), 0 1px 0 var(--paper-edge), 0 3px 5px -3px var(--lift-soft);
 }
 .pi-btn--secondary > svg { color: var(--ink-2); }
-.pi-btn--secondary:hover:not(:disabled) {
+.pi-btn--secondary:hover:not(:disabled, :active, [aria-expanded="true"]) {
   border-color: var(--edge-strong);
   --pi-shadow: inset 0 1px 0 var(--paper-hi), 0 1px 0 var(--paper-edge), 0 5px 9px -5px var(--lift);
 }
-.pi-btn--secondary:hover:not(:disabled) > svg { color: var(--ink); }
+.pi-btn--secondary:hover:not(:disabled, :active, [aria-expanded="true"]) > svg { color: var(--ink); }
 .pi-btn--secondary:active, .pi-btn--secondary[aria-expanded="true"] {
   --pi-top: var(--surface-2); --pi-foot: var(--surface-2); background-color: var(--surface-2); border-color: var(--edge-strong); transform: translateY(1px);
   --pi-shadow: inset 0 2px 4px var(--sink);
@@ -95,7 +95,8 @@
 .pi-btn--icon > svg { width: 16px; height: 16px; }
 .pi-btn--icon.pi-btn--sm > svg { width: 14px; height: 14px; }
 .pi-btn--icon.pi-btn--lg > svg { width: 18px; height: 18px; }
-.pi-btn--text:hover:not(:disabled), .pi-btn--icon:hover:not(:disabled) { background-color: var(--wash); color: var(--ink); }
+.pi-btn--text:hover:not(:disabled, :active, [aria-expanded="true"]),
+.pi-btn--icon:hover:not(:disabled, :active, [aria-expanded="true"], [aria-pressed="true"]) { background-color: var(--wash); color: var(--ink); }
 .pi-btn--text:active, .pi-btn--icon:active,
 .pi-btn--text[aria-expanded="true"], .pi-btn--icon[aria-expanded="true"], .pi-btn--icon[aria-pressed="true"] {
   background-color: var(--wash-strong); color: var(--ink);
@@ -106,10 +107,10 @@
 /* 去掉颜色，方肩、单线框、不投影的朱印与圆角带影的压印块仍然不是一个东西；单线框也不会与焦点环混淆 */
 .pi-btn--danger, .pi-btn--danger-solid { --pi-radius: var(--radius-sm); }
 .pi-btn--danger { color: var(--danger); border-color: var(--danger-edge); }
-.pi-btn--danger:hover:not(:disabled) { background-color: var(--danger-soft); border-color: var(--danger); }
+.pi-btn--danger:hover:not(:disabled, :active) { background-color: var(--danger-soft); border-color: var(--danger); }
 .pi-btn--danger:active { background-color: var(--danger-soft); border-color: var(--danger); --pi-shadow: inset 0 1px 2px var(--sink); }
 .pi-btn--danger-solid { background-color: var(--danger); color: var(--danger-ink); border-color: var(--danger-press); font-weight: 600; }
-.pi-btn--danger-solid:hover:not(:disabled) { background-color: var(--danger-hover); }
+.pi-btn--danger-solid:hover:not(:disabled, :active) { background-color: var(--danger-hover); }
 .pi-btn--danger-solid:active { background-color: var(--danger-press); --pi-shadow: inset 0 1px 2px var(--sink); }
 
 /* 禁用是一块没上墨的平面：撤掉材质与受光，外形保留，不用 opacity */
