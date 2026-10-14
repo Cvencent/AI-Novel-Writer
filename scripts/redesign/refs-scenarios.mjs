@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import * as chapter from './pages/chapter.mjs'
+import * as chapterView from './pages/chapter-view.mjs'
 import * as refs from './pages/refs.mjs'
 import * as runSheet from './pages/run-sheet.mjs'
 import * as shell from './pages/shell.mjs'
@@ -191,8 +192,7 @@ const NARROW = Object.fromEntries([1280, 1440].flatMap(width => [
 export const REFS_SCENARIOS = {
   ...NARROW,
   'refs-kb-finalized': { model: true, shell: 'stage', setup: seedRefs, run: async ({ page }) => {
-    await page.getByRole('button', { name: '定稿', exact: true }).click()
-    await refs.dialog(page).getByRole('button', { name: '确认定稿', exact: true }).click()
+    await chapterView.finalize(page, 3, { untilReadOnly: false })
     await runSheet.waitForRunDone(page)
     await refs.open(page, 'knowledge')
     const shelves = page.getByRole('group', { name: '资料来源' })
