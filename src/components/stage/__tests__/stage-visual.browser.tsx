@@ -79,14 +79,27 @@ describe('新外壳的外观细节', () => {
     useProjectStore.setState(restore[1], true)
   })
 
-  it('Tab 到激活标签时焦点环画在标签内侧，不被标签底边的裁切吃掉', async () => {
+  it('Tab 到激活标签时焦点环套住整个标签（含关闭按钮），画在标签内侧，离开底边接缝；鼠标点标签不出环', async () => {
     const tabs = [tab({ id: 'a', type: 'chapter', name: '第 1 章' }), tab({ id: 'b', type: 'chapter', name: '第 2 章' })]
     const container = await mount(<StageTabs tabs={tabs} activeTabId="b" onSelect={() => undefined} onClose={() => undefined} tabDomId={id => `tab-${id}`} panelId="panel" />)
     await userEvent.tab()
     const label = container.querySelector<HTMLElement>('#tab-b')!
+    const whole = label.parentElement!
     expect(document.activeElement).toBe(label)
-    expect(getComputedStyle(label.parentElement!).clipPath).toBe('inset(-1px -1px 0px)')
-    expect(getComputedStyle(label).boxShadow).toBe('rgb(44, 74, 140) 0px 0px 0px 2px inset')
+    expect([getComputedStyle(label).boxShadow, getComputedStyle(label).outlineStyle]).toEqual(['none', 'none'])
+    const ring = getComputedStyle(whole, '::after')
+    expect([ring.borderTopColor, ring.borderTopWidth, ring.borderBottomWidth]).toEqual(['rgb(44, 74, 140)', '2px', '2px'])
+    const box = whole.getBoundingClientRect()
+    const inset = [ring.top, ring.right, ring.bottom, ring.left].map(parseFloat)
+    const close = whole.querySelector('.stage-tab-close')!.getBoundingClientRect()
+    expect(inset).toEqual([2, 2, 3, 2])
+    expect(close.right).toBeLessThanOrEqual(box.right - inset[1] - 2)
+    expect(label.getBoundingClientRect().left).toBe(box.left)
+
+    const other = container.querySelector<HTMLElement>('#tab-a')!
+    await userEvent.click(other)
+    expect(document.activeElement).toBe(other)
+    expect(getComputedStyle(other.parentElement!, '::after').content).toBe('none')
   })
 
   it('激活标签在标签条可视区外时滚进来', async () => {
