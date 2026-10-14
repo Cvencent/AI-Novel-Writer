@@ -111,6 +111,12 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
   const [stats, setStats] = useState<KBStatsData>(EMPTY_STATS)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  // 当前结果是按哪个词查出来的；结果被保存、更新检索、清空或换作品清掉时一起清，查找出错时也清，「没有找到」只说真查过的词。
+  const [searchedQuery, setSearchedQuery] = useState('')
+  const clearResults = () => {
+    setSearchResults([])
+    setSearchedQuery('')
+  }
   const [searching, setSearching] = useState(false)
   const [topK, setTopK] = useState(10)
   const [clearing, setClearing] = useState(false)
@@ -183,7 +189,7 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
       if (switched) {
         setDocuments([])
         setStats(EMPTY_STATS)
-        setSearchResults([])
+        clearResults()
         setDraft(EMPTY_DRAFT)
         resetIndex()
         setLoadError('')
@@ -245,7 +251,7 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
       if (!isProjectSessionCurrent(session)) return
       if (!result.success) { toast.error(result.error || text('保存失败', 'Save failed')); return }
       if (readDraft() === saving) await openDocument(docId, true)
-      setSearchResults([])
+      clearResults()
       toast.success(text('项目副本已保存；更新检索后，写作时才能查到新内容', 'Project copy saved. Update search so writing can find the new text.'))
     } catch (error) {
       if (isProjectSessionCurrent(session)) toast.error(appErrorMessage(locale, error))
@@ -267,7 +273,7 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
       await loadData()
       await loadStatus()
       if (readDraft() === reindexing) await openDocument(result.docId, true)
-      setSearchResults([])
+      clearResults()
       toast.success(text('检索已更新，写作时能查到新内容', 'Search updated. Writing can now find the new text.'))
     } catch (error) {
       if (isProjectSessionCurrent(session)) toast.error(appErrorMessage(locale, error))
@@ -285,8 +291,10 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
       const result = await ipc.invokeWithProjectSession(projectSession, 'kb:search', query, limit, projectSession.projectPath)
       if (!isProjectSessionCurrent(projectSession)) return
       setSearchResults(unwrapKnowledgeValue(result))
+      setSearchedQuery(query)
     } catch (error) {
       if (!isProjectSessionCurrent(projectSession)) return
+      clearResults()
       toast.error(appErrorMessage(locale, error))
     } finally {
       if (isProjectSessionCurrent(projectSession)) setSearching(false)
@@ -308,7 +316,7 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
         setDraft(EMPTY_DRAFT)
         setDocuments([])
         setStats(EMPTY_STATS)
-        setSearchResults([])
+        clearResults()
         resetIndex()
         globalEventBus.emit('REFRESH_RESOURCE', { resources: ['all'], projectPath: expectedProjectPath, projectSession })
         toast.success(text('知识库已清空', 'Knowledge base cleared'))
@@ -370,7 +378,7 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
     documents, stats, loadError,
     selectedDocId, documentCopy, draftContent, setDraftContent, documentBusy, dirty,
     openDocument, saveDocument, reindexDocument,
-    searchQuery, setSearchQuery, topK, setTopK, searchResults, setSearchResults, searching, search,
+    searchQuery, setSearchQuery, topK, setTopK, searchResults, setSearchResults, searchedQuery, clearResults, searching, search,
     clearing, clearAll,
     importing, importPlanningMaterials,
   }

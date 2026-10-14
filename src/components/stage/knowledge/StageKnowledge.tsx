@@ -49,7 +49,6 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
   const [pendingDocId, setPendingDocId] = useState<string | null>(null)
   const [clearOpen, setClearOpen] = useState(false)
   const [extraction, setExtraction] = useState<PendingExtraction | null>(null)
-  const [searchedQuery, setSearchedQuery] = useState('')
   const saveRef = useRef(kb.saveDocument)
   useEffect(() => { saveRef.current = kb.saveDocument })
   // 与正文编辑器一样，注册在页面卸载后仍保留，关标签时由编辑器仓库移除。
@@ -77,19 +76,17 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
   const runSearch = (event: FormEvent) => {
     event.preventDefault()
     if (!kb.searchQuery.trim()) return
-    setSearchedQuery(kb.searchQuery)
     void kb.search()
   }
 
   const changeLimit = (limit: number) => {
     kb.setTopK(limit)
-    if (searchedQuery) void kb.search(searchedQuery, limit)
+    if (kb.searchedQuery) void kb.search(kb.searchedQuery, limit)
   }
 
   const clearSearch = () => {
     kb.setSearchQuery('')
-    kb.setSearchResults([])
-    setSearchedQuery('')
+    kb.clearResults()
   }
 
   const startImport = () => void kb.importPlanningMaterials(model => new Promise<boolean>(resolve => setExtraction({ model, resolve })))
@@ -254,14 +251,14 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
               </label>
             </div>
           )}
-          {searchResults.length === 0 && searchedQuery && !kb.searching && (
+          {searchResults.length === 0 && kb.searchedQuery && !kb.searching && (
             <p className="stage-kb-help">{text('没有找到相关的资料。', 'Nothing related was found.')}</p>
           )}
           <ol className="stage-kb-results" aria-label={text('查找结果', 'Search results')}>
             {[...searchResults].reverse().map((result, position) => (
               <li key={position} className="stage-kb-result">
                 <div className="stage-kb-result-source"><FileText size={12} aria-hidden="true" />{result.fileName.replace(/\.[^.]+$/, '')}</div>
-                <p>{highlight(result.text, searchedQuery)}</p>
+                <p>{highlight(result.text, kb.searchedQuery)}</p>
               </li>
             ))}
           </ol>
