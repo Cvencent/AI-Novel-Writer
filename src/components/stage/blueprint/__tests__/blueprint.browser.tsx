@@ -228,6 +228,15 @@ describe('蓝图阶段', () => {
     expect((saved as ChapterBlueprint[])[0].characters).toEqual(['林岚', '沈砺'])
   })
 
+  it('输入法组字时按回车是选词，不把拼音当人物加进来', async () => {
+    await renderPage()
+    const input = page.getByLabelText('出场人物')
+    await act(async () => input.fill('shen'))
+    await act(async () => input.element().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true })))
+    expect((input.element() as HTMLInputElement).value).toBe('shen')
+    expect([...container!.querySelectorAll('button[aria-label^="移除 "]')].map(button => button.getAttribute('aria-label'))).toEqual(['移除 林岚', '移除 守塔人'])
+  })
+
   it('生成蓝图选覆盖时先危险确认，取消后不启动，生成对话框回来且不当作错误', async () => {
     await renderPage()
     await act(async () => page.getByRole('button', { name: 'AI 生成蓝图' }).click())
