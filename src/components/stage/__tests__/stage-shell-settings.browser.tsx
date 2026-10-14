@@ -87,6 +87,21 @@ describe('书房里的设置页有没保存的输入时，导入旧项目副本�
     expect(useProjectStore.getState().legacyImportNotice).toContain(TARGET)
   })
 
+  it('命令面板「打开作品」先问放弃，再弹选文件夹；继续编辑就不弹', async () => {
+    await act(async () => useStageStore.setState({ palette: 'commands' }))
+    const option = await vi.waitFor(() => {
+      const found = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(candidate => candidate.textContent?.includes('打开作品'))
+      expect(found).toBeTruthy()
+      return found!
+    })
+    await act(async () => option.click())
+    expect(discardDialog()).toBeTruthy()
+    expect(invoke.mock.calls.filter(([channel]) => channel === 'dialog:select-folder')).toEqual([])
+    await act(async () => dialogButton('继续编辑')!.click())
+    expect(invoke.mock.calls.filter(([channel]) => channel === 'dialog:select-folder')).toEqual([])
+    expect(skillUrl().value).toBe('https://github.com/owner/skill')
+  })
+
   it('选放弃修改才收起设置页并打开作品', async () => {
     await act(async () => { void useProjectStore.getState().importLegacyProject() })
     await vi.waitFor(() => expect(discardDialog()).toBeTruthy())
