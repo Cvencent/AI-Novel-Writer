@@ -397,6 +397,8 @@ export function useChapterBlueprints({
       )
       persistProjectDraftState(projectKey, projectSession, current.blueprints, nextDirty)
       setSaveOutcome(nextDirty.size === 0 ? 'saved' : 'idle')
+      // 流程脊的章节标题与 Ctrl P 的蓝图快照只在这条刷新时重读。
+      globalEventBus.emit('REFRESH_RESOURCE', { resources: ['blueprints', 'fileTree'], projectPath: projectKey, projectSession })
       addLog('info', text(`第 ${selected.chapterNumber} 章蓝图已保存`, `Saved blueprint for Chapter ${selected.chapterNumber}`))
     } catch (err) {
       if (!isCurrentProjectSession(projectSession)) return
@@ -433,6 +435,7 @@ export function useChapterBlueprints({
       )
       persistProjectDraftState(projectKey, projectSession, current.blueprints, nextDirty)
       setSaveOutcome(nextDirty.size === 0 ? 'saved' : 'idle')
+      globalEventBus.emit('REFRESH_RESOURCE', { resources: ['blueprints', 'fileTree'], projectPath: projectKey, projectSession })
       addLog('info', text(`已保存全部 ${saveInput.length} 章蓝图`, `Saved all ${saveInput.length} chapter blueprints`))
     } catch (err) {
       if (!isCurrentProjectSession(projectSession)) return

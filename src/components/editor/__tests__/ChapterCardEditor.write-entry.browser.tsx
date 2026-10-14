@@ -72,8 +72,14 @@ function installIpc(options: {
   authoritySequence?: AuthoritativeChapterSequence | (() => AuthoritativeChapterSequence)
   saveError?: string
 } = {}) {
+  // 与数据库一样，保存过的蓝图之后再读就是保存后的样子。
+  let stored = options.blueprints ?? [blueprint(1)]
+  const upsert = (saved: { chapterNumber: number }[]) => {
+    stored = [...stored.filter(item => !saved.some(next => next.chapterNumber === item.chapterNumber)), ...saved]
+      .sort((left, right) => left.chapterNumber - right.chapterNumber) as typeof stored
+  }
   const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
-    if (channel === 'db:blueprint-get-all') return options.blueprints ?? [blueprint(1)]
+    if (channel === 'db:blueprint-get-all') return stored
     if (channel === 'db:draft-authority-sequence') return typeof options.authoritySequence === 'function'
       ? options.authoritySequence()
       : options.authoritySequence ?? {
@@ -92,11 +98,14 @@ function installIpc(options: {
       return { success: true, cleared: ['generatedText'] }
     }
     if (channel === 'db:blueprint-upsert-many') {
-      return options.saveError
-        ? { success: false, error: options.saveError }
-        : { success: true }
+      if (options.saveError) return { success: false, error: options.saveError }
+      upsert(args[0] as { chapterNumber: number }[])
+      return { success: true }
     }
-    if (channel === 'db:blueprint-upsert') return { success: true }
+    if (channel === 'db:blueprint-upsert') {
+      upsert([args[0] as { chapterNumber: number }])
+      return { success: true }
+    }
     if (channel === 'fs:list-dir') return []
     throw new Error(`unexpected IPC ${channel}`)
   })
