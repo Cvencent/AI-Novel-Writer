@@ -42,6 +42,7 @@ export default function GenerateBlueprintsDialog(props: DirectoryConfigProps) {
           <Button
             variant="primary"
             disabled={busy || form.preferenceLoading || form.authorityLoading || Boolean(form.authorityError)}
+            aria-busy={form.isConfirming || undefined}
             onClick={() => void form.handleConfirm()}
           >
             <Sparkles size={15} aria-hidden />

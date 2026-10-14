@@ -40,6 +40,7 @@ let writtenLogs: unknown[]
 let continuityProjections: unknown[]
 let exemptions: { stableFactKey: string; reason: string; revoked: boolean }[]
 let exemptionSave: () => Promise<{ success: boolean; error?: string }>
+let continuityGate: Promise<void> | null = null
 
 const DEAD_KEEPER = [{
   draftId: 1, chapterNumber: 1, chapterTitle: '终局', chapterNotes: '老周死亡',
@@ -95,7 +96,10 @@ function installIpc() {
     if (channel === 'db:character-get-all') return [{ id: 1 }]
     if (channel === 'db:draft-get-finalized') return { chapterNumber: Number(args[0]) }
     if (channel === 'db:post-process-get-latest-run') return null
-    if (channel === 'db:continuity-list-before') return continuityProjections
+    if (channel === 'db:continuity-list-before') {
+      await continuityGate
+      return continuityProjections
+    }
     if (channel === 'db:consistency-exemption-list') return exemptions
     if (channel === 'db:consistency-exemption-save') {
       const result = await exemptionSave()
@@ -156,6 +160,7 @@ beforeEach(async () => {
   continuityProjections = []
   exemptions = []
   exemptionSave = async () => ({ success: true })
+  continuityGate = null
   startWorkflow = vi.fn(async () => 'write-popover-run')
   useLocaleStore.setState({ locale: 'zh-CN' })
   useProjectStore.setState({ currentProject: project() })
@@ -366,8 +371,8 @@ describe('写作此章弹层', () => {
   })
 
   it('拆分主按钮：开始写作期间主体是加载中（aria-busy）而不是退成未上墨，箭头半边不带 aria-busy', async () => {
-    let finishStart: (runId: string) => void = () => {}
-    startWorkflow.mockImplementation(() => new Promise(resolve => { finishStart = resolve }))
+    let release: () => void = () => {}
+    continuityGate = new Promise(resolve => { release = resolve })
     await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" />)
     const main = page.getByRole('button', { name: '写第 5 章' }).element() as HTMLButtonElement
     const toggle = page.getByRole('button', { name: '本次写作选项' }).element() as HTMLButtonElement
@@ -376,12 +381,13 @@ describe('写作此章弹层', () => {
     expect(toggle.classList.contains('pi-split-toggle')).toBe(true)
     expect(split.classList.contains('pi-split--main-off')).toBe(false)
     await act(async () => main.click())
-    await vi.waitFor(() => expect(startWorkflow).toHaveBeenCalledOnce())
     expect(main.disabled).toBe(true)
     expect(main.getAttribute('aria-busy')).toBe('true')
     expect(toggle.getAttribute('aria-busy')).toBeNull()
     expect(split.classList.contains('pi-split--main-off')).toBe(false)
-    await act(async () => finishStart('write-popover-run'))
+    continuityGate = null
+    await act(async () => release())
+    await vi.waitFor(() => expect(startWorkflow).toHaveBeenCalledOnce())
     await vi.waitFor(() => expect(main.getAttribute('aria-busy')).toBeNull())
     expect(main.disabled).toBe(false)
   })

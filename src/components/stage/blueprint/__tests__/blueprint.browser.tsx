@@ -197,7 +197,7 @@ describe('蓝图阶段', () => {
     const base = invoke.getMockImplementation()!
     const gates = new Map<string, () => void>()
     invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
-      if (channel === 'db:blueprint-upsert' || channel === 'db:project-core-get') await new Promise<void>(resolve => gates.set(channel, resolve))
+      if (channel === 'db:blueprint-upsert' || channel === 'config:set') await new Promise<void>(resolve => gates.set(channel, resolve))
       return base(channel, ...args)
     })
     await act(async () => page.getByRole('button', { name: '保存此章' }).click())
@@ -211,9 +211,9 @@ describe('蓝图阶段', () => {
     await act(async () => dialog.getByLabelText('蓝图起始章').fill('5'))
     await act(async () => dialog.getByLabelText('蓝图结束章').fill('7'))
     await act(async () => dialog.getByRole('button', { name: '开始生成' }).click())
-    await vi.waitFor(() => expect(gates.has('db:project-core-get')).toBe(true))
+    await vi.waitFor(() => expect(gates.has('config:set')).toBe(true))
     await expect.element(dialog.getByRole('button', { name: '启动中…' })).toHaveAttribute('aria-busy', 'true')
-    await act(async () => gates.get('db:project-core-get')!())
+    await act(async () => gates.get('config:set')!())
     await expect.element(dialog.getByRole('button', { name: '开始生成' })).not.toHaveAttribute('aria-busy')
   })
 
