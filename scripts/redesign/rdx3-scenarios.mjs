@@ -5,8 +5,10 @@ import path from 'node:path'
 
 import { FAKE_MODEL } from './fake-model.mjs'
 import * as blueprint from './pages/blueprint.mjs'
+import * as chapter from './pages/chapter.mjs'
 import * as chapterView from './pages/chapter-view.mjs'
 import * as runSheet from './pages/run-sheet.mjs'
+import * as project from './pages/project.mjs'
 import * as stage from './pages/stage.mjs'
 import { decodePng } from './png.mjs'
 import { seedWithCandidate } from './run-scenarios.mjs'
@@ -440,6 +442,50 @@ export const RDX3_SCENARIOS = {
    * 定稿后自动打开下一章遇上设置页里没保存的输入：放弃确认 → 收起设置 → 第 4 章单章视图自动弹出写作弹层。
    * 放弃确认关掉后还焦点不能把刚弹出的写作弹层关掉。
    */
+  /**
+   * 正文编辑区（新外壳单章视图与旧外壳草稿编辑器共用）：末尾补三行，新外壳纸面上分节符整行不缩进、破折号开头的对白缩进；
+   * Tab 插两个 em 空格；Esc 后停 2.5 秒再按 Tab 移出编辑区、不插空格；Esc 后按了方向键，Tab 又插空格。两种外壳各跑一次。
+   */
+  'rdx3-prose-keys': { model: false, setup: seedStageSample, run: async ({ page, shoot }) => {
+    const staged = await stage.root(page).count() > 0
+    if (staged) await chapterView.open(page, 4)
+    else await project.draftOfChapter(page, 4).click()
+    const editor = staged ? chapterView.prose(page) : chapter.editor(page)
+    await editor.waitFor({ state: 'visible' })
+    const inEditor = () => editor.evaluate(element => element.contains(document.activeElement))
+    const lastLine = () => editor.evaluate(element => element.lastElementChild?.textContent ?? '')
+    await editor.click()
+    await page.keyboard.press('Control+End')
+    for (const line of ['※※※', '——他说，钟声提前了。', '◇◆◇']) {
+      await page.keyboard.press('Enter')
+      await page.keyboard.press('Enter')
+      await page.keyboard.insertText(line)
+    }
+    const indents = Object.fromEntries((await chapter.lineIndents(editor)).filter(([text]) => ['※※※', '——他说，钟声提前了。', '◇◆◇'].includes(text)))
+    await page.keyboard.press('Tab')
+    const afterTab = { line: await lastLine(), inEditor: await inEditor() }
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(2500)
+    await page.keyboard.press('Tab')
+    const afterEscTab = { line: await lastLine(), inEditor: await inEditor() }
+    await shoot('rdx3-prose-keys')
+    await editor.click()
+    await page.keyboard.press('Control+End')
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('ArrowLeft')
+    await page.keyboard.press('Tab')
+    const afterEscArrowTab = { line: await lastLine(), inEditor: await inEditor() }
+    const result = { shell: staged ? 'stage' : 'writer', indents, afterTab, afterEscTab, afterEscArrowTab }
+    // 首行缩进只在新外壳的纸面上显示，旧外壳的编辑器每行都不缩进
+    if (staged) assert.deepEqual(indents, { '※※※': '0px', '——他说，钟声提前了。': '36px', '◇◆◇': '0px' }, `分节符行不缩进，破折号开头的对白缩进：${JSON.stringify(result)}`)
+    assert.deepEqual([afterTab, afterEscTab, afterEscArrowTab], [
+      { line: '◇◆◇\u2003\u2003', inEditor: true },
+      { line: '◇◆◇\u2003\u2003', inEditor: false },
+      { line: '◇◆◇\u2003\u2003\u2003\u2003', inEditor: true },
+    ], `Tab 插空格，Esc 后 Tab 移出，按了别的键 Tab 又插空格：${JSON.stringify(result)}`)
+    return result
+  } },
+
   'rdx3-write-after-discard': writeAfterDiscard(),
   /**
    * 同上，但放弃确认弹出前作者点过运行侧页的「历史」页签（它在确认关掉后还在）：还焦点不抢走写作弹层的焦点。
