@@ -8,9 +8,8 @@ import { useStageStore } from '../../stores/navigation/stage-store'
 import { openBuiltinEditor } from '../../stores/open-builtin-editor'
 import { chapterLabel } from '../../shared/chapter-label'
 import type { Theme } from '../../stores/theme-store'
-import { ipc } from '../../services/ipc-client'
 import ClearProjectDataDialog from '../dialogs/ClearProjectDataDialog'
-import { leaveSettingsThen } from '../settings/unsaved-settings'
+import { leaveSettingsThen, openProjectFolder } from '../settings/unsaved-settings'
 import type { MenuGroupSpec } from '../ui/Menu'
 import NewWorkDialog from './library/NewWorkDialog'
 import { SETTINGS_PAGES, settingsPageOf } from './settings/settings-pages'
@@ -26,13 +25,6 @@ import { refreshStageWork, useLandingPage, useStageView, useStageWorkRefresh, ty
 import { useStageShortcuts } from './use-stage-shortcuts'
 
 type Text = (zh: string, en: string) => string
-
-/** 先问放弃设置页里没保存的输入，再弹选文件夹：反过来的话作者在确认里取消，就白选了一次。 */
-function openProjectFolder(): void {
-  leaveSettingsThen(() => void ipc.invoke('dialog:select-folder', 'project-open').then(folder => {
-    if (folder) return useProjectStore.getState().openProject(folder)
-  }))
-}
 
 const backToLibrary = () => leaveSettingsThen(() => useLayoutStore.getState().setSidebarView('home'))
 const newBook = () => leaveSettingsThen(() => useLayoutStore.getState().openNewProject())

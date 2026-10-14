@@ -1,7 +1,9 @@
 import { useEffect } from 'react'
 import { create } from 'zustand'
+import { ipc } from '../../services/ipc-client'
 import { useAppearanceStore } from '../../stores/appearance-bootstrap'
 import { useLayoutStore } from '../../stores/layout-store'
+import { useProjectStore } from '../../stores/project-store'
 
 /** 设置页里还没保存的输入：各页用 useUnsavedSettings 登记，离开设置页或换页前由 leaveSettings 统一确认。 */
 const unsaved = new Set<symbol>()
@@ -62,6 +64,18 @@ export function leaveSettingsThen(action: () => void, stay?: () => void): void {
     useLayoutStore.getState().closeSettings()
     action()
   }, stay)
+}
+
+/**
+ * 打开作品（作品菜单、命令面板、Ctrl O）：先确认放弃输入，再选文件夹，选到了才收起设置页去打开；
+ * 选文件夹时取消，设置页与输入原样留着。旧外壳的设置弹窗不随打开作品关闭。
+ */
+export function openProjectFolder(): void {
+  leaveSettings(() => void ipc.invoke('dialog:select-folder', 'project-open').then(folder => {
+    if (!folder) return
+    if (useAppearanceStore.getState().resolvedShell === 'stage') useLayoutStore.getState().closeSettings()
+    return useProjectStore.getState().openProject(folder)
+  }))
 }
 
 /**
