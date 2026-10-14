@@ -32,7 +32,7 @@ export function sectionBadge(key: ArchStepKey, overview: ArchitectureOverview): 
   if (key === 'synopsis') {
     const { progress, candidate } = overview.synopsis
     if (progress.kind === 'partial') return { kind: 'partial', coveredTo: progress.coveredTo, total: progress.total }
-    if (progress.kind === 'interrupted') return { kind: 'incomplete' }
+    if (progress.kind === 'interrupted' || progress.kind === 'unresumable') return { kind: 'incomplete' }
     return candidate ? { kind: 'candidate' } : { kind: 'empty' }
   }
   if (key === 'worldbuilding' && overview.worldBuilding.candidate) return { kind: 'candidate' }

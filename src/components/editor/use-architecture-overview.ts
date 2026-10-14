@@ -185,7 +185,7 @@ export function useArchitectureOverview(projectKey: string) {
         } catch { /* Preserve the readable mirror; it does not authorize continuation. */ }
       }
       progress = outlineProgress(dbSynopsis, partial, writingLanguage, totalChapters)
-      recoveryFailed = visiblyPartial && progress.kind === 'complete'
+      recoveryFailed = progress.kind === 'unresumable'
     } catch {
       progress = outlineProgress(dbSynopsis, undefined, writingLanguage, totalChapters)
       recoveryFailed = visiblyPartial
