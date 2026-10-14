@@ -149,8 +149,7 @@ describe('新外壳的外观细节', () => {
     await userEvent.tab()
     expect(document.activeElement).toBe(row)
     const focusedRow = getComputedStyle(row).boxShadow
-    expect([focusedBook === resting[0], focusedRow.includes('rgb(44, 74, 140) 0px 0px 0px 4px')]).toEqual([false, true])
-    expect(focusedRow).toContain('0px 0px 0px 1px')
+    expect([focusedBook === resting[0], focusedRow === resting[1]]).toEqual([false, false])
   })
 
   it('章节规划行聚焦时整圈焦点环都画得出来（行在 content-visibility 的列表项里，环在行外会被裁得只剩四角），当前章只选中时没有这圈环', async () => {

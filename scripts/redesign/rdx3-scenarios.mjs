@@ -209,7 +209,7 @@ export const RDX3_SCENARIOS = {
       const box = await row.boundingBox()
       const clip = { x: box.x - 6, y: box.y - 6, width: box.width + 12, height: box.height + 12 }
       const count = async () => countColor(decodePng(await page.screenshot({ clip, animations: 'disabled' })), accent)
-      await row.evaluate(element => element.blur())
+      await page.evaluate(() => document.activeElement?.blur())
       const resting = await count()
       await page.keyboard.press('Shift+Tab')
       await page.keyboard.press('Tab')

@@ -420,3 +420,4 @@ node scripts/redesign/drive.mjs --scenario refs-timing --shell stage --out <目�
 | `rdx3-toast-resize` | 推入 11 条常驻出错通知（推入函数的找法同 `rdv-toast-flood`），1440×900 下不溢出；视口缩到 1100×640 后栈标 `data-overflow`、最新一条露在栈底、卡片右缘到窗口右缘的距离不变。`measured.shiftWithoutCompensation` 是去掉滚动条补偿时卡片会左移的像素 | 缩窗后的满栈 | 否 |
 | `rdx3-long-title` | 主进程把 `project:open` 返回的作品名换成 80 个字（项目文件夹不能这么长），视口 1024×640：顶栏作品名以省略号收尾，关闭按钮右缘在窗口内 | 顶栏 | 否 |
 | `rdx3-inline-confirm-focus` | 写一章让诊断分页有日志：「清空日志…」的确认条用鼠标点「保留」、按 Esc、键盘打开后 Esc 与回车「保留」，恢复候选「放弃…」的确认条点「保留」与按 Esc，每次焦点都回到打开它的按钮。`measured.focusLog` 是页面里记下的每次焦点移动 | 诊断分页 | 是 |
+| `rdx3-plan-ring` | 蓝图页选中第 5 章，当前章行与第 6 章行各按 Tab 聚焦：截行四周的图数强调色像素，聚焦比不聚焦多出一整圈 2px 环（不少于 4 ×（宽 + 高）× 0.8），只选中的当前章没有这圈环；`withoutContainment` 是去掉列表项 content-visibility 后的同一计数，与聚焦时相等说明环没被裁。像素解码在 `png.mjs`，与 `pixel-diff.mjs` 共用 | 第 6 章行聚焦 | 否 |
