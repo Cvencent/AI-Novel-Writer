@@ -154,4 +154,13 @@ describe('规划恢复稿', () => {
     expect(buildRecoveryEntries({ ...EMPTY_RECOVERY_SOURCES, planning: [recovery] }, 'zh-CN')[0]).toMatchObject({ kind: 'planning', note: zh })
     expect(buildRecoveryEntries({ ...EMPTY_RECOVERY_SOURCES, planning: [recovery] }, 'en-US')[0]).toMatchObject({ kind: 'planning', note: en })
   })
+
+  it.each([
+    ['大纲按序但缺第 2 章', { range: { from: 3, to: 5 }, sourceExpected: { synopsis: '# 情节大纲\n\n## 第1章：第1夜\n这一夜的事。\n\n## 第3章：第3夜\n这一夜的事。' } }],
+    ['没有冻结的大纲', undefined],
+  ])('来源无效但不是乱序或重复（%s）：入口用通用说明，不说章节乱序', (_case, plotOutline) => {
+    const recovery = { handle, plotOutline, plotOutlineRecovery: { writeState: { kind: 'blocked', reason: 'source-invalid' } } } as never
+    expect(buildRecoveryEntries({ ...EMPTY_RECOVERY_SOURCES, planning: [recovery] }, 'zh-CN')[0])
+      .toMatchObject({ kind: 'planning', note: '自动生成已保留候选。可编辑并本地保存，或明确继续缺少的章节。' })
+  })
 })
