@@ -234,7 +234,7 @@ export const EXTRA_SCENARIOS = {
     fake.gate.hold()
     await project.openBlueprints(page)
     await assertBottomOpensOn(page, () => chapter.startBatch(page, FAKE_MODEL.id, 100))
-    while (fake.gate.waiting === 0) await page.waitForTimeout(100)
+    await untilGateHolds(fake.gate)
   }, after: async ({ page, fake }) => {
     fake.gate.release()
     await runPanel.waitForWorkflowDone(page)
