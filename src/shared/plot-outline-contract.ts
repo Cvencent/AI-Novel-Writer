@@ -189,12 +189,25 @@ export function renderPlotOutlineSynopsis(body: string, coveredTo: number, expec
 /** 正式大纲里决定一批范围能否开跑、会替换哪几章的三项事实；主进程 begin 时取自 project_core。 */
 export type PlotOutlineRangeSource = Pick<ProjectCoreSynopsisExpected, 'synopsis' | 'totalChapters' | 'writingLanguage'>
 
-/** 章节条目按章号严格递增；作者调乱顺序后按位置截取的前缀与尾部会丢章或重复。 */
-const chapterOrdered = (entries: ReturnType<typeof headings>) => entries.every((entry, index) => index === 0 || entry.from > entries[index - 1].to)
+/** 章节条目要按章号严格递增：同一章出现两次，或作者调乱了顺序，按位置截取的前缀与尾部会丢章或重复。 */
+export type PlotOutlineOrderIssue = { kind: 'duplicate'; chapter: number } | { kind: 'unordered' }
+
+function chapterOrderIssue(entries: ReturnType<typeof headings>): PlotOutlineOrderIssue | null {
+  let reach = 0
+  for (const entry of [...entries].sort((left, right) => left.from - right.from)) {
+    if (entry.from <= reach) return { kind: 'duplicate', chapter: entry.from }
+    reach = Math.max(reach, entry.to)
+  }
+  return entries.every((entry, index) => index === 0 || entry.from > entries[index - 1].to) ? null : { kind: 'unordered' }
+}
+
+export function plotOutlineOrderIssue(synopsis: string): PlotOutlineOrderIssue | null {
+  return chapterOrderIssue(headings(synopsis))
+}
 
 export function plotOutlineConfirmedPrefix(expected: PlotOutlineRangeSource, range: PlotOutlineRange): string {
   const entries = headings(expected.synopsis)
-  if (!chapterOrdered(entries)) throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
+  if (chapterOrderIssue(entries)) throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
   if (entries.some(entry => entry.from < range.from && entry.to >= range.from || entry.from <= range.to && entry.to > range.to))
     throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
   if (range.from === 1) return ''
@@ -220,7 +233,7 @@ export function plotOutlineConfirmedPrefix(expected: PlotOutlineRangeSource, ran
  * （没有按章标题时 whole 为整份替换），其余章节由 renderPlotOutlineRange 原样保留；continue 为紧接已有章节往后写。
  */
 export type PlotOutlineRangeEffect =
-  | { kind: 'invalid'; lastChapter: number; hasEntries: boolean; ordered: boolean }
+  | { kind: 'invalid'; lastChapter: number; hasEntries: boolean; orderIssue: PlotOutlineOrderIssue | null }
   | { kind: 'new' }
   | { kind: 'continue'; after: number }
   | { kind: 'overwrite'; whole: boolean; from: number; to: number; lastChapter: number }
@@ -228,7 +241,7 @@ export type PlotOutlineRangeEffect =
 export function plotOutlineRangeEffect(source: PlotOutlineRangeSource, range: PlotOutlineRange): PlotOutlineRangeEffect {
   const entries = headings(source.synopsis)
   const lastChapter = entries.reduce((last, entry) => Math.max(last, entry.to), 0)
-  try { plotOutlineConfirmedPrefix(source, range) } catch { return { kind: 'invalid', lastChapter, hasEntries: entries.length > 0, ordered: chapterOrdered(entries) } }
+  try { plotOutlineConfirmedPrefix(source, range) } catch { return { kind: 'invalid', lastChapter, hasEntries: entries.length > 0, orderIssue: chapterOrderIssue(entries) } }
   if (!source.synopsis.trim()) return { kind: 'new' }
   if (!entries.length) return { kind: 'overwrite', whole: true, from: range.from, to: range.to, lastChapter }
   const replaced = entries.filter(entry => entry.from >= range.from && entry.from <= range.to)
