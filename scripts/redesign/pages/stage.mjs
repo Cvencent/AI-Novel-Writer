@@ -1,4 +1,6 @@
 // 新外壳（流程脊）。选择器用角色与可访问名称；只有正文编辑区沿用 CodeMirror 的 .cm-content。
+import { decodePng } from '../png.mjs'
+
 const SHELL = '[data-shell-presentation="stage"]'
 
 export const root = page => page.locator(SHELL)
@@ -151,6 +153,33 @@ export function isTopmost(locator) {
       return element.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2))
     } finally { probe.remove() }
   })
+}
+
+/**
+ * 下层对话框露在上层对话框外面的一点（上沿、下沿或两侧）：画在最上面的元素的 class，以及截图里那一点与上层对话框纸面的亮度。
+ * 上层的遮罩压住下层时，那一点比上层纸面暗；没压住（重影）时两处是同一张纸的颜色。下层整个被上层挡住时为 null。
+ */
+export async function exposedEdge(page, lower, upper) {
+  const probe = await lower.evaluate((element, upperElement) => {
+    const l = element.getBoundingClientRect(), u = upperElement.getBoundingClientRect()
+    const point = [[l.left + l.width / 2, l.top + 3], [l.left + l.width / 2, l.bottom - 3], [l.left + 3, l.top + l.height / 2], [l.right - 3, l.top + l.height / 2]]
+      .find(([x, y]) => x < u.left || x > u.right || y < u.top || y > u.bottom)
+    if (!point) return null
+    const style = document.createElement('style')
+    style.textContent = '* { pointer-events: auto !important; }'
+    document.head.append(style)
+    try {
+      return { point, paper: [u.left + u.width / 2, u.top + 3], hit: document.elementFromPoint(point[0], point[1])?.className ?? '', scale: devicePixelRatio }
+    } finally { style.remove() }
+  }, await upper.elementHandle())
+  if (!probe) return null
+  const image = decodePng(await page.screenshot({ animations: 'disabled' }))
+  const luma = ([x, y]) => {
+    const offset = (Math.round(y * probe.scale) * image.width + Math.round(x * probe.scale)) * 4
+    const [r, g, b] = image.pixels.subarray(offset, offset + 3)
+    return Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b)
+  }
+  return { hit: probe.hit, edgeLuma: luma(probe.point), paperLuma: luma(probe.paper) }
 }
 
 /** 落点停在哪：正文章号、其他页面的位置面包屑，或空状态。 */
