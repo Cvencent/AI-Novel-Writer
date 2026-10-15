@@ -194,12 +194,14 @@ describe('退出确认与错误提示谁后弹出谁在上面', () => {
     const alerted = alertError(['导出失败：磁盘忙', ...Array.from({ length: 14 }, (_, index) => `第 ${index + 1} 份文件没有写入。`)].join('\n'))
     const prompt = page.getByRole('alertdialog', { name: '发生错误' })
     await expect.element(prompt).toBeVisible()
+    // 退出确认弹出后提示所在的层被标 aria-hidden，按角色找不到了；先记下节点
+    const promptElement = prompt.element()
     await act(async () => request({ requestId: 'close-5' }))
     await vi.waitFor(() => expect(exitDialog()).not.toBeNull())
     const exit = exitDialog()!
     expect(topLayerAt(exit)).toBe(exit)
     expect(exit.contains(document.activeElement)).toBe(true)
-    expect(hitOutside(prompt.element(), exit)?.classList.contains('stage-exit-scrim')).toBe(true)
+    expect(hitOutside(promptElement, exit)?.classList.contains('stage-exit-scrim')).toBe(true)
     await act(async () => request(null))
     await prompt.getByRole('button', { name: '确定' }).click()
     await alerted

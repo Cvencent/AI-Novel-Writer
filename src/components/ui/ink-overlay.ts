@@ -1,3 +1,4 @@
+import { useLayoutEffect, useState } from 'react'
 import { useAppearanceStore } from '../../stores/appearance-bootstrap'
 import { useThemeStore } from '../../stores/theme-store'
 import { inkTheme } from '../stage/ink-theme'
@@ -39,9 +40,24 @@ export function toastStackMount(): HTMLElement {
   return document.getElementById(TOAST_MOUNT_ID)!
 }
 
-/** 宿主里放一个独立的挂载点，命令式弹窗用完即删。 */
+/** 宿主里放一个独立的挂载点，命令式弹窗用完即删。它是一层 .pi-prompt-layer，后弹出的整层画在先弹出的上面。 */
 export function createInkOverlayMount(): HTMLElement {
   const mount = document.createElement('div')
+  mount.className = 'pi-prompt-layer'
   inkOverlayHost().append(mount)
   return mount
+}
+
+/**
+ * 组件里取纸墨宿主：渲染期不建节点，提交后在布局 effect 里取（同 use-paper-ink-root）。
+ * 取到之前为 null，调用方先不渲染 Portal（Radix 的 Portal 没有容器时会挂到 body）。
+ */
+export function useInkOverlayHost(active = true): HTMLElement | null {
+  const [host, setHost] = useState<HTMLElement | null>(null)
+  useLayoutEffect(() => {
+    // 宿主要在提交后才建（渲染期不写 DOM），取到后在绘制前再渲染一次，和 use-paper-ink-root 同理
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (active) setHost(inkOverlayHost())
+  }, [active])
+  return host
 }

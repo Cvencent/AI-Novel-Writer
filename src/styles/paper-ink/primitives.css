@@ -392,8 +392,6 @@
 .pi-dialog-close { position: absolute; top: var(--s-4); right: var(--s-4); }
 /* 命令式 alertError()/confirm() 关掉时 140ms 淡出，与通知退场同一节奏；Radix 等动画走完才卸载，调用方随后拿到结果。
    动画名不能含进场的 pi-fade：Radix Presence 用子串比对动画名，进场被打断时的 animationcancel 会被当成退场结束 */
-.pi-scrim--prompt { z-index: var(--z-prompt-scrim); }
-.pi-dialog--prompt { z-index: var(--z-prompt-dialog); }
 .pi-scrim--prompt[data-state="closed"], .pi-dialog--prompt[data-state="closed"] { animation: pi-vanish var(--dur-fast) var(--ease) forwards; }
 /*
  * 旧 ui/Dialog 的调用方在新外壳下也用这张浮笺。宽度上限、高度上限与底栏排法仍听调用方的 Tailwind 类：
@@ -410,6 +408,8 @@
  * 提示栈：toast 与 actionToast 共用的一个栈（右下角、新的在下），画在模态之上。
  */
 .paper-ink.pi-overlay-host { display: contents; }
+/* 退出确认与命令式弹窗的一层：自成层叠上下文，里面的遮罩与对话框按 --z-scrim/--z-dialog 排，层与层之间按挂载先后 */
+.pi-prompt-layer { position: relative; z-index: var(--z-prompt); }
 /* 栈本身接指针：卡片之间的空隙也算在栈上，指针经过时悬停暂停不会断。模态给 body 设 pointer-events: none，栈会继承，所以显式写 auto */
 .pi-toast-stack {
   pointer-events: auto; position: fixed; right: var(--s-5); bottom: var(--s-12); z-index: var(--z-toast);

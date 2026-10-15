@@ -5,7 +5,7 @@ import { cn } from '../../lib/utils'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useAppearanceStore } from '../../stores/appearance-bootstrap'
 import { Button } from './Button'
-import { inkOverlayHost } from './ink-overlay'
+import { useInkOverlayHost } from './ink-overlay'
 import { useDialogFocusReturn } from './focus-return'
 import { keepToastStackClickable } from './ToastStack'
 
@@ -50,9 +50,11 @@ const DialogContent = React.forwardRef<
   const text = useLocaleStore(s => s.text)
   const ink = useAppearanceStore(s => s.resolvedShell === 'stage')
   const focusReturn = useDialogFocusReturn()
+  const host = useInkOverlayHost(ink)
   if (ink) {
+    if (!host) return null
     return (
-      <DialogPortal container={inkOverlayHost()}>
+      <DialogPortal container={host}>
         <DialogPrimitive.Overlay className="pi-scrim" />
         <DialogPrimitive.Content
           ref={ref}
