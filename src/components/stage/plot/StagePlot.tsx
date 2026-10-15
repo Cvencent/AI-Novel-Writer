@@ -93,6 +93,7 @@ export default function StagePlot({ projectKey, initialView, viewRequest }: Stag
   const [recordsOpen, setRecordsOpen] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
   const [deleting, setDeleting] = useState<NarrativeThreadView | null>(null)
+  const confirmedEvents = deleting?.events.length ?? 0
   // 生成进行中（可以取消）或剧情树生成完却没保存上（来源变化、被取消）时记录自动展开，此时不能收起；其余时候从「更多」打开。
   const pinnedRecords = plot.plotBusy || plot.aiBusy || (plot.graphRecovery?.result?.kind === 'plot' && plot.graphRecovery.effects.length === 0)
 
@@ -136,8 +137,8 @@ export default function StagePlot({ projectKey, initialView, viewRequest }: Stag
           onOpenChange={open => { if (!open) setDeleting(null) }}
           title={text('删除这条线索？', 'Delete this thread?')}
           consequence={text(
-            `会删除线索「${deleting?.title ?? ''}」和它已确认的 ${deleting?.events.length ?? 0} 个定稿事件。写作时不再提醒它。`,
-            `The thread “${deleting?.title ?? ''}” and its ${deleting?.events.length ?? 0} confirmed ${pluralEn(deleting?.events.length ?? 0, 'event')} are removed. Writing will no longer keep it in mind.`,
+            `会删除线索「${deleting?.title ?? ''}」和它已确认的 ${confirmedEvents} 个定稿事件。写作时不再提醒它。`,
+            `The thread “${deleting?.title ?? ''}” and its ${confirmedEvents} confirmed ${pluralEn(confirmedEvents, 'event')} are removed. Writing will no longer keep it in mind.`,
           )}
           recoverability={text('删除后无法恢复，只能重新建这条线索。', 'This cannot be undone. You would have to create the thread again.')}
           confirmLabel={text('删除线索', 'Delete thread')}
