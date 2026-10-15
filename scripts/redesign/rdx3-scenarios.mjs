@@ -7,6 +7,7 @@ import { FAKE_MODEL } from './fake-model.mjs'
 import * as blueprint from './pages/blueprint.mjs'
 import * as chapter from './pages/chapter.mjs'
 import * as chapterView from './pages/chapter-view.mjs'
+import * as materials from './pages/materials.mjs'
 import * as runSheet from './pages/run-sheet.mjs'
 import * as project from './pages/project.mjs'
 import * as shell from './pages/shell.mjs'
@@ -625,6 +626,40 @@ export const RDX3_SCENARIOS = {
    * 取消退出确认后提示仍在、点得到「确定」。
    */
   'rdx3-exit-over-prompt': promptAndExit({ promptFirst: true }),
+  /**
+   * 只导入一张角色卡，等出现确认卡后在设置的外观页把界面语言切成英文：运行侧页确认卡写「1 character candidate」。
+   */
+  'rdx3-candidates-en': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page, fake, shoot }) => {
+    fake.replyCharacterCards(1)
+    await page.keyboard.press('Control+K')
+    await stage.paletteInput(page).fill('角色')
+    await stage.palette(page).getByRole('option', { name: /^角色/ }).first().click()
+    await materials.importCharacterCards(page, '姓名：守塔人\n身份：灯塔看守，记得每一次钟声。')
+    await runSheet.waitUntilOpen(page)
+    const summary = runSheet.sheet(page).locator('.run-confirm-summary')
+    await summary.waitFor({ state: 'visible', timeout: 60_000 })
+    await stage.openSettings(page)
+    await stage.showSettingsPage(page, '外观')
+    await page.getByLabel('界面语言').selectOption('en-US')
+    await page.keyboard.press('Escape')
+    await page.getByRole('navigation', { name: 'Settings sections' }).waitFor({ state: 'detached' })
+    if (!(await runSheet.sheet(page).isVisible())) {
+      await page.keyboard.press('Control+K')
+      await page.getByRole('dialog', { name: 'Search and jump' }).getByRole('combobox').fill('Run sheet')
+      await page.keyboard.press('Enter')
+    }
+    await summary.waitFor({ state: 'visible' })
+    const observed = { summary: await summary.innerText(), lang: await page.evaluate(() => document.documentElement.lang) }
+    await summary.scrollIntoViewIfNeeded()
+    await shoot('rdx3-candidates-en-card')
+    assert.deepEqual(observed, { summary: '1 character candidate', lang: 'en-US' }, '英文界面里一张候选写单数')
+    return observed
+  }, after: async ({ page }) => {
+    await page.getByRole('navigation', { name: 'Writing flow' }).getByRole('button', { name: 'Settings', exact: true }).click()
+    await page.getByRole('navigation', { name: 'Settings sections' }).getByRole('button', { name: 'Appearance', exact: true }).click()
+    await page.getByLabel('Interface language').selectOption('zh-CN')
+    await page.keyboard.press('Escape')
+  } },
 }
 
 function writeAfterDiscard({ focusBefore } = {}) {
