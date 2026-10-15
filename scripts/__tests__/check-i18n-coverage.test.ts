@@ -269,6 +269,10 @@ describe('i18n coverage boundary scanner', () => {
           return <p>
             {text(\`保存并继续：\${n} 个文件未保存\`, \`Save and continue: \${n} \${pluralEn(n, 'file')} have unsaved changes\`)}
             {text(\`连同 \${n} 条事件\`, \`The thread and its \${n} confirmed \${pluralEn(n, 'event')} are removed.\`)}
+            {text(\`保存并继续 · \${n} 个文件未保存\`, \`Save and continue · \${n} \${pluralEn(n, 'file')} have unsaved changes\`)}
+            {text(\`保存并继续，\${n} 个文件未保存\`, \`Save and continue — \${n} \${pluralEn(n, 'file')} have unsaved changes\`)}
+            {text(\`保存并继续\\n\${n} 个文件未保存\`, \`Save and continue\\n\${n} \${pluralEn(n, 'file')} have unsaved changes\`)}
+            {text(\`保存并继续。\${n} 个文件未保存\`, \`Save and continue。\${n} \${pluralEn(n, 'file')} have unsaved changes\`)}
           </p>
         }
       `)
@@ -276,8 +280,12 @@ describe('i18n coverage boundary scanner', () => {
       const result = runChecker(root)
 
       expect(result.status).toBe(1)
-      expect(result.output).toContain('Found 1 unlocalized visible strings')
+      expect(result.output).toContain('Found 5 unlocalized visible strings')
       expect(result.output).toContain("src/components/stage/Clause.tsx:6 [english-plural] `Save and continue: ${n} ${pluralEn(n, 'file')} have unsaved changes`")
+      expect(result.output).toContain("src/components/stage/Clause.tsx:8 [english-plural] `Save and continue · ${n} ${pluralEn(n, 'file')} have unsaved changes`")
+      expect(result.output).toContain("src/components/stage/Clause.tsx:9 [english-plural] `Save and continue — ${n} ${pluralEn(n, 'file')} have unsaved changes`")
+      expect(result.output).toContain("src/components/stage/Clause.tsx:10 [english-plural] `Save and continue\\n${n} ${pluralEn(n, 'file')} have unsaved changes`")
+      expect(result.output).toContain("src/components/stage/Clause.tsx:11 [english-plural] `Save and continue。${n} ${pluralEn(n, 'file')} have unsaved changes`")
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
