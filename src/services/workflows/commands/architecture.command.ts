@@ -2138,15 +2138,18 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       context.data.partial = partial
       await savePartialData(expectedProjectPath, partial, session, text('保存情节大纲检查点', 'Save plot-outline navigation'))
     }
+    const stopped = (cursor: Extract<PlotOutlineProgress['cursor'], { kind: 'stopped' }>) => new Error(text(
+      `第 ${cursor.chapterNumber} 章已停止自动生成，原因 ${cursor.reason}。已接受前缀和全部候选已保留，正式大纲未被覆盖。`,
+      `Automatic generation stopped at chapter ${cursor.chapterNumber}: ${cursor.reason}. The accepted prefix and all candidates remain saved; the formal outline was not overwritten.`))
     let outline = initial
+    // 来源无效时没有可写进检查点的前缀，先给停止说明；其余停止原因照常先写检查点。
+    if (outline.cursor.kind === 'stopped' && outline.cursor.reason === 'source-invalid') throw stopped(outline.cursor)
     await saveNavigation(outline)
     while (outline.cursor.kind !== 'complete') {
       this.assertNotCancelled(context)
       assertArchitectureProjectSessionCurrent(session, context)
       const cursor = outline.cursor
-      if (cursor.kind === 'stopped') throw new Error(text(
-        `第 ${cursor.chapterNumber} 章已停止自动生成，原因 ${cursor.reason}。已接受前缀和全部候选已保留，正式大纲未被覆盖。`,
-        `Automatic generation stopped at chapter ${cursor.chapterNumber}: ${cursor.reason}. The accepted prefix and all candidates remain saved; the formal outline was not overwritten.`))
+      if (cursor.kind === 'stopped') throw stopped(cursor)
       if (cursor.kind === 'accept') {
         const next = joinPlotOutlineEntries(outline.composition?.text ?? '', cursor.text)
         await ipc.invokeWithProjectSession(session, 'generation:compose-visible', handle,
