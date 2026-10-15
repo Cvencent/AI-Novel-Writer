@@ -779,16 +779,17 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     if (!author || request.generationRunHandle || typeof request.synopsis !== 'string') throw new Error('GENERATION_PLOT_OUTLINE_AUTHOR_EDIT_INVALID')
     if (author.leaseEpoch !== deps.epoch) throw new Error('GENERATION_EPOCH_STALE')
     const run = requireRun(author.sourceHandle), outline = repository.readPlotOutline(run.runId)
-    if (outline && plotOutlineSourceInvalid(outline)) throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
-    if (!outline || !isDeepStrictEqual(request.expected, outline.sourceExpected)
-      || !validPlotOutlineAuthorPrefix(request.synopsis, outline, author.committedRange)) throw new Error('GENERATION_PLOT_OUTLINE_AUTHOR_EDIT_INVALID')
+    if (!outline || !isDeepStrictEqual(request.expected, outline.sourceExpected)) throw new Error('GENERATION_PLOT_OUTLINE_AUTHOR_EDIT_INVALID')
     const receipt = repository.plotOutlineAuthorEditReceipt(run.runId, author.operationId, author.committedRange, textHash(request.synopsis))
     const saved = repository.readPlotOutlineAuthorEdit(run.runId)
+    // 回执与正文哈希都对上的重试，写的就是当时校验过、已落库的那份；升级前存下的编辑不再按现行规则重判。
     if (saved) {
       if (!isDeepStrictEqual(saved, receipt)) throw new Error('GENERATION_PLOT_OUTLINE_AUTHOR_RECEIPT_CONFLICT')
       if (!plotOutlineTargetCurrent(run, outline, request.synopsis)) throw new Error('GENERATION_SOURCE_CHANGED')
       return { ...saved, idempotent: true }
     }
+    if (plotOutlineSourceInvalid(outline)) throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
+    if (!validPlotOutlineAuthorPrefix(request.synopsis, outline, author.committedRange)) throw new Error('GENERATION_PLOT_OUTLINE_AUTHOR_EDIT_INVALID')
     repository.assertPlotOutlineWritable(run.runId)
     if (projectGenerationInFlight()) throw new Error('GENERATION_PLOT_OUTLINE_AUTHOR_IN_FLIGHT')
     if (!compareGenerationSourceBindings(run.binding, deps.rebuildBinding(run.binding, currentModelReceipt(run.binding)))) throw new Error('GENERATION_SOURCE_CHANGED')
