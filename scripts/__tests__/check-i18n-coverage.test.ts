@@ -223,6 +223,33 @@ describe('i18n coverage boundary scanner', () => {
     }
   })
 
+  it('reads checks and changes as counted nouns only right after the count, not as verbs or after other words', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ai-novel-i18n-plural-verbs-'))
+    try {
+      writeFixture(root, 'src/components/stage/Verbs.tsx', `
+        const text = (zh: string, en: string) => zh || en
+        export function Verbs({ n, passed, revised, name, who }: { n: number; passed: number; revised: number; name: string; who: string }) {
+          return <p>
+            {text(\`\${who} 检查本章\`, \`\${who} checks the chapter\`)}
+            {text(\`\${name} 改大纲\`, \`\${name} changes the outline\`)}
+            {text(\`\${name} 改过\`, \`\${name} made changes\`)}
+            {text(\`\${n} 处变更\`, \`\${n} changes: \${revised} from the revision\`)}
+            {text(\`通过 \${passed} 项\`, \`\${passed} checks passed\`)}
+          </p>
+        }
+      `)
+
+      const result = runChecker(root)
+
+      expect(result.status).toBe(1)
+      expect(result.output).toContain('Found 2 unlocalized visible strings')
+      expect(result.output).toContain('src/components/stage/Verbs.tsx:8 [english-plural] `${n} changes: ${revised} from the revision`')
+      expect(result.output).toContain('src/components/stage/Verbs.tsx:9 [english-plural] `${passed} checks passed`')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('accepts a plural noun after the end of a number range, which is never one', () => {
     const root = mkdtempSync(join(tmpdir(), 'ai-novel-i18n-plural-range-'))
     try {
