@@ -13,6 +13,7 @@ import { useEditorStore } from '../../../../stores/editor-store'
 import { useLocaleStore } from '../../../../stores/locale-store'
 import { useProjectStore } from '../../../../stores/project-store'
 import { toast } from '../../../ui/Toast'
+import { withReducedMotion } from '../../../ui/__tests__/reduced-motion'
 import StageHistory from '../StageHistory'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -229,20 +230,37 @@ describe('版本历史', () => {
     await openChapterThree()
     const release = gateList(4)
     await click(/第三节车厢/)
-    expect(versionsColumn()).toContain('正在读取…')
+    expect(versionsColumn()).not.toContain('这一章还没有稿')
+    await vi.waitFor(() => expect(versionsColumn()).toContain('正在读取…'), { timeout: 1000 })
     expect(versionsColumn()).not.toContain('这一章还没有稿')
     await act(async () => release())
     await vi.waitFor(() => expect(versionsColumn()).toContain('这一章还没有稿'))
   })
 
-  it('换章时「正在读取」先不显示，读得慢才淡入：读得快的章不闪一下', async () => {
-    await openChapterThree()
-    const release = gateList(4)
-    await click(/第三节车厢/)
-    const loading = () => host!.querySelector<HTMLElement>('[aria-label="这一章的各稿"] [role="status"]')!
-    expect(getComputedStyle(loading()).opacity).toBe('0')
-    await vi.waitFor(() => expect(getComputedStyle(loading()).opacity).toBe('1'), { timeout: 1000 })
-    await act(async () => release())
+  /** 作者看得见的「正在读取」：在页面上且不透明。 */
+  const loadingShown = () => {
+    const loading = host!.querySelector<HTMLElement>('[aria-label="这一章的各稿"] [role="status"]')
+    return loading !== null && getComputedStyle(loading).opacity !== '0'
+  }
+
+  it.each([
+    { motion: '正常动画', reduced: false },
+    { motion: '减弱动画', reduced: true },
+  ])('换章时「正在读取」读得快的章不闪一下，读得慢才出现（$motion）', async ({ reduced }) => {
+    const run = async () => {
+      await openChapterThree()
+      const release = gateList(4)
+      await click(/第三节车厢/)
+      const clicked = performance.now()
+      expect(loadingShown()).toBe(false)
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 60)) })
+      if (performance.now() - clicked < 140) expect(loadingShown()).toBe(false)
+      await vi.waitFor(() => expect(loadingShown()).toBe(true), { timeout: 1000 })
+      expect(versionsColumn()).toContain('正在读取…')
+      await act(async () => release())
+    }
+    if (reduced) await withReducedMotion(run)
+    else await run()
   })
 
   it('连续点两章：先点那章的各稿晚到，不显示在后点那章下面', async () => {
