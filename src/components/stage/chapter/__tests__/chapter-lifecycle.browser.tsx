@@ -173,6 +173,35 @@ describe('单章视图的主按钮随五种状态变化', () => {
     await expect.element(page.getByText('已确认不修改，可以在「更多」里定稿')).toBeVisible()
   })
 
+  it('已审稿：修稿启动读稿期间把意见都改成不修改，「确认不修改」点不了，不会多写一份确认清单', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    const review = backend.addReview(draft)
+    backend.state.cycles.set(review.id, {
+      ...backend.state.cycles.get(review.id)!,
+      findings: [0, 1, 2].map(index => ({ findingId: `finding-${index}`, reviewItemIndex: index, category: '', kind: 'literary' as const, status: 'unverified' as const })),
+    })
+    await mount()
+    await openDraft(draft.id)
+    const answer = backend.invoke.getMockImplementation()!
+    let release = () => {}
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const held = vi.fn()
+    backend.invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'db:draft-get-full' && backend.writes('db:review-create').length === 1 && held.mock.calls.length === 0) {
+        held()
+        await gate
+      }
+      return answer(channel, ...args)
+    })
+    await click('按 2 项意见修稿')
+    await vi.waitFor(() => expect(held).toHaveBeenCalledOnce())
+    expect(backend.writes('db:review-create')).toHaveLength(1)
+    for (let left = 2; left > 0; left--) await act(async () => page.getByRole('button', { name: '不修改此项' }).first().click())
+    await expect.element(page.getByRole('button', { name: '确认不修改', exact: true })).toBeDisabled()
+    await act(async () => { release(); await new Promise(resolve => setTimeout(resolve, 100)) })
+    expect(backend.writes('db:review-create')).toHaveLength(1)
+  })
+
   it('人工意见进入修稿输入：添加我的意见后，它在确认的清单里并被纳入', async () => {
     const draft = backend.addDraft({ status: 'draft' })
     backend.addReview(draft)
