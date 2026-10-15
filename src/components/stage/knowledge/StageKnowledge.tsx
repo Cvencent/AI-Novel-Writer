@@ -111,8 +111,8 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
             value={shelf}
             onChange={setShelf}
             options={[
-              { value: 'imported', label: text(`我导入的 ${imported.length}`, `Imported ${imported.length}`) },
-              { value: 'chapters', label: text(`定稿章节 ${chapters.length}`, `Final chapters ${chapters.length}`) },
+              { value: 'imported', label: kb.documentsLoaded ? text(`我导入的 ${imported.length}`, `Imported ${imported.length}`) : text('我导入的', 'Imported') },
+              { value: 'chapters', label: kb.documentsLoaded ? text(`定稿章节 ${chapters.length}`, `Final chapters ${chapters.length}`) : text('定稿章节', 'Final chapters') },
             ]}
           />
           <ul className="stage-kb-list">
@@ -130,9 +130,11 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
               </li>
             ))}
             {listed.length === 0 && (
-              <li className="stage-kb-help">{shelf === 'imported'
-                ? text('还没有导入资料。', 'No material imported yet.')
-                : text('定稿后，章节会自动收进这里。', 'Chapters are added here automatically once finalized.')}</li>
+              <li className="stage-kb-help">{!kb.documentsLoaded
+                ? text('正在读取…', 'Loading…')
+                : shelf === 'imported'
+                  ? text('还没有导入资料。', 'No material imported yet.')
+                  : text('定稿后，章节会自动收进这里。', 'Chapters are added here automatically once finalized.')}</li>
             )}
           </ul>
           <div className="stage-kb-danger">
