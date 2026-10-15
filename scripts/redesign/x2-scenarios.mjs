@@ -134,10 +134,13 @@ export const X2_SCENARIOS = {
     await openFolder(app, page, samplePath)
     landed['灯塔（打开作品）'] = (await settledLanding(page)).join(' / ')
     const architectureState = (await stage.stageStates(page)).architecture
-    await stage.chapterButton(page, 1).click()
-    await stage.waitForProse(page, STAGE_SAMPLE.finalized[1].split('\n')[0].slice(0, 16))
-    await stage.stageButton(page, '正文').click()
-    const manuscript = (await settledLanding(page)).join(' / ')
+    // 对照构建上这一步可能走不通（落在架构时没有章节列表），没走通的原因记进 measured，最后一并断言。
+    const manuscript = await (async () => {
+      await stage.chapterButton(page, 1).click({ timeout: 5000 })
+      await stage.waitForProse(page, STAGE_SAMPLE.finalized[1].split('\n')[0].slice(0, 16))
+      await stage.stageButton(page, '正文').click()
+      return (await settledLanding(page)).join(' / ')
+    })().catch(error => `没走通：${error.message.split('\n')[0]}`)
     await stage.backToLibrary(page, STAGE_SAMPLE.name)
     const continueWriting = await stage.overview(page, STAGE_SAMPLE.name).getByRole('button', { name: /^继续写作/ }).innerText()
     await shoot('x2-landing-continue')

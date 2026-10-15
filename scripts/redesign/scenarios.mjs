@@ -377,10 +377,12 @@ export async function seedStageSample(context,
 
 /**
  * 示例作品第 3、4 章都在写，打开时落在最后一章在写的第 4 章（用户决定）。各场景从第 3 章开始：
- * 等落点到了第 4 章，再切到第 3 章并关掉第 4 章的标签，与原先只开着第 3 章一样。
+ * 等落点到了第 4 章，再切到第 3 章并关掉第 4 章的标签，与原先只开着第 3 章一样。对照用的旧构建落在第 3 章，不用切。
  */
 async function moveToChapter3(page) {
-  await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[4].text))
+  const chapter3 = stage.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text))
+  await chapter3.or(stage.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[4].text))).first().waitFor({ state: 'visible', timeout: 20_000 })
+  if (await chapter3.count() > 0) return
   await stage.chapterButton(page, 3).click()
   await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
   await stage.closeTabButton(page, `第 4 章 · ${stageChapterTitle(4)}`).click()
