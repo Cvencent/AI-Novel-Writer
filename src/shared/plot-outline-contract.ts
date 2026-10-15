@@ -214,7 +214,8 @@ export function plotOutlineConfirmedPrefix(expected: PlotOutlineRangeSource, ran
     throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
   if (range.from === 1) return ''
   const before = entries.filter(entry => entry.to < range.from)
-  let next = 1
+  // 开头的第 0 章（序章）是合法前缀；chapterOrderIssue 已保证它只出现一次且在最前。
+  let next = before[0]?.from === 0 ? 0 : 1
   for (const entry of before) {
     if (entry.from !== next || entry.to < entry.from) throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
     next = entry.to + 1
