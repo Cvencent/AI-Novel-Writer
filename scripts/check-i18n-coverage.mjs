@@ -276,7 +276,7 @@ function inspectEnglishCounts(violations, root, file, sourceFile, node) {
       // 数量所在分句里带 and 的是并列主语（the thread and its ${n} confirmed events are removed），本来就用复数动词
       if (span.expression.getText(sourceFile).startsWith('pluralEn(')) {
         const head = [node.head.text, ...node.templateSpans.slice(0, index).map(earlier => earlier.literal.text)].join(' ')
-        return pluralVerbAfterCount.test(span.literal.text) && !/\band\b[^.;:!?]*$/i.test(head)
+        return pluralVerbAfterCount.test(span.literal.text) && !/\band\b[^.;:!?·—\n。：；！？]*$/i.test(head)
       }
       return fixedPluralAfterCount.test(span.literal.text) || pluralBeforeCount.test(before) || pluralVerbAfterCount.test(span.literal.text)
     })
