@@ -142,6 +142,9 @@ export const VISUAL_SCENARIOS = {
     assert.ok(flooded.overflow, '栈高过上限时改为可滚动')
     assert.ok(flooded.newestInside, '最新一条露在栈底')
     await stack.evaluate(element => { element.scrollTop = 0 })
+    await page.waitForTimeout(100)
+    assert.equal(await stack.evaluate(element => getComputedStyle(element, '::before').opacity), '0',
+      '滚到顶时上沿的淡出带消失（驱动开着减少动态效果，#412）')
     const oldest = stack.locator('.pi-toast', { hasText: '第 1 章保存失败' })
     await shoot('rdv-toast-flood-top')
     await oldest.getByRole('button', { name: '关闭通知' }).click()
