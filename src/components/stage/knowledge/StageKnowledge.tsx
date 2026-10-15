@@ -60,6 +60,9 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
   const chapters = useMemo(() => documents.filter(document => !isImportedDocument(document))
     .sort((left, right) => (left.finalizedChapter ?? 0) - (right.finalizedChapter ?? 0)), [documents])
   const listed = shelf === 'imported' ? imported : chapters
+  const emptyShelf = shelf === 'imported'
+    ? text('还没有导入资料。', 'No material imported yet.')
+    : text('定稿后，章节会自动收进这里。', 'Chapters are added here automatically once finalized.')
   const selected = documents.find(document => document.id === kb.selectedDocId) ?? null
   const selectedImported = selected !== null && isImportedDocument(selected)
   const pendingName = documents.find(document => document.id === pendingDocId)
@@ -130,11 +133,7 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
               </li>
             ))}
             {listed.length === 0 && (
-              <li className="stage-kb-help">{!kb.documentsLoaded
-                ? text('正在读取…', 'Loading…')
-                : shelf === 'imported'
-                  ? text('还没有导入资料。', 'No material imported yet.')
-                  : text('定稿后，章节会自动收进这里。', 'Chapters are added here automatically once finalized.')}</li>
+              <li className="stage-kb-help">{kb.documentsLoaded ? emptyShelf : text('正在读取…', 'Loading…')}</li>
             )}
           </ul>
           <div className="stage-kb-danger">
