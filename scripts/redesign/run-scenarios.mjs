@@ -283,7 +283,7 @@ export const RUN_SCENARIOS = {
       assert.equal(await stage.palette(page).isVisible(), true, `Ctrl K 输入「${query}」后搜索仍开着，打开作品后的落点没有关掉它`)
       assert.equal(await stage.palette(page).getByRole('option').count(), 0, `Ctrl K「${query}」没有结果`)
     }
-    await page.waitForFunction(() => [...document.querySelectorAll('nav[aria-label="位置"] span')].map(node => node.textContent).join('/') === '正文/第 3 章')
+    await page.waitForFunction(() => [...document.querySelectorAll('nav[aria-label="位置"] span')].map(node => node.textContent).join('/') === '正文/第 4 章')
     assert.equal(await stage.palette(page).isVisible(), true, '落点在搜索后面照常打开，搜索仍开着')
   }, after: async ({ page }) => {
     await page.keyboard.press('Escape')
