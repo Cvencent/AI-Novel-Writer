@@ -370,6 +370,18 @@ describe('架构阶段', () => {
     expect(submit().disabled).toBe(false)
   })
 
+  it('作者调过章节顺序的大纲（1、5、2、3、4）选第 3–5 章：判无效并说明章节没按章号排，不承诺其余章原样保留', async () => {
+    const body = [1, 5, 2, 3, 4].map(n => outlineBody(n, n)).join('\n\n')
+    core = { ...core, synopsis: renderPlotOutlineSynopsis(body, 5, OUTLINE_SOURCE) }
+    await render()
+    await openOutlineRegenerate()
+    await range(3, 5)
+    expect(mark('synopsis')).toBe('范围无效')
+    expect(issue()).toBe('已有大纲的章节没有按章号顺序排列，按范围重写会打乱或丢掉其他章，后台会拒绝。请先把大纲里的章节按章号排好。')
+    expect(effect()).toBeNull()
+    expect(submit().disabled).toBe(true)
+  })
+
   it('有一批被打断时，范围仍按数据库里的正式大纲判定，不看检查点的进度', async () => {
     seedPartialOutline()
     // 重写第 1–5 章的那一批被打断：检查点记的进度是开跑前的 0，正式大纲仍是第 1–16 章。
