@@ -5,7 +5,7 @@ import { canCommitRecoveredReview } from '../../services/workflows/commands/revi
 import { withoutDraftReconciliationArtifacts } from '../../shared/draft-reconciliation'
 import type { EditorInlineRecovery } from '../../shared/editor-inline-generation'
 import type { GenerationBatchHistory, GenerationRecoveryContext } from '../../shared/generation-owner-contract'
-import { plotOutlineOrderIssue } from '../../shared/plot-outline-contract'
+import { plotOutlineSourceInvalidText } from '../../shared/plot-outline-contract'
 import type { RecoveryCandidate } from '../../shared/recovery-candidate'
 import type { ReviewRevisionRecovery } from '../../shared/review-revision-generation'
 import { workflowResourceKey, type WorkflowRun } from '../../stores/workflow-store'
@@ -167,14 +167,7 @@ export function planningTitle(recovery: Pick<GenerationRecoveryContext, 'plotOut
 export function outlineSourceInvalidNote(recovery: Pick<GenerationRecoveryContext, 'plotOutline' | 'plotOutlineRecovery'>, locale: Locale): string | null {
   const writeState = recovery.plotOutlineRecovery?.writeState
   if (writeState?.kind !== 'blocked' || writeState.reason !== 'source-invalid') return null
-  const t = lang(locale)
-  const issue = plotOutlineOrderIssue(recovery.plotOutline?.sourceExpected.synopsis ?? '')
-  if (!issue) return t('这次生成开跑时，大纲的章节编号与所选范围对不上或缺少章节，不能接着生成，恢复稿也不能保存。可以复制已生成的章节，改好大纲后重新生成。',
-    'When this run started, the outline chapter numbers did not line up with the selected range or a chapter was missing, so it cannot continue and the recovery draft cannot be saved. Copy the generated chapters, fix the outline, then generate again.')
-  if (issue.kind === 'duplicate') return t(`这次生成开跑时，大纲里第 ${issue.chapter} 章出现了不止一次，不能接着生成，恢复稿也不能保存。可以复制已生成的章节，改好大纲后重新生成。`,
-    `When this run started, chapter ${issue.chapter} appeared more than once in the outline, so it cannot continue and the recovery draft cannot be saved. Copy the generated chapters, fix the outline, then generate again.`)
-  return t('这次生成开跑时，大纲的章节没有按章号顺序排列，不能接着生成，恢复稿也不能保存。可以复制已生成的章节，把大纲排好后重新生成。',
-    'When this run started, the outline chapters were not in chapter order, so it cannot continue and the recovery draft cannot be saved. Copy the generated chapters, put the outline in order, then generate again.')
+  return plotOutlineSourceInvalidText(recovery.plotOutline?.sourceExpected.synopsis ?? '', locale)
 }
 
 function planningEntry(recovery: GenerationRecoveryContext, locale: Locale): PlanningEntry {

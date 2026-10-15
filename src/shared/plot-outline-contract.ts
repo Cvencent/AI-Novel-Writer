@@ -3,6 +3,7 @@ import type { PhysicalAttempt } from './generation-contract'
 import type { VisibleCompositionReceipt } from './generation-owner-contract'
 import type { MainGenerationRunHandle } from '../services/generation/generation-runtime'
 import type { WritingLanguage } from './writing-language'
+import type { Locale } from '../i18n/types'
 
 export const DEFAULT_PLANNING_ACTION_CHAPTERS = 5
 export const PLANNING_ACTION_CHAPTER_LIMIT = 10
@@ -205,6 +206,18 @@ function chapterOrderIssue(entries: ReturnType<typeof headings>): PlotOutlineOrd
 
 export function plotOutlineOrderIssue(synopsis: string): PlotOutlineOrderIssue | null {
   return chapterOrderIssue(headings(synopsis))
+}
+
+/** 开跑时冻结的大纲来源无效、任务不能续写时给作者的说明；恢复稿入口与「断点续写」共用同一份措辞。 */
+export function plotOutlineSourceInvalidText(synopsis: string, locale: Locale): string {
+  const t = (zh: string, en: string) => locale === 'en-US' ? en : zh
+  const issue = plotOutlineOrderIssue(synopsis)
+  if (!issue) return t('这次生成开跑时，大纲的章节编号与所选范围对不上或缺少章节，不能接着生成，恢复稿也不能保存。可以复制已生成的章节，改好大纲后重新生成。',
+    'When this run started, the outline chapter numbers did not line up with the selected range or a chapter was missing, so it cannot continue and the recovery draft cannot be saved. Copy the generated chapters, fix the outline, then generate again.')
+  if (issue.kind === 'duplicate') return t(`这次生成开跑时，大纲里第 ${issue.chapter} 章出现了不止一次，不能接着生成，恢复稿也不能保存。可以复制已生成的章节，改好大纲后重新生成。`,
+    `When this run started, chapter ${issue.chapter} appeared more than once in the outline, so it cannot continue and the recovery draft cannot be saved. Copy the generated chapters, fix the outline, then generate again.`)
+  return t('这次生成开跑时，大纲的章节没有按章号顺序排列，不能接着生成，恢复稿也不能保存。可以复制已生成的章节，把大纲排好后重新生成。',
+    'When this run started, the outline chapters were not in chapter order, so it cannot continue and the recovery draft cannot be saved. Copy the generated chapters, put the outline in order, then generate again.')
 }
 
 export function plotOutlineConfirmedPrefix(expected: PlotOutlineRangeSource, range: PlotOutlineRange): string {
