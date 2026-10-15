@@ -5,7 +5,7 @@ import type { CharacterProposalBatch } from '../../../shared/character-proposal'
 import { defaultCharacterProposalRelationships, defaultCharacterProposalSelections, formatCharacterProposalPreview } from '../character-proposal-preview'
 import type { MainGenerationRunHandle } from '../../generation/generation-runtime'
 import type { ArchitecturePlanningIntent, GenerationRecoveryContext } from '../../../shared/generation-owner-contract'
-import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, joinPlotOutlineEntries, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
+import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, plotOutlineSourceInvalidText, joinPlotOutlineEntries, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
 import { CANONICAL_PROJECT_DIRECTORY } from '../../../shared/project-format'
 import { assertCheckpointDbMirrorCurrent, MIN_SYNOPSIS_PARTIAL_PERSIST_CHARS, renderSynopsisDbText, synopsisFactsFingerprint, type SynopsisCheckpoint } from '../../../shared/plot-outline-checkpoint'
 import {
@@ -26,6 +26,7 @@ import { requireIpcSuccess } from '../../ipc-result'
 import { projectSessionContextFromProject, sameProjectSessionContext } from '../../../shared/project-session-context'
 import {
   requireWorkflowProjectSession,
+  workflowUiLocale,
   workflowUiText,
   workflowWritingLanguage,
 } from '../workflow-project-session'
@@ -2138,11 +2139,13 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       context.data.partial = partial
       await savePartialData(expectedProjectPath, partial, session, text('保存情节大纲检查点', 'Save plot-outline navigation'))
     }
-    const stopped = (cursor: Extract<PlotOutlineProgress['cursor'], { kind: 'stopped' }>) => new Error(text(
-      `第 ${cursor.chapterNumber} 章已停止自动生成，原因 ${cursor.reason}。已接受前缀和全部候选已保留，正式大纲未被覆盖。`,
-      `Automatic generation stopped at chapter ${cursor.chapterNumber}: ${cursor.reason}. The accepted prefix and all candidates remain saved; the formal outline was not overwritten.`))
+    const stopped = (cursor: Extract<PlotOutlineProgress['cursor'], { kind: 'stopped' }>) => cursor.reason === 'source-invalid'
+      ? new Error(plotOutlineSourceInvalidText(sourceExpected.synopsis, workflowUiLocale(context)))
+      : new Error(text(
+        `第 ${cursor.chapterNumber} 章已停止自动生成，原因 ${cursor.reason}。已接受前缀和全部候选已保留，正式大纲未被覆盖。`,
+        `Automatic generation stopped at chapter ${cursor.chapterNumber}: ${cursor.reason}. The accepted prefix and all candidates remain saved; the formal outline was not overwritten.`))
     let outline = initial
-    // 来源无效时没有可写进检查点的前缀，先给停止说明；其余停止原因照常先写检查点。
+    // 来源无效时没有可写进检查点的前缀，先给与恢复入口相同的说明；其余停止原因照常先写检查点。
     if (outline.cursor.kind === 'stopped' && outline.cursor.reason === 'source-invalid') throw stopped(outline.cursor)
     await saveNavigation(outline)
     while (outline.cursor.kind !== 'complete') {
