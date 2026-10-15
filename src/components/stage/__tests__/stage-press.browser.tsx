@@ -103,7 +103,7 @@ describe('减少动态效果与键盘焦点下的书房卡片', () => {
       const container = await mount(theme)
       const changes: Record<string, boolean> = {}
       for (const [name, cover] of [['未选中', container.querySelectorAll<HTMLElement>('.stage-book-cover')[0]], ['选中', container.querySelectorAll<HTMLElement>('.stage-book-cover')[1]]] as const) {
-        ;(document.activeElement as HTMLElement | null)?.blur()
+        (document.activeElement as HTMLElement | null)?.blur()
         await userEvent.hover(document.body, { position: { x: 1, y: 1 } })
         const resting = look(cover)
         await userEvent.hover(cover)
