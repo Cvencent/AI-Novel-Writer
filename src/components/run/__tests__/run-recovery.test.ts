@@ -158,9 +158,11 @@ describe('规划恢复稿', () => {
   it.each([
     ['大纲按序但缺第 2 章', { range: { from: 3, to: 5 }, sourceExpected: { synopsis: '# 情节大纲\n\n## 第1章：第1夜\n这一夜的事。\n\n## 第3章：第3夜\n这一夜的事。' } }],
     ['没有冻结的大纲', undefined],
-  ])('来源无效但不是乱序或重复（%s）：入口用通用说明，不说章节乱序', (_case, plotOutline) => {
+  ])('来源无效但不是乱序或重复（%s）：入口说明不能继续、不能保存，不提本地保存或继续缺少的章节', (_case, plotOutline) => {
     const recovery = { handle, plotOutline, plotOutlineRecovery: { writeState: { kind: 'blocked', reason: 'source-invalid' } } } as never
     expect(buildRecoveryEntries({ ...EMPTY_RECOVERY_SOURCES, planning: [recovery] }, 'zh-CN')[0])
-      .toMatchObject({ kind: 'planning', note: '自动生成已保留候选。可编辑并本地保存，或明确继续缺少的章节。' })
+      .toMatchObject({ kind: 'planning', note: '这次生成开跑时，大纲的章节编号与所选范围对不上或缺少章节，不能接着生成，恢复稿也不能保存。可以复制已生成的章节，改好大纲后重新生成。' })
+    expect(buildRecoveryEntries({ ...EMPTY_RECOVERY_SOURCES, planning: [recovery] }, 'en-US')[0])
+      .toMatchObject({ kind: 'planning', note: 'When this run started, the outline chapter numbers did not line up with the selected range or a chapter was missing, so it cannot continue and the recovery draft cannot be saved. Copy the generated chapters, fix the outline, then generate again.' })
   })
 })
