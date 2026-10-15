@@ -64,7 +64,7 @@ export function useKnowledgeIndex() {
   const models = useLLMStore(s => s.models)
   const embeddingModelId = useLLMStore(s => s.defaultEmbeddingModelId)
   useEffect(() => {
-    void loadStatus()
+    Promise.resolve().then(() => loadStatus())
   }, [loadStatus, models, embeddingModelId])
 
   const backfill = useCallback(async () => {
