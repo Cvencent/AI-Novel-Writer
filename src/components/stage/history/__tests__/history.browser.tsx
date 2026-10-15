@@ -344,14 +344,15 @@ describe('版本历史', () => {
     expect(versionsColumn()).not.toContain('正在读取…')
   })
 
-  it('读各稿失败：说没能读出、稿没有丢，不说这一章还没有稿；点「重新读取」读到就列出各稿', async () => {
+  it('读各稿失败：只说这次没读出来、可以重新读取，不担保稿没有丢，不说这一章还没有稿；点「重新读取」读到就列出各稿', async () => {
     await act(async () => root!.render(<StageHistory projectKey={session.projectPath} />))
     await vi.waitFor(() => expect(button(/雨夜车站/)).toBeTruthy())
     const base = invoke.getMockImplementation()!
     invoke.mockImplementation(async (channel, ...args) => channel === 'db:draft-list' ? Promise.reject(new Error('数据库忙')) : base(channel, ...args))
     await click(/雨夜车站/)
     await vi.waitFor(() => expect(versionsColumn()).toContain('没能读出这一章的各稿'))
-    expect(versionsColumn()).toContain('稿都还在，没有丢。')
+    expect(versionsColumn()).toContain('这次没读出来，可以重新读取。')
+    expect(versionsColumn()).not.toContain('没有丢')
     expect(versionsColumn()).not.toContain('这一章还没有稿')
     expect(versionsColumn()).not.toContain('数据库忙')
 
