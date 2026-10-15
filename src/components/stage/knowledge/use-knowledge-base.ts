@@ -115,12 +115,21 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   // 当前结果是按哪个词查出来的；结果被保存、更新检索、清空或换作品清掉时一起清，查找出错时也清，「没有找到」只说真查过的词。
   const [searchedQuery, setSearchedQuery] = useState('')
-  const clearResults = () => {
+  const [searching, setSearching] = useState(false)
+  // 每次查找与清除都作废之前还没返回的查找：只有最新的一次写结果、结束「查找中」。submittedQuery 是最近一次提交的词（可能还在查）。
+  const searchRequest = useRef(0)
+  const submittedQuery = useRef('')
+  const resetResults = useCallback(() => {
     setSearchResults([])
     setSearchedQuery('')
-  }
-  const [searching, setSearching] = useState(false)
-  const searchRequest = useRef(0)
+  }, [])
+  /** 清掉查找结果，并作废还没返回的查找。 */
+  const clearResults = useCallback(() => {
+    searchRequest.current++
+    submittedQuery.current = ''
+    setSearching(false)
+    resetResults()
+  }, [resetResults])
   const [topK, setTopK] = useState(10)
   const [clearing, setClearing] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -201,7 +210,6 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
         setDraft(EMPTY_DRAFT)
         resetIndex()
         setLoadError('')
-        setSearching(false)
         setClearing(false)
       } else if (restoredDraft.current) {
         // 标签切回来时重读所选资料，刷新检索状态；有未保存改动就原样留着，保存时由副本校验发现冲突。
@@ -214,7 +222,7 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
       void loadStatus()
     })
     return () => { mounted = false }
-  }, [projectPath, sessionLease, loadData, loadStatus, resetIndex, setDraft])
+  }, [projectPath, sessionLease, loadData, loadStatus, resetIndex, setDraft, clearResults])
 
   useEffect(() => {
     Promise.resolve().then(() => loadStatus())
@@ -290,11 +298,12 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
     }
   }
 
-  /** 查找；改「最多显示」时按上次查找的词与新的条数重查。只有最后一次查找写结果、结束「查找中」，先发的晚到不算。 */
+  /** 查找。只有最后一次查找写结果、结束「查找中」，先发的晚到不算。 */
   const search = async (query = searchQuery, limit = topK) => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession) return
     const request = ++searchRequest.current
+    submittedQuery.current = query
     const latest = () => request === searchRequest.current && isProjectSessionCurrent(projectSession)
     setSearching(true)
     try {
@@ -304,11 +313,17 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
       setSearchedQuery(query)
     } catch (error) {
       if (!latest()) return
-      clearResults()
+      resetResults()
       toast.error(appErrorMessage(locale, error))
     } finally {
       if (latest()) setSearching(false)
     }
+  }
+
+  /** 改「最多显示」：按最近一次提交的词（还在查的也算）与新的条数重查，不用已显示结果的旧词。 */
+  const changeLimit = (limit: number) => {
+    setTopK(limit)
+    if (submittedQuery.current) void search(submittedQuery.current, limit)
   }
 
   /** 清空当前作品的知识库。session 是作者确认前取下的会话；确认期间换了作品就不清。 */
@@ -388,7 +403,7 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
     documents, documentsLoaded, stats, loadError,
     selectedDocId, documentCopy, draftContent, setDraftContent, documentBusy, dirty,
     openDocument, saveDocument, reindexDocument,
-    searchQuery, setSearchQuery, topK, setTopK, searchResults, setSearchResults, searchedQuery, clearResults, searching, search,
+    searchQuery, setSearchQuery, topK, setTopK, changeLimit, searchResults, setSearchResults, searchedQuery, clearResults, searching, search,
     clearing, clearAll,
     importing, importPlanningMaterials,
   }
