@@ -426,7 +426,7 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
         )}
       >
         <ul className="stage-ch-commit">
-          <li><b>{text('写入正文。', 'Writes the manuscript.')}</b>{text(`这 ${units} 字成为第 ${chapterNumber} 章正文，同时保存为正文文件。`, `These ${units} ${pluralEn(unitCount, 'word')} become chapter ${chapterNumber} and are saved as the manuscript file.`)}</li>
+          <li><b>{text('写入正文。', 'Writes the manuscript.')}</b>{text(`这 ${units} 字成为第 ${chapterNumber} 章正文，同时保存为正文文件。`, `This ${units}-word text becomes chapter ${chapterNumber} and is saved as the manuscript file.`)}</li>
           <li><b>{text('自动做定稿后处理。', 'Runs post-finalization steps.')}</b>{text('完成后在本章页面显示每一步的结果，失败的步骤可以单独重试。', 'Each step’s result appears on this chapter; a failed step can be retried on its own.')}</li>
           <li><b>{text('之后不能直接修改。', 'No direct edits afterwards.')}</b>{text('要再改，从版本历史回退为新草稿。', 'To change it again, roll back to a new draft from version history.')}</li>
         </ul>

@@ -55,7 +55,7 @@ function RunLog({ text }: { text: Text }) {
       </header>
       {confirming && (
         <InlineConfirm
-          message={text(`清空后这 ${logs.length} 行日志无法找回。`, `Clearing removes these ${logs.length} log ${pluralEn(logs.length, 'line')} for good.`)}
+          message={text(`清空后这 ${logs.length} 行日志无法找回。`, `Clearing removes the ${logs.length} log ${pluralEn(logs.length, 'line')} for good.`)}
           confirmLabel={text('清空', 'Clear')}
           cancelLabel={text('保留', 'Keep')}
           onConfirm={() => { setConfirming(false); useWorkflowStore.getState().clearLogs() }}

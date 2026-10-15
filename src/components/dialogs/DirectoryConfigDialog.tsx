@@ -34,7 +34,7 @@ export default function DirectoryConfigDialog(props: DirectoryConfigProps) {
           </DialogTitle>
           <DialogDescription>
             {existingCount > 0
-              ? text(`当前已存在 ${existingCount} 章蓝图，选择下一步操作：`, `${existingCount} chapter blueprints already exist. Choose what to do next:`)
+              ? text(`当前已存在 ${existingCount} 章蓝图，选择下一步操作：`, `${existingCount} chapter ${pluralEn(existingCount, 'blueprint')} already ${pluralEn(existingCount, 'exists', 'exist')}. Choose what to do next:`)
               : hasPriorAuthority
                 ? text(`权威正文已定稿至第 ${appendStart - 1} 章，下一章蓝图从第 ${appendStart} 章开始。`, `Finalized manuscript authority ends at Chapter ${appendStart - 1}; the next blueprint starts at Chapter ${appendStart}.`)
               : text(`项目共 ${total} 章，请选择生成范围：`, `The project has ${total} ${pluralEn(total, 'chapter')}. Choose a generation range:`)}

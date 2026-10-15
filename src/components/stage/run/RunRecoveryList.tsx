@@ -140,7 +140,7 @@ function CandidateCard({ entry, recovery, text }: { entry: CandidateEntry; recov
       actions={confirming
         ? (
           <InlineConfirm
-            message={text(`放弃后这 ${units} 字无法找回。`, `Discarding loses these ${units} ${pluralEn(units, 'character')} for good.`)}
+            message={text(`放弃后这 ${units} 字无法找回。`, `Discarding loses the ${units} ${pluralEn(units, 'word')} for good.`)}
             confirmLabel={text('放弃', 'Discard')}
             cancelLabel={text('保留', 'Keep')}
             onConfirm={() => { setConfirming(false); recovery.discardCandidate(entry) }}

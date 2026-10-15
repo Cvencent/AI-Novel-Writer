@@ -5,6 +5,7 @@ import { navigate } from '../../stores/navigation/navigation-intents'
 import { ipc } from '../../services/ipc-client'
 import { clearProjectData } from '../../services/project-clear-service'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
+import { pluralEn } from '../../shared/plural-en'
 import {
   projectSessionContextFromProject,
   sameProjectPathKey,
@@ -447,7 +448,7 @@ export function useChapterBlueprints({
       persistProjectDraftState(projectKey, projectSession, current.blueprints, nextDirty)
       setSaveOutcome(nextDirty.size === 0 ? 'saved' : 'idle')
       announceSaved(projectSession)
-      addLog('info', text(`已保存全部 ${saveInput.length} 章蓝图`, `Saved all ${saveInput.length} chapter blueprints`))
+      addLog('info', text(`已保存全部 ${saveInput.length} 章蓝图`, `Saved ${saveInput.length} chapter ${pluralEn(saveInput.length, 'blueprint')}`))
     } catch (err) {
       if (!isCurrentProjectSession(projectSession)) return
       const message = err instanceof Error ? err.message : String(err)

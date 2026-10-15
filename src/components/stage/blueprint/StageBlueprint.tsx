@@ -18,6 +18,7 @@ import BatchWriteDialog from './BatchWriteDialog'
 import BlueprintCard from './BlueprintCard'
 import BlueprintPlanList from './BlueprintPlanList'
 import GenerateBlueprintsDialog from './GenerateBlueprintsDialog'
+import { pluralEn } from '../../../shared/plural-en'
 
 /** 等作者确认的一步：覆盖已有蓝图、生成前的架构警告、清空全部、删除此章、清除误导入正文。 */
 type Ask =
@@ -234,7 +235,7 @@ export default function StageBlueprint({ projectKey, initialChapterNumber, selec
         onOpenChange={open => { if (!open) settle(false) }}
         title={text('覆盖已有蓝图？', 'Overwrite existing blueprints?')}
         consequence={text(`将从第 1 章起重新生成，已有的 ${count} 章蓝图会被新蓝图替换。草稿与正文不受影响。`,
-          `Generation restarts from chapter 1 and replaces the ${count} existing blueprints. Drafts and manuscript chapters are not affected.`)}
+          `Generation restarts from chapter 1 and replaces the ${count} existing ${pluralEn(count, 'blueprint')}. Drafts and manuscript chapters are not affected.`)}
         recoverability={text('被替换的蓝图无法恢复。只想补空缺时，选「保留，只补空缺」。', 'Replaced blueprints cannot be recovered. To fill gaps only, keep existing blueprints instead.')}
         confirmLabel={text('覆盖并生成', 'Overwrite and generate')}
         cancelLabel={text('取消', 'Cancel')}
@@ -256,7 +257,7 @@ export default function StageBlueprint({ projectKey, initialChapterNumber, selec
         open={ask?.kind === 'clear'}
         onOpenChange={open => { if (!open) setAsk(null) }}
         title={text('清空全部蓝图？', 'Clear all blueprints?')}
-        consequence={text(`将删除全部 ${count} 章蓝图。草稿与正文章节会保留。`, `All ${count} chapter blueprints will be deleted. Drafts and manuscript chapters remain.`)}
+        consequence={text(`将删除全部 ${count} 章蓝图。草稿与正文章节会保留。`, `The ${count} chapter ${pluralEn(count, 'blueprint')} will be deleted. Drafts and manuscript chapters remain.`)}
         recoverability={text('清空后无法恢复。想留底请先在设置的「项目备份」里导出存档。', 'This cannot be undone. Export an archive from Project backup in Settings first if you may need them.')}
         confirmLabel={text('清空全部', 'Clear all')}
         cancelLabel={text('取消', 'Cancel')}

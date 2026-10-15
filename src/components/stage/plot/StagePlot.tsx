@@ -9,6 +9,7 @@ import { SegmentedControl } from '../../ui/SegmentedControl'
 import PlotThreads from './PlotThreads'
 import PlotTimeline from './PlotTimeline'
 import { usePlotThreads } from './use-plot-threads'
+import { pluralEn } from '../../../shared/plural-en'
 
 export type PlotThreads = ReturnType<typeof usePlotThreads>
 
@@ -136,7 +137,7 @@ export default function StagePlot({ projectKey, initialView, viewRequest }: Stag
           title={text('删除这条线索？', 'Delete this thread?')}
           consequence={text(
             `会删除线索「${deleting?.title ?? ''}」和它已确认的 ${deleting?.events.length ?? 0} 个定稿事件。写作时不再提醒它。`,
-            `The thread “${deleting?.title ?? ''}” and its ${deleting?.events.length ?? 0} confirmed events are removed. Writing will no longer keep it in mind.`,
+            `The thread “${deleting?.title ?? ''}” and its ${deleting?.events.length ?? 0} confirmed ${pluralEn(deleting?.events.length ?? 0, 'event')} are removed. Writing will no longer keep it in mind.`,
           )}
           recoverability={text('删除后无法恢复，只能重新建这条线索。', 'This cannot be undone. You would have to create the thread again.')}
           confirmLabel={text('删除线索', 'Delete thread')}

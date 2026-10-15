@@ -909,7 +909,7 @@ export default function ImportNovelDialog({ open, onClose }: ImportNovelDialogPr
                 <Clock size={11} />
                 {text(
                   `预计耗时 ~${costEstimate.estimatedMinutes} 分钟（因模型速度而异）`,
-                  `About ${costEstimate.estimatedMinutes} minutes, depending on model speed`,
+                  `About ${costEstimate.estimatedMinutes} ${pluralEn(costEstimate.estimatedMinutes, 'minute')}, depending on model speed`,
                 )}
               </div>
             </div>

@@ -234,7 +234,7 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
           {vectorless > 0 && (
             <Notice
               tone="warn"
-              title={text(`有 ${vectorless} 段资料还不能按意思查找`, `${vectorless} passages cannot be searched by meaning yet`)}
+              title={text(`有 ${vectorless} 段资料还不能按意思查找`, `${vectorless} ${pluralEn(vectorless, 'passage')} cannot be searched by meaning yet`)}
               actions={<Button variant="secondary" size="sm" onClick={openSettings}>{text('去设置补全', 'Complete in settings')}</Button>}
             />
           )}

@@ -231,7 +231,7 @@ function ChapterCardEditorSession({
     if (visibleBlueprints.length === 0) return
     const ok = await confirm(text(
       `确认清空全部 ${visibleBlueprints.length} 章蓝图？\n此操作不可撤销，但不会删除草稿或正文章节。`,
-      `Clear all ${visibleBlueprints.length} chapter blueprints?\nThis cannot be undone, but drafts and manuscript chapters will remain.`,
+      `Clear the ${visibleBlueprints.length} chapter ${pluralEn(visibleBlueprints.length, 'blueprint')}?\nThis cannot be undone, but drafts and manuscript chapters will remain.`,
     ), {
       title: text('清空全部蓝图', 'Clear all blueprints'),
       confirmText: text('清空全部', 'Clear all'),

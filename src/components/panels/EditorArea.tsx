@@ -546,7 +546,7 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
                 ).length
                 const total = (batchCloseConfirm ?? []).length
                 return dirtyCount > 0
-                  ? text(`即将关闭 ${total} 个文件，其中 ${dirtyCount} 个有未保存的修改。是否放弃修改并全部关闭？`, `Close ${total} ${pluralEn(total, 'file')}? ${dirtyCount} have unsaved changes that will be discarded.`)
+                  ? text(`即将关闭 ${total} 个文件，其中 ${dirtyCount} 个有未保存的修改。是否放弃修改并全部关闭？`, `Close ${total} ${pluralEn(total, 'file')}? ${dirtyCount} ${pluralEn(dirtyCount, 'has', 'have')} unsaved changes that will be discarded.`)
                   : text(`即将关闭 ${total} 个文件。`, `Close ${total} ${pluralEn(total, 'file')}.`)
               })()}
             </DialogDescription>
