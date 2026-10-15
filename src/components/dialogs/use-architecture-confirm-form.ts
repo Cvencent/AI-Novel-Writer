@@ -124,21 +124,21 @@ export function useArchitectureConfirmForm({
     ? plotOutlineRangeEffect(synopsisSource, { from, to })
     : null
 
-  const synopsisRangeIssue = outOfBounds ? boundsIssue
-    : synopsisEffect?.kind !== 'invalid' ? null
-    : !synopsisSource.synopsis.trim()
-      ? text('还没有情节大纲，请从第 1 章起生成。', 'There is no plot outline yet. Start from chapter 1.')
-    : !synopsisEffect.hasEntries
-      ? text('已有大纲没有按章的标题，只能从第 1 章起整份重写。', 'The existing outline has no chapter headings, so it can only be rewritten whole from chapter 1.')
-    : synopsisEffect.orderIssue?.kind === 'duplicate'
-      ? text(`已有大纲里第 ${synopsisEffect.orderIssue.chapter} 章出现了不止一次，按范围重写会打乱或丢掉其他章，后台会拒绝。请先删掉或改正重复的那一章。`,
-        `Chapter ${synopsisEffect.orderIssue.chapter} appears more than once in the existing outline, so rewriting a range would scramble or drop other chapters and would be rejected. Remove or correct the duplicate first.`)
-    : synopsisEffect.orderIssue
-      ? text('已有大纲的章节没有按章号顺序排列，按范围重写会打乱或丢掉其他章，后台会拒绝。请先把大纲里的章节按章号排好。', 'The chapters in the existing outline are out of order, so rewriting a range would scramble or drop other chapters and would be rejected. Put the outline chapters in order first.')
-      : from > synopsisEffect.lastChapter + 1
-        ? text(`已有大纲写到第 ${synopsisEffect.lastChapter} 章，不能跳到第 ${from} 章开始。请从第 ${synopsisEffect.lastChapter + 1} 章续写，或从第 1–${synopsisEffect.lastChapter} 章中的某一章起重写。`,
-          `The outline reaches chapter ${synopsisEffect.lastChapter}, so it cannot skip to chapter ${from}. Continue from chapter ${synopsisEffect.lastChapter + 1}, or rewrite from a chapter between 1 and ${synopsisEffect.lastChapter}.`)
-        : text('这个范围会切开已有的章节条目，或已有大纲末尾的分批说明与正文对不上，后台会拒绝。请换一个起止章。', 'This range splits an existing chapter entry, or the batch note at the end of the outline does not match its text, so it would be rejected. Choose other chapters.')
+  /** 选定范围为什么会被主进程拒绝；能开跑时为 null。 */
+  const synopsisRangeIssueText = (): string | null => {
+    if (outOfBounds) return boundsIssue
+    if (synopsisEffect?.kind !== 'invalid') return null
+    if (!synopsisSource.synopsis.trim()) return text('还没有情节大纲，请从第 1 章起生成。', 'There is no plot outline yet. Start from chapter 1.')
+    if (!synopsisEffect.hasEntries) return text('已有大纲没有按章的标题，只能从第 1 章起整份重写。', 'The existing outline has no chapter headings, so it can only be rewritten whole from chapter 1.')
+    const { orderIssue, lastChapter } = synopsisEffect
+    if (orderIssue?.kind === 'duplicate') return text(`已有大纲里第 ${orderIssue.chapter} 章出现了不止一次，按范围重写会打乱或丢掉其他章，后台会拒绝。请先删掉或改正重复的那一章。`,
+      `Chapter ${orderIssue.chapter} appears more than once in the existing outline, so rewriting a range would scramble or drop other chapters and would be rejected. Remove or correct the duplicate first.`)
+    if (orderIssue) return text('已有大纲的章节没有按章号顺序排列，按范围重写会打乱或丢掉其他章，后台会拒绝。请先把大纲里的章节按章号排好。', 'The chapters in the existing outline are out of order, so rewriting a range would scramble or drop other chapters and would be rejected. Put the outline chapters in order first.')
+    if (from > lastChapter + 1) return text(`已有大纲写到第 ${lastChapter} 章，不能跳到第 ${from} 章开始。请从第 ${lastChapter + 1} 章续写，或从第 1–${lastChapter} 章中的某一章起重写。`,
+      `The outline reaches chapter ${lastChapter}, so it cannot skip to chapter ${from}. Continue from chapter ${lastChapter + 1}, or rewrite from a chapter between 1 and ${lastChapter}.`)
+    return text('这个范围会切开已有的章节条目，或已有大纲末尾的分批说明与正文对不上，后台会拒绝。请换一个起止章。', 'This range splits an existing chapter entry, or the batch note at the end of the outline does not match its text, so it would be rejected. Choose other chapters.')
+  }
+  const synopsisRangeIssue = synopsisRangeIssueText()
 
   /** 选定范围的说明：覆盖哪几章、哪几章原样保留；续写接在哪一章之后。 */
   const synopsisEffectNote = (): string | null => {
