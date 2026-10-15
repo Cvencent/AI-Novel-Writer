@@ -189,7 +189,7 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
               ? (
                 <Notice tone="warn" title={text('没能读出这一章的各稿', 'Could not read the versions of this chapter')}
                   actions={<Button variant="secondary" size="sm" onClick={reloadVersions}>{text('重新读取', 'Read again')}</Button>}>
-                  {text('稿都还在，没有丢。可以重新读取一次。', 'The drafts are all still there. Try reading them again.')}
+                  {text('这次没读出来，可以重新读取。', 'This read did not go through. You can read again.')}
                 </Notice>
               )
               : ordered.length === 0
