@@ -223,7 +223,7 @@ describe('i18n coverage boundary scanner', () => {
     }
   })
 
-  it('reads checks and changes as counted nouns only right after the count, not as verbs or after other words', () => {
+  it('reads checks and changes after an interpolation as counted nouns, verb uses included', () => {
     const root = mkdtempSync(join(tmpdir(), 'ai-novel-i18n-plural-verbs-'))
     try {
       writeFixture(root, 'src/components/stage/Verbs.tsx', `
@@ -235,6 +235,9 @@ describe('i18n coverage boundary scanner', () => {
             {text(\`\${name} 改过\`, \`\${name} made changes\`)}
             {text(\`\${n} 处变更\`, \`\${n} changes: \${revised} from the revision\`)}
             {text(\`通过 \${passed} 项\`, \`\${passed} checks passed\`)}
+            {text(\`\${n} 处未保存\`, \`\${n} unsaved changes\`)}
+            {text(\`\${n} 处将丢失\`, \`\${n} changes that will be lost\`)}
+            {text(\`\${passed} 项失败\`, \`\${passed} checks that failed\`)}
           </p>
         }
       `)
@@ -242,9 +245,15 @@ describe('i18n coverage boundary scanner', () => {
       const result = runChecker(root)
 
       expect(result.status).toBe(1)
-      expect(result.output).toContain('Found 2 unlocalized visible strings')
+      expect(result.output).toContain('Found 8 unlocalized visible strings')
+      expect(result.output).toContain('src/components/stage/Verbs.tsx:5 [english-plural] `${who} checks the chapter`')
+      expect(result.output).toContain('src/components/stage/Verbs.tsx:6 [english-plural] `${name} changes the outline`')
+      expect(result.output).toContain('src/components/stage/Verbs.tsx:7 [english-plural] `${name} made changes`')
       expect(result.output).toContain('src/components/stage/Verbs.tsx:8 [english-plural] `${n} changes: ${revised} from the revision`')
       expect(result.output).toContain('src/components/stage/Verbs.tsx:9 [english-plural] `${passed} checks passed`')
+      expect(result.output).toContain('src/components/stage/Verbs.tsx:10 [english-plural] `${n} unsaved changes`')
+      expect(result.output).toContain('src/components/stage/Verbs.tsx:11 [english-plural] `${n} changes that will be lost`')
+      expect(result.output).toContain('src/components/stage/Verbs.tsx:12 [english-plural] `${passed} checks that failed`')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
