@@ -9,6 +9,7 @@ import * as chapter from './pages/chapter.mjs'
 import * as chapterView from './pages/chapter-view.mjs'
 import * as runSheet from './pages/run-sheet.mjs'
 import * as project from './pages/project.mjs'
+import * as shell from './pages/shell.mjs'
 import * as stage from './pages/stage.mjs'
 import { decodePng } from './png.mjs'
 import { seedWithCandidate } from './run-scenarios.mjs'
@@ -530,6 +531,51 @@ export const RDX3_SCENARIOS = {
    * 还焦点与弹层打开谁先谁后不定，所以只断言与先后无关的结果：「历史」若拿到焦点必须在弹层打开之前，弹层打开后焦点没有落到弹层外。
    */
   'rdx3-write-after-discard-sheet': writeAfterDiscard({ focusBefore: page => runSheet.tab(page, '历史').click() }),
+  /**
+   * 设定里有没保存的输入时只清蓝图，主进程扣住清除；期间关窗弹出退出确认，再放行一个失败：
+   * 「清除失败」提示画在退出确认上面、点得到「确定」，确定后退出确认还在。
+   */
+  'rdx3-prompt-over-exit': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ app, page, shoot }) => {
+    await stage.stageButton(page, '设定').click()
+    await stage.dirtySetup(page)
+    await app.evaluate(({ ipcMain }) => {
+      let release
+      const gate = { hit: false, opened: new Promise(resolve => { release = resolve }) }
+      gate.release = release
+      globalThis.__rdx3ClearGate = gate
+      ipcMain._invokeHandlers.set('db:project-clear-generated-data', async () => {
+        gate.hit = true
+        await gate.opened
+        return { success: false, error: '磁盘只读' }
+      })
+    })
+    await stage.openWorkMenuItem(page, STAGE_SAMPLE.name, '清除生成内容…')
+    // 只清蓝图：清故事架构会先被设定里没保存的输入拦下
+    const kinds = page.locator('.pi-check-row > .pi-check')
+    await kinds.nth(0).click()
+    await kinds.nth(2).click()
+    await page.getByRole('button', { name: '清除所选' }).click()
+    for (const deadline = Date.now() + 10_000; !(await app.evaluate(() => globalThis.__rdx3ClearGate.hit)); await page.waitForTimeout(50)) {
+      assert.ok(Date.now() < deadline, '10 秒内没有发出清除')
+    }
+    await shell.requestWindowClose(app)
+    const exit = stage.exitDialog(page)
+    await exit.waitFor({ state: 'visible' })
+    await app.evaluate(() => globalThis.__rdx3ClearGate.release())
+    const prompt = page.locator('[role="alertdialog"]').filter({ hasText: '清除失败' })
+    await prompt.waitFor({ state: 'visible' })
+    await shoot('rdx3-prompt-over-exit-alert')
+    const observed = { promptOnTop: await stage.isTopmost(prompt) }
+    assert.equal(observed.promptOnTop, true, '退出确认开着时到达的「清除失败」提示画在它上面')
+    await prompt.getByRole('button', { name: '确定' }).click({ timeout: 5_000 })
+    await prompt.waitFor({ state: 'detached' })
+    observed.exitStillOpen = await exit.isVisible()
+    observed.exitOnTop = await stage.isTopmost(exit)
+    assert.deepEqual(observed, { promptOnTop: true, exitStillOpen: true, exitOnTop: true }, '退出确认开着时到达的错误提示在它上面、点得到，确定后回到退出确认')
+  }, after: async ({ page }) => {
+    await stage.exitDialog(page).getByText('取消', { exact: true }).click()
+    await page.keyboard.press('Escape')
+  } },
 }
 
 function writeAfterDiscard({ focusBefore } = {}) {
