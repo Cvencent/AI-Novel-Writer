@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, useEffect, useState, type ReactNode } from 'react'
+import { act, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { page, userEvent } from 'vitest/browser'
 
@@ -10,6 +10,7 @@ import { useAppearanceStore } from '../../../stores/appearance-bootstrap'
 import type { WindowCloseGuard } from '../../layout/use-window-close-guard'
 import { alertError } from '../../ui/AlertDialog'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../ui/Dialog'
+import ExitGuardDialog from '../ExitGuardDialog'
 import StageRoot from '../StageRoot'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -202,5 +203,23 @@ describe('退出确认与错误提示谁后弹出谁在上面', () => {
     await act(async () => request(null))
     await prompt.getByRole('button', { name: '确定' }).click()
     await alerted
+  })
+})
+
+describe('渲染期不建纸墨宿主', () => {
+  it.each([
+    ['退出确认', () => <ExitGuardDialog guard={idleGuard({ exitRequest: { requestId: 'close-6' } })} />],
+    ['迁移后的旧对话框', () => <Dialog open><DialogContent><DialogHeader><DialogTitle>导出项目</DialogTitle></DialogHeader></DialogContent></Dialog>],
+  ])('%s所在的树挂起、没有提交时，body 下没有多出宿主', async (_case, dialog) => {
+    useAppearanceStore.setState({ resolvedShell: 'stage' })
+    function Pending(): never {
+      throw new Promise(() => undefined)
+    }
+    host = document.createElement('div')
+    document.body.append(host)
+    root = createRoot(host)
+    await act(async () => root!.render(<Suspense fallback={<p>读取中</p>}>{dialog()}<Pending /></Suspense>))
+    expect(host.textContent).toBe('读取中')
+    expect(document.getElementById('ai-novel-ink-overlay')).toBeNull()
   })
 })
