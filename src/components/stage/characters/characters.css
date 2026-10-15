@@ -78,10 +78,9 @@
   gap: var(--s-2);
 }
 
-.cast-suggestion-error {
-  color: var(--danger);
-  font-size: var(--fs-12);
-  overflow-wrap: anywhere;
+.cast-suggestion-error .cast-suggestion-text {
+  color: var(--warn);
+  white-space: normal;
 }
 
 /* ================= 名单与档案 ================= */
