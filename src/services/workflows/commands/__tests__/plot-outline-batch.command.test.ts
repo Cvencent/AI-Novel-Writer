@@ -669,7 +669,7 @@ describe('GeneratePlotArchitectureCommand 批次状态机', () => {
     expect(harness.synopsisCommits).toHaveLength(0)
   })
 
-  it('升级前以乱序大纲开跑、来源无效的逐章大纲任务续写时给出停止说明，不露内部错误码', async () => {
+  it('升级前以乱序大纲开跑、来源无效的逐章大纲任务续写时给出与恢复入口一致的说明，不露内部原因码', async () => {
     useLLMStore.setState({ defaultModelId: '合成模型' })
     const harness = harnessWith()
     const synopsis = `# 情节大纲\n\n${[1, 5, 2, 3, 4].map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}`
@@ -680,9 +680,9 @@ describe('GeneratePlotArchitectureCommand 批次状态机', () => {
         writingLanguage: 'zh-CN', plotStructure: 'three_act', narrativePov: 'third_limited', globalGuidance: novelConfig.globalGuidance },
     })
 
-    await expect(makeCommand({ resumeSynopsis: true }, true).execute({ step: {}, context, callbacks }))
-      .rejects.toThrow('第 4 章已停止自动生成，原因 source-invalid。已接受前缀和全部候选已保留，正式大纲未被覆盖。')
+    const failure = await makeCommand({ resumeSynopsis: true }, true).execute({ step: {}, context, callbacks }).catch((error: Error) => error)
 
+    expect((failure as Error).message).toBe('这次生成开跑时，大纲的章节没有按章号顺序排列，不能接着生成，恢复稿也不能保存。可以复制已生成的章节，把大纲排好后重新生成。')
     expect(generation.execute).not.toHaveBeenCalled()
     expect(harness.synopsisCommits).toHaveLength(0)
   })
