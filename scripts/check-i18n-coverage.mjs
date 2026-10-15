@@ -9,8 +9,9 @@ const han = /\p{Script=Han}/u
 const latinWord = /[A-Za-z]{2,}/
 /**
  * 英文里数量后的复数名词，中间可隔一两个修饰词（the ${n} existing blueprints）：数量是 1 时读成「1 chapters」，要走 pluralEn。
+ * changes、checks 也是动词（${who} checks the chapter），只认紧跟数量、后面不接宾语的用法。
  */
-const fixedPluralAfterCount = /^ (?:[a-z]+ ){0,2}(?:chapters|files|characters|items|lines|calls|drafts|words|documents|chunks|days|notes|versions|entries|kinds|blueprints|events|minutes|passages|candidates|tasks|suggestions|changes|checks)\b/
+const fixedPluralAfterCount = /^ (?:[a-z]+ ){0,2}(?:chapters|files|characters|items|lines|calls|drafts|words|documents|chunks|days|notes|versions|entries|kinds|blueprints|events|minutes|passages|candidates|tasks|suggestions)\b|^ (?:changes|checks)\b(?! (?:the|a|an|this|that|these|those|its|his|her|their|your|my|our)\b)/
 /** 数量前的 these、those 与数量后直接跟的 have、are：数量是 1 时读成「these 1 log line」「1 have」。 */
 const pluralBeforeCount = /\b(?:these|those)\s$/i
 const pluralVerbAfterCount = /^ (?:have|are|were)\b/
