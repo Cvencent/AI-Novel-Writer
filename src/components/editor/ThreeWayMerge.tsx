@@ -13,6 +13,7 @@ import { useMergeSegments } from './merge-segments'
 import { ArrowLeft, ArrowRight, Check } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { useLocaleStore } from '../../stores/locale-store'
+import { pluralEn } from '../../shared/plural-en'
 import './three-way-merge.css'
 
 interface ThreeWayMergeProps {
@@ -73,7 +74,7 @@ export default function ThreeWayMerge({
       <div className="twm-toolbar">
         <Button variant="ghost" size="sm" onClick={() => chooseAll('original')}><ArrowLeft size={13} />{text('全部原稿', 'Use all original')}</Button>
         <Button variant="ghost" size="sm" onClick={() => chooseAll('revised')}>{text('全部修稿', 'Use all revision')}<ArrowRight size={13} /></Button>
-        <span className="twm-toolbar-progress">{text('已采用 {done}/{total} 处变更', '{done}/{total} changes applied', { done: processedCount, total: hunks.length })}</span>
+        <span className="twm-toolbar-progress">{text('已采用 {done}/{total} 处变更', `{done}/{total} ${pluralEn(hunks.length, 'change')} applied`, { done: processedCount, total: hunks.length })}</span>
         {onCancel && <Button variant="ghost" size="sm" onClick={onCancel}>{text('取消', 'Cancel')}</Button>}
         <Button variant="success" size="sm" onClick={() => onComplete(mergedText())}>{text('完成合并', 'Finish merge')}</Button>
       </div>
