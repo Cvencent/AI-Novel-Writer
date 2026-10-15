@@ -119,7 +119,7 @@ describe('打开作品时的落点', () => {
   const BLUEPRINTS = [1, 2, 3].map(chapterNumber => ({ chapterNumber, title: `第${chapterNumber}章` }))
   const draft = (chapterNumber: number, status: 'draft' | 'finalized') => ({ id: chapterNumber * 10, chapterNumber, version: 1, status,
     createdAt: '2026-10-13 20:00:00', updatedAt: '2026-10-13 20:00:00', source: 'write', filePath: `ai-novel://draft/${chapterNumber * 10}`, fileName: 'draft_v1.md' })
-  async function landWith(blueprints: typeof BLUEPRINTS, drafts: Record<number, ReturnType<typeof draft>[]>) {
+  async function landWith(blueprints: typeof BLUEPRINTS, drafts: Record<number, (ReturnType<typeof draft> & { wordCount?: number })[]>) {
     const current = session('current')
     await open(current, READY)
     await act(async () => {
