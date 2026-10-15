@@ -29,6 +29,27 @@ describe('chapter Markdown outline contract', () => {
   })
 
   it.each([
+    ['只有序章', 'zh-CN', '# 情节大纲\n\n## 第0章：序章\n灯塔熄灭前夜。', '## 第1章：新\n新事。\n\n## 第2章：新\n新事。',
+      '# 情节大纲\n\n## 第0章：序章\n灯塔熄灭前夜。\n\n## 第1章：新\n新事。\n\n## 第2章：新\n新事。\n\n> 本大纲已覆盖至第 2 章（全书 5 章），其余章节将在后续批次继续生成。'],
+    ['only a prologue', 'en-US', '# Plot Outline\n\n## Chapter 0: Prologue\nThe night before the lighthouse went dark.', '## Chapter 1: New\nNew event.\n\n## Chapter 2: New\nNew event.',
+      '# Plot Outline\n\n## Chapter 0: Prologue\nThe night before the lighthouse went dark.\n\n## Chapter 1: New\nNew event.\n\n## Chapter 2: New\nNew event.\n\n> This outline covers chapters 1-2 of 5; the remaining chapters will be generated in later batches.'],
+    ['序章加非章节说明文字', 'zh-CN', '# 情节大纲\n\n全书基调：冷。\n\n## 第0章：序章\n灯塔熄灭前夜。\n\n> 作者备注：序章不改。', '## 第1章：新\n新事。\n\n## 第2章：新\n新事。',
+      '# 情节大纲\n\n全书基调：冷。\n\n## 第0章：序章\n灯塔熄灭前夜。\n\n> 作者备注：序章不改。\n\n## 第1章：新\n新事。\n\n## 第2章：新\n新事。\n\n> 本大纲已覆盖至第 2 章（全书 5 章），其余章节将在后续批次继续生成。'],
+    ['a prologue with notes', 'en-US', '# Plot Outline\n\nTone: cold.\n\n## Chapter 0: Prologue\nThe night before.\n\nNote: keep the prologue.', '## Chapter 1: New\nNew event.\n\n## Chapter 2: New\nNew event.',
+      '# Plot Outline\n\nTone: cold.\n\n## Chapter 0: Prologue\nThe night before.\n\nNote: keep the prologue.\n\n## Chapter 1: New\nNew event.\n\n## Chapter 2: New\nNew event.\n\n> This outline covers chapters 1-2 of 5; the remaining chapters will be generated in later batches.'],
+    ['序章后有第 3 章', 'zh-CN', '# 情节大纲\n\n## 第0章：序章\n灯塔熄灭前夜。\n\n## 第3章：旧\n旧事。', '## 第1章：新\n新事。\n\n## 第2章：新\n新事。',
+      '# 情节大纲\n\n## 第0章：序章\n灯塔熄灭前夜。\n\n## 第1章：新\n新事。\n\n## 第2章：新\n新事。\n\n## 第3章：旧\n旧事。'],
+    ['a prologue followed by chapter 3', 'en-US', '# Plot Outline\n\n## Chapter 0: Prologue\nThe night before.\n\n## Chapter 3: Old\nOld event.', '## Chapter 1: New\nNew event.\n\n## Chapter 2: New\nNew event.',
+      '# Plot Outline\n\n## Chapter 0: Prologue\nThe night before.\n\n## Chapter 1: New\nNew event.\n\n## Chapter 2: New\nNew event.\n\n## Chapter 3: Old\nOld event.'],
+  ] as const)('生成第 1–2 章时序章原样保留在最前面（%s）', (_, writingLanguage, synopsis, body, saved) => {
+    const expected: ProjectCoreSynopsisExpected = { synopsis, premise: '前提', charactersArch: '角色', worldbuilding: '世界',
+      genre: '悬疑', totalChapters: 5, wordsPerChapter: 2000, writingLanguage, plotStructure: 'three_act', narrativePov: 'third_limited', globalGuidance: '' }
+    const range = { from: 1, to: 2 }
+    expect(renderPlotOutlineRange(body, range, expected)).toBe(saved)
+    expect(validPlotOutlineAuthorPrefix(saved, { range, sourceExpected: expected, confirmedPrefix: '' }, range)).toBe(true)
+  })
+
+  it.each([
     ['## 第一章：起点\n当前章事实。', '## 第二章：后续\n后续章事实。'],
     ['- 第1章：起点\n当前章事实。', '- 第2章：后续\n后续章事实。'],
     ['# 第1章：起点\n当前章事实。', '## 第2章：后续\n后续章事实。'],
