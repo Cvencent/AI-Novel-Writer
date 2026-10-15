@@ -202,15 +202,35 @@ describe('角色名单', () => {
     expect(banner()?.textContent).toContain('关键物品')
   })
 
-  it('两份待处理列表都读取失败：标题不写「0 项待处理」，两条错误各占一行', async () => {
-    const duplicateKey = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  /** Electron 把主进程的异常包成这样交给页面。 */
+  const ipcError = (channel: string) => new Error(`Error invoking remote method '${channel}': Error: 项目会话已失效`)
+
+  it('两份待处理列表都读取失败：标题写读取失败，说明名单没有改动，不露原始报错', async () => {
     const base = invoke.getMockImplementation()!
     invoke.mockImplementation(async (channel, ...args) => channel === 'character-proposal:list-pending-finalized' || channel === 'finalized-character:list-state-candidates'
-      ? Promise.reject(new Error('项目会话已失效')) : base(channel, ...args))
+      ? Promise.reject(ipcError(channel)) : base(channel, ...args))
     await render()
-    await vi.waitFor(() => expect(banner()?.querySelectorAll('[role="alert"]')).toHaveLength(2))
-    expect(banner()!.querySelector('.pi-notice-title')?.textContent).toBe('角色建议读取失败')
-    expect(duplicateKey.mock.calls.some(call => String(call[0]).includes('same key'))).toBe(false)
+    await vi.waitFor(() => expect(banner()?.querySelector('.pi-notice-title')?.textContent).toBe('角色建议读取失败'))
+    expect(banner()!.querySelector('.pi-notice-text')?.textContent).toBe('定稿与导入留下的角色建议这次没读出来，角色名单没有改动。')
+    expect([...banner()!.querySelectorAll('button')].map(button => button.textContent)).toEqual(['重新读取'])
+    expect(banner()!.textContent).not.toContain('Error invoking remote method')
+    expect(banner()!.textContent).not.toContain('项目会话已失效')
+  })
+
+  it('已有待处理的建议、另一份列表读取失败：提示条照常列出，失败的部分用一句话说明并给「重新读取」，不露原始报错', async () => {
+    pendingDecisions = 1
+    const base = invoke.getMockImplementation()!
+    let failing = true
+    invoke.mockImplementation(async (channel, ...args) => failing && channel === 'finalized-character:list-state-candidates'
+      ? Promise.reject(ipcError(channel)) : base(channel, ...args))
+    await render()
+    await vi.waitFor(() => expect(banner()?.querySelector('[role="alert"]')?.textContent).toBe('有一部分角色建议没能读出或处理，角色名单没有改动。重新读取'))
+    expect(banner()!.querySelector('.pi-notice-title')?.textContent).toBe('1 项待处理的角色建议')
+    expect(banner()!.textContent).not.toContain('Error invoking remote method')
+    failing = false
+    await act(async () => banner()!.querySelector<HTMLButtonElement>('[role="alert"] button')!.click())
+    await vi.waitFor(() => expect(banner()!.querySelector('[role="alert"]')).toBeNull())
+    expect(banner()!.querySelector('.pi-notice-title')?.textContent).toBe('1 项待处理的角色建议')
   })
 
   it('读取失败后点「重新读取」重读两份列表，读到就换成待处理的建议', async () => {
@@ -218,9 +238,9 @@ describe('角色名单', () => {
     const base = invoke.getMockImplementation()!
     let failing = true
     invoke.mockImplementation(async (channel, ...args) => failing && (channel === 'character-proposal:list-pending-finalized' || channel === 'finalized-character:list-state-candidates')
-      ? Promise.reject(new Error('项目会话已失效')) : base(channel, ...args))
+      ? Promise.reject(ipcError(channel)) : base(channel, ...args))
     await render()
-    await vi.waitFor(() => expect(banner()?.querySelectorAll('[role="alert"]')).toHaveLength(2))
+    await vi.waitFor(() => expect(banner()?.querySelector('.pi-notice-title')?.textContent).toBe('角色建议读取失败'))
     failing = false
     const retry = [...banner()!.querySelectorAll('button')].find(button => button.textContent === '重新读取')
     expect(retry, '重新读取按钮').toBeTruthy()
