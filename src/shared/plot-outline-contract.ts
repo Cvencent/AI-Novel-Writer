@@ -194,7 +194,7 @@ export type PlotOutlineRangeSource = Pick<ProjectCoreSynopsisExpected, 'synopsis
 export type PlotOutlineOrderIssue = { kind: 'duplicate'; chapter: number } | { kind: 'unordered' }
 
 function chapterOrderIssue(entries: ReturnType<typeof headings>): PlotOutlineOrderIssue | null {
-  let reach = 0
+  let reach = -1 // 第 0 章（序章）也是合法章号
   for (const entry of [...entries].sort((left, right) => left.from - right.from)) {
     if (entry.from <= reach) return { kind: 'duplicate', chapter: entry.from }
     reach = Math.max(reach, entry.to)
