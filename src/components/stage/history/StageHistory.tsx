@@ -9,6 +9,7 @@ import { sameProjectSessionContext, projectSessionContextFromProject } from '../
 import { sqliteTime } from '../../../shared/sqlite-time'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
+import { Notice } from '../../ui/Notice'
 import { toast } from '../../ui/Toast'
 import RevertDialog from './RevertDialog'
 import { useVersionHistory, type VersionComparison } from './use-version-history'
@@ -75,7 +76,7 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
   const project = useProjectStore(s => s.currentProject)
   const draftsByChapter = useDraftStore(s => s.draftsByChapter)
   const draftSession = useDraftStore(s => s.dataProjectSession)
-  const { chapters, loading, selectedChapter, selectChapter, versions, versionsLoading, readComparison, createRollbackDraft } = useVersionHistory(projectKey)
+  const { chapters, loading, selectedChapter, selectChapter, versions, versionsLoading, versionsFailed, reloadVersions, readComparison, createRollbackDraft } = useVersionHistory(projectKey)
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null)
   const [comparison, setComparison] = useState<VersionComparison | null>(null)
   const [reverting, setReverting] = useState(false)
@@ -103,7 +104,10 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
     setComparison(null)
     try {
       const next = await readComparison(versionId)
-      if (request === comparisonRequest.current) setComparison(next)
+      if (request !== comparisonRequest.current) return
+      // 读不到（这一稿已被删掉、作品已重新打开）时回到「选一稿」，不停在正在读取。
+      if (next === null) setSelectedVersionId(null)
+      else setComparison(next)
     } catch (error) {
       if (request !== comparisonRequest.current) return
       setSelectedVersionId(null)
@@ -181,6 +185,13 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
             <h2 className="stage-hist-chapter-title">{chapter.title}</h2>
             {versionsLoading
               ? <SlowLoading key={chapter.number} />
+              : versionsFailed
+              ? (
+                <Notice tone="warn" title={text('没能读出这一章的各稿', 'Could not read the versions of this chapter')}
+                  actions={<Button variant="secondary" size="sm" onClick={reloadVersions}>{text('重新读取', 'Read again')}</Button>}>
+                  {text('稿都还在，没有丢。可以重新读取一次。', 'The drafts are all still there. Try reading them again.')}
+                </Notice>
+              )
               : ordered.length === 0
               ? <p className="stage-hist-help">{text('这一章还没有稿。写出第一稿后会出现在这里。', 'No drafts yet. The first draft will appear here.')}</p>
               : (

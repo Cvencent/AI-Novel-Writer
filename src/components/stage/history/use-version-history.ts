@@ -20,6 +20,9 @@ export interface VersionComparison {
 
 const NO_VERSIONS: VersionRecord[] = []
 
+/** 某一章各稿的读取结果：读到的各稿，或读取失败（稿还在数据库里，只是这次没读出来）。 */
+type LoadedVersions = { chapter: number } & ({ ok: true; versions: VersionRecord[] } | { ok: false })
+
 /**
  * 版本历史的数据：章节列表、所选章的各稿，以及读取对比两边与回退。新外壳的版本历史页与旧外壳的 VersionHistory 共用。
  * 回退不覆盖任何一稿，而是用旧稿的正文新建一稿，返回新稿的版本号。
@@ -30,7 +33,7 @@ export function useVersionHistory(projectKey: string) {
   const [chapters, setChapters] = useState<VersionChapter[]>([])
   const [selectedChapter, setSelectedChapter] = useState<number | null>(null)
   // 各稿按章号记下：再点当前章不必清空，换章时还没读到的章就是「正在读取」。
-  const [loaded, setLoaded] = useState<{ chapter: number; versions: VersionRecord[] } | null>(null)
+  const [loaded, setLoaded] = useState<LoadedVersions | null>(null)
   const versionRequest = useRef(0)
   const [loading, setLoading] = useState(true)
 
@@ -63,7 +66,7 @@ export function useVersionHistory(projectKey: string) {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     const request = ++versionRequest.current
     if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) {
-      setLoaded({ chapter: chapterNumber, versions: [] })
+      setLoaded({ chapter: chapterNumber, ok: true, versions: [] })
       return []
     }
     const latest = () => request === versionRequest.current && isProjectSessionCurrent(projectSession)
@@ -78,19 +81,27 @@ export function useVersionHistory(projectKey: string) {
         created_at: draft.createdAt,
         dependencies_stale: draft.dependenciesStale,
       }))
-      if (latest()) setLoaded({ chapter: chapterNumber, versions: loaded })
+      if (latest()) setLoaded({ chapter: chapterNumber, ok: true, versions: loaded })
       return loaded
     } catch {
-      if (latest()) setLoaded({ chapter: chapterNumber, versions: [] })
+      if (latest()) setLoaded({ chapter: chapterNumber, ok: false })
       return []
     }
   }, [projectKey])
 
+  // 同一部作品重新打开（新的会话）时重读：旧会话的读取作废，不重读的话这一章会一直停在「正在读取」。
+  const sessionLease = currentProject?.sessionLease
   useEffect(() => {
     if (selectedChapter === null) return
     let mounted = true
     Promise.resolve().then(() => { if (mounted) void loadVersions(selectedChapter) })
     return () => { mounted = false }
+  }, [loadVersions, selectedChapter, sessionLease])
+
+  const reloadVersions = useCallback(() => {
+    if (selectedChapter === null) return
+    setLoaded(null)
+    void loadVersions(selectedChapter)
   }, [loadVersions, selectedChapter])
 
 
@@ -134,6 +145,10 @@ export function useVersionHistory(projectKey: string) {
   }, [loadVersions, projectKey, selectedChapter, text])
 
   const versionsLoading = selectedChapter !== null && loaded?.chapter !== selectedChapter
-  const versions = !versionsLoading && loaded ? loaded.versions : NO_VERSIONS
-  return { chapters, loading, selectedChapter, selectChapter: setSelectedChapter, versions, versionsLoading, readComparison, createRollbackDraft }
+  const versionsFailed = !versionsLoading && loaded?.ok === false
+  const versions = !versionsLoading && loaded?.ok ? loaded.versions : NO_VERSIONS
+  return {
+    chapters, loading, selectedChapter, selectChapter: setSelectedChapter, versions, versionsLoading, versionsFailed, reloadVersions,
+    readComparison, createRollbackDraft,
+  }
 }
