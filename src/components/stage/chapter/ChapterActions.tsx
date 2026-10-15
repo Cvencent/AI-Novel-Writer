@@ -254,7 +254,7 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
         return (
           <>
             {confirmWaived ? (
-              <Button variant="primary" disabled={busy || checklist.confirming} onClick={() => void confirmWaiver()}>
+              <Button variant="primary" disabled={busy || checklist.confirming || checklist.processing} onClick={() => void confirmWaiver()}>
                 {text('确认不修改', 'Confirm no revision')}
               </Button>
             ) : <SplitAction
