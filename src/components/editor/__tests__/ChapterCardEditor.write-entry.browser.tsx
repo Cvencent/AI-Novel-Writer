@@ -174,6 +174,32 @@ describe('ChapterCardEditor writing entry', () => {
       .toEqual(expect.objectContaining({ characters: ['林岚', '沈砺'] }))
   })
 
+  it.each(['保存', '保存全部'])('点「%s」后编辑器不闪成「加载章节蓝图」，输入框还是原来那个、焦点还在', async save => {
+    const invoke = installIpc({ blueprints: [{ ...blueprint(1), characters: [] }] })
+    await renderEditor()
+    await vi.waitFor(() => expect(container?.querySelector('h3')).not.toBeNull())
+    const input = container!.querySelector<HTMLInputElement>('input[placeholder="如：主角、反派A"]')!
+    await act(async () => userEvent.click(input))
+    for (const character of '林岚') await act(async () => userEvent.keyboard(character))
+    // 真实 IPC 要走一个来回：重读慢一点，React 才有机会把加载态画出来。
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'db:blueprint-get-all') await new Promise(resolve => setTimeout(resolve, 30))
+      return base(channel, ...args)
+    })
+    const seen: string[] = []
+    const observer = new MutationObserver(() => {
+      if (container!.textContent?.includes('加载章节蓝图')) seen.push('加载章节蓝图')
+    })
+    observer.observe(container!, { childList: true, subtree: true, characterData: true })
+    await act(async () => Array.from(container!.querySelectorAll('button'))
+      .find(button => button.textContent?.trim() === save)!.click())
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)) })
+    observer.disconnect()
+    expect({ seen: [...new Set(seen)], connected: input.isConnected, focused: document.activeElement === input })
+      .toEqual({ seen: [], connected: true, focused: true })
+  })
+
   it('keeps Chromium composition preedit until committing a Chinese name', async () => {
     const invoke = installIpc({ blueprints: [{ ...blueprint(1), characters: [] }] })
     await renderEditor()
