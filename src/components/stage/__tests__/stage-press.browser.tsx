@@ -90,7 +90,7 @@ describe('新外壳自写的卡片、标签与导航有按压反馈', () => {
 /** 鼠标在元素中心按住：:active 而不是 :focus-visible。 */
 async function mousePressed(element: HTMLElement) {
   const rect = element.getBoundingClientRect()
-  const at = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, button: 'left', clickCount: 1 }
+  const at = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, button: 'left' as const, clickCount: 1 }
   await cdp().send('Input.dispatchMouseEvent', { type: 'mousePressed', ...at })
   const state = look(element)
   await cdp().send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at })
