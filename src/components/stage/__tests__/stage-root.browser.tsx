@@ -8,6 +8,7 @@ import '../../../index.css'
 import { APPEARANCE_STORAGE_KEY } from '../../../shared/appearance-profile'
 import { useAppearanceStore } from '../../../stores/appearance-bootstrap'
 import type { WindowCloseGuard } from '../../layout/use-window-close-guard'
+import { alertError } from '../../ui/AlertDialog'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../ui/Dialog'
 import StageRoot from '../StageRoot'
 
@@ -122,5 +123,62 @@ describe('新外壳渲染出错', () => {
     }
     expect(center(exit)?.closest('[role="dialog"]')).toBe(exit)
     expect(center(legacy)?.closest('[role="dialog"]')).toBe(exit)
+  })
+})
+
+/**
+ * 画在元素中心最上面的那一层对话框。Radix 让下层的模态不接指针，elementFromPoint 会跳过它；量的时候临时放开，量完还原。
+ */
+function topLayerAt(element: Element) {
+  const layers = [...document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"], .pi-scrim')]
+  const saved = layers.map(layer => layer.style.pointerEvents)
+  for (const layer of layers) layer.style.pointerEvents = 'auto'
+  const rect = element.getBoundingClientRect()
+  const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+  layers.forEach((layer, index) => { layer.style.pointerEvents = saved[index] })
+  return hit?.closest('[role="dialog"], [role="alertdialog"]') ?? null
+}
+
+const exitDialog = () => [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].find(dialog => dialog.textContent?.includes('退出前处理未保存的内容')) ?? null
+
+describe('退出确认与错误提示谁后弹出谁在上面', () => {
+  it('退出确认开着时弹出错误提示：提示画在退出确认上面、点得到「确定」，确定后退出确认还在', async () => {
+    useAppearanceStore.setState({ resolvedShell: 'stage' })
+    const cancelExit = vi.fn(async () => undefined)
+    await mount(idleGuard({ exitRequest: { requestId: 'close-4' }, cancelExit }), <p>正文</p>)
+    expect(exitDialog()).not.toBeNull()
+    const alerted = alertError('清除失败：磁盘忙')
+    const prompt = page.getByRole('alertdialog', { name: '发生错误' })
+    await expect.element(prompt).toBeVisible()
+    expect(topLayerAt(prompt.element())).toBe(prompt.element())
+    await prompt.getByRole('button', { name: '确定' }).click()
+    await alerted
+    expect(exitDialog()).not.toBeNull()
+    expect(cancelExit).not.toHaveBeenCalled()
+  })
+
+  it('错误提示开着时关窗：退出确认画在提示上面，焦点在退出确认里', async () => {
+    useAppearanceStore.setState({ resolvedShell: 'stage' })
+    let request!: (next: WindowCloseGuard['exitRequest']) => void
+    function Harness() {
+      const [exitRequest, setExitRequest] = useState<WindowCloseGuard['exitRequest']>(null)
+      request = setExitRequest
+      return <StageRoot theme="paper" exitGuard={idleGuard({ exitRequest, cancelExit: async () => setExitRequest(null) })}><p>正文</p></StageRoot>
+    }
+    host = document.createElement('div')
+    document.body.append(host)
+    root = createRoot(host)
+    await act(async () => root!.render(<Harness />))
+    const alerted = alertError('导出失败：磁盘忙')
+    const prompt = page.getByRole('alertdialog', { name: '发生错误' })
+    await expect.element(prompt).toBeVisible()
+    await act(async () => request({ requestId: 'close-5' }))
+    await vi.waitFor(() => expect(exitDialog()).not.toBeNull())
+    const exit = exitDialog()!
+    expect(topLayerAt(exit)).toBe(exit)
+    expect(exit.contains(document.activeElement)).toBe(true)
+    await act(async () => request(null))
+    await prompt.getByRole('button', { name: '确定' }).click()
+    await alerted
   })
 })
