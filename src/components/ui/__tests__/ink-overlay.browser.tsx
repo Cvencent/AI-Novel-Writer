@@ -588,6 +588,33 @@ describe('提示栈', () => {
     }
   })
 
+  it('减少动态效果下溢出的栈滚到底时上沿有淡出带，滚到顶时淡出带照样消失，最早一条的圆角外露出页面（#412）', async () => {
+    const backdrop = document.createElement('div')
+    backdrop.style.cssText = 'position: fixed; inset: 0; background: rgb(255, 0, 0);'
+    document.body.prepend(backdrop)
+    try {
+      await withReducedMotion(async () => {
+        await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
+        await act(async () => {
+          for (let i = 1; i <= 24; i++) toast.error(`出错 ${i}`, 0)
+        })
+        await wait(400)
+        const stack = document.querySelector<HTMLElement>('.pi-toast-stack')!
+        expect(stack.hasAttribute('data-overflow')).toBe(true)
+        expect(getComputedStyle(stack, '::before').opacity).toBe('1')
+
+        await act(async () => { stack.scrollTop = 0 })
+        await wait(50)
+        const atTop = await stackPixels(stack)
+        const firstCard = liveToasts()[0].getBoundingClientRect()
+        const red = ([r, g, b]: number[]) => r - g > 40 && r - b > 40
+        expect([getComputedStyle(stack, '::before').opacity, red(atTop.at(firstCard.left + 1, firstCard.top + 1))]).toEqual(['0', true])
+      })
+    } finally {
+      backdrop.remove()
+    }
+  })
+
   it('模态开着时溢出的栈仍能用滚轮滚动：滚动锁不拦栈上的滚轮', async () => {
     await act(async () => { void confirm('切换项目？') })
     await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
