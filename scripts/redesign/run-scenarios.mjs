@@ -72,30 +72,40 @@ async function countMainInvokes(app) {
   assert.ok(wrapped > 0, '能在主进程里记下 invoke 通道')
 }
 
-/** 从现在起数主进程答完的恢复读取（中断的生成任务与旧恢复候选）。重新打开运行侧页后，两样都读完才算列表是新的。 */
+/** 运行侧页的恢复列表读这几样：中断的生成任务、批量进度、每个任务的上下文、旧恢复候选。 */
+const RECOVERY_READS = ['generation:list', 'generation:list-batches', 'generation:read-context', 'db:recovery-candidate-list']
+
+/**
+ * 从现在起数主进程答完的恢复读取。包装每个进程只装一次，之后的调用只清零：重复包装会丢掉中间别的包装（如 countMainInvokes）。
+ */
 async function countRecoveryReads(app) {
-  await app.evaluate(({ ipcMain }) => {
+  await app.evaluate(({ ipcMain }, channels) => {
+    globalThis.__driveRecoveryReads = { ...Object.fromEntries(channels.map(channel => [channel, 0])), views: null }
+    if (globalThis.__driveRecoveryWrapped) return
+    globalThis.__driveRecoveryWrapped = true
     const handlers = ipcMain._invokeHandlers
-    globalThis.__driveRecoveryReads = { 'generation:list': 0, 'db:recovery-candidate-list': 0 }
-    globalThis.__driveRecoveryOriginals ??= {}
-    for (const channel of Object.keys(globalThis.__driveRecoveryReads)) {
-      const original = globalThis.__driveRecoveryOriginals[channel] ??= handlers.get(channel)
+    for (const channel of channels) {
+      const original = handlers.get(channel)
       handlers.set(channel, async (...args) => {
         const result = await original(...args)
-        globalThis.__driveRecoveryReads[channel] += 1
+        const reads = globalThis.__driveRecoveryReads
+        reads[channel] += 1
+        if (channel === 'generation:list') reads.views = result.length
         return result
       })
     }
-  })
+  }, RECOVERY_READS)
 }
 
+/** 列表读完：各样都答过，且最近一次列出的每个生成任务都读过上下文（页面全部拿到才写进列表）。 */
 async function recoveryReadsDone(app, page) {
   for (const deadline = Date.now() + 10_000; ; await page.waitForTimeout(50)) {
     const reads = await app.evaluate(() => globalThis.__driveRecoveryReads)
-    if (Object.values(reads).every(count => count > 0)) break
+    if (RECOVERY_READS.every(channel => channel === 'generation:read-context' || reads[channel] > 0)
+      && reads.views !== null && reads['generation:read-context'] >= reads.views) break
     assert.ok(Date.now() < deadline, `10 秒内恢复列表没有重新读完：${JSON.stringify(reads)}`)
   }
-  // 读到的结果交给 React 渲染，等两帧
+  // 最后一次回复到页面、交给 React 渲染，等两帧
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
 }
 
@@ -358,6 +368,8 @@ export const RUN_SCENARIOS = {
     await runSheet.openFromPalette(page)
     await runSheet.tab(page, '进行中').waitFor({ state: 'visible' })
     await recoveryReadsDone(context.app, page)
+    const reads = await context.app.evaluate(() => globalThis.__driveRecoveryReads)
+    assert.equal(reads.views, 1, '主进程列出了这条助手任务，页面也读完了它的上下文：下面的否定断言针对的是读完后的列表')
     assert.doesNotMatch(await runSheet.visibleWords(page), /助手任务|恢复此助手任务|复制回复/, '运行侧页不列出助手任务')
     assert.doesNotMatch(await everyName(page), CHAT_WORDS)
   }, after: async context => {
