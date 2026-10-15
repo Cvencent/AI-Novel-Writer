@@ -156,6 +156,15 @@ describe('打开作品时的落点', () => {
     expect(await landWith([], { 1: [draft(1, 'finalized')] })).toEqual({ type: 'chapter', chapter: 1 })
   })
 
+  it('几章都在写：落在最后一章在写的；后面只有一份空稿的章不算在写', async () => {
+    expect(await landWith(BLUEPRINTS, { 1: [draft(1, 'draft')], 2: [draft(2, 'draft')], 3: [{ ...draft(3, 'draft'), wordCount: 0 }] }))
+      .toEqual({ type: 'chapter', chapter: 2 })
+  })
+
+  it('大纲没写完、只有一份空的当前稿、没有蓝图：空稿不算开始，落在架构', async () => {
+    expect(await landWith([], { 1: [{ ...draft(1, 'draft'), wordCount: 0 }] })).toEqual({ type: 'world-building', chapter: undefined })
+  })
+
   it('上一次打开留下的架构与蓝图数据不算这次的', async () => {
     const current = session('current')
     await open(current, READY)

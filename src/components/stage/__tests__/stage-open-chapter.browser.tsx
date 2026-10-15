@@ -82,6 +82,16 @@ describe('在新外壳里打开一章', () => {
     expect(useEditorStore.getState().tabs.map(tab => tab.type)).toEqual([type])
   })
 
+  it('点「正文」时几章都在写：打开最后一章在写的，只有空稿的章不算', async () => {
+    installDrafts({})
+    const draft = (chapterNumber: number, wordCount: number) => [{ id: chapterNumber * 10 + 1, chapterNumber, version: 1, status: 'draft', wordCount,
+      createdAt: '2026-10-12 00:00:00', source: 'write', filePath: `ai-novel://draft/${chapterNumber * 10 + 1}`, fileName: 'draft_v1.md' }]
+    useDraftStore.setState({ draftsByChapter: { 4: draft(4, 1800), 5: draft(5, 2400), 6: draft(6, 0) } as never, dataProjectSession: SESSION, loading: false })
+    navigate({ kind: 'stage', stage: 'manuscript' })
+    await vi.waitFor(() => expect(activeTab()?.chapterNumber).toBe(5))
+    expect(activeTab()).toMatchObject({ chapterNumber: 5, content: '第 5 章的正文' })
+  })
+
   it('读取失败时提示作者，而不是点了没反应', async () => {
     installDrafts({ 6: { error: '磁盘读取失败' } })
     const error = vi.spyOn(toast, 'error').mockImplementation(() => undefined)

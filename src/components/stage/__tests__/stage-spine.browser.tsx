@@ -130,7 +130,8 @@ describe('四个阶段的状态由项目数据派生', () => {
     ])
     expect(rows[2].draft?.version).toBe(2)
     expect(rows[1].draft?.status).toBe('finalized')
-    expect(focusChapter(rows)?.number).toBe(3)
+    // 用户决定（#407 第 2 轮）：几章都在写时落在最后一章在写的。
+    expect(focusChapter(rows)?.number).toBe(5)
   })
 })
 

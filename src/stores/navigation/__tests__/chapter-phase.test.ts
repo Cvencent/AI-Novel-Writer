@@ -153,13 +153,13 @@ describe('打开作品的落点不等审稿与修稿记录：落到哪个阶段�
     runningChapters: new Set<number>(),
   }
 
-  it('有无记录，都落在正文第 2 章，正文进度都是 1/6', () => {
+  it('有无记录，都落在最后一章在写的第 4 章，正文进度都是 1/6', () => {
     const open = (chapterFacts?: Record<number, ChapterFacts>) => {
       const chapters = deriveChapters({ ...work, chapterFacts })
       const stages = deriveStages({ ...work, chapterFacts }, chapters)
       return { landing: landingStage(stages), manuscript: stages.at(-1), focus: focusChapter(chapters)?.number }
     }
-    const landed = { landing: 'manuscript', focus: 2, manuscript: { stage: 'manuscript', finalized: 1, total: 6, progress: { state: 'active', ratio: 1 / 6 } } }
+    const landed = { landing: 'manuscript', focus: 4, manuscript: { stage: 'manuscript', finalized: 1, total: 6, progress: { state: 'active', ratio: 1 / 6 } } }
     expect(open()).toEqual(landed)
     expect(open({ 12: reviewed, 13: reviewed, 14: merge })).toEqual(landed)
   })
