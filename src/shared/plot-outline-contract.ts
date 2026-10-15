@@ -264,13 +264,15 @@ export function renderPlotOutlineRange(body: string, range: PlotOutlineRange, ex
   if (!entries.length) return renderPlotOutlineSynopsis(body, range.to, expected)
   const start = entries.find(entry => entry.from >= range.from)
   const after = entries.find(entry => entry.from > range.to)
+  const title = `# ${expected.writingLanguage === 'en-US' ? 'Plot Outline' : '情节大纲'}\n\n`
+  const suffix = renderPlotOutlineSynopsis('', range.to, expected).slice(title.length)
   if (start) {
     const before = expected.synopsis.slice(0, start.index)
     if (after) return `${before}${body.trim()}\n\n${expected.synopsis.slice(after.index)}`
-    const title = `# ${expected.writingLanguage === 'en-US' ? 'Plot Outline' : '情节大纲'}\n\n`
-    const suffix = renderPlotOutlineSynopsis('', range.to, expected).slice(title.length)
     return `${before}${body.trim()}${suffix ? `\n\n${suffix}` : ''}`
   }
+  // 已有章节都在第 1 章之前，只能是第 0 章序章：原文整份留在前面，新章接在后面。
+  if (range.from === 1) return joinPlotOutlineEntries(joinPlotOutlineEntries(expected.synopsis, body), suffix)
   return renderPlotOutlineSynopsis(joinPlotOutlineEntries(plotOutlineConfirmedPrefix(expected, range), body), range.to, expected)
 }
 
