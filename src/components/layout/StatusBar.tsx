@@ -5,6 +5,7 @@ import { useLLMStore } from '../../stores/llm-store'
 import { navigate } from '../../stores/navigation/navigation-intents'
 import { useWorkflowStore } from '../../stores/workflow-store'
 import { APP_BRAND } from '../../shared/brand'
+import { pluralEn } from '../../shared/plural-en'
 import { useLocaleStore } from '../../stores/locale-store'
 
 /** 底部状态栏 — JetBrains 风格：22px、深灰底、多分段、hover 可点击感 */
@@ -150,7 +151,7 @@ function AITaskCapsule() {
           className="w-[5px] h-[5px] rounded-full animate-pulse flex-shrink-0"
           style={{ backgroundColor: 'var(--color-accent)' }}
         />
-        <span>{text(`${activeRuns.length}个任务运行中...`, `${activeRuns.length} tasks running...`)}</span>
+        <span>{text(`${activeRuns.length}个任务运行中...`, `${activeRuns.length} ${pluralEn(activeRuns.length, 'task')} running...`)}</span>
       </div>
     )
   }

@@ -10,13 +10,16 @@ const latinWord = /[A-Za-z]{2,}/
 /**
  * 英文里数量后的复数名词，中间可隔一两个修饰词（the ${n} existing blueprints）：数量是 1 时读成「1 chapters」，要走 pluralEn。
  */
-const fixedPluralAfterCount = /^ (?:[a-z]+ ){0,2}(?:chapters|files|characters|items|lines|calls|drafts|words|documents|chunks|days|notes|versions|entries|kinds|blueprints|events|minutes|passages)\b/
+const fixedPluralAfterCount = /^ (?:[a-z]+ ){0,2}(?:chapters|files|characters|items|lines|calls|drafts|words|documents|chunks|days|notes|versions|entries|kinds|blueprints|events|minutes|passages|candidates|tasks|suggestions|changes|checks)\b/
 /** 数量前的 these、those 与数量后直接跟的 have、are：数量是 1 时读成「these 1 log line」「1 have」。 */
 const pluralBeforeCount = /\b(?:these|those)\s$/i
 const pluralVerbAfterCount = /^ (?:have|are|were)\b/
-const pluralHint ="Write the noun with pluralEn(count, 'chapter'); pass irregular plurals explicitly, as in pluralEn(count, 'entry', 'entries')."
-/** 英文文案在哪个实参：(locale, 中文, 英文) 形式的翻译函数在第 3 个，其余在第 2 个。 */
-const englishArgumentIndex = new Map([['localize', 2], ['stepDesc', 2], ['mainText', 2]])
+const pluralHint = "Write the noun with pluralEn(count, 'chapter'); pass irregular plurals explicitly, as in pluralEn(count, 'entry', 'entries'). Write a verb that follows the count the same way, as in pluralEn(count, 'has', 'have')."
+/**
+ * 英文文案在哪个实参（从 0 数）：(locale, 中文, 英文) 形式的翻译函数与 projectError、artifactError（error, 中文兜底, 英文兜底）
+ * 在第 3 个，其余在第 2 个。
+ */
+const englishArgumentIndex = new Map([['localize', 2], ['stepDesc', 2], ['mainText', 2], ['projectError', 2], ['artifactError', 2]])
 
 /**
  * The broad renderer roots preserve the existing visible-copy check.  The
@@ -266,8 +269,14 @@ function inspectEnglishCounts(violations, root, file, sourceFile, node) {
     ts.isTemplateExpression(node)
     && node.templateSpans.some((span, index) => {
       const before = index === 0 ? node.head.text : node.templateSpans[index - 1].literal.text
-      // 「1–${n} chapters」里的数量是范围的终点，永远不是 1；pluralEn(...) 是已经按数量变过的名词，不是数量
-      if (/[-–]$/.test(before) || span.expression.getText(sourceFile).startsWith('pluralEn(')) return false
+      // 「1–${n} chapters」里的数量是范围的终点，永远不是 1
+      if (/[-–]$/.test(before)) return false
+      // pluralEn(...) 是已经按数量变过的名词，不是数量；但它后面的 have/are 仍随数量变。
+      // 前文带 and 的是并列主语（the thread and its ${n} confirmed events are removed），本来就用复数动词
+      if (span.expression.getText(sourceFile).startsWith('pluralEn(')) {
+        const head = [node.head.text, ...node.templateSpans.slice(0, index).map(earlier => earlier.literal.text)].join(' ')
+        return pluralVerbAfterCount.test(span.literal.text) && !/\band\b/i.test(head)
+      }
       return fixedPluralAfterCount.test(span.literal.text) || pluralBeforeCount.test(before) || pluralVerbAfterCount.test(span.literal.text)
     })
   ) {

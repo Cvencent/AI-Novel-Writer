@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Plus, RotateCcw } from 'lucide-react'
 import type { useReviewChecklist, EditableReviewItem } from '../../editor/review-checklist'
 import { includedCount, normalizeSeverity, severityCopy } from '../../editor/review-checklist'
+import { pluralEn } from '../../../shared/plural-en'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { Button } from '../../ui/Button'
 import { Check } from '../../ui/Check'
@@ -212,7 +213,7 @@ export default function ReviewSheet({ checklist, subtitle, reportText, onClose }
       {checklist.checklistError && <p role="alert" className="stage-ch-sheet-message" data-tone="error">{checklist.checklistError}</p>}
       {passed > 0 && (
         <details className="stage-ch-passed">
-          <summary>{text(`检查通过 ${passed} 项`, `${passed} checks passed`)}</summary>
+          <summary>{text(`检查通过 ${passed} 项`, `${passed} ${pluralEn(passed, 'check')} passed`)}</summary>
           {items.filter(item => item.severity === 'pass').map(item => <IssueCard key={item.id} item={item} checklist={checklist} onEdit={patch => edit(item, patch)} />)}
         </details>
       )}

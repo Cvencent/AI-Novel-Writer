@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ChevronRight, CircleCheck, CircleDashed, CircleX, Pause, Play } from 'lucide-react'
+import { pluralEn } from '../../../shared/plural-en'
 import { useLLMStore } from '../../../stores/llm-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
@@ -113,7 +114,7 @@ function RunConfirmation({ confirmation, primary, text }: { confirmation: Workfl
     <section className="run-confirm" aria-label={text('需要你确认', 'Needs your confirmation')}>
       {proposal && (
         <>
-          <p className="run-confirm-summary">{text(`${proposal.batch.items.length} 个角色候选`, `${proposal.batch.items.length} character candidates`)}</p>
+          <p className="run-confirm-summary">{text(`${proposal.batch.items.length} 个角色候选`, `${proposal.batch.items.length} character ${pluralEn(proposal.batch.items.length, 'candidate')}`)}</p>
           <div className="run-proposals">
             <CharacterProposalSelectionPanel batch={proposal.batch} choices={proposal.choices}
               identities={proposal.identities} disabled={!ready} onChange={proposal.onChange} />

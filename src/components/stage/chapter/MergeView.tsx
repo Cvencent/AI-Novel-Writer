@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Check } from 'lucide-react'
+import { pluralEn } from '../../../shared/plural-en'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useMergeSegments, type HunkPick } from '../../editor/merge-segments'
 import type { MergeData } from '../../editor/use-draft-actions'
@@ -56,7 +57,7 @@ export default function MergeView({ data, versionLabel, recheck, onComplete, onL
         <span className="stage-ch-hint" role="status">
           {text(
             `${merge.hunks.length} 处改动：已选 ${revisedCount} 处用修稿，${editedCount} 处手动编辑`,
-            `${merge.hunks.length} changes: ${revisedCount} from the revision, ${editedCount} edited by hand`,
+            `${merge.hunks.length} ${pluralEn(merge.hunks.length, 'change')}: ${revisedCount} from the revision, ${editedCount} edited by hand`,
           )}
         </span>
       </div>
