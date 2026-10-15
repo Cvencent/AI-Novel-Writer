@@ -381,7 +381,7 @@ export function useChapterBlueprints({
    * 免得编辑器闪成加载态、丢焦点与滚动。
    */
   const announceSaved = (projectSession: ProjectSessionContext) => {
-    const payload: EventPayloadMap['REFRESH_RESOURCE'] = { resources: ['blueprints', 'fileTree'], projectPath: projectKey, projectSession }
+    const payload: EventPayloadMap['REFRESH_RESOURCE'] = { resources: ['blueprints'], projectPath: projectKey, projectSession }
     ownSaveRefresh.current = payload
     globalEventBus.emit('REFRESH_RESOURCE', payload)
   }
@@ -551,7 +551,7 @@ export function useChapterBlueprints({
       setSelectedChapter(chapter => chapter === target.chapterNumber ? neighbor : chapter)
     }
     globalEventBus.emit('REFRESH_RESOURCE', {
-      resources: ['blueprints', 'fileTree'],
+      resources: ['blueprints'],
       projectPath: projectKey,
       projectSession,
     })
@@ -583,7 +583,7 @@ export function useChapterBlueprints({
     persistProjectDraftState(projectKey, projectSession, next.blueprints, next.dirtyChapterNumbers)
     if (isCurrentProjectSession(projectSession)) setSelectedChapter(null)
     globalEventBus.emit('REFRESH_RESOURCE', {
-      resources: ['blueprints', 'fileTree'],
+      resources: ['blueprints'],
       projectPath: projectKey,
       projectSession,
     })
