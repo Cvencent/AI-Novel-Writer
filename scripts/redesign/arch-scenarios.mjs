@@ -7,7 +7,7 @@ import * as materials from './pages/materials.mjs'
 import * as runSheet from './pages/run-sheet.mjs'
 import * as stage from './pages/stage.mjs'
 import { seedStageSample } from './scenarios.mjs'
-import { STAGE_SAMPLE } from './stage-sample.mjs'
+import { STAGE_SAMPLE, stageChapterTitle } from './stage-sample.mjs'
 
 const root = page => stage.root(page)
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -67,6 +67,7 @@ async function addCharacters({ page, invoke, path, session }, names) {
 /**
  * 示例作品「灯塔」，按 clear 清空架构的几节。清空过的作品不等落到第 3 章，等落点定下后从流程脊进架构：
  * 用户决定 B（#394 §6）之后有蓝图与正文的作品打开落在写作位置，之前的版本落在架构，两边都等得到落点。
+ * 落在第 4 章时进架构后关掉第 4 章的标签，只剩架构一页，与落在架构的版本截图一致。
  * 会话追踪先挂上，界面重载后打开作品的那次会话就能拿来读库。
  */
 function seedArch({ clear = [], totalChapters, characters = [] } = {}) {
@@ -86,6 +87,11 @@ function seedArch({ clear = [], totalChapters, characters = [] } = {}) {
       await stage.stageButton(page, '架构').click()
     }
     await architectureSurface(page).waitFor({ state: 'visible', timeout: 20_000 })
+    const landingTab = stage.closeTabButton(page, `第 4 章 · ${stageChapterTitle(4)}`)
+    if (await landingTab.count() > 0) {
+      await landingTab.click()
+      await stage.tabList(page).waitFor({ state: 'detached' })
+    }
   }
 }
 
