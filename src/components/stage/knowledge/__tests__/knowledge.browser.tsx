@@ -295,6 +295,55 @@ describe('知识库', () => {
     })
   })
 
+  describe('查找还没返回时又有操作', () => {
+    let held: Map<string, (count: number) => void>
+    const hitsFor = (query: string, count: number) => Array.from({ length: count }, (_, index) => ({ text: `……${query}第 ${index + 1} 段……`, score: 0.5, fileName: '车站档案.md' }))
+    const holdSearches = () => {
+      held = new Map()
+      const base = invoke.getMockImplementation()!
+      invoke.mockImplementation(async (channel, ...args) => channel === 'kb:search'
+        ? new Promise(resolve => held.set(`${args[0]}|${args[1]}`, count => resolve(hitsFor(args[0] as string, count))))
+        : base(channel, ...args))
+    }
+    const submit = async (query: string) => {
+      await type(document.querySelector<HTMLInputElement>('form[role="search"] input')!, query)
+      await act(async () => document.querySelector<HTMLFormElement>('form[role="search"]')!.requestSubmit())
+    }
+    const results = () => [...document.querySelectorAll('[aria-label="查找结果"] li p')].map(node => node.textContent)
+
+    it('查 A 出结果后提交 B，B 还没回来时改「最多显示」：按 B 重查，最后显示的是 B 的结果', async () => {
+      await renderPage()
+      await submit('三号站台')
+      await vi.waitFor(() => expect(document.body.textContent).toContain('找到 2 条'))
+      holdSearches()
+      await submit('母亲的照片')
+      await vi.waitFor(() => expect([...held.keys()]).toEqual(['母亲的照片|10']))
+      const limit = document.querySelector<HTMLSelectElement>('.stage-kb-topk')!
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(limit, '20')
+        limit.dispatchEvent(new Event('change', { bubbles: true }))
+      })
+      await vi.waitFor(() => expect(held.size).toBe(2))
+      for (const [key, resolve] of held) await act(async () => resolve(key.endsWith('|20') ? 3 : 1))
+      await vi.waitFor(() => expect(document.body.textContent).toContain('找到 3 条'))
+      expect([...held.keys()]).toEqual(['母亲的照片|10', '母亲的照片|20'])
+      expect(results()).toEqual(['……母亲的照片第 3 段……', '……母亲的照片第 2 段……', '……母亲的照片第 1 段……'])
+    })
+
+    it('查找还没返回时点清除：结果不再冒出来，也不说没有找到', async () => {
+      await renderPage()
+      holdSearches()
+      await submit('三号站台')
+      await vi.waitFor(() => expect([...held.keys()]).toEqual(['三号站台|10']))
+      await click('清除查找')
+      await act(async () => held.get('三号站台|10')!(2))
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)) })
+      expect(results()).toEqual([])
+      expect(document.body.textContent).not.toContain('找到 2 条')
+      expect(document.body.textContent).not.toContain('没有找到相关的资料')
+    })
+  })
+
   it('定稿章节按定稿登记分架：有项目副本也不进「我导入的」，旧版无副本的导入资料不算定稿', async () => {
     await renderPage()
     expect(button(/我导入的 3/)).toBeTruthy()
