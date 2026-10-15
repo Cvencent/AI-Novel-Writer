@@ -233,7 +233,7 @@ describe('知识库', () => {
       .toEqual([['三号站台 失踪', 10], ['三号站台 失踪', 5]]))
   })
 
-  it('资料列表读完之前不说「知识库里还没有资料」，读完才列出', async () => {
+  it('资料列表读完之前阅读栏与左栏都说正在读取，不说没有资料、不显示 0，读完才列出与计数', async () => {
     let release!: () => void
     const listed = new Promise<void>(resolve => { release = resolve })
     const base = invoke.getMockImplementation()!
@@ -245,9 +245,13 @@ describe('知识库', () => {
     await vi.waitFor(() => expect(invoke.mock.calls.some(([channel]) => channel === 'kb:list-documents')).toBe(true))
     expect(document.body.textContent).not.toContain('知识库里还没有资料')
     expect(host!.querySelector('[aria-label="资料原文"] [role="status"]')?.textContent).toBe('正在读取资料…')
+    const shelves = () => [...host!.querySelectorAll('[aria-label="资料来源"] button')].map(option => option.textContent)
+    expect(shelves()).toEqual(['我导入的', '定稿章节'])
+    expect(host!.querySelector('.stage-kb-list')?.textContent).toBe('正在读取…')
     await act(async () => release())
     await vi.waitFor(() => expect(button(/车站档案/)).toBeTruthy())
     expect(host!.querySelector('[aria-label="资料原文"] [role="status"]')).toBeNull()
+    expect(shelves()).toEqual(['我导入的 3', '定稿章节 1'])
   })
 
   describe('连续改「最多显示」，两次查找乱序返回', () => {
