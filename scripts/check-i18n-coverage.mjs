@@ -266,8 +266,8 @@ function inspectEnglishCounts(violations, root, file, sourceFile, node) {
     ts.isTemplateExpression(node)
     && node.templateSpans.some((span, index) => {
       const before = index === 0 ? node.head.text : node.templateSpans[index - 1].literal.text
-      // 「1–${n} chapters」里的数量是范围的终点，永远不是 1
-      if (/[-–]$/.test(before)) return false
+      // 「1–${n} chapters」里的数量是范围的终点，永远不是 1；pluralEn(...) 是已经按数量变过的名词，不是数量
+      if (/[-–]$/.test(before) || span.expression.getText(sourceFile).startsWith('pluralEn(')) return false
       return fixedPluralAfterCount.test(span.literal.text) || pluralBeforeCount.test(before) || pluralVerbAfterCount.test(span.literal.text)
     })
   ) {

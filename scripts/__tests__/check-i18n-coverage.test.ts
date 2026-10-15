@@ -174,6 +174,7 @@ describe('i18n coverage boundary scanner', () => {
           return <p title={text(\`这 \${n} 行\`, \`Clearing removes these \${n} log \${pluralEn(n, 'line')}.\`)}>
             {text(\`\${n} 个有修改\`, \`\${n} have unsaved changes\`)}
             {text(\`\${n} 个文件\`, \`Close \${n} \${pluralEn(n, 'file')}.\`)}
+            {text(\`连同 \${n} 条事件\`, \`The thread and its \${n} confirmed \${pluralEn(n, 'event')} are removed.\`)}
           </p>
         }
       `)
