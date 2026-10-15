@@ -622,6 +622,17 @@ describe('知识库', () => {
     await vi.waitFor(() => expect(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="项目副本内容"]')?.value).toBe(copies.station))
   })
 
+  it('设置里保存或删除检索模型后，后台挂着的知识库页随之重新检查索引', async () => {
+    await renderPage()
+    await vi.waitFor(() => expect(document.body.textContent).toContain('有 4 段资料还不能按意思查找'))
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel, ...args) => channel === 'kb:get-vector-rebuild-status'
+      ? { embeddingConfigured: false, canRebuild: false, totalChunks: 9, vectorlessCount: 9, activeVectorDimension: 0 }
+      : base(channel, ...args))
+    await act(async () => useLLMStore.setState({ models: [], defaultEmbeddingModelId: null }))
+    await vi.waitFor(() => expect(document.body.textContent).not.toContain('还不能按意思查找'))
+  })
+
   it('知识库页没有重建索引；它在设置的检索模型页里', async () => {
     await renderPage()
     expect(button(/重建/)).toBeUndefined()
