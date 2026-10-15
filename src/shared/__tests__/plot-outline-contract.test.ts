@@ -6,10 +6,15 @@ import { synopsisForDraftChapter } from '../../services/workflows/commands/gener
 describe('chapter Markdown outline contract', () => {
   it('作者手动调过章节顺序（1、5、2、3、4）时按范围重写会丢掉第 2 章：判无效，开跑与写回都拒绝', () => {
     const source = { synopsis: `# 情节大纲\n\n${[1, 5, 2, 3, 4].map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}`, totalChapters: 12, writingLanguage: 'zh-CN' as const }
-    expect(plotOutlineRangeEffect(source, { from: 3, to: 5 })).toEqual({ kind: 'invalid', lastChapter: 5, hasEntries: true, ordered: false })
+    expect(plotOutlineRangeEffect(source, { from: 3, to: 5 })).toEqual({ kind: 'invalid', lastChapter: 5, hasEntries: true, orderIssue: { kind: 'unordered' } })
     expect(() => plotOutlineConfirmedPrefix(source, { from: 3, to: 5 })).toThrow('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
     expect(() => renderPlotOutlineRange('## 第3章：新\n新事。\n\n## 第4章：新\n新事。\n\n## 第5章：新\n新事。', { from: 3, to: 5 }, source))
       .toThrow('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
+  })
+
+  it('同一章号出现两次（1、2、3、2）时判无效并指出重复的是第 2 章', () => {
+    const source = { synopsis: `# 情节大纲\n\n${[1, 2, 3, 2].map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}`, totalChapters: 12, writingLanguage: 'zh-CN' as const }
+    expect(plotOutlineRangeEffect(source, { from: 4, to: 5 })).toEqual({ kind: 'invalid', lastChapter: 3, hasEntries: true, orderIssue: { kind: 'duplicate', chapter: 2 } })
   })
 
   it.each([

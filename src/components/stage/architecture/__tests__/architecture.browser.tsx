@@ -382,6 +382,17 @@ describe('架构阶段', () => {
     expect(submit().disabled).toBe(true)
   })
 
+  it('大纲里同一章出现两次（1、2、3、2）选第 4–5 章：说明重复的是第 2 章，而不是说没按章号排', async () => {
+    const body = [1, 2, 3, 2].map(n => outlineBody(n, n)).join('\n\n')
+    core = { ...core, synopsis: renderPlotOutlineSynopsis(body, 3, OUTLINE_SOURCE) }
+    await render()
+    await openOutlineRegenerate()
+    await range(4, 5)
+    expect(mark('synopsis')).toBe('范围无效')
+    expect(issue()).toBe('已有大纲里第 2 章出现了不止一次，按范围重写会打乱或丢掉其他章，后台会拒绝。请先删掉或改正重复的那一章。')
+    expect(submit().disabled).toBe(true)
+  })
+
   it('有一批被打断时，范围仍按数据库里的正式大纲判定，不看检查点的进度', async () => {
     seedPartialOutline()
     // 重写第 1–5 章的那一批被打断：检查点记的进度是开跑前的 0，正式大纲仍是第 1–16 章。
