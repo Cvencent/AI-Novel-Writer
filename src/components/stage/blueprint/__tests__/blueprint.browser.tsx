@@ -6,6 +6,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import type { ProjectData } from '../../../../shared/ipc-channels'
 import { globalEventBus } from '../../../../shared/event-bus'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
+import { disposeProjectService, initProjectService } from '../../../../services/project-service'
 import type { ChapterBlueprint } from '../../../../services/workflows/directory-workflow'
 import { editorSaveHandler, useEditorStore } from '../../../../stores/editor-store'
 import { useLocaleStore } from '../../../../stores/locale-store'
@@ -192,6 +193,29 @@ describe('蓝图阶段', () => {
     await vi.waitFor(() => expect(calls('db:blueprint-upsert').map(call => call[1])).toMatchObject([{ chapterNumber: 1, title: '旧港潮汐' }]))
   })
 
+  it('保存此章、删除此章、清空蓝图之后项目树不重读目录：蓝图只在数据库里', async () => {
+    initProjectService()
+    try {
+      await renderPage()
+      await act(async () => page.getByRole('textbox', { name: '章节标题' }).fill('旧港潮汐'))
+      await act(async () => page.getByRole('button', { name: '保存此章' }).click())
+      await vi.waitFor(() => expect(calls('db:blueprint-upsert')).toHaveLength(1))
+      await act(async () => page.getByRole('button', { name: /^3\D/ }).click())
+      await act(async () => page.getByRole('button', { name: '第 3 章更多操作' }).click())
+      await act(async () => page.getByRole('group', { name: '危险' }).getByRole('menuitem', { name: '删除此章…' }).click())
+      await act(async () => page.getByRole('dialog', { name: '删除第 3 章蓝图？' }).getByRole('button', { name: '删除此章' }).click())
+      await vi.waitFor(() => expect(calls('db:blueprint-delete')).toHaveLength(1))
+      await act(async () => page.getByRole('button', { name: '更多蓝图操作' }).click())
+      await act(async () => page.getByRole('menuitem', { name: '清空全部蓝图…' }).click())
+      await act(async () => page.getByRole('dialog', { name: '清空全部蓝图？' }).getByRole('button', { name: '清空全部' }).click())
+      await vi.waitFor(() => expect(calls('db:blueprint-clear-all')).toHaveLength(1))
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)) })
+      expect(calls('fs:list-dir')).toEqual([])
+    } finally {
+      disposeProjectService()
+    }
+  })
+
   it('保存此章与保存全部成功后通知流程脊、Ctrl P 重读蓝图；保存失败不通知', async () => {
     const refreshes: string[][] = []
     const off = globalEventBus.on('REFRESH_RESOURCE', ({ resources }) => { refreshes.push([...resources]) })
@@ -199,11 +223,11 @@ describe('蓝图阶段', () => {
       await renderPage()
       await act(async () => page.getByRole('textbox', { name: '章节标题' }).fill('旧港潮汐'))
       await act(async () => page.getByRole('button', { name: '保存此章' }).click())
-      await vi.waitFor(() => expect(refreshes).toEqual([['blueprints', 'fileTree']]))
+      await vi.waitFor(() => expect(refreshes).toEqual([['blueprints']]))
 
       const save = editorSaveHandler({ id: 'chapter-card-editor', type: 'chapter-card', projectKey: PROJECT_PATH })
       await act(async () => { await save!() })
-      expect(refreshes).toEqual([['blueprints', 'fileTree'], ['blueprints', 'fileTree']])
+      expect(refreshes).toEqual([['blueprints'], ['blueprints']])
 
       const base = invoke.getMockImplementation() as (channel: string, ...args: unknown[]) => Promise<unknown>
       invoke.mockImplementation(async (channel: string, ...args: unknown[]) => channel === 'db:blueprint-upsert'
