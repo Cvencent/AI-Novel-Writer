@@ -130,6 +130,8 @@ export function useArchitectureConfirmForm({
       ? text('还没有情节大纲，请从第 1 章起生成。', 'There is no plot outline yet. Start from chapter 1.')
     : !synopsisEffect.hasEntries
       ? text('已有大纲没有按章的标题，只能从第 1 章起整份重写。', 'The existing outline has no chapter headings, so it can only be rewritten whole from chapter 1.')
+    : !synopsisEffect.ordered
+      ? text('已有大纲的章节没有按章号顺序排列，按范围重写会打乱或丢掉其他章，后台会拒绝。请先把大纲里的章节按章号排好。', 'The chapters in the existing outline are out of order, so rewriting a range would scramble or drop other chapters and would be rejected. Put the outline chapters in order first.')
       : from > synopsisEffect.lastChapter + 1
         ? text(`已有大纲写到第 ${synopsisEffect.lastChapter} 章，不能跳到第 ${from} 章开始。请从第 ${synopsisEffect.lastChapter + 1} 章续写，或从第 1–${synopsisEffect.lastChapter} 章中的某一章起重写。`,
           `The outline reaches chapter ${synopsisEffect.lastChapter}, so it cannot skip to chapter ${from}. Continue from chapter ${synopsisEffect.lastChapter + 1}, or rewrite from a chapter between 1 and ${synopsisEffect.lastChapter}.`)

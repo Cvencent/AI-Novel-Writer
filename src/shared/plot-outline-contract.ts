@@ -189,8 +189,12 @@ export function renderPlotOutlineSynopsis(body: string, coveredTo: number, expec
 /** 正式大纲里决定一批范围能否开跑、会替换哪几章的三项事实；主进程 begin 时取自 project_core。 */
 export type PlotOutlineRangeSource = Pick<ProjectCoreSynopsisExpected, 'synopsis' | 'totalChapters' | 'writingLanguage'>
 
+/** 章节条目按章号严格递增；作者调乱顺序后按位置截取的前缀与尾部会丢章或重复。 */
+const chapterOrdered = (entries: ReturnType<typeof headings>) => entries.every((entry, index) => index === 0 || entry.from > entries[index - 1].to)
+
 export function plotOutlineConfirmedPrefix(expected: PlotOutlineRangeSource, range: PlotOutlineRange): string {
   const entries = headings(expected.synopsis)
+  if (!chapterOrdered(entries)) throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
   if (entries.some(entry => entry.from < range.from && entry.to >= range.from || entry.from <= range.to && entry.to > range.to))
     throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
   if (range.from === 1) return ''
@@ -216,7 +220,7 @@ export function plotOutlineConfirmedPrefix(expected: PlotOutlineRangeSource, ran
  * （没有按章标题时 whole 为整份替换），其余章节由 renderPlotOutlineRange 原样保留；continue 为紧接已有章节往后写。
  */
 export type PlotOutlineRangeEffect =
-  | { kind: 'invalid'; lastChapter: number; hasEntries: boolean }
+  | { kind: 'invalid'; lastChapter: number; hasEntries: boolean; ordered: boolean }
   | { kind: 'new' }
   | { kind: 'continue'; after: number }
   | { kind: 'overwrite'; whole: boolean; from: number; to: number; lastChapter: number }
@@ -224,13 +228,12 @@ export type PlotOutlineRangeEffect =
 export function plotOutlineRangeEffect(source: PlotOutlineRangeSource, range: PlotOutlineRange): PlotOutlineRangeEffect {
   const entries = headings(source.synopsis)
   const lastChapter = entries.reduce((last, entry) => Math.max(last, entry.to), 0)
-  try { plotOutlineConfirmedPrefix(source, range) } catch { return { kind: 'invalid', lastChapter, hasEntries: entries.length > 0 } }
+  try { plotOutlineConfirmedPrefix(source, range) } catch { return { kind: 'invalid', lastChapter, hasEntries: entries.length > 0, ordered: chapterOrdered(entries) } }
   if (!source.synopsis.trim()) return { kind: 'new' }
   if (!entries.length) return { kind: 'overwrite', whole: true, from: range.from, to: range.to, lastChapter }
   const replaced = entries.filter(entry => entry.from >= range.from && entry.from <= range.to)
   if (!replaced.length) return range.from > 1 ? { kind: 'continue', after: range.from - 1 } : { kind: 'new' }
-  // 作者手动调过章节顺序时条目不按章号排，按章号的最小与最大算。
-  return { kind: 'overwrite', whole: false, from: Math.min(...replaced.map(entry => entry.from)), to: Math.max(...replaced.map(entry => entry.to)), lastChapter }
+  return { kind: 'overwrite', whole: false, from: replaced[0].from, to: replaced[replaced.length - 1].to, lastChapter }
 }
 
 /** 下一批的默认起始章：已有大纲能紧接着往后写时取最后一章的下一章，否则从第 1 章起。 */
