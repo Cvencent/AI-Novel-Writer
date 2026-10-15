@@ -1084,7 +1084,7 @@ export const STAGE_SCENARIOS = {
       assert.deepEqual({ ...(await stage.landing(page)), blueprint: (await stage.stageStates(page)).blueprint },
         { crumbs: ['正文', '第 4 章'], empty: false, blueprint: 'done' }, '规划 100 章只写了 12 章蓝图时，蓝图已完成，落点仍是正文第 4 章')
     } },
-  /** 第 1 章回到了草稿，成了最早一章写到一半的，所以打开作品就落在它上面；再从章节列表点它仍是这份草稿。 */
+  /** 第 1 章回到了草稿，但最后一章在写的仍是第 4 章，所以打开作品落在第 4 章；从章节列表点第 1 章打开的是这份新草稿。 */
   'stage-revert-after-final': { model: false, shell: 'stage',
     setup: context => seedStageSample(context, { landOnChapter3: false, beforeReload: async ({ page, invoke, path, session }) => {
       const version = await invoke(page, 'db:draft-next-version', 1, path, session)
@@ -1093,6 +1093,8 @@ export const STAGE_SCENARIOS = {
       assert.equal(created.success, true, created.error)
     } }),
     run: async ({ page }) => {
+      await stage.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[4].text)).first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
+      assert.deepEqual(await stage.landing(page), { crumbs: ['正文', '第 4 章'], empty: false }, '第 1 章回到草稿后，落点仍是最后一章在写的第 4 章')
       await stage.chapterList(page).waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
       await stage.chapterButton(page, 1).click()
       const reverted = stage.prose(page).getByText(firstLine(STAGE_SAMPLE.reverted)).first()
