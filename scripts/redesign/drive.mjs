@@ -12,17 +12,24 @@ import { _electron as electron } from 'playwright'
 
 import { chooseProjectDirectoryGrant } from '../project-directory-grant.mjs'
 import { startFakeModel } from './fake-model.mjs'
-import { ARCH_SCENARIOS } from './arch-scenarios.mjs'
-import { RUN_SCENARIOS } from './run-scenarios.mjs'
-import { BLUEPRINT_SCENARIOS } from './blueprint-scenarios.mjs'
-import { CHAPTER_SCENARIOS } from './chapter-scenarios.mjs'
-import { REFS_SCENARIOS } from './refs-scenarios.mjs'
-import { VISUAL_SCENARIOS } from './visual-scenarios.mjs'
-import { X1_SCENARIOS } from './x1-scenarios.mjs'
-import { X2_SCENARIOS } from './x2-scenarios.mjs'
-import { RDX3_SCENARIOS } from './rdx3-scenarios.mjs'
-import { BASELINE_SESSIONS, EXTRA_SCENARIOS, SCENARIOS as BASELINE_SCENARIOS, STAGE_SCENARIOS } from './scenarios.mjs'
+import { assertNodeRunsTypeScript } from './node-version.mjs'
 import { dismissCompletionToasts, dismissStartupNotice, firstInteractiveControl, waitForShell } from './pages/shell.mjs'
+
+// 场景模块会 import 应用里的 .ts：静态 import 会在任何代码运行前报 ERR_UNKNOWN_FILE_EXTENSION，所以先查再动态加载
+try { assertNodeRunsTypeScript(process.version, process.features.typescript) } catch (error) {
+  process.stderr.write(`${error.message}
+`)
+  process.exit(2)
+}
+const [
+  { ARCH_SCENARIOS }, { RUN_SCENARIOS }, { BLUEPRINT_SCENARIOS }, { CHAPTER_SCENARIOS }, { REFS_SCENARIOS },
+  { VISUAL_SCENARIOS }, { X1_SCENARIOS }, { X2_SCENARIOS }, { RDX3_SCENARIOS },
+  { BASELINE_SESSIONS, EXTRA_SCENARIOS, SCENARIOS: BASELINE_SCENARIOS, STAGE_SCENARIOS },
+] = await Promise.all([
+  import('./arch-scenarios.mjs'), import('./run-scenarios.mjs'), import('./blueprint-scenarios.mjs'), import('./chapter-scenarios.mjs'),
+  import('./refs-scenarios.mjs'), import('./visual-scenarios.mjs'), import('./x1-scenarios.mjs'), import('./x2-scenarios.mjs'),
+  import('./rdx3-scenarios.mjs'), import('./scenarios.mjs'),
+])
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const OFFSCREEN_WINDOW = fileURLToPath(new URL('./offscreen-window.cjs', import.meta.url))

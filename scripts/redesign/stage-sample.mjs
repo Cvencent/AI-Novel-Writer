@@ -1,11 +1,6 @@
 // 新外壳场景用的示例作品「灯塔」：12 章全部有蓝图，1、2 章定稿，3 章已审稿待修稿，4 章是草稿，其余待写。
 // 与旧外壳基线的 SAMPLE 分开，基线截图不受影响。
-/* global process */
-import { assertNodeRunsTypeScript } from './node-version.mjs'
-
-// 版本不够时静态 import .ts 会在任何代码运行前就报一个看不出原因的错，所以先查版本再动态加载
-assertNodeRunsTypeScript(process.version)
-const { countDraftUnits } = await import('../../src/shared/draft-units.ts')
+import { countDraftUnits } from '../../src/shared/draft-units.ts'
 
 export const STAGE_SAMPLE = Object.freeze({
   name: '灯塔',
