@@ -32,7 +32,7 @@ import type { GenerationRecoveryContext } from '../../shared/generation-owner-co
 import type { ArchitectureConfirmFormOptions } from '../dialogs/use-architecture-confirm-form'
 import { openPlanningRecoveryDraft } from '../../stores/editor-store'
 import { planningTitle } from '../run/run-recovery'
-import { hasVisiblePartialSynopsisMarker, outlineProgress, type OutlineProgress } from '../../shared/plot-outline-checkpoint'
+import { outlineProgress, type OutlineProgress } from '../../shared/plot-outline-checkpoint'
 import type { PlotOutlineRangeSource } from '../../shared/plot-outline-contract'
 
 /** 架构四节的文档与旧外壳总览上的图标、说明；名字取 ARCH_STEP_NAMES。 */
@@ -144,7 +144,6 @@ export function useArchitectureOverview(projectKey: string) {
     const writingLanguage = (core?.writingLanguage ?? currentProject?.novelConfig?.writingLanguage) === 'en-US'
       ? 'en-US'
       : 'zh-CN'
-    const visiblyPartial = hasVisiblePartialSynopsisMarker(dbSynopsis)
     try {
       const partialResult = await ipc.invokeWithProjectSession(
         projectSession,
@@ -188,7 +187,7 @@ export function useArchitectureOverview(projectKey: string) {
       recoveryFailed = progress.kind === 'unresumable'
     } catch {
       progress = outlineProgress(dbSynopsis, undefined, writingLanguage, totalChapters)
-      recoveryFailed = visiblyPartial
+      recoveryFailed = progress.kind === 'unresumable'
       recoveredWorldBuildingCandidate = ''
     }
     const status: Record<string, boolean> = {
