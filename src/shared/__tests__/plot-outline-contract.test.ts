@@ -17,6 +17,17 @@ describe('chapter Markdown outline contract', () => {
     expect(plotOutlineRangeEffect(source, { from: 4, to: 5 })).toEqual({ kind: 'invalid', lastChapter: 3, hasEntries: true, orderIssue: { kind: 'duplicate', chapter: 2 } })
   })
 
+  it.each(['第0章', '第零章', '第〇章', 'Chapter 0'])('带「%s」序章的大纲从第 1 章起重写：有效并保留序章；序章真重复时仍拒绝', prologue => {
+    const synopsis = `# 情节大纲\n\n## ${prologue}：序章\n灯塔熄灭前夜。\n\n${[1, 2].map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}`
+    const source = { synopsis, totalChapters: 2, writingLanguage: 'zh-CN' as const }
+    expect(plotOutlineRangeEffect(source, { from: 1, to: 2 })).toEqual({ kind: 'overwrite', whole: false, from: 1, to: 2, lastChapter: 2 })
+    expect(plotOutlineRangeEffect(source, { from: 3, to: 4 }).kind).toBe('invalid')
+    expect(renderPlotOutlineRange('## 第1章：新\n新事。\n\n## 第2章：新\n新事。', { from: 1, to: 2 }, source))
+      .toBe(`# 情节大纲\n\n## ${prologue}：序章\n灯塔熄灭前夜。\n\n## 第1章：新\n新事。\n\n## 第2章：新\n新事。`)
+    const repeated = { ...source, synopsis: synopsis.replace('## 第1章', `## ${prologue}：又一个序章\n重复。\n\n## 第1章`) }
+    expect(plotOutlineRangeEffect(repeated, { from: 1, to: 2 })).toEqual({ kind: 'invalid', lastChapter: 2, hasEntries: true, orderIssue: { kind: 'duplicate', chapter: 0 } })
+  })
+
   it.each([
     ['## 第一章：起点\n当前章事实。', '## 第二章：后续\n后续章事实。'],
     ['- 第1章：起点\n当前章事实。', '- 第2章：后续\n后续章事实。'],
