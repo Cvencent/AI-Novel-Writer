@@ -271,6 +271,9 @@ export function plotOutlineNextChapter(source: PlotOutlineRangeSource): number {
   return next > 1 && next <= source.totalChapters && plotOutlineRangeEffect(source, { from: next, to: next }).kind === 'continue' ? next : 1
 }
 
+/** renderPlotOutlineSynopsis 写在末尾的覆盖说明，章数与全书章数不限：大纲改过章数或删过章节后留下的旧说明。 */
+const STALE_COVERAGE_TAIL = /(?:\s*\n> (?:本大纲已覆盖至第 \d+ 章（全书 \d+ 章），其余章节将在后续批次继续生成。|This outline covers chapters 1-\d+ of \d+; the remaining chapters will be generated in later batches\.))+$/u
+
 /** Replace only the explicitly committed chapter range; keep the surrounding source text. */
 export function renderPlotOutlineRange(body: string, range: PlotOutlineRange, expected: PlotOutlineRangeSource): string {
   plotOutlineConfirmedPrefix(expected, range)
@@ -285,8 +288,12 @@ export function renderPlotOutlineRange(body: string, range: PlotOutlineRange, ex
     if (after) return `${before}${body.trim()}\n\n${expected.synopsis.slice(after.index)}`
     return `${before}${body.trim()}${suffix ? `\n\n${suffix}` : ''}`
   }
-  // 已有章节都在第 1 章之前，只能是第 0 章序章：原文整份留在前面，新章接在后面。
-  if (range.from === 1) return joinPlotOutlineEntries(joinPlotOutlineEntries(expected.synopsis, body), suffix)
+  // 已有章节都在第 1 章之前，只能是第 0 章序章：作者原文逐字留在前面、新章接在后面，按续批要求的形式重建标准标题与覆盖说明。
+  // 自定义顶层标题与其他前置文字一样算作者原文保留；原有的标准标题行和应用写的旧覆盖说明不再带入。
+  if (range.from === 1) {
+    const authored = expected.synopsis.trim().replace(new RegExp(`^${title.trim()}[\\t ]*(?=\\n|$)`, 'u'), '').replace(STALE_COVERAGE_TAIL, '')
+    return renderPlotOutlineSynopsis(joinPlotOutlineEntries(authored, body), range.to, expected)
+  }
   return renderPlotOutlineSynopsis(joinPlotOutlineEntries(plotOutlineConfirmedPrefix(expected, range), body), range.to, expected)
 }
 
