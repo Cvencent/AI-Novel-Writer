@@ -169,7 +169,7 @@ export async function exposedEdge(page, lower, upper) {
     style.textContent = '* { pointer-events: auto !important; }'
     document.head.append(style)
     try {
-      return { point, paper: [u.left + u.width / 2, u.top + 3], hit: document.elementFromPoint(point[0], point[1])?.className ?? '', scale: devicePixelRatio }
+      return { point, paper: [u.left + u.width / 2, u.top + 3], hit: document.elementFromPoint(point[0], point[1])?.getAttribute('class') ?? '', scale: devicePixelRatio }
     } finally { style.remove() }
   }, await upper.elementHandle())
   if (!probe) return null

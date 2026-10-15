@@ -659,6 +659,12 @@ export const RDX3_SCENARIOS = {
     await page.getByRole('navigation', { name: 'Settings sections' }).getByRole('button', { name: 'Appearance', exact: true }).click()
     await page.getByLabel('Interface language').selectOption('zh-CN')
     await page.keyboard.press('Escape')
+    // 候选还等着确认时关窗会弹「创作任务仍在运行」，退出要等满宽限再强制结束：先把这次运行走完。
+    await runSheet.openFromPalette(page)
+    const waiting = runSheet.anyCard(page).filter({ hasText: '等你确认' })
+    await waiting.getByRole('combobox', { name: /^采用方式：守塔人/ }).selectOption('create')
+    await waiting.getByRole('button', { name: '按当前选择确认' }).click()
+    await runSheet.waitForRunDone(page)
   } },
 }
 

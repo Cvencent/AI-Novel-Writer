@@ -111,8 +111,11 @@ export async function startFakeModel(diagnostics) {
   }
   /** 之后的正文回复按 chunks 逐块发出，块间隔 intervalMs；每块发出的时刻记进 streamLog（epoch 毫秒与累计块数）。 */
   const streamProse = plan => { stream = plan; streamLog.length = 0 }
-  /** 之后的创作资料角色提取回一份合法 JSON（每份资料默认两张卡，cards 限定张数）；不开时与以前一样回正文，提取失败，导入类场景不会停在等你确认。 */
-  const replyCharacterCards = (cards = 2) => { extraction = cards }
+  /** 之后的创作资料角色提取回一份合法 JSON（每份资料默认两张卡，cards 限定张数，夹具只有 1–2 张）；不开时与以前一样回正文，提取失败，导入类场景不会停在等你确认。 */
+  const replyCharacterCards = (cards = 2) => {
+    if (cards !== 1 && cards !== 2) throw new Error(`replyCharacterCards: cards 只能是 1 或 2，收到 ${cards}`)
+    extraction = cards
+  }
   /** 定稿后处理的角色状态更新收到不是 JSON 的回复，这一步失败；传 false 恢复，用来演示只重试失败的步骤。 */
   const breakCharacterState = (broken = true) => { brokenCharacterState = broken }
   /** 之后的剧情树整理回一份两轨（主线加支线）的合法 JSON。 */
