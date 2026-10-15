@@ -2129,6 +2129,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       partial.synopsis_covered_to = complete ? outline.range.to : outline.range.from - 1
       partial.synopsis_step_guidance = guidance
       partial.synopsis_facts_fingerprint = factsFingerprint
+      if (outline.confirmedPrefix === null) throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
       const body = joinPlotOutlineEntries(outline.confirmedPrefix, outline.composition?.text ?? '')
       partial.synopsis_body_hash = synopsisFactsFingerprint([body])
       partial.synopsis_db_hash = synopsisFactsFingerprint([complete ? renderPlotOutlineRange(outline.composition?.text ?? '', outline.range, sourceExpected) : sourceExpected.synopsis])

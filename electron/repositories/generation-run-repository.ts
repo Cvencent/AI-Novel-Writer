@@ -434,7 +434,7 @@ export class GenerationRunRepository {
                 artifact: receipt.artifact && read.artifacts.get(receipt.artifact.artifactId)?.artifact_status !== 'discarded'
                     && !this.isFrozen('generation_attempts', row.attempt_id) ? receipt.artifact : null };
         });
-        return { protocol: PLOT_OUTLINE_PROTOCOL, ...policy, sourceExpected, confirmedPrefix: confirmedPrefix ?? '', composition,
+        return { protocol: PLOT_OUTLINE_PROTOCOL, ...policy, sourceExpected, confirmedPrefix, composition,
             targetUnits: parsePlanningTargetUnits(Number((run.binding.sourceManifest.authorInputs as { id: string; text: string }[]).find(input => input.id === 'planning:target-units')?.text ?? DEFAULT_PLANNING_TARGET_UNITS)),
             cursor: confirmedPrefix === null ? { kind: 'stopped', chapterNumber: chapter, reason: 'source-invalid' } : derivePlotOutlineCursor(policy.range, acceptedCount, attempts) };
     }

@@ -75,7 +75,8 @@ export interface PlotOutlineProgress {
   targetUnits: number
   cursor: PlotOutlineCursor
   sourceExpected: ProjectCoreSynopsisExpected
-  confirmedPrefix: string
+  /** 冻结大纲按现行规则无效（cursor 为 stopped/source-invalid）时为 null：没有可续写的前缀。 */
+  confirmedPrefix: string | null
   composition: VisibleCompositionReceipt | null
 }
 export interface PlotOutlineAttempt {
@@ -307,6 +308,7 @@ export function plotOutlineRecoveryDraft(progress: PlotOutlineProgress, failedCa
 }
 
 export function plotOutlineRequestContract(progress: PlotOutlineProgress, chapter: number, attempt: PlotOutlineAttemptKind): string {
+  if (progress.confirmedPrefix === null) throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
   const prefix = joinPlotOutlineEntries(progress.confirmedPrefix, progress.composition?.text ?? '')
   const english = progress.sourceExpected.writingLanguage === 'en-US'
   return english
