@@ -98,6 +98,9 @@ export function missingSetup(config: WorkFacts['config']): SetupField[] {
     : blank(config[field]))
 }
 
+/** 这一章动过笔：有定稿，或当前稿有正文。空的当前稿不算；没记字数的旧稿按有正文算。 */
+const begun = (row: ChapterRow) => row.phase === 'final' || (row.phase !== 'todo' && row.draft?.wordCount !== 0)
+
 /**
  * 四个阶段的状态，顺序固定为设定、架构、蓝图、正文。完成判定按 ia.md：设定必填项齐全，架构四节都有内容，
  * 蓝图至少 1 章（分批规划的作品不会因为没规划完就一直停在蓝图），正文按章统计。
@@ -109,7 +112,7 @@ export function deriveStages(facts: WorkFacts, chapters: readonly ChapterRow[] =
   const total = Math.max(0, facts.config.totalChapters || 0)
   const planned = facts.blueprints.length
   const finalized = chapters.filter(row => row.phase === 'final').length
-  const started = chapters.some(row => row.phase !== 'todo')
+  const started = chapters.some(begun)
   return [
     { stage: 'setup', missing,
       progress: missing.length === 0 ? DONE : { state: 'active', ratio: (SETUP_FIELDS.length - missing.length) / SETUP_FIELDS.length } },
@@ -153,10 +156,13 @@ export function deriveChapters(facts: Pick<WorkFacts, 'blueprints' | 'drafts' | 
   })
 }
 
-/** 点「正文」时打开的章：最早一章写到一半的，其次最早待写的，都没有时取最后一章定稿。 */
+/**
+ * 打开作品、书房「继续写作」与点「正文」打开的章：几章都在写时取最后一章在写的（用户决定），
+ * 其次最早一章还没动笔的（待写或只有空稿），都没有时取最后一章定稿。
+ */
 export function focusChapter(rows: readonly ChapterRow[]): ChapterRow | null {
-  return rows.find(row => row.phase !== 'todo' && row.phase !== 'final')
-    ?? rows.find(row => row.phase === 'todo')
+  return rows.filter(row => begun(row) && row.phase !== 'final').at(-1)
+    ?? rows.find(row => !begun(row))
     ?? rows.at(-1)
     ?? null
 }
