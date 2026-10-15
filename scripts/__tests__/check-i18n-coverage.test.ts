@@ -190,6 +190,39 @@ describe('i18n coverage boundary scanner', () => {
     }
   })
 
+  it('checks have or are after a pluralEn subject, the English fallback of projectError and artifactError, and candidates; points verbs at pluralEn too', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ai-novel-i18n-plural-subjects-'))
+    try {
+      writeFixture(root, 'src/components/stage/Subjects.tsx', `
+        const text = (zh: string, en: string) => zh || en
+        const pluralEn = (count: number, noun: string) => count === 1 ? noun : noun + 's'
+        const projectError = (error: unknown, zh = '出错了。', en = 'Something went wrong.') => error ? String(error) : zh || en
+        const artifactError = (error: unknown, zh = '读取失败。', en = 'Could not read.') => error ? String(error) : zh || en
+        export function Subjects({ n }: { n: number }) {
+          return <p title={text(\`\${n} 个文件有修改\`, \`\${n} \${pluralEn(n, 'file')} have unsaved changes\`)}>
+            {text(\`连同 \${n} 条事件\`, \`The thread and its \${n} confirmed \${pluralEn(n, 'event')} are removed.\`)}
+            {projectError(null, \`\${n} 章没有保存\`, \`\${n} chapters were not saved\`)}
+            {artifactError(null, \`\${n} 个文件读不出\`, \`Could not read \${n} files\`)}
+            {text(\`\${n} 个角色候选\`, \`\${n} character candidates\`)}
+          </p>
+        }
+      `)
+
+      const result = runChecker(root)
+
+      expect(result.status).toBe(1)
+      expect(result.output).toContain('Found 4 unlocalized visible strings')
+      expect(result.output).toContain("src/components/stage/Subjects.tsx:7 [english-plural] `${n} ${pluralEn(n, 'file')} have unsaved changes`")
+      expect(result.output).toContain('src/components/stage/Subjects.tsx:9 [english-plural] `${n} chapters were not saved`')
+      expect(result.output).toContain('src/components/stage/Subjects.tsx:10 [english-plural] `Could not read ${n} files`')
+      expect(result.output).toContain('src/components/stage/Subjects.tsx:11 [english-plural] `${n} character candidates`')
+      expect(result.output).toContain("Write the noun with pluralEn(count, 'chapter'); pass irregular plurals explicitly, as in pluralEn(count, 'entry', 'entries').")
+      expect(result.output).toContain("Write a verb that follows the count the same way, as in pluralEn(count, 'has', 'have').")
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('accepts a plural noun after the end of a number range, which is never one', () => {
     const root = mkdtempSync(join(tmpdir(), 'ai-novel-i18n-plural-range-'))
     try {
