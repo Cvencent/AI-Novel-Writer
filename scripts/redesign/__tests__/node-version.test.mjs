@@ -18,3 +18,10 @@ it('关掉类型剥离再跑驱动：在加载场景之前就给出这句提示�
   const result = spawnSync(process.execPath, ['--no-experimental-strip-types', 'scripts/redesign/drive.mjs', '--scenario', 'stage-reopen'], { encoding: 'utf8' })
   assert.deepEqual({ status: result.status, stderr: result.stderr }, { status: 2, stderr: `${hint(process.version)}\n` })
 })
+
+it('关掉类型剥离时 vitest 照样能导入驱动跑它的单测：守卫只在作为入口运行时检查', () => {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('VITEST') && key !== 'NODE_OPTIONS'))
+  const result = spawnSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'run', 'scripts/redesign/__tests__/drive-args.test.mjs'],
+    { encoding: 'utf8', env: { ...env, NODE_OPTIONS: '--no-experimental-strip-types' } })
+  assert.equal(result.status, 0, `${result.stdout}${result.stderr}`)
+}, 120_000)
