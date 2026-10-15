@@ -9,7 +9,7 @@ import { useStageStore } from '../../../stores/navigation/stage-store'
 import { useProjectStore } from '../../../stores/project-store'
 import type { ReviewEntry } from '../../../services/draft-index'
 import { ipc } from '../../../services/ipc-client'
-import { parseHumanConfirmedReviewSnapshot } from '../../../shared/human-confirmed-review'
+import { confirmationSourceReviewId, parseHumanConfirmedReviewSnapshot } from '../../../shared/human-confirmed-review'
 import CodeMirrorEditor from '../../editor/CodeMirrorEditor'
 import { useReviewCycle } from '../../editor/review-checklist'
 import { useDraftActions } from '../../editor/use-draft-actions'
@@ -44,7 +44,7 @@ function useShownReview(reviews: readonly ReviewEntry[], projectKey: string) {
         const content = await readDraftBody(formatResourceUri({ kind: 'review', id: entry.id }), projectKey, session).catch(() => '')
         if (!live()) return
         shown ??= { id: entry.id, content }
-        const cycleReviewId = parseHumanConfirmedReviewSnapshot(content)?.sourceReviewId ?? entry.id
+        const cycleReviewId = confirmationSourceReviewId(parseHumanConfirmedReviewSnapshot(content), entry.id)
         const cycle = await ipc.invokeWithProjectSession(session, 'db:review-cycle-get', cycleReviewId, session.projectPath).catch(() => null)
         if (!live()) return
         if (cycle) {

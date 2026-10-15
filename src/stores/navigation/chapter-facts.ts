@@ -1,5 +1,5 @@
 import { ipc } from '../../services/ipc-client'
-import { parseHumanConfirmedReviewSnapshot } from '../../shared/human-confirmed-review'
+import { confirmationSourceReviewId, parseHumanConfirmedReviewSnapshot } from '../../shared/human-confirmed-review'
 import type { ExpectedDraftSource, ProjectSessionContext } from '../../shared/ipc-channels'
 import { getActiveProjectSessionContext, sameProjectSessionContext } from '../../shared/project-session-context'
 import type { ChapterFacts } from './stage-progress'
@@ -27,8 +27,7 @@ async function readLatestReview(reviews: readonly { id: number; reviewIndex: num
   const latest = [...reviews].sort((a, b) => a.reviewIndex - b.reviewIndex).at(-1)
   if (!latest) return null
   const full = await ipc.invokeWithProjectSession(session, 'db:review-get-full', latest.id, session.projectPath)
-  // 确认后的清单另存为一份审稿，复验周期挂在它指向的原始审稿上。
-  const cycleReviewId = parseHumanConfirmedReviewSnapshot(full?.content ?? '')?.sourceReviewId ?? latest.id
+  const cycleReviewId = confirmationSourceReviewId(parseHumanConfirmedReviewSnapshot(full?.content ?? ''), latest.id)
   const cycle = await ipc.invokeWithProjectSession(session, 'db:review-cycle-get', cycleReviewId, session.projectPath).catch(() => null)
   return { createdAt: latest.createdAt, cycleStatus: cycle?.revisionStatus ?? null }
 }

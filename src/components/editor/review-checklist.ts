@@ -10,6 +10,7 @@ import type { ExpectedDraftSource } from '../../shared/ipc-channels'
 import { parseChapterGoalReview, type ChapterGoalReview } from '../../shared/chapter-goal-review'
 import type { ReviewCycleProjection, ReviewFindingStatus } from '../../shared/review-cycle'
 import {
+  confirmationSourceReviewId,
   createHumanConfirmedReviewSnapshot,
   hasIncludedReviewItems,
   parseHumanConfirmedReviewSnapshot,
@@ -216,13 +217,6 @@ function editableItemsFromReview(
       origin: 'ai' as const,
     }
   })
-}
-
-export function confirmationSourceReviewId(
-  snapshot: HumanConfirmedReviewSnapshot | null,
-  reviewId: number | undefined,
-): number | undefined {
-  return snapshot?.sourceReviewId ?? reviewId
 }
 
 function matchesReviewSource(
