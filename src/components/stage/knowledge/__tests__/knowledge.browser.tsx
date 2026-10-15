@@ -637,6 +637,16 @@ describe('知识库', () => {
     await vi.waitFor(() => expect(document.body.textContent).not.toContain('还不能按意思查找'))
   })
 
+  it('打开知识库页只读一次索引状态；点「刷新资料」再读一次', async () => {
+    const statusReads = () => invoke.mock.calls.filter(([channel]) => channel === 'kb:get-vector-rebuild-status').length
+    await renderPage()
+    await vi.waitFor(() => expect(document.body.textContent).toContain('有 4 段资料还不能按意思查找'))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)) })
+    expect(statusReads()).toBe(1)
+    await click('刷新资料')
+    await vi.waitFor(() => expect(statusReads()).toBe(2))
+  })
+
   it('知识库页没有重建索引；它在设置的检索模型页里', async () => {
     await renderPage()
     expect(button(/重建/)).toBeUndefined()
