@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowRight, Lock, RotateCcw } from 'lucide-react'
 import type { VersionRecord } from '../../../services/version-service'
 import { useDraftStore } from '../../../stores/draft-store'
@@ -52,6 +52,17 @@ function DiffView({ older, current }: { older: string; current: string }) {
       </article>
     </>
   )
+}
+
+/** 读得快的章不闪「正在读取」：挂上 150ms 后才出现。用计时而不是动画延迟，减弱动画时也一样。 */
+function SlowLoading() {
+  const text = useLocaleStore(s => s.text)
+  const [shown, setShown] = useState(false)
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShown(true), 150)
+    return () => window.clearTimeout(timer)
+  }, [])
+  return shown ? <p className="stage-hist-help stage-hist-loading" role="status">{text('正在读取…', 'Loading…')}</p> : null
 }
 
 /**
@@ -169,7 +180,7 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
             <div className="stage-hist-eyebrow">{text(`第 ${chapter.number} 章`, `Chapter ${chapter.number}`)}</div>
             <h2 className="stage-hist-chapter-title">{chapter.title}</h2>
             {versionsLoading
-              ? <p className="stage-hist-help stage-hist-loading" role="status">{text('正在读取…', 'Loading…')}</p>
+              ? <SlowLoading key={chapter.number} />
               : ordered.length === 0
               ? <p className="stage-hist-help">{text('这一章还没有稿。写出第一稿后会出现在这里。', 'No drafts yet. The first draft will appear here.')}</p>
               : (
