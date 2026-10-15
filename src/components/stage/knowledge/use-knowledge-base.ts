@@ -60,12 +60,15 @@ export function useKnowledgeIndex() {
     }
   }, [locale])
 
-  // 设置里保存或删除检索模型只改模型仓库，设置页与后台挂着的知识库页都不会重新挂载；模型配置变了就重新检查。
+  // 状态检查的唯一自动触发：挂载、换了作品或重新打开，以及模型配置变了（设置里保存或删除检索模型只改模型仓库，
+  // 设置页与后台挂着的知识库页都不会重新挂载）。资料增删由各自的操作与资源刷新事件显式重读。
+  const projectPath = useProjectStore(s => s.currentProject?.path)
+  const sessionLease = useProjectStore(s => s.currentProject?.sessionLease)
   const models = useLLMStore(s => s.models)
   const embeddingModelId = useLLMStore(s => s.defaultEmbeddingModelId)
   useEffect(() => {
     Promise.resolve().then(() => loadStatus())
-  }, [loadStatus, models, embeddingModelId])
+  }, [loadStatus, projectPath, sessionLease, models, embeddingModelId])
 
   const backfill = useCallback(async () => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
@@ -226,14 +229,9 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
       }
       restoredDraft.current = null
       void loadData()
-      void loadStatus()
     })
     return () => { mounted = false }
-  }, [projectPath, sessionLease, loadData, loadStatus, resetIndex, setDraft, clearResults])
-
-  useEffect(() => {
-    Promise.resolve().then(() => loadStatus())
-  }, [loadStatus, documents])
+  }, [projectPath, sessionLease, loadData, resetIndex, setDraft, clearResults])
 
   useEffect(() => {
     const current = () => captureProjectSession(useProjectStore.getState().currentProject)
@@ -405,8 +403,13 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
     }
   }
 
+  /** 「刷新资料」：资料列表与索引状态一起重读。 */
+  const reload = useCallback(async () => {
+    await Promise.all([loadData(), loadStatus()])
+  }, [loadData, loadStatus])
+
   return {
-    index, reload: loadData,
+    index, reload,
     documents, documentsLoaded, stats, loadError,
     selectedDocId, documentCopy, draftContent, setDraftContent, documentBusy, dirty,
     openDocument, saveDocument, reindexDocument,
