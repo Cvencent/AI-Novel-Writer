@@ -393,6 +393,44 @@ describe('架构阶段', () => {
     expect(submit().disabled).toBe(true)
   })
 
+  const PROLOGUE = '## 第0章：序章\n守塔人听见第十三声钟。'
+
+  it('只有序章的作品生成第 1–2 章后：徽标部分完成 2 / 24，续写从第 3 章起、序章不算缺章', async () => {
+    const body = outlineBody(1, 2)
+    core = { ...core, synopsis: renderPlotOutlineSynopsis(`${PROLOGUE}\n\n${body}`, 2, OUTLINE_SOURCE) }
+    partial = {
+      synopsis_protocol: PLOT_OUTLINE_PROTOCOL, synopsis_result: body, synopsis_incomplete: false, synopsis_covered_to: 2, synopsis_range: { from: 1, to: 2 },
+      synopsis_facts_fingerprint: 'stored-inputs', synopsis_db_hash: synopsisFactsFingerprint([core.synopsis as string]),
+    }
+    filledSpine(['premise', 'synopsis'])
+    await render()
+    const outline = host!.querySelector('[data-section="synopsis"]')!
+    expect(outline.querySelector('.arch-badge')?.textContent).toBe('部分完成 · 2 / 24 章')
+
+    await click('续写第 3 章起')
+    expect(inputValue('本次生成范围的起始章')).toBe('3')
+    await range(3, 4)
+    expect(mark('synopsis')).toBe('续写')
+    expect(effect()).toBe('接在第 2 章之后写第 3–4 章，已有章节不动。')
+    expect(issue()).toBeNull()
+    await act(async () => submit().click())
+    await vi.waitFor(() => expect(launchedSteps()).toEqual([['synopsis']]))
+  })
+
+  it.each([
+    ['第 0 章出现两次（0、1、2、0）', [0, 1, 2, 0], '已有大纲里第 0 章出现了不止一次，按范围重写会打乱或丢掉其他章，后台会拒绝。请先删掉或改正重复的那一章。'],
+    ['第 0 章不在最前（1、0、2）', [1, 0, 2], '已有大纲的章节没有按章号顺序排列，按范围重写会打乱或丢掉其他章，后台会拒绝。请先把大纲里的章节按章号排好。'],
+  ])('%s选第 3–4 章：判无效并说明原因', async (_, order, expected) => {
+    const body = order.map(n => n === 0 ? PROLOGUE : outlineBody(n, n)).join('\n\n')
+    core = { ...core, synopsis: renderPlotOutlineSynopsis(body, 2, OUTLINE_SOURCE) }
+    await render()
+    await openOutlineRegenerate()
+    await range(3, 4)
+    expect(mark('synopsis')).toBe('范围无效')
+    expect(issue()).toBe(expected)
+    expect(submit().disabled).toBe(true)
+  })
+
   it('有一批被打断时，范围仍按数据库里的正式大纲判定，不看检查点的进度', async () => {
     seedPartialOutline()
     // 重写第 1–5 章的那一批被打断：检查点记的进度是开跑前的 0，正式大纲仍是第 1–16 章。

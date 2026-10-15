@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { validPlotOutlineEntry, plotOutlineConfirmedPrefix, plotOutlineRangeEffect, renderPlotOutlineRange, renderPlotOutlineSynopsis, validPlotOutlineAuthorPrefix } from '../plot-outline-contract'
+import { validPlotOutlineEntry, plotOutlineConfirmedPrefix, plotOutlineRangeEffect, renderPlotOutlineRange, renderPlotOutlineSynopsis, validPlotOutlineAuthorPrefix,
+  plotOutlineNextChapter, derivePlotOutlineCursor, plotOutlineRecoveryDraft, PLOT_OUTLINE_CONTENT, PLOT_OUTLINE_PROTOCOL } from '../plot-outline-contract'
+import { outlineProgress } from '../plot-outline-checkpoint'
 import type { ProjectCoreSynopsisExpected } from '../../../electron/repositories/project-core-repository'
 import { synopsisForDraftChapter } from '../../services/workflows/commands/generate-draft.command'
 
@@ -47,6 +49,67 @@ describe('chapter Markdown outline contract', () => {
     const range = { from: 1, to: 2 }
     expect(renderPlotOutlineRange(body, range, expected)).toBe(saved)
     expect(validPlotOutlineAuthorPrefix(saved, { range, sourceExpected: expected, confirmedPrefix: '' }, range)).toBe(true)
+  })
+
+  const prologueBook = (language: 'zh-CN' | 'en-US', prologue: string) => {
+    const zh = language === 'zh-CN'
+    const chapter = (n: number, title: string, body: string) => zh ? `## 第${n}章：${title}\n${body}` : `## Chapter ${n}: ${title}\n${body}`
+    const chapters: Record<number, string> = zh
+      ? { 1: chapter(1, '雨夜', '找到信件。'), 2: chapter(2, '码头', '追到码头。'), 3: chapter(3, '灯塔', '登上灯塔。'), 4: chapter(4, '钟声', '听见钟声。'), 5: chapter(5, '天亮', '守塔人离开。') }
+      : { 1: chapter(1, 'Rain', 'A letter.'), 2: chapter(2, 'Dock', 'The chase.'), 3: chapter(3, 'Lighthouse', 'The climb.'), 4: chapter(4, 'Bell', 'The bell.'), 5: chapter(5, 'Dawn', 'The keeper leaves.') }
+    const tail = (n: number) => zh ? `> 本大纲已覆盖至第 ${n} 章（全书 24 章），其余章节将在后续批次继续生成。` : `> This outline covers chapters 1-${n} of 24; the remaining chapters will be generated in later batches.`
+    const title = zh ? '# 情节大纲' : '# Plot Outline'
+    const head = zh ? `${title}\n\n## ${prologue}：序章\n灯塔熄灭前夜。` : `${title}\n\n## ${prologue}: Prologue\nThe night before.`
+    const expected = (synopsis: string): ProjectCoreSynopsisExpected => ({ synopsis, premise: '前提', charactersArch: '角色', worldbuilding: '世界',
+      genre: '悬疑', totalChapters: 24, wordsPerChapter: 2000, writingLanguage: language, plotStructure: 'three_act', narrativePov: 'third_limited', globalGuidance: '' })
+    const join = (...numbers: number[]) => numbers.map(n => chapters[n]).join('\n\n')
+    return { head, tail, expected, join, chapters }
+  }
+
+  it.each([
+    ['zh-CN', '第0章'], ['zh-CN', '第零章'], ['zh-CN', '第〇章'], ['en-US', 'Chapter 0'],
+  ] as const)('只有「%s / %s」序章的作品生成第 1–2 章后：部分完成 2 / 24、下一批从第 3 章续写，续写与恢复都保留序章', (language, prologue) => {
+    const { head, tail, expected, join } = prologueBook(language, prologue)
+    const afterFirst = `${head}\n\n${join(1, 2)}\n\n${tail(2)}`
+    expect(renderPlotOutlineRange(join(1, 2), { from: 1, to: 2 }, expected(head))).toBe(afterFirst)
+
+    const source = expected(afterFirst)
+    expect(outlineProgress(afterFirst, null, language, 24)).toEqual({ kind: 'partial', coveredTo: 2, total: 24 })
+    expect(plotOutlineNextChapter(source)).toBe(3)
+    expect(plotOutlineRangeEffect(source, { from: 3, to: 4 })).toEqual({ kind: 'continue', after: 2 })
+    const confirmedPrefix = `${head.slice(head.indexOf('## '))}\n\n${join(1, 2)}`
+    expect(plotOutlineConfirmedPrefix(source, { from: 3, to: 4 })).toBe(confirmedPrefix)
+    expect(derivePlotOutlineCursor({ from: 3, to: 4 }, 0, [])).toEqual({ kind: 'request', chapterNumber: 3, attempt: 'normal' })
+
+    const afterSecond = `${head}\n\n${join(1, 2, 3, 4)}\n\n${tail(4)}`
+    expect(renderPlotOutlineRange(join(3, 4), { from: 3, to: 4 }, source)).toBe(afterSecond)
+    expect(outlineProgress(afterSecond, null, language, 24)).toEqual({ kind: 'partial', coveredTo: 4, total: 24 })
+    const progress = { range: { from: 3, to: 4 }, sourceExpected: source, confirmedPrefix }
+    expect(validPlotOutlineAuthorPrefix(afterSecond, progress, { from: 3, to: 4 })).toBe(true)
+    expect(validPlotOutlineAuthorPrefix(`${head}\n\n${join(1, 2, 3)}\n\n${tail(3)}`, progress, { from: 3, to: 3 })).toBe(true)
+
+    const recovery = plotOutlineRecoveryDraft({ ...progress, protocol: PLOT_OUTLINE_PROTOCOL, content: PLOT_OUTLINE_CONTENT, targetUnits: 600,
+      cursor: { kind: 'stopped', chapterNumber: 3, reason: 'attempts-exhausted' }, composition: null }, join(3))
+    expect(recovery).toBe(`${head}\n\n${join(1, 2, 3)}\n\n${tail(3)}`)
+  })
+
+  it.each([['zh-CN', '第0章'], ['en-US', 'Chapter 0']] as const)('序章加第 1–5 章（%s）从第 3 章重写第 3–5 章：有效，序章与第 1–2 章原样保留', (language, prologue) => {
+    const { head, tail, expected, join } = prologueBook(language, prologue)
+    const source = expected(`${head}\n\n${join(1, 2, 3, 4, 5)}\n\n${tail(5)}`)
+    expect(plotOutlineRangeEffect(source, { from: 3, to: 5 })).toEqual({ kind: 'overwrite', whole: false, from: 3, to: 5, lastChapter: 5 })
+    const rewritten = language === 'zh-CN' ? '## 第3章：新\n新事。\n\n## 第4章：新\n新事。\n\n## 第5章：新\n新事。' : '## Chapter 3: New\nNew.\n\n## Chapter 4: New\nNew.\n\n## Chapter 5: New\nNew.'
+    expect(renderPlotOutlineRange(rewritten, { from: 3, to: 5 }, source)).toBe(`${head}\n\n${join(1, 2)}\n\n${rewritten}\n\n${tail(5)}`)
+  })
+
+  it.each([
+    ['第 0 章出现两次（0、1、2、0）', [0, 1, 2, 0], { kind: 'duplicate', chapter: 0 }],
+    ['第 0 章不在最前（1、0、2）', [1, 0, 2], { kind: 'unordered' }],
+  ] as const)('%s：续写第 3–4 章仍判无效并给出对应原因', (_, order, orderIssue) => {
+    const synopsis = `# 情节大纲\n\n${order.map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}\n\n> 本大纲已覆盖至第 2 章（全书 24 章），其余章节将在后续批次继续生成。`
+    const source = { synopsis, totalChapters: 24, writingLanguage: 'zh-CN' as const }
+    expect(plotOutlineRangeEffect(source, { from: 3, to: 4 })).toEqual({ kind: 'invalid', lastChapter: 2, hasEntries: true, orderIssue })
+    expect(() => plotOutlineConfirmedPrefix(source, { from: 3, to: 4 })).toThrow('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
+    expect(plotOutlineNextChapter(source)).toBe(1)
   })
 
   it.each([
