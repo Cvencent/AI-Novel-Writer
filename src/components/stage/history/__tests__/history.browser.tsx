@@ -327,6 +327,48 @@ describe('版本历史', () => {
     expect(host!.querySelector('[aria-label="这一章的各稿"]')!.textContent).not.toContain('正在读取…')
   })
 
+  const reopenSameBook = () => act(async () => {
+    const reopened = { ...session, leaseId: '再次打开' }
+    useProjectStore.setState({ currentProject: { id: session.projectId, path: session.projectPath, sessionLease: reopened.leaseId, name: '雨夜列车', novelConfig: {} } as unknown as ProjectData })
+    setActiveProjectSessionContext(reopened)
+  })
+
+  it('读各稿时同一部作品被重新打开：读完不停在正在读取，按这次打开列出各稿', async () => {
+    await act(async () => root!.render(<StageHistory projectKey={session.projectPath} />))
+    await vi.waitFor(() => expect(button(/雨夜车站/)).toBeTruthy())
+    const release = gateList(3)
+    await click(/雨夜车站/)
+    await reopenSameBook()
+    await act(async () => release())
+    await vi.waitFor(() => expect([...document.querySelectorAll('.stage-hist-version-name')].map(node => node.firstChild?.textContent)).toEqual(['草稿 v2', '草稿 v1']))
+    expect(versionsColumn()).not.toContain('正在读取…')
+  })
+
+  it('读各稿失败：说没能读出、稿没有丢，不说这一章还没有稿；点「重新读取」读到就列出各稿', async () => {
+    await act(async () => root!.render(<StageHistory projectKey={session.projectPath} />))
+    await vi.waitFor(() => expect(button(/雨夜车站/)).toBeTruthy())
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel, ...args) => channel === 'db:draft-list' ? Promise.reject(new Error('数据库忙')) : base(channel, ...args))
+    await click(/雨夜车站/)
+    await vi.waitFor(() => expect(versionsColumn()).toContain('没能读出这一章的各稿'))
+    expect(versionsColumn()).toContain('稿都还在，没有丢。')
+    expect(versionsColumn()).not.toContain('这一章还没有稿')
+    expect(versionsColumn()).not.toContain('数据库忙')
+
+    invoke.mockImplementation(base)
+    await click('重新读取')
+    await vi.waitFor(() => expect(button(/草稿 v1/)).toBeTruthy())
+    expect(versionsColumn()).not.toContain('没能读出这一章的各稿')
+  })
+
+  it('点的那一稿已被删掉（列表还没刷新）：对比区回到「选一稿」，不停在正在读取', async () => {
+    await openChapterThree()
+    drafts = drafts.filter(draft => draft.id !== 11)
+    await click(/草稿 v1/)
+    await vi.waitFor(() => expect(document.querySelector('.stage-hist-diff')!.textContent).toBe('选一稿，与当前稿逐字对比。'))
+    expect(button(/草稿 v1/)!.getAttribute('aria-pressed')).toBe('false')
+  })
+
   it('回退已新建草稿但随后重读列表失败：照样关掉对话框并说已新建，不会让作者再点一次多建一稿', async () => {
     const success = vi.spyOn(toast, 'success').mockImplementation(() => undefined)
     await openChapterThree()
