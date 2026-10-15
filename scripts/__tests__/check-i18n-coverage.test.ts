@@ -164,6 +164,31 @@ describe('i18n coverage boundary scanner', () => {
     }
   })
 
+  it('rejects these or those before a count and have or are right after it', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ai-novel-i18n-plural-agreement-'))
+    try {
+      writeFixture(root, 'src/components/stage/Agreement.tsx', `
+        const text = (zh: string, en: string) => zh || en
+        const pluralEn = (count: number, noun: string) => count === 1 ? noun : noun + 's'
+        export function Agreement({ n }: { n: number }) {
+          return <p title={text(\`这 \${n} 行\`, \`Clearing removes these \${n} log \${pluralEn(n, 'line')}.\`)}>
+            {text(\`\${n} 个有修改\`, \`\${n} have unsaved changes\`)}
+            {text(\`\${n} 个文件\`, \`Close \${n} \${pluralEn(n, 'file')}.\`)}
+          </p>
+        }
+      `)
+
+      const result = runChecker(root)
+
+      expect(result.status).toBe(1)
+      expect(result.output).toContain('Found 2 unlocalized visible strings')
+      expect(result.output).toContain("src/components/stage/Agreement.tsx:5 [english-plural] `Clearing removes these ${n} log ${pluralEn(n, 'line')}.`")
+      expect(result.output).toContain('src/components/stage/Agreement.tsx:6 [english-plural] `${n} have unsaved changes`')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('accepts a plural noun after the end of a number range, which is never one', () => {
     const root = mkdtempSync(join(tmpdir(), 'ai-novel-i18n-plural-range-'))
     try {
