@@ -36,8 +36,11 @@ const updateSynopsis = synopsis => async ({ page, invoke, path: projectPath, ses
   assert.equal(updated.success, true, updated.error)
 }
 
-/** 另建一部只有设定与架构（大纲分批没写完）的作品；blueprints 为 true 时再加前三章蓝图，finalized 为 true 时导入第 1 章定稿（没有蓝图）。 */
-async function seedOutlineBook(context, name, { blueprints = false, finalized = false }) {
+/**
+ * 另建一部只有设定与架构（大纲分批没写完）的作品；blueprints 为 true 时再加前三章蓝图，finalized 为 true 时导入第 1 章定稿（没有蓝图），
+ * emptyDraft 为 true 时给第 1 章建一份正文为空的草稿（没有蓝图）。
+ */
+async function seedOutlineBook(context, name, { blueprints = false, finalized = false, emptyDraft = false }) {
   const { app, page, roots, invoke } = context
   const created = await invoke(page, 'project:create', { parentGrantId: (await chooseProjectDirectoryGrant(app, page, roots.projects)).grantId,
     name, genre: '悬疑', targetAudience: '成年读者', writingLanguage: 'zh-CN' }, randomUUID(), null)
@@ -52,6 +55,10 @@ async function seedOutlineBook(context, name, { blueprints = false, finalized = 
     const imported = await invoke(page, 'db:draft-import-finalized-batch', { operationId: randomUUID(),
       chapters: [{ chapterNumber: 1, title: stageChapterTitle(1), content, wordCount: countUnits(content) }] }, created.projectPath, session)
     assert.equal(imported.success, true, imported.error)
+  }
+  if (emptyDraft) {
+    const draft = await invoke(page, 'db:draft-create', { chapterNumber: 1, version: 1, source: 'write', content: '', wordCount: 0 }, created.projectPath, session)
+    assert.equal(draft.success, true, draft.error)
   }
   if (!blueprints) return
   for (const number of [1, 2, 3]) {
@@ -107,15 +114,18 @@ const localTime = (page, value, options) => page.evaluate(([value, options]) =>
 
 export const X2_SCENARIOS = {
   // #394 §6（用户决定 B）：大纲分批没写完时，只有蓝图与正文都没有才落在架构；有蓝图或正文就落到当前写作位置。
-  // 南湾只有第 1 章定稿、没有蓝图，落在第 1 章而不是空的蓝图页。书房打开四部作品，再用「打开作品」选文件夹打开灯塔。
+  // 南湾只有第 1 章定稿、没有蓝图，落在第 1 章而不是空的蓝图页。空港只有一份空的草稿，空稿不算开始，落在架构（#407 第 2 轮）。
+  // 灯塔第 3、4 章都在写，落在最后一章在写的第 4 章；点「正文」与书房「继续写作」也指向第 4 章（#407 第 2 轮，用户决定）。
+  // 书房打开五部作品，再用「打开作品」选文件夹打开灯塔。
   'x2-landing': { model: false, shell: 'stage', setup: async context => {
     await seedOutlineBook(context, '荒岛', { blueprints: false })
     await seedOutlineBook(context, '北堤', { blueprints: true })
     await seedOutlineBook(context, '南湾', { finalized: true })
+    await seedOutlineBook(context, '空港', { emptyDraft: true })
     await seedStageSample(context, { open: false, beforeReload: updateSynopsis(partialOutline()) })
   }, run: async ({ app, page, samplePath, shoot }) => {
     const landed = {}
-    for (const name of ['荒岛', '北堤', '南湾', STAGE_SAMPLE.name]) {
+    for (const name of ['荒岛', '北堤', '南湾', '空港', STAGE_SAMPLE.name]) {
       await stage.openFromLibrary(page, name)
       landed[name] = (await settledLanding(page)).join(' / ')
       await shoot(`x2-landing-${name}`)
@@ -124,9 +134,19 @@ export const X2_SCENARIOS = {
     await openFolder(app, page, samplePath)
     landed['灯塔（打开作品）'] = (await settledLanding(page)).join(' / ')
     const architectureState = (await stage.stageStates(page)).architecture
-    const measured = { landed, architectureState }
-    assert.deepEqual(landed, {
-      荒岛: '架构', 北堤: '正文 / 第 1 章', 南湾: '正文 / 第 1 章', [STAGE_SAMPLE.name]: '正文 / 第 3 章', '灯塔（打开作品）': '正文 / 第 3 章',
+    await stage.chapterButton(page, 1).click()
+    await stage.waitForProse(page, STAGE_SAMPLE.finalized[1].split('\n')[0].slice(0, 16))
+    await stage.stageButton(page, '正文').click()
+    const manuscript = (await settledLanding(page)).join(' / ')
+    await stage.backToLibrary(page, STAGE_SAMPLE.name)
+    const continueWriting = await stage.overview(page, STAGE_SAMPLE.name).getByRole('button', { name: /^继续写作/ }).innerText()
+    await shoot('x2-landing-continue')
+    const measured = { landed, architectureState, manuscript, continueWriting }
+    assert.deepEqual({ landed, manuscript, continueWriting }, {
+      landed: { 荒岛: '架构', 北堤: '正文 / 第 1 章', 南湾: '正文 / 第 1 章', 空港: '架构',
+        [STAGE_SAMPLE.name]: '正文 / 第 4 章', '灯塔（打开作品）': '正文 / 第 4 章' },
+      manuscript: '正文 / 第 4 章',
+      continueWriting: '继续写作 · 第 4 章 · 待审稿',
     }, JSON.stringify(measured))
     return measured
   } },

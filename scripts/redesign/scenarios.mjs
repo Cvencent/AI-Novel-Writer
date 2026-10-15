@@ -365,7 +365,7 @@ export async function seedStageSample(context,
   if (!open) return
   if (await stage.root(page).count() > 0) {
     await stage.openFromLibrary(page, STAGE_SAMPLE.name)
-    if (landOnChapter3) await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
+    if (landOnChapter3) await moveToChapter3(page)
     return
   }
   await bookshelf.openProject(page, STAGE_SAMPLE.name)
@@ -373,6 +373,18 @@ export async function seedStageSample(context,
   if (!landOnChapter3) return
   await project.draftOfChapter(page, 3).click()
   await chapter.editor(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text)).waitFor({ state: 'visible' })
+}
+
+/**
+ * 示例作品第 3、4 章都在写，打开时落在最后一章在写的第 4 章（用户决定）。各场景从第 3 章开始：
+ * 等落点到了第 4 章，再切到第 3 章并关掉第 4 章的标签，与原先只开着第 3 章一样。
+ */
+async function moveToChapter3(page) {
+  await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[4].text))
+  await stage.chapterButton(page, 3).click()
+  await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
+  await stage.closeTabButton(page, `第 4 章 · ${stageChapterTitle(4)}`).click()
+  await stage.tabList(page).waitFor({ state: 'detached' })
 }
 
 /**
@@ -570,7 +582,7 @@ function bookOpened(page) {
   const loaded = page.waitForEvent('console', { predicate: message => message.text().includes('项目数据加载完成'), timeout: 30_000 })
   return async () => {
     await loaded
-    await page.getByRole('navigation', { name: '位置' }).getByText('第 3 章').waitFor({ state: 'visible' })
+    await page.getByRole('navigation', { name: '位置' }).getByText('第 4 章').waitFor({ state: 'visible' })
   }
 }
 
@@ -1060,15 +1072,15 @@ export const STAGE_SCENARIOS = {
   'stage-reopen': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
     await stage.backToLibrary(page, STAGE_SAMPLE.name)
     await stage.openFromPalette(page, STAGE_SAMPLE.name)
-    await stage.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text)).first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
-    assert.deepEqual(await stage.landing(page), { crumbs: ['正文', '第 3 章'], empty: false }, '重开同一部作品再次落到第 3 章')
+    await stage.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[4].text)).first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
+    assert.deepEqual(await stage.landing(page), { crumbs: ['正文', '第 4 章'], empty: false }, '重开同一部作品再次落到最后一章在写的第 4 章')
   } },
   'stage-partial-blueprint': { model: false, shell: 'stage',
     setup: context => seedStageSample(context, { totalChapters: 100, landOnChapter3: false }),
     run: async ({ page }) => {
-      await stage.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text)).first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
+      await stage.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[4].text)).first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
       assert.deepEqual({ ...(await stage.landing(page)), blueprint: (await stage.stageStates(page)).blueprint },
-        { crumbs: ['正文', '第 3 章'], empty: false, blueprint: 'done' }, '规划 100 章只写了 12 章蓝图时，蓝图已完成，落点仍是正文第 3 章')
+        { crumbs: ['正文', '第 4 章'], empty: false, blueprint: 'done' }, '规划 100 章只写了 12 章蓝图时，蓝图已完成，落点仍是正文第 4 章')
     } },
   /** 第 1 章回到了草稿，成了最早一章写到一半的，所以打开作品就落在它上面；再从章节列表点它仍是这份草稿。 */
   'stage-revert-after-final': { model: false, shell: 'stage',
@@ -1164,15 +1176,15 @@ export const STAGE_SCENARIOS = {
       await pause(1500)
     }
     await stage.stageButton(page, '正文').click()
-    await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
+    await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[4].text))
     await pause(1500)
     await page.keyboard.press('Control+K')
     await stage.paletteInput(page).waitFor({ state: 'visible' })
     await pause(700)
-    await stage.paletteInput(page).pressSequentially('守塔', { delay: 220 })
+    await stage.paletteInput(page).pressSequentially('雾钟', { delay: 220 })
     await pause(900)
     await page.keyboard.press('Enter')
-    await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[4].text))
+    await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
     await pause(1500)
     await page.keyboard.press('Control+P')
     await stage.paletteInput(page).waitFor({ state: 'visible' })
