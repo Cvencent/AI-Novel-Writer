@@ -182,11 +182,13 @@ describe('打开作品时流程脊等各稿的审稿与修稿记录', () => {
   const meta = (id: number, chapterNumber: number, status: string) => ({ id, chapterNumber, version: 1, status, source: 'write',
     createdAt: '2026-10-13 20:00:00', updatedAt: '2026-10-13 20:00:00' })
   /**
-   * 第 1 章定稿，第 3 章草稿已有一份审稿：没读到它的记录时只能按稿状态估计成「待审稿」。第 2 章按参数是没审过的草稿或定稿，
-   * 决定落点是第 2 章还是第 3 章。第 3 章那一稿第 n 次读审稿记录要等 release(n) 才返回，其余读取立即返回。
+   * 第 1 章定稿，第 3 章草稿已有一份审稿：没读到它的记录时只能按稿状态估计成「待审稿」。落点是最后一章在写的：
+   * 按参数第 2、4 章也是草稿时落在第 4 章，第 2 章定稿、没有第 4 章的稿时落在第 3 章。第 3 章那一稿第 n 次读审稿记录要等 release(n) 才返回，其余读取立即返回。
    */
-  function installProject(chapter2: 'draft' | 'finalized') {
-    const drafts = [meta(11, 1, 'finalized'), meta(21, 2, chapter2), meta(31, 3, 'draft'), ...(chapter2 === 'finalized' ? [meta(41, 4, 'draft')] : [])]
+  function installProject(landing: 'chapter-4' | 'reviewed-chapter-3') {
+    const drafts = landing === 'chapter-4'
+      ? [meta(11, 1, 'finalized'), meta(21, 2, 'draft'), meta(31, 3, 'draft'), meta(41, 4, 'draft')]
+      : [meta(11, 1, 'finalized'), meta(21, 2, 'finalized'), meta(31, 3, 'draft')]
     const releases: (() => void)[] = []
     const holds = [0, 1].map(() => new Promise<void>(resolve => { releases.push(resolve) }))
     let reads = 0
@@ -222,7 +224,7 @@ describe('打开作品时流程脊等各稿的审稿与修稿记录', () => {
   })
 
   it('落点不等记录，流程脊等这次打开的记录全部读完才出现，出现时各章就是读到的阶段；单章视图先读完自己那一稿也不提前出现', async () => {
-    const { release } = installProject('draft')
+    const { release } = installProject('chapter-4')
     const current = session('current')
     await open(current, READY)
     await act(async () => root!.render(<Spine />))
@@ -230,21 +232,21 @@ describe('打开作品时流程脊等各稿的审稿与修稿记录', () => {
     void refreshStageWork((zh: string) => zh).then(() => { refreshed = true })
     await flush()
 
-    expect(useEditorStore.getState().tabs.map(tab => [tab.type, tab.chapterNumber])).toEqual([['chapter', 2]])
+    expect(useEditorStore.getState().tabs.map(tab => [tab.type, tab.chapterNumber])).toEqual([['chapter', 4]])
     expect(spine()).toEqual([])
 
-    await act(async () => refreshChapterFacts([{ id: 21 }], current))
+    await act(async () => refreshChapterFacts([{ id: 41 }], current))
     expect(spine()).toEqual([])
     expect(refreshed).toBe(false)
 
     release(0)
     await flush()
     expect(refreshed).toBe(true)
-    expect(spine()).toEqual(['setup', 'architecture', 'blueprint', 'manuscript', '1:final', '2:draft', '3:reviewed', '4:todo'])
+    expect(spine()).toEqual(['setup', 'architecture', 'blueprint', 'manuscript', '1:final', '2:draft', '3:reviewed', '4:draft'])
   })
 
   it('落点那一章就是有审稿的章：单章视图对同一稿的读取还没回来，流程脊出现时这一章也已是读到的阶段', async () => {
-    const { release } = installProject('finalized')
+    const { release } = installProject('reviewed-chapter-3')
     const current = session('current')
     await open(current, READY)
     await act(async () => root!.render(<Spine />))
@@ -258,10 +260,10 @@ describe('打开作品时流程脊等各稿的审稿与修稿记录', () => {
 
     release(0)
     await flush()
-    expect(spine()).toEqual(['setup', 'architecture', 'blueprint', 'manuscript', '1:final', '2:final', '3:reviewed', '4:draft'])
+    expect(spine()).toEqual(['setup', 'architecture', 'blueprint', 'manuscript', '1:final', '2:final', '3:reviewed', '4:todo'])
 
     release(1)
     await flush()
-    expect(spine()).toEqual(['setup', 'architecture', 'blueprint', 'manuscript', '1:final', '2:final', '3:reviewed', '4:draft'])
+    expect(spine()).toEqual(['setup', 'architecture', 'blueprint', 'manuscript', '1:final', '2:final', '3:reviewed', '4:todo'])
   })
 })
