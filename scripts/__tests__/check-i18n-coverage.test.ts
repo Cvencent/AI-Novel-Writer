@@ -250,6 +250,30 @@ describe('i18n coverage boundary scanner', () => {
     }
   })
 
+  it('exempts a compound subject only within the clause before the count', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ai-novel-i18n-plural-clause-'))
+    try {
+      writeFixture(root, 'src/components/stage/Clause.tsx', `
+        const text = (zh: string, en: string) => zh || en
+        const pluralEn = (count: number, noun: string) => count === 1 ? noun : noun + 's'
+        export function Clause({ n }: { n: number }) {
+          return <p>
+            {text(\`保存并继续：\${n} 个文件未保存\`, \`Save and continue: \${n} \${pluralEn(n, 'file')} have unsaved changes\`)}
+            {text(\`连同 \${n} 条事件\`, \`The thread and its \${n} confirmed \${pluralEn(n, 'event')} are removed.\`)}
+          </p>
+        }
+      `)
+
+      const result = runChecker(root)
+
+      expect(result.status).toBe(1)
+      expect(result.output).toContain('Found 1 unlocalized visible strings')
+      expect(result.output).toContain("src/components/stage/Clause.tsx:6 [english-plural] `Save and continue: ${n} ${pluralEn(n, 'file')} have unsaved changes`")
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('accepts a plural noun after the end of a number range, which is never one', () => {
     const root = mkdtempSync(join(tmpdir(), 'ai-novel-i18n-plural-range-'))
     try {
