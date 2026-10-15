@@ -15,8 +15,10 @@ import { startFakeModel } from './fake-model.mjs'
 import { assertNodeRunsTypeScript } from './node-version.mjs'
 import { dismissCompletionToasts, dismissStartupNotice, firstInteractiveControl, waitForShell } from './pages/shell.mjs'
 
-// 场景模块会 import 应用里的 .ts：静态 import 会在任何代码运行前报 ERR_UNKNOWN_FILE_EXTENSION，所以先查再动态加载
-try { assertNodeRunsTypeScript(process.version, process.features.typescript) } catch (error) {
+const asEntryPoint = Boolean(process.argv[1]) && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+// 场景模块会 import 应用里的 .ts：静态 import 会在任何代码运行前报 ERR_UNKNOWN_FILE_EXTENSION，所以先查再动态加载。
+// 只在作为入口运行时查：vitest 导入驱动时 .ts 由 vite 转译，用不到 Node 的类型剥离
+if (asEntryPoint) try { assertNodeRunsTypeScript(process.version, process.features.typescript) } catch (error) {
   process.stderr.write(`${error.message}
 `)
   process.exit(2)
@@ -461,4 +463,4 @@ async function main() {
   process.exitCode = failed.length ? 1 : 0
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main()
+if (asEntryPoint) await main()
