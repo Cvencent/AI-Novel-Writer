@@ -205,13 +205,13 @@ describe('角色名单', () => {
   /** Electron 把主进程的异常包成这样交给页面。 */
   const ipcError = (channel: string) => new Error(`Error invoking remote method '${channel}': Error: 项目会话已失效`)
 
-  it('两份待处理列表都读取失败：标题写读取失败，说明名单没有改动，不露原始报错', async () => {
+  it('两份待处理列表都读取失败：标题写读取失败，说明可以重新读取，不露原始报错', async () => {
     const base = invoke.getMockImplementation()!
     invoke.mockImplementation(async (channel, ...args) => channel === 'character-proposal:list-pending-finalized' || channel === 'finalized-character:list-state-candidates'
       ? Promise.reject(ipcError(channel)) : base(channel, ...args))
     await render()
     await vi.waitFor(() => expect(banner()?.querySelector('.pi-notice-title')?.textContent).toBe('角色建议读取失败'))
-    expect(banner()!.querySelector('.pi-notice-text')?.textContent).toBe('定稿与导入留下的角色建议这次没读出来，角色名单没有改动。')
+    expect(banner()!.querySelector('.pi-notice-text')?.textContent).toBe('定稿与导入留下的角色建议这次没读出来，可以重新读取。')
     expect([...banner()!.querySelectorAll('button')].map(button => button.textContent)).toEqual(['重新读取'])
     expect(banner()!.textContent).not.toContain('Error invoking remote method')
     expect(banner()!.textContent).not.toContain('项目会话已失效')
@@ -224,13 +224,45 @@ describe('角色名单', () => {
     invoke.mockImplementation(async (channel, ...args) => failing && channel === 'finalized-character:list-state-candidates'
       ? Promise.reject(ipcError(channel)) : base(channel, ...args))
     await render()
-    await vi.waitFor(() => expect(banner()?.querySelector('[role="alert"]')?.textContent).toBe('有一部分角色建议没能读出或处理，角色名单没有改动。重新读取'))
+    await vi.waitFor(() => expect(banner()?.querySelector('[role="alert"]')?.textContent).toBe('有一部分角色建议这次没读出来或没处理完，可以重新读取。重新读取'))
     expect(banner()!.querySelector('.pi-notice-title')?.textContent).toBe('1 项待处理的角色建议')
     expect(banner()!.textContent).not.toContain('Error invoking remote method')
     failing = false
     await act(async () => banner()!.querySelector<HTMLButtonElement>('[role="alert"] button')!.click())
     await vi.waitFor(() => expect(banner()!.querySelector('[role="alert"]')).toBeNull())
     expect(banner()!.querySelector('.pi-notice-title')?.textContent).toBe('1 项待处理的角色建议')
+  })
+
+  it('接受状态建议已提交、随后刷新状态建议列表失败：只说这次没读出来、可以重新读取，不说名单没改', async () => {
+    pendingDecisions = 1
+    pendingStates = [stateCandidate('s-location', 'location', '北塔')]
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel, ...args) => channel === 'finalized-character:list-state-candidates'
+      && invoke.mock.calls.some(([called]) => called === 'finalized-character:decide-state-candidate')
+      ? Promise.reject(ipcError(channel)) : base(channel, ...args))
+    await render()
+    await vi.waitFor(() => expect(banner()?.textContent).toContain('2 项待处理的角色建议'))
+    await click('检查定稿状态建议')
+    await vi.waitFor(() => expect(banner()?.textContent).toContain('建议：北塔'))
+    await click('接受状态建议')
+    await vi.waitFor(() => expect(banner()?.querySelector('[role="alert"]')?.textContent).toBe('有一部分角色建议这次没读出来或没处理完，可以重新读取。重新读取'))
+    expect(store.load).toHaveBeenCalled()
+  })
+
+  it('接受最后一条状态建议后名单重读、角色决策列表随之读取失败：标题写读取失败，说明只说可以重新读取', async () => {
+    pendingStates = [stateCandidate('s-location', 'location', '北塔')]
+    store.load.mockImplementation(async () => { useCharacterStore.setState({ rosterRevision: 2 }) })
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel, ...args) => channel === 'character-proposal:list-pending-finalized'
+      && invoke.mock.calls.some(([called]) => called === 'finalized-character:decide-state-candidate')
+      ? Promise.reject(ipcError(channel)) : base(channel, ...args))
+    await render()
+    await vi.waitFor(() => expect(banner()?.textContent).toContain('1 项待处理的角色建议'))
+    await click('检查定稿状态建议')
+    await vi.waitFor(() => expect(banner()?.textContent).toContain('建议：北塔'))
+    await click('接受状态建议')
+    await vi.waitFor(() => expect(banner()?.querySelector('.pi-notice-title')?.textContent).toBe('角色建议读取失败'))
+    expect(banner()!.querySelector('.pi-notice-text')?.textContent).toBe('定稿与导入留下的角色建议这次没读出来，可以重新读取。')
   })
 
   it('读取失败后点「重新读取」重读两份列表，读到就换成待处理的建议', async () => {
