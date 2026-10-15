@@ -87,8 +87,9 @@ async function countRecoveryReads(app) {
     for (const channel of channels) {
       const original = handlers.get(channel)
       handlers.set(channel, async (...args) => {
-        const result = await original(...args)
+        // 记在请求到达时的窗口里：清零前发出、清零后才答完的请求不算进新窗口
         const reads = globalThis.__driveRecoveryReads
+        const result = await original(...args)
         reads[channel] += 1
         if (channel === 'generation:list') reads.views = result.length
         return result
