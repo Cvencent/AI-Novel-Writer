@@ -500,6 +500,7 @@ describe('explicit planning recovery with real SQLite', () => {
     const context = f.owner.readContext(run.handle)
     expect(context.plotOutlineRecovery).toMatchObject({ draft: outlineEntry(3), writeState: { kind: 'blocked', reason: 'source-invalid' } })
     expect(context.planningContinuation?.state).toBe('source-invalid')
+    expect(context.plotOutline?.confirmedPrefix).toBeNull()
     await expect(f.owner.resume(run.handle)).rejects.toThrow('GENERATION_RECOVERY_UNAUTHORIZED')
     await expect(f.owner.execute({ handle: run.handle, invocationNonce: 'after-upgrade', task: { ...task, purpose: plotOutlinePurpose(4, 'normal') } }))
       .rejects.toThrow('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
