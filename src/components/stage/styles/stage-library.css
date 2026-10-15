@@ -108,6 +108,11 @@
   transition-property: border-color, background-color, transform;
 }
 
+/* 悬停规则排除了聚焦，导入卡这时会落到纸墨文字按钮的灰色悬停底上；聚焦未按下时三张卡一样是纸色 */
+.stage-library .stage-start:focus-visible:not(:active, [aria-expanded='true']) {
+  background: var(--paper);
+}
+
 .stage-start-icon {
   width: 34px;
   height: 34px;
@@ -596,7 +601,10 @@
   color: var(--ink-3);
 }
 
-/* 减少动态效果：书封不抬起不落下，悬停改成投影加深、按下改成内凹，仍看得出指着哪本、按下了没有 */
+/*
+ * 减少动态效果：书封不抬起不落下，悬停改成投影加深、按下改成内凹，仍看得出指着哪本、按下了没有。
+ * 选中的书保留强调色圈，键盘按下保留焦点环，内凹叠在它们里面。
+ */
 @media (prefers-reduced-motion: reduce) {
   .stage-library .stage-start:is(:active, [aria-expanded='true']) { transform: none; }
   .stage-book-cover:hover, .stage-book-cover:active { transform: none; }
@@ -612,5 +620,35 @@
       inset 6px 0 0 color-mix(in srgb, var(--cover-ink) 10%, transparent),
       inset 0 2px 6px var(--sink),
       0 0 0 1px var(--rule-strong);
+  }
+  .stage-book:not([data-selected]) .stage-book-cover:active:focus-visible {
+    box-shadow:
+      inset 6px 0 0 color-mix(in srgb, var(--cover-ink) 10%, transparent),
+      inset 0 2px 6px var(--sink),
+      var(--focus-ring);
+  }
+  .stage-book[data-selected] .stage-book-cover:hover:not(:active, :focus-visible) {
+    box-shadow:
+      inset 6px 0 0 color-mix(in srgb, var(--cover-ink) 10%, transparent),
+      0 0 0 2px var(--surface),
+      0 0 0 4px var(--accent),
+      var(--stage-cover-drop),
+      0 10px 18px -10px var(--lift);
+  }
+  .stage-book[data-selected] .stage-book-cover:active:not(:focus-visible) {
+    box-shadow:
+      inset 6px 0 0 color-mix(in srgb, var(--cover-ink) 10%, transparent),
+      inset 0 2px 6px var(--sink),
+      0 0 0 2px var(--surface),
+      0 0 0 4px var(--accent);
+  }
+  .stage-book[data-selected] .stage-book-cover:active:focus-visible {
+    box-shadow:
+      inset 6px 0 0 color-mix(in srgb, var(--cover-ink) 10%, transparent),
+      inset 0 2px 6px var(--sink),
+      0 0 0 2px var(--surface),
+      0 0 0 4px var(--accent),
+      0 0 0 6px var(--surface),
+      0 0 0 8px var(--accent);
   }
 }
