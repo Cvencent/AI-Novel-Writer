@@ -11,7 +11,10 @@ const latinWord = /[A-Za-z]{2,}/
  * 英文里数量后的复数名词，中间可隔一两个修饰词（the ${n} existing blueprints）：数量是 1 时读成「1 chapters」，要走 pluralEn。
  */
 const fixedPluralAfterCount = /^ (?:[a-z]+ ){0,2}(?:chapters|files|characters|items|lines|calls|drafts|words|documents|chunks|days|notes|versions|entries|kinds|blueprints|events|minutes|passages)\b/
-const pluralHint = "Write the noun with pluralEn(count, 'chapter'); pass irregular plurals explicitly, as in pluralEn(count, 'entry', 'entries')."
+/** 数量前的 these、those 与数量后直接跟的 have、are：数量是 1 时读成「these 1 log line」「1 have」。 */
+const pluralBeforeCount = /\b(?:these|those)\s$/i
+const pluralVerbAfterCount = /^ (?:have|are|were)\b/
+const pluralHint ="Write the noun with pluralEn(count, 'chapter'); pass irregular plurals explicitly, as in pluralEn(count, 'entry', 'entries')."
 /** 英文文案在哪个实参：(locale, 中文, 英文) 形式的翻译函数在第 3 个，其余在第 2 个。 */
 const englishArgumentIndex = new Map([['localize', 2], ['stepDesc', 2], ['mainText', 2]])
 
@@ -261,9 +264,12 @@ function isUnsafeErrorForward(node, sourceFile, bindings, seen = new Set()) {
 function inspectEnglishCounts(violations, root, file, sourceFile, node) {
   if (
     ts.isTemplateExpression(node)
-    // 「1–${n} chapters」里的数量是范围的终点，永远不是 1
-    && node.templateSpans.some((span, index) => fixedPluralAfterCount.test(span.literal.text)
-      && !/[-–]$/.test(index === 0 ? node.head.text : node.templateSpans[index - 1].literal.text))
+    && node.templateSpans.some((span, index) => {
+      const before = index === 0 ? node.head.text : node.templateSpans[index - 1].literal.text
+      // 「1–${n} chapters」里的数量是范围的终点，永远不是 1
+      if (/[-–]$/.test(before)) return false
+      return fixedPluralAfterCount.test(span.literal.text) || pluralBeforeCount.test(before) || pluralVerbAfterCount.test(span.literal.text)
+    })
   ) {
     add(violations, root, file, sourceFile, node, node.getText(sourceFile), 'english-plural')
   }
