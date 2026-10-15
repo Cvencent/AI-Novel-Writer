@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react'
-import { userEvent } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { createRoot, type Root } from 'react-dom/client'
 import type { StoreApi } from 'zustand'
 
@@ -65,7 +65,9 @@ async function render() {
   await act(async () => root!.render(<StageCharacters projectKey={session.projectPath} />))
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  // 宿主 1200 宽；视口比它窄时焦点移到屏外按钮会滚动页面，滚动事件晚一帧到达时会关掉刚打开的菜单。
+  await page.viewport(1280, 960)
   pendingStates = []
   pendingDecisions = 0
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
