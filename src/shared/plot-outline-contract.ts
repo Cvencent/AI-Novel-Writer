@@ -55,7 +55,7 @@ export interface PlotOutlineRecovery {
   leaseEpoch: string
   draft: string
   completeChapters: number[]
-  writeState: { kind: 'ready' } | { kind: 'blocked'; reason: 'in-flight' | 'source-changed' | 'author-saved' }
+  writeState: { kind: 'ready' } | { kind: 'blocked'; reason: 'in-flight' | 'source-changed' | 'author-saved' | 'source-invalid' }
   saved: PlotOutlineAuthorEditReceipt | null
 }
 export interface PlotOutlineSource {
@@ -66,7 +66,8 @@ export type PlotOutlineCursor =
   | { kind: 'request'; chapterNumber: number; attempt: PlotOutlineAttemptKind }
   | { kind: 'accept'; chapterNumber: number; artifactIds: string[]; text: string }
   | { kind: 'complete' }
-  | { kind: 'stopped'; chapterNumber: number; reason: 'in-flight' | 'unknown-completion' | 'attempts-exhausted' }
+  /** source-invalid：开跑时冻结的大纲按现行规则无效（升级前开跑、章节乱序或重复），只能读出与复制，不能续写或写回。 */
+  | { kind: 'stopped'; chapterNumber: number; reason: 'in-flight' | 'unknown-completion' | 'attempts-exhausted' | 'source-invalid' }
 export interface PlotOutlineProgress {
   protocol: typeof PLOT_OUTLINE_PROTOCOL
   range: PlotOutlineRange
@@ -287,7 +288,13 @@ export function validPlotOutlineAuthorPrefix(synopsis: string, progress: Pick<Pl
     && renderPlotOutlineRange(authored, range, expected) === synopsis
 }
 
+export function plotOutlineSourceInvalid(progress: Pick<PlotOutlineProgress, 'cursor'>): boolean {
+  return progress.cursor.kind === 'stopped' && progress.cursor.reason === 'source-invalid'
+}
+
 export function plotOutlineRecoveryDraft(progress: PlotOutlineProgress, failedCandidate?: string): string {
+  // 来源无效时拼不回正式大纲，只留已生成的章节与失败的候选供复制。
+  if (plotOutlineSourceInvalid(progress)) return joinPlotOutlineEntries(progress.composition?.text ?? '', failedCandidate ?? '')
   const completed = progress.composition?.chapters?.length ?? 0
   const chapter = progress.range.from + completed
   let body = progress.composition?.text ?? ''
