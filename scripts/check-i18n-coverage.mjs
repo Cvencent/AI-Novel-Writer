@@ -7,8 +7,13 @@ import ts from 'typescript'
 
 const han = /\p{Script=Han}/u
 const latinWord = /[A-Za-z]{2,}/
-/** 英文里紧跟在数量后的复数名词：数量是 1 时读成「1 chapters」，要走 pluralEn。 */
-const fixedPluralAfterCount = /^ (?:chapters|files|characters|items|lines|log lines|calls|drafts|words|documents|chunks|days|notes|versions|entries|kinds)\b/
+/**
+ * 英文里数量后的复数名词，中间可隔一两个修饰词（the ${n} existing blueprints）：数量是 1 时读成「1 chapters」，要走 pluralEn。
+ */
+const fixedPluralAfterCount = /^ (?:[a-z]+ ){0,2}(?:chapters|files|characters|items|lines|calls|drafts|words|documents|chunks|days|notes|versions|entries|kinds|blueprints|events|minutes|passages)\b/
+const pluralHint = "Write the noun with pluralEn(count, 'chapter'); pass irregular plurals explicitly, as in pluralEn(count, 'entry', 'entries')."
+/** 英文文案在哪个实参：(locale, 中文, 英文) 形式的翻译函数在第 3 个，其余在第 2 个。 */
+const englishArgumentIndex = new Map([['localize', 2], ['stepDesc', 2], ['mainText', 2]])
 
 /**
  * The broad renderer roots preserve the existing visible-copy check.  The
@@ -256,7 +261,9 @@ function isUnsafeErrorForward(node, sourceFile, bindings, seen = new Set()) {
 function inspectEnglishCounts(violations, root, file, sourceFile, node) {
   if (
     ts.isTemplateExpression(node)
-    && node.templateSpans.some(span => fixedPluralAfterCount.test(span.literal.text))
+    // 「1–${n} chapters」里的数量是范围的终点，永远不是 1
+    && node.templateSpans.some((span, index) => fixedPluralAfterCount.test(span.literal.text)
+      && !/[-–]$/.test(index === 0 ? node.head.text : node.templateSpans[index - 1].literal.text))
   ) {
     add(violations, root, file, sourceFile, node, node.getText(sourceFile), 'english-plural')
   }
@@ -327,8 +334,9 @@ function inspectRendererFile(violations, root, file, sourceFile) {
   const bindings = collectBindings(sourceFile)
 
   const visit = (node) => {
-    if (isLocalizedCall(node, sourceFile) && node.arguments.length >= 2) {
-      inspectEnglishCounts(violations, root, file, sourceFile, node.arguments[1])
+    if (isLocalizedCall(node, sourceFile)) {
+      const english = node.arguments[englishArgumentIndex.get(callName(node, sourceFile)) ?? 1]
+      if (english) inspectEnglishCounts(violations, root, file, sourceFile, english)
     }
     if (
       promptSettings
@@ -467,6 +475,7 @@ export function runI18nCoverageCheck(root = process.cwd()) {
   const violations = collectI18nCoverageViolations(root)
   if (violations.length > 0) {
     console.error(`Found ${violations.length} unlocalized visible strings:\n${violations.join('\n')}`)
+    if (violations.some(violation => violation.includes('[english-plural]'))) console.error(pluralHint)
     return 1
   }
   console.log('i18n coverage check passed: no unlocalized renderer or main-boundary copy')

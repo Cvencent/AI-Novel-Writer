@@ -164,6 +164,22 @@ describe('i18n coverage boundary scanner', () => {
     }
   })
 
+  it('accepts a plural noun after the end of a number range, which is never one', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ai-novel-i18n-plural-range-'))
+    try {
+      writeFixture(root, 'src/components/stage/Range.tsx', `
+        const text = (zh: string, en: string) => zh || en
+        export function Range({ limit, total }: { limit: number; total: number }) {
+          return <p>{text(\`请选择 1–\${limit} 章\`, \`Select 1-\${limit} consecutive chapters within chapters 1–\${total}.\`)}</p>
+        }
+      `)
+
+      expect(runChecker(root)).toEqual({ status: 0, output: 'i18n coverage check passed: no unlocalized renderer or main-boundary copy\n' })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('checks visible copy in review-checklist.ts like the review report it was moved out of', () => {
     const root = mkdtempSync(join(tmpdir(), 'ai-novel-i18n-review-checklist-'))
     try {
