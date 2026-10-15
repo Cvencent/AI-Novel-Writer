@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, useState, type ReactNode } from 'react'
+import { act, useEffect, useState, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { page, userEvent } from 'vitest/browser'
 
@@ -162,7 +162,7 @@ describe('退出确认与错误提示谁后弹出谁在上面', () => {
     let request!: (next: WindowCloseGuard['exitRequest']) => void
     function Harness() {
       const [exitRequest, setExitRequest] = useState<WindowCloseGuard['exitRequest']>(null)
-      request = setExitRequest
+      useEffect(() => { request = setExitRequest }, [])
       return <StageRoot theme="paper" exitGuard={idleGuard({ exitRequest, cancelExit: async () => setExitRequest(null) })}><p>正文</p></StageRoot>
     }
     host = document.createElement('div')
