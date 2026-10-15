@@ -509,6 +509,39 @@ describe('explicit planning recovery with real SQLite', () => {
     expect(ProjectCoreRepository.get(f.db)!.synopsis).toBe(legacy)
     expect(dispatch).toHaveBeenCalledTimes(1)
   })
+  it('升级前以乱序大纲开跑、已存下作者编辑的任务：同一编辑的重试仍返回已保存，换一次新的写入仍拒绝', async () => {
+    const dispatch = vi.fn<GenerationRunServiceDependencies['dispatch']>(async (request, options) => {
+      options.onVisible({ kind: 'delta', text: outlineEntry(Number((request as { task: GenerationTask }).task.purpose.split(':')[2])) })
+      return { finishReason: 'stop', usage: null }
+    })
+    const f = fixture(dispatch), expected = { totalChapters: 5, writingLanguage: 'zh-CN' as const }
+    f.db.prepare('UPDATE project_core SET synopsis=?,total_chapters=5').run(renderPlotOutlineSynopsis([1, 2, 3, 4, 5].map(outlineEntry).join('\n\n'), 5, expected))
+    const run = f.owner.begin(outlineSelection(f, 5, 3))
+    await f.owner.execute({ handle: run.handle, invocationNonce: 'three', task: outlineTask(run.plotOutline!) }); acceptOutline(f.owner, run.handle)
+    const legacy = renderPlotOutlineSynopsis([1, 5, 2, 3, 4].map(outlineEntry).join('\n\n'), 5, expected)
+    // 旧版本开跑时冻结的就是这份乱序大纲：来源引用的哈希也按它重算，与升级前落库的绑定一致。
+    f.db.prepare("UPDATE generation_runs SET binding_json=json_set(binding_json,'$.sourceManifest.plotOutlineSource.core.synopsis',?)").run(legacy)
+    f.db.prepare('UPDATE project_core SET synopsis=?').run(legacy)
+    const repository = new GenerationRunRepository(() => f.db), frozen = repository.get(run.handle.runId).binding
+    const sourceDeps = { db: f.db, projectStorageRoot: path.join(f.root, 'project'), globalDataRoot: path.join(f.root, 'global'),
+      readBuiltinPrompt: (key: string, language: 'zh-CN' | 'en-US') => JSON.stringify(getBuiltinPromptTemplate(key, language)), readBuiltinSkill: readBuiltinWritingSkill }
+    const legacyRefs = rebuildGenerationSourceBinding(sourceDeps, frozen, frozen.epoch, undefined, readMainGenerationPolicy(frozen.sourceManifest.policy)).binding.sourceRefs
+    f.db.prepare("UPDATE generation_runs SET binding_json=json_set(binding_json,'$.sourceRefs',json(?))").run(JSON.stringify(legacyRefs))
+    // 旧版本照当时的规则存下了作者对第 3 章的编辑：回执与正式大纲一起落库，渲染端的快照还停在待确认。
+    const saved = legacy.replace('林岚确认第3份证词', '作者改写了第3份证词')
+    f.db.transaction(() => {
+      repository.recordPlotOutlineAuthorEdit(repository.plotOutlineAuthorEditReceipt(run.handle.runId, 'saved-before-upgrade', { from: 3, to: 3 }, textHash(saved)))
+      f.db.prepare('UPDATE project_core SET synopsis=?').run(saved)
+    }).immediate()
+
+    const context = f.owner.readContext(run.handle)
+    const edit = (operationId: string): ProjectCoreSynopsisCommitRequest => ({ synopsis: saved, expected: context.plotOutline!.sourceExpected,
+      authorRecovery: { sourceHandle: run.handle, leaseEpoch: context.plotOutlineRecovery!.leaseEpoch, operationId, committedRange: { from: 3, to: 3 } } })
+    expect(f.db.transaction(() => f.owner.commitPlotOutlineAuthorEdit(edit('saved-before-upgrade'))).immediate())
+      .toMatchObject({ operationId: 'saved-before-upgrade', committedRange: { from: 3, to: 3 }, idempotent: true })
+    expect(() => f.db.transaction(() => f.owner.commitPlotOutlineAuthorEdit(edit('another-after-upgrade'))).immediate()).toThrow('GENERATION_PLOT_OUTLINE_AUTHOR_RECEIPT_CONFLICT')
+    expect(ProjectCoreRepository.get(f.db)!.synopsis).toBe(saved)
+  })
   it('rejects explicit continuation while in flight or after a source change without creating a replacement', async () => {
     let release!: () => void
     const dispatch = vi.fn<GenerationRunServiceDependencies['dispatch']>(async () => {
