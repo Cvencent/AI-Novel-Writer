@@ -392,6 +392,8 @@
 .pi-dialog-close { position: absolute; top: var(--s-4); right: var(--s-4); }
 /* 命令式 alertError()/confirm() 关掉时 140ms 淡出，与通知退场同一节奏；Radix 等动画走完才卸载，调用方随后拿到结果。
    动画名不能含进场的 pi-fade：Radix Presence 用子串比对动画名，进场被打断时的 animationcancel 会被当成退场结束 */
+.pi-scrim--prompt { z-index: var(--z-prompt-scrim); }
+.pi-dialog--prompt { z-index: var(--z-prompt-dialog); }
 .pi-scrim--prompt[data-state="closed"], .pi-dialog--prompt[data-state="closed"] { animation: pi-vanish var(--dur-fast) var(--ease) forwards; }
 /*
  * 旧 ui/Dialog 的调用方在新外壳下也用这张浮笺。宽度上限、高度上限与底栏排法仍听调用方的 Tailwind 类：

@@ -2,18 +2,22 @@ import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { useLocaleStore } from '../../stores/locale-store'
 import { Button } from '../ui/Button'
 import { useDialogFocusReturn } from '../ui/focus-return'
+import { inkOverlayHost } from '../ui/ink-overlay'
 import { keepToastStackClickable } from '../ui/ToastStack'
 import type { WindowCloseGuard } from '../layout/use-window-close-guard'
 
-/** 关窗时还有未保存内容或运行中的任务。判定与处理在 useWindowCloseGuard，这里只是新外壳的呈现。 */
-export default function ExitGuardDialog({ guard, container }: { guard: WindowCloseGuard; container: HTMLElement | null }) {
+/**
+ * 关窗时还有未保存内容或运行中的任务。判定与处理在 useWindowCloseGuard，这里只是新外壳的呈现。
+ * 挂在命令式弹窗所在的纸墨宿主里：退出确认与错误提示谁后弹出谁在上面。
+ */
+export default function ExitGuardDialog({ guard }: { guard: WindowCloseGuard }) {
   const text = useLocaleStore(s => s.text)
   const { exitRequest, exitBusy, exitError, cancelExit, discardAndExit, saveAndExit } = guard
   const blocked = Boolean(exitRequest?.workflowBlocked)
   const focusReturn = useDialogFocusReturn()
   return (
     <DialogPrimitive.Root open={exitRequest !== null} onOpenChange={open => { if (!open) void cancelExit() }}>
-      <DialogPrimitive.Portal container={container}>
+      <DialogPrimitive.Portal container={inkOverlayHost()}>
         <DialogPrimitive.Overlay className="pi-scrim stage-exit-scrim" />
         <DialogPrimitive.Content className="pi-dialog stage-dialog stage-exit-dialog" onPointerDownOutside={keepToastStackClickable}
           onOpenAutoFocus={focusReturn.remember} onCloseAutoFocus={focusReturn.onCloseAutoFocus}>
