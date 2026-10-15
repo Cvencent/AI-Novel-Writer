@@ -687,6 +687,32 @@ describe('GeneratePlotArchitectureCommand 批次状态机', () => {
     expect(harness.synopsisCommits).toHaveLength(0)
   })
 
+  it('暂停的来源无效大纲任务点「断点续写」：主进程拒绝续写时说明与恢复入口一致，不露内部错误码', async () => {
+    useLLMStore.setState({ defaultModelId: '合成模型' })
+    const harness = harnessWith()
+    const synopsis = `# 情节大纲\n\n${[1, 5, 2, 3, 4].map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}`
+    const plotOutline: PlotOutlineProgress = {
+      protocol: PLOT_OUTLINE_PROTOCOL, range: { from: 3, to: 5 }, content: PLOT_OUTLINE_CONTENT, targetUnits: 600,
+      cursor: { kind: 'stopped', chapterNumber: 3, reason: 'source-invalid' }, confirmedPrefix: null, composition: null,
+      sourceExpected: { synopsis, premise, charactersArch, worldbuilding, genre: novelConfig.genre, totalChapters: 5, wordsPerChapter: 3000,
+        writingLanguage: 'zh-CN', plotStructure: 'three_act', narrativePov: 'third_limited', globalGuidance: novelConfig.globalGuidance },
+    }
+    const generation = mainOwnedResponses(harness, '不会发送', plotOutline)
+    const original = harness.invoke.getMockImplementation()! as (channel: string, ...args: unknown[]) => Promise<unknown>
+    harness.invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'generation:read') return { ...(await original(channel, ...args) as object), status: 'paused', nonReplayable: true, plotOutline }
+      if (channel === 'generation:resume') throw new Error("Error invoking remote method 'generation:resume': Error: GENERATION_PLOT_OUTLINE_PREFIX_INVALID")
+      return original(channel, ...args)
+    })
+
+    const failure = await makeCommand({ resumeSynopsis: true }, true).execute({ step: {}, context, callbacks }).catch((error: Error) => error)
+
+    expect((failure as Error).message).toBe('这次生成开跑时，大纲的章节没有按章号顺序排列，不能接着生成，恢复稿也不能保存。可以复制已生成的章节，把大纲排好后重新生成。')
+    expect(harness.invoke.mock.calls.some(([channel]) => channel === 'generation:resume')).toBe(true)
+    expect(generation.execute).not.toHaveBeenCalled()
+    expect(harness.synopsisCommits).toHaveLength(0)
+  })
+
   it('主进程恢复仍拒绝同 run 合成正文在读取后变化', async () => {
     useLLMStore.setState({ defaultModelId: '合成模型' })
     const prefixBody = `第1–20章：已确认前缀\n${'林舟依据税册追查并守住家人，行动和后果按章节连续。'.repeat(5)}`
