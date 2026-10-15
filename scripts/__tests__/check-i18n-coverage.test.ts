@@ -131,6 +131,39 @@ describe('i18n coverage boundary scanner', () => {
     }
   })
 
+  it('scans the English argument of three-argument translators, counts followed by modifiers, and points irregular plurals at the explicit form', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ai-novel-i18n-plural-gaps-'))
+    try {
+      writeFixture(root, 'src/components/stage/Gaps.tsx', `
+        const text = (zh: string, en: string) => zh || en
+        const localize = (locale: string, zh: string, en: string) => locale === 'zh-CN' ? zh : en
+        const stepDesc = (key: string, zh: string, en: string) => key ? zh : en
+        export function Gaps({ n, locale }: { n: number; locale: string }) {
+          return <p title={localize(locale, \`\${n} 章\`, \`\${n} chapters\`)}>
+            {stepDesc('synopsis', \`\${n} 章大纲\`, \`Outline for \${n} chapters\`)}
+            {text(\`现有 \${n} 章蓝图\`, \`Replace the \${n} existing blueprints\`)}
+            {text(\`\${n} 条事件\`, \`its \${n} confirmed events\`)}
+            {text(\`\${n} 段\`, \`\${n} text chunks\`)}
+            {text(\`\${n} 条\`, \`\${n} entries\`)}
+          </p>
+        }
+      `)
+
+      const result = runChecker(root)
+
+      expect(result.status).toBe(1)
+      expect(result.output).toContain('Found 6 unlocalized visible strings')
+      expect(result.output).toContain('src/components/stage/Gaps.tsx:6 [english-plural] `${n} chapters`')
+      expect(result.output).toContain('src/components/stage/Gaps.tsx:7 [english-plural] `Outline for ${n} chapters`')
+      expect(result.output).toContain('src/components/stage/Gaps.tsx:8 [english-plural] `Replace the ${n} existing blueprints`')
+      expect(result.output).toContain('src/components/stage/Gaps.tsx:9 [english-plural] `its ${n} confirmed events`')
+      expect(result.output).toContain('src/components/stage/Gaps.tsx:10 [english-plural] `${n} text chunks`')
+      expect(result.output).toContain("Write the noun with pluralEn(count, 'chapter'); pass irregular plurals explicitly, as in pluralEn(count, 'entry', 'entries').")
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('checks visible copy in review-checklist.ts like the review report it was moved out of', () => {
     const root = mkdtempSync(join(tmpdir(), 'ai-novel-i18n-review-checklist-'))
     try {
