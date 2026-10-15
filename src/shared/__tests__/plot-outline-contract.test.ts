@@ -93,6 +93,38 @@ describe('chapter Markdown outline contract', () => {
     expect(recovery).toBe(`${head}\n\n${join(1, 2, 3)}\n\n${tail(3)}`)
   })
 
+  it.each([
+    ['没有顶层标题', 'zh-CN', '## 第0章：序章\n灯塔熄灭前夜。'],
+    ['no top-level title', 'en-US', '## Chapter 0: Prologue\nThe night before.'],
+    ['自定义顶层标题', 'zh-CN', '# 灯塔纪事\n\n## 第0章：序章\n灯塔熄灭前夜。'],
+    ['a custom top-level title', 'en-US', '# The Lighthouse\n\n## Chapter 0: Prologue\nThe night before.'],
+  ] as const)('只有序章、%s的作品生成第 1–2 章后补上标准标题，能从第 3 章续写，序章与第 1–2 章逐字不变', (_, language, authored) => {
+    const { tail, expected, join } = prologueBook(language, '')
+    const title = language === 'zh-CN' ? '# 情节大纲' : '# Plot Outline'
+    const afterFirst = `${title}\n\n${authored}\n\n${join(1, 2)}\n\n${tail(2)}`
+    expect(renderPlotOutlineRange(join(1, 2), { from: 1, to: 2 }, expected(authored))).toBe(afterFirst)
+    expect(validPlotOutlineAuthorPrefix(afterFirst, { range: { from: 1, to: 2 }, sourceExpected: expected(authored), confirmedPrefix: '' }, { from: 1, to: 2 })).toBe(true)
+
+    const source = expected(afterFirst)
+    expect(outlineProgress(afterFirst, null, language, 24)).toEqual({ kind: 'partial', coveredTo: 2, total: 24 })
+    expect(plotOutlineNextChapter(source)).toBe(3)
+    expect(plotOutlineRangeEffect(source, { from: 3, to: 4 })).toEqual({ kind: 'continue', after: 2 })
+    expect(renderPlotOutlineRange(join(3, 4), { from: 3, to: 4 }, source)).toBe(`${title}\n\n${authored}\n\n${join(1, 2, 3, 4)}\n\n${tail(4)}`)
+  })
+
+  it.each([
+    ['zh-CN', '# 情节大纲\n\n## 第0章：序章\n灯塔熄灭前夜。', '> 本大纲已覆盖至第 2 章（全书 30 章），其余章节将在后续批次继续生成。'],
+    ['zh-CN', '## 第0章：序章\n灯塔熄灭前夜。', '> 本大纲已覆盖至第 5 章（全书 24 章），其余章节将在后续批次继续生成。'],
+    ['en-US', '# Plot Outline\n\n## Chapter 0: Prologue\nThe night before.', '> This outline covers chapters 1-2 of 30; the remaining chapters will be generated in later batches.'],
+  ] as const)('只有序章、末尾还留着旧覆盖说明（%s）：生成第 1–2 章后旧说明去掉，新说明只在最后一行', (language, prologueText, staleTail) => {
+    const { tail, expected, join } = prologueBook(language, '')
+    const title = language === 'zh-CN' ? '# 情节大纲' : '# Plot Outline'
+    const saved = renderPlotOutlineRange(join(1, 2), { from: 1, to: 2 }, expected(`${prologueText}\n\n${staleTail}`))
+    expect(saved).toBe(`${title}\n\n${prologueText.replace(`${title}\n\n`, '')}\n\n${join(1, 2)}\n\n${tail(2)}`)
+    expect(saved.split('\n').filter(line => line.startsWith('> ')).length).toBe(1)
+    expect(saved.split('\n').at(-1)).toBe(tail(2))
+  })
+
   it.each([['zh-CN', '第0章'], ['en-US', 'Chapter 0']] as const)('序章加第 1–5 章（%s）从第 3 章重写第 3–5 章：有效，序章与第 1–2 章原样保留', (language, prologue) => {
     const { head, tail, expected, join } = prologueBook(language, prologue)
     const source = expected(`${head}\n\n${join(1, 2, 3, 4, 5)}\n\n${tail(5)}`)
