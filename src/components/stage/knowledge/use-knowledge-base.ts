@@ -60,6 +60,13 @@ export function useKnowledgeIndex() {
     }
   }, [locale])
 
+  // 设置里保存或删除检索模型只改模型仓库，设置页与后台挂着的知识库页都不会重新挂载；模型配置变了就重新检查。
+  const models = useLLMStore(s => s.models)
+  const embeddingModelId = useLLMStore(s => s.defaultEmbeddingModelId)
+  useEffect(() => {
+    void loadStatus()
+  }, [loadStatus, models, embeddingModelId])
+
   const backfill = useCallback(async () => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession) return

@@ -1,5 +1,3 @@
-import { useEffect } from 'react'
-import { useLLMStore } from '../../../stores/llm-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { getVectorRebuildPresentation } from '../../pages/knowledge-rebuild-presentation'
@@ -14,14 +12,6 @@ export default function KnowledgeIndexSection() {
   const project = useProjectStore(s => s.currentProject)
   const { status, statusError, backfilling, loadStatus, backfill } = useKnowledgeIndex()
   const presentation = getVectorRebuildPresentation(status)
-  // 同一页的检索模型区保存或删除模型只改模型仓库，不会重新挂载这里；模型配置变了就重新检查。
-  const models = useLLMStore(s => s.models)
-  const embeddingModelId = useLLMStore(s => s.defaultEmbeddingModelId)
-
-  useEffect(() => {
-    void loadStatus()
-  }, [loadStatus, models, embeddingModelId])
-
   const description = !project
     ? text('打开一部作品后，可以在这里检查它的检索索引。', 'Open a book to check its search index here.')
     : !presentation
