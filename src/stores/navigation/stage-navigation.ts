@@ -1,3 +1,4 @@
+import { leaveSettingsThen } from '../../components/settings/unsaved-settings'
 import { toast } from '../../components/ui/Toast'
 import type { DraftMeta } from '../../services/draft-index'
 import { chapterTabName } from '../../shared/chapter-label'
@@ -102,7 +103,7 @@ async function openManuscript(): Promise<void> {
   else openPageTab('blueprint')
 }
 
-/** 新外壳下各意图的落点。设置与写作此章仍由旧对话框承接，RD-5、RD-7 换成新页面。 */
+/** 新外壳下各意图的落点。设置是内容面板里的设置页；写作此章仍由旧对话框承接，RD-7 换成新弹层。 */
 export function stageNavigate(intent: NavigationIntent): void {
   if (intent.kind === 'settings') {
     useLayoutStore.setState({ settingsOpen: true, settingsSection: intent.section })
@@ -112,6 +113,15 @@ export function stageNavigate(intent: NavigationIntent): void {
     useLayoutStore.setState(chapterWritePrefill(intent.chapterNumber, intent.write))
     return
   }
+  // 去具体的阶段、资料页或章节，或从书房进作品，都会收起设置页，有没保存的输入时先确认；
+  // 已在作品里时只回到作品（打开作品后的默认落点）或打开运行侧页，设置页留着。
+  const staysInSettings = (intent.kind === 'run' || (intent.kind === 'stage' && !intent.stage))
+    && useLayoutStore.getState().sidebarView !== 'home'
+  if (staysInSettings) arrive(intent)
+  else leaveSettingsThen(() => arrive(intent))
+}
+
+function arrive(intent: Exclude<NavigationIntent, { kind: 'settings' }>): void {
   enterWork()
   switch (intent.kind) {
     case 'stage':

@@ -28,12 +28,41 @@ export async function chapterRows(page) {
   })))
 }
 
-/** 书房里的书按可访问名称找，英文界面是「Open 灯塔」。 */
-export const shelfButton = (page, name) => page.locator('.writer-shelf').getByRole('button', { name })
+/** 书房的书架与右侧概览。点封面只预览，概览里的主按钮才打开。 */
+export const shelf = page => page.getByRole('list', { name: '最近的作品' })
+export const cover = (page, name) => shelf(page).getByRole('button', { name: `预览《${name}》` })
+export const overview = (page, name) => page.getByRole('region', { name: `《${name}》概览` })
 
+export async function previewBook(page, name) {
+  await cover(page, name).click()
+  await overview(page, name).waitFor({ state: 'visible' })
+}
+
+/** 英文界面的书房：封面是「Preview “书名”」，概览里的主按钮是「Open “书名”」。 */
+export async function openFromLibraryEn(page, name) {
+  await page.getByRole('list', { name: 'Recent books' }).getByRole('button', { name: `Preview “${name}”` }).click()
+  await page.getByRole('region', { name: `“${name}” overview` }).getByRole('button', { name: `Open “${name}”` }).click()
+}
+
+/** 书架上的书还没打开：先点封面预览，再点概览里的「打开《书名》」。 */
 export async function openFromLibrary(page, name) {
-  await page.locator('.writer-shelf').getByRole('button', { name: `打开《${name}》` }).click()
+  await previewBook(page, name)
+  await overview(page, name).getByRole('button', { name: `打开《${name}》` }).click()
   await spine(page).waitFor({ state: 'visible' })
+}
+
+/** 从 Ctrl K 打开书架上的书；同一部作品已打开时也会重新打开（新的项目会话）。 */
+export async function openFromPalette(page, name) {
+  await page.keyboard.press('Control+K')
+  await paletteInput(page).waitFor({ state: 'visible' })
+  await paletteInput(page).fill(name)
+  await palette(page).getByRole('option', { name: new RegExp(`打开《${escape(name)}》`) }).click()
+  await spine(page).waitFor({ state: 'visible' })
+}
+
+export async function bookMenu(page, name, item) {
+  await shelf(page).getByRole('button', { name: `《${name}》更多操作` }).click()
+  await page.getByRole('menuitem', { name: item }).click()
 }
 
 export async function waitForProse(page, text) {
@@ -60,19 +89,52 @@ export async function findChapter(page, query) {
 
 export const capsule = page => root(page).getByRole('button', { expanded: false }).filter({ hasText: /运行中|%|等你确认/ }).first()
 
+/** 设置在新外壳里是内容面板里的页面：左侧「设置分组」导航，当前一页的标题是一级标题。 */
+export const settingsNav = page => root(page).getByRole('navigation', { name: '设置分组' })
+export const settingsLink = (page, name) => settingsNav(page).getByRole('button', { name, exact: true })
+
 export async function openSettings(page) {
   await spine(page).getByRole('button', { name: '设置', exact: true }).click()
-  await page.getByRole('button', { name: '关闭设置' }).waitFor({ state: 'visible' })
+  await settingsNav(page).waitFor({ state: 'visible' })
 }
 
-export function removeFromLibraryButton(page, name) {
-  return page.locator('.writer-shelf').getByRole('button', { name: `从最近项目移除《${name}》` })
+export async function showSettingsPage(page, name) {
+  await settingsLink(page, name).click()
+  await root(page).getByRole('heading', { level: 1, name, exact: true }).waitFor({ state: 'visible' })
+}
+
+export function currentSettingsPage(page) {
+  return settingsNav(page).locator('[aria-current="page"]').innerText()
+}
+
+/** 设置分组导航：每组的名字与其中各页。 */
+export function settingsGroups(page) {
+  return settingsNav(page).getByRole('group').evaluateAll(groups => groups.map(group => ({
+    group: group.getAttribute('aria-label'),
+    pages: [...group.querySelectorAll('button')].map(button => button.textContent.trim()),
+  })))
+}
+
+export async function closeSettings(page) {
+  await settingsNav(page).getByRole('button', { name: /^返回(作品|书房)$/ }).click()
+  await settingsNav(page).waitFor({ state: 'detached' })
+}
+
+/**
+ * 关窗时的退出确认。旧外壳的 Radix 对话框开着时会把它之外的节点设为 aria-hidden，后开的退出确认也在其中，
+ * 按角色找不到，所以按类名找。
+ */
+export const exitDialog = page => page.locator('.stage-dialog').filter({ hasText: '退出前处理未保存的内容' })
+
+export async function openWorkMenuItem(page, name, item) {
+  await root(page).getByRole('banner').getByRole('button', { name: `《${name}》作品菜单` }).click()
+  await page.getByRole('menuitem', { name: item }).click()
 }
 
 export async function backToLibrary(page, name) {
   await root(page).getByRole('banner').getByRole('button', { name: `《${name}》作品菜单` }).click()
   await page.getByRole('menuitem', { name: '回到书房' }).click()
-  await page.locator('.writer-shelf').waitFor({ state: 'visible' })
+  await shelf(page).waitFor({ state: 'visible' })
 }
 
 /**
@@ -114,4 +176,38 @@ export function spineLayout(page) {
         .every(row => getComputedStyle(row.querySelector('svg')).color === getComputedStyle(row).color),
     }
   })
+}
+
+/** 外壳里当前可见的主按钮文字；每层只应有一个。 */
+export function primaryButtons(page) {
+  return root(page).locator('.pi-btn--primary').evaluateAll(buttons => buttons
+    .filter(button => button.getClientRects().length > 0)
+    .map(button => button.textContent.trim()))
+}
+
+export const modelMissingNotice = page => root(page).getByRole('status').filter({ hasText: '还没有连接 AI 模型' })
+
+/** 概览卡里四个阶段的进度：done、active 或 todo。 */
+export function overviewBars(page, name) {
+  return overview(page, name).getByRole('list', { name: '阶段进度' }).locator('[data-stage]')
+    .evaluateAll(rows => Object.fromEntries(rows.map(row => [row.dataset.stage, row.dataset.state])))
+}
+
+export const updateCard = page => root(page).getByRole('status', { name: '应用更新' })
+
+/** 设定页。核心大纲的名字在缺这一项时带「 · 必填」。 */
+export const setupOutline = page => root(page).getByRole('textbox', { name: /^核心大纲/ })
+export const setupNext = page => root(page).getByRole('button', { name: /^下一步：故事架构/ })
+export const setupHint = page => root(page).locator('.stage-setup-foot').getByRole('status')
+export const setupFill = page => root(page).getByRole('button', { name: /^(AI 补全其余设定|AI 正在补全…)$/ })
+export const setupChip = (page, name) => root(page).getByRole('group', { name: '更多设定' }).getByRole('button', { name: new RegExp(`^${escape(name)}`) })
+export const setupPanel = (page, name) => root(page).getByRole('region', { name })
+/** 三项必填的下拉；名字在缺这一项时带「 · 必填」。 */
+export const setupField = (page, name) => root(page).getByRole('combobox', { name: new RegExp(`^${escape(name)}`) })
+
+/** 在核心大纲末尾补一句，让设定标签变成未保存。 */
+export async function dirtySetup(page, addition = '还有一盏灯没有熄灭。') {
+  const outline = setupOutline(page)
+  await outline.fill(`${await outline.inputValue()}${addition}`)
+  await saveStatus(page).filter({ hasText: '未保存' }).waitFor({ state: 'visible' })
 }

@@ -33,6 +33,11 @@
   overflow: hidden;
 }
 
+/* 设置页盖在内容区上时，标签内容保持挂载但不显示。 */
+.stage-content[hidden] {
+  display: none;
+}
+
 .stage-content:focus {
   outline: none;
 }

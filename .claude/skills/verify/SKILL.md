@@ -53,6 +53,8 @@ node scripts/redesign/drive.mjs --scenario <名称> ...
 
 示例作品名为「灯塔」，第 1 章「旧港」，由公开 IPC 预置后从书房打开；打开后等项目树统一刷新结束再继续，之前的画面随刷新进度变化。
 
+场景的 `run` 可以调 `context.restart()`：退出应用、用同一隔离目录冷启动（不重写外观），context 里的 `app`、`page` 换成新的，用于验证「重启后仍保持」。
+
 `scripts/redesign/scenarios.mjs` 里每个场景分三段：`setup` 是单跑时的前置（预置作品、写一章、审稿等），`run` 从前置状态走到截图状态，`after` 在截图后执行。一个会话只跑首个场景的 `setup`，然后依次 `run`、截图、`after`。`baseline-all` 的会话在 `BASELINE_SESSIONS`：
 
 - `baseline-shelf`：`settings` → `new-project`。不预置作品，`new-project` 要在空项目目录里建「灯塔」，与示例作品不能共存。
@@ -144,10 +146,10 @@ node scripts/redesign/drive.mjs --scenario startup-timing --out <目录>
 | `stage-settings-switch` | 从旧外壳打开设置 → 外观 → 界面布局选「创作流程（预览）」，新外壳出现，设置仍停在「外观」 | 新外壳 | 否 | You see |
 | `stage-palette` | Ctrl K 输入「灯」，结果里有第 6 章；`after` 按 Esc 关闭 | Ctrl K 结果 | 否 | |
 | `stage-run` | 卡住模型后从章节蓝图写下一章：运行侧页自动打开，顶栏胶囊展开并显示进度；`after` 先确认侧页开着时 Ctrl K 仍能打开搜索（侧页不是模态层），再放行、等侧页里「上一次运行」显示已完成、新草稿打开 | 运行侧页与胶囊 | 是 | |
-| `stage-library` | 没有打开作品时是书房，没有流程脊 | 书房 | 否 | |
-| `stage-modal-layers` | 改小说配置后打开设置：Ctrl K 不开搜索、Ctrl W 不弹放弃确认；从主进程关窗，退出确认画在设置之上（`isTopmost` 让所有元素参与命中测试后取中心点最上层元素）；`after` 取消退出并关设置 | 退出确认 | 否 | 第 3 条 |
+| `stage-library` | 没有打开作品时是书房，没有流程脊；书架空着时唯一的主按钮是「新建作品」，没有模型时有「还没有连接 AI 模型」引导；书房文字对比度 | 空书房 | 否 | RD-5 lane 2 |
+| `stage-modal-layers` | 改设定后从作品菜单打开旧的「导出项目」对话框：Ctrl K 不开搜索、Ctrl W 不弹放弃确认；从主进程关窗，退出确认画在对话框之上（`isTopmost` 让所有元素参与命中测试后取中心点最上层元素）；`after` 取消退出并关掉导出。RD-5 起设置是页面而不是弹窗，所以模态层改用导出对话框；Radix 对话框会把退出确认设为 aria-hidden，页面对象 `exitDialog` 按类名找它 | 退出确认 | 否 | 第 3 条 |
 | `stage-close-key` | 书房里、搜索框里各按一次 Ctrl W，页面都拦下（`defaultPrevented`），应用仍在。应用菜单有 CommandOrControl+W 的「关闭」，但驱动注入的按键到不了菜单快捷键，所以断言的是拦截 | 搜索框 | 否 | 第 4 条 |
-| `stage-reopen` | 从作品菜单回到书房再打开同一部作品，再次落到第 3 章 | 第 3 章正文 | 否 | 第 8 条 |
+| `stage-reopen` | 从作品菜单回到书房，用 Ctrl K「打开《灯塔》」重新打开同一部作品（新的项目会话），再次落到第 3 章 | 第 3 章正文 | 否 | 第 8 条 |
 | `stage-partial-blueprint` | 规划 100 章、只有 12 章蓝图：蓝图算完成，落点仍是第 3 章 | 第 3 章正文 | 否 | 第 6 条 |
 | `stage-revert-after-final` | 第 1 章定稿后再建一份新草稿（版本历史「回退到此版本」的效果）：第 1 章成了最早写到一半的章，打开作品即落在它上面；章节列表按草稿显示，点它打开的是新草稿 | 第 1 章新草稿 | 否 | 第 7 条 |
 | `stage-new-project` | 新外壳里新建作品：设定进行中、其余未开始；外壳文字对比度、进度环半径 8.5、设定说明在名字下一行、作品资料图标跟随行文字色 | 新作品首屏 | 否 | 第 20、23、24 条 |
@@ -190,8 +192,39 @@ node scripts/redesign/drive.mjs --scenario chapter-switch --shell stage --out <�
 
 `run-olddata` 的状态对比只看对话内容：重开作品时主进程会把旧会话里没写完的助手任务登记为暂停、改期限，这是主进程的租约记账，与界面无关。
 
+## 书房、设定与设置（RD-5 起）
+
+书房、设定页与设置页的页面对象也在 `pages/stage.mjs`：书架是列表「最近的作品」，封面按钮叫「预览《书名》」，右侧概览是区域「《书名》概览」，里面唯一的主按钮是「打开《书名》」（只预览的书）或「继续写作 · 下一步」（当前作品）；每本书的更多操作是「《书名》更多操作」菜单。`openFromLibrary` 先点封面再点「打开《书名》」，`openFromPalette` 从 Ctrl K 打开（同一部作品也会开新的会话）。新建作品的对话框旧外壳叫「新建小说项目」，新外壳叫「新建作品」，`bookshelf.createProject` 两种都认。设定页的核心大纲是文本框「核心大纲」（缺这项时名字带「 · 必填」），三项必填是下拉「类型」「目标读者」与一组「篇幅」，更多设定是按钮组「更多设定」，展开的每项是同名区域；`dirtySetup` 在核心大纲末尾补一句。假模型认出配置 JSON 合同的提示词时返回 `FIXTURE_CONFIG`。设置页是导航「设置分组」，每页标题是一级标题；`openSettings` 从流程脊打开，`showSettingsPage` 切页，`closeSettings` 点「返回作品／返回书房」。
+
+| 名称 | 检查 | 截图停在 | 夹具模型 | 对应计划 |
+|---|---|---|---|---|
+| `stage-library-preview` | 预置示例作品但不打开，点封面预览：概览的阶段进度里架构、蓝图完成，正文进行中；没有流程脊（没有打开）；唯一的主按钮是「打开《灯塔》」；文字对比度 | 预览概览 | 否 | lane 3 |
+| `stage-library-remove` | 回到书房，书本菜单「从最近项目移除…」出现确认；`after` 确认后封面消失、作品文件夹仍在 | 移除确认 | 否 | lane 4 |
+| `stage-library-delete` | 当前作品的书本菜单「删除作品…」，输入「灯」时「删除作品」禁用；`after` 输入完整书名后可用，再取消，文件夹仍在 | 删除确认（名字不对） | 否 | lane 5 |
+| `stage-update-card` | 夹具更新源（`stubUpdates` 替换主进程的更新 IPC，安装只计数）；设定页改一项未保存，回书房点「下载更新」再点「立即重启更新」，出现「请先处理未保存的修改」与「返回保存」；`after` 返回保存，安装次数为 0 | 更新拦截 | 否 | lane 10 |
+| `stage-setup-required` | 新外壳新建「雾岛」，写核心大纲、选类型，不选目标读者：「下一步：故事架构」禁用，提示「选好目标读者就能继续」并由 `aria-describedby` 关联；设定页唯一的主按钮；对比度；`after` 选目标读者后点下一步，先保存再到架构 | 必填未齐 | 否 | lane 6 |
+| `stage-setup-fill` | 示例作品的设定页点「AI 补全其余设定」，确认扩写已有内容；夹具按配置 JSON 合同返回（`FIXTURE_CONFIG`），世界观被填上、核心大纲保留作者原文；再改世界观，设定变为未保存 | 补全后的世界观 | 是 | lane 7 |
+| `stage-settings-groups` | 从流程脊打开设置：分组为常用（AI 模型、外观）、高级（检索模型、网络代理、提示词模板、写作 Skills）、其他（项目备份、关于与更新），落在 AI 模型，位置为「设置 / AI 模型」；外观里放大到 105% 再还原；外观页没有主按钮；对比度；`after` 按 Esc 回到第 3 章 | 外观 | 否 | You see、缩放移入外观 |
+| `stage-settings-dark` | 设置 → 外观 → 主题选「深色」，外壳变深色；`context.restart()` 退出应用再用同一隔离目录冷启动，仍是深色，外观里「深色」仍选中；深色对比度 | 深色外观 | 否 | lane 8 |
+| `stage-settings-model` | 设置 → AI 模型，夹具模型的更多操作「删除模型…」出现危险确认；`after` 取消，模型还在 | 删除模型确认 | 否 | lane 9 |
+| `stage-first-model` | 全新配置的空书房点「还没有连接 AI 模型」里的「添加模型」，落在设置的 AI 模型，空状态「还没有添加模型」，唯一的主按钮是添加模型 | 首次使用的模型页 | 否 | 附录 A 首次使用 |
+| `stage-rd5-tour` | 30–60 秒的 RD-5 导览：空书房、新建「雾岛」进入设定页、写核心大纲并补齐必填、展开「文风」、下一步到架构、设置的 AI 模型与外观（切深色再切回）、关于与更新、回书房看书架、删除作品确认（名字不对时禁用）。配 `--video` 录评审视频 | 书房 | 否 | Review gate |
+| `library-timing` | 计时会话（与 `startup-timing` 同样先预启动一次，另用公开 IPC 新建 20 部作品）：`readyToShowToInteractiveMs`（书房「新建作品」可见），以及页面里记下的 `renderInteractiveMs`（「新建作品」进入 DOM）与 `renderShelfMs`（20 个「预览《书名》」按钮都进入 DOM），都以导航开始为 0。旧欢迎页与新书房的书本按钮同名，所以对 trunk 也能跑 | 不截图 | 否 | perf |
+| `stage-lazy-retry` | 主进程 `webRequest` 拦下设定页代码块（`blockChunks`），重载后打开示例作品点「设定」，出现「页面没有载入」与「重试」；`after` 放行后点重试，设定页出现，且请求日志里有带 `?retry=` 的设定页代码块 | 载入失败 | 否 | RD-5 修复第 1 轮 |
+| `stage-setup-save-fail` | 设定页改一句后让 `project:save` 返回失败（`failProjectSaves` 换掉主进程处理函数）：Ctrl S 与「下一步」都在页脚出现 role=alert 的失败说明，仍停在设定、仍是未保存；`after` 换回处理函数再点保存，变为已保存、失败说明消失 | 保存失败 | 否 | RD-5 修复第 1 轮 |
+| `stage-setup-short` | 新建「雾岛」：必填项先不标红；1440×900、1280×800、1280×720 下「类型」「目标读者」都在底栏之上；`after` 点开「全局写作要求」，面板不在底栏后面、焦点在它的输入框里 | 1280×720 设定页 | 否 | RD-5 修复第 1 轮 |
+| `stage-settings-legacy` | 模型编辑表单的输入框 40px 高；`context.shoot` 中途拍下模型编辑、提示词模板、写作 Skills；项目备份页只有「导出本地存档」一个实心主按钮 | 项目备份 | 否 | RD-5 修复第 1 轮 |
+| `stage-settings-leave` | 编辑夹具模型改名，输入框里按 Esc 设置页不关；焦点移出后 Esc 弹「放弃未保存的修改？」；`after` 继续编辑修改还在，「返回作品」再确认放弃才关；再开设置页从 Ctrl K 选「角色」，设置页收起、「角色」标签选中 | 放弃确认 | 否 | RD-5 修复第 1 轮 |
+| `stage-settings-leave-work` | 作品里开着两个标签，设置页改了夹具模型名、不保存：标签条不显示；依次从流程脊阶段「架构」、流程脊资料「剧情与伏笔」、Ctrl K「蓝图」、Ctrl P「旧港」、Ctrl K「回到书房」、作品菜单「回到书房」离开，每次先弹「放弃未保存的修改？」，「继续编辑」后设置页与输入都在，再走一次选「放弃修改」才到去处 | 每个入口的确认（`leave-<入口>`） | 否 | RD-5 修复第 2 轮 |
+| `stage-settings-leave-library` | 书房里从顶栏打开设置、改模型名不保存：Ctrl K「打开《灯塔》」、Ctrl O、Ctrl K「打开作品」（系统对话框打桩为示例作品）、Ctrl N、Ctrl K「新建作品」、Ctrl K「小说拆解与仿写」，每次先确认、继续编辑不走；放弃后打开作品（等「项目数据加载完成」）或弹出新建、拆解对话框 | 每个入口的确认与到达（`leave-`、`arrived-<入口>`） | 否 | RD-5 修复第 2 轮 |
+| `new-project-files` | 新建作品后列出作品文件夹里建出的文件（`measured.files`）与 `.ai-novel/project.json` 去掉标识、时间后的形状（`measured.manifest`）。trunk 与 head、两种外壳（`--shell stage`）各跑一次，两项都应一致 | 新建作品后 | 否 | RD-5 lane 1 |
+
+## 页面内计时
+
+计时会话（`startup-timing`、`library-timing`）启动时设环境变量 `DRIVE_RENDER_TIMING`，`offscreen-window.cjs` 据此给默认会话注册页面预加载 `render-timing-preload.cjs`：它在页面脚本之前装好 MutationObserver，把「新建作品」与书架上的书第一次进入 DOM 的时刻（`performance.now()`）写在 `<html>` 的 `data-drive-interactive`、`data-drive-shelf` 上，驱动启动后读出，写进 `timing.renderInteractiveMs`、`timing.renderShelfMs`。它们没有 Playwright 轮询的量化误差。其他场景不注册这个预加载。
+
 ## 改外壳时
 
-类名选择器只出现在 `scripts/redesign/pages/`，按任务域分文件：`shell`（启动、外壳就绪、标题栏、状态栏、左右栏与可收起面板）、`bookshelf`（书房）、`project`（项目树）、`chapter`（单章写作、审稿、修稿合并、定稿）、`run-panel`（运行面板）、`settings`（设置，含外观里切换界面布局）、`materials`（知识库与角色卡导入）、`stage`（新外壳：流程脊、章节列表、标签条、Ctrl K 与 Ctrl P、保存状态、沉浸写作）、`run-sheet`（新外壳的运行侧页）。`shell.waitForShell` 对两种外壳都成立。外壳替换后只改这些页面对象，场景 `scripts/redesign/scenarios.mjs` 不动。
+类名选择器只出现在 `scripts/redesign/pages/`，按任务域分文件：`shell`（启动、外壳就绪、标题栏、状态栏、左右栏与可收起面板）、`bookshelf`（旧外壳书房与两种外壳的新建作品）、`project`（项目树）、`chapter`（单章写作、审稿、修稿合并、定稿）、`run-panel`（运行面板）、`settings`（设置，含外观里切换界面布局）、`materials`（知识库与角色卡导入）、`stage`（新外壳：流程脊、章节列表、标签条、Ctrl K 与 Ctrl P、保存状态、沉浸写作、书房）、`run-sheet`（新外壳的运行侧页）。`shell.waitForShell` 对两种外壳都成立。外壳替换后只改这些页面对象，场景 `scripts/redesign/scenarios.mjs` 不动。
 
 `/.claude/` 在 `.gitignore` 里，提交本文件的改动要用 `git add -f .claude/skills/verify/SKILL.md`（或 `git add -u`）。假模型在 `scripts/redesign/fake-model.mjs`，按提示词特征返回正文、短细纲（与正文同一段文字，但不参与定速流出）、审稿 JSON、修稿正文、角色状态 JSON 或角色提取 JSON。

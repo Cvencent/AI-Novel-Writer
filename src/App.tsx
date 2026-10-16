@@ -24,6 +24,7 @@ import ImportNovelDialog from './components/dialogs/ImportNovelDialog'
 import ChapterCreationDialog from './components/dialogs/ChapterCreationDialog'
 import ExportDialog from './components/dialogs/ExportDialog'
 import SettingsModal from './components/settings/SettingsModal'
+import { leaveSettingsThen } from './components/settings/unsaved-settings'
 import { ANIME_SKIN_URL } from './components/settings/AppearanceSettings'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import StageRoot from './components/stage/StageRoot'
@@ -233,12 +234,12 @@ export default function App() {
       if (!mod) return
       if (e.key === 'n' || e.key === 'N') {
         e.preventDefault()
-        useLayoutStore.getState().openNewProject()
+        leaveSettingsThen(() => useLayoutStore.getState().openNewProject())
       } else if (e.key === 'o' || e.key === 'O') {
         e.preventDefault()
         const folder = await ipc.invoke('dialog:select-folder', 'project-open')
         if (folder) {
-          useProjectStore.getState().openProject(folder)
+          leaveSettingsThen(() => void useProjectStore.getState().openProject(folder))
         }
       } else if (e.key === '=' || e.key === '+') {
         e.preventDefault()
@@ -258,10 +259,6 @@ export default function App() {
   const globalDialogs = (
     <>
       {/* 全局对话框 — 由 layout-store 控制开关，不再依赖 window.dispatchEvent */}
-      <NewProjectDialog
-        open={newProjectOpen}
-        onClose={closeNewProject}
-      />
       <ImportNovelDialog
         open={importNovelOpen}
         onClose={closeImportNovel}
@@ -274,11 +271,6 @@ export default function App() {
       <ExportDialog
         isOpen={exportOpen}
         onClose={closeExport}
-      />
-      {/* 全屏设置弹窗 */}
-      <SettingsModal
-        open={settingsOpen}
-        onClose={closeSettings}
       />
     </>
   )
@@ -332,7 +324,17 @@ export default function App() {
         immersive={immersive}
       />
 
+      {/* 新外壳有自己的纸墨新建对话框与设置页，这两个弹窗只属于旧外壳。 */}
+      <NewProjectDialog
+        open={newProjectOpen}
+        onClose={closeNewProject}
+      />
       {globalDialogs}
+      {/* 全屏设置弹窗 */}
+      <SettingsModal
+        open={settingsOpen}
+        onClose={closeSettings}
+      />
     </AppSkinRoot>
   )
 }

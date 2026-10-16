@@ -52,10 +52,13 @@ interface StageSpineProps {
   onStage: (stage: WorkStage) => void
   onChapter: (chapterNumber: number) => void
   onResource: (page: ResourcePage) => void
+  /** 设置页开着时只有「设置」是当前位置。 */
+  settingsOpen?: boolean
   onSettings: () => void
 }
 
-export default function StageSpine({ stages, chapters, location, onStage, onChapter, onResource, onSettings }: StageSpineProps) {
+export default function StageSpine({ stages, chapters, location: activeLocation, settingsOpen, onStage, onChapter, onResource, onSettings }: StageSpineProps) {
+  const location = settingsOpen ? null : activeLocation
   const text = useLocaleStore(s => s.text)
   const currentStage = location?.kind === 'stage' ? location.stage : null
   const currentChapter = location?.kind === 'stage' ? location.chapter : undefined
@@ -120,7 +123,7 @@ export default function StageSpine({ stages, chapters, location, onStage, onChap
       </ul>
 
       <div className="stage-spine-foot">
-        <button type="button" className="stage-row" onClick={onSettings}>
+        <button type="button" className="stage-row" aria-current={settingsOpen ? 'page' : undefined} onClick={onSettings}>
           <Settings className="stage-row-icon" size={16} strokeWidth={1.75} aria-hidden="true" />
           <span className="stage-row-label">{text('设置', 'Settings')}</span>
         </button>

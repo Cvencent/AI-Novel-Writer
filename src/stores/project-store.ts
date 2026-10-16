@@ -403,6 +403,8 @@ interface ProjectState {
   fileTree: FileNode[]
   /** 最近项目列表 */
   recentProjects: ProjectChannels['project:recent-list']['return']
+  /** 这次启动已经读到过一次最近项目；读到之前空列表不代表书架是空的。 */
+  recentProjectsLoaded: boolean
   /** 是否正在加载 */
   loading: boolean
   legacyImportNotice: string
@@ -452,6 +454,7 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
   currentProject: null,
   fileTree: [],
   recentProjects: [],
+  recentProjectsLoaded: false,
   loading: false,
   legacyImportNotice: '',
   legacyImportBusy: false,
@@ -1044,7 +1047,14 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
 
   loadRecentProjects: async () => {
     const requestId = ++recentProjectsRequestSequence
-    const list = await ipc.invoke('project:recent-list')
+    let list: ProjectChannels['project:recent-list']['return']
+    try {
+      list = await ipc.invoke('project:recent-list')
+    } catch (error) {
+      // 读不到也算读过：书房据此显示空书房，而不是一直停在等待里。
+      if (requestId === recentProjectsRequestSequence) set({ recentProjectsLoaded: true })
+      throw error
+    }
     if (requestId !== recentProjectsRequestSequence) return
     const seenProjectPaths = new Set<string>()
     const recentProjects = list.filter((project) => {
@@ -1053,7 +1063,7 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
       seenProjectPaths.add(key)
       return true
     })
-    set({ recentProjects })
+    set({ recentProjects, recentProjectsLoaded: true })
   },
 
   removeRecentProject: async (projectPath) => {

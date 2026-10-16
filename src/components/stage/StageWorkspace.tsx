@@ -9,18 +9,20 @@ import type { ProjectData } from '../../shared/ipc-channels'
 import { ErrorBoundary } from '../ErrorBoundary'
 import EditorTabContent from '../panels/EditorTabContent'
 import CharactersView from '../panels/sidebar/CharactersView'
-import { WriterWelcomePage } from '../pages/v2/use-project-overview'
 import { Button } from '../ui/Button'
 import { EmptyState } from '../ui/EmptyState'
 import { DangerConfirm } from '../ui/DangerConfirm'
 import RunSheet from './run/RunSheet'
+import StageLibrary from './library/StageLibrary'
+import { SettingsPage, SetupPage } from './stage-pages'
 import StageTabs from './StageTabs'
 import { commandLabel } from './shortcut-keys'
 import { stageTabName } from './stage-text'
 import { cancelCloseTab, confirmCloseTab, requestCloseTab, STAGE_CONTENT_ID } from './tab-close'
 
-/** 角色在 RD-6 并入架构阶段之前，标签里并排放旧的角色列表与角色档案。 */
+/** 设定标签是新外壳的设定页。角色在 RD-6 并入架构阶段之前，标签里并排放旧的角色列表与角色档案。 */
 function TabContent({ tab, project }: { tab: EditorTab; project: ProjectData }) {
+  if (tab.type === 'config' && tab.projectKey) return <SetupPage projectKey={tab.projectKey} />
   if (tab.type === 'character') {
     return (
       <div className="stage-characters">
@@ -33,6 +35,7 @@ function TabContent({ tab, project }: { tab: EditorTab; project: ProjectData }) 
 }
 
 export default function StageWorkspace({ library, focus }: { library: boolean; focus: boolean }) {
+  const settingsOpen = useLayoutStore(s => s.settingsOpen)
   const text = useLocaleStore(s => s.text)
   const project = useProjectStore(s => s.currentProject)
   const tabs = useEditorStore(s => s.tabs)
@@ -50,15 +53,14 @@ export default function StageWorkspace({ library, focus }: { library: boolean; f
 
   if (library || !project) {
     return (
-      <main className="stage-panel" data-page="library">
-        <div className="stage-library">
-          <WriterWelcomePage onNewProject={() => useLayoutStore.getState().openNewProject()} />
-        </div>
+      <main className="stage-panel" data-page={settingsOpen ? 'settings' : 'library'}>
+        {settingsOpen ? <SettingsPage library /> : <div className="stage-library"><StageLibrary /></div>}
       </main>
     )
   }
 
-  const showTabs = !focus && tabs.length > 1
+  // 设置页盖在内容区上，标签内容保持挂载（编辑器的撤销历史、滚动位置不丢），运行侧页照常在右侧。
+  const showTabs = !focus && !settingsOpen && tabs.length > 1
   return (
     <main className="stage-panel">
       {showTabs && (
@@ -72,8 +74,10 @@ export default function StageWorkspace({ library, focus }: { library: boolean; f
         />
       )}
       <div className="stage-body">
+        {settingsOpen && <SettingsPage library={false} />}
         <div
           className="stage-content"
+          hidden={settingsOpen}
           id={STAGE_CONTENT_ID}
           tabIndex={-1}
           role={showTabs ? 'tabpanel' : undefined}
