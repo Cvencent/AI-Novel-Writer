@@ -339,6 +339,85 @@ describe('知识库', () => {
       expect(document.querySelector('[role="dialog"]')?.textContent).toContain('「知识库」有未保存的修改')
     })
 
+    it('切走前点的资料读得慢，切回后改了另一份资料，迟到的读取不会盖掉这些修改', async () => {
+      let releaseFirstRead: () => void = () => {}
+      let heldFirstRead = false
+      const plain = invoke.getMockImplementation()!
+      invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+        if (channel === 'kb:read-document-copy' && args[0] === 'station' && !heldFirstRead) {
+          heldFirstRead = true
+          await new Promise<void>(resolve => { releaseFirstRead = resolve })
+        }
+        return plain(channel, ...args)
+      })
+      await act(async () => root!.render(<StageWorkspace library={false} focus={false} />))
+      await vi.waitFor(() => expect(button(/车站档案/)).toBeTruthy())
+      await click(/车站档案/)
+      await act(async () => useEditorStore.getState().setActiveTab(`version-history:${encodeURIComponent(session.projectPath)}`))
+      await act(async () => useEditorStore.getState().setActiveTab(KB_TAB))
+      await vi.waitFor(() => expect(document.querySelector('textarea')?.value).toBe(copies.station))
+      await click(/林舟人物小传/)
+      await vi.waitFor(() => expect(document.querySelector('textarea')?.value).toBe(copies.people))
+      await type(await editorArea(), `${copies.people}左手有旧伤。`)
+      await act(async () => { releaseFirstRead(); await new Promise(resolve => setTimeout(resolve, 20)) })
+      expect(document.querySelector('textarea')?.value).toBe(`${copies.people}左手有旧伤。`)
+      expect(document.querySelector('[aria-current="true"]')?.textContent).toContain('林舟人物小传')
+      expect(useEditorStore.getState().tabs.find(tab => tab.id === KB_TAB)?.dirty).toBe(true)
+    })
+
+    it('保存还没返回时切走再切回，再按 Ctrl S 不重复保存', async () => {
+      let finishSave: (value: unknown) => void = () => {}
+      const plain = invoke.getMockImplementation()!
+      invoke.mockImplementation((channel: string, ...args: unknown[]) => channel === 'kb:save-document-copy'
+        ? new Promise(resolve => { finishSave = resolve })
+        : plain(channel, ...args))
+      function WithShell() {
+        useStageShortcuts({ library: false, focus: false, mac: false })
+        return <StageWorkspace library={false} focus={false} />
+      }
+      await act(async () => root!.render(<WithShell />))
+      await editStation()
+      const ctrlS = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, bubbles: true, cancelable: true }))
+      await act(async () => ctrlS())
+      await act(async () => useEditorStore.getState().setActiveTab(`version-history:${encodeURIComponent(session.projectPath)}`))
+      await act(async () => useEditorStore.getState().setActiveTab(KB_TAB))
+      await vi.waitFor(() => expect(document.querySelector('textarea')?.value).toBe(`${copies.station}站台已封闭。`))
+      await act(async () => ctrlS())
+      await act(async () => finishSave({ success: true }))
+      expect(invoke.mock.calls.filter(([channel]) => channel === 'kb:save-document-copy')).toHaveLength(1)
+    })
+
+    it('更新检索还没返回时切走再切回，按钮仍禁用、不重复发起；返回后恢复', async () => {
+      let finishReindex: (value: unknown) => void = () => {}
+      let indexStatus = 'stale'
+      const plain = invoke.getMockImplementation()!
+      invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+        if (channel === 'kb:reindex-document-copy') return new Promise(resolve => { finishReindex = resolve })
+        const result = await plain(channel, ...args)
+        return channel === 'kb:read-document-copy' ? { ...(result as object), indexStatus } : result
+      })
+      const reindexes = () => invoke.mock.calls.filter(([channel]) => channel === 'kb:reindex-document-copy')
+      await act(async () => root!.render(<StageWorkspace library={false} focus={false} />))
+      await vi.waitFor(() => expect(button(/车站档案/)).toBeTruthy())
+      await click(/车站档案/)
+      await vi.waitFor(() => expect(document.querySelector('textarea')?.value).toBe(copies.station))
+      await click('更新检索')
+      await act(async () => useEditorStore.getState().setActiveTab(`version-history:${encodeURIComponent(session.projectPath)}`))
+      await act(async () => useEditorStore.getState().setActiveTab(KB_TAB))
+      await vi.waitFor(() => expect(document.querySelector('textarea')?.value).toBe(copies.station))
+      await act(async () => new Promise(resolve => setTimeout(resolve, 50)))
+      expect(button('更新检索')?.disabled).toBe(true)
+      await act(async () => button('更新检索')!.click())
+      expect(reindexes()).toHaveLength(1)
+      indexStatus = 'current'
+      await act(async () => finishReindex({ success: true, docId: 'station', chunkCount: 3 }))
+      await vi.waitFor(() => expect(button('更新检索')).toBeUndefined())
+      expect(document.querySelector('textarea')?.disabled).toBe(false)
+      expect(document.querySelector('[aria-current="true"]')?.textContent).toContain('车站档案')
+      expect(document.querySelector('textarea')?.value).toBe(copies.station)
+      expect(reindexes()).toHaveLength(1)
+    })
+
     it('同一次打开里作品数据换成新对象（后台运行写回设定），修改还在', async () => {
       await renderPage()
       await click(/车站档案/)

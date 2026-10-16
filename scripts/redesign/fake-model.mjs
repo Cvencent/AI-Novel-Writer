@@ -94,6 +94,7 @@ export async function startFakeModel(diagnostics) {
   let extraction = false
   let brokenCharacterState = false
   let plotTree = false
+  let failedProse = false
   const streamLog = []
   const gate = {
     /** 卡住之后的模型调用；embeddings 为 true 时连嵌入也卡住（参考文本入库这类只走嵌入的步骤）。 */
@@ -115,6 +116,8 @@ export async function startFakeModel(diagnostics) {
   const breakCharacterState = (broken = true) => { brokenCharacterState = broken }
   /** 之后的剧情树整理回一份两轨（主线加支线）的合法 JSON。 */
   const replyPlotTree = () => { plotTree = true }
+  /** 之后的正文回复以 content_filter 结束：写稿在这次打开里失败，留下可恢复的候选。传 false 恢复。 */
+  const failProse = (failed = true) => { failedProse = failed }
   const record = (kind, detail) => {
     requests.push(kind)
     diagnostics.push(`[fake-model] ${kind} <- ${detail}`)
@@ -141,21 +144,22 @@ export async function startFakeModel(diagnostics) {
     chats.push({ kind, model: body.model, messages: body.messages })
     record(kind, prompt.slice(0, 120).replace(/\s+/g, ' '))
     response.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    const finish = kind === 'prose' && failedProse ? 'content_filter' : 'stop'
     if (kind === 'prose' && stream) {
       for (const [index, chunk] of stream.chunks.entries()) {
         response.write(`data: ${JSON.stringify({ choices: [{ delta: { content: chunk }, finish_reason: null }] })}\n\n`)
         streamLog.push({ at: Date.now(), count: index + 1 })
         await new Promise(resolve => setTimeout(resolve, stream.intervalMs))
       }
-      response.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`)
+      response.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: finish }] })}\n\n`)
     } else {
-      response.write(`data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: 'stop' }] })}\n\n`)
+      response.write(`data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: finish }] })}\n\n`)
     }
     response.write('data: {"choices":[],"usage":{"prompt_tokens":400,"completion_tokens":200,"total_tokens":600}}\n\n')
     response.end('data: [DONE]\n\n')
   })
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
   server.unref()
-  return { port: server.address().port, requests, chats, gate, streamProse, streamLog, replyCharacterCards, breakCharacterState, replyPlotTree,
+  return { port: server.address().port, requests, chats, gate, streamProse, streamLog, replyCharacterCards, breakCharacterState, replyPlotTree, failProse,
     close: () => new Promise(resolve => { server.closeAllConnections(); server.close(() => resolve()) }) }
 }

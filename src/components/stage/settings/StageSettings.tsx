@@ -5,7 +5,7 @@ import { useLocaleStore } from '../../../stores/locale-store'
 import ProjectBackupPanel from '../../backups/ProjectBackupPanel'
 import PromptSettings from '../../settings/PromptSettings'
 import SkillSettings from '../../settings/SkillSettings'
-import { leaveSettings, useSettingsLeave, useSettingsLeaveHost } from '../../settings/unsaved-settings'
+import { leaveSettings, settleSettingsLeave, useSettingsLeave, useSettingsLeaveHost } from '../../settings/unsaved-settings'
 import { Button } from '../../ui/Button'
 import { DangerConfirm } from '../../ui/DangerConfirm'
 import { ErrorBoundary } from '../../ErrorBoundary'
@@ -130,17 +130,13 @@ export default function StageSettings({ library }: { library: boolean }) {
       </div>
       <DangerConfirm
         open={pendingLeave !== null}
-        onOpenChange={open => { if (!open) useSettingsLeave.setState({ pending: null }) }}
+        onOpenChange={open => { if (!open) settleSettingsLeave(false) }}
         title={text('放弃未保存的修改？', 'Discard unsaved changes?')}
         consequence={text('这一页有还没保存的修改，离开后会丢失。', 'This page has changes that are not saved yet. Leaving discards them.')}
         recoverability={text('丢弃后无法恢复。想保留就选「继续编辑」，先保存再离开。', 'This cannot be undone. Choose “Keep editing” and save first to keep them.')}
         confirmLabel={text('放弃修改', 'Discard changes')}
         cancelLabel={text('继续编辑', 'Keep editing')}
-        onConfirm={() => {
-          const action = useSettingsLeave.getState().pending
-          useSettingsLeave.setState({ pending: null })
-          action?.()
-        }}
+        onConfirm={() => settleSettingsLeave(true)}
       />
     </div>
   )

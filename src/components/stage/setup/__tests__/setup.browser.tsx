@@ -133,6 +133,72 @@ describe('设定页', () => {
     expect(useEditorStore.getState().tabs.map(tab => tab.type)).toContain('world-building')
   })
 
+  describe('下一步的保存还没返回时作者已经离开，保存完成后不把作者拉去架构', () => {
+    let finishSave: (saved: boolean) => void = () => {}
+    async function clickNextWithSlowSave() {
+      project({ coreOutline: '雾钟提前一刻响起。', genre: '悬疑', targetAudience: '全龄' })
+      dirtyConfigTab()
+      useProjectStore.setState({ saveProject: vi.fn(() => new Promise<boolean>(resolve => { finishSave = resolve })) } as never)
+      await mount()
+      await click(next())
+    }
+
+    it('回到了书房', async () => {
+      await clickNextWithSlowSave()
+      await act(async () => useLayoutStore.getState().setSidebarView('home'))
+      await act(async () => finishSave(true))
+      expect(useLayoutStore.getState().sidebarView).toBe('home')
+      expect(useEditorStore.getState().tabs.map(tab => tab.type)).toEqual(['config'])
+    })
+
+    it('打开了设置页', async () => {
+      await clickNextWithSlowSave()
+      await act(async () => useLayoutStore.setState({ settingsOpen: true, settingsSection: 'llm' }))
+      await act(async () => finishSave(true))
+      expect(useLayoutStore.getState().settingsOpen).toBe(true)
+      expect(useEditorStore.getState().tabs.map(tab => tab.type)).toEqual(['config'])
+    })
+
+    it('换到了这部作品的另一个标签', async () => {
+      await clickNextWithSlowSave()
+      await act(async () => useEditorStore.setState(state => ({
+        tabs: [...state.tabs, { id: 'kb', name: '知识库', type: 'knowledge-base', projectKey: PATH, dirty: false } as never],
+        activeTabId: 'kb',
+      })))
+      await act(async () => finishSave(true))
+      expect(useEditorStore.getState().activeTabId).toBe('kb')
+      expect(useEditorStore.getState().tabs.map(tab => tab.type)).toEqual(['config', 'knowledge-base'])
+    })
+
+    // 换作品时会话先失效，save 返回 false 就停了，走不到位置比较。
+    it('打开了另一部作品', async () => {
+      await clickNextWithSlowSave()
+      const other = { projectId: 'harbor', leaseId: 'lease-2', projectPath: 'C:\\novels\\harbor' }
+      setActiveProjectSessionContext(other)
+      await act(async () => useProjectStore.setState({ currentProject: { id: 'harbor', sessionLease: 'lease-2', name: '港口', path: other.projectPath, novelConfig: { ...BLANK } } as unknown as ProjectData }))
+      await act(async () => finishSave(true))
+      expect(useEditorStore.getState().tabs.filter(tab => tab.projectKey === other.projectPath)).toEqual([])
+    })
+  })
+
+  it('Ctrl S 的保存还没返回时下一步不可点，返回后可点并去架构', async () => {
+    let finishSave: (saved: boolean) => void = () => {}
+    project({ coreOutline: '雾钟提前一刻响起。', genre: '悬疑', targetAudience: '全龄' })
+    dirtyConfigTab()
+    useProjectStore.setState({ saveProject: vi.fn(() => new Promise<boolean>(resolve => { finishSave = resolve })) } as never)
+    await mount()
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, bubbles: true, cancelable: true })) })
+    expect(next().disabled).toBe(true)
+    await act(async () => {
+      useEditorStore.setState(state => ({ tabs: state.tabs.map(tab => ({ ...tab, dirty: false })) }))
+      finishSave(true)
+    })
+    expect(next().disabled).toBe(false)
+    await click(next())
+    expect(useEditorStore.getState().tabs.map(tab => tab.type)).toContain('world-building')
+    expect(useProjectStore.getState().saveProject).toHaveBeenCalledTimes(1)
+  })
+
   it('新作品三项必填先用中性的「必填」；离开空着的一项或只差最后一项时才标红', async () => {
     project({})
     await mount()
@@ -289,5 +355,28 @@ describe('设定页', () => {
     expect(host!.querySelector<HTMLInputElement>('[aria-label="细分类型"] input')?.value).toBe('海港悬疑')
     await click(byName('收起「细分类型」'))
     expect(host!.querySelector('[aria-label="细分类型"]')).toBeNull()
+  })
+})
+
+describe('设定页的保存跨切标签', () => {
+  it('Ctrl S 的保存还没返回时切到别的标签再切回：下一步仍不可点，再按 Ctrl S 也不重发，保存只发 1 次', async () => {
+    let finishSave: (saved: boolean) => void = () => {}
+    project({ coreOutline: '雾钟提前一刻响起。', genre: '悬疑', targetAudience: '全龄' })
+    dirtyConfigTab()
+    useProjectStore.setState({ saveProject: vi.fn(() => new Promise<boolean>(resolve => { finishSave = resolve })) } as never)
+    await mount()
+    const ctrlS = () => act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, bubbles: true, cancelable: true })) })
+    await ctrlS()
+    await act(async () => root!.render(<Shortcuts />))
+    await act(async () => root!.render(<><Shortcuts /><StageSetup projectKey={PATH} /></>))
+    expect(next().disabled).toBe(true)
+    await click(next())
+    await ctrlS()
+    expect(useProjectStore.getState().saveProject).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      useEditorStore.setState(state => ({ tabs: state.tabs.map(tab => ({ ...tab, dirty: false })) }))
+      finishSave(true)
+    })
+    expect(next().disabled).toBe(false)
   })
 })

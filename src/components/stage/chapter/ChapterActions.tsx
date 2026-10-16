@@ -20,7 +20,7 @@ import { includedCount, useReviewChecklist } from '../../editor/review-checklist
 import { reviewDimensions, type useDraftActions } from '../../editor/use-draft-actions'
 import { deleteDraftVersion } from '../../panels/sidebar/draft-deletion'
 import { deleteFinalizedChapter } from '../../panels/sidebar/finalized-chapter-deletion'
-import { captureProjectSession } from '../../project-session-gate'
+import { captureProjectSession, isProjectSessionCurrent } from '../../project-session-gate'
 import { Button } from '../../ui/Button'
 import { Check } from '../../ui/Check'
 import { DangerConfirm } from '../../ui/DangerConfirm'
@@ -135,25 +135,40 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
 
   const startReview = () => void draft.review(dims.filter(dim => checkedDims[dim.key]).map(dim => dim.promptLabel).join('、') || undefined)
 
-  /** 按勾选的意见修稿：清单改过或还没确认就先确认成新快照，再按它启动修稿；失败原因写在侧页里。 */
+  /**
+   * 按勾选的意见修稿：清单改过或还没确认就先确认成新快照，再按它启动修稿；失败原因写在侧页里。
+   * 每次等待回来先核对发起时那次打开：换了作品或重新打开后，侧页属于新的那次打开，旧稿的结果不碰它。
+   */
   const revise = async () => {
     if (!selectedReviseModel) {
       checklist.setChecklistError(text('没有可用于文本生成的模型。请在设置中添加或启用一项生成模型。', 'No model can generate text. Add or enable a generation model in Settings.'))
       setSheet(true)
       return
     }
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
     const confirmed = checklist.editingChecklist || !checklist.confirmed ? await checklist.confirmChecklist() : checklist.confirmed
+    if (!isProjectSessionCurrent(session)) return
     if (!confirmed) {
       setSheet(true)
       return
     }
     const error = await checklist.startConfirmedRevision(selectedReviseModel, confirmed)
+    if (!isProjectSessionCurrent(session)) return
     if (error) {
       checklist.setChecklistError(error)
       setSheet(true)
     } else {
       setSheet(false)
     }
+  }
+
+  // 每条意见都选了不修改时没有可修的，主按钮改为把这些弃修决定确认进审稿记录（旧审稿报告的「确认审稿清单」）。
+  const waived = checklist.items.some(item => item.decision === 'waive')
+  const confirmWaived = included === 0 && waived && (checklist.editingChecklist || !checklist.confirmed)
+  const confirmWaiver = async () => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    const confirmed = await checklist.confirmChecklist()
+    if (isProjectSessionCurrent(session) && !confirmed) setSheet(true)
   }
 
   const copyBody = () => {
@@ -238,7 +253,11 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
       case 'reviewed':
         return (
           <>
-            <SplitAction
+            {confirmWaived ? (
+              <Button variant="primary" disabled={busy || checklist.confirming || checklist.processing} onClick={() => void confirmWaiver()}>
+                {text('确认不修改', 'Confirm no revision')}
+              </Button>
+            ) : <SplitAction
               layer={reviseOptions}
               popoverClassName="stage-ch-options"
               label={text(`按 ${included} 项意见修稿`, `Revise with ${included} ${included === 1 ? 'note' : 'notes'}`)}
@@ -255,10 +274,16 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
                 </select>
               </label>
               <p className="stage-ch-options-foot">{text('只把勾选的意见和总体指导交给修稿，原始审稿不会成为模型指令。', 'Only checked notes and your guidance go to the revision; the raw review is not a model instruction.')}</p>
-            </SplitAction>
+            </SplitAction>}
             {reviewAgain}
             {more}
-            <span className="stage-ch-hint">{included === 0 ? text('至少勾选一项意见', 'Check at least one note') : text('修稿结果会以差异给你确认，不会直接覆盖', 'You confirm the revision as a diff; nothing is overwritten')}</span>
+            <span className="stage-ch-hint">{confirmWaived
+              ? text('这些意见都不修改，确认后记进审稿记录', 'None of these notes will be revised; confirm to record that in the review')
+              : included > 0
+                ? text('修稿结果会以差异给你确认，不会直接覆盖', 'You confirm the revision as a diff; nothing is overwritten')
+                : waived
+                  ? text('已确认不修改，可以在「更多」里定稿', 'Confirmed with no revision; finalize from More')
+                  : text('至少勾选一项意见', 'Check at least one note')}</span>
           </>
         )
       case 'merge':

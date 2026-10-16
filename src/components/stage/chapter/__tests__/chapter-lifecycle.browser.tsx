@@ -3,6 +3,7 @@ import { page } from 'vitest/browser'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 
+import type { ProjectData } from '../../../../shared/ipc-channels'
 import { parseHumanConfirmedReviewSnapshot } from '../../../../shared/human-confirmed-review'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
 import { useDraftStore } from '../../../../stores/draft-store'
@@ -148,6 +149,57 @@ describe('单章视图的主按钮随五种状态变化', () => {
     const [params] = workflows.createRefineFromReviewWorkflow.mock.calls[0]
     expect({ reviewSourceId: params.reviewSourceId, model: params.generationModelId, content: params.draftContent })
       .toEqual({ reviewSourceId: backend.state.reviews.at(-1)!.id, model: 'glm', content: ORIGINAL })
+  })
+
+  it('已审稿：每条意见都选「不修改此项」时，主按钮变成确认不修改，确认后弃修决定写进审稿记录', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    const review = backend.addReview(draft)
+    backend.state.cycles.set(review.id, {
+      ...backend.state.cycles.get(review.id)!,
+      findings: [0, 1, 2].map(index => ({ findingId: `finding-${index}`, reviewItemIndex: index, category: '', kind: 'literary' as const, status: 'unverified' as const })),
+    })
+    await mount()
+    await openDraft(draft.id)
+    await expect.element(page.getByRole('button', { name: '按 2 项意见修稿' })).toBeVisible()
+    for (let left = 3; left > 0; left--) await act(async () => page.getByRole('button', { name: '不修改此项' }).first().click())
+    await expect.element(page.getByText('0 / 3')).toBeVisible()
+    await click('确认不修改')
+    await vi.waitFor(() => expect(backend.writes('db:review-create')).toHaveLength(1))
+    const [created] = backend.writes('db:review-create')
+    const confirmed = parseHumanConfirmedReviewSnapshot((created[0] as { content: string }).content)!
+    expect(confirmed.items.filter(item => item.severity !== 'pass').map(item => [item.category, item.decision]))
+      .toEqual([['前后矛盾', 'waive'], ['节奏', 'waive'], ['本章必现', 'waive']])
+    expect(workflows.createRefineFromReviewWorkflow).not.toHaveBeenCalled()
+    await expect.element(page.getByText('已确认不修改，可以在「更多」里定稿')).toBeVisible()
+  })
+
+  it('已审稿：修稿启动读稿期间把意见都改成不修改，「确认不修改」点不了，不会多写一份确认清单', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    const review = backend.addReview(draft)
+    backend.state.cycles.set(review.id, {
+      ...backend.state.cycles.get(review.id)!,
+      findings: [0, 1, 2].map(index => ({ findingId: `finding-${index}`, reviewItemIndex: index, category: '', kind: 'literary' as const, status: 'unverified' as const })),
+    })
+    await mount()
+    await openDraft(draft.id)
+    const answer = backend.invoke.getMockImplementation()!
+    let release = () => {}
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const held = vi.fn()
+    backend.invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'db:draft-get-full' && backend.writes('db:review-create').length === 1 && held.mock.calls.length === 0) {
+        held()
+        await gate
+      }
+      return answer(channel, ...args)
+    })
+    await click('按 2 项意见修稿')
+    await vi.waitFor(() => expect(held).toHaveBeenCalledOnce())
+    expect(backend.writes('db:review-create')).toHaveLength(1)
+    for (let left = 2; left > 0; left--) await act(async () => page.getByRole('button', { name: '不修改此项' }).first().click())
+    await expect.element(page.getByRole('button', { name: '确认不修改', exact: true })).toBeDisabled()
+    await act(async () => { release(); await new Promise(resolve => setTimeout(resolve, 100)) })
+    expect(backend.writes('db:review-create')).toHaveLength(1)
   })
 
   it('人工意见进入修稿输入：添加我的意见后，它在确认的清单里并被纳入', async () => {
@@ -316,5 +368,85 @@ describe('流程脊与单章视图同一个阶段', () => {
     await expect.element(page.getByRole('button', { name: '按 2 项意见修稿' })).toBeVisible()
     observer.disconnect()
     expect([...seen].filter(label => label.includes('AI 审稿') || label.includes('定稿'))).toEqual([])
+  })
+})
+
+describe('确认审稿清单的往返期间换了作品，回来的结果不碰新作品的侧页', () => {
+  const HARBOR = { projectId: 'harbor', leaseId: 'harbor-lease', projectPath: 'C:\\novels\\harbor' }
+  const RUN_SHEET = { kind: 'run' as const, tab: 'active' as const }
+
+  /** 卡住确认清单读审稿原文的那次 db:review-get-full，返回放行函数。 */
+  function holdReviewRead() {
+    const answer = backend.invoke.getMockImplementation()!
+    let release = () => {}
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const held = vi.fn()
+    backend.invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'db:review-get-full' && held.mock.calls.length === 0) {
+        held()
+        await gate
+      }
+      return answer(channel, ...args)
+    })
+    return { held, release }
+  }
+
+  /** 换到另一次打开：作品与会话一起换，作者在新作品里开着运行侧页。 */
+  async function switchTo(session: { projectId: string; leaseId: string; projectPath: string }, project: ProjectData) {
+    setActiveProjectSessionContext(session)
+    await act(async () => useProjectStore.setState({ currentProject: project }))
+    await act(async () => useStageStore.setState({ sheet: RUN_SHEET }))
+  }
+
+  async function waiveAll() {
+    const draft = backend.addDraft({ status: 'draft' })
+    const review = backend.addReview(draft)
+    backend.state.cycles.set(review.id, {
+      ...backend.state.cycles.get(review.id)!,
+      findings: [0, 1, 2].map(index => ({ findingId: `finding-${index}`, reviewItemIndex: index, category: '', kind: 'literary' as const, status: 'unverified' as const })),
+    })
+    await mount()
+    await openDraft(draft.id)
+    await expect.element(page.getByRole('button', { name: '按 2 项意见修稿' })).toBeVisible()
+    for (let left = 3; left > 0; left--) await act(async () => page.getByRole('button', { name: '不修改此项' }).first().click())
+    await expect.element(page.getByRole('button', { name: '确认不修改', exact: true })).toBeVisible()
+  }
+
+  it('确认不修改：换到另一部作品，回来后运行侧页还开着，没有换成旧稿的审稿侧页', async () => {
+    await waiveAll()
+    const { held, release } = holdReviewRead()
+    await click('确认不修改')
+    await vi.waitFor(() => expect(held).toHaveBeenCalledOnce())
+    await switchTo(HARBOR, { ...chapterProject(), id: HARBOR.projectId, path: HARBOR.projectPath, sessionLease: HARBOR.leaseId })
+    await act(async () => { release(); await new Promise(resolve => setTimeout(resolve, 100)) })
+    expect(useStageStore.getState().sheet).toEqual(RUN_SHEET)
+    expect(backend.writes('db:review-create')).toEqual([])
+  })
+
+  it('按意见修稿：重新打开同一部作品（新的会话），回来后运行侧页还开着，也没有启动修稿', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    backend.addReview(draft)
+    await mount()
+    await openDraft(draft.id)
+    await expect.element(page.getByRole('button', { name: '按 2 项意见修稿' })).toBeVisible()
+    const { held, release } = holdReviewRead()
+    await click('按 2 项意见修稿')
+    await vi.waitFor(() => expect(held).toHaveBeenCalledOnce())
+    await switchTo({ ...SESSION, leaseId: 'reopened-lease' }, { ...chapterProject(), sessionLease: 'reopened-lease' })
+    await act(async () => { release(); await new Promise(resolve => setTimeout(resolve, 100)) })
+    expect(useStageStore.getState().sheet).toEqual(RUN_SHEET)
+    expect(workflows.createRefineFromReviewWorkflow).not.toHaveBeenCalled()
+  })
+
+  it('没换作品、清单本身没通过（留着空白的人工意见）：侧页打开并写明原因', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    backend.addReview(draft)
+    await mount()
+    await openDraft(draft.id)
+    await click('添加我的意见')
+    await act(async () => useStageStore.setState({ sheet: RUN_SHEET }))
+    await click('按 3 项意见修稿')
+    await vi.waitFor(() => expect(useStageStore.getState().sheet).toEqual({ kind: 'review', filePath: activeTab()!.filePath }))
+    await expect.element(page.getByText('请填写或移除空白的人工问题后再确认。')).toBeVisible()
   })
 })

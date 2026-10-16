@@ -15,7 +15,7 @@ import { countUnits, STAGE_SAMPLE } from './stage-sample.mjs'
 const THREAD = Object.freeze({ title: '雾钟为何提前', type: '主线', targetStartChapter: 1, targetEndChapter: 6, authorIntent: '钟声提前一刻与三十年前的沉船有关。' })
 const SECOND_DRAFT = `${STAGE_SAMPLE.drafts[3].text}\n\n林岚把纸条又读了一遍，决定等到下一次大潮再上灯室。`
 const IMPLEMENTATION_TERMS = /LanceDB|FTS|BM25|Embedding|向量|query|MCP|token/i
-const MATERIALS = Object.freeze({
+export const MATERIALS = Object.freeze({
   '守塔人小传.txt': '守塔人姓周，在灯塔守了三十年，记得每一次雾钟提前的夜晚。',
   '沉船名录.txt': '三十年前北堤外沉没的货船名叫启明号，船上的测绘员姓林。',
 })
@@ -71,7 +71,7 @@ function everyWord(page) {
     .map(node => `${node.getAttribute('aria-label') ?? ''} ${node.getAttribute('title') ?? ''} ${node.getAttribute('placeholder') ?? ''}`)].join('\n'))
 }
 
-async function importMaterials({ app, page, roots }) {
+export async function importMaterials({ app, page, roots }) {
   const files = Object.entries(MATERIALS).map(([name, content]) => {
     const file = path.join(roots.temp, name)
     fs.writeFileSync(file, content)

@@ -78,10 +78,11 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     }).catch(() => undefined)
   }, [open])
 
-  const start = async (ignoreFindingsOnce: boolean) => {
+  /** expected 是发起时的那次打开：保存安排后接着开写时，作品已换就不写，蓝图与章号属于原来那部。 */
+  const start = async (ignoreFindingsOnce: boolean, expected?: ProjectSessionContext) => {
     const project = useProjectStore.getState().currentProject
     const session = captureProjectSession(project)
-    if (!session || busy) return
+    if (!session || busy || (expected && !isProjectSessionCurrent(expected))) return
     setBusy(true)
     setStarting(true)
     try {
@@ -122,18 +123,18 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     }
   }
 
-  /** 保存或撤销一致性安排：进行中按钮不可再点，失败时在弹层里写明原因。返回是否成功。 */
+  /** 保存或撤销一致性安排：进行中按钮不可再点，失败时在弹层里写明原因。成功时返回发起时的会话。 */
   const changeArrangement = async (action: string, call: (session: ProjectSessionContext) => Promise<{ success: boolean; error?: string }>) => {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
-    if (!session || busy) return false
+    if (!session || busy) return null
     setBusy(true)
     setMessage(null)
     try {
       requireIpcSuccess(await call(session), action)
-      return true
+      return session
     } catch (error) {
       if (isProjectSessionCurrent(session)) setMessage(error instanceof Error ? error.message : String(error))
-      return false
+      return null
     } finally {
       setBusy(false)
     }
@@ -142,7 +143,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
   const saveArrangement = async (stableFactKey: string, reason: string) => {
     const saved = await changeArrangement(text('保存一致性安排', 'Save consistency arrangement'),
       session => ipc.invokeWithProjectSession(session, 'db:consistency-exemption-save', stableFactKey, reason, session.projectPath))
-    if (saved) await start(false)
+    if (saved) await start(false, saved)
   }
 
   const revokeArrangement = async (stableFactKey: string) => {

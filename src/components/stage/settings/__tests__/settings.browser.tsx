@@ -294,6 +294,26 @@ describe('设置页', () => {
     expect(useLayoutStore.getState().settingsOpen).toBe(true)
   })
 
+  it('有没保存的输入时，顶栏设置、命令面板项目备份这类设置入口换到别的分区也先确认；同一分区不问', async () => {
+    useLayoutStore.setState({ settingsSection: 'skills' })
+    await mount(true)
+    const skillUrl = () => host!.querySelector<HTMLInputElement>('input[aria-label="GitHub Skill 地址"]')!
+    await type(skillUrl(), 'https://github.com/owner/skill')
+
+    await act(async () => navigate({ kind: 'settings', section: 'llm' }))
+    expect(discardDialog()?.textContent).toContain('这一页有还没保存的修改，离开后会丢失。')
+    await click(dialogButton('继续编辑'))
+    expect(useLayoutStore.getState().settingsSection).toBe('skills')
+    expect(skillUrl().value).toBe('https://github.com/owner/skill')
+
+    await act(async () => navigate({ kind: 'settings', section: 'skills' }))
+    expect(discardDialog()).toBeUndefined()
+
+    await act(async () => navigate({ kind: 'settings', section: 'backup' }))
+    await click(dialogButton('放弃修改'))
+    expect(useLayoutStore.getState()).toMatchObject({ settingsOpen: true, settingsSection: 'backup' })
+  })
+
   it('旧外壳的设置弹窗里有没保存的输入时，离开动作照常执行，不留下没人显示的确认', async () => {
     function Dirty() {
       useUnsavedSettings(true)

@@ -11,6 +11,8 @@ import {
 import { resolveWritingLanguage, type WritingLanguage } from '../../../shared/writing-language'
 import { sameProjectPathKey } from '../../../shared/project-session-context'
 import type { GeneratableField } from '../../../services/workflows/commands/generate-field.command'
+import { useEditorStore } from '../../../stores/editor-store'
+import { useLayoutStore } from '../../../stores/layout-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { navigate } from '../../../stores/navigation/navigation-intents'
 import { missingSetup, type SetupField } from '../../../stores/navigation/stage-progress'
@@ -30,6 +32,12 @@ import { MORE_FIELDS, ONE_MISSING_HINT, POV_OPTIONS, REQUIRED_NAMES, STRUCTURE_O
 type Form = ReturnType<typeof useNovelConfigForm>
 type Text = (zh: string, en: string) => string
 type PanelId = MoreField['id'] | 'advanced'
+
+/** 作者此刻在哪：活动标签、书房还是作品、设置页开没开。 */
+function authorPlace(): string {
+  const { sidebarView, settingsOpen } = useLayoutStore.getState()
+  return JSON.stringify([useEditorStore.getState().activeTabId, sidebarView, settingsOpen])
+}
 
 /** 设定页：一段核心大纲加类型、篇幅、目标读者三项必填即可往下走；其余设定收在「更多设定」与「高级」里。 */
 export default function StageSetup({ projectKey }: { projectKey: string }) {
@@ -298,11 +306,14 @@ function SetupSession({ projectKey }: { projectKey: string }) {
   }
   const goNext = async () => {
     if (form.dirty) {
+      const before = authorPlace()
       try {
-        await form.save(true)
+        if (!await form.save(true)) return
       } catch {
         return
       }
+      // 保存期间作者可能回了书房、开了设置页或换到别的标签；这时不再把作者拉去架构。
+      if (authorPlace() !== before) return
     }
     navigate({ kind: 'stage', stage: 'architecture' })
   }

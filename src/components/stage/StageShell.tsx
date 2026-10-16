@@ -8,9 +8,8 @@ import { useStageStore } from '../../stores/navigation/stage-store'
 import { openBuiltinEditor } from '../../stores/open-builtin-editor'
 import { chapterLabel } from '../../shared/chapter-label'
 import type { Theme } from '../../stores/theme-store'
-import { ipc } from '../../services/ipc-client'
 import ClearProjectDataDialog from '../dialogs/ClearProjectDataDialog'
-import { leaveSettingsThen } from '../settings/unsaved-settings'
+import { leaveSettingsThen, openProjectFolder } from '../settings/unsaved-settings'
 import type { MenuGroupSpec } from '../ui/Menu'
 import NewWorkDialog from './library/NewWorkDialog'
 import { SETTINGS_PAGES, settingsPageOf } from './settings/settings-pages'
@@ -26,11 +25,6 @@ import { refreshStageWork, useLandingPage, useStageView, useStageWorkRefresh, ty
 import { useStageShortcuts } from './use-stage-shortcuts'
 
 type Text = (zh: string, en: string) => string
-
-async function openProjectFolder(): Promise<void> {
-  const folder = await ipc.invoke('dialog:select-folder', 'project-open')
-  if (folder) leaveSettingsThen(() => void useProjectStore.getState().openProject(folder))
-}
 
 const backToLibrary = () => leaveSettingsThen(() => useLayoutStore.getState().setSidebarView('home'))
 const newBook = () => leaveSettingsThen(() => useLayoutStore.getState().openNewProject())
@@ -90,7 +84,7 @@ export default function StageShell({ theme }: { theme: Theme }) {
   const workMenu = useMemo<MenuGroupSpec[]>(() => [
     { id: 'work', items: [
       { id: 'library', label: text('回到书房', 'Back to library'), onSelect: backToLibrary },
-      { id: 'open', label: text('打开其他作品…', 'Open another book…'), onSelect: () => void openProjectFolder() },
+      { id: 'open', label: text('打开其他作品…', 'Open another book…'), onSelect: openProjectFolder },
       { id: 'new', label: text('新建作品…', 'New book…'), onSelect: newBook },
     ] },
     { id: 'files', items: [
@@ -128,7 +122,7 @@ export default function StageShell({ theme }: { theme: Theme }) {
     }))
     const actions = [
       paletteItem('action', { id: 'new', label: text('新建作品', 'New book'), run: newBook }),
-      paletteItem('action', { id: 'open', label: text('打开作品', 'Open a book'), run: () => void openProjectFolder() }),
+      paletteItem('action', { id: 'open', label: text('打开作品', 'Open a book'), run: openProjectFolder }),
       paletteItem('action', { id: 'import', label: text('小说拆解与仿写', 'Novel breakdown & imitation'), run: importNovel }),
       ...(hasProject ? [
         paletteItem('action', { id: 'library', label: text('回到书房', 'Back to library'), run: backToLibrary }),

@@ -9,11 +9,11 @@ import { useProjectStore } from '../../../stores/project-store'
 import { captureProjectSession } from '../../project-session-gate'
 import { Button } from '../../ui/Button'
 import { Notice } from '../../ui/Notice'
-import { useIncompleteDeletions } from '../../panels/sidebar/use-incomplete-deletions'
 import { useStageView } from '../use-stage-work'
 import WriteChapterPopover from '../write/WriteChapterPopover'
 import { openDraftInChapterView, swapChapterTab } from './chapter-tab-routing'
 import ChapterHead from './ChapterHead'
+import DeletionCleanupNotices from './DeletionCleanupNotices'
 import { useChapterBlueprint } from './use-chapter-blueprint'
 
 /**
@@ -29,8 +29,6 @@ export default function ChapterPlan({ tab, chapterNumber, projectKey }: { tab: E
   const { chapters } = useStageView()
   const row = chapters.find(candidate => candidate.number === chapterNumber)
   const draft = row?.draft ?? null
-  const deletions = useIncompleteDeletions(projectKey)
-  const unfinished = deletions.operations.filter(operation => operation.chapterNumber === chapterNumber)
 
   useEffect(() => {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
@@ -38,10 +36,11 @@ export default function ChapterPlan({ tab, chapterNumber, projectKey }: { tab: E
     void swapChapterTab(tab.id, () => openDraftInChapterView(draft, row?.title ?? '', session))
   }, [draft, row?.title, tab.id])
 
-  // 没有蓝图就没有写作按钮来接手写作请求；留着它，等这一章补上蓝图后会在蓝图页突然弹出写作弹层。
+  // 没有蓝图就没有写作按钮来接手写作请求；留着它，等这一章补上蓝图后会在蓝图页突然弹出写作弹层。页面开着之后才到的请求也一样。
+  const writeRequest = useStageStore(s => s.writeRequest)
   useEffect(() => {
-    if (blueprint === null && useStageStore.getState().writeRequest?.chapterNumber === chapterNumber) useStageStore.setState({ writeRequest: null })
-  }, [blueprint, chapterNumber])
+    if (blueprint === null && writeRequest?.chapterNumber === chapterNumber) useStageStore.setState({ writeRequest: null })
+  }, [blueprint, chapterNumber, writeRequest])
 
   const editBlueprint = () => openBuiltinEditor('chapter-card-editor', text('章节蓝图', 'Chapter blueprint'), 'chapter-card', undefined, chapterNumber)
   const target = wordsPerChapter && wordsPerChapter > 0 ? wordsPerChapter.toLocaleString(locale) : null
@@ -73,23 +72,7 @@ export default function ChapterPlan({ tab, chapterNumber, projectKey }: { tab: E
             </div>
           )}
           <div className="stage-ch-notices">
-            {unfinished.map(operation => {
-              const manual = operation.legacyKnowledgeAuthorization === 'required'
-              return (
-                <Notice
-                  key={operation.operationId}
-                  tone="warn"
-                  title={manual ? text('删除正文后待人工核对知识投影', 'The deleted manuscript needs a manual knowledge check') : text('删除正文后的清理没有完成', 'Cleanup after deleting the manuscript is unfinished')}
-                  actions={(
-                    <Button variant="secondary" size="sm" onClick={() => void (manual ? deletions.confirmLegacyDeletion(operation) : deletions.retryDeletion(operation))}>
-                      {manual ? text('确认人工核对并继续', 'Confirm and continue') : text('重试清理', 'Retry cleanup')}
-                    </Button>
-                  )}
-                >
-                  {[operation.manuscriptStatus === 'failed' ? operation.manuscriptError : '', operation.knowledgeStatus === 'failed' ? operation.knowledgeError : ''].filter(Boolean).join('；') || null}
-                </Notice>
-              )
-            })}
+            <DeletionCleanupNotices projectKey={projectKey} chapterNumber={chapterNumber} />
             {row?.running && (
               <Notice
                 tone="info"

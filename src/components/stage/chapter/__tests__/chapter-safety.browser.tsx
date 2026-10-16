@@ -209,6 +209,18 @@ describe('标签与外壳', () => {
     await vi.waitFor(() => expect(backend.writes('chapter:retry-deletion').map(args => args[0])).toEqual(['deletion-1']))
     await expect.element(page.getByText('删除正文后的清理没有完成')).not.toBeInTheDocument()
   })
+
+  it('删除正文后清理没做完、这一章另有未定稿的稿：那一稿的单章视图也提示并可以重试清理', async () => {
+    backend.state.incompleteDeletions = [{ operationId: 'deletion-1', chapterNumber: 3, draftId: 9, chapterTitle: '雨夜车站', status: 'failed',
+      manuscriptStatus: 'failed', manuscriptError: '正文文件被占用', knowledgeStatus: 'done', legacyKnowledgeAuthorization: 'not-required' }]
+    const draft = backend.addDraft({ status: 'draft' })
+    await mount()
+    await openDraft(draft.id)
+    await expect.element(page.getByText('删除正文后的清理没有完成')).toBeVisible()
+    await click('重试清理')
+    await vi.waitFor(() => expect(backend.writes('chapter:retry-deletion').map(args => args[0])).toEqual(['deletion-1']))
+    await expect.element(page.getByText('删除正文后的清理没有完成')).not.toBeInTheDocument()
+  })
 })
 
 describe('定稿冲突与定稿进行中', () => {
@@ -236,6 +248,18 @@ describe('定稿冲突与定稿进行中', () => {
     await openDraft(draft.id)
     await markTab({ finalizationPublication: 'pending' })
     await expect.element(page.getByRole('button', { name: '定稿', exact: true })).toBeDisabled()
+  })
+
+  it('英文界面下这一章有运行在跑：正文只读，定稿不可用（按章节资源判断，不按显示标题）', async () => {
+    const draft = backend.addDraft({ status: 'revised' })
+    useLocaleStore.setState({ locale: 'en-US' })
+    await mount()
+    await openDraft(draft.id)
+    await expect.element(page.getByRole('button', { name: 'Finalize', exact: true })).toBeEnabled()
+    await act(async () => useWorkflowStore.setState({ activeRuns: [{ id: 'finalize-run', type: 'chapter_creation', title: 'Finalize chapter 3',
+      status: 'running', projectPath: SESSION.projectPath, resourceKeys: ['chapter:3'], steps: [], currentStepIndex: 0, logs: [] } as never] }))
+    await expect.element(page.getByRole('button', { name: 'Finalize', exact: true })).toBeDisabled()
+    expect(document.querySelector('.stage-ch-prose')?.getAttribute('data-readonly')).toBe('true')
   })
 
   it('确认框开着时冲突到达：确认定稿不可用，不启动定稿，冲突仍保留', async () => {
@@ -358,6 +382,14 @@ describe('写作此章、标签顶替与跨作品的请求', () => {
     expect([activeTab()?.type, activeTab()?.chapterNumber, useStageStore.getState().writeRequest]).toEqual(['chapter', 5, null])
   })
 
+  it('没有蓝图的待写章已经开着，之后再来的写作请求也落空', async () => {
+    await mount()
+    await act(async () => stageNavigate({ kind: 'chapter', chapterNumber: 5 }))
+    await expect.element(page.getByText('这一章还没有蓝图')).toBeVisible()
+    await act(async () => stageNavigate({ kind: 'chapter', chapterNumber: 5, write: blueprintWritePrefill({ ...BLUEPRINT, chapterNumber: 5 }) }))
+    await vi.waitFor(() => expect(useStageStore.getState().writeRequest).toBeNull())
+  })
+
   it('换上另一稿期间旧标签又有了修改：旧标签留着不关', async () => {
     const draft = backend.addDraft({ status: 'draft' })
     await mount()
@@ -377,6 +409,16 @@ describe('写作此章、标签顶替与跨作品的请求', () => {
     await act(async () => useStageStore.setState({ chapterRequest: { session: SESSION, filePath: formatResourceUri({ kind: 'draft', id: 1 }) } }))
     await act(async () => useProjectStore.setState({ currentProject: { ...chapterProject(), sessionLease: 'reopened-lease' } }))
     expect(useStageStore.getState().chapterRequest).toBeNull()
+  })
+
+  it('审稿侧页属于打开它的那部作品：换作品或重新打开后收起，同一次打开里作品数据换新对象不收', async () => {
+    await mount()
+    const sheet = { kind: 'review' as const, filePath: formatResourceUri({ kind: 'draft', id: 1 }) }
+    await act(async () => useStageStore.setState({ sheet }))
+    await act(async () => useProjectStore.setState({ currentProject: { ...chapterProject(), novelConfig: { ...chapterProject().novelConfig, coreOutline: '后台写回' } } }))
+    expect(useStageStore.getState().sheet).toEqual(sheet)
+    await act(async () => useProjectStore.setState({ currentProject: { ...chapterProject(), id: 'harbor', path: 'C:\\novels\\harbor', sessionLease: 'harbor-lease' } }))
+    expect(useStageStore.getState().sheet).toBeNull()
   })
 
   it('删除正文的确认写的是新外壳里重试清理的位置', async () => {

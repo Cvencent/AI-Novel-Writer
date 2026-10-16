@@ -1,5 +1,6 @@
 // 新外壳的蓝图阶段与写作此章弹层（RD-7）。选择器用角色与可访问名称。
 import * as stage from './stage.mjs'
+import * as runSheet from './run-sheet.mjs'
 
 export const plan = page => page.getByRole('complementary', { name: '章节规划' })
 export const planItem = (page, number) => plan(page).getByRole('button', { name: new RegExp(`^${number}\\D`) })
@@ -48,16 +49,24 @@ export async function openGenerate(page) {
   await generateDialog(page).getByRole('button', { name: '开始生成', disabled: false }).waitFor({ state: 'visible' })
 }
 
-/** 生成第 from～to 章蓝图（指定范围，保留已有）。 */
+/**
+ * 生成第 from～to 章蓝图（指定范围，保留已有），返回是否经过「架构还不完整」。
+ * 运行开始时运行侧页自动展开，以它为「生成已开始」；侧页先开着就分不出来，所以要求调用前收起。
+ */
 export async function generateRange(page, from, to) {
+  if (await runSheet.sheet(page).isVisible()) throw new Error('generateRange 要求运行侧页先收起，否则分不出生成是否已开始')
   await openGenerate(page)
   const dialog = generateDialog(page)
   await dialog.getByLabel('蓝图起始章').fill(String(from))
   await dialog.getByLabel('蓝图结束章').fill(String(to))
   await dialog.getByRole('button', { name: '开始生成' }).click()
+  // 生成对话框收起后警告才出现；先等它收起，否则「对话框或警告」会先命中还在卸载的对话框。
+  await dialog.waitFor({ state: 'hidden' })
   const warning = page.getByRole('dialog', { name: '架构还不完整' })
-  await warning.or(dialog).first().waitFor({ state: 'visible' })
-  if (await warning.isVisible()) await warning.getByRole('button', { name: '继续生成' }).click()
+  await warning.or(runSheet.sheet(page)).first().waitFor({ state: 'visible', timeout: 60_000 })
+  if (!await warning.isVisible()) return false
+  await warning.getByRole('button', { name: '继续生成' }).click()
+  return true
 }
 
 /** 批量创作 count 章，模型用默认，写完留作草稿。 */

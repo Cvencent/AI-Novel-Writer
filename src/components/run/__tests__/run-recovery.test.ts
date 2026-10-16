@@ -56,14 +56,27 @@ describe('单章写作中断', () => {
 })
 
 describe('还在写的生成', () => {
-  it('这次打开里正在写的不算可恢复，上次打开时没写完的算', () => {
+  it('这次打开里有运行正在写这一章时不算可恢复；运行已经结束（会话内失败）或上次打开时没写完的都算', () => {
     const running = (epoch: string) => buildRecoveryEntries({ ...EMPTY_RECOVERY_SOURCES, drafts: [{
       view: { ...view('正文', { status: 'running', artifacts: [artifact('甲', true)] }), handle: { ...handle, epoch } } as never,
       recovery: { handle, operation: 'chapter-draft', chapterNumber: 4, attemptedPurposes: ['chapter-draft'], draftSave: { kind: 'absent' } } as never,
     }] }, 'zh-CN')[0]
-    expect(isInFlight(running('本次'), '本次', [])).toBe(true)
-    expect(isInFlight(running('上次'), '本次', [])).toBe(false)
+    const writing = (chapter: number) => ({ type: 'chapter_creation' as const, resourceKeys: [`chapter:${chapter}`] })
+    expect(isInFlight(running('本次'), '本次', [writing(4)])).toBe(true)
+    expect(isInFlight(running('本次'), '本次', [writing(5)])).toBe(false)
+    expect(isInFlight(running('本次'), '本次', [])).toBe(false)
+    expect(isInFlight(running('上次'), '本次', [writing(4)])).toBe(false)
     expect(isInFlight(draft({}), '会话', [])).toBe(false)
+  })
+
+  it('审稿在这次打开里失败、持久状态仍是 running 时也算可恢复', () => {
+    const entry = buildRecoveryEntries({ ...EMPTY_RECOVERY_SOURCES, reviews: [{
+      view: view('审稿', { status: 'running' }) as never,
+      recovery: { handle, modelId: '模型', sourceStatus: 'current', canResume: true, attemptedPurposes: ['review-chapter'],
+        context: { operation: 'review-chapter', source: { chapterNumber: 3 } } } as never,
+    }] }, 'zh-CN')[0]
+    expect(isInFlight(entry, '会话', [])).toBe(false)
+    expect(isInFlight(entry, '会话', [{ type: 'chapter_creation', resourceKeys: ['chapter:3'] }])).toBe(true)
   })
 
   it('批量正文由进行中（含暂停）的同范围批量运行推进时不算可恢复，运行结束后算', () => {
