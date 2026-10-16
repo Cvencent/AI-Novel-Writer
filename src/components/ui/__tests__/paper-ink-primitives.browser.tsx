@@ -17,12 +17,17 @@ import { Popover } from '../Popover'
 import { SegmentedControl } from '../SegmentedControl'
 import { Sheet } from '../Sheet'
 import { StatGrid } from '../StatGrid'
+import { withReducedMotion } from './reduced-motion'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const SHOTS = '../../../../.runtime/rd1-shots'
 const ACCENT = { light: 'rgb(44, 74, 140)', dark: 'rgb(169, 190, 240)' }
 const DANGER = { light: 'rgb(180, 35, 24)', dark: 'rgb(240, 138, 126)' }
+const PRESS = {
+  light: { primary: 'color(srgb 0.115922 0.196314 0.37851)', dangerSolid: 'color(srgb 0.545804 0.12502 0.0961569)', sink: 'rgba(23, 23, 26, 0.2)' },
+  dark: { primary: 'color(srgb 0.567373 0.636549 0.80251)', dangerSolid: 'color(srgb 0.766275 0.446275 0.410196)', sink: 'rgba(0, 0, 0, 0.45)' },
+}
 
 let root: Root | undefined
 let host: HTMLDivElement | undefined
@@ -43,7 +48,11 @@ const shot = (name: string) => page.screenshot({ path: `${SHOTS}/${name}.png`, e
 const focused = () => document.activeElement as HTMLElement
 const finishAnimations = (element: Element) => Promise.all(element.getAnimations().map((animation) => animation.finished))
 
-const channels = (color: string) => color.match(/[\d.]+/g)!.map(Number)
+/** rgb() 的 0–255 通道；color-mix 得出的 color(srgb …) 是 0–1，换算到同一刻度。 */
+function channels(color: string) {
+  const values = color.match(/[\d.]+/g)!.map(Number)
+  return color.startsWith('color(srgb') ? [...values.slice(0, 3).map((value) => value * 255), ...values.slice(3)] : values
+}
 
 function luminance(color: string) {
   const [r, g, b] = channels(color).slice(0, 3).map((value) => {
@@ -142,6 +151,185 @@ describe('Button 纸墨六种', () => {
     expect(contrast(value('--accent-ink'), value('--accent'))).toBeGreaterThanOrEqual(4.5)
     expect(contrast(value('--danger-ink'), value('--danger'))).toBeGreaterThanOrEqual(4.5)
     expect(tokens.color).toBe(value('--ink'))
+  })
+
+  it.each(['light', 'dark'] as const)('%s 主题禁用按钮是没上墨的平面：不透明、墨色薄雾底、撤掉受光', async (theme) => {
+    const container = await mount(
+      <div style={{ display: 'flex', gap: 12 }}>
+        <Button variant="primary" disabled>写作此章</Button>
+        <Button variant="secondary" disabled>重新生成</Button>
+      </div>,
+      theme,
+    )
+    for (const button of container.querySelectorAll('button')) {
+      const style = getComputedStyle(button)
+      expect(style.opacity).toBe('1')
+      expect(style.backgroundColor).toBe(tokenColor(container, '--wash'))
+      expect(style.backgroundImage).toBe('none')
+      expect(style.color).toBe(tokenColor(container, '--ink-3'))
+    }
+  })
+
+  it('主按钮与次按钮带 ≤2% 的纵向受光，危险按钮是平的', async () => {
+    const container = await mount(six)
+    const [primary, secondary, , danger, dangerSolid] = [...container.querySelectorAll('button')].map((b) => getComputedStyle(b))
+    expect(primary.backgroundImage).toContain('linear-gradient')
+    expect(secondary.backgroundImage).toContain('linear-gradient')
+    for (const flat of [danger, dangerSolid]) {
+      expect(flat.backgroundImage).toBe('none')
+      expect(flat.boxShadow.match(/rgba?\([^)]*\)/g)!.every((color) => color === 'rgba(0, 0, 0, 0)')).toBe(true)
+    }
+  })
+
+  it('主按钮悬停、次按钮按下时受光渐变与底色、投影同步过渡，不瞬切', async () => {
+    const container = await mount(
+      <div style={{ display: 'flex', gap: 12 }}>
+        <Button variant="primary">写作此章</Button>
+        <Button variant="secondary">重新生成</Button>
+      </div>,
+    )
+    const [primary, secondary] = container.querySelectorAll('button')
+    const midway = async (button: HTMLButtonElement, change: () => Promise<unknown>) => {
+      const rest = getComputedStyle(button).backgroundImage
+      await change()
+      const transitions = button.getAnimations()
+      expect(new Set(transitions.map((animation) => animation.effect!.getTiming().duration))).toEqual(new Set([140]))
+      transitions.forEach((animation) => { animation.pause(); animation.currentTime = 70 })
+      const middle = getComputedStyle(button).backgroundImage
+      transitions.forEach((animation) => animation.finish())
+      const end = getComputedStyle(button).backgroundImage
+      expect(end).not.toBe(rest)
+      expect(middle).not.toBe(end)
+      expect(middle).not.toBe(rest)
+    }
+    await midway(primary, () => userEvent.hover(primary))
+    secondary.focus()
+    await midway(secondary, () => userEvent.keyboard('[Space>]'))
+    await userEvent.keyboard('[/Space]')
+  })
+
+  it.each(['light', 'dark'] as const)('%s 主题指针停在按钮上按下：按下态压过悬停态，实心按钮比悬停更深，次按钮内凹', async (theme) => {
+    const container = await mount(six, theme)
+    const [primary, secondary, text, , dangerSolid, icon] = [...container.querySelectorAll('button')]
+    const look = (button: HTMLButtonElement) => {
+      button.getAnimations().forEach((animation) => animation.finish())
+      const style = getComputedStyle(button)
+      return { bg: style.backgroundColor, shadow: style.boxShadow }
+    }
+    const pressed = async (button: HTMLButtonElement) => {
+      button.focus()
+      await userEvent.keyboard('[Space>]')
+      const state = look(button)
+      await userEvent.keyboard('[/Space]')
+      return state
+    }
+    for (const button of [primary, secondary, text, dangerSolid, icon]) {
+      await userEvent.hover(container, { position: { x: 4, y: 4 } })
+      const pressOnly = await pressed(button)
+      await userEvent.hover(button)
+      const hover = look(button)
+      const hoverAndPress = await pressed(button)
+      expect(hoverAndPress).toEqual(pressOnly)
+      expect(hoverAndPress.bg).not.toBe(hover.bg)
+    }
+    const darker = async (button: HTMLButtonElement) => {
+      await userEvent.hover(button)
+      const hover = look(button)
+      const press = await pressed(button)
+      return luminance(press.bg) < luminance(hover.bg)
+    }
+    expect(await darker(primary)).toBe(true)
+    expect(await darker(dangerSolid)).toBe(true)
+    expect(await darker(secondary)).toBe(true)
+    await userEvent.hover(primary)
+    expect((await pressed(primary)).bg).toBe(PRESS[theme].primary)
+    await userEvent.hover(dangerSolid)
+    expect((await pressed(dangerSolid)).bg).toBe(PRESS[theme].dangerSolid)
+    await userEvent.hover(secondary)
+    expect((await pressed(secondary)).shadow).toContain(`${PRESS[theme].sink} 0px 2px 4px 0px inset`)
+  })
+
+  it('减少动态效果设置下按下不再下沉或缩小', async () => {
+    const container = await mount(
+      <div style={{ display: 'flex', gap: 12 }}>
+        <Button variant="primary">写作此章</Button>
+        <Button variant="secondary">重新生成</Button>
+        <Button variant="icon" aria-label="更多"><Ellipsis aria-hidden /></Button>
+      </div>,
+    )
+    const [primary, secondary, icon] = container.querySelectorAll('button')
+    const pressedTransform = async (button: HTMLButtonElement) => {
+      button.focus()
+      await userEvent.keyboard('[Space>]')
+      button.getAnimations().forEach((animation) => animation.finish())
+      const transform = getComputedStyle(button).transform
+      await userEvent.keyboard('[/Space]')
+      return transform
+    }
+    expect(await pressedTransform(primary)).toBe('matrix(1, 0, 0, 1, 0, 1)')
+    expect(await pressedTransform(icon)).toBe('matrix(0.96, 0, 0, 0.96, 0, 0)')
+    await withReducedMotion(async () => {
+      for (const button of [primary, secondary, icon]) expect(await pressedTransform(button)).toBe('none')
+    })
+  })
+
+  it('加载中的按钮保留原样并在底沿画墨线', async () => {
+    const container = await mount(<Button variant="primary" disabled aria-busy>保存中</Button>)
+    const button = container.querySelector('button')!
+    expect(getComputedStyle(button).backgroundColor).toBe(ACCENT.light)
+    expect(getComputedStyle(button, '::after').animationName).toBe('pi-ink-draw')
+  })
+
+  it('加载中的按钮悬停不变色，墨线落在底沿 3px 内', async () => {
+    const container = await mount(
+      <div style={{ display: 'flex', gap: 12 }}>
+        <Button variant="primary" disabled aria-busy>保存中</Button>
+        <Button variant="secondary" size="sm" disabled aria-busy>导出中</Button>
+      </div>,
+    )
+    const [primary, small] = container.querySelectorAll('button')
+    await userEvent.hover(primary)
+    primary.getAnimations().forEach((animation) => animation.finish())
+    expect(getComputedStyle(primary).backgroundColor).toBe(ACCENT.light)
+    expect(getComputedStyle(primary, '::after').bottom).toBe('3px')
+    expect(getComputedStyle(small, '::after').bottom).toBe('2px')
+  })
+
+  it('英文界面下按钮字距收到 .01em', async () => {
+    const container = await mount(<Button variant="primary">Write chapter</Button>)
+    const button = container.querySelector('button')!
+    const original = document.documentElement.lang
+    try {
+      document.documentElement.lang = 'zh-CN'
+      expect(getComputedStyle(button).letterSpacing).toBe('0.65px')
+      document.documentElement.lang = 'en-US'
+      expect(getComputedStyle(button).letterSpacing).toBe('0.13px')
+    } finally {
+      document.documentElement.lang = original
+    }
+  })
+
+  it('在新外壳里 Tab 到主按钮，焦点环与材质同时在 box-shadow 里', async () => {
+    const container = await mount(<div className="stage-shell"><Button variant="primary">写作此章</Button></div>)
+    await userEvent.tab()
+    const shadow = getComputedStyle(focused()).boxShadow
+    expect(shadow).toContain(ACCENT.light)
+    expect(shadow).toContain(tokenColor(container, '--hi'))
+  })
+
+  it('拆分按钮主体禁用时整组退成未上墨，箭头仍可点', async () => {
+    const onToggle = vi.fn()
+    const container = await mount(
+      <div className="pi-split pi-split--main-off">
+        <Button variant="primary" className="pi-split-main" disabled>按 0 项意见修稿</Button>
+        <Button variant="primary" className="pi-split-toggle" aria-label="更多修稿方式" onClick={onToggle}><Ellipsis aria-hidden /></Button>
+      </div>,
+    )
+    const toggle = container.querySelector<HTMLButtonElement>('.pi-split-toggle')!
+    expect(getComputedStyle(toggle).backgroundColor).toBe(tokenColor(container, '--wash'))
+    expect(getComputedStyle(container.querySelector('.pi-split')!).boxShadow).toBe('none')
+    await userEvent.click(toggle)
+    expect(onToggle).toHaveBeenCalledTimes(1)
   })
 
   it('旧外壳变体不受影响，仍走旧样式', async () => {
@@ -327,6 +515,31 @@ describe('Menu', () => {
   })
 })
 
+describe('危险分组里的禁用项', () => {
+  it('悬停不显示危险底色，回到静止的未上墨样子', async () => {
+    const container = await mount(
+      <div style={{ height: 300 }}>
+        <Menu
+          label="作品操作"
+          icon={<Ellipsis size={16} aria-hidden />}
+          groups={[
+            { id: 'main', items: [{ id: 'rename', label: '重命名', onSelect: () => {} }] },
+            { id: 'danger', tone: 'danger', items: [{ id: 'delete', label: '删除作品…', disabled: true, onSelect: () => {} }] },
+          ]}
+        />
+      </div>,
+    )
+    await userEvent.click(container.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!)
+    await settle()
+    const item = [...container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((button) => button.textContent === '删除作品…')!
+    expect(item.disabled).toBe(true)
+    await userEvent.hover(item)
+    expect(item.matches(':hover')).toBe(true)
+    expect(getComputedStyle(item).backgroundColor).toBe('rgba(0, 0, 0, 0)')
+    expect(getComputedStyle(item).color).toBe(tokenColor(container, '--ink-3'))
+  })
+})
+
 describe('侧页内的菜单', () => {
   const onRename = vi.fn()
   const groups = [
@@ -373,7 +586,7 @@ describe('侧页内的菜单', () => {
     const hit = document.elementFromPoint(menuRect.left + menuRect.width / 2, (bodyRect.bottom + menuRect.bottom) / 2)
     expect(hit?.closest('[role="menuitem"]')).not.toBeNull()
     expect(body.scrollHeight).toBe(scrollHeight)
-    expect(getComputedStyle(menu).backgroundColor).toBe(tokenColor(container, '--surface'))
+    expect(getComputedStyle(menu).backgroundColor).toBe(tokenColor(container, '--layer'))
     await shot('rd1-menu-in-sheet')
 
     await userEvent.click(page.getByRole('menuitem', { name: '重命名' }))
@@ -548,6 +761,48 @@ describe('SegmentedControl 与 Check', () => {
   })
 })
 
+describe('禁用的勾选与输入框', () => {
+  it.each(['light', 'dark'] as const)('%s 主题是没上墨的平面：不用 opacity，墨色薄雾底，字退到 --ink-3', async (theme) => {
+    const container = await mount(
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'flex-start' }}>
+        <Check checked={false} disabled onChange={() => {}} label="故事架构与大纲" />
+        <Check checked disabled onChange={() => {}} label="章节蓝图" />
+        <input className="pi-input" disabled defaultValue="灯塔" />
+      </div>,
+      theme,
+    )
+    for (const box of container.querySelectorAll<HTMLElement>('.pi-check-box')) {
+      expect(getComputedStyle(box).opacity).toBe('1')
+      expect(getComputedStyle(box).backgroundColor).toBe(tokenColor(container, '--wash-strong'))
+      expect(getComputedStyle(box.nextElementSibling!).opacity).toBe('1')
+      expect(getComputedStyle(box.nextElementSibling!).color).toBe(tokenColor(container, '--ink-3'))
+    }
+    const input = container.querySelector<HTMLInputElement>('.pi-input')!
+    expect(getComputedStyle(input).backgroundColor).toBe(tokenColor(container, '--wash'))
+    expect(getComputedStyle(input).borderTopColor).toBe('rgba(0, 0, 0, 0)')
+    expect(getComputedStyle(input).color).toBe(tokenColor(container, '--ink-3'))
+  })
+})
+
+describe('禁用的开关', () => {
+  it.each(['light', 'dark'] as const)('%s 主题开着也退成墨色薄雾的轨道，不留强调色，不用 opacity', async (theme) => {
+    const container = await mount(
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'flex-start' }}>
+        <Check kind="switch" checked disabled onChange={() => {}} label="写完自动打开下一章" />
+        <Check kind="switch" checked={false} disabled onChange={() => {}} label="启动时检查更新" />
+      </div>,
+      theme,
+    )
+    const [on, off] = [...container.querySelectorAll<HTMLElement>('.pi-switch')]
+    for (const track of [on, off]) {
+      expect(getComputedStyle(track).opacity).toBe('1')
+      expect(getComputedStyle(track).backgroundColor).toBe(tokenColor(container, '--wash-strong'))
+    }
+    expect(getComputedStyle(on, '::after').transform).not.toBe(getComputedStyle(off, '::after').transform)
+    expect(getComputedStyle(on.nextElementSibling!).color).toBe(tokenColor(container, '--ink-3'))
+  })
+})
+
 describe('StatGrid、Notice、Lifecycle', () => {
   it('统计格是带名称的描述列表，数字为 Instrument Serif', async () => {
     const container = await mount(
@@ -566,6 +821,9 @@ describe('StatGrid、Notice、Lifecycle', () => {
     const notice = container.querySelector('[role="status"]')!
     expect(notice.getAttribute('data-tone')).toBe('warn')
     expect(notice.querySelector('svg')!.getAttribute('aria-hidden')).toBe('true')
+    expect(getComputedStyle(notice).backgroundColor).toBe('rgba(0, 0, 0, 0)')
+    expect(getComputedStyle(notice).boxShadow).toBe('none')
+    expect(getComputedStyle(notice.querySelector('.pi-notice-title')!).fontFamily).toContain('Noto Serif SC')
     await userEvent.tab()
     expect(focused().textContent).toBe('查看')
     expectFocusRing(focused())
@@ -642,6 +900,8 @@ describe('DangerConfirm', () => {
     const confirm = [...dialog.querySelectorAll('button')].find((b) => b.textContent === '永久删除')!
     expect(focused()).toBe(input)
     expect(confirm.className).toContain('pi-btn--danger-solid')
+    expect(getComputedStyle(dialog.querySelector('.pi-dialog-recover')!).color).toBe(DANGER.light)
+    expect(getComputedStyle(dialog.querySelector('.pi-dialog-title')!).color).not.toBe(DANGER.light)
 
     await userEvent.keyboard('灯')
     expect(confirm.disabled).toBe(true)
@@ -670,7 +930,7 @@ describe('DangerConfirm', () => {
     expect(rect.left + rect.width / 2).toBeCloseTo(document.documentElement.clientWidth / 2, 0)
     expect(rect.top + rect.height / 2).toBeCloseTo(document.documentElement.clientHeight / 2, 0)
     expect(document.elementFromPoint(rect.left + rect.width / 2, rect.top + 20)?.closest('[role="dialog"]')).toBe(dialog)
-    expect(getComputedStyle(dialog).backgroundColor).toBe(tokenColor(container, '--surface'))
+    expect(getComputedStyle(dialog).backgroundColor).toBe(tokenColor(container, '--layer'))
   })
 
   it('Esc 关闭对话框且不确认', async () => {

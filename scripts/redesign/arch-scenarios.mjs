@@ -408,12 +408,12 @@ export const ARCH_SCENARIOS = {
     const surface = await consent.evaluate(element => {
       const probe = document.createElement('span')
       element.append(probe)
-      probe.style.backgroundColor = 'var(--surface)'
+      probe.style.backgroundColor = 'var(--layer)'
       const surface = getComputedStyle(probe).backgroundColor
       probe.remove()
       return { surface, dialog: getComputedStyle(element).backgroundColor }
     })
-    assert.equal(surface.dialog, surface.surface, '对话框底色是纸墨 --surface')
+    assert.equal(surface.dialog, surface.surface, '对话框底色是浮笺 --layer（RD-V 起对话框、菜单、通知同一材质）')
   }, after: async ({ page }) => {
     await page.getByRole('dialog').getByRole('button', { name: '返回' }).click()
     await page.getByRole('dialog').getByRole('button', { name: '暂不导入' }).click()

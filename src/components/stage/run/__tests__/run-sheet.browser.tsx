@@ -345,6 +345,41 @@ describe('运行侧页', () => {
   })
 })
 
+describe('运行侧页的说明文字', () => {
+  it.each(['light', 'dark'] as const)('%s 主题步骤用时、待执行与跳过的步骤、日志时间都用 --ink-3，不用 --ink-4', async (theme) => {
+    host!.dataset.theme = theme
+    const ink = (name: string) => {
+      const probe = document.createElement('span')
+      probe.style.color = `var(${name})`
+      host!.append(probe)
+      const color = getComputedStyle(probe).color
+      probe.remove()
+      return color
+    }
+    useWorkflowStore.setState({
+      activeRuns: [run('4', 'running', { steps: [
+        { id: 'a', name: '读设定', description: '', status: 'completed', progress: 100, logs: [], startedAt: '2026-10-12T08:10:00.000Z', completedAt: '2026-10-12T08:10:41.000Z' },
+        { id: 'b', name: '写稿', description: '', status: 'running', progress: 40, logs: [] },
+        { id: 'c', name: '审稿', description: '', status: 'pending', progress: 0, logs: [] },
+        { id: 'd', name: '修稿', description: '', status: 'skipped', progress: 0, logs: [] },
+      ] } as Partial<WorkflowRun>)],
+      globalLogs: [{ time: '08:10:00', level: 'info', message: '开始' }],
+    })
+    await render()
+    const step = (status: string) => host!.querySelector<HTMLElement>(`.run-step[data-status="${status}"]`)!
+    const color = (element: Element) => getComputedStyle(element).color
+    expect(ink('--ink-3')).not.toBe(ink('--ink-4'))
+    expect(color(step('completed').querySelector('.run-step-meta')!)).toBe(ink('--ink-3'))
+    for (const status of ['pending', 'skipped']) {
+      expect(color(step(status).querySelector('.run-step-row')!)).toBe(ink('--ink-3'))
+      expect(color(step(status).querySelector('.run-step-meta')!)).toBe(ink('--ink-3'))
+    }
+    expect(color(step('pending').querySelector('.run-step-icon')!)).toBe(ink('--ink-3'))
+    await click('诊断')
+    expect(color(host!.querySelector('.run-log-time')!)).toBe(ink('--ink-3'))
+  })
+})
+
 describe('聊天入口不可见', () => {
   it.each<[Locale, string]>([['zh-CN', 'AI 输出'], ['en-US', 'AI output']])('%s：旧外壳右侧栏只有 AI 输出，运行侧页三个分页都没有聊天', async (locale, outputLabel) => {
     useLocaleStore.setState({ locale })

@@ -1,5 +1,6 @@
 import { useRef, type ReactNode } from 'react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
+import { keepToastStackClickable } from '../ui/ToastStack'
 import { usePaperInkRoot } from '../ui/use-paper-ink-root'
 
 interface InkDialogProps {
@@ -25,9 +26,9 @@ export function InkDialog({ open, onOpenChange, title, description, children, fo
       {root !== undefined && (
         <DialogPrimitive.Portal container={root}>
           <DialogPrimitive.Overlay className="pi-scrim" />
-          <DialogPrimitive.Content className="pi-dialog stage-dialog" {...(description ? {} : { 'aria-describedby': undefined })}>
+          <DialogPrimitive.Content className="pi-dialog stage-dialog" onPointerDownOutside={keepToastStackClickable} {...(description ? {} : { 'aria-describedby': undefined })}>
             <div className="pi-dialog-head">
-              <DialogPrimitive.Title className="pi-dialog-title stage-dialog-title">{title}</DialogPrimitive.Title>
+              <DialogPrimitive.Title className="pi-dialog-title">{title}</DialogPrimitive.Title>
             </div>
             <div className="pi-dialog-body">
               {description && <DialogPrimitive.Description className="pi-dialog-text">{description}</DialogPrimitive.Description>}

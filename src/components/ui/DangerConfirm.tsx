@@ -1,6 +1,8 @@
 import { useId, useRef, useState } from 'react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
+import { OctagonAlert } from 'lucide-react'
 import { Button } from './Button'
+import { keepToastStackClickable } from './ToastStack'
 import { usePaperInkRoot } from './use-paper-ink-root'
 
 interface DangerConfirmProps {
@@ -51,15 +53,16 @@ export function DangerConfirm({
       {root !== undefined && (
         <DialogPrimitive.Portal container={root}>
           <DialogPrimitive.Overlay className="pi-scrim" />
-          <DialogPrimitive.Content className="pi-dialog">
+          <DialogPrimitive.Content className="pi-dialog pi-dialog--marked" onPointerDownOutside={keepToastStackClickable}>
             <div className="pi-dialog-head">
+              <span className="pi-dialog-mark" aria-hidden><OctagonAlert /></span>
               <DialogPrimitive.Title className="pi-dialog-title">{title}</DialogPrimitive.Title>
             </div>
             <div className="pi-dialog-body">
               <DialogPrimitive.Description asChild>
-                <div className="pi-dialog-text">
+                <div className="pi-dialog-consequence">
                   <p>{consequence}</p>
-                  <p>{recoverability}</p>
+                  <p className="pi-dialog-recover">{recoverability}</p>
                 </div>
               </DialogPrimitive.Description>
               {typeToConfirm && (

@@ -52,7 +52,7 @@ export default function BlueprintCard({ blueprint, row, saving, onField, onSave,
         <div className="stage-bp-card-bar">
           <span className="stage-bp-card-status">{text('正文', 'Manuscript')} · {text(...status)}</span>
           <span className="stage-bp-card-gap" />
-          <Button variant="secondary" size="sm" disabled={saving} onClick={onSave}>
+          <Button variant="secondary" size="sm" disabled={saving} aria-busy={saving || undefined} onClick={onSave}>
             {saving ? text('保存中…', 'Saving…') : text('保存此章', 'Save chapter')}
           </Button>
           <Menu

@@ -19,7 +19,7 @@ const PAGE_CONTRAST = [
   ['.stage-bp-h1', 4.5], ['.stage-bp-plan-name', 4.5], ['.stage-bp-title', 4.5], ['.stage-bp-ctl', 4.5], ['.stage-bp-person', 4.5],
   ['.stage-bp-field > label', 4.5], ['.stage-bp-eyebrow', 3], ['.stage-bp-plan-no', 3], ['.stage-bp-plan-top', 3],
   ['.stage-bp-plan-status', 3], ['.stage-bp-card-status', 3],
-  ['.stage-bp-field > label em', 3], ['.stage-bp-role select', 4.5], ['.stage-write .pi-btn', 4.5],
+  ['.stage-bp-field > label em', 3], ['.stage-bp-role select', 4.5], ['.pi-split .pi-btn', 4.5],
 ]
 
 /** 第 3 章的出场人物加上守塔人：一致性预检的线索要落在本章蓝图里的人物上。 */

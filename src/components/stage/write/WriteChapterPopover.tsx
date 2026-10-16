@@ -50,6 +50,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
   const [preflight, setPreflight] = useState<ConsistencyPreflightResult | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [starting, setStarting] = useState(false)
   const modelFieldId = useId()
   const guidanceFieldId = useId()
   const hintFieldId = useId()
@@ -82,6 +83,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     const session = captureProjectSession(project)
     if (!session || busy) return
     setBusy(true)
+    setStarting(true)
     try {
       const wordsPerChapter = project?.novelConfig.wordsPerChapter
       const form = chapterWriteFormFromPrefill({ ...blueprint, userGuidance, chapterNumber }, chapterDefaultWordsTarget(wordsPerChapter))
@@ -116,6 +118,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       }
     } finally {
       setBusy(false)
+      setStarting(false)
     }
   }
 
@@ -160,6 +163,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       label={label}
       icon={<PenLine size={15} aria-hidden />}
       disabled={busy}
+      busy={starting}
       onRun={() => void start(false)}
       optionsLabel={text('本次写作选项', 'Options for this run')}
       popoverClassName="stage-write-pop"

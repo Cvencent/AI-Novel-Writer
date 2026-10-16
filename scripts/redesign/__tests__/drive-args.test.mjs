@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, it, vi } from 'vitest'
 vi.mock('playwright', () => ({ _electron: { launch: () => { throw new Error('UNIT_TEST_MUST_NOT_LAUNCH_ELECTRON') } } }))
-import { createIsolatedRoots, isolatedEnvironment, parseArgs } from '../drive.mjs'
+import { captureFailure, createIsolatedRoots, isolatedEnvironment, launchArgs, parseArgs, sessionIsClean } from '../drive.mjs'
 import { BASELINE_SESSIONS, SCENARIOS } from '../scenarios.mjs'
 
 const parents = []
@@ -66,3 +66,35 @@ it('子进程环境的全部可写根都指向隔离目录', () => {
 it('baseline-all 的会话恰好覆盖每个场景一次', () => {
   assert.deepEqual(Object.values(BASELINE_SESSIONS).flat().sort(), Object.keys(SCENARIOS).sort())
 })
+
+it('启动参数固定中文界面，非中文宿主上场景照样按中文找控件', () => {
+  const roots = createIsolatedRoots(tempParent())
+  const args = launchArgs(roots)
+  assert.ok(args.includes('--lang=zh-CN'))
+  assert.ok(args.includes(`--user-data-dir=${roots.userData}`))
+})
+
+it('外部写入或残留进程时不算干净，隔离目录留着取证', () => {
+  const ok = { failedAt: null, sessionErrors: [], residualProcesses: [], externalWrites: [] }
+  assert.equal(sessionIsClean(ok), true)
+  assert.equal(sessionIsClean({ ...ok, externalWrites: ['C:/Users/x/AppData/Roaming/ai-novel-writer'] }), false)
+  assert.equal(sessionIsClean({ ...ok, residualProcesses: [4242] }), false)
+  assert.equal(sessionIsClean({ ...ok, externalWrites: undefined }), false)
+  assert.equal(sessionIsClean({ ...ok, failedAt: 0 }), false)
+})
+
+it('启动失败的取证：截图失败也照样写 DOM 与无障碍树，且不抛错', async () => {
+  const parent = tempParent()
+  const base = path.join(parent, 'stage-library-light')
+  const page = {
+    isClosed: () => false,
+    screenshot: () => Promise.reject(new Error('Target closed')),
+    content: async () => '<html><body>启动卡住</body></html>',
+    locator: () => ({ ariaSnapshot: async () => '- text: 启动卡住' }),
+  }
+  await captureFailure(page, base)
+  assert.equal(fs.readFileSync(`${base}.dom.html`, 'utf8'), '<html><body>启动卡住</body></html>')
+  assert.equal(fs.readFileSync(`${base}.aria.yml`, 'utf8'), '- text: 启动卡住')
+  await captureFailure(undefined, base)
+})
+

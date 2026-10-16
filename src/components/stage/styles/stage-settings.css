@@ -14,19 +14,18 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  padding: 18px 14px;
+  padding: var(--s-4) var(--s-3);
   border-right: 1px solid var(--rule);
   overflow: auto;
 }
 
 .stage-shell .stage-set-back {
   align-self: flex-start;
-  margin: 0 0 18px -2px;
-  gap: 6px;
+  margin: 0 0 var(--s-4) -2px;
 }
 
 .stage-set-nav-title {
-  margin: 0 10px 18px;
+  margin: 0 10px var(--s-4);
   font: 600 22px/1.3 var(--font-display);
   color: var(--ink);
 }
@@ -35,13 +34,13 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-bottom: 20px;
+  margin-bottom: var(--s-5);
 }
 
 .stage-set-group-label {
   margin: 0;
   padding: 0 10px 6px;
-  font-size: 11px;
+  font-size: var(--fs-11);
   letter-spacing: .16em;
   color: var(--ink-3);
 }
@@ -50,10 +49,10 @@
   height: 34px;
   padding: 0 10px;
   border: 0;
-  border-radius: 9px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--ink-2);
-  font: 400 13.5px/1 var(--font-ui);
+  font: 400 var(--fs-14)/1 var(--font-ui);
   text-align: left;
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
@@ -61,6 +60,11 @@
 
 .stage-set-link:hover {
   background: var(--sunken);
+  color: var(--ink);
+}
+
+.stage-set-link:active {
+  background: var(--wash-strong);
   color: var(--ink);
 }
 
@@ -85,17 +89,17 @@
 .stage-set-inner {
   max-width: 760px;
   margin: 0 auto;
-  padding: 48px 48px 64px;
+  padding: var(--s-12) var(--s-12) var(--s-16);
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: var(--s-6);
 }
 
 .stage-set-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 24px;
+  gap: var(--s-6);
 }
 
 .stage-set-title {
@@ -121,14 +125,14 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 24px;
-  padding: 18px 0;
+  gap: 10px var(--s-6);
+  padding: var(--s-4) 0;
   border-top: 1px solid var(--rule);
 }
 
 .stage-set-rows > .stage-set-row:first-child {
   border-top: 0;
-  padding-top: 4px;
+  padding-top: var(--s-1);
 }
 
 .stage-set-row > div:first-child {
@@ -139,7 +143,7 @@
 .stage-set-row-title {
   display: block;
   margin: 0;
-  font-size: 13.5px;
+  font-size: var(--fs-14);
   font-weight: 500;
   color: var(--ink);
 }
@@ -161,7 +165,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--s-2);
 }
 
 .stage-set-row-ctl .stage-select {
@@ -186,20 +190,24 @@
   align-items: center;
   column-gap: 10px;
   row-gap: 2px;
-  padding: 12px 14px;
+  padding: var(--s-3) var(--s-3);
   border: 1px solid var(--rule-strong);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--paper);
   color: var(--ink);
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 
 .stage-set-theme > svg {
   grid-row: span 2;
   color: var(--ink-2);
+}
+
+.stage-set-theme:active {
+  background: var(--paper-press);
 }
 
 .stage-set-theme[aria-checked='true'] {
@@ -226,12 +234,12 @@
 }
 
 .stage-set-font-sample {
-  margin: 12px 0 0;
-  padding: 10px 14px;
-  border-radius: 10px;
+  margin: var(--s-3) 0 0;
+  padding: 10px var(--s-3);
+  border-radius: var(--radius-lg);
   background: var(--paper);
   box-shadow: 0 0 0 1px var(--rule);
-  font-size: 16px;
+  font-size: var(--fs-16);
   line-height: 1.9;
   color: var(--ink);
 }
@@ -239,13 +247,13 @@
 .stage-set-zoom {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--s-1);
 }
 
 .stage-set-zoom-value {
   min-width: 56px;
   text-align: center;
-  font: italic 400 19px/1 var(--font-num);
+  font: italic 400 var(--fs-20)/1 var(--font-num);
   color: var(--ink);
 }
 
@@ -262,9 +270,9 @@
 .stage-set-model {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 12px 14px 16px;
-  border-radius: 12px;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-3) var(--s-3) var(--s-4);
+  border-radius: var(--radius-lg);
   background: var(--paper);
   box-shadow: 0 0 0 1px var(--rule);
 }
@@ -279,7 +287,7 @@
   flex: none;
   display: grid;
   place-items: center;
-  border-radius: 9px;
+  border-radius: var(--radius-control);
   background: var(--surface-2);
   color: var(--ink-2);
 }
@@ -297,7 +305,7 @@
 .stage-set-model-name {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--s-2);
   font-weight: 600;
 }
 
@@ -322,16 +330,16 @@
   display: inline-flex;
   align-items: center;
   height: 20px;
-  padding: 0 8px;
+  padding: 0 var(--s-2);
   border-radius: var(--radius-pill);
   background: var(--accent-soft);
   color: var(--accent);
-  font: 500 11px/1 var(--font-ui);
+  font: 500 var(--fs-11)/1 var(--font-ui);
 }
 
 .stage-set-card {
-  padding: 20px 24px;
-  border-radius: 14px;
+  padding: var(--s-5) var(--s-6);
+  border-radius: var(--radius-panel);
   background: var(--paper);
   box-shadow: 0 0 0 1px var(--rule);
 }
@@ -351,14 +359,14 @@
 }
 
 .stage-shell .stage-set-legacy .rounded-xl {
-  border-radius: 14px;
+  border-radius: var(--radius-panel);
 }
 
 .stage-shell .stage-set-legacy :is(input:not([type='checkbox'], [type='radio'], [type='range']), select, textarea) {
   border-color: var(--rule-strong);
   border-radius: var(--radius-lg);
   background-color: var(--paper);
-  font-size: 13.5px;
+  font-size: var(--fs-14);
 }
 
 .stage-shell .stage-set-legacy :is(input:not([type='checkbox'], [type='radio'], [type='range']), select) {
@@ -374,15 +382,15 @@
 .stage-set-form {
   display: grid;
   grid-template-columns: 160px minmax(0, 1fr) 120px;
-  gap: 14px;
-  padding: 18px 0;
+  gap: var(--s-3);
+  padding: var(--s-4) 0;
   border-top: 1px solid var(--rule);
 }
 
 .stage-set-field {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: var(--s-2);
   min-width: 0;
 }
 
@@ -396,8 +404,8 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 12px;
-  padding-top: 18px;
+  gap: var(--s-3);
+  padding-top: var(--s-4);
   border-top: 1px solid var(--rule);
 }
 
@@ -414,8 +422,8 @@
 .stage-set-about {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 4px 0 18px;
+  gap: var(--s-4);
+  padding: var(--s-1) 0 var(--s-4);
 }
 
 .stage-set-about-mark {
@@ -424,10 +432,10 @@
   flex: none;
   display: grid;
   place-items: center;
-  border-radius: 14px;
+  border-radius: var(--radius-panel);
   background: var(--ink);
   color: var(--frame);
-  font: 600 26px/1 var(--font-display);
+  font: 600 var(--fs-24)/1 var(--font-display);
 }
 
 .stage-set-about-name {
@@ -442,7 +450,7 @@
 }
 
 .stage-set-about-version > .pi-num {
-  font-size: 16px;
+  font-size: var(--fs-16);
   color: var(--ink-2);
 }
 
@@ -457,7 +465,7 @@
 .stage-update-settings {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--s-3);
 }
 
 .stage-update-settings > .stage-set-row {

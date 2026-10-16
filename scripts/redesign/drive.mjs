@@ -17,6 +17,7 @@ import { RUN_SCENARIOS } from './run-scenarios.mjs'
 import { BLUEPRINT_SCENARIOS } from './blueprint-scenarios.mjs'
 import { CHAPTER_SCENARIOS } from './chapter-scenarios.mjs'
 import { REFS_SCENARIOS } from './refs-scenarios.mjs'
+import { VISUAL_SCENARIOS } from './visual-scenarios.mjs'
 import { BASELINE_SESSIONS, EXTRA_SCENARIOS, SCENARIOS as BASELINE_SCENARIOS, STAGE_SCENARIOS } from './scenarios.mjs'
 import { dismissCompletionToasts, dismissStartupNotice, firstInteractiveControl, waitForShell } from './pages/shell.mjs'
 
@@ -27,7 +28,7 @@ const VIEWPORT = { width: 1440, height: 900 }
 const THEMES = ['light', 'dark']
 const SHELLS = ['writer', 'stage']
 const ROOT_NAMES = ['legacy', 'canonical', 'userData', 'home', 'appData', 'localAppData', 'temp', 'projects']
-const SCENARIOS = { ...BASELINE_SCENARIOS, ...EXTRA_SCENARIOS, ...STAGE_SCENARIOS, ...RUN_SCENARIOS, ...ARCH_SCENARIOS, ...BLUEPRINT_SCENARIOS, ...CHAPTER_SCENARIOS, ...REFS_SCENARIOS }
+const SCENARIOS = { ...BASELINE_SCENARIOS, ...EXTRA_SCENARIOS, ...STAGE_SCENARIOS, ...RUN_SCENARIOS, ...ARCH_SCENARIOS, ...BLUEPRINT_SCENARIOS, ...CHAPTER_SCENARIOS, ...REFS_SCENARIOS, ...VISUAL_SCENARIOS }
 /** 计时会话：先在同一隔离目录预启动一次写好外观（书房计时另建 20 部作品），再计之后那次冷启动。 */
 const TIMED_SESSIONS = new Set(['startup-timing', 'library-timing'])
 export const SHELF_BOOKS = 20
@@ -159,11 +160,31 @@ export async function quit(app, graceMs = 10_000) {
   return { forced: true }
 }
 
-async function launch({ roots, appRoot, fakeModelPort, diagnostics, shelfBooks = 0, renderTiming = false }) {
+/**
+ * 隔离目录是新建的，应用没有存过界面语言，会按 navigator.language 取；非中文宿主上会落到英文，而场景全程按中文找控件。
+ * --lang 固定 Chromium 的界面语言，宿主语言不再影响结果。
+ */
+export function launchArgs(roots) {
+  return ['-r', OFFSCREEN_WINDOW, '.', `--user-data-dir=${roots.userData}`, '--lang=zh-CN']
+}
+
+/** 失败现场：截图、DOM 与无障碍树。取证本身失败不能盖掉原来的错误。 */
+export async function captureFailure(page, base) {
+  if (!page || page.isClosed()) return
+  await page.screenshot({ path: `${base}.failure.png` }).catch(() => {})
+  await dumpDom(page, base).catch(() => {})
+}
+
+/** 外部写入与残留进程都要留着隔离目录取证；只有全部检查通过才删。 */
+export function sessionIsClean({ failedAt, sessionErrors, residualProcesses, externalWrites }) {
+  return failedAt === null && sessionErrors.length === 0 && residualProcesses?.length === 0 && externalWrites?.length === 0
+}
+
+async function launch({ roots, appRoot, fakeModelPort, diagnostics, failureBase, shelfBooks = 0, renderTiming = false }) {
   const launchedAt = Date.now()
   const env = { ...isolatedEnvironment(roots), ...(renderTiming ? { DRIVE_RENDER_TIMING: String(shelfBooks || 1) } : {}) }
-  const app = await electron.launch({ cwd: appRoot, args: ['-r', OFFSCREEN_WINDOW, '.', `--user-data-dir=${roots.userData}`],
-    env, timeout: TIMEOUT })
+  const app = await electron.launch({ cwd: appRoot, args: launchArgs(roots), env, timeout: TIMEOUT })
+  let page
   try {
     await app.evaluate((_, port) => {
       const originalFetch = globalThis.fetch
@@ -179,7 +200,7 @@ async function launch({ roots, appRoot, fakeModelPort, diagnostics, shelfBooks =
     }, fakeModelPort ?? null)
     app.process().stdout?.on('data', chunk => diagnostics.push(`[main:stdout] ${String(chunk).trimEnd()}`))
     app.process().stderr?.on('data', chunk => diagnostics.push(`[main:stderr] ${String(chunk).trimEnd()}`))
-    const page = await app.firstWindow({ timeout: TIMEOUT })
+    page = await app.firstWindow({ timeout: TIMEOUT })
     page.on('console', message => diagnostics.push(`[renderer:${message.type()}] ${message.text()}`))
     page.on('pageerror', error => diagnostics.push(`[renderer:pageerror] ${error.stack ?? error.message}`))
     await firstInteractiveControl(page).waitFor({ state: 'visible', timeout: TIMEOUT })
@@ -207,7 +228,12 @@ async function launch({ roots, appRoot, fakeModelPort, diagnostics, shelfBooks =
     await dismissStartupNotice(page)
     assert.equal((await invoke(page, 'startup:get-state')).state, 'ready')
     return { app, page, timing }
-  } catch (error) { await quit(app); throw error }
+  } catch (error) {
+    // 启动失败时调用方拿不到 page，只能在退出前就地取证
+    await captureFailure(page, failureBase)
+    await quit(app)
+    throw error
+  }
 }
 
 const invoke = (page, channel, ...args) =>
@@ -234,8 +260,8 @@ async function applyAppearance(page, { theme, shell }) {
  * 启动计时量的是同一配置目录里的第二次冷启动：先启动一次写好主题（与外壳偏好）再退出，两侧都这样做。
  * 首次启动还要迁移旧配置、建库，与之后的启动不可比。
  */
-async function prepareProfile({ roots, appRoot, diagnostics }, appearance, shelfBooks = 0) {
-  const prepared = await launch({ roots, appRoot, fakeModelPort: null, diagnostics })
+async function prepareProfile({ roots, appRoot, diagnostics, failureBase }, appearance, shelfBooks = 0) {
+  const prepared = await launch({ roots, appRoot, fakeModelPort: null, diagnostics, failureBase })
   try {
     await applyAppearance(prepared.page, appearance)
     if (shelfBooks > 0) await seedShelf(prepared, roots, shelfBooks)
@@ -319,8 +345,9 @@ async function runSession(sessionName, names, options) {
   const shell = names.map(name => SCENARIOS[name]?.shell).find(Boolean) ?? options.shell
   try {
     const shelfBooks = sessionName === 'library-timing' ? SHELF_BOOKS : 0
-    if (TIMED_SESSIONS.has(sessionName)) await prepareProfile({ roots, appRoot: options.appRoot, diagnostics }, { theme: options.theme, shell }, shelfBooks)
-    launched = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics, shelfBooks, renderTiming: TIMED_SESSIONS.has(sessionName) })
+    const failureBase = base(sessionName)
+    if (TIMED_SESSIONS.has(sessionName)) await prepareProfile({ roots, appRoot: options.appRoot, diagnostics, failureBase }, { theme: options.theme, shell }, shelfBooks)
+    launched = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics, failureBase, shelfBooks, renderTiming: TIMED_SESSIONS.has(sessionName) })
     shared.timing = launched.timing
     const shellShown = page => page.locator('[data-shell-presentation]').first().getAttribute('data-shell-presentation')
     if (TIMED_SESSIONS.has(sessionName)) shared.shell = await shellShown(launched.page)
@@ -337,7 +364,7 @@ async function runSession(sessionName, names, options) {
           restartRequests.push(...await launched.app.evaluate(() => globalThis.__driveExternalRequests))
           const exited = await quit(launched.app)
           assert.equal(exited.forced, false, '重启前应用没有正常退出')
-          launched = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics })
+          launched = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics, failureBase })
           Object.assign(context, launched)
         },
       }
@@ -364,14 +391,11 @@ async function runSession(sessionName, names, options) {
       failedAt = current
       results[current].error = messageOf(error)
     }
-    const page = launched?.page
-    if (page && !page.isClosed()) {
-      const failureBase = base(current === null ? sessionName : names[current])
-      await page.screenshot({ path: `${failureBase}.failure.png` }).catch(() => {})
-      await dumpDom(page, failureBase).catch(() => {})
-    }
+    await captureFailure(launched?.page, base(current === null ? sessionName : names[current]))
     options = { ...options, console: true }
   } finally {
+    // 场景在 hold 与 release 之间抛错时门还关着：卡住的请求让运行一直进行，应用拒绝关闭，quit 要等满 10 秒再强杀
+    fake?.gate.release()
     if (options.console) fs.writeFileSync(`${base(sessionName)}.console.log`, `${diagnostics.join('\n')}\n`)
     if (launched) shared.quit = await quit(launched.app).catch(error => { sessionErrors.push(messageOf(error)); return null })
     await fake?.close()
@@ -381,7 +405,7 @@ async function runSession(sessionName, names, options) {
     shared.residualProcesses = await residualProcesses(roots.userData)
     shared.externalWrites = externalWrites(before)
   } catch (error) { sessionErrors.push(messageOf(error)) }
-  const clean = failedAt === null && sessionErrors.length === 0 && shared.residualProcesses?.length === 0
+  const clean = sessionIsClean({ failedAt, sessionErrors, residualProcesses: shared.residualProcesses, externalWrites: shared.externalWrites })
   if (clean) fs.rmSync(roots.root, { recursive: true, force: true })
   return results.map((result, index) => {
     const errors = [result.error, failedAt !== null && index > failedAt ? `未运行：本会话的 ${names[failedAt]} 先失败` : null, ...sessionErrors]

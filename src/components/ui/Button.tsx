@@ -4,6 +4,7 @@ import { Slot } from '@radix-ui/react-slot'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { clsx } from 'clsx'
 import { cn } from '../../lib/utils'
+import { useAppearanceStore } from '../../stores/appearance-bootstrap'
 
  
 
@@ -64,20 +65,35 @@ function isInkButton(props: ButtonProps): props is InkButtonProps {
   return typeof props.variant === 'string' && inkVariants.has(props.variant)
 }
 
+type LegacyVariant = NonNullable<LegacyButtonProps['variant']>
+type LegacySize = NonNullable<LegacyButtonProps['size']>
+
+/**
+ * 新外壳里仍有旧对话框与旧面板（导入、导出、项目备份、模型表单、架构编辑等）用旧变体。
+ * 旧 default/ai 读旧强调色，弹窗里与页面里的主按钮颜色不一样；新外壳下一律换成纸墨六种，旧外壳不变。
+ */
+const LEGACY_INK_VARIANT: Record<LegacyVariant, Exclude<InkButtonVariant, 'icon'>> = {
+  default: 'primary', ai: 'primary', success: 'primary', outline: 'secondary', ghost: 'text', destructive: 'danger-solid',
+}
+/** 旧尺寸 28/24/32px 换成纸墨最接近的一档。 */
+const LEGACY_INK_SIZE: Record<LegacySize, InkButtonSize> = { default: 'sm', sm: 'sm', lg: 'md', icon: 'sm' }
+
+function inkClasses(variant: InkButtonVariant, size: InkButtonSize, className: string | undefined) {
+  return clsx('pi-btn', `pi-btn--${variant}`, size !== 'md' && `pi-btn--${size}`, className)
+}
+
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>((props, ref) => {
+  const stage = useAppearanceStore(s => s.resolvedShell === 'stage')
   if (isInkButton(props)) {
     const { className, variant, size = 'md', type = 'button', ...rest } = props
-    return (
-      <button
-        ref={ref}
-        type={type}
-        className={clsx('pi-btn', `pi-btn--${variant}`, size !== 'md' && `pi-btn--${size}`, className)}
-        {...rest}
-      />
-    )
+    return <button ref={ref} type={type} className={inkClasses(variant, size, className)} {...rest} />
   }
   const { className, variant, size, asChild = false, ...rest } = props
   const Comp = asChild ? Slot : 'button'
+  if (stage) {
+    const inkVariant = size === 'icon' ? 'icon' : LEGACY_INK_VARIANT[variant ?? 'default']
+    return <Comp ref={ref} className={inkClasses(inkVariant, LEGACY_INK_SIZE[size ?? 'default'], className)} {...rest} />
+  }
   return (
     <Comp
       className={cn(buttonVariants({ variant, size, className }))}

@@ -2,25 +2,6 @@
  * 写作此章的拆分主按钮与小弹层。视觉基准是 claude-design/Blueprint.dc.html 的「写第 N 章」按钮组，
  * 弹层内容按 prototype/chapter-todo.html：本次模型、作者微操指导、折叠的更多，以及一致性预检。只引用纸墨令牌。
  */
-.stage-write {
-  border-radius: var(--radius-control);
-  box-shadow: var(--shadow-button);
-}
-
-.stage-write .pi-btn--primary {
-  box-shadow: none;
-}
-
-.stage-write-main {
-  border-radius: var(--radius-control) 0 0 var(--radius-control);
-}
-
-.stage-write-toggle {
-  padding: 0 var(--s-2);
-  border-left-color: color-mix(in srgb, var(--accent-ink) 22%, transparent);
-  border-radius: 0 var(--radius-control) var(--radius-control) 0;
-}
-
 .stage-write-pop {
   width: 360px;
   gap: var(--s-4);
