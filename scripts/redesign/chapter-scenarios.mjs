@@ -252,6 +252,8 @@ const LONG_TEXT = Array.from({ length: 50 }, (_, index) => {
 /** 打开 1 万字的第 5 章：新外壳点流程脊里的章，旧外壳点草稿箱里的草稿。 */
 async function openLongChapter(page) {
   const target = await isStage(page) ? stage.chapterButton(page, LONG_CHAPTER) : project.draftOfChapter(page, LONG_CHAPTER)
+  const longProse = (await proseOf(page)).getByText('第1段。', { exact: false })
+  assert.equal(await longProse.count(), 0, '点击前第 5 章没有打开，计时从点击算起')
   await target.scrollIntoViewIfNeeded()
   await target.hover()
   await page.waitForTimeout(300)

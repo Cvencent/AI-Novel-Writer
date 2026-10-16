@@ -376,16 +376,21 @@ export async function seedStageSample(context,
 }
 
 /**
- * 示例作品第 3、4 章都在写，打开时落在最后一章在写的第 4 章（用户决定）。各场景从第 3 章开始：
- * 等落点到了第 4 章，再切到第 3 章并关掉第 4 章的标签，与原先只开着第 3 章一样。对照用的旧构建落在第 3 章，不用切。
+ * 示例作品第 3、4 章都在写，打开时落在最后一章在写的那章（用户决定）：示例本身落第 4 章，种子另建更后面的稿时落那一章。
+ * 各场景从第 3 章开始：等任一章正文出现，不在第 3 章就切过去，再关掉其他所有标签，与原先只开着第 3 章一样。
+ * 对照用的旧构建落在第 3 章，不用切。
  */
 async function moveToChapter3(page) {
   const chapter3 = stage.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text))
-  await chapter3.or(stage.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[4].text))).first().waitFor({ state: 'visible', timeout: 20_000 })
-  if (await chapter3.count() > 0) return
+  await stage.prose(page).filter({ hasText: /\S/ }).first().waitFor({ state: 'visible', timeout: 20_000 })
+  const otherTabs = stage.tabList(page).getByRole('button', { name: /^关闭「(?!第 3 章 ·)/ })
+  if (await chapter3.count() > 0 && await otherTabs.count() === 0) return
   await stage.chapterButton(page, 3).click()
   await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
-  await stage.closeTabButton(page, `第 4 章 · ${stageChapterTitle(4)}`).click()
+  for (let open = await otherTabs.count(); open > 0; open -= 1) {
+    await otherTabs.first().click()
+    await otherTabs.nth(open - 1).waitFor({ state: 'detached' })
+  }
   await stage.tabList(page).waitFor({ state: 'detached' })
 }
 
