@@ -284,3 +284,37 @@ node scripts/redesign/drive.mjs --scenario blueprint-regression --shell stage --
 node scripts/redesign/drive.mjs --scenario blueprint-timing --app-root <trunk 工作树> --out <目录>
 node scripts/redesign/drive.mjs --scenario blueprint-timing --shell stage --out <目录>
 ```
+
+## 正文单章视图（RD-8 起）
+
+场景在 `scripts/redesign/chapter-scenarios.mjs`，页面对象在 `scripts/redesign/pages/chapter-view.mjs`（单章视图是 `.stage-ch`，审稿侧页是 `complementary`「审稿报告」，修稿合并是 `region`「修稿合并」，定稿后处理是 `region`「定稿后处理」，版本切换器是按钮「本章版本：…」，定稿确认是 `dialog`「定稿第 N 章？」）。新外壳打开第 N 章就是单章视图，示例作品第 3 章带一份审稿（已审稿，打开时默认展开审稿侧页）；待写章显示本章蓝图与「写作此章」，草稿状态主按钮是 AI 审稿，已审稿是「按 N 项意见修稿」，有待合并修稿时直接摆出合并视图，已修稿是定稿，定稿后列出后处理各步。假模型另有 `fake.breakCharacterState()`：之后定稿后处理的角色状态更新收到不是 JSON 的回复而失败，传 `false` 恢复。
+
+| 名称 | 检查 | 截图停在 | 夹具模型 | 对应计划 |
+|---|---|---|---|---|
+| `chapter-regression` | 删掉 3、4 章草稿后写第 3 章，走完审稿、按意见修稿、全部用修稿合并、等复验、定稿；`measured` 是定稿正文的 sha256 与后处理各步成败（从数据库读）。trunk（`--app-root`，旧外壳）与 head（`--shell stage`）两边相同即通过。读库要回书房重开作品，新外壳之后再打开第 3 章 | 定稿视图（新外壳）、书房（旧外壳） | 是 | lane 1 |
+| `chapter-draft` | 第 4 章草稿：主按钮 AI 审稿，生命周期停在审稿，版本切换器「草稿 v1 · N 字」 | 草稿 | 否 | lane 2 |
+| `chapter-review` | 第 4 章 AI 审稿后侧页展开；取消、再勾一条意见时主按钮「按 N 项意见修稿」与侧页底部「N / 总数」同步 | 审稿侧页 | 是 | lane 3 |
+| `chapter-manual` | 添加我的意见后修稿，假模型收到的修稿请求里有这条意见 | 合并视图 | 是 | lane 4 |
+| `chapter-merge` | 修稿后合并视图第一处用修稿（多于一处时第二处手动编辑）；`after` 完成合并，正文里是选中的文字 | 逐段选择 | 是 | lane 5 |
+| `chapter-finalize` | 第 3 章从「更多」定稿，确认后正文只读，后处理「4 / 4 完成」（正文文件与三步后处理） | 定稿视图 | 是 | lane 6 |
+| `chapter-retry` | 角色状态更新失败后点「重试失败步骤」：之后假模型只收到角色状态请求，后处理回到 4 / 4 | 重试后的定稿视图 | 是 | lane 7 |
+| `chapter-selection` | 选中一段：工具条四个纸墨按钮（润色、扩写、续写、改成对话）；润色预览后替换，再选一段润色后取消，原文不变 | 选区工具条 | 是 | lane 8 |
+| `chapter-delete` | 第 4 章有 v1、v2：从「更多」删除这一稿出现危险确认；`after` 确认后版本切换器只剩 v1 | 危险确认 | 否 | lane 9 |
+| `chapter-1280` | 视口 1280×900（配 `--theme dark`）：第 3 章打开时审稿侧页已展开，收起它后正文一行 32～35 字；运行侧页打开后不少于 24 字，页面没有横向滚动 | 运行侧页与纸面 | 否 | lane 10 |
+| `chapter-sheet-landing` | 打开作品落在已审稿的第 3 章：审稿侧页刚出现与 4 秒后都展开（不先开后收）；换到带历史审稿的已定稿第 2 章不展开，「更多」里有审稿报告；回到第 3 章仍展开 | 审稿侧页 | 否 | 侧页归属 |
+| `chapter-sheets-1280`、`chapter-sheets-1440` | 第 3 章（已审稿）在该宽度下先开运行侧页、再从「更多」开审稿报告：同一时间只有一个侧页，纸面不被盖住，正文一行不少于 24 字，没有横向滚动 | 审稿侧页与纸面 | 否 | 双侧页 |
+| `chapter-focus` | 1440 宽打开第 4 章进入沉浸写作：内容面板无外边距、圆角与阴影（全出血）；底部「N / 设定每章字数 字」与进度条；正文首行缩进 36px | 沉浸写作 | 否 | Focus 画板 |
+| `chapter-tour` | 30～60 秒导览：检查维度、审稿侧页与作者意见、按意见修稿、逐段合并、定稿确认、定稿后处理。配 `--video` 录评审视频 | 定稿视图 | 是 | Review gate |
+| `chapter-open` | 1 万字的第 5 章：从点击（新外壳点流程脊里的章，旧外壳点草稿箱）到正文出现且所在滚动区可以滚动，毫秒，不取整。`frameMs` 按动画帧检查，`domMs` 在 DOM 变化回调里记，不依赖动画帧 | 第 5 章 | 否 | perf |
+| `typing-latency` | 在第 5 章第 1 段末尾连续输入 40 个字母：每键从 `beforeinput` 到正文 DOM 变化（`domP95Ms`）与之后第一帧（`frameP95Ms`） | 第 5 章 | 否 | perf |
+
+```bash
+node scripts/redesign/drive.mjs --scenario chapter-regression --app-root <trunk 工作树> --out <目录>/trunk
+node scripts/redesign/drive.mjs --scenario chapter-regression --shell stage --out <目录>/head
+node scripts/redesign/drive.mjs --scenario chapter-open --app-root <trunk 工作树> --out <目录>
+node scripts/redesign/drive.mjs --scenario chapter-open --shell stage --out <目录>
+node scripts/redesign/drive.mjs --scenario typing-latency --app-root <trunk 工作树> --out <目录>
+node scripts/redesign/drive.mjs --scenario typing-latency --shell stage --out <目录>
+```
+
+草稿、审稿、合并、定稿、1280 与沉浸写作各场景都用 `contrastFailures` 核对单章视图的文字对比度（正文与合并栏 4.5，说明文字 3）。屏幕外窗口的动画帧可能被系统节流，`chapter-open` 与 `typing-latency` 都同时报不依赖动画帧的 DOM 口径。打开作品的流程在文件树读完后回到作品页并收起运行侧页，比落点晚约半秒且界面上没有可等的信号，场景要开运行侧页时先等 2 秒（`afterProjectOpenSettles`）；审稿侧页属于单章视图，不随它收起。

@@ -19,6 +19,7 @@ export const CHAPTER_PHASE_TEXT: Record<ChapterPhase, [string, string]> = {
   todo: ['待写', 'To write'],
   draft: ['待审稿', 'To review'],
   reviewed: ['待修稿', 'To revise'],
+  merge: ['待合并', 'To merge'],
   revised: ['待定稿', 'To finalize'],
   final: ['定稿', 'Final'],
 }

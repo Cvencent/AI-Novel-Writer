@@ -343,11 +343,16 @@ export async function seedStageSample(context,
     chapters: Object.entries(STAGE_SAMPLE.finalized).map(([number, content]) => ({ chapterNumber: Number(number),
       title: stageChapterTitle(Number(number)), content, wordCount: countUnits(content) })) }, path, session)
   assert.equal(imported.success, true, imported.error)
-  for (const [number, { status, text }] of Object.entries(STAGE_SAMPLE.drafts)) {
+  for (const [number, { status, text, review }] of Object.entries(STAGE_SAMPLE.drafts)) {
     const draft = await invoke(page, 'db:draft-create', { chapterNumber: Number(number), version: 1, source: 'write',
       content: text, wordCount: countUnits(text) }, path, session)
     assert.equal(draft.success, true, draft.error)
     if (status !== 'draft') assert.equal((await invoke(page, 'db:draft-update-status', draft.id, status, undefined, path, session)).success, true)
+    if (review) {
+      const expectedSource = { id: draft.id, chapterNumber: Number(number), version: 1, status, content: text }
+      const created = await invoke(page, 'db:review-create', { baseDraftId: draft.id, content: review, expectedSource }, path, session)
+      assert.equal(created.success, true, created.error)
+    }
   }
   await beforeReload?.({ page, invoke, path, session })
   await reload()
@@ -359,6 +364,7 @@ export async function seedStageSample(context,
   }
   await bookshelf.openProject(page, STAGE_SAMPLE.name)
   await project.waitForTreeRefreshed(page, blueprintCount)
+  if (!landOnChapter3) return
   await project.draftOfChapter(page, 3).click()
   await chapter.editor(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text)).waitFor({ state: 'visible' })
 }
@@ -626,7 +632,7 @@ export const STAGE_SCENARIOS = {
     await stage.spine(page).waitFor({ state: 'detached' })
     assert.equal(await stage.tabList(page).count(), 0)
     await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
-    await page.getByRole('button', { name: 'AI 审稿', exact: true }).waitFor({ state: 'visible' })
+    await page.getByRole('button', { name: /^按 \d+ 项意见修稿$/ }).waitFor({ state: 'visible' })
   }, after: async ({ page }) => {
     await page.keyboard.press('Escape')
     await stage.spine(page).waitFor({ state: 'visible' })

@@ -38,7 +38,7 @@ describe('UI project session gates', () => {
       'src/components/editor/ArchFileViewer.tsx',
       'src/components/dialogs/use-batch-chapter-form.ts',
       'src/components/dialogs/ChapterCreationDialog.tsx',
-      'src/components/editor/DraftEditor.tsx',
+      'src/components/editor/use-draft-actions.ts',
       'src/components/editor/VersionHistory.tsx',
     ]
 
@@ -48,7 +48,8 @@ describe('UI project session gates', () => {
   })
 
   it('passes the frozen session through DraftEditor helper calls that perform async work', () => {
-    const draftEditor = source('src/components/editor/DraftEditor.tsx')
+    // 草稿编辑器的异步动作在 use-draft-actions 里（新旧两种外壳共用）。
+    const draftEditor = source('src/components/editor/use-draft-actions.ts')
 
     expect(draftEditor).toContain('parseDraftMeta(filePath, projectKey, projectSession)')
     expect(draftEditor).toContain('readDraftBody(filePath, projectKey, projectSession)')

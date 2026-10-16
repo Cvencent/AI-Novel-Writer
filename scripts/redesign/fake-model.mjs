@@ -69,6 +69,7 @@ export async function startFakeModel(diagnostics) {
   let waiting = 0
   let stream = null
   let extraction = false
+  let brokenCharacterState = false
   const streamLog = []
   const gate = {
     /** 卡住之后的模型调用；embeddings 为 true 时连嵌入也卡住（参考文本入库这类只走嵌入的步骤）。 */
@@ -86,6 +87,8 @@ export async function startFakeModel(diagnostics) {
   const streamProse = plan => { stream = plan; streamLog.length = 0 }
   /** 之后的创作资料角色提取回一份合法 JSON；不开时与以前一样回正文，提取失败，导入类场景不会停在等你确认。 */
   const replyCharacterCards = () => { extraction = true }
+  /** 定稿后处理的角色状态更新收到不是 JSON 的回复，这一步失败；传 false 恢复，用来演示只重试失败的步骤。 */
+  const breakCharacterState = (broken = true) => { brokenCharacterState = broken }
   const record = (kind, detail) => {
     requests.push(kind)
     diagnostics.push(`[fake-model] ${kind} <- ${detail}`)
@@ -106,7 +109,9 @@ export async function startFakeModel(diagnostics) {
     if (request.url !== '/v1/chat/completions') { response.writeHead(404).end(); return }
     await pass()
     const prompt = (body.messages ?? []).map(message => typeof message.content === 'string' ? message.content : JSON.stringify(message.content)).join('\n')
-    const { kind, content } = responseFor(prompt, { extraction })
+    const reply = responseFor(prompt, { extraction })
+    const { kind } = reply
+    const content = kind === 'character-state' && brokenCharacterState ? '角色状态暂时无法整理。' : reply.content
     chats.push({ kind, model: body.model, messages: body.messages })
     record(kind, prompt.slice(0, 120).replace(/\s+/g, ' '))
     response.writeHead(200, { 'Content-Type': 'text/event-stream' })
@@ -125,6 +130,6 @@ export async function startFakeModel(diagnostics) {
   })
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
   server.unref()
-  return { port: server.address().port, requests, chats, gate, streamProse, streamLog, replyCharacterCards,
+  return { port: server.address().port, requests, chats, gate, streamProse, streamLog, replyCharacterCards, breakCharacterState,
     close: () => new Promise(resolve => { server.closeAllConnections(); server.close(() => resolve()) }) }
 }

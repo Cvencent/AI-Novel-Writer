@@ -5,11 +5,12 @@ import { createHash, randomUUID } from 'node:crypto'
 import { FAKE_MODEL, FIXTURE_PROSE } from './fake-model.mjs'
 import * as blueprint from './pages/blueprint.mjs'
 import * as chapter from './pages/chapter.mjs'
+import * as chapterView from './pages/chapter-view.mjs'
 import * as project from './pages/project.mjs'
 import * as runSheet from './pages/run-sheet.mjs'
 import * as stage from './pages/stage.mjs'
 import { contrastFailures, firstLine, seedStageSample, untilGateHolds } from './scenarios.mjs'
-import { STAGE_SAMPLE } from './stage-sample.mjs'
+import { STAGE_SAMPLE, stageChapterTitle } from './stage-sample.mjs'
 
 /** 示例作品的下一章：1、2 章定稿，权威下一章是 3。 */
 const NEXT = 3
@@ -119,12 +120,10 @@ export const BLUEPRINT_SCENARIOS = {
     }
     assert.equal((await invoke(page, 'config:set', { autoOpenNextChapterAfterFinalize: true })).success, true)
   } }), run: async ({ page }) => {
-    await page.getByRole('button', { name: '定稿', exact: true }).click()
-    await page.getByRole('dialog').filter({ hasText: '确定要将第 3 章定稿吗？' }).getByRole('button', { name: '确认定稿', exact: true }).click()
+    await chapterView.finalize(page, 3, { untilReadOnly: false })
     await blueprint.popover(page).waitFor({ state: 'visible', timeout: 60_000 })
-    assert.equal(await stage.tabList(page).getByRole('tab', { selected: true }).innerText(), '蓝图', '定稿后落到蓝图')
-    assert.equal(await blueprint.writeButton(page).innerText(), '写第 4 章')
-    assert.equal(await blueprint.card(page).getAttribute('aria-label'), '第 4 章蓝图', '选中下一章')
+    assert.equal(await chapterView.title(page).innerText(), stageChapterTitle(4), '定稿后落到第 4 章的单章视图')
+    assert.equal(await chapterView.view(page).getByRole('button', { name: '写作此章', exact: true }).count(), 1, '弹层挂在这一章的写作此章上')
     assert.equal(await page.getByRole('dialog').count(), 1, '只弹出写作弹层，不再弹旧的创作对话框')
   } },
   'blueprint-regression': { model: true, setup: withKeeperInChapter3, run: async ({ page, fake }) => {

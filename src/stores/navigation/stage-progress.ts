@@ -1,5 +1,6 @@
 import type { DraftMeta } from '../../services/draft-index'
 import type { NovelConfig } from '../../shared/ipc-channels'
+import type { ReviewCycleProjection } from '../../shared/review-cycle'
 import type { EditorTab } from '../editor-store'
 import type { WorkflowRun } from '../workflow-store'
 import type { ResourcePage, WorkStage } from './navigation-intents'
@@ -29,8 +30,36 @@ export type StageStatus =
   | { stage: 'blueprint'; progress: StageProgress; planned: number; total: number }
   | { stage: 'manuscript'; progress: StageProgress; finalized: number; total: number }
 
-/** 一章所处的位置：待写、草稿（待审稿）、已审稿（待修稿）、已修稿（待定稿）、定稿。 */
-export type ChapterPhase = 'todo' | 'draft' | 'reviewed' | 'revised' | 'final'
+/** 一章所处的位置：待写、草稿（待审稿）、已审稿（待修稿）、有修稿待合并、已修稿（待定稿）、定稿。 */
+export type ChapterPhase = 'todo' | 'draft' | 'reviewed' | 'merge' | 'revised' | 'final'
+
+/** 一稿走到哪一步要看的审稿与修稿记录，由 chapter-facts 读出；流程脊与单章视图读同一份。 */
+export interface ChapterFacts {
+  /** 可以合并的待合并修稿 id，按生成先后。 */
+  mergeable: readonly number[]
+  /** 不能再合并、只能查看或丢弃的待合并修稿：edited 是生成后正文或稿状态变了，unsourced 是旧修稿没有记下生成时的源稿。 */
+  stale: readonly { id: number; reason: 'edited' | 'unsourced' }[]
+  /** 这一稿最新的审稿；cycleStatus 是它所属复验周期的修稿进度，旧审稿与合并后的自动复验没有周期。 */
+  latestReview: { createdAt: string; cycleStatus: ReviewCycleProjection['revisionStatus'] | null } | null
+  /** 最近一次合并修稿的时间；没合并过为 null。 */
+  lastMergedAt: string | null
+}
+
+/**
+ * 一稿（未归档）走到哪一步。数据库里没有代码把草稿设为 reviewed：审稿只新增审稿记录，合并修稿才把稿改成 revised，
+ * 所以 reviewed 状态与草稿一样看记录。有可合并的修稿就停在合并；过期的修稿不占主流程。
+ * 已修稿的稿只有在最近一次合并之后又审过稿、且那份审稿的复验周期还没合并时才算已审稿：合并前的审稿（比如审稿后直接修稿合并）
+ * 与合并后的自动复验都不算。合并与审稿落在同一秒时按合并在后处理。
+ */
+export function chapterPhase(status: Exclude<DraftMeta['status'], 'archived'>, facts: ChapterFacts | undefined): ChapterPhase {
+  if (status === 'finalized') return 'final'
+  if (!facts) return status === 'revised' ? 'revised' : 'draft'
+  const { mergeable, latestReview: review, lastMergedAt } = facts
+  if (mergeable.length > 0) return 'merge'
+  if (status !== 'revised') return review ? 'reviewed' : 'draft'
+  if (!review?.cycleStatus || review.cycleStatus === 'merge-committed') return 'revised'
+  return lastMergedAt === null || review.createdAt > lastMergedAt ? 'reviewed' : 'revised'
+}
 
 export interface ChapterRow {
   number: number
@@ -48,6 +77,8 @@ export interface WorkFacts {
   blueprints: StageWork['blueprints']
   drafts: Readonly<Record<number, readonly DraftMeta[]>>
   runningChapters: ReadonlySet<number>
+  /** 按稿 id 的审稿与修稿记录；还没读出的稿按状态估计。 */
+  chapterFacts?: Readonly<Record<number, ChapterFacts>>
 }
 
 const DONE: StageProgress = { state: 'done' }
@@ -89,7 +120,8 @@ export function deriveStages(facts: WorkFacts, chapters: readonly ChapterRow[] =
   ]
 }
 
-const IN_PROGRESS: Partial<Record<DraftMeta['status'], ChapterPhase>> = { draft: 'draft', reviewed: 'reviewed', revised: 'revised' }
+type WorkingDraft = DraftMeta & { status: 'draft' | 'reviewed' | 'revised' }
+const isWorking = (draft: DraftMeta): draft is WorkingDraft => draft.status === 'draft' || draft.status === 'reviewed' || draft.status === 'revised'
 
 /**
  * 这份稿在定稿之后才建（版本历史「回退到此版本」会在定稿章上新建草稿）。草稿箱允许给较旧的版本定稿，
@@ -103,18 +135,18 @@ function createdAfterFinal(draft: DraftMeta, final: DraftMeta): boolean {
 }
 
 /** 正文阶段的章节列表：蓝图章与已有稿的章取并集，按章号排序。 */
-export function deriveChapters(facts: Pick<WorkFacts, 'blueprints' | 'drafts' | 'runningChapters'>): ChapterRow[] {
+export function deriveChapters(facts: Pick<WorkFacts, 'blueprints' | 'drafts' | 'runningChapters' | 'chapterFacts'>): ChapterRow[] {
   const titles = new Map(facts.blueprints.map(blueprint => [blueprint.chapterNumber, blueprint.title]))
   const numbers = new Set([...titles.keys(), ...Object.keys(facts.drafts).map(Number)])
   return [...numbers].sort((a, b) => a - b).map(number => {
     const drafts = facts.drafts[number] ?? []
     const final = drafts.find(draft => draft.status === 'finalized') ?? null
-    const latest = drafts.filter(draft => IN_PROGRESS[draft.status]).sort((a, b) => b.version - a.version)[0] ?? null
+    const latest = drafts.filter(isWorking).sort((a, b) => b.version - a.version)[0] ?? null
     const working = latest && (!final || createdAfterFinal(latest, final)) ? latest : null
     return {
       number,
       title: titles.get(number) || final?.chapterTitle || '',
-      phase: working ? IN_PROGRESS[working.status]! : final ? 'final' : 'todo',
+      phase: working ? chapterPhase(working.status, facts.chapterFacts?.[working.id]) : final ? 'final' : 'todo',
       running: facts.runningChapters.has(number),
       draft: working ?? final,
     }

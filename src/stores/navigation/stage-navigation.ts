@@ -5,10 +5,9 @@ import { chapterTabName } from '../../shared/chapter-label'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
 import { projectSessionContextFromProject, sameProjectSessionContext } from '../../shared/project-session-context'
 import { fetchChapterDrafts, useDraftStore } from '../draft-store'
-import { useEditorStore } from '../editor-store'
+import { createProjectScopedEditorTabId, useEditorStore } from '../editor-store'
 import { useLayoutStore } from '../layout-store'
 import { useLocaleStore } from '../locale-store'
-import { openBuiltinEditor } from '../open-builtin-editor'
 import { openDraftTab } from '../open-draft-tab'
 import { useProjectStore } from '../project-store'
 import type { NavigationIntent } from './navigation-intents'
@@ -38,8 +37,26 @@ async function chapterDrafts(chapterNumber: number, session: ProjectSessionConte
 
 let openChapterRequest = 0
 
+/** 待写章的单章视图标签：还没有稿，所以没有 filePath，按章号区分；与其他正文标签一样按作品加后缀。 */
+export function chapterPlanTabId(chapterNumber: number, projectPath: string): string {
+  return createProjectScopedEditorTabId(`chapter-plan:${chapterNumber}`, 'chapter', projectPath)
+}
+
+/** 打开待写章的单章视图：显示本章蓝图与「写作此章」。草稿生成后，新外壳把它换成草稿标签。 */
+export function openChapterPlan(chapterNumber: number, title: string, session: ProjectSessionContext): void {
+  const text = useLocaleStore.getState().text
+  useEditorStore.getState().openFile({
+    id: `chapter-plan:${chapterNumber}`,
+    name: chapterTabName(chapterNumber, title, text),
+    type: 'chapter',
+    chapterNumber,
+    projectKey: session.projectPath,
+    projectSessionLease: session.leaseId,
+  })
+}
+
 /**
- * 打开一章：已有这一稿的标签就直接切过去；否则读出正文开新标签。待写的章还没有正文，落到蓝图并选中这一章，那里有「写作此章」。
+ * 打开一章：已有这一稿的标签就直接切过去；否则读出正文开新标签。待写的章还没有正文，打开它的单章视图，那里有「写作此章」。
  * 连续点几章时只有最后一次生效；读取失败时提示作者，而不是点了没反应。
  */
 export async function openChapter(chapterNumber: number): Promise<void> {
@@ -60,9 +77,11 @@ export async function openChapter(chapterNumber: number): Promise<void> {
     })
     const draft = row?.draft
     if (!draft) {
-      openBuiltinEditor('chapter-card-editor', text('章节蓝图', 'Chapter blueprint'), 'chapter-card', undefined, chapterNumber)
+      openChapterPlan(chapterNumber, row?.title ?? '', session)
       return
     }
+    // 已经有稿的章没有写作此章；写作请求（比如定稿后自动打开下一章）落空，不能留到别处再弹出。
+    if (useStageStore.getState().writeRequest?.chapterNumber === chapterNumber) useStageStore.setState({ writeRequest: null })
     const editor = useEditorStore.getState()
     const open = editor.tabs.find(tab => tab.type === 'chapter' && tab.projectKey === session.projectPath && tab.filePath === draft.filePath)
     if (open) {
@@ -77,22 +96,12 @@ export async function openChapter(chapterNumber: number): Promise<void> {
   }
 }
 
-/** 写作此章：回到作品，打开蓝图并选中这一章，由那里的写作按钮弹出写作弹层；参数取自蓝图，不再弹旧的创作对话框。 */
-function requestChapterWrite(chapterNumber: number): void {
-  const session = currentSession()
-  if (!session) return
-  const text = useLocaleStore.getState().text
-  enterWork()
-  useStageStore.setState({ writeRequest: { session, chapterNumber } })
-  openBuiltinEditor('chapter-card-editor', text('章节蓝图', 'Chapter blueprint'), 'chapter-card', undefined, chapterNumber)
-}
-
-// 写作请求可能在弹层挂载前一直留着（比如作者在书房里）；换作品或重新打开后，它不能在新作品的同一章号上弹出。
+// 写作与重读请求可能在接手的页面挂载前一直留着（比如作者在书房里）；换作品或重新打开后，它们不能落在新作品的同一章上。
 useProjectStore.subscribe(({ currentProject }) => {
-  const request = useStageStore.getState().writeRequest
-  if (request && !sameProjectSessionContext(request.session, projectSessionContextFromProject(currentProject))) {
-    useStageStore.setState({ writeRequest: null })
-  }
+  const session = projectSessionContextFromProject(currentProject)
+  const { writeRequest, chapterRequest } = useStageStore.getState()
+  if (writeRequest && !sameProjectSessionContext(writeRequest.session, session)) useStageStore.setState({ writeRequest: null })
+  if (chapterRequest && !sameProjectSessionContext(chapterRequest.session, session)) useStageStore.setState({ chapterRequest: null })
 })
 
 function openKnowledge(): void {
@@ -120,7 +129,10 @@ async function openManuscript(): Promise<void> {
   else openPageTab('blueprint')
 }
 
-/** 新外壳下各意图的落点。设置是内容面板里的设置页；写作此章落到蓝图上的写作弹层。 */
+/**
+ * 新外壳下各意图的落点。设置是内容面板里的设置页。
+ * 写作此章打开这一章的单章视图，由那里的写作按钮弹出写作弹层；参数取自蓝图，不再弹旧的创作对话框。
+ */
 export function stageNavigate(intent: NavigationIntent): void {
   if (intent.kind === 'settings') {
     useLayoutStore.setState({ settingsOpen: true, settingsSection: intent.section })
@@ -128,7 +140,11 @@ export function stageNavigate(intent: NavigationIntent): void {
   }
   if (intent.kind === 'chapter' && intent.write) {
     const { chapterNumber } = intent
-    leaveSettingsThen(() => requestChapterWrite(chapterNumber))
+    leaveSettingsThen(() => {
+      const session = currentSession()
+      if (session) useStageStore.setState({ writeRequest: { session, chapterNumber } })
+      arrive(intent)
+    })
     return
   }
   // 去具体的阶段、资料页或章节，或从书房进作品，都会收起设置页，有没保存的输入时先确认；
@@ -143,8 +159,10 @@ function arrive(intent: Exclude<NavigationIntent, { kind: 'settings' }>): void {
   enterWork()
   switch (intent.kind) {
     case 'stage':
-      if (!intent.stage) useStageStore.setState({ sheet: null })
-      else if (intent.stage === 'manuscript') void openManuscript()
+      if (!intent.stage) {
+        // 回到作品只收起运行侧页。审稿侧页属于单章视图：打开作品落在已审稿的章时它按这一章默认展开，不能随后又被收起。
+        if (useStageStore.getState().sheet?.kind === 'run') useStageStore.setState({ sheet: null })
+      } else if (intent.stage === 'manuscript') void openManuscript()
       else openPageTab(intent.stage)
       return
     case 'resource':

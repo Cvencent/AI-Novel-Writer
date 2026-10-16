@@ -94,6 +94,8 @@
 .pi-seg-item { height: 26px; padding: 0 var(--s-3); border: 0; border-radius: var(--radius-sm); background: none;
   color: var(--ink-2); font: inherit; font-size: var(--fs-12); cursor: pointer; }
 .pi-seg-item[aria-pressed="true"] { background: var(--paper); color: var(--ink); box-shadow: var(--shadow-seg); font-weight: 500; }
+/* 整组只有选中项能拿到焦点，焦点环要叠在选中项的阴影上 */
+.pi-seg-item[aria-pressed="true"]:focus-visible { box-shadow: var(--focus-ring), var(--shadow-seg); }
 
 .pi-check { position: relative; display: inline-flex; align-items: center; gap: var(--s-2); cursor: pointer; color: var(--ink); }
 .pi-check-input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }

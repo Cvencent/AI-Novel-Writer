@@ -496,6 +496,23 @@ describe('SegmentedControl 与 Check', () => {
     }
   })
 
+  it('带 Alt、Ctrl、Meta、Shift 的方向键与 Home/End 不换选，也不拦下按键，留给系统与外层快捷键', async () => {
+    const container = await mount(<Harness />)
+    const segments = [...container.querySelectorAll<HTMLButtonElement>('.pi-seg button')]
+    await userEvent.tab()
+    const press = (key: string, modifiers: KeyboardEventInit = {}) => {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...modifiers })
+      act(() => { focused().dispatchEvent(event) })
+      return event.defaultPrevented
+    }
+    const prevented = (['altKey', 'ctrlKey', 'metaKey', 'shiftKey'] as const)
+      .flatMap(modifier => ['ArrowRight', 'ArrowLeft', 'End', 'Home'].map(key => press(key, { [modifier]: true })))
+    expect([prevented.filter(Boolean).length, segments.map(s => s.getAttribute('aria-pressed')), focused()]).toEqual([0, ['true', 'false'], segments[0]])
+
+    expect(press('ArrowRight')).toBe(true)
+    expect([segments.map(s => s.getAttribute('aria-pressed')), focused()]).toEqual([['false', 'true'], segments[1]])
+  })
+
   it('选中态与 aria-pressed、checked 一致，全部键盘可达且焦点环可见', async () => {
     const container = await mount(<Harness />)
     const group = container.querySelector('[role="group"]')!
@@ -504,10 +521,10 @@ describe('SegmentedControl 与 Check', () => {
     expect(segments.map((s) => s.getAttribute('aria-pressed'))).toEqual(['true', 'false'])
 
     await userEvent.tab()
-    await userEvent.tab()
+    expect(focused()).toBe(segments[0])
+    await userEvent.keyboard('{ArrowRight}')
     expect(focused()).toBe(segments[1])
     expectFocusRing(segments[1])
-    await userEvent.keyboard(' ')
     expect(segments.map((s) => s.getAttribute('aria-pressed'))).toEqual(['false', 'true'])
     expect(getComputedStyle(segments[1]).fontWeight).toBe('500')
 

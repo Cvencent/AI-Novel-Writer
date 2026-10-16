@@ -15,7 +15,6 @@ export const COLOR_LITERAL_ALLOWLIST = Object.freeze([
   'src/components/dialogs/ChapterCreationDialog.tsx',
   'src/components/dialogs/ImportNovelDialog.tsx',
   'src/components/editor/ChapterCardEditor.tsx',
-  'src/components/editor/CodeMirrorEditor.tsx',
   'src/components/editor/DraftEditor.tsx',
   'src/components/editor/NovelConfigEditor.tsx',
   'src/components/editor/RelationshipGraph.tsx',
