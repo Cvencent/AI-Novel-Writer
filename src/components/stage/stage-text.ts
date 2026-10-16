@@ -35,6 +35,7 @@ export const RESOURCE_NAMES: Record<ResourcePage, [string, string]> = {
 const PAGE_TAB_NAMES: Partial<Record<EditorTab['type'], [string, string]>> = {
   config: STAGE_NAMES.setup,
   'world-building': STAGE_NAMES.architecture,
+  character: ['角色名单', 'Cast'],
   'chapter-card': STAGE_NAMES.blueprint,
   'narrative-thread': RESOURCE_NAMES.plot,
   knowledge: RESOURCE_NAMES.knowledge,

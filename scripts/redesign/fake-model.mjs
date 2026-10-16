@@ -33,10 +33,16 @@ export const FIXTURE_CONFIG = Object.freeze({
   plotStructure: 'three_act', narrativePOV: 'third_limited',
 })
 
+/** 情节大纲逐章生成：每次只要一章，回这一章的二级标题与一段正文，章号取自请求。 */
+export const outlineChapter = number => `## 第${number}章：灯下第${number}夜
+林岚在第${number}夜核对雾钟与潮位，找到一条新的线索，并决定下一步去问守塔人。她把这一夜的发现记进父亲的地图边上。`
+
 function responseFor(prompt, { extraction }) {
   if (prompt.includes('不可变小说配置 JSON 合同') || prompt.includes('Immutable novel-configuration JSON contract')) {
     return { kind: 'config', content: JSON.stringify(FIXTURE_CONFIG) }
   }
+  const outline = prompt.match(/本次只写第 (\d+) 章/)
+  if (outline) return { kind: 'outline-chapter', content: outlineChapter(Number(outline[1])) }
   if (prompt.includes('【已确认纳入本次修稿的审稿项】')) return { kind: 'revision', content: FIXTURE_REVISED }
   if (prompt.includes('goalReviews')) return { kind: 'review', content: REVIEW }
   if (prompt.includes('{"updates"')) return { kind: 'character-state', content: '{"updates":[]}' }

@@ -119,8 +119,8 @@ export default function StageShell({ theme }: { theme: Theme }) {
         id: `resource-${page}`, label: text(...RESOURCE_NAMES[page]),
         run: () => navigate({ kind: 'resource', page }),
       })),
-      paletteItem('reference', { id: 'characters', label: text('角色', 'Characters'), keywords: 'roster 名单',
-        run: () => leaveSettingsThen(() => openBuiltinEditor('character-editor', text('角色', 'Characters'), 'character')) }),
+      paletteItem('reference', { id: 'characters', label: text('角色名单', 'Cast'), keywords: 'roster characters 角色',
+        run: () => leaveSettingsThen(() => openBuiltinEditor('character-editor', text('角色名单', 'Cast'), 'character')) }),
     ] : []
     const books = recentProjects.map(project => paletteItem('action', {
       id: `book-${project.path}`, label: text(`打开《${project.name}》`, `Open “${project.name}”`), keywords: project.name,

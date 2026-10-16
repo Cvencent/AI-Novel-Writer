@@ -178,7 +178,7 @@ export function joinPlotOutlineEntries(prefix: string, next: string): string {
   return [prefix.trim(), next.trim()].filter(Boolean).join('\n\n')
 }
 
-export function renderPlotOutlineSynopsis(body: string, coveredTo: number, expected: ProjectCoreSynopsisExpected): string {
+export function renderPlotOutlineSynopsis(body: string, coveredTo: number, expected: Pick<ProjectCoreSynopsisExpected, 'totalChapters' | 'writingLanguage'>): string {
   const english = expected.writingLanguage === 'en-US'
   const tail = coveredTo < expected.totalChapters ? english
     ? `> This outline covers chapters 1-${coveredTo} of ${expected.totalChapters}; the remaining chapters will be generated in later batches.`
@@ -186,7 +186,10 @@ export function renderPlotOutlineSynopsis(body: string, coveredTo: number, expec
   return `# ${english ? 'Plot Outline' : '情节大纲'}\n\n${joinPlotOutlineEntries(body, tail)}`.trim()
 }
 
-export function plotOutlineConfirmedPrefix(expected: ProjectCoreSynopsisExpected, range: PlotOutlineRange): string {
+/** 正式大纲里决定一批范围能否开跑、会替换哪几章的三项事实；主进程 begin 时取自 project_core。 */
+export type PlotOutlineRangeSource = Pick<ProjectCoreSynopsisExpected, 'synopsis' | 'totalChapters' | 'writingLanguage'>
+
+export function plotOutlineConfirmedPrefix(expected: PlotOutlineRangeSource, range: PlotOutlineRange): string {
   const entries = headings(expected.synopsis)
   if (entries.some(entry => entry.from < range.from && entry.to >= range.from || entry.from <= range.to && entry.to > range.to))
     throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
@@ -208,8 +211,35 @@ export function plotOutlineConfirmedPrefix(expected: ProjectCoreSynopsisExpected
   return prefix
 }
 
+/**
+ * 这一批交给主进程会怎样：invalid 为 begin 时 plotOutlineConfirmedPrefix 会拒绝；overwrite 为替换已有的第 from–to 章
+ * （没有按章标题时 whole 为整份替换），其余章节由 renderPlotOutlineRange 原样保留；continue 为紧接已有章节往后写。
+ */
+export type PlotOutlineRangeEffect =
+  | { kind: 'invalid'; lastChapter: number; hasEntries: boolean }
+  | { kind: 'new' }
+  | { kind: 'continue'; after: number }
+  | { kind: 'overwrite'; whole: boolean; from: number; to: number; lastChapter: number }
+
+export function plotOutlineRangeEffect(source: PlotOutlineRangeSource, range: PlotOutlineRange): PlotOutlineRangeEffect {
+  const entries = headings(source.synopsis)
+  const lastChapter = entries.reduce((last, entry) => Math.max(last, entry.to), 0)
+  try { plotOutlineConfirmedPrefix(source, range) } catch { return { kind: 'invalid', lastChapter, hasEntries: entries.length > 0 } }
+  if (!source.synopsis.trim()) return { kind: 'new' }
+  if (!entries.length) return { kind: 'overwrite', whole: true, from: range.from, to: range.to, lastChapter }
+  const replaced = entries.filter(entry => entry.from >= range.from && entry.from <= range.to)
+  if (!replaced.length) return range.from > 1 ? { kind: 'continue', after: range.from - 1 } : { kind: 'new' }
+  return { kind: 'overwrite', whole: false, from: replaced[0].from, to: replaced[replaced.length - 1].to, lastChapter }
+}
+
+/** 下一批的默认起始章：已有大纲能紧接着往后写时取最后一章的下一章，否则从第 1 章起。 */
+export function plotOutlineNextChapter(source: PlotOutlineRangeSource): number {
+  const next = headings(source.synopsis).reduce((last, entry) => Math.max(last, entry.to), 0) + 1
+  return next > 1 && next <= source.totalChapters && plotOutlineRangeEffect(source, { from: next, to: next }).kind === 'continue' ? next : 1
+}
+
 /** Replace only the explicitly committed chapter range; keep the surrounding source text. */
-export function renderPlotOutlineRange(body: string, range: PlotOutlineRange, expected: ProjectCoreSynopsisExpected): string {
+export function renderPlotOutlineRange(body: string, range: PlotOutlineRange, expected: PlotOutlineRangeSource): string {
   plotOutlineConfirmedPrefix(expected, range)
   const entries = headings(expected.synopsis)
   if (!entries.length) return renderPlotOutlineSynopsis(body, range.to, expected)

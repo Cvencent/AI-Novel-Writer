@@ -15,7 +15,7 @@ import { useWorkflowStore } from '../../../stores/workflow-store'
 import {
   isUsableSynopsisCheckpoint,
   synopsisFactsFingerprint,
-} from '../../../services/workflows/commands/architecture.command'
+} from '../../../shared/plot-outline-checkpoint'
 import WorldBuildingEditor from '../../editor/WorldBuildingEditor'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true

@@ -150,8 +150,14 @@ export function candidateEntry(candidate: RecoveryCandidate, locale: Locale): Ca
   }
 }
 
-export function planningTitle(recovery: Pick<GenerationRecoveryContext, 'plotOutlineRecovery'>, locale: Locale): string {
-  return lang(locale)(recovery.plotOutlineRecovery ? '大纲恢复稿' : '蓝图恢复稿', recovery.plotOutlineRecovery ? 'Outline recovery draft' : 'Blueprint recovery draft')
+/** 大纲分批生成会留下多份恢复稿，标题带上各自的章节范围以便区分。 */
+export function planningTitle(recovery: Pick<GenerationRecoveryContext, 'plotOutlineRecovery' | 'plotOutline'>, locale: Locale): string {
+  const t = lang(locale)
+  if (!recovery.plotOutlineRecovery) return t('蓝图恢复稿', 'Blueprint recovery draft')
+  const range = recovery.plotOutline?.range
+  return range
+    ? t(`大纲恢复稿 · 第 ${range.from}–${range.to} 章`, `Outline recovery draft · ch. ${range.from}–${range.to}`)
+    : t('大纲恢复稿', 'Outline recovery draft')
 }
 
 function planningEntry(recovery: GenerationRecoveryContext, locale: Locale): PlanningEntry {
