@@ -431,7 +431,7 @@ async function blockChunks(app, pattern) {
   }, pattern)
 }
 
-async function msFromClickToProse(page, target, proseSelector, text, deadlineMs = 20_000) {
+export async function msFromClickToProse(page, target, proseSelector, text, deadlineMs = 20_000) {
   const handle = await target.elementHandle()
   await page.evaluate(({ element, proseSelector, text, deadlineMs }) => {
     let clickedAt = null
@@ -504,7 +504,8 @@ const CHROME_CONTRAST = [
   ['.stage-update-title', 4.5], ['.stage-update-text', 3], ['.stage-library .pi-btn:not(.pi-btn--icon)', 4.5], ['.stage-library .pi-btn--icon', 3], ['.pi-notice-title', 4.5], ['.pi-notice-text', 3],
 ]
 
-const chromeContrastFailures = page => contrastFailures(page, CHROME_CONTRAST, '[data-shell-presentation="stage"] ')
+/** 新外壳里的文字对比度：checks 默认查外壳文字，页面场景传自己的选择器。 */
+export const chromeContrastFailures = (page, checks = CHROME_CONTRAST) => contrastFailures(page, checks, '[data-shell-presentation="stage"] ')
 
 async function assertSpineMatchesSample(page) {
   assert.deepEqual(await stage.stageStates(page), { setup: 'done', architecture: 'done', blueprint: 'done', manuscript: 'active' })

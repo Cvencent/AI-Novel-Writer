@@ -84,17 +84,17 @@ describe('generated content deletion affordances', () => {
   })
 
   it('supports clearing the entire knowledge base from the knowledge page', () => {
-    const knowledgePage = source('src/components/pages/KnowledgeOverview.tsx')
+    const knowledgePage = source('src/components/stage/knowledge/StageKnowledge.tsx')
+    const knowledgeData = source('src/components/stage/knowledge/use-knowledge-base.ts')
     const knowledgeService = source('src/services/knowledge-service.ts')
     const kbController = source('electron/controllers/kb-controller.ts')
     const ipcChannels = source('src/shared/ipc-channels.ts')
 
     expect(knowledgePage).toContain('清空知识库')
-    expect(knowledgePage).toContain('const handleClearKnowledgeBase = async () =>')
-    expect(knowledgePage).toContain('captureProjectSession(currentProject)')
-    expect(knowledgePage).toContain('isProjectSessionCurrent(projectSession)')
-    expect(knowledgePage).toContain("'kb:clear-all'")
-    expect(knowledgePage).toContain('ipc.invokeWithProjectSession(\n        projectSession,')
+    expect(knowledgePage).toContain('captureProjectSession(project)')
+    expect(knowledgeData).toContain('const clearAll = async (projectSession: ProjectSessionContext) =>')
+    expect(knowledgeData).toContain('isProjectSessionCurrent(projectSession)')
+    expect(knowledgeData).toContain("ipc.invokeWithProjectSession(projectSession, 'kb:clear-all'")
     expect(knowledgeService).toContain('kb:clear-all')
     expect(kbController).toContain("'kb:clear-all'")
     expect(ipcChannels).toContain("'kb:clear-all'")

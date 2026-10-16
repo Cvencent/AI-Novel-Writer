@@ -119,6 +119,13 @@ describe('设置页', () => {
     expect(host!.querySelector('[aria-current="page"]')?.textContent).toBe('外观')
   })
 
+  it('检索模型页带当前作品的检索索引检查与重建', async () => {
+    useLayoutStore.setState({ settingsSection: 'embedding' })
+    await mount()
+    expect(heading()).toBe('检索模型')
+    expect(host!.querySelector('[aria-label="当前作品的检索索引"]')?.textContent).toContain('打开一部作品后，可以在这里检查它的检索索引。')
+  })
+
   it('删除模型先出现危险确认，写明后果；取消不删，确认才删', async () => {
     await mount()
     expect([...host!.querySelectorAll('[aria-label="AI 模型"] li')].map(item => item.querySelector('.stage-set-model-name')?.textContent))

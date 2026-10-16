@@ -37,7 +37,29 @@ export const FIXTURE_CONFIG = Object.freeze({
 export const outlineChapter = number => `## 第${number}章：灯下第${number}夜
 林岚在第${number}夜核对雾钟与潮位，找到一条新的线索，并决定下一步去问守塔人。她把这一夜的发现记进父亲的地图边上。`
 
-function responseFor(prompt, { extraction }) {
+/**
+ * 剧情树夹具：定稿章与单数位的蓝图章进主线，双数位的蓝图章进一条支线。来源全部取自提示里的资料，能通过主进程的校验；
+ * 不开时假模型回正文，剧情树落到按资料整理的单轨快照。
+ */
+export function fixturePlotTree(facts) {
+  const finals = new Set(facts.finalizedChapters.map(chapter => chapter.chapterNumber))
+  const planned = facts.blueprints.filter(blueprint => !finals.has(blueprint.chapterNumber))
+  const plan = blueprint => ({ status: 'planned', chapterNumber: blueprint.chapterNumber, summary: blueprint.title,
+    sources: [{ type: 'blueprint', chapterNumber: blueprint.chapterNumber }] })
+  const main = [
+    ...facts.finalizedChapters.map(chapter => ({ status: 'occurred', chapterNumber: chapter.chapterNumber, summary: chapter.title,
+      sources: [{ type: 'finalized-chapter', draftId: chapter.draftId, chapterNumber: chapter.chapterNumber }] })),
+    ...planned.filter((_, index) => index % 2 === 0).map(plan),
+  ].sort((left, right) => left.chapterNumber - right.chapterNumber)
+  const side = planned.filter((_, index) => index % 2 === 1).map(plan)
+  const span = events => ({ startChapter: Math.min(...events.map(event => event.chapterNumber)), endChapter: Math.max(...events.map(event => event.chapterNumber)) })
+  return { tracks: [
+    { id: 'main', title: '雾钟与沉船', role: 'main', ...span([...main, ...side]), summary: '林岚追查钟声提前的原因。', events: main },
+    ...(side.length > 0 ? [{ id: 'side', title: '父亲的地图', role: 'subplot', parentTrackId: 'main', ...span(side), summary: '父亲留下的地图指向北堤外。', events: side }] : []),
+  ] }
+}
+
+function responseFor(prompt, { extraction, plotTree }) {
   if (prompt.includes('不可变小说配置 JSON 合同') || prompt.includes('Immutable novel-configuration JSON contract')) {
     return { kind: 'config', content: JSON.stringify(FIXTURE_CONFIG) }
   }
@@ -47,6 +69,7 @@ function responseFor(prompt, { extraction }) {
   if (prompt.includes('goalReviews')) return { kind: 'review', content: REVIEW }
   if (prompt.includes('{"updates"')) return { kind: 'character-state', content: '{"updates":[]}' }
   if (extraction && prompt.includes('【资料 ')) return { kind: 'character-extraction', content: characterExtraction(prompt) }
+  if (plotTree && prompt.includes('小说剧情结构编辑')) return { kind: 'plot-tree', content: JSON.stringify(fixturePlotTree(JSON.parse(prompt.split('\n').find(line => line.startsWith('{"synopsis"'))))) }
   if (prompt.includes('只写短细纲')) return { kind: 'outline', content: FIXTURE_PROSE }
   return { kind: 'prose', content: FIXTURE_PROSE }
 }
@@ -70,6 +93,7 @@ export async function startFakeModel(diagnostics) {
   let stream = null
   let extraction = false
   let brokenCharacterState = false
+  let plotTree = false
   const streamLog = []
   const gate = {
     /** 卡住之后的模型调用；embeddings 为 true 时连嵌入也卡住（参考文本入库这类只走嵌入的步骤）。 */
@@ -89,6 +113,8 @@ export async function startFakeModel(diagnostics) {
   const replyCharacterCards = () => { extraction = true }
   /** 定稿后处理的角色状态更新收到不是 JSON 的回复，这一步失败；传 false 恢复，用来演示只重试失败的步骤。 */
   const breakCharacterState = (broken = true) => { brokenCharacterState = broken }
+  /** 之后的剧情树整理回一份两轨（主线加支线）的合法 JSON。 */
+  const replyPlotTree = () => { plotTree = true }
   const record = (kind, detail) => {
     requests.push(kind)
     diagnostics.push(`[fake-model] ${kind} <- ${detail}`)
@@ -109,7 +135,7 @@ export async function startFakeModel(diagnostics) {
     if (request.url !== '/v1/chat/completions') { response.writeHead(404).end(); return }
     await pass()
     const prompt = (body.messages ?? []).map(message => typeof message.content === 'string' ? message.content : JSON.stringify(message.content)).join('\n')
-    const reply = responseFor(prompt, { extraction })
+    const reply = responseFor(prompt, { extraction, plotTree })
     const { kind } = reply
     const content = kind === 'character-state' && brokenCharacterState ? '角色状态暂时无法整理。' : reply.content
     chats.push({ kind, model: body.model, messages: body.messages })
@@ -130,6 +156,6 @@ export async function startFakeModel(diagnostics) {
   })
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
   server.unref()
-  return { port: server.address().port, requests, chats, gate, streamProse, streamLog, replyCharacterCards, breakCharacterState,
+  return { port: server.address().port, requests, chats, gate, streamProse, streamLog, replyCharacterCards, breakCharacterState, replyPlotTree,
     close: () => new Promise(resolve => { server.closeAllConnections(); server.close(() => resolve()) }) }
 }

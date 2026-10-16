@@ -9,6 +9,7 @@ import { leaveSettings, useSettingsLeave, useSettingsLeaveHost } from '../../set
 import { Button } from '../../ui/Button'
 import { DangerConfirm } from '../../ui/DangerConfirm'
 import { ErrorBoundary } from '../../ErrorBoundary'
+import KnowledgeIndexSection from '../knowledge/KnowledgeIndexSection'
 import { isComposing, isModalOpen } from '../shortcut-keys'
 import AboutSection from './AboutSection'
 import AppearanceSection from './AppearanceSection'
@@ -40,7 +41,12 @@ function PageBody({ page }: { page: SettingsPage }) {
     case 'llm':
       return <ModelsSection purposes={['generation', 'refinement', 'summary']} header={action => <PageHeader page="llm" action={action} />} />
     case 'embedding':
-      return <ModelsSection purposes={['embedding']} header={action => <PageHeader page="embedding" action={action} />} />
+      return (
+        <>
+          <ModelsSection purposes={['embedding']} header={action => <PageHeader page="embedding" action={action} />} />
+          <Legacy><KnowledgeIndexSection /></Legacy>
+        </>
+      )
     case 'appearance':
       return <><PageHeader page={page} /><AppearanceSection /></>
     case 'proxy':
