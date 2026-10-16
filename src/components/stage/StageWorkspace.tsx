@@ -18,14 +18,18 @@ import StageLibrary from './library/StageLibrary'
 import { SettingsPage, SetupPage } from './stage-pages'
 import StageTabs from './StageTabs'
 import { commandLabel } from './shortcut-keys'
+import StageBlueprint from './blueprint/StageBlueprint'
 import { stageTabName } from './stage-text'
 import { cancelCloseTab, confirmCloseTab, requestCloseTab, STAGE_CONTENT_ID } from './tab-close'
 
-/** 设定标签是新外壳的设定页，架构与角色名单是新外壳的页面，其余标签沿用旧编辑区。 */
+/** 设定、架构、角色名单与蓝图是新外壳的页面，其余标签沿用旧编辑区。 */
 function TabContent({ tab, project }: { tab: EditorTab; project: ProjectData }) {
   if (tab.type === 'config' && tab.projectKey) return <SetupPage projectKey={tab.projectKey} />
   if (tab.type === 'world-building' && tab.projectKey) return <StageArchitecture projectKey={tab.projectKey} />
   if (tab.type === 'character' && tab.projectKey) return <StageCharacters projectKey={tab.projectKey} />
+  if (tab.type === 'chapter-card' && tab.projectKey && !tab.planningRecovery) {
+    return <StageBlueprint projectKey={tab.projectKey} initialChapterNumber={tab.chapterNumber} selectRequest={tab.chapterSelectRequest} />
+  }
   return <EditorTabContent activeTab={tab} currentProject={project} />
 }
 

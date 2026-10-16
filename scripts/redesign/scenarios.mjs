@@ -5,6 +5,7 @@ import path from 'node:path'
 
 import { chooseProjectDirectoryGrant } from '../project-directory-grant.mjs'
 import { FAKE_MODEL, FIXTURE_CONFIG, FIXTURE_PROSE } from './fake-model.mjs'
+import * as blueprint from './pages/blueprint.mjs'
 import * as bookshelf from './pages/bookshelf.mjs'
 import * as chapter from './pages/chapter.mjs'
 import * as materials from './pages/materials.mjs'
@@ -170,6 +171,11 @@ export const EXTRA_SCENARIOS = {
   } },
   'write-latency': { model: true, setup: seedWithoutDraft, run: async ({ page }) => {
     await project.openBlueprints(page)
+    // RD-4 起旧外壳右栏默认就是 AI 输出；trunk 默认收着。只在开着时收起，两边从同一状态开始计时。
+    if (await runPanel.isOpen(page)) {
+      await shell.hideRunPanel(page)
+      await runPanel.waitUntilClosed(page)
+    }
     const writeToOutputMs = await runPanel.msFromClickToOpen(page, '开始创作', () => chapter.writeThisChapter(page, 100))
     await runPanel.waitForWorkflowDone(page)
     return { writeToOutputMs }
@@ -305,9 +311,10 @@ export async function untilGateHolds(gate, timeoutMs = 15_000) {
 /**
  * 用公开 IPC 预置新外壳示例作品：12 章蓝图，1、2 章定稿，3 章已审稿，4 章草稿；架构四节齐全。
  * totalChapters 改规划总章数；beforeReload 在重载前再写入数据；landOnChapter3 为 false 时只等流程脊，落点由场景自己断言。
+ * beforeReload 另写了蓝图时用 blueprintCount 告诉旧外壳要等项目树显示几章。
  */
 export async function seedStageSample(context,
-  { totalChapters = STAGE_SAMPLE.totalChapters, beforeReload, landOnChapter3 = true, open = true } = {}) {
+  { totalChapters = STAGE_SAMPLE.totalChapters, beforeReload, landOnChapter3 = true, open = true, blueprintCount = STAGE_SAMPLE.titles.length } = {}) {
   const { app, page, roots, invoke, reload } = context
   const created = await invoke(page, 'project:create', { parentGrantId: (await chooseProjectDirectoryGrant(app, page, roots.projects)).grantId,
     name: STAGE_SAMPLE.name, genre: '悬疑', targetAudience: '成年读者', writingLanguage: 'zh-CN' }, randomUUID(), null)
@@ -351,7 +358,7 @@ export async function seedStageSample(context,
     return
   }
   await bookshelf.openProject(page, STAGE_SAMPLE.name)
-  await project.waitForTreeRefreshed(page, STAGE_SAMPLE.titles.length)
+  await project.waitForTreeRefreshed(page, blueprintCount)
   await project.draftOfChapter(page, 3).click()
   await chapter.editor(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text)).waitFor({ state: 'visible' })
 }
@@ -440,11 +447,11 @@ async function msFromClickToProse(page, target, proseSelector, text, deadlineMs 
 }
 
 /**
- * 外壳文字与它实际落在的底色之间的对比度：名称与正文类文字至少 4.5:1，说明文字至少 3:1。
+ * 文字与它实际落在的底色之间的对比度。checks 是 [选择器, 最低比值]：名称与正文类文字 4.5，说明文字 3；scope 是加在每个选择器前的祖先。
  * 底色沿祖先逐层叠加半透明背景求出，与画面上的颜色一致。
  */
-async function chromeContrastFailures(page) {
-  return page.evaluate(() => {
+export async function contrastFailures(page, checks, scope = '') {
+  return page.evaluate(({ checks, scope }) => {
     // color-mix 的结果以 color(srgb r g b / a) 给出，通道是 0–1；rgb()/rgba() 是 0–255
     const parse = value => {
       const numbers = value.match(/[\d.]+/g).map(Number)
@@ -469,26 +476,29 @@ async function chromeContrastFailures(page) {
       const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x)
       return (high + 0.05) / (low + 0.05)
     }
-    const checks = [
-      ['.stage-row-name', 4.5], ['.stage-row-label', 4.5], ['.stage-chapter:not([data-phase="todo"]) .stage-chapter-title', 4.5],
-      ['.stage-work-title', 4.5], ['.stage-row-meta', 3], ['.stage-chapter-status', 3], ['.stage-chapter[data-phase="todo"] .stage-chapter-title', 3],
-      ['.stage-crumb', 3], ['.stage-search-hint', 3], ['.stage-saved', 3], ['.stage-spine-label', 3], ['.stage-chapter-no', 3],
-      ['.stage-library-title', 4.5], ['.stage-eyebrow', 3], ['.stage-start-text > b', 4.5], ['.stage-start-text > span', 3],
-      ['.stage-shelf-title', 4.5], ['.stage-shelf-hint', 3], ['.stage-book-title', 4.5], ['.stage-book-name', 4.5], ['.stage-book-meta', 3],
-      ['.stage-ov-title', 4.5], ['.stage-ov-meta', 3], ['.stage-ov-bar-label', 3], ['.stage-ov .pi-stat-label', 3],
-      ['.stage-setup-title', 4.5], ['.stage-setup-lede', 4.5], ['.stage-setup-label', 4.5], ['.stage-setup-hint', 3], ['.stage-chip', 4.5],
-      ['.stage-setup-panel-title', 4.5], ['.stage-setup-panel-desc', 3], ['.stage-setup-outline-foot', 3],
-      ['.stage-set-title', 4.5], ['.stage-set-lede', 4.5], ['.stage-set-link', 4.5], ['.stage-set-group-label', 3], ['.stage-set-row-title', 4.5],
-      ['.stage-set-row-desc', 3], ['.stage-set-model-name', 4.5], ['.stage-set-model-meta', 3], ['.stage-badge', 4.5], ['.stage-set-theme-name', 4.5],
-      ['.stage-set-theme-desc', 3], ['.pi-empty-title', 4.5], ['.pi-empty-text', 3],
-      ['.stage-update-title', 4.5], ['.stage-update-text', 3], ['.stage-library .pi-btn:not(.pi-btn--icon)', 4.5], ['.stage-library .pi-btn--icon', 3], ['.pi-notice-title', 4.5], ['.pi-notice-text', 3],
-    ]
-    return checks.flatMap(([selector, minimum]) => [...document.querySelectorAll(`[data-shell-presentation="stage"] ${selector}`)].map(element => {
+    return checks.flatMap(([selector, minimum]) => [...document.querySelectorAll(`${scope}${selector}`)].map(element => {
       const value = ratio(parse(getComputedStyle(element).color), backdrop(element))
       return { selector, text: element.textContent, ratio: Math.round(value * 100) / 100, minimum }
     }).filter(result => result.ratio < result.minimum))
-  })
+  }, { checks, scope })
 }
+
+const CHROME_CONTRAST = [
+  ['.stage-row-name', 4.5], ['.stage-row-label', 4.5], ['.stage-chapter:not([data-phase="todo"]) .stage-chapter-title', 4.5],
+  ['.stage-work-title', 4.5], ['.stage-row-meta', 3], ['.stage-chapter-status', 3], ['.stage-chapter[data-phase="todo"] .stage-chapter-title', 3],
+  ['.stage-crumb', 3], ['.stage-search-hint', 3], ['.stage-saved', 3], ['.stage-spine-label', 3], ['.stage-chapter-no', 3],
+  ['.stage-library-title', 4.5], ['.stage-eyebrow', 3], ['.stage-start-text > b', 4.5], ['.stage-start-text > span', 3],
+  ['.stage-shelf-title', 4.5], ['.stage-shelf-hint', 3], ['.stage-book-title', 4.5], ['.stage-book-name', 4.5], ['.stage-book-meta', 3],
+  ['.stage-ov-title', 4.5], ['.stage-ov-meta', 3], ['.stage-ov-bar-label', 3], ['.stage-ov .pi-stat-label', 3],
+  ['.stage-setup-title', 4.5], ['.stage-setup-lede', 4.5], ['.stage-setup-label', 4.5], ['.stage-setup-hint', 3], ['.stage-chip', 4.5],
+  ['.stage-setup-panel-title', 4.5], ['.stage-setup-panel-desc', 3], ['.stage-setup-outline-foot', 3],
+  ['.stage-set-title', 4.5], ['.stage-set-lede', 4.5], ['.stage-set-link', 4.5], ['.stage-set-group-label', 3], ['.stage-set-row-title', 4.5],
+  ['.stage-set-row-desc', 3], ['.stage-set-model-name', 4.5], ['.stage-set-model-meta', 3], ['.stage-badge', 4.5], ['.stage-set-theme-name', 4.5],
+  ['.stage-set-theme-desc', 3], ['.pi-empty-title', 4.5], ['.pi-empty-text', 3],
+  ['.stage-update-title', 4.5], ['.stage-update-text', 3], ['.stage-library .pi-btn:not(.pi-btn--icon)', 4.5], ['.stage-library .pi-btn--icon', 3], ['.pi-notice-title', 4.5], ['.pi-notice-text', 3],
+]
+
+const chromeContrastFailures = page => contrastFailures(page, CHROME_CONTRAST, '[data-shell-presentation="stage"] ')
 
 async function assertSpineMatchesSample(page) {
   assert.deepEqual(await stage.stageStates(page), { setup: 'done', architecture: 'done', blueprint: 'done', manuscript: 'active' })
@@ -946,8 +956,8 @@ export const STAGE_SCENARIOS = {
   } },
   'stage-run': { model: true, shell: 'stage', setup: seedStageSample, run: async ({ page, fake }) => {
     fake.gate.hold()
-    await stage.stageButton(page, '蓝图').click()
-    await chapter.writeNextChapter(page, 100)
+    await blueprint.open(page)
+    await blueprint.writeNext(page)
     await page.getByRole('heading', { name: '运行', exact: true }).waitFor({ state: 'visible' })
     await stage.root(page).getByRole('button', { expanded: true }).filter({ hasText: '%' }).waitFor({ state: 'visible' })
   }, after: async ({ page, fake }) => {
@@ -1165,9 +1175,9 @@ export const STAGE_SCENARIOS = {
     await page.keyboard.press('Escape')
     await pause(1200)
     fake.gate.hold()
-    await stage.stageButton(page, '蓝图').click()
+    await blueprint.open(page)
     await pause(1200)
-    await chapter.writeNextChapter(page, 100)
+    await blueprint.writeNext(page)
     await page.getByRole('heading', { name: '运行', exact: true }).waitFor({ state: 'visible' })
     await pause(3000)
     fake.gate.release()

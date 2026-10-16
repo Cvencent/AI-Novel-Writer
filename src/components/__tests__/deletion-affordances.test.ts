@@ -26,7 +26,7 @@ describe('generated content deletion affordances', () => {
   })
 
   it('supports deleting one blueprint and clearing all blueprints through persisted IPC', () => {
-    const chapterCards = source('src/components/editor/ChapterCardEditor.tsx')
+    const chapterCards = source('src/components/editor/ChapterCardEditor.tsx') + source('src/components/editor/use-chapter-blueprints.ts')
     const dbController = source('electron/controllers/db-controller.ts')
     const ipcChannels = source('src/shared/ipc-channels.ts')
 

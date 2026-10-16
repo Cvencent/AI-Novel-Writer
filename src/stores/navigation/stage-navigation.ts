@@ -11,7 +11,6 @@ import { useLocaleStore } from '../locale-store'
 import { openBuiltinEditor } from '../open-builtin-editor'
 import { openDraftTab } from '../open-draft-tab'
 import { useProjectStore } from '../project-store'
-import { chapterWritePrefill } from './legacy-layout'
 import type { NavigationIntent } from './navigation-intents'
 import { openPageTab } from './page-tabs'
 import { deriveChapters, focusChapter } from './stage-progress'
@@ -78,6 +77,24 @@ export async function openChapter(chapterNumber: number): Promise<void> {
   }
 }
 
+/** 写作此章：回到作品，打开蓝图并选中这一章，由那里的写作按钮弹出写作弹层；参数取自蓝图，不再弹旧的创作对话框。 */
+function requestChapterWrite(chapterNumber: number): void {
+  const session = currentSession()
+  if (!session) return
+  const text = useLocaleStore.getState().text
+  enterWork()
+  useStageStore.setState({ writeRequest: { session, chapterNumber } })
+  openBuiltinEditor('chapter-card-editor', text('章节蓝图', 'Chapter blueprint'), 'chapter-card', undefined, chapterNumber)
+}
+
+// 写作请求可能在弹层挂载前一直留着（比如作者在书房里）；换作品或重新打开后，它不能在新作品的同一章号上弹出。
+useProjectStore.subscribe(({ currentProject }) => {
+  const request = useStageStore.getState().writeRequest
+  if (request && !sameProjectSessionContext(request.session, projectSessionContextFromProject(currentProject))) {
+    useStageStore.setState({ writeRequest: null })
+  }
+})
+
 function openKnowledge(): void {
   const projectKey = useProjectStore.getState().currentProject?.path
   if (!projectKey) return
@@ -103,14 +120,15 @@ async function openManuscript(): Promise<void> {
   else openPageTab('blueprint')
 }
 
-/** 新外壳下各意图的落点。设置是内容面板里的设置页；写作此章仍由旧对话框承接，RD-7 换成新弹层。 */
+/** 新外壳下各意图的落点。设置是内容面板里的设置页；写作此章落到蓝图上的写作弹层。 */
 export function stageNavigate(intent: NavigationIntent): void {
   if (intent.kind === 'settings') {
     useLayoutStore.setState({ settingsOpen: true, settingsSection: intent.section })
     return
   }
   if (intent.kind === 'chapter' && intent.write) {
-    useLayoutStore.setState(chapterWritePrefill(intent.chapterNumber, intent.write))
+    const { chapterNumber } = intent
+    leaveSettingsThen(() => requestChapterWrite(chapterNumber))
     return
   }
   // 去具体的阶段、资料页或章节，或从书房进作品，都会收起设置页，有没保存的输入时先确认；

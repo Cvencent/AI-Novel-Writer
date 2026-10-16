@@ -82,7 +82,7 @@ it.each([
   if (count > 0) catalog.diagnostics = [{
     runId: 'invalid-history', kind: 'invalid', code: 'GENERATION_DIRECTORY_PROGRESS_INVALID',
   }]
-  const onConfirm = vi.fn(async () => {})
+  const onConfirm = vi.fn(async () => true)
   const onClose = vi.fn()
   function Harness() {
     const [isOpen, setOpen] = useState(true)

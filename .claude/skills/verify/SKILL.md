@@ -114,7 +114,7 @@ node scripts/redesign/drive.mjs --scenario startup-timing --out <目录>
 
 | 名称 | 检查 | 单跑时截图停在 | 用夹具模型 |
 |---|---|---|---|
-| `write-latency` | 在渲染进程里计时：点击写作此章弹窗的「开始创作」到 AI 输出标题可见，写进 `measured.writeToOutputMs` | 写作完成 | 是 |
+| `write-latency` | 在渲染进程里计时：点击写作此章弹窗的「开始创作」到 AI 输出标题可见，写进 `measured.writeToOutputMs`。RD-4 起旧外壳右栏默认是 AI 输出，计时前只在它开着时收起，trunk 不受影响 | 写作完成 | 是 |
 | `nav-switch-project` | 角色视图加沉浸写作时从标题栏切换到另一部作品，断言退出沉浸、侧栏显示项目树 | 新作品的小说配置页 | 否 |
 | `nav-toast-open` | 写作完成后再点右侧栏「AI 输出」收起它，点完成提示「打开查看」，断言 AI 输出重新出现 | AI 输出里的「第1章候选」 | 是 |
 | `nav-status-capsule` | 卡住模型让写作停在运行中，收起 AI 输出后点状态栏任务胶囊，断言 AI 输出出现 | 运行中的 AI 输出 | 是 |
@@ -257,4 +257,30 @@ perf 交替各跑 5 次取中位数：
 ```bash
 node scripts/redesign/drive.mjs --scenario arch-timing --app-root <trunk 工作树> --out <目录>
 node scripts/redesign/drive.mjs --scenario arch-timing --out <目录>
+```
+
+## 蓝图阶段与写作弹层（RD-7 起）
+
+场景在 `scripts/redesign/blueprint-scenarios.mjs`，页面对象在 `scripts/redesign/pages/blueprint.mjs`（章节规划是 `complementary`「章节规划」，单章蓝图是 `region`「第 N 章蓝图」，写作弹层是 `dialog`「本次写作选项」，主按钮「写第 N 章」直接开始写）。新外壳从蓝图写下一章的场景（`stage-run`、`stage-tour`、运行侧页各场景、`write-stream --shell stage`）都改走 `blueprint.writeNext`；旧外壳仍走 `chapter.writeNextChapter`。新外壳写作此章按设定里的每章字数写，不再在写作时填字数，所以示例作品的每章字数是夹具模型一次写得完的 100。假模型另记 `fake.chats`：每次对话请求的种类、模型与消息原文。
+
+| 名称 | 检查 | 截图停在 | 夹具模型 | 对应计划 |
+|---|---|---|---|---|
+| `blueprint-regression` | 第 3 章蓝图带出场人物与作者指导，从蓝图写下一章：旧外壳点「写作第 3 章」在对话框里直接开始，新外壳点「写第 3 章」。`measured.requests` 是每次模型请求的种类、模型与消息的 sha256，`proseMessages` 是正文请求原文。trunk（`--app-root`）与 head（`--shell stage`）两边的 `requests` 相同即通过 | 写出的草稿 | 是 | lane 1 |
+| `blueprint-page` | 选中第 5 章：标题「逐章规划」、主按钮「写第 3 章」、12 章规划、页头只有一个拆分主按钮、蓝图页文字对比度（名称 4.5:1，说明 3:1；章节规划的状态文字 `.stage-bp-plan-status` 每种状态都查，含默认的待写）。选择器清单是 `blueprint-scenarios.mjs` 的 `PAGE_CONTRAST`，算法与外壳共用 `scenarios.mjs` 的 `contrastFailures`。浅色、深色各跑一次 | 蓝图页 | 否 | lane 2、lane 10（`--theme dark`） |
+| `blueprint-popover` | 打开「本次写作选项」：只有本次模型、作者微操指导、折叠的更多（检索关键词），整页只有这一个对话层 | 写作弹层 | 否 | lane 3 |
+| `blueprint-preflight` | 主进程里把 `db:continuity-list-before` 换成夹具（第 1 章守塔人已死），点写第 3 章：弹层里出现一致性预检，有保存安排、仅本次忽略、改蓝图后重检，模型没有收到请求；`after` 换回原处理函数后仅本次忽略，写完 | 一致性预检 | 是 | lane 4 |
+| `blueprint-overwrite` | AI 生成蓝图选覆盖后开始：生成对话框先收起，危险确认「覆盖已有蓝图？」写明会替换 12 章；`after` 取消后生成对话框原样回来，没有错误提示，蓝图不变 | 覆盖确认 | 否 | lane 5 |
+| `blueprint-batch` | 删掉 3、4 章草稿后批量创作 4 章：运行侧页出现批量卡（第 3 至 6 章）；`after` 取消 | 批量卡 | 是 | lane 6 |
+| `blueprint-clear` | 更多蓝图操作的危险分组里清空全部蓝图，危险确认后列表为空，出现空状态与 AI 生成蓝图 | 空状态 | 否 | lane 7 |
+| `blueprint-recover` | 规划 16 章，生成第 13～16 章蓝图（假模型回正文，生成失败留下恢复稿）：蓝图页出现恢复稿提示条，「编辑恢复稿」打开恢复稿标签，「继续生成缺少的章节」可用；`after` 点它，模型再次收到请求 | 恢复稿标签 | 是 | lane 8 |
+| `blueprint-save` | 改第 6 章标题：整页只有顶栏一处「未保存」，Ctrl S 后变「已保存」，重新加载后标题仍在 | 已保存 | 否 | lane 9 |
+| `blueprint-finalize-next` | 第 3 章草稿定稿，设置里开着「定稿后打开下一章」（F-056）：落到蓝图标签、选中第 4 章、只弹出写作弹层，没有旧的创作对话框 | 写作弹层 | 是 | F-056 |
+| `blueprint-tour` | 30–60 秒导览：选章改标题保存、清空的危险确认、生成蓝图覆盖、批量创作、写作弹层、一致性预检、仅本次忽略后写完。配 `--video` 录评审视频 | 写完一章 | 是 | Review gate |
+| `blueprint-timing` | 300 章蓝图：从点蓝图到第 300 章出现在列表里（`openMs`），从点第 150 章到它的标题出现（`switchMs`），渲染进程内按帧计时。旧外壳点项目树「章节蓝图」与列表项，两种外壳都能跑 | 第 150 章 | 否 | perf |
+
+```bash
+node scripts/redesign/drive.mjs --scenario blueprint-regression --app-root <trunk 工作树> --out <目录>/trunk
+node scripts/redesign/drive.mjs --scenario blueprint-regression --shell stage --out <目录>/head
+node scripts/redesign/drive.mjs --scenario blueprint-timing --app-root <trunk 工作树> --out <目录>
+node scripts/redesign/drive.mjs --scenario blueprint-timing --shell stage --out <目录>
 ```
