@@ -367,7 +367,7 @@ node scripts/redesign/drive.mjs --scenario refs-timing --shell stage --out <目�
 
 ## 外部审查修复（RD-X1）
 
-场景在 `scripts/redesign/x1-scenarios.mjs`，都走新外壳。竞态用主进程通道上的门稳定复现：`holdChannel(app, 通道, { after })` 卡住接下来的调用，`after: true` 时先交给原处理函数、卡住的是回复（主进程已做完、渲染进程迟迟收不到）；`untilHeld` 等到有调用卡在门上，`releaseChannel` 放行。`recordCalls` 记下通道之后每次调用所属的作品路径，`stubChannel` 把通道换成固定回复并计数；两者遇到主进程没有的通道都直接报错，通道改名后断言不会因为记不到调用而假绿。`seedTwoBooks` 先建「港口」（三章定稿，第 3 章定稿带历史审稿），再建并打开灯塔；两部作品第 3 章的稿 id 相同。假模型另有 `fake.failProse()`：之后的正文回复（含 `streamProse` 的流式回复）以 `content_filter` 结束，写稿在这次打开里失败。蓝图页的 `generateRange` 让「架构还不完整」警告与运行侧页展开竞争等待，调用前运行侧页要收起。每个场景对 RD-V 栈顶的构建（`--app-root`）跑一次应失败，对 head 跑一次应通过。
+场景在 `scripts/redesign/x1-scenarios.mjs`，都走新外壳。竞态用主进程通道上的门稳定复现：`holdChannel(app, 通道, { after })` 卡住接下来的调用，`after: true` 时先交给原处理函数、卡住的是回复（主进程已做完、渲染进程迟迟收不到）；`untilHeld` 等到有调用卡在门上，`releaseChannel` 放行。`recordCalls` 记下通道之后每次调用所属的作品路径，`stubChannel` 把通道换成固定回复并计数；两者遇到主进程没有的通道都直接报错，通道改名后断言不会因为记不到调用而假绿。`seedTwoBooks` 先建「港口」（三章定稿，第 3 章定稿带历史审稿），再建并打开灯塔；两部作品第 3 章的稿 id 相同。假模型另有 `fake.failProse()`：之后的正文回复（含 `streamProse` 的流式回复）以 `content_filter` 结束，写稿在这次打开里失败。蓝图页的 `generateRange` 让「架构还不完整」警告与运行侧页展开竞争等待，调用前运行侧页要收起。除 `x1-open-folder-cancel`（RD-V 栈顶上也应通过）和 `x1-import-overlap`（RD-V 栈顶不适用）外，每个场景对 RD-V 栈顶的构建（`--app-root`）跑一次应失败；所有场景对 head 跑一次都应通过。
 
 | 名称 | 检查 | 截图停在 | 夹具模型 | 对应 |
 |---|---|---|---|---|
