@@ -188,6 +188,12 @@
   resize: vertical;
 }
 
+.stage-kb-original {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  resize: none;
+}
+
 .stage-kb-editor:focus-visible {
   outline: none;
   border-color: var(--accent);

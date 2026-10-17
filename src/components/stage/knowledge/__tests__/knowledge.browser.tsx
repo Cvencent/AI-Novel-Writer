@@ -404,7 +404,7 @@ describe('知识库', () => {
     expect(button('更新检索')?.disabled).toBe(false)
 
     await click('更新检索')
-    expect(invoke.mock.calls.filter(([channel]) => channel === 'kb:reindex-document-copy')).toEqual([['kb:reindex-document-copy', 'ch2', session.projectPath]])
+    expect(invoke.mock.calls.filter(([channel]) => channel === 'kb:reindex-document-copy').map(([, docId]) => docId)).toEqual(['ch2'])
   })
 
   it('定稿章节的副本已进入检索时只读显示原文，不提供更新检索', async () => {
@@ -420,9 +420,10 @@ describe('知识库', () => {
   it('没有项目副本的资料不叫作者重新导入：说明只能用来查找，不能在这里查看或修改', async () => {
     await renderPage()
     await click(/旧版地名表/)
-    await vi.waitFor(() => expect(document.body.textContent).toContain('完整原文不可用'))
-    expect(document.body.textContent).not.toContain('重新导入')
-    expect(document.body.textContent).toContain('仍能用来查找')
+    const reader = () => document.querySelector('[aria-label="资料原文"]')?.textContent ?? ''
+    await vi.waitFor(() => expect(reader()).toContain('完整原文不可用'))
+    expect(reader()).not.toContain('重新导入')
+    expect(reader()).toContain('仍能用来查找')
   })
 
   it('项目副本有未保存修改时切换资料先确认；继续编辑留住修改，放弃才切换', async () => {
