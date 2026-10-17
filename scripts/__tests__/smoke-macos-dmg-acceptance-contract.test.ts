@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import vm from 'node:vm'
+import * as stage from '../redesign/pages/stage.mjs'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createStore } from 'zustand/vanilla'
 import { createLocaleState } from '../../src/stores/locale-store'
@@ -106,7 +107,7 @@ describe('macOS DMG acceptance receipt contract', () => {
     const run = vm.runInNewContext(`(${launch})`, {
       path, macMode, process: { env: {} }, exe: '/in-memory/app', packageDir: '/in-memory',
       electron: { launch: async () => ({ firstWindow: async () => page }) },
-      macStage() {}, receipt: {}, console: { error() {} },
+      macStage() {}, receipt: {}, console: { error() {} }, stage,
       closeMacApplication: async () => { calls.push('cleanup') },
     })
     if (macMode && !writeSucceeds) {

@@ -332,15 +332,23 @@ export function proseBody(locator) {
   }).join('\n'))
 }
 
-/** 第 number 章正文打开后，用标题旁的版本切换器换到第 version 稿（草稿、修稿、定稿都按 v 号找）。 */
+/** 版本切换按钮的可访问名称「本章版本：草稿 v1 · 120 字」：只认这个 v 号，v1 不会认成 v10。 */
+export const versionSwitcherName = version => new RegExp(String.raw`^本章版本：\S+ v${version} · `)
+/**
+ * 版本菜单项第一段的文字「草稿 v1」或「修稿已合并 v2 · 当前」。整项的可访问名称把这一段与下面的字数连在一起
+ * （「草稿 v1」紧跟「120 字」成了「v1120」），所以按这一段找。
+ */
+export const versionItemText = version => new RegExp(String.raw`^\S+ v${version}(?: · 当前)?$`)
+
+/** 第 number 章正文打开后，用标题旁的版本切换器换到第 version 稿（草稿、修稿都按 v 号找）。 */
 export async function openChapterVersion(page, number, version) {
   await openChapter(page, number)
-  const label = new RegExp(` v${version}(?!\d)`)
   const switcher = root(page).getByRole('button', { name: /^本章版本：/ })
-  if (!label.test(await switcher.getAttribute('aria-label'))) {
+  if (!versionSwitcherName(version).test(await switcher.getAttribute('aria-label'))) {
     await switcher.click()
-    await page.getByRole('menu', { name: '本章版本' }).getByRole('menuitemradio', { name: label }).click()
-    await root(page).getByRole('button', { name: new RegExp(`^本章版本：.* v${version}(?!\d)`) }).waitFor({ state: 'visible' })
+    await page.getByRole('menu', { name: '本章版本' }).getByRole('menuitemradio')
+      .filter({ has: page.locator('span', { hasText: versionItemText(version) }) }).click()
+    await root(page).getByRole('button', { name: versionSwitcherName(version) }).waitFor({ state: 'visible' })
   }
   await prose(page).waitFor({ state: 'visible' })
   return prose(page)
