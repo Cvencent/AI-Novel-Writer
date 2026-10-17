@@ -515,6 +515,18 @@ describe('纸面', () => {
     expect(activeTab()?.content).toBe('雨从傍晚开始就没有停过。\u2003\u2003\u2003\u2003')
   })
 
+  it('刚打完字立刻按 Esc 再按 Tab，焦点照样移出编辑区，不插空格', async () => {
+    const draft = backend.addDraft({ status: 'draft', content: '雨从傍晚开始就没有停过。' })
+    await mount()
+    await openDraft(draft.id)
+    await expect.element(page.getByText('雨从傍晚开始就没有停过。')).toBeVisible()
+    const prose = host!.querySelector<HTMLElement>('.stage-ch-prose .cm-content')!
+    await userEvent.click(page.getByText('雨从傍晚开始就没有停过。'))
+    await userEvent.keyboard('{End}abc{Escape}{Tab}')
+    expect(prose.contains(document.activeElement)).toBe(false)
+    expect(activeTab()?.content).toBe('雨从傍晚开始就没有停过。abc')
+  })
+
   it('中文分节符整行不缩进；以破折号开头的对白、以符号开头的正文仍缩进', async () => {
     const breaks = ['＊＊＊', '※※※', '◇ ◇ ◇', '◇◆◇', '○●○', '———', '——————', '·····', '～～～', '~ ~ ~', '＊　＊　＊']
     const prose = ['——他说，钟声提前了。', '※注：钟声提前了一刻。', '○', '——', '◇雾从海面升起。']
