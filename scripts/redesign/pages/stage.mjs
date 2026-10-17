@@ -260,3 +260,88 @@ export const CONTENT_TAB = '.stage-tab'
 /** 顶栏作品名：RD-X3 起是按钮里单独的一段，之前是按钮本身。 */
 export const WORK_NAME = ['.stage-work-name', '.stage-work-title']
 export const WINDOW_CLOSE = '.stage-window-close'
+
+// ===== 旅程脚本共用（RD-10 起只有纸墨外壳） =====
+
+export const STAGE_SHELL = SHELL
+
+/** 纸墨外壳渲染出来即就绪。 */
+export async function waitForStage(page, timeout = 30_000) {
+  await root(page).waitFor({ state: 'visible', timeout })
+}
+
+/** 启动时的迁移通知（旧来源已保留等）；没有就什么也不做。 */
+export async function dismissMigrationNotice(page) {
+  const acknowledge = page.locator('.startup-migration-notice').getByRole('button', { name: '知道了', exact: true })
+  if (await acknowledge.isVisible()) await acknowledge.click()
+}
+
+/** 当前打开着作品时从顶栏作品菜单回到书房；已在书房就不动。 */
+export async function showLibrary(page) {
+  const workMenu = root(page).getByRole('banner').getByRole('button', { name: /作品菜单$/ })
+  if (await workMenu.count() > 0 && await workMenu.first().isVisible()) {
+    await workMenu.first().click()
+    await page.getByRole('menuitem', { name: '回到书房' }).click()
+  }
+  await root(page).locator('.stage-library').waitFor({ state: 'visible' })
+}
+
+/** 书房里的「导入旧项目副本」：空书房是一个文字按钮，书架有书时在「导入」菜单里。 */
+export async function importLegacyCopy(page) {
+  const direct = root(page).getByRole('button', { name: '导入旧项目副本', exact: true })
+  if (await direct.isVisible()) return direct.click()
+  await root(page).getByRole('button', { name: /^导入/ }).first().click()
+  await page.getByRole('menuitem', { name: '导入旧项目副本…' }).click()
+}
+
+/** 顶栏作品名按钮（作品菜单）出现，说明这部作品已在外壳里打开。 */
+export const workMenuButton = (page, name) => root(page).getByRole('banner').getByRole('button', { name: `《${name}》作品菜单` })
+
+export async function waitForWork(page, name, timeout = 30_000) {
+  await workMenuButton(page, name).waitFor({ state: 'visible', timeout })
+  await spine(page).waitFor({ state: 'visible', timeout })
+}
+
+/** 书架上同名的书不止一本时，按书架顺序（与最近项目一致）选第 index 本。 */
+export async function openFromLibraryAt(page, name, index) {
+  await shelf(page).getByRole('listitem').nth(index).getByRole('button', { name: `预览《${name}》` }).click()
+  await overview(page, name).getByRole('button', { name: `打开《${name}》` }).click()
+  await spine(page).waitFor({ state: 'visible' })
+}
+
+/** 点流程脊里的第 number 章，等正文编辑区出现。 */
+export async function openChapter(page, number) {
+  await chapterButton(page, number).click()
+  await prose(page).waitFor({ state: 'visible' })
+  return prose(page)
+}
+
+/** 正文按 Ctrl S 保存，等顶栏状态回到「已保存」。 */
+export async function saveProse(page) {
+  await prose(page).click()
+  await page.keyboard.press('ControlOrMeta+s')
+  await saveStatus(page).filter({ hasText: /^已保存$/ }).waitFor({ state: 'visible' })
+}
+
+/** 正文编辑区的文字，去掉 CodeMirror 的纸面标题装饰。 */
+export function proseBody(locator) {
+  return locator.evaluate(element => Array.from(element.querySelectorAll('.cm-line'), line => {
+    const copy = line.cloneNode(true)
+    copy.querySelector('.cm-lp-paperhead')?.remove()
+    return copy.textContent
+  }).join('\n'))
+}
+
+/** 第 number 章正文打开后，用标题旁的版本切换器换到第 version 稿（草稿、修稿、定稿都按 v 号找）。 */
+export async function openChapterVersion(page, number, version) {
+  await openChapter(page, number)
+  const label = new RegExp(` v${version}(?!\d)`)
+  const switcher = root(page).getByRole('button', { name: /^本章版本：/ })
+  if (!label.test(await switcher.getAttribute('aria-label'))) {
+    await switcher.click()
+    await page.getByRole('menu', { name: '本章版本' }).getByRole('menuitemradio', { name: label }).click()
+    await root(page).getByRole('button', { name: new RegExp(`^本章版本：.* v${version}(?!\d)`) }).waitFor({ state: 'visible' })
+  }
+  await prose(page).waitFor({ state: 'visible' })
+  return prose(page)
+}
