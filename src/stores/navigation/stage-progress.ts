@@ -69,6 +69,8 @@ export interface ChapterRow {
   running: boolean
   /** 打开这一章时载入的稿：有定稿之后才建的未归档草稿时取它，否则取定稿，再否则取最新的未归档草稿；待写章为空。 */
   draft: DraftMeta | null
+  /** 这一章有定稿；当前稿可能是定稿之后新建的草稿。 */
+  hasFinal: boolean
 }
 
 export interface WorkFacts {
@@ -98,8 +100,8 @@ export function missingSetup(config: WorkFacts['config']): SetupField[] {
     : blank(config[field]))
 }
 
-/** 这一章动过笔：有定稿，或当前稿有正文。空的当前稿不算；没记字数的旧稿按有正文算。 */
-const begun = (row: ChapterRow) => row.phase === 'final' || (row.phase !== 'todo' && row.draft?.wordCount !== 0)
+/** 这一章动过笔：有定稿（之后又新建了空草稿也算），或当前稿有正文。只有空的当前稿不算；没记字数的旧稿按有正文算。 */
+const begun = (row: ChapterRow) => row.hasFinal || (row.phase !== 'todo' && row.draft?.wordCount !== 0)
 
 /**
  * 四个阶段的状态，顺序固定为设定、架构、蓝图、正文。完成判定按 ia.md：设定必填项齐全，架构四节都有内容，
@@ -152,6 +154,7 @@ export function deriveChapters(facts: Pick<WorkFacts, 'blueprints' | 'drafts' | 
       phase: working ? chapterPhase(working.status, facts.chapterFacts?.[working.id]) : final ? 'final' : 'todo',
       running: facts.runningChapters.has(number),
       draft: working ?? final,
+      hasFinal: final !== null,
     }
   })
 }
