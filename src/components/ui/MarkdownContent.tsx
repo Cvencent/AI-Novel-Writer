@@ -271,6 +271,7 @@ export function StreamingCursor() {
 // ===== ThinkingBlock — 可折叠的思考过程区块 =====
 
 function ThinkingBlock({ content, streaming }: { content: string; streaming?: boolean }) {
+  const text = useLocaleStore(s => s.text)
   const [expanded, setExpanded] = useState(false)
   const trimmed = content.trim()
   if (!trimmed && !streaming) return null
@@ -293,7 +294,7 @@ function ThinkingBlock({ content, streaming }: { content: string; streaming?: bo
       >
         <Brain size={13} style={{ color: 'var(--color-accent)', opacity: 0.7 }} />
         <span className="font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-          {streaming ? '正在思考…' : '思考过程'}
+          {streaming ? text('正在思考…', 'Thinking…') : text('思考过程', 'Thinking process')}
         </span>
         {streaming && (
           <span
