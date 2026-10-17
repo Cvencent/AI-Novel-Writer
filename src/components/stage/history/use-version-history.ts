@@ -12,7 +12,7 @@ export interface VersionChapter {
   title: string
 }
 
-/** 一次对比的两边正文。current 为 null 表示这一章还没有任何稿。 */
+/** 一次对比的两边正文。current 为 null 表示读不到当前稿：这一章还没有稿，或最新一稿刚被删掉。 */
 export interface VersionComparison {
   older: string
   current: string | null
@@ -117,7 +117,7 @@ export function useVersionHistory(projectKey: string) {
     if (latest.id === versionId) return { older, current: older }
     const current = await ipc.invokeWithProjectSession(projectSession, 'db:draft-get-full', latest.id, projectSession.projectPath)
     if (!isProjectSessionCurrent(projectSession)) return null
-    return { older, current: current?.content ?? '' }
+    return { older, current: current ? current.content : null }
   }, [projectKey, selectedChapter])
 
   /**

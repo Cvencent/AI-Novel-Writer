@@ -254,6 +254,26 @@ describe('知识库', () => {
     expect(shelves()).toEqual(['我导入的 3', '定稿章节 1'])
   })
 
+  it('资料列表读取失败：只显示读取失败，不说知识库是空的、不叫作者去左边选资料、不显示 0；点「刷新资料」读到就列出', async () => {
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel, ...args) => channel === 'kb:list-documents' ? Promise.reject(new Error('磁盘忙')) : base(channel, ...args))
+    await act(async () => root!.render(<StageKnowledge tabId={KB_TAB} />))
+    const reader = () => host!.querySelector('[aria-label="资料原文"]')!.textContent
+    await vi.waitFor(() => expect(reader()).toContain('读取知识库失败'))
+    const page = host!.textContent
+    expect(page).not.toContain('知识库里还没有资料')
+    expect(page).not.toContain('从左边选一份资料查看原文')
+    expect(page).not.toContain('还没有导入资料')
+    const shelves = () => [...host!.querySelectorAll('[aria-label="资料来源"] button')].map(option => option.textContent)
+    expect(shelves()).toEqual(['我导入的', '定稿章节'])
+
+    invoke.mockImplementation(base)
+    await click('刷新资料')
+    await vi.waitFor(() => expect(button(/车站档案/)).toBeTruthy())
+    expect(reader()).not.toContain('读取知识库失败')
+    expect(shelves()).toEqual(['我导入的 3', '定稿章节 1'])
+  })
+
   describe('连续改「最多显示」，两次查找乱序返回', () => {
     const hits = (count: number) => Array.from({ length: count }, (_, index) => ({ text: `……三号站台第 ${index + 1} 段……`, score: 0.5, fileName: '车站档案.md' }))
     let replies: Map<number, (count: number) => void>
@@ -635,6 +655,31 @@ describe('知识库', () => {
       : base(channel, ...args))
     await act(async () => useLLMStore.setState({ models: [], defaultEmbeddingModelId: null }))
     await vi.waitFor(() => expect(document.body.textContent).not.toContain('还不能按意思查找'))
+  })
+
+  it('检索模型连改两次、两次索引检查乱序返回：先改的那次晚到，不把过时的提示写回来', async () => {
+    await renderPage()
+    await vi.waitFor(() => expect(document.body.textContent).toContain('有 4 段资料还不能按意思查找'))
+    const base = invoke.getMockImplementation()!
+    const answers = [
+      { embeddingConfigured: true, canRebuild: true, totalChunks: 9, vectorlessCount: 2, activeVectorDimension: 0 },
+      { embeddingConfigured: false, canRebuild: false, totalChunks: 9, vectorlessCount: 9, activeVectorDimension: 0 },
+    ]
+    const releases: (() => void)[] = []
+    invoke.mockImplementation(async (channel, ...args) => {
+      if (channel !== 'kb:get-vector-rebuild-status') return base(channel, ...args)
+      const answer = answers[releases.length]
+      await new Promise<void>(resolve => releases.push(resolve))
+      return answer
+    })
+    await act(async () => useLLMStore.setState({ models: [] }))
+    await act(async () => useLLMStore.setState({ models: [] }))
+    await vi.waitFor(() => expect(releases).toHaveLength(2))
+    await act(async () => releases[1]())
+    await vi.waitFor(() => expect(document.body.textContent).not.toContain('还不能按意思查找'))
+    await act(async () => releases[0]())
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)) })
+    expect(document.body.textContent).not.toContain('有 2 段资料还不能按意思查找')
   })
 
   it('打开知识库页只读一次索引状态；点「刷新资料」再读一次', async () => {

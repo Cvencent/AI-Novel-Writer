@@ -161,6 +161,11 @@ describe('打开作品时的落点', () => {
       .toEqual({ type: 'chapter', chapter: 2 })
   })
 
+  it('大纲没写完、没有蓝图，一章有定稿、之后又新建了一份空草稿：定稿算写过，落在这一章', async () => {
+    expect(await landWith([], { 1: [draft(1, 'finalized'), { ...draft(1, 'draft'), id: 11, version: 2, wordCount: 0 }] }))
+      .toEqual({ type: 'chapter', chapter: 1 })
+  })
+
   it('大纲没写完、只有一份空的当前稿、没有蓝图：空稿不算开始，落在架构', async () => {
     expect(await landWith([], { 1: [{ ...draft(1, 'draft'), wordCount: 0 }] })).toEqual({ type: 'world-building', chapter: undefined })
   })
