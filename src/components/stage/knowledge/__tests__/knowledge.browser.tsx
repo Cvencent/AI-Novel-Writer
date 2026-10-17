@@ -731,6 +731,17 @@ describe('知识库', () => {
     for (const item of items) expect(item.scrollHeight, item.textContent ?? '').toBeLessThanOrEqual(item.clientHeight)
   })
 
+  it('英文界面同样宽度下资料来源分段既不折行也不溢出', async () => {
+    useLocaleStore.setState({ locale: 'en-US' })
+    host!.style.width = '623px'
+    await act(async () => root!.render(<StageKnowledge tabId={KB_TAB} />))
+    await vi.waitFor(() => expect(button(/Imported 3/)).toBeTruthy())
+    for (const item of document.querySelectorAll<HTMLButtonElement>('.stage-kb-docs .pi-seg-item')) {
+      expect(item.scrollHeight, item.textContent ?? '').toBeLessThanOrEqual(item.clientHeight)
+      expect(item.scrollWidth, item.textContent ?? '').toBeLessThanOrEqual(item.clientWidth)
+    }
+  })
+
   it('索引状态读取失败后再读成功：失败提示消失', async () => {
     const plain = invoke.getMockImplementation()!
     let statusFails = true

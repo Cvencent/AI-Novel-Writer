@@ -53,6 +53,8 @@
 
 .stage-kb-docs .pi-seg-item {
   flex: 1;
+  padding: 0 var(--s-2);
+  white-space: nowrap;
 }
 
 .stage-kb-list {
