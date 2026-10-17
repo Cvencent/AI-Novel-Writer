@@ -59,22 +59,22 @@ export function UpdateSection() {
 
     {presentation.visible && <UpdateStatusCard presentation={presentation} state={state} text={text} manualActionError={manualActionError} isDeferring={isDeferring} lastReminderDays={lastReminderDays} onCheck={() => void checkForUpdates()} onDefer={days => void deferReminder(days)} onDownload={() => void downloadUpdate()} onOpenRelease={() => void openRelease()} onInstall={handleInstallClick} />}
 
-    <Dialog open={block === 'workflow'} onOpenChange={open => { if (!open) dismiss() }}>
+    <Dialog open={block === 'workflow'} onOpenChange={open => { if (!open) dismiss('workflow') }}>
       <DialogContent className="max-w-md">
         <DialogHeader><DialogTitle>{text('创作任务尚未结束，暂不能更新', 'Creative tasks are not finished yet')}</DialogTitle></DialogHeader>
         <div className="px-6 py-4"><DialogDescription>{text(`当前有 ${activeRunCount} 个创作任务仍在运行、暂停、等待继续或正在收尾，结果可能尚未完整写入项目。为避免内容丢失，请先完成或取消这些任务，再重启更新。`, `${activeRunCount} creative task${activeRunCount === 1 ? ' is' : 's are'} still running, paused, waiting, or being finalized, so results may not be fully saved yet. Finish or cancel the tasks before restarting to update.`)}</DialogDescription></div>
         <DialogFooter>
-          <Button type="button" variant="ghost" onClick={dismiss}>{text('知道了，返回处理任务', 'Got it, return to tasks')}</Button>
+          <Button type="button" variant="ghost" onClick={() => dismiss('workflow')}>{text('知道了，返回处理任务', 'Got it, return to tasks')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
 
-    <Dialog open={block === 'unsaved'} onOpenChange={open => { if (!open) dismiss() }}>
+    <Dialog open={block === 'unsaved'} onOpenChange={open => { if (!open) dismiss('unsaved') }}>
       <DialogContent className="max-w-md">
         <DialogHeader><DialogTitle>{text('请先处理未保存的修改', 'Handle unsaved changes first')}</DialogTitle></DialogHeader>
         <div className="px-6 py-4"><DialogDescription>{text(`当前有 ${unsavedItemCount} 项未保存的编辑内容。请返回保存，或明确放弃这些修改后再重启更新。`, `You have ${unsavedItemCount} unsaved edit${unsavedItemCount === 1 ? '' : 's'}. Go back to save, or explicitly discard them before restarting to update.`)}</DialogDescription></div>
         <DialogFooter>
-          <Button type="button" variant="ghost" onClick={dismiss}>{text('返回保存', 'Go back and save')}</Button>
+          <Button type="button" variant="ghost" onClick={() => dismiss('unsaved')}>{text('返回保存', 'Go back and save')}</Button>
           <Button type="button" variant="destructive" onClick={handleDiscardAndInstall}><Download size={15} />{text('放弃修改并重启更新', 'Discard changes and restart update')}</Button>
         </DialogFooter>
       </DialogContent>
