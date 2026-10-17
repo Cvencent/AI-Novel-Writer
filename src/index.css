@@ -13,64 +13,6 @@
  * 否则无层样式会覆盖 Tailwind 工具类，导致 px-3/py-1 等全部失效。
  * ======================================================================== */
 
-/* ===== 本地内置字体（无需网络，所有字体文件均放置于 public/fonts/） ===== */
-
-/* Inter — 可变字体，支持 100-900 所有字重，现代 UI 首选 */
-@font-face {
-  font-family: 'Inter';
-  src: url('/fonts/Inter-VariableFont_opsz,wght.ttf') format('truetype');
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
-
-/* Inter 斜体 */
-@font-face {
-  font-family: 'Inter';
-  src: url('/fonts/Inter-Italic-VariableFont_opsz,wght.ttf') format('truetype');
-  font-weight: 100 900;
-  font-style: italic;
-  font-display: swap;
-}
-
-/* ===== 本地内置中文写作字体（无需网络，放置于 public/fonts/） ===== */
-
-/* 霞鹜文楷 Regular — 楷体，温润典雅，适合小说写作 */
-@font-face {
-  font-family: 'LXGW WenKai';
-  src: url('/fonts/LXGWWenKai-Regular.ttf') format('truetype');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-/* 霞鹜文楷 Medium — 较粗字重，阅读舒适感更强 */
-@font-face {
-  font-family: 'LXGW WenKai';
-  src: url('/fonts/LXGWWenKai-Medium.ttf') format('truetype');
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-
-/* 思源宋体 — 可变字体，支持 100-900 所有字重，印刷感强 */
-@font-face {
-  font-family: 'Noto Serif SC';
-  src: url('/fonts/NotoSerifSC-VariableFont_wght.ttf') format('truetype');
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
-
-/* 思源黑体 — 可变字体，支持 100-900 所有字重，现代简洁 */
-@font-face {
-  font-family: 'Noto Sans SC';
-  src: url('/fonts/NotoSansSC-VariableFont_wght.ttf') format('truetype');
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
-
 /* ===== TailwindCSS v4 核心导入 ===== */
 @import "tailwindcss";
 @plugin "tailwindcss-animate";
