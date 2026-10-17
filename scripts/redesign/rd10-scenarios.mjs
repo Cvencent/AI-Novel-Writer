@@ -1,4 +1,4 @@
-// RD-10 的实机 lane 与功能保全矩阵截图：键盘写一章、英文界面全程、1280 与 1920 两种宽度、标签操作菜单、恢复候选正文页。
+// RD-10 的实机 lane 与功能保全矩阵截图：键盘写一章、打字后立刻 Esc、英文界面全程、1280 与 1920 两种宽度、标签操作菜单、恢复候选正文页。
 import assert from 'node:assert/strict'
 
 import { FAKE_MODEL, FIXTURE_PROSE } from './fake-model.mjs'
@@ -114,8 +114,6 @@ export const RD10_SCENARIOS = {
     await stage.saveStatus(page).filter({ hasText: /^未保存$/ }).waitFor({ state: 'visible' })
     await page.keyboard.press('Control+s')
     await stage.saveStatus(page).filter({ hasText: /^已保存$/ }).waitFor({ state: 'visible' })
-    // 已知缺陷（RD-10 遗留项，另行跟踪）：刚打完字约 1.5 秒内按 Esc，接着的 Tab 仍插空格、不离开编辑区。这里停一下再验证离开路径。
-    await page.waitForTimeout(1500)
     await page.keyboard.press('Escape')
     await page.keyboard.press('Tab')
     const leftEditor = await focusRing(page)
@@ -262,5 +260,42 @@ export const RD10_SCENARIOS = {
     await card.getByRole('button', { name: '继续编辑', exact: true }).click()
     await stage.waitForProse(page, '潮水退去，钟声早了一刻。')
     return { tabs: await stage.tabList(page).getByRole('tab').allInnerTexts().catch(() => []) }
+  } },
+  /**
+   * lane 7 补充：三种输入方式（逐键按键、insertText、CDP 模拟的输入法组字）各打几个字后立刻按 Esc、Tab，
+   * 焦点都要离开编辑区，正文里不多出全角空格。正文编辑器曾因补全请求未结束时吞掉 Esc 而失败。
+   */
+  'rd10-esc-after-typing': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
+    await stage.openChapter(page, 4)
+    const prose = stage.prose(page)
+    const cdp = await page.context().newCDPSession(page)
+    const emSpace = String.fromCharCode(0x2003)
+    const proseText = () => prose.evaluate(element => element.textContent ?? '')
+    const inEditor = () => page.evaluate(() => Boolean(document.activeElement?.closest('.cm-content')))
+    const inputs = {
+      'key-press': async () => { for (const key of 'abc') await page.keyboard.press(key) },
+      'insert-text': async () => { await page.keyboard.insertText('灯塔') },
+      'ime-composition': async () => {
+        await cdp.send('Input.imeSetComposition', { text: 'deng', selectionStart: 4, selectionEnd: 4 })
+        await cdp.send('Input.imeSetComposition', { text: '灯', selectionStart: 1, selectionEnd: 1 })
+        await cdp.send('Input.insertText', { text: '灯' })
+      },
+    }
+    const results = []
+    for (const [name, input] of Object.entries(inputs)) {
+      await prose.click()
+      await page.keyboard.press('Control+End')
+      const before = await proseText()
+      await input()
+      const typed = await proseText()
+      await page.keyboard.press('Escape')
+      await page.keyboard.press('Tab')
+      const left = !(await inEditor())
+      const after = await proseText()
+      results.push({ name, typed: typed.length - before.length, left, emSpacesAdded: after.split(emSpace).length - typed.split(emSpace).length })
+    }
+    await cdp.detach()
+    assert.deepEqual(results.filter(result => result.typed <= 0 || !result.left || result.emSpacesAdded !== 0), [], `打字后立刻 Esc、Tab：${JSON.stringify(results)}`)
+    return { results }
   } },
 }

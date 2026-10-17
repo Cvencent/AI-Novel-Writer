@@ -451,7 +451,8 @@ node scripts/redesign/drive.mjs --scenario refs-timing --shell stage --out <目�
 
 | 名称 | 检查 | 截图停在 | 夹具模型 | 对应计划 |
 |---|---|---|---|---|
-| `rd10-keyboard` | 只用键盘：Ctrl K 去蓝图，Tab 到下一章的「写第 N 章」（样例里是第 3 章）回车开写，写完 Tab 进正文补一句、Ctrl S 保存，停 1.5 秒后按 Esc、Tab 离开编辑区（刚打完字立刻按 Esc 不生效，是已登记的遗留缺陷）。每一步记下焦点落点与焦点环（`:focus-visible` 且 box-shadow 或 outline 含强调色；正文编辑区以插入点为标记），`measured.missingRing` 为空 | 保存后离开编辑区 | 是 | lane 7 |
+| `rd10-keyboard` | 只用键盘：Ctrl K 去蓝图，Tab 到下一章的「写第 N 章」（样例里是第 3 章）回车开写，写完 Tab 进正文补一句、Ctrl S 保存，再按 Esc、Tab 离开编辑区。每一步记下焦点落点与焦点环（`:focus-visible` 且 box-shadow 或 outline 含强调色；正文编辑区以插入点为标记），`measured.missingRing` 为空 | 保存后离开编辑区 | 是 | lane 7 |
+| `rd10-esc-after-typing` | 第 4 章正文里分别用逐键按键、insertText、CDP 模拟的输入法组字（imeSetComposition 再 insertText）各打几个字，每次打完立刻按 Esc、Tab：焦点离开编辑区，正文里不多出全角空格（`measured.results` 三项都 `left: true`、`emSpacesAdded: 0`） | 最后一次 Tab 之后 | 否 | lane 7 |
 | `rd10-en` | 界面语言切成英文后走书房、四个阶段、角色名单、第 3 章与第 1 章、运行侧页、三个作品资料页、导出与清除对话框、设置各页；每页的可见文字与可访问名称去掉作品内容后不剩汉字，`measured.untranslated` 为空 | 设置的外观页 | 否 | lane 6 |
 | `rd10-widths` | 1280×900 与 1920×1080 下依次截第 3 章、角色名单、蓝图、书房（`rd10-widths-<宽>-<页>`），文档与外壳都没有横向溢出。浅色、深色各跑一次（`--theme`） | 1920 宽的书房 | 否 | lane 10 |
 | `rd10-tab-menu` | 打开设定与蓝图共三个标签，展开「标签操作」：已打开的页面与关闭当前、其他、右侧、全部四个动作 | 标签操作菜单 | 否 | F-183、F-184 |
