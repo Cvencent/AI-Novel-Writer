@@ -370,6 +370,17 @@ describe('版本历史', () => {
     expect(button(/草稿 v1/)!.getAttribute('aria-pressed')).toBe('false')
   })
 
+  it('当前稿查到了却读不出正文（刚被删掉）：说这一章还没有当前稿，不当成空正文对比', async () => {
+    await openChapterThree()
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel, ...args) => channel === 'db:draft-get-full' && args[0] === 12 ? null : base(channel, ...args))
+    await click(/草稿 v1/)
+    await vi.waitFor(() => expect(button('回退到此版本…')).toBeTruthy())
+    const column = document.querySelector('.stage-hist-diff')!
+    expect(column.querySelector('article[aria-readonly="true"]')?.textContent ?? null).toBeNull()
+    expect(column.querySelector('.stage-hist-help')?.textContent).toBe('这一章还没有当前稿。')
+  })
+
   it('回退已新建草稿但随后重读列表失败：照样关掉对话框并说已新建，不会让作者再点一次多建一稿', async () => {
     const success = vi.spyOn(toast, 'success').mockImplementation(() => undefined)
     await openChapterThree()
