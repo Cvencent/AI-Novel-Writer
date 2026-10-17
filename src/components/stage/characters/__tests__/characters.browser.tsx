@@ -60,6 +60,20 @@ const click = async (name: string | RegExp) => {
   await act(async () => target!.click())
 }
 const banner = () => host!.querySelector('[aria-label="待处理的角色建议"]')
+/** 纸墨对话框标题下的说明，也是对话框的无障碍描述。 */
+const dialogDescription = () => {
+  const dialog = document.querySelector<HTMLElement>('[role="dialog"]')
+  return dialog ? document.getElementById(dialog.getAttribute('aria-describedby') ?? '')?.textContent ?? null : null
+}
+/** 外发确认这一步作者读到的全文：发什么、发给哪个模型与端点、确认前不写名单。 */
+const fixtureConsent = [
+  '本次粘贴及选中文件的全部文本将发送到以下模型端点，用于提取角色卡。提取后需预览并确认，才会写入角色名单；不会直接覆盖角色名单。',
+  '',
+  '模型：夹具模型 (fixture-1)',
+  '端点：https://fixture.example/v1',
+  '',
+  '是否发送并提取？',
+].join('\n')
 
 async function render() {
   await act(async () => root!.render(<StageCharacters projectKey={session.projectPath} />))
@@ -302,8 +316,7 @@ describe('角色名单', () => {
       source.dispatchEvent(new Event('input', { bubbles: true }))
     })
     await click('AI 提取并预览')
-    expect(dialog().textContent).toContain('https://fixture.example/v1')
-    expect(dialog().textContent).toContain('不会直接覆盖角色名单')
+    expect(dialogDescription()).toBe(fixtureConsent)
     expect(document.querySelectorAll('[role="dialog"], [role="alertdialog"]')).toHaveLength(1)
     await click('返回')
     expect(dialog().querySelector('textarea')?.value).toBe('林舟：末班车上的乘客。')
@@ -368,7 +381,7 @@ describe('角色名单', () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(source, '林舟：末班车上的乘客。')
       source.dispatchEvent(new Event('input', { bubbles: true }))
     })
-    const consentShown = () => dialog().textContent?.includes('https://fixture.example/v1') ?? false
+    const consentShown = () => dialogDescription() === fixtureConsent
 
     await userEvent.dblClick(button('AI 提取并预览')!)
     await vi.waitFor(() => expect(consentShown()).toBe(true))
