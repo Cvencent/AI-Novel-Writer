@@ -723,6 +723,29 @@ describe('知识库', () => {
     expect(document.body.textContent).not.toContain('有 2 段资料还不能按意思查找')
   })
 
+  it('1280 宽窗口开着运行侧页时（内容区约 623px）资料来源分段不折行', async () => {
+    host!.style.width = '623px'
+    await renderPage()
+    const items = [...document.querySelectorAll<HTMLButtonElement>('.stage-kb-docs .pi-seg-item')]
+    expect(items.map(item => item.textContent)).toEqual(['我导入的 3', '定稿章节 1'])
+    for (const item of items) expect(item.scrollHeight, item.textContent ?? '').toBeLessThanOrEqual(item.clientHeight)
+  })
+
+  it('索引状态读取失败后再读成功：失败提示消失', async () => {
+    const plain = invoke.getMockImplementation()!
+    let statusFails = true
+    invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'kb:get-vector-rebuild-status' && statusFails) throw new Error('索引状态暂时读不出来')
+      return plain(channel, ...args)
+    })
+    await renderPage()
+    await vi.waitFor(() => expect(document.body.textContent).toContain('读取知识库失败'))
+    statusFails = false
+    await click('刷新资料')
+    await vi.waitFor(() => expect(document.body.textContent).toContain('有 4 段资料还不能按意思查找'))
+    expect(document.body.textContent).not.toContain('读取知识库失败')
+  })
+
   it('打开知识库页只读一次索引状态；点「刷新资料」再读一次', async () => {
     const statusReads = () => invoke.mock.calls.filter(([channel]) => channel === 'kb:get-vector-rebuild-status').length
     await renderPage()
