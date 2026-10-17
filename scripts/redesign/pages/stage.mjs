@@ -46,9 +46,13 @@ export async function openFromLibraryEn(page, name) {
   await page.getByRole('region', { name: `“${name}” overview` }).getByRole('button', { name: `Open “${name}”` }).click()
 }
 
-/** 书架上的书还没打开：先点封面预览，再点概览里的「打开《书名》」。 */
+/**
+ * 书架上的书还没打开：先点封面预览，再点概览里的「打开《书名》」。
+ * 正打开着的这本书点封面回到「继续」概览，那里没有「打开」，改用 Ctrl K 重新打开（新的项目会话）。
+ */
 export async function openFromLibrary(page, name) {
   await previewBook(page, name)
+  if (await overview(page, name).locator('.stage-eyebrow').filter({ hasText: /^继续$/ }).count() > 0) return openFromPalette(page, name)
   await overview(page, name).getByRole('button', { name: `打开《${name}》` }).click()
   await spine(page).waitFor({ state: 'visible' })
 }
