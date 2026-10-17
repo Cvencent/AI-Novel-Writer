@@ -13,12 +13,12 @@ const REVIEW = JSON.stringify({ summary: '时间线需要核对。', items: [
 ], goalReviews: [] })
 
 /** 创作资料角色提取：每个资料块回一张守塔人与一张林岚（示例作品已有林岚，可以对应已有角色）。 */
-function characterExtraction(prompt) {
+function characterExtraction(prompt, cards) {
   const sourceIds = [...prompt.matchAll(/【资料 ([^｜】]+)｜/gu)].map(match => match[1])
   return JSON.stringify({ results: sourceIds.map(sourceId => ({ sourceId, characterCards: [
     { name: '守塔人', role: 'supporting', background: '灯塔看守，记得每一次钟声。' },
     { name: '林岚', role: 'protagonist', background: '旧港潮汐记录的测绘师。' },
-  ] })) })
+  ].slice(0, cards) })) })
 }
 
 /** AI 填充小说配置：按配置 JSON 合同给出 9 个必填字段与两个枚举；规模字段省略，由作者设置决定。 */
@@ -68,7 +68,7 @@ function responseFor(prompt, { extraction, plotTree, review }) {
   if (prompt.includes('【已确认纳入本次修稿的审稿项】')) return { kind: 'revision', content: FIXTURE_REVISED }
   if (prompt.includes('goalReviews')) return { kind: 'review', content: review ?? REVIEW }
   if (prompt.includes('{"updates"')) return { kind: 'character-state', content: '{"updates":[]}' }
-  if (extraction && prompt.includes('【资料 ')) return { kind: 'character-extraction', content: characterExtraction(prompt) }
+  if (extraction && prompt.includes('【资料 ')) return { kind: 'character-extraction', content: characterExtraction(prompt, extraction) }
   if (plotTree && prompt.includes('小说剧情结构编辑')) return { kind: 'plot-tree', content: JSON.stringify(fixturePlotTree(JSON.parse(prompt.split('\n').find(line => line.startsWith('{"synopsis"'))))) }
   if (prompt.includes('只写短细纲')) return { kind: 'outline', content: FIXTURE_PROSE }
   return { kind: 'prose', content: FIXTURE_PROSE }
@@ -91,7 +91,7 @@ export async function startFakeModel(diagnostics) {
   let holdEmbeddings = false
   let waiting = 0
   let stream = null
-  let extraction = false
+  let extraction = 0
   let brokenCharacterState = false
   let plotTree = false
   let failedProse = false
@@ -111,8 +111,11 @@ export async function startFakeModel(diagnostics) {
   }
   /** 之后的正文回复按 chunks 逐块发出，块间隔 intervalMs；每块发出的时刻记进 streamLog（epoch 毫秒与累计块数）。 */
   const streamProse = plan => { stream = plan; streamLog.length = 0 }
-  /** 之后的创作资料角色提取回一份合法 JSON；不开时与以前一样回正文，提取失败，导入类场景不会停在等你确认。 */
-  const replyCharacterCards = () => { extraction = true }
+  /** 之后的创作资料角色提取回一份合法 JSON（每份资料默认两张卡，cards 限定张数，夹具只有 1–2 张）；不开时与以前一样回正文，提取失败，导入类场景不会停在等你确认。 */
+  const replyCharacterCards = (cards = 2) => {
+    if (cards !== 1 && cards !== 2) throw new Error(`replyCharacterCards: cards 只能是 1 或 2，收到 ${cards}`)
+    extraction = cards
+  }
   /** 定稿后处理的角色状态更新收到不是 JSON 的回复，这一步失败；传 false 恢复，用来演示只重试失败的步骤。 */
   const breakCharacterState = (broken = true) => { brokenCharacterState = broken }
   /** 之后的剧情树整理回一份两轨（主线加支线）的合法 JSON。 */

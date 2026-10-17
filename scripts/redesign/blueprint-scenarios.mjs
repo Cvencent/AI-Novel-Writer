@@ -1,6 +1,6 @@
 // RD-7 蓝图阶段与写作此章弹层的实机场景：对应计划 RD-7 的 live lane 1～10、perf 的 blueprint-timing 与评审导览。
 import assert from 'node:assert/strict'
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 
 import { FAKE_MODEL, FIXTURE_PROSE } from './fake-model.mjs'
 import * as blueprint from './pages/blueprint.mjs'
@@ -76,15 +76,19 @@ async function proseRequest(fake, timeoutMs = 30_000) {
 
 /** 在渲染进程里计时：点击 target 到 ready 选择器出现，单位毫秒，帧粒度。 */
 async function msFromClick(page, target, readySelector, readyText) {
-  const handle = await target.elementHandle()
-  await page.evaluate(({ element, readySelector, readyText }) => {
+  await page.evaluate(({ readySelector, readyText }) => {
     let clickedAt = null
     let handledMs = null
     window.addEventListener('click', () => { clickedAt ??= performance.now() }, { capture: true, once: true })
     document.addEventListener('click', () => { handledMs ??= performance.now() - clickedAt }, { once: true })
     window.__driveReady = new Promise((resolve, reject) => {
-      const deadline = setTimeout(() => reject(new Error('20 秒内没有出现')), 20_000)
+      let expired = false
+      const deadline = setTimeout(() => {
+        expired = true
+        reject(new Error('20 秒内没有出现'))
+      }, 20_000)
       const tick = frameAt => {
+        if (expired) return
         const checkAt = performance.now()
         const shown = [...document.querySelectorAll(readySelector)].some(node =>
           (readyText === null || (node instanceof HTMLInputElement ? node.value : node.textContent).includes(readyText)) && node.getClientRects().length > 0)
@@ -96,7 +100,7 @@ async function msFromClick(page, target, readySelector, readyText) {
       }
       requestAnimationFrame(tick)
     })
-  }, { element: handle, readySelector, readyText })
+  }, { readySelector, readyText })
   await target.click()
   return page.evaluate(() => window.__driveReady)
 }
@@ -123,7 +127,13 @@ export const BLUEPRINT_SCENARIOS = {
     await chapterView.finalize(page, 3, { untilReadOnly: false })
     await blueprint.popover(page).waitFor({ state: 'visible', timeout: 60_000 })
     assert.equal(await chapterView.title(page).innerText(), stageChapterTitle(4), '定稿后落到第 4 章的单章视图')
-    assert.equal(await chapterView.view(page).getByRole('button', { name: '写作此章', exact: true }).count(), 1, '弹层挂在这一章的写作此章上')
+    const write = chapterView.view(page).getByRole('button', { name: '写作此章', exact: true })
+    const toggle = chapterView.view(page).getByRole('button', { name: '本次写作选项', expanded: true })
+    const popoverId = await blueprint.popover(page).getAttribute('id')
+    const [writeBox, toggleBox, popoverBox] = await Promise.all([write.boundingBox(), toggle.boundingBox(), blueprint.popover(page).boundingBox()])
+    const attached = Math.abs(popoverBox.y - (toggleBox.y + toggleBox.height) - 6) <= 1 || Math.abs(toggleBox.y - (popoverBox.y + popoverBox.height) - 6) <= 1
+    assert.deepEqual([await toggle.getAttribute('aria-controls'), Math.abs(writeBox.y - toggleBox.y) <= 1, attached], [popoverId, true, true],
+      `弹层由这一章「写作此章」旁的选项按钮打开，贴着它展开：${JSON.stringify({ writeBox, toggleBox, popoverBox })}`)
     assert.equal(await page.getByRole('dialog').count(), 1, '只弹出写作弹层，不再弹旧的创作对话框')
   } },
   'blueprint-regression': { model: true, setup: withKeeperInChapter3, run: async ({ page, fake }) => {

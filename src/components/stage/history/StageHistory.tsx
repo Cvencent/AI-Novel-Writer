@@ -14,6 +14,7 @@ import { toast } from '../../ui/Toast'
 import RevertDialog from './RevertDialog'
 import { useVersionHistory, type VersionComparison } from './use-version-history'
 import { diffProse } from './version-diff'
+import { pluralEn } from '../../../shared/plural-en'
 
 type Text = (zh: string, en: string) => string
 
@@ -171,7 +172,7 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
                   >
                     <span className="stage-hist-no">{String(item.number).padStart(2, '0')}</span>
                     <span className="stage-hist-name">{item.title}</span>
-                    {count !== undefined && <small>{count === 0 ? text('未开始', 'Not started') : text(`${count} 稿`, `${count} drafts`)}</small>}
+                    {count !== undefined && <small>{count === 0 ? text('未开始', 'Not started') : text(`${count} 稿`, `${count} ${pluralEn(count, 'draft')}`)}</small>}
                   </button>
                 </li>
               )
@@ -222,7 +223,7 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
                           )}
                         </span>
                         <span className="stage-hist-meta">
-                          {text(`${version.word_count.toLocaleString(locale)} 字`, `${version.word_count.toLocaleString(locale)} words`)} · {formatTime(version.created_at)}
+                          {text(`${version.word_count.toLocaleString(locale)} 字`, `${version.word_count.toLocaleString(locale)} ${pluralEn(version.word_count, 'word')}`)} · {formatTime(version.created_at)}
                         </span>
                       </button>
                     </li>

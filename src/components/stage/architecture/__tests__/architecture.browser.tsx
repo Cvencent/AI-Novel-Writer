@@ -556,6 +556,29 @@ describe('架构阶段', () => {
     expect(document.activeElement).toBe(cast)
   })
 
+  it('英文界面：大纲只生成到第 1 章停下时说 Chapter 1 stays as it is，不说 The first 1 chapter stay', async () => {
+    useLocaleStore.setState({ locale: 'en-US' })
+    const body = outlineBody(1, 1)
+    core = { ...core, synopsis: renderPlotOutlineSynopsis(body, 1, OUTLINE_SOURCE) }
+    partial = {
+      synopsis_result: body, synopsis_incomplete: false, synopsis_covered_to: 1, synopsis_range: { from: 1, to: 1 },
+      synopsis_facts_fingerprint: 'stored-inputs', synopsis_db_hash: synopsisFactsFingerprint([core.synopsis as string]),
+    }
+    filledSpine(['premise', 'synopsis'])
+    await render()
+    expect(host!.querySelector('[data-section="synopsis"] .pi-notice-text')?.textContent).toBe('Chapter 1 stays as it is; only missing chapters are added.')
+  })
+
+  it('英文界面里截断的摘要用英文省略号', async () => {
+    useLocaleStore.setState({ locale: 'en-US' })
+    core = { ...core, premise: 'A stranger mails Lin Zhou a train ticket dated 1998, and every night the fog bell rings a quarter hour early. '.repeat(2) }
+    filledSpine(['premise'])
+    await render()
+    const summary = host!.querySelector('[data-section="premise"] .arch-section-summary')!.textContent!
+    expect(summary.endsWith('…')).toBe(true)
+    expect(summary).not.toContain('……')
+  })
+
   it('分节摘要不带文档的 Markdown 标题行', async () => {
     core = { ...core, premise: `# 故事前提\n\n## 核心钩子\n\n${PREMISE}` }
     filledSpine(['premise'])

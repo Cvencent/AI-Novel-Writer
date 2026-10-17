@@ -4,6 +4,7 @@ import type { ChapterBlueprint } from '../../../services/workflows/directory-wor
 import type { ChapterRow } from '../../../stores/navigation/stage-progress'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { CHAPTER_PHASE_TEXT, CHAPTER_RUNNING_TEXT } from '../stage-text'
+import { pluralEn } from '../../../shared/plural-en'
 
 interface BlueprintPlanListProps {
   blueprints: readonly ChapterBlueprint[]
@@ -48,7 +49,7 @@ export default function BlueprintPlanList({ blueprints, rows, selectedIdx, nextW
   const text = useLocaleStore(s => s.text)
   return (
     <aside className="stage-bp-plan" aria-label={text('章节规划', 'Chapter plan')}>
-      <div className="stage-bp-plan-top">{text(`${blueprints.length} 章`, `${blueprints.length} chapters`)}</div>
+      <div className="stage-bp-plan-top">{text(`${blueprints.length} 章`, `${blueprints.length} ${pluralEn(blueprints.length, 'chapter')}`)}</div>
       <ol className="stage-bp-plan-list">
         {blueprints.map((blueprint, index) => (
           <PlanItem

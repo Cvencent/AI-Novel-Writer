@@ -41,6 +41,24 @@
   align-items: center;
 }
 
+/* 作品名很长时收成省略号，不把右侧的窗口按钮挤出无边框窗口 */
+.stage-topbar > .pi-anchor {
+  min-width: 0;
+  max-width: 320px;
+  flex: 0 1 auto;
+}
+
+.stage-topbar .pi-anchor > .stage-work-title {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.stage-work-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .stage-topbar .stage-work-title:hover {
   background: var(--sunken);
   color: var(--ink);

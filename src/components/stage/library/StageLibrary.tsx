@@ -20,6 +20,7 @@ import ShelfBook from './ShelfBook'
 import { shelfTime } from './shelf-format'
 import { barsFromOverview, barsFromStages, nextStep } from './shelf-progress'
 import { useShelfOverview, type ShelfBook as Book } from './use-shelf-overview'
+import { pluralEn } from '../../../shared/plural-en'
 
 type Text = (zh: string, en: string) => string
 
@@ -135,8 +136,8 @@ export default function StageLibrary() {
 
   const metaParts = config ? [
     config.genre,
-    config.totalChapters > 0 ? text(`${config.totalChapters} 章`, `${config.totalChapters} chapters`) : '',
-    config.wordsPerChapter > 0 ? text(`每章约 ${config.wordsPerChapter.toLocaleString('zh-CN')} 字`, `~${config.wordsPerChapter.toLocaleString('en-US')} words each`) : '',
+    config.totalChapters > 0 ? text(`${config.totalChapters} 章`, `${config.totalChapters} ${pluralEn(config.totalChapters, 'chapter')}`) : '',
+    config.wordsPerChapter > 0 ? text(`每章约 ${config.wordsPerChapter.toLocaleString('zh-CN')} 字`, `~${config.wordsPerChapter.toLocaleString('en-US')} ${pluralEn(config.wordsPerChapter, 'word')} each`) : '',
   ].filter(Boolean) : []
 
   const overviewCard = (() => {

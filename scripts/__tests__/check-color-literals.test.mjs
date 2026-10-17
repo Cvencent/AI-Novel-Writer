@@ -77,3 +77,27 @@ test('仓库当前状态通过检查，CLI 失败时退出码为 1 并写明令�
   assert.equal(fail.status, 1)
   assert.match(fail.stderr, /src\/components\/ui\/Fresh\.tsx:1 颜色字面量 #fff：改用 src\/styles\/paper-ink\/tokens\.css/u)
 })
+
+test('行注释只在字符串外才算：紧贴代码的 // 注释不误报，字符串里的 // 与 /* 之后的色值不漏报', () => {
+  assert.deepEqual(findColorLiterals("const c = 'var(--danger)'// 原色 #B42318"), [])
+  assert.deepEqual(findColorLiterals("const a = 'a // b', c = '#fff'"), [{ line: 1, literal: '#fff' }])
+  assert.deepEqual(findColorLiterals("const glob = 'src/**', c = '#fff'\nconst d = '#000'"), [{ line: 1, literal: '#fff' }, { line: 2, literal: '#000' }])
+})
+
+test('CSS 里没有行注释：url(//…) 之后的色值照样报出', () => {
+  const root = fixture({ 'src/components/stage/x.css': '.x { background: url(//cdn/a.png); color: #fff; }\n' })
+  assert.deepEqual(checkColorLiterals(root, []).violations, [{ file: 'src/components/stage/x.css', line: 1, literal: '#fff' }])
+})
+
+test('经 junction 或符号链接运行时照样检查，有违规就退出 1', () => {
+  const root = fixture({ 'src/components/ui/Fresh.tsx': "const c = '#fff'\n", 'scripts/check-color-literals.mjs': fs.readFileSync(script, 'utf8') })
+  const link = path.join(os.tmpdir(), `color-literals-link-${process.pid}-${Date.now()}`)
+  fs.symlinkSync(root, link, 'junction')
+  try {
+    const run = spawnSync(process.execPath, [path.join(link, 'scripts/check-color-literals.mjs')], { encoding: 'utf8', windowsHide: true })
+    assert.equal(run.status, 1, run.stdout)
+    assert.match(run.stderr, /src\/components\/ui\/Fresh\.tsx:1 颜色字面量 #fff/u)
+  } finally {
+    fs.rmSync(link, { recursive: false, force: true })
+  }
+})

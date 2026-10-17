@@ -37,6 +37,7 @@ import { useWorkflowStore } from '../../../stores/workflow-store'
 import { openChapterFile } from '../../panels/sidebar/sidebar-file-openers'
 import { captureProjectSession, isProjectSessionCurrent, isProjectSessionPath } from '../../project-session-gate'
 import { toast } from '../../ui/Toast'
+import { pluralEn } from '../../../shared/plural-en'
 
 const EMPTY_PLAN: NarrativeThreadPlanInput = {
   title: '', type: '', targetStartChapter: 1, targetEndChapter: 1, authorIntent: '',
@@ -95,7 +96,7 @@ function plotTreeErrorMessage(
   if (error instanceof PlotTreeSourceLimitError) {
     return text(
       `剧情树完整来源上限为 ${error.maximum} 个章节；本次未调用模型，旧快照保持不变。`,
-      `The complete plot-tree source limit is ${error.maximum} chapters; the model was not called and the previous snapshot remains unchanged.`,
+      `The complete plot-tree source limit is ${error.maximum} ${pluralEn(error.maximum, 'chapter')}; the model was not called and the previous snapshot remains unchanged.`,
     )
   }
   if (error instanceof PlotTreeInputLimitError) {

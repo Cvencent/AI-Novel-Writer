@@ -16,6 +16,7 @@ import { Label } from '../ui/Label'
 import { NativeSelect } from '../ui/NativeSelect'
 import { Textarea } from '../ui/Textarea'
 import PlotTreeView from './PlotTreeView'
+import { pluralEn } from '../../shared/plural-en'
 
 interface NarrativeThreadEditorProps {
   projectKey: string
@@ -155,7 +156,7 @@ export default function NarrativeThreadEditor({
             <p className="text-sm">{thread.authorIntent}</p>
             {thread.status !== 'resolved' && thread.status !== 'abandoned' && (
               <div className="flex gap-3 text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                <span className="flex items-center gap-1"><Clock3 size={13} />{text(`沉寂 ${thread.dormantChapters} 章`, `Dormant ${thread.dormantChapters} chapters`)}</span>
+                <span className="flex items-center gap-1"><Clock3 size={13} />{text(`沉寂 ${thread.dormantChapters} 章`, `Dormant ${thread.dormantChapters} ${pluralEn(thread.dormantChapters, 'chapter')}`)}</span>
                 {thread.dormantChapters >= dormantThreshold && (
                   <span role="status">{text('已达到项目沉寂提醒阈值', 'Project dormant threshold reached')}</span>
                 )}

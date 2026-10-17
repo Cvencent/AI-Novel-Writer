@@ -12,6 +12,7 @@ import { useLocaleStore } from '../../stores/locale-store'
 import { captureProjectSession, isProjectSessionCurrent } from '../project-session-gate'
 import { useKnowledgeBase } from '../stage/knowledge/use-knowledge-base'
 import { getVectorRebuildPresentation } from './knowledge-rebuild-presentation'
+import { pluralEn } from '../../shared/plural-en'
 
 /**
  * 知识库概览页面 — LanceDB 向量数据库的管理中心
@@ -232,7 +233,7 @@ export default function KnowledgeOverview() {
                     {rebuildPresentation.kind === 'missing-vectors'
                       ? text(
                           `${vectorRebuildStatus!.vectorlessCount} 个文本块尚未生成向量嵌入；检查后会安全补全或重建索引。`,
-                          `${vectorRebuildStatus!.vectorlessCount} text chunks have no embeddings. The check safely completes or rebuilds the index.`,
+                          `${vectorRebuildStatus!.vectorlessCount} text ${pluralEn(vectorRebuildStatus!.vectorlessCount, 'chunk')} ${pluralEn(vectorRebuildStatus!.vectorlessCount, 'has', 'have')} no embeddings. The check safely completes or rebuilds the index.`,
                         )
                       : text(
                           `将用一条本地文本块检查当前模型的实际向量维度；如维度变化，会先完整建立新索引，再切换检索。当前索引为 ${vectorRebuildStatus!.activeVectorDimension || 'FTS'}。`,

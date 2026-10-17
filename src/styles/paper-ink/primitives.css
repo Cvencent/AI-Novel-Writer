@@ -43,7 +43,7 @@
 /* .05em 是给汉字留的气口，拉丁字母这么排会散 */
 :lang(en) .pi-btn { letter-spacing: .01em; }
 /* 图标一侧少 2px，图标加文字看起来才居中 */
-.pi-btn:not(.pi-btn--icon) > svg:first-child { margin-inline-start: -2px; }
+.pi-btn:not(.pi-btn--icon, .pi-split-toggle) > svg:first-child { margin-inline-start: -2px; }
 /* 键盘焦点环要立即出现：聚焦期间 box-shadow 不参与过渡 */
 .pi-btn:focus-visible { --pi-ring: var(--focus-ring); transition-property: background-color, border-color, color, transform, --pi-top, --pi-foot; }
 
@@ -78,15 +78,24 @@
   --pi-shadow: inset 0 1px 0 var(--paper-hi), 0 1px 0 var(--paper-edge), 0 3px 5px -3px var(--lift-soft);
 }
 .pi-btn--secondary > svg { color: var(--ink-2); }
-.pi-btn--secondary:hover:not(:disabled, :active, [aria-expanded="true"]) {
+.pi-btn--secondary:hover:not(:disabled, :active, [aria-expanded="true"], [aria-pressed="true"], [aria-selected="true"]) {
   border-color: var(--edge-strong);
   --pi-shadow: inset 0 1px 0 var(--paper-hi), 0 1px 0 var(--paper-edge), 0 5px 9px -5px var(--lift);
 }
-.pi-btn--secondary:hover:not(:disabled, :active, [aria-expanded="true"]) > svg { color: var(--ink); }
+.pi-btn--secondary:hover:not(:disabled, :active, [aria-expanded="true"], [aria-pressed="true"], [aria-selected="true"]) > svg { color: var(--ink); }
 .pi-btn--secondary:active, .pi-btn--secondary[aria-expanded="true"] {
   --pi-top: var(--paper-press); --pi-foot: var(--paper-press); background-color: var(--paper-press); border-color: var(--edge-strong); transform: translateY(1px);
   --pi-shadow: inset 0 2px 4px var(--sink);
 }
+/* 旧面板的切换按钮：选中项是强调色边线加淡底，aria-pressed 的还带对勾（Button 加），不靠底色深浅区分；不下沉，免得与同组错开一像素 */
+.pi-btn--secondary:is([aria-pressed="true"], [aria-selected="true"]) {
+  --pi-top: transparent; --pi-foot: transparent; background-color: var(--accent-soft); border-color: var(--accent);
+  --pi-shadow: 0 0 0 0 transparent;
+}
+.pi-btn--secondary:is([aria-pressed="true"], [aria-selected="true"]) > svg { color: var(--accent); }
+/* 选中项的对勾替下功能图标，两个图标不挤在一起；标签页没有对勾，底边加一道强调色线，同样不只靠颜色区分 */
+.pi-btn--secondary[aria-pressed="true"] > .lucide-check ~ svg { display: none; }
+.pi-btn--secondary[aria-selected="true"] { --pi-shadow: inset 0 -2px 0 var(--accent); }
 
 .pi-btn--text { padding: 0 var(--s-3); color: var(--ink-2); }
 .pi-btn--icon { width: 36px; padding: 0; color: var(--ink-2); }
@@ -205,6 +214,7 @@
   border-radius: var(--radius-control); background: var(--sunken); }
 .pi-sheet--segmented .pi-sheet-tab { flex: 1; height: 28px; padding: 0 10px; margin: 0; border: 0; border-radius: 7px; color: var(--ink-2); }
 .pi-sheet--segmented .pi-sheet-tab[aria-selected="true"] { background: var(--paper); color: var(--ink); box-shadow: var(--shadow-seg); }
+.pi-sheet--segmented .pi-sheet-tab[aria-selected="true"]:focus-visible { box-shadow: var(--focus-ring), var(--shadow-seg); }
 .pi-sheet--segmented .pi-sheet-body { padding-top: 0; }
 .pi-sheet-body { flex: 1; min-height: 0; overflow: auto; padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); }
 .pi-sheet-foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--s-2);
@@ -212,14 +222,19 @@
 
 /* ================= 弹层与菜单 ================= */
 .pi-anchor { display: inline-flex; }
-/* 浮层 Portal 到 .paper-ink 根，top/left/right 由 use-anchored-layer 按触发按钮写入 */
+/* 浮层 Portal 到 .paper-ink 根，位置与 max-height 由 use-anchored-layer 按触发按钮写入，放不下的在浮层内部滚动 */
 .pi-popover, .pi-menu {
+  overflow-y: auto; overscroll-behavior: contain;
   position: fixed; z-index: var(--z-popover);
   border-radius: var(--radius-panel); background: var(--layer); color: var(--ink); box-shadow: var(--shadow-pop);
 }
 .pi-popover:focus { outline: none; }
 /* 弹层偶尔出现，140ms 浮现；菜单每天几十次且常由键盘打开，不做进场动画 */
 .pi-popover { width: 340px; padding: var(--s-5); display: flex; flex-direction: column; gap: var(--s-3); animation: pi-rise var(--dur-fast) var(--ease); }
+/* 向上展开时从上方落进来：两种方向的起点都在离触发按钮远的一侧 */
+.pi-popover[data-upward] { animation-name: pi-drop; }
+/* 弹层到了 max-height 时内容在里面滚动，不被 flex 压扁 */
+.pi-popover > * { flex-shrink: 0; }
 .pi-popover-title { margin: 0; font: 600 var(--fs-16)/1.4 var(--font-display); letter-spacing: .02em; }
 .pi-menu { min-width: 232px; padding: 6px; display: flex; flex-direction: column; }
 .pi-menu-item {
@@ -393,6 +408,8 @@
  * 提示栈：toast 与 actionToast 共用的一个栈（右下角、新的在下），画在模态之上。
  */
 .paper-ink.pi-overlay-host { display: contents; }
+/* 退出确认与命令式弹窗的一层：自成层叠上下文，里面的遮罩与对话框按 --z-scrim/--z-dialog 排，层与层之间按挂载先后 */
+.pi-prompt-layer { position: relative; z-index: var(--z-prompt); }
 /* 栈本身接指针：卡片之间的空隙也算在栈上，指针经过时悬停暂停不会断。模态给 body 设 pointer-events: none，栈会继承，所以显式写 auto */
 .pi-toast-stack {
   pointer-events: auto; position: fixed; right: var(--s-5); bottom: var(--s-12); z-index: var(--z-toast);
@@ -400,7 +417,17 @@
   max-height: calc(100vh - 2 * var(--s-12));
 }
 /* 常驻与出错不受条数上限约束，栈最高到顶栏以下（上沿留 48px，窗口按钮仍点得到），再高就栈内滚动（ToastStack 量出溢出才标记，平时不裁卡片投影）；左侧留出投影的位置 */
-.pi-toast-stack[data-overflow] { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-left: var(--s-6); }
+.pi-toast-stack[data-overflow] { overflow-y: auto; overscroll-behavior: contain; padding: var(--s-4) 0 0 var(--s-6); }
+/*
+ * 上面还有卡片的提示：卡片列上沿 16px 由卡片底色淡到透明，盖在卡片上而不是把卡片变透明（mask 会让页面文字从卡片里透出）。
+ * 粘在滚动区顶上，不占位；随滚动在头 16px 里淡入，滚到顶时消失，最早一条整张露出来。
+ */
+.pi-toast-stack[data-overflow]::before {
+  content: ''; position: sticky; top: 0; z-index: 1; flex: none; pointer-events: none;
+  width: 360px; max-width: calc(100vw - 2 * var(--s-5)); height: var(--s-4); margin-bottom: calc(-1 * (var(--s-4) + var(--s-2)));
+  background: linear-gradient(var(--layer), transparent);
+  animation: pi-fade linear both; animation-timeline: scroll(); animation-range: 0 var(--s-4);
+}
 
 /* ================= 空状态 ================= */
 .pi-empty { display: flex; flex-direction: column; align-items: center; gap: var(--s-3); padding: var(--s-12) var(--s-6);
@@ -420,6 +447,7 @@
 
 @keyframes pi-sheet-in { from { transform: translateX(12px); opacity: 0; } }
 @keyframes pi-rise { from { transform: translateY(6px); opacity: 0; } }
+@keyframes pi-drop { from { transform: translateY(-6px); opacity: 0; } }
 @keyframes pi-fade { from { opacity: 0; } }
 @keyframes pi-vanish { to { opacity: 0; } }
 @keyframes pi-ink-draw {
@@ -429,7 +457,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .paper-ink, .paper-ink *, .paper-ink *::before, .paper-ink *::after { animation: none !important; transition: none !important; }
+  /* 提示栈淡出带的透明度跟着滚动位置走，不随时间动，所以不关 */
+  .paper-ink, .paper-ink *, .paper-ink *:not(.pi-toast-stack)::before, .paper-ink *::after { animation: none !important; transition: none !important; }
   /* 按下的下沉与缩小也是位移；按下的反馈留给颜色与内凹投影 */
   .paper-ink .pi-btn:is(:active, [aria-expanded="true"]) { transform: none; }
 }

@@ -180,6 +180,20 @@ function ToastCard({ entry, paused }: { entry: ToastStackEntry; paused: boolean 
   )
 }
 
+/**
+ * 栈高过上限才改成滚动容器，平时 overflow 保持 visible，不裁卡片投影；刚变成可滚动或来了新的一条时滚到底让最新的露面。
+ * 按布局高度量，不用 scrollHeight：进场与 FLIP 的位移也算进 scrollHeight，一条通知进场时就会误判。
+ * 滚动条占走的宽度挪到栈右侧的留白里，卡片不跟着左移。
+ */
+function measureOverflow(stack: HTMLElement, revealNewest: boolean) {
+  const last = stack.lastElementChild as HTMLElement | null
+  const overflowing = last !== null && last.offsetTop + last.offsetHeight > stack.clientHeight + 1
+  const was = stack.hasAttribute('data-overflow')
+  stack.toggleAttribute('data-overflow', overflowing)
+  stack.style.marginRight = overflowing ? `${stack.clientWidth - stack.offsetWidth}px` : ''
+  if (overflowing && (revealNewest || !was)) stack.scrollTop = stack.scrollHeight
+}
+
 function ToastStack() {
   const items = useSyncExternalStore(subscribe, () => entries)
   const [paused, setPaused] = useState(false)
@@ -192,13 +206,8 @@ function ToastStack() {
   useLayoutEffect(() => {
     const stack = stackRef.current
     if (stack) {
-      // 栈高过上限才改成滚动容器，平时 overflow 保持 visible，不裁卡片投影；新到的在底部，滚过去让它露面
-      // 按布局高度量，不用 scrollHeight：进场与 FLIP 的位移也算进 scrollHeight，一条通知进场时就会误判
-      const last = stack.lastElementChild as HTMLElement | null
-      const overflowing = last !== null && last.offsetTop + last.offsetHeight > stack.clientHeight + 1
-      stack.toggleAttribute('data-overflow', overflowing)
       const newest = items.at(-1)?.id ?? 0
-      if (overflowing && newest > newestId.current) stack.scrollTop = stack.scrollHeight
+      measureOverflow(stack, newest > newestId.current)
       newestId.current = Math.max(newestId.current, newest)
     }
     for (const [id, card] of cards) {
@@ -216,8 +225,23 @@ function ToastStack() {
     }
   }, [items])
 
+  // 缩窗时栈的上限跟着变矮，条目没变也要重新判断
+  useEffect(() => {
+    const onResize = () => { if (stackRef.current) measureOverflow(stackRef.current, false) }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
   return (
-    <div ref={stackRef} className="pi-toast-stack" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+    // 模态的滚动锁在 document 上拦掉锁外的滚轮与触摸滚动；栈画在模态之上，滚动不该被锁，在冒泡到 document 之前截住
+    <div
+      ref={stackRef}
+      className="pi-toast-stack"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onWheel={event => event.stopPropagation()}
+      onTouchMove={event => event.stopPropagation()}
+    >
       {items.map(entry => <ToastCard key={entry.id} entry={entry} paused={paused} />)}
     </div>
   )

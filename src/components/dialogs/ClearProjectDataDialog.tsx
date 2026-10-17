@@ -6,6 +6,7 @@ import { clearProjectData, type ClearProjectDataOptions } from '../../services/p
 import { alertError } from '../ui/AlertDialog'
 import { Button } from '../ui/Button'
 import { Check } from '../ui/Check'
+import { useDialogFocusReturn } from '../ui/focus-return'
 import { keepToastStackClickable } from '../ui/ToastStack'
 import { usePaperInkRoot } from '../ui/use-paper-ink-root'
 import { useLocaleStore } from '../../stores/locale-store'
@@ -15,6 +16,7 @@ import {
   isProjectSessionCurrent,
 } from '../project-session-gate'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
+import { pluralEn } from '../../shared/plural-en'
 
 interface ClearProjectDataDialogProps {
   open: boolean
@@ -83,6 +85,7 @@ function ClearProjectDataDialogContents({
   const sentinelRef = useRef<HTMLSpanElement>(null)
   // 新外壳里挂在 .paper-ink 下，走标准危险确认；旧外壳的项目树里找不到纸墨根，保留旧样式
   const inkRoot = usePaperInkRoot(sentinelRef)
+  const focusReturn = useDialogFocusReturn()
   const text = useLocaleStore(s => s.text)
 
   const selectedCount = useMemo(
@@ -138,9 +141,11 @@ function ClearProjectDataDialogContents({
             className="pi-dialog pi-dialog--marked"
             onPointerDownOutside={keepToastStackClickable}
             onOpenAutoFocus={event => {
+              focusReturn.remember()
               event.preventDefault()
               cancelRef.current?.focus()
             }}
+            onCloseAutoFocus={focusReturn.onCloseAutoFocus}
           >
             <div className="pi-dialog-head">
               <span className="pi-dialog-mark" aria-hidden><OctagonAlert /></span>
@@ -173,7 +178,7 @@ function ClearProjectDataDialogContents({
                 <p>
                   {selectedCount === 0
                     ? text('请至少选择一类内容。', 'Select at least one kind of data.')
-                    : text(`将清除 ${selectedCount} 类内容：${chosen.join('、')}。`, `Clears ${selectedCount} kinds of data: ${chosen.join(', ')}.`)}
+                    : text(`将清除 ${selectedCount} 类内容：${chosen.join('、')}。`, `Clears ${selectedCount} ${pluralEn(selectedCount, 'kind')} of data: ${chosen.join(', ')}.`)}
                 </p>
                 <p className="pi-dialog-recover">{text('清除后不会自动恢复。', 'Cleared data is not restored automatically.')}</p>
                 <p>{text('若需要保留当前内容，请先复制到外部文件或导出项目备份。', 'To keep the current content, copy it elsewhere or export a project backup first.')}</p>

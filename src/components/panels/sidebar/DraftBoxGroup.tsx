@@ -20,6 +20,7 @@ import {
 } from '../../project-session-gate'
 import { deleteFinalizedChapter } from './finalized-chapter-deletion'
 import { deleteDraftVersion } from './draft-deletion'
+import { pluralEn } from '../../../shared/plural-en'
 
 const DRAFT_STATUS_EN: Record<string, string> = {
   draft: 'Draft', revising: 'Revising', reviewed: 'Reviewed', finalized: 'Finalized', archived: 'Archived',
@@ -64,7 +65,7 @@ export default function DraftBoxGroup({
         <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>{text('草稿箱', 'Draft box')}</span>
         {activeChapterCount > 0 && (
           <span className="ml-auto text-[0.7rem]" style={{ color: 'var(--color-text-muted)' }}>
-            {text(`${activeChapterCount} 章`, `${activeChapterCount} chapters`)}
+            {text(`${activeChapterCount} 章`, `${activeChapterCount} ${pluralEn(activeChapterCount, 'chapter')}`)}
           </span>
         )}
       </div>
@@ -161,7 +162,7 @@ function DraftChapterGroup({
           {displayTitle}
         </span>
         <span className="ml-auto text-[0.7rem] flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>
-          {text(`${activeDrafts.length} 稿`, `${activeDrafts.length} drafts`)}
+          {text(`${activeDrafts.length} 稿`, `${activeDrafts.length} ${pluralEn(activeDrafts.length, 'draft')}`)}
         </span>
       </div>
 

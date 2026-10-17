@@ -87,20 +87,46 @@ async function finalizedFacts(context, chapterNumber) {
   }
 }
 
-async function waitRunDone(page) {
+/**
+ * 页面里进行中的运行胶囊挂上来过几次。点下触发运行的按钮之前取一次，交给 waitRunDone：
+ * 只等「没有进行中的胶囊」会在运行还没挂出胶囊时空过。第一次调用时装上计数。
+ */
+async function runsStarted(page) {
+  return page.evaluate(() => {
+    if (!window.__rdRunsStarted) {
+      window.__rdRunsStarted = { count: 0 }
+      new MutationObserver(records => {
+        for (const record of records) {
+          for (const node of record.addedNodes) {
+            if (node instanceof Element && node.matches('.stage-capsule:not([data-tone="ok"])')) window.__rdRunsStarted.count++
+          }
+        }
+      }).observe(document.body, { childList: true, subtree: true })
+    }
+    return window.__rdRunsStarted.count
+  })
+}
+
+/**
+ * 审稿或修稿结果送到单章视图时运行侧页已收起：等这次运行的胶囊挂上来过、且顶栏不再有进行中的胶囊（完成后的胶囊带 data-tone="ok"）。
+ * 不一定起运行的步骤（完成合并只在需要复验时才起）不给 startedBefore，只等没有进行中的胶囊。
+ */
+async function waitRunDone(page, startedBefore) {
   if (!await isStage(page)) return runPanel.waitForWorkflowDone(page)
   if (await runSheet.sheet(page).isVisible()) return runSheet.waitForRunDone(page)
-  // 审稿或修稿结果送到单章视图时运行侧页已收起：等顶栏不再有进行中的运行胶囊（完成后的胶囊带 data-tone="ok"）。
-  await stage.root(page).locator('.stage-capsule:not([data-tone="ok"])').waitFor({ state: 'detached', timeout: 90_000 })
+  const running = '.stage-capsule:not([data-tone="ok"])'
+  if (startedBefore === undefined) return stage.root(page).locator(running).waitFor({ state: 'detached', timeout: 90_000 })
+  await page.waitForFunction(({ before, selector }) => window.__rdRunsStarted.count > before && !document.querySelector(selector), { before: startedBefore, selector: running }, { timeout: 90_000 })
 }
 
 /** 两种外壳各自写第 3 章：新外壳在待写章的单章视图点「写作此章」，旧外壳从章节蓝图的「写作第3章」对话框直接开始。 */
 async function writeChapter3(page) {
   if (await isStage(page)) {
     await chapterView.open(page, 3)
+    const started = await runsStarted(page)
     await chapterView.view(page).getByRole('button', { name: '写作此章', exact: true }).click()
     await runSheet.waitUntilOpen(page)
-    await waitRunDone(page)
+    await waitRunDone(page, started)
     await chapterView.prose(page).getByText(firstLine(FIXTURE_PROSE)).first().waitFor({ state: 'visible', timeout: 30_000 })
     return
   }
@@ -113,11 +139,13 @@ async function writeChapter3(page) {
 
 /** 新外壳：审稿、按意见修稿、等合并视图。 */
 async function reviewAndRevise(page) {
+  const reviewing = await runsStarted(page)
   await chapterView.review(page)
-  await waitRunDone(page)
+  await waitRunDone(page, reviewing)
+  const revising = await runsStarted(page)
   await chapterView.reviseButton(page).click()
   await chapterView.merge(page).waitFor({ state: 'visible', timeout: 60_000 })
-  await waitRunDone(page)
+  await waitRunDone(page, revising)
 }
 
 /** 两种外壳各自走完审稿、按意见修稿、全部用修稿合并、等合并后复验、定稿。 */
@@ -128,9 +156,10 @@ async function reviewReviseMergeFinalize(page) {
     await chapterView.merge(page).getByRole('button', { name: '完成合并' }).click()
     await chapterView.view(page).getByRole('button', { name: '定稿', exact: true }).waitFor({ state: 'visible', timeout: 30_000 })
     await waitRunDone(page)
+    const finalizing = await runsStarted(page)
     await chapterView.finalize(page, 3)
     await chapterView.postProcess(page).waitFor({ state: 'visible', timeout: 60_000 })
-    await waitRunDone(page)
+    await waitRunDone(page, finalizing)
     return
   }
   await chapter.review(page)
@@ -315,8 +344,9 @@ export const CHAPTER_SCENARIOS = {
   /** lane 3：审稿后侧页展开，勾选数与主按钮「按 N 项意见修稿」、侧页底部计数同步。 */
   'chapter-review': { model: true, shell: 'stage', setup: seed(), run: async ({ page }) => {
     await chapterView.open(page, 4)
+    const started = await runsStarted(page)
     await chapterView.review(page)
-    await waitRunDone(page)
+    await waitRunDone(page, started)
     const sheet = chapterView.reviewSheet(page)
     const counts = async () => ({ button: await chapterView.reviseButton(page).innerText(), footer: await sheet.locator('.stage-ch-sheet-count').innerText() })
     const total = await sheet.getByRole('checkbox').count()
@@ -338,8 +368,9 @@ export const CHAPTER_SCENARIOS = {
   /** lane 4：添加作者意见后修稿，修稿请求里带着这条意见。 */
   'chapter-manual': { model: true, shell: 'stage', setup: seed(), run: async ({ page, fake }) => {
     await chapterView.open(page, 4)
+    const reviewing = await runsStarted(page)
     await chapterView.review(page)
-    await waitRunDone(page)
+    await waitRunDone(page, reviewing)
     const note = '守塔人的咳嗽要提前到第一段出现。'
     await chapterView.reviewSheet(page).getByRole('button', { name: '添加我的意见' }).click()
     await chapterView.reviewSheet(page).getByRole('textbox', { name: '审稿问题' }).fill(note)
@@ -382,9 +413,10 @@ export const CHAPTER_SCENARIOS = {
     await chapterView.open(page, 3)
     await chapterView.more(page, '定稿…')
     await chapterView.finalizeDialog(page, 3).waitFor({ state: 'visible' })
+    const finalizing = await runsStarted(page)
     await chapterView.finalizeDialog(page, 3).getByRole('button', { name: '确认定稿', exact: true }).click()
     await chapterView.view(page).getByText('已定稿，只读', { exact: true }).waitFor({ state: 'visible', timeout: 60_000 })
-    await waitRunDone(page)
+    await waitRunDone(page, finalizing)
     await chapterView.postProcess(page).getByText('4 / 4 完成').waitFor({ state: 'visible', timeout: 60_000 })
     assert.equal(await chapterView.prose(page).getAttribute('contenteditable'), 'false', '定稿后正文只读')
     await assertContrast(page, CONTRAST.post, '定稿后处理')
@@ -395,15 +427,17 @@ export const CHAPTER_SCENARIOS = {
   'chapter-retry': { model: true, shell: 'stage', setup: seed(), run: async ({ page, fake }) => {
     fake.breakCharacterState()
     await chapterView.open(page, 3)
+    const finalizing = await runsStarted(page)
     await chapterView.finalize(page, 3)
-    await waitRunDone(page)
+    await waitRunDone(page, finalizing)
     const failed = chapterView.postProcess(page).locator('li[data-state="failed"]')
     await failed.first().waitFor({ state: 'visible', timeout: 60_000 })
     const before = await chapterView.postProcessSteps(page)
     fake.breakCharacterState(false)
     const from = fake.requests.length
+    const retrying = await runsStarted(page)
     await chapterView.postProcess(page).getByRole('button', { name: '重试失败步骤' }).click()
-    await waitRunDone(page)
+    await waitRunDone(page, retrying)
     await chapterView.postProcess(page).getByText('4 / 4 完成').waitFor({ state: 'visible', timeout: 60_000 })
     const retried = fake.requests.slice(from)
     assert.deepEqual([...new Set(retried)], ['character-state'], '只重试了失败的角色状态更新')
@@ -536,15 +570,17 @@ export const CHAPTER_SCENARIOS = {
     await chapterView.view(page).getByRole('button', { name: '检查维度' }).click()
     await pause(2000)
     await page.keyboard.press('Escape')
+    const reviewing = await runsStarted(page)
     await chapterView.review(page)
-    await waitRunDone(page)
+    await waitRunDone(page, reviewing)
     await pause(3000)
     await chapterView.reviewSheet(page).getByRole('button', { name: '添加我的意见' }).click()
     await chapterView.reviewSheet(page).getByRole('textbox', { name: '审稿问题' }).pressSequentially('守塔人的咳嗽提前出现。', { delay: 90 })
     await pause(1500)
+    const revising = await runsStarted(page)
     await chapterView.reviseButton(page).click()
     await chapterView.merge(page).waitFor({ state: 'visible', timeout: 60_000 })
-    await waitRunDone(page)
+    await waitRunDone(page, revising)
     await pause(2500)
     await chapterView.merge(page).getByRole('group', { name: /用哪一版$/ }).first().getByRole('button', { name: '用修稿' }).click()
     await pause(2000)
@@ -558,8 +594,9 @@ export const CHAPTER_SCENARIOS = {
     await pause(800)
     await chapterView.open(page, 3)
     await pause(1500)
+    const finalizing = await runsStarted(page)
     await chapterView.finalize(page, 3)
-    await waitRunDone(page)
+    await waitRunDone(page, finalizing)
     await pause(3000)
   } },
 

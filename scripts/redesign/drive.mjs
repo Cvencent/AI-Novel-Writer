@@ -12,16 +12,26 @@ import { _electron as electron } from 'playwright'
 
 import { chooseProjectDirectoryGrant } from '../project-directory-grant.mjs'
 import { startFakeModel } from './fake-model.mjs'
-import { ARCH_SCENARIOS } from './arch-scenarios.mjs'
-import { RUN_SCENARIOS } from './run-scenarios.mjs'
-import { BLUEPRINT_SCENARIOS } from './blueprint-scenarios.mjs'
-import { CHAPTER_SCENARIOS } from './chapter-scenarios.mjs'
-import { REFS_SCENARIOS } from './refs-scenarios.mjs'
-import { VISUAL_SCENARIOS } from './visual-scenarios.mjs'
-import { X1_SCENARIOS } from './x1-scenarios.mjs'
-import { X2_SCENARIOS } from './x2-scenarios.mjs'
-import { BASELINE_SESSIONS, EXTRA_SCENARIOS, SCENARIOS as BASELINE_SCENARIOS, STAGE_SCENARIOS } from './scenarios.mjs'
+import { assertNodeRunsTypeScript } from './node-version.mjs'
 import { dismissCompletionToasts, dismissStartupNotice, firstInteractiveControl, waitForShell } from './pages/shell.mjs'
+
+const asEntryPoint = Boolean(process.argv[1]) && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+// 场景模块会 import 应用里的 .ts：静态 import 会在任何代码运行前报 ERR_UNKNOWN_FILE_EXTENSION，所以先查再动态加载。
+// 只在作为入口运行时查：vitest 导入驱动时 .ts 由 vite 转译，用不到 Node 的类型剥离
+if (asEntryPoint) try { assertNodeRunsTypeScript(process.version, process.features.typescript) } catch (error) {
+  process.stderr.write(`${error.message}
+`)
+  process.exit(2)
+}
+const [
+  { ARCH_SCENARIOS }, { RUN_SCENARIOS }, { BLUEPRINT_SCENARIOS }, { CHAPTER_SCENARIOS }, { REFS_SCENARIOS },
+  { VISUAL_SCENARIOS }, { X1_SCENARIOS }, { X2_SCENARIOS }, { RDX3_SCENARIOS },
+  { BASELINE_SESSIONS, EXTRA_SCENARIOS, SCENARIOS: BASELINE_SCENARIOS, STAGE_SCENARIOS },
+] = await Promise.all([
+  import('./arch-scenarios.mjs'), import('./run-scenarios.mjs'), import('./blueprint-scenarios.mjs'), import('./chapter-scenarios.mjs'),
+  import('./refs-scenarios.mjs'), import('./visual-scenarios.mjs'), import('./x1-scenarios.mjs'), import('./x2-scenarios.mjs'),
+  import('./rdx3-scenarios.mjs'), import('./scenarios.mjs'),
+])
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const OFFSCREEN_WINDOW = fileURLToPath(new URL('./offscreen-window.cjs', import.meta.url))
@@ -30,7 +40,7 @@ const VIEWPORT = { width: 1440, height: 900 }
 const THEMES = ['light', 'dark']
 const SHELLS = ['writer', 'stage']
 const ROOT_NAMES = ['legacy', 'canonical', 'userData', 'home', 'appData', 'localAppData', 'temp', 'projects']
-const SCENARIOS = { ...BASELINE_SCENARIOS, ...EXTRA_SCENARIOS, ...STAGE_SCENARIOS, ...RUN_SCENARIOS, ...ARCH_SCENARIOS, ...BLUEPRINT_SCENARIOS, ...CHAPTER_SCENARIOS, ...REFS_SCENARIOS, ...VISUAL_SCENARIOS, ...X1_SCENARIOS, ...X2_SCENARIOS }
+const SCENARIOS = { ...BASELINE_SCENARIOS, ...EXTRA_SCENARIOS, ...STAGE_SCENARIOS, ...RUN_SCENARIOS, ...ARCH_SCENARIOS, ...BLUEPRINT_SCENARIOS, ...CHAPTER_SCENARIOS, ...REFS_SCENARIOS, ...VISUAL_SCENARIOS, ...X1_SCENARIOS, ...X2_SCENARIOS, ...RDX3_SCENARIOS }
 /** 计时会话：先在同一隔离目录预启动一次写好外观（书房计时另建 20 部作品），再计之后那次冷启动。 */
 const TIMED_SESSIONS = new Set(['startup-timing', 'library-timing'])
 export const SHELF_BOOKS = 20
@@ -286,17 +296,28 @@ async function seedShelf({ app, page }, roots, count) {
  * Playwright 的 recordVideo 需要另外下载它自带的 ffmpeg，这里不依赖它。
  */
 async function startScreencast(page) {
-  const session = await page.context().newCDPSession(page)
   const frames = []
-  session.on('Page.screencastFrame', ({ data, metadata, sessionId }) => {
-    frames.push({ data, time: metadata.timestamp })
-    session.send('Page.screencastFrameAck', { sessionId }).catch(() => {})
-  })
-  await session.send('Page.startScreencast', { format: 'jpeg', quality: 92, maxWidth: VIEWPORT.width, maxHeight: VIEWPORT.height })
+  let session
+  const attach = async target => {
+    session = await target.context().newCDPSession(target)
+    const own = session
+    own.on('Page.screencastFrame', ({ data, metadata, sessionId }) => {
+      frames.push({ data, time: metadata.timestamp })
+      own.send('Page.screencastFrameAck', { sessionId }).catch(() => {})
+    })
+    await own.send('Page.startScreencast', { format: 'jpeg', quality: 92, maxWidth: VIEWPORT.width, maxHeight: VIEWPORT.height })
+  }
+  const detach = async () => {
+    await session.send('Page.stopScreencast')
+    await session.detach().catch(() => {})
+  }
+  await attach(page)
   return {
+    /** context.restart() 退出应用前停在旧页面上，冷启动后接到新页面接着录，帧都进同一段视频。 */
+    pause: detach,
+    resume: attach,
     async stop(file, scratch) {
-      await session.send('Page.stopScreencast')
-      await session.detach().catch(() => {})
+      await detach()
       assert.ok(frames.length > 1, '录屏没有收到画面')
       const directory = fs.mkdtempSync(path.join(scratch, 'frames-'))
       const lines = ['ffconcat version 1.0']
@@ -343,6 +364,7 @@ async function runSession(sessionName, names, options) {
   let failedAt = null
   let current = null
   let launched
+  let recording = null
   const restartRequests = []
   const shell = names.map(name => SCENARIOS[name]?.shell).find(Boolean) ?? options.shell
   try {
@@ -364,10 +386,12 @@ async function runSession(sessionName, names, options) {
         /** 退出应用再用同一隔离目录冷启动（真正的重启，不重写外观），context 换成新的 app 与 page。 */
         restart: async () => {
           restartRequests.push(...await launched.app.evaluate(() => globalThis.__driveExternalRequests))
+          await recording?.pause()
           const exited = await quit(launched.app)
           assert.equal(exited.forced, false, '重启前应用没有正常退出')
           launched = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics, failureBase })
           Object.assign(context, launched)
+          await recording?.resume(context.page)
         },
       }
       current = 0
@@ -375,9 +399,10 @@ async function runSession(sessionName, names, options) {
       for (const [index, name] of names.entries()) {
         current = index
         results[index].screenshot = `${base(name)}.png`
-        const recording = options.video ? await startScreencast(context.page) : null
+        recording = options.video ? await startScreencast(context.page) : null
         const measured = await SCENARIOS[name].run(context)
         if (recording) results[index].video = await recording.stop(`${base(name)}.mp4`, roots.temp)
+        recording = null
         if (measured) results[index].measured = measured
         await shoot(context.page, results[index].screenshot)
         if (options.dumpDom) await dumpDom(context.page, base(name))
@@ -438,4 +463,4 @@ async function main() {
   process.exitCode = failed.length ? 1 : 0
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main()
+if (asEntryPoint) await main()

@@ -1,14 +1,14 @@
 import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react'
 import CodeMirror, { ReactCodeMirrorRef, EditorView, ViewUpdate } from '@uiw/react-codemirror'
-import { keymap } from '@codemirror/view'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
-import { EditorState, Prec, type Extension } from '@codemirror/state'
+import { EditorState, type Extension } from '@codemirror/state'
 import { openSearchPanel, closeSearchPanel, search } from '@codemirror/search'
 import { Sparkles, Bold, Check } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { inkTheme } from '../stage/ink-theme'
 import { paragraphIndent } from './paragraph-indent'
+import { proseTab } from './prose-tab'
 import { useThemeStore } from '../../stores/theme-store'
 import type { MainGenerationRunHandle } from '../../services/generation/generation-runtime'
 import { createEditorInlineGeneration } from '../../services/editor-inline-generation'
@@ -344,22 +344,7 @@ export default function CodeMirrorEditor({
     const exts: Extension[] = [
       search({ top: true }),
       EditorView.lineWrapping,
-      ...(mode === 'prose' ? [Prec.highest(keymap.of([
-        {
-          key: 'Tab',
-          run: (target) => {
-            if (target.state.readOnly || target.state.selection.ranges.length !== 1 || !target.state.selection.main.empty) return false
-            // 插入两个 em 空格（U+2003）= 2em = 标准中文首行缩进两字符宽
-            // 使用 \u2003 而非 \u3000（全角空格），因为 em 空格在任何 Unicode 字体下
-            // 都精确等于 1em，不依赖 CJK 字体加载
-            target.dispatch({
-              changes: { from: target.state.selection.main.head, insert: '\u2003\u2003' },
-              selection: { anchor: target.state.selection.main.head + 2 }
-            })
-            return true
-          }
-        }
-      ]))] : []),
+      ...(mode === 'prose' ? [proseTab] : []),
       // 汉化 Search / UI 文本（涵盖官方大小写所有变种）
       EditorState.phrases.of(uiLocale === 'zh-CN' ? {
         "Find": "查找",

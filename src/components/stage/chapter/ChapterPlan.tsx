@@ -15,6 +15,7 @@ import { openDraftInChapterView, swapChapterTab } from './chapter-tab-routing'
 import ChapterHead from './ChapterHead'
 import DeletionCleanupNotices from './DeletionCleanupNotices'
 import { useChapterBlueprint } from './use-chapter-blueprint'
+import { pluralEn } from '../../../shared/plural-en'
 
 /**
  * 待写章的单章视图：本章蓝图只读展示，主按钮「写作此章」按蓝图写，箭头弹层只改本次模型与指导。
@@ -57,7 +58,7 @@ export default function ChapterPlan({ tab, chapterNumber, projectKey }: { tab: E
             focus={focus}
             version={(
               <span className="stage-ch-version stage-ch-version-chip">
-                {target ? text(`尚无草稿 · 目标 ${target} 字`, `No draft yet · target ${target} words`) : text('尚无草稿', 'No draft yet')}
+                {target ? text(`尚无草稿 · 目标 ${target} 字`, `No draft yet · target ${target} ${pluralEn(wordsPerChapter ?? 0, 'word')}`) : text('尚无草稿', 'No draft yet')}
               </span>
             )}
           />

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronUp, Eye } from 'lucide-react'
 import type { ProjectSessionContext } from '../../../shared/ipc-channels'
+import { pluralEn } from '../../../shared/plural-en'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { CharacterProposalSelectionPanel } from '../../characters/CharacterProposalSelectionPanel'
@@ -33,7 +34,7 @@ function SessionSuggestions({ session }: { session: ProjectSessionContext }) {
     <div className="cast-suggestions" role="region" aria-label={text('待处理的角色建议', 'Pending character suggestions')}>
       <Notice
         tone={count > 0 ? 'info' : 'warn'}
-        title={count > 0 ? text(`${count} 项待处理的角色建议`, `${count} pending character suggestions`) : text('角色建议读取失败', 'Could not read character suggestions')}
+        title={count > 0 ? text(`${count} 项待处理的角色建议`, `${count} pending character ${pluralEn(count, 'suggestion')}`) : text('角色建议读取失败', 'Could not read character suggestions')}
         actions={count > 0 ? (
           <Button variant="text" size="sm" aria-expanded={!collapsed} onClick={() => setCollapsed(value => !value)}>
             {collapsed ? text('展开', 'Show') : text('收起', 'Hide')}

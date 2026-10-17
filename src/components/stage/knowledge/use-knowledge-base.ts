@@ -21,6 +21,7 @@ import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore, workflowResourceConflictMessage } from '../../../stores/workflow-store'
 import { captureProjectSession, isProjectSessionCurrent } from '../../project-session-gate'
 import { toast } from '../../ui/Toast'
+import { pluralEn } from '../../../shared/plural-en'
 
 const EMPTY_STATS: KBStatsData = { documentCount: 0, totalChunks: 0, vectorDimension: 0 }
 export const EMPTY_DRAFT: KnowledgeDraft = { docId: null, copy: null, content: '' }
@@ -85,7 +86,7 @@ export function useKnowledgeIndex() {
       if (result.success) {
         toast.success(result.processed === 0
           ? text('检查完成，当前检索模型不需要重建', 'Check complete. The current retrieval model needs no rebuild.')
-          : text(`检索已重建：处理了 ${result.processed} 段资料${result.failed > 0 ? `，${result.failed} 段失败` : ''}`, `Search rebuilt: ${result.processed} passages processed${result.failed > 0 ? `, ${result.failed} failed` : ''}`))
+          : text(`检索已重建：处理了 ${result.processed} 段资料${result.failed > 0 ? `，${result.failed} 段失败` : ''}`, `Search rebuilt: ${result.processed} ${pluralEn(result.processed, 'passage')} processed${result.failed > 0 ? `, ${result.failed} failed` : ''}`))
       } else {
         toast.error(result.error || text('重建检索失败', 'Could not rebuild search'))
       }

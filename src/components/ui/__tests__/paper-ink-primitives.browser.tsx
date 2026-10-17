@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, StrictMode, useState, type ReactNode } from 'react'
+import { act, StrictMode, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { page, userEvent } from 'vitest/browser'
 import { Ellipsis } from 'lucide-react'
@@ -17,6 +17,8 @@ import { Popover } from '../Popover'
 import { SegmentedControl } from '../SegmentedControl'
 import { Sheet } from '../Sheet'
 import { StatGrid } from '../StatGrid'
+import { composite, contrast, luminance } from './color-contrast'
+import { useAnchoredLayer } from '../use-anchored-layer'
 import { withReducedMotion } from './reduced-motion'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -47,32 +49,6 @@ const settle = () => act(async () => {})
 const shot = (name: string) => page.screenshot({ path: `${SHOTS}/${name}.png`, element: host! })
 const focused = () => document.activeElement as HTMLElement
 const finishAnimations = (element: Element) => Promise.all(element.getAnimations().map((animation) => animation.finished))
-
-/** rgb() 的 0–255 通道；color-mix 得出的 color(srgb …) 是 0–1，换算到同一刻度。 */
-function channels(color: string) {
-  const values = color.match(/[\d.]+/g)!.map(Number)
-  return color.startsWith('color(srgb') ? [...values.slice(0, 3).map((value) => value * 255), ...values.slice(3)] : values
-}
-
-function luminance(color: string) {
-  const [r, g, b] = channels(color).slice(0, 3).map((value) => {
-    const channel = value / 255
-    return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
-  })
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b
-}
-
-function contrast(foreground: string, background: string) {
-  const [high, low] = [luminance(foreground), luminance(background)].sort((a, b) => b - a)
-  return (high + 0.05) / (low + 0.05)
-}
-
-/** 半透明前景色叠在不透明底色上的实际颜色。 */
-function composite(over: string, under: string) {
-  const [r, g, b, a = 1] = channels(over)
-  const base = channels(under)
-  return `rgb(${[r, g, b].map((value, i) => Math.round(value * a + base[i] * (1 - a))).join(', ')})`
-}
 
 function tokenColor(scope: HTMLElement, name: string) {
   const probe = document.createElement('span')
@@ -448,6 +424,25 @@ describe('Sheet', () => {
     await shot('rd1-sheet')
   })
 
+  it.each(['light', 'dark'] as const)('%s 主题下分段页签的选中项 Tab 聚焦时焦点环叠在浮起的阴影上', async (theme) => {
+    const container = await mount(
+      <div style={{ display: 'flex', height: 400 }}>
+        <Sheet open title="第 4 章" closeLabel="关闭侧页" onClose={() => {}}
+          tabs={{ items: [{ id: 'a', label: '运行' }, { id: 'b', label: '诊断' }], active: 'a', onChange: () => {}, style: 'segmented' }}>
+          正文
+        </Sheet>
+      </div>,
+      theme,
+    )
+    const selected = container.querySelector<HTMLElement>('.pi-sheet-tab[aria-selected="true"]')!
+    await userEvent.tab()
+    await userEvent.tab()
+    expect(focused()).toBe(selected)
+    const paper = tokenColor(container, '--paper')
+    const seg = { light: 'rgba(23, 23, 26, 0.12) 0px 1px 2px 0px', dark: 'rgba(0, 0, 0, 0.5) 0px 1px 2px 0px' }[theme]
+    expect(getComputedStyle(selected).boxShadow).toBe(`${paper} 0px 0px 0px 2px, ${ACCENT[theme]} 0px 0px 0px 4px, ${seg}`)
+  })
+
   it('滑入动画只在状态变化时出现，并在减少动态效果设置下关闭', async () => {
     const container = await mount(<Harness initiallyOpen />)
     expect(getComputedStyle(container.querySelector('aside')!).animationName).toBe('pi-sheet-in')
@@ -582,9 +577,11 @@ describe('侧页内的菜单', () => {
     const triggerRect = trigger.getBoundingClientRect()
     expect(menuRect.bottom).toBeGreaterThan(bodyRect.bottom)
     expect(menuRect.top).toBeCloseTo(triggerRect.bottom + 6, 0)
-    expect(menuRect.right).toBeCloseTo(triggerRect.right, 0)
-    const hit = document.elementFromPoint(menuRect.left + menuRect.width / 2, (bodyRect.bottom + menuRect.bottom) / 2)
-    expect(hit?.closest('[role="menuitem"]')).not.toBeNull()
+    expect(menuRect.left).toBe(8)
+    expect(menuRect.right).toBeGreaterThan(triggerRect.right)
+    const lastItem = page.getByRole('menuitem', { name: '删除作品…' }).element().getBoundingClientRect()
+    expect(lastItem.top).toBeGreaterThan(bodyRect.bottom)
+    expect(document.elementFromPoint(lastItem.left + lastItem.width / 2, lastItem.top + lastItem.height / 2)?.textContent).toBe('删除作品…')
     expect(body.scrollHeight).toBe(scrollHeight)
     expect(getComputedStyle(menu).backgroundColor).toBe(tokenColor(container, '--layer'))
     await shot('rd1-menu-in-sheet')
@@ -613,6 +610,32 @@ describe('侧页内的菜单', () => {
     expect(focused()).toBe(trigger)
   })
 
+  it('鼠标打开菜单后焦点留在触发按钮，按 Tab 菜单关闭，焦点到下一项', async () => {
+    const container = await mount(<Harness />)
+    await finishAnimations(container.querySelector('aside')!)
+    const trigger = container.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!
+    await userEvent.click(trigger)
+    expect(container.querySelector('[role="menu"]')).not.toBeNull()
+    expect(focused()).toBe(trigger)
+    await userEvent.tab()
+    expect(container.querySelector('[role="menu"]')).toBeNull()
+    expect(focused().textContent).toBe('下一项')
+  })
+
+  it('菜单项多到视口放不下时菜单停在视口内，项在菜单内部滚动', async () => {
+    const many = [{ id: 'all', items: Array.from({ length: 30 }, (_, index) => ({ id: `ch-${index}`, label: `第 ${index + 1} 章`, onSelect: () => {} })) }]
+    const container = await mount(<div style={{ paddingTop: 120 }}><Menu label="跳到章节" groups={many} /></div>)
+    await act(async () => container.querySelector<HTMLButtonElement>('button')!.click())
+    const menu = container.querySelector<HTMLElement>('[role="menu"]')!
+    expect(menu.getBoundingClientRect().bottom).toBeLessThanOrEqual(document.documentElement.clientHeight - 8)
+    expect(menu.scrollHeight).toBeGreaterThan(menu.clientHeight)
+    const last = page.getByRole('menuitem', { name: '第 30 章' }).element()
+    last.scrollIntoView({ block: 'nearest' })
+    await settle()
+    expect(container.querySelector('[role="menu"]')).not.toBeNull()
+    expect(document.elementFromPoint(last.getBoundingClientRect().left + 20, last.getBoundingClientRect().top + 10)).toBe(last)
+  })
+
   it('滚动侧页时菜单关闭，不与触发按钮脱节', async () => {
     const container = await mount(<Harness />)
     await openMenu(container)
@@ -622,6 +645,17 @@ describe('侧页内的菜单', () => {
       await new Promise((resolve) => body.addEventListener('scroll', resolve, { once: true }))
     })
     expect(container.querySelector('[role="menu"]')).toBeNull()
+  })
+
+  it('别处的滚动区自己滚动（比如运行日志跟到最新一行）时菜单不关，触发按钮没有动', async () => {
+    const container = await mount(<><Harness /><div className="log" style={{ height: 80, overflow: 'auto' }}><div style={{ height: 400 }} /></div></>)
+    await openMenu(container)
+    const log = container.querySelector<HTMLElement>('.log')!
+    await act(async () => {
+      log.scrollTop = 200
+      await new Promise((resolve) => log.addEventListener('scroll', resolve, { once: true }))
+    })
+    expect(container.querySelector('[role="menu"]')).not.toBeNull()
   })
 })
 
@@ -649,6 +683,34 @@ describe('Popover', () => {
     expect(focused()).toBe(trigger)
   })
 
+  it('弹层定位之后、监听挂上之前触发按钮被滚走：弹层随后关闭，不留在旧位置与按钮脱节', async () => {
+    function ScrolledRightAfterOpen() {
+      const layer = useAnchoredLayer('start')
+      const scroller = useRef<HTMLDivElement>(null)
+      // 排在 useAnchoredLayer 的定位之后：打开的同一次提交里，弹层按旧位置定好，滚动区才把按钮带走
+      useLayoutEffect(() => {
+        if (layer.open && scroller.current) scroller.current.scrollTop = 80
+      }, [layer.open])
+      return (
+        <div ref={scroller} style={{ height: 200, overflow: 'auto' }}>
+          <div style={{ height: 600, paddingTop: 100 }}>
+            <div className="pi-anchor" ref={layer.anchorRef}>
+              <Button ref={layer.triggerRef} variant="secondary" onClick={layer.toggle}>版本 v3</Button>
+              {layer.open && layer.renderLayer(<div ref={layer.layerRef} role="dialog" aria-label="草稿版本" tabIndex={-1} className="pi-popover">v3</div>)}
+            </div>
+          </div>
+        </div>
+      )
+    }
+    const container = await mount(<ScrolledRightAfterOpen />)
+    await userEvent.click(page.getByRole('button', { name: '版本 v3' }))
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    const layer = container.querySelector<HTMLElement>('[role="dialog"]')
+    const trigger = container.querySelector('button')!.getBoundingClientRect()
+    expect(layer === null || Math.abs(layer.getBoundingClientRect().top - (trigger.bottom + 6)) < 1, JSON.stringify({ layerTop: layer?.getBoundingClientRect().top, triggerBottom: trigger.bottom }))
+      .toBe(true)
+  })
+
   it('弹层 Portal 到纸墨根后，Tab 顺序仍接在触发按钮之后', async () => {
     const container = await mount(
       <div style={{ display: 'flex', gap: 8 }}>
@@ -673,6 +735,51 @@ describe('Popover', () => {
     await userEvent.tab()
     expect(container.querySelector('[role="dialog"]')).toBeNull()
     expect(focused().textContent).toBe('下一项')
+  })
+
+  it('Tab 跳过折叠起来的控件：最后一个看得见的控件之后再 Tab，弹层关闭，焦点到触发按钮的下一项', async () => {
+    const container = await mount(
+      <div style={{ display: 'flex', gap: 8 }}>
+        <Popover label="本次写作选项" title="本次写作选项">
+          <Button variant="text" size="sm">恢复默认</Button>
+          <details><summary>更多</summary><input aria-label="知识库检索关键词" /></details>
+        </Popover>
+        <Button variant="text">下一项</Button>
+      </div>,
+    )
+    await userEvent.tab()
+    await userEvent.keyboard('{Enter}')
+    await settle()
+    await userEvent.tab()
+    await userEvent.tab()
+    expect(focused().textContent).toBe('更多')
+    await userEvent.tab()
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+    expect(focused().textContent).toBe('下一项')
+  })
+
+  it('靠近视口下沿放不下时向上展开；上下都放不下时取较大一侧并在弹层内部滚动，内部滚动不关闭弹层', async () => {
+    const tall = <div style={{ height: 700 }}>九条预检提醒</div>
+    const container = await mount(
+      <div style={{ paddingTop: 560 }}>
+        <Popover label="写第 5 章" title="本次写作选项">{tall}</Popover>
+      </div>,
+    )
+    const trigger = container.querySelector<HTMLButtonElement>('button')!
+    await act(async () => trigger.click())
+    const dialog = container.querySelector<HTMLElement>('[role="dialog"]')!
+    await finishAnimations(dialog)
+    const triggerRect = trigger.getBoundingClientRect()
+    const rect = dialog.getBoundingClientRect()
+    expect(Math.abs(rect.bottom - (triggerRect.top - 6))).toBeLessThanOrEqual(1)
+    expect(getComputedStyle(dialog).animationName).toBe('pi-drop')
+    expect(rect.top).toBeGreaterThanOrEqual(8)
+    expect(dialog.scrollHeight).toBeGreaterThan(dialog.clientHeight)
+    await act(async () => {
+      dialog.scrollTop = dialog.scrollHeight
+      await new Promise((resolve) => dialog.addEventListener('scroll', resolve, { once: true }))
+    })
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull()
   })
 
   it('点击弹层外部关闭', async () => {
@@ -854,7 +961,7 @@ describe('InlineConfirm', () => {
     const onCancel = vi.fn()
     const onConfirm = vi.fn()
     const container = await mount(
-      <InlineConfirm message="清空后无法恢复这 12 条日志。" confirmLabel="清空" cancelLabel="取消" onConfirm={onConfirm} onCancel={onCancel} />,
+      <InlineConfirm message="清空后无法恢复这 12 条日志。" confirmLabel="清空" cancelLabel="取消" onConfirm={onConfirm} onCancel={onCancel} returnFocusRef={{ current: null }} />,
     )
     const group = container.querySelector('[role="group"]')!
     expect(document.getElementById(group.getAttribute('aria-labelledby')!)!.textContent).toBe('清空后无法恢复这 12 条日志。')
@@ -866,6 +973,58 @@ describe('InlineConfirm', () => {
     expect(onConfirm).toHaveBeenCalledTimes(1)
     await userEvent.keyboard('{Escape}')
     expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  /** 照运行侧页「清空日志…」：确认条出现期间触发按钮禁用，清空后再也不可用。 */
+  function ClearLog() {
+    const [lines, setLines] = useState(12)
+    const [confirming, setConfirming] = useState(false)
+    const trigger = useRef<HTMLButtonElement>(null)
+    return (
+      <aside tabIndex={-1} aria-label="运行侧页">
+        <Button ref={trigger} variant="text" disabled={lines === 0 || confirming} onClick={() => setConfirming(true)}>清空日志…</Button>
+        {confirming && (
+          <InlineConfirm message={`清空后这 ${lines} 行日志无法找回。`} confirmLabel="清空" cancelLabel="保留"
+            onConfirm={() => { setConfirming(false); setLines(0) }} onCancel={() => setConfirming(false)} returnFocusRef={trigger} />
+        )}
+      </aside>
+    )
+  }
+
+  it('取消后焦点回到打开它的按钮；确认后那个按钮不可用时，焦点落到最近的可聚焦祖先，不落到 body', async () => {
+    const container = await mount(<ClearLog />)
+    const trigger = page.getByRole('button', { name: '清空日志…' }).element()
+    await userEvent.tab()
+    await userEvent.keyboard('{Enter}')
+    expect(focused().textContent).toBe('保留')
+    await userEvent.keyboard('{Escape}')
+    expect(focused()).toBe(trigger)
+
+    await userEvent.keyboard('{Enter}')
+    await userEvent.tab()
+    expect(focused().textContent).toBe('清空')
+    await userEvent.keyboard('{Enter}')
+    expect(container.querySelector('[role="group"]')).toBeNull()
+    expect(focused()).toBe(container.querySelector('aside'))
+  })
+
+  it('确认条替换掉了打开它的按钮时，取消后焦点回到重新出现的按钮', async () => {
+    function Discard() {
+      const [confirming, setConfirming] = useState(false)
+      const trigger = useRef<HTMLButtonElement>(null)
+      return (
+        <article tabIndex={-1} aria-label="可恢复的内容">
+          {confirming
+            ? <InlineConfirm message="放弃后这 300 字无法找回。" confirmLabel="放弃" cancelLabel="保留" onConfirm={() => setConfirming(false)} onCancel={() => setConfirming(false)} returnFocusRef={trigger} />
+            : <Button ref={trigger} variant="danger" onClick={() => setConfirming(true)}>放弃…</Button>}
+        </article>
+      )
+    }
+    await mount(<Discard />)
+    await userEvent.tab()
+    await userEvent.keyboard('{Enter}')
+    await userEvent.keyboard('{Escape}')
+    expect(focused().textContent).toBe('放弃…')
   })
 })
 
@@ -940,6 +1099,101 @@ describe('DangerConfirm', () => {
     await userEvent.keyboard('{Escape}')
     expect(container.querySelector('[role="dialog"]')).toBeNull()
     expect(onConfirm).not.toHaveBeenCalled()
+  })
+
+  function Opener({ onConfirm = () => {} }: { onConfirm?: () => void }) {
+    const [open, setOpen] = useState(false)
+    return (
+      <div style={{ minHeight: 440 }}>
+        <Button variant="danger" onClick={() => setOpen(true)}>关闭标签</Button>
+        <DangerConfirm open={open} onOpenChange={setOpen} title="放弃未保存的修改？" consequence="修改会丢失。" recoverability="无法恢复。"
+          confirmLabel="放弃并关闭" cancelLabel="继续编辑" onConfirm={onConfirm} />
+      </div>
+    )
+  }
+
+  it('没有 Dialog.Trigger 时，Esc 或取消关闭后焦点回到打开前的元素，不落到 body', async () => {
+    const container = await mount(<Opener />)
+    const opener = container.querySelector('button')!
+    await userEvent.tab()
+    await userEvent.keyboard('{Enter}')
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull()
+    await userEvent.keyboard('{Escape}')
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+    expect(focused()).toBe(opener)
+
+    await userEvent.keyboard('{Enter}')
+    await userEvent.click(page.getByRole('button', { name: '继续编辑' }))
+    expect(focused()).toBe(opener)
+  })
+
+  it('确认后打开它的元素已被移除时，焦点落到最近仍在的可聚焦祖先', async () => {
+    function RemovedOnConfirm() {
+      const [tabs, setTabs] = useState(['第 3 章'])
+      const [open, setOpen] = useState(false)
+      return (
+        <section tabIndex={-1} aria-label="内容区" style={{ minHeight: 440 }}>
+          {tabs.map((tab) => <Button key={tab} variant="text" onClick={() => setOpen(true)}>{tab}</Button>)}
+          <DangerConfirm open={open} onOpenChange={setOpen} title="放弃未保存的修改？" consequence="修改会丢失。" recoverability="无法恢复。"
+            confirmLabel="放弃并关闭" cancelLabel="继续编辑" onConfirm={() => setTabs([])} />
+        </section>
+      )
+    }
+    const container = await mount(<RemovedOnConfirm />)
+    await userEvent.tab()
+    await userEvent.keyboard('{Enter}')
+    await userEvent.click(page.getByRole('button', { name: '放弃并关闭' }))
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+    expect(focused()).toBe(container.querySelector('section'))
+  })
+
+  it('确认关掉对话框的同时打开了拿焦点的弹层：对话框不把焦点还回打开前的元素，弹层不被这次还焦点关掉', async () => {
+    function OpensPopoverOnConfirm() {
+      const [open, setOpen] = useState(false)
+      const layer = useAnchoredLayer('start')
+      useEffect(() => {
+        if (layer.open) layer.layerRef.current?.focus()
+      }, [layer.open, layer.layerRef])
+      return (
+        <div style={{ minHeight: 440 }}>
+          <Button variant="text" onClick={() => setOpen(true)}>历史</Button>
+          <div className="pi-anchor" ref={layer.anchorRef}>
+            <Button ref={layer.triggerRef} variant="secondary">写第 4 章</Button>
+            {layer.open && layer.renderLayer(<div ref={layer.layerRef} role="dialog" aria-label="本次写作选项" tabIndex={-1} className="pi-popover">弹层</div>)}
+          </div>
+          <DangerConfirm open={open} onOpenChange={setOpen} title="放弃未保存的修改？" consequence="修改会丢失。" recoverability="无法恢复。"
+            confirmLabel="放弃修改" cancelLabel="继续编辑" onConfirm={() => { setOpen(false); layer.show() }} />
+        </div>
+      )
+    }
+    await mount(<OpensPopoverOnConfirm />)
+    await userEvent.click(page.getByRole('button', { name: '历史' }))
+    await userEvent.click(page.getByRole('button', { name: '放弃修改' }))
+    await new Promise(resolve => setTimeout(resolve, 50))
+    const popover = document.querySelector('[aria-label="本次写作选项"]')
+    expect([popover !== null, focused().getAttribute('aria-label')]).toEqual([true, '本次写作选项'])
+  })
+
+  it('父组件不经 onOpenChange 直接关闭再打开，输入框是空的', async () => {
+    let setOpen: (open: boolean) => void = () => {}
+    function ParentControlled() {
+      const [open, set] = useState(true)
+      setOpen = set
+      return (
+        <div style={{ minHeight: 440 }}>
+          <DangerConfirm open={open} onOpenChange={set} title="删除《灯塔》" consequence="将删除全部章节。" recoverability="删除后无法恢复。"
+            confirmLabel="永久删除" cancelLabel="取消" onConfirm={() => {}} typeToConfirm={{ expected: '灯塔', label: '输入作品名「灯塔」以确认' }} />
+        </div>
+      )
+    }
+    const container = await mount(<ParentControlled />)
+    await settle()
+    await userEvent.keyboard('灯塔')
+    expect(container.querySelector('input')!.value).toBe('灯塔')
+    await act(async () => setOpen(false))
+    await act(async () => setOpen(true))
+    expect(container.querySelector('input')!.value).toBe('')
+    expect(page.getByRole('button', { name: '永久删除' }).element()).toHaveProperty('disabled', true)
   })
 })
 

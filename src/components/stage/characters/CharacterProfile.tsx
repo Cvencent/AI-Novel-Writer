@@ -13,6 +13,7 @@ import { DangerConfirm } from '../../ui/DangerConfirm'
 import { EmptyState } from '../../ui/EmptyState'
 import { Menu } from '../../ui/Menu'
 import { SegmentedControl } from '../../ui/SegmentedControl'
+import { pluralEn } from '../../../shared/plural-en'
 
 type ProfileView = 'edit' | 'state' | 'graph'
 type TextField = Exclude<keyof CharacterCard, 'name' | 'characterId' | 'role' | 'currentState'>
@@ -219,7 +220,7 @@ export default function CharacterProfile({ projectKey }: { projectKey: string })
         onOpenChange={open => { if (!open) setConfirming(null) }}
         title={confirming === 'all' ? text('删除全部角色与关系？', 'Delete all characters and relationships?') : text(`删除角色「${name}」？`, `Delete “${name}”?`)}
         consequence={confirming === 'all'
-          ? text(`将删除全部 ${characters.length} 位角色及其关系，角色名单全文与关系图谱随之清空。`, `${characters.length === 1 ? 'The only character and its relationships' : `All ${characters.length} characters and their relationships`} will be deleted. The cast text and the relationship graph are cleared with them.`)
+          ? text(`将删除全部 ${characters.length} 位角色及其关系，角色名单全文与关系图谱随之清空。`, `${characters.length === 1 ? 'The only character and its relationships' : `All ${characters.length} ${pluralEn(characters.length, 'character')} and their relationships`} will be deleted. The cast text and the relationship graph are cleared with them.`)
           : text(`将从角色名单删除「${name}」和它的档案。`, `“${name}” and their profile will be removed from the cast.`)}
         recoverability={text('删除后无法撤销；做过项目备份的，可以从备份恢复。', 'This cannot be undone. If you made a project backup, you can restore from it.')}
         confirmLabel={confirming === 'all' ? text('删除全部', 'Delete all') : text('删除角色', 'Delete character')}

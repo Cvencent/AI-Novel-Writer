@@ -20,6 +20,7 @@ import { showSidebarMenu } from './sidebar-menu'
 import { chapterTitleCache, chapterTitleCacheKey } from './manuscript-title-cache'
 import { deleteFinalizedChapter } from './finalized-chapter-deletion'
 import { useIncompleteDeletions } from './use-incomplete-deletions'
+import { pluralEn } from '../../../shared/plural-en'
 
 type ManuscriptFileNode = FileNode & { chapterTitle?: string }
 
@@ -197,7 +198,7 @@ export default function ManuscriptGroup({ files, projectPath }: { files: Manuscr
         <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>{text('正文章节', 'Manuscript chapters')}</span>
         {chapterFiles.length > 0 && (
           <span className="ml-auto text-[0.7rem]" style={{ color: 'var(--color-text-muted)' }}>
-            {text(`${chapterFiles.length} 章`, `${chapterFiles.length} chapters`)}
+            {text(`${chapterFiles.length} 章`, `${chapterFiles.length} ${pluralEn(chapterFiles.length, 'chapter')}`)}
           </span>
         )}
       </div>

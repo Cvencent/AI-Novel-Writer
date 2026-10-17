@@ -100,9 +100,12 @@ const button = (name: string | RegExp) => [...document.querySelectorAll('button'
     ? candidate.textContent?.trim() === name || candidate.getAttribute('aria-label') === name
     : name.test(candidate.textContent ?? ''))
 const click = async (name: string | RegExp) => {
-  const target = button(name)
-  expect(target, String(name)).toBeTruthy()
-  await act(async () => target!.click())
+  const target = await vi.waitFor(() => {
+    const found = button(name)
+    expect(found, String(name)).toBeTruthy()
+    return found!
+  })
+  await act(async () => target.click())
 }
 const called = (channel: string) => invoke.mock.calls.filter(([name]) => name === channel)
 
@@ -120,6 +123,22 @@ describe('剧情与伏笔', () => {
     await click(/母亲出走前拍下的最后一张照片/)
     expect(document.querySelector('[aria-label="事件详情"]')?.textContent).toContain('支线 · 第 2 章 · 已定稿发生')
     expect(button(/打开来源：第 2 章定稿/)).toBeTruthy()
+  })
+
+  it('内容区窄于 1040px 时页边距收窄，宽时照常；整理记录的收起按钮靠在标题行右端', async () => {
+    host!.style.width = '960px'
+    await render('plot-tree')
+    await vi.waitFor(() => expect(document.querySelector('table[aria-label="剧情树"]')).toBeTruthy())
+    const page = () => getComputedStyle(document.querySelector('.stage-plot')!)
+    expect([page().paddingLeft, page().paddingRight]).toEqual(['24px', '24px'])
+    await act(async () => { host!.style.width = '1200px' })
+    expect([page().paddingLeft, page().paddingRight]).toEqual(['48px', '48px'])
+
+    await click('剧情树的更多操作')
+    await click('查看整理记录')
+    const head = document.querySelector('.stage-plot-records-head')!.getBoundingClientRect()
+    const hide = button('收起整理记录')!.getBoundingClientRect()
+    expect(Math.abs(hide.right - head.right)).toBeLessThanOrEqual(1)
   })
 
   it('清除剧情树先危险确认：取消不清，确认才清', async () => {
@@ -143,6 +162,15 @@ describe('剧情与伏笔', () => {
     await vi.waitFor(() => expect(called('db:plot-tree-clear')).toHaveLength(1))
     await vi.waitFor(() => expect(document.querySelector('table[aria-label="剧情树"]')).toBeNull())
     expect(document.body.textContent).toContain('还没有剧情树')
+  })
+
+  it('英文界面里线索沉寂一章写 Quiet for 1 chapter', async () => {
+    threads = [{ ...thread(), dormantChapters: 1 }]
+    const current = useProjectStore.getState().currentProject!
+    useProjectStore.setState({ currentProject: { ...current, novelConfig: { ...current.novelConfig, narrativeThreadDormantChapterThreshold: 1 } } })
+    useLocaleStore.setState({ locale: 'en-US' })
+    await render('plans')
+    await vi.waitFor(() => expect(document.querySelector('.stage-thread-sub[data-tone="warn"]')?.textContent).toBe('Quiet for 1 chapter'))
   })
 
   it('删除线索计划先危险确认：取消不删，确认才删', async () => {

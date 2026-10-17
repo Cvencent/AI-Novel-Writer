@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useAppearanceStore } from '../../stores/appearance-bootstrap'
 import { useLocaleStore } from '../../stores/locale-store'
 import type { Theme } from '../../stores/theme-store'
@@ -35,11 +35,10 @@ function StageFallback() {
  * 退出确认挂在外壳之外，外壳渲染出错后关窗仍能保存或放弃未保存的内容。
  */
 export default function StageRoot({ theme, exitGuard, children }: { theme: Theme; exitGuard: WindowCloseGuard; children: ReactNode }) {
-  const [host, setHost] = useState<HTMLDivElement | null>(null)
   return (
-    <div ref={setHost} className="paper-ink stage-root" data-theme={inkTheme(theme)}>
+    <div className="paper-ink stage-root" data-theme={inkTheme(theme)}>
       <ErrorBoundary fallback={<StageFallback />}>{children}</ErrorBoundary>
-      <ExitGuardDialog guard={exitGuard} container={host} />
+      <ExitGuardDialog guard={exitGuard} />
     </div>
   )
 }

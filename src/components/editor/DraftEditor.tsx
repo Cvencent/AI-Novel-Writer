@@ -18,6 +18,7 @@ import { PostProcessStatusPanel } from '../ui/PostProcessStatusPanel'
 import { SaveFeedback } from './save-feedback'
 import { getChapterFinalizeScope } from '../../services/workflows/workflow-utils'
 import { reviewDimensions, useDraftActions } from './use-draft-actions'
+import { pluralEn } from '../../shared/plural-en'
 import {
   captureProjectSession,
   isProjectSessionCurrent,
@@ -160,7 +161,7 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
             {/* 字数 */}
             {charCount > 0 && (
               <span className="text-xs tabular-nums mr-1" style={{ color: 'var(--color-text-muted)' }}>
-                {text(`${charCount.toLocaleString(locale)} 字`, `${charCount.toLocaleString(locale)} words`)}
+                {text(`${charCount.toLocaleString(locale)} 字`, `${charCount.toLocaleString(locale)} ${pluralEn(charCount, 'word')}`)}
               </span>
             )}
 
@@ -294,7 +295,7 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
           <div className="flex items-center gap-2 flex-shrink-0">
             {charCount > 0 && (
               <span className="text-xs tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
-                {text(`${charCount.toLocaleString(locale)} 字`, `${charCount.toLocaleString(locale)} words`)}
+                {text(`${charCount.toLocaleString(locale)} 字`, `${charCount.toLocaleString(locale)} ${pluralEn(charCount, 'word')}`)}
               </span>
             )}
             <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>

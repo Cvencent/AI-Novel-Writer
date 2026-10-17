@@ -17,6 +17,7 @@ import { isProjectSessionCurrent } from '../project-session-gate'
 import { SaveFeedback } from './save-feedback'
 import { useCharacterAvatar } from './use-character-avatar'
 import { useCharacterProfile } from './use-character-profile'
+import { pluralEn } from '../../shared/plural-en'
 
 /**
  * 角色卡编辑器 — 纯编辑区域（角色列表已移至侧栏）
@@ -54,7 +55,7 @@ export default function CharacterEditor({ projectKey }: { projectKey: string }) 
     const ok = await confirm(
       text(
         `确定删除全部 ${characters.length} 个角色及其关系吗？角色名单全文与关系图谱随之清空。此操作不可撤销。`,
-        `Delete all ${characters.length} characters and their relationships? The graph is a projection of the roster and cannot be cleared independently. This cannot be undone.`,
+        `${characters.length === 1 ? 'Delete the only character and its relationships?' : `Delete all ${characters.length} ${pluralEn(characters.length, 'character')} and their relationships?`} The graph is a projection of the roster and cannot be cleared independently. This cannot be undone.`,
       ),
       {
         title: text('删除全部角色与关系', 'Delete all characters and relationships'),

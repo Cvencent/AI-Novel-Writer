@@ -43,6 +43,7 @@ import {
 import { globalEventBus } from '../../../shared/event-bus'
 import { shouldRefreshBlueprints } from '../../editor/blueprint-refresh'
 import { ARCH_STEP_NAMES } from '../../../services/architecture-step-selection'
+import { pluralEn } from '../../../shared/plural-en'
 
 const ARCH_FILE_EN: Record<string, { label: string; desc: string }> = {
   premise: { label: ARCH_STEP_NAMES.premise[1], desc: 'Core premise and conflict' },
@@ -308,7 +309,7 @@ export default function ProjectTree() {
         iconName="layout-list"
         label={text('章节蓝图', 'Chapter blueprints')}
         desc={text('AI 生成的章节目录，可编辑', 'Editable AI-generated chapter plans')}
-        badge={blueprintCount > 0 ? text(`${blueprintCount}/${nc.totalChapters} 章`, `${blueprintCount}/${nc.totalChapters} chapters`) : text('待生成', 'Pending')}
+        badge={blueprintCount > 0 ? text(`${blueprintCount}/${nc.totalChapters} 章`, `${blueprintCount}/${nc.totalChapters} ${pluralEn(nc.totalChapters, 'chapter')}`) : text('待生成', 'Pending')}
         badgeColor={
           blueprintCount >= nc.totalChapters
             ? 'var(--color-success-text)'

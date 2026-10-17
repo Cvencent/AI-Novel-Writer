@@ -137,6 +137,13 @@ describe('蓝图阶段', () => {
     expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1)
   })
 
+  it('英文界面里只有一章蓝图时写 1 chapter，不写 1 chapters', async () => {
+    stored = [blueprint(1, '旧港')]
+    await renderPage()
+    await act(async () => useLocaleStore.setState({ locale: 'en-US' }))
+    expect(document.querySelector('.stage-bp-plan-top')?.textContent).toBe('1 chapter')
+  })
+
   it('清空全部蓝图在危险分组里，确认前不清空，确认后列表为空并出现空状态', async () => {
     await renderPage()
     await act(async () => page.getByRole('button', { name: '更多蓝图操作' }).click())
@@ -263,6 +270,16 @@ describe('蓝图阶段', () => {
     await expect.element(dialog.getByRole('button', { name: '启动中…' })).toHaveAttribute('aria-busy', 'true')
     await act(async () => gates.get('config:set')!())
     await expect.element(dialog.getByRole('button', { name: '开始生成' })).not.toHaveAttribute('aria-busy')
+  })
+
+  it('英文界面里作品只有一章时生成范围写 All 1 chapter', async () => {
+    useProjectStore.setState({ currentProject: { ...project(), novelConfig: { ...project().novelConfig, totalChapters: 1 } } })
+    stored = [blueprint(1, '旧港')]
+    await renderPage()
+    await act(async () => useLocaleStore.setState({ locale: 'en-US' }))
+    await act(async () => page.getByRole('button', { name: 'Generate blueprints' }).click())
+    const full = await vi.waitFor(() => [...document.querySelectorAll('[role="dialog"] .stage-bp-option')].find(option => option.textContent?.startsWith('All'))!)
+    expect(full.textContent).toBe('All 1 chapter')
   })
 
   it('出场人物可以逐个添加与移除', async () => {

@@ -5,7 +5,8 @@ import { cn } from '../../lib/utils'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useAppearanceStore } from '../../stores/appearance-bootstrap'
 import { Button } from './Button'
-import { inkOverlayHost } from './ink-overlay'
+import { useInkOverlayHost } from './ink-overlay'
+import { useDialogFocusReturn } from './focus-return'
 import { keepToastStackClickable } from './ToastStack'
 
 const Dialog = DialogPrimitive.Root
@@ -45,12 +46,15 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 const DialogContent = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, onPointerDownOutside, ...props }, ref) => {
+>(({ className, children, onPointerDownOutside, onOpenAutoFocus, onCloseAutoFocus, ...props }, ref) => {
   const text = useLocaleStore(s => s.text)
   const ink = useAppearanceStore(s => s.resolvedShell === 'stage')
+  const focusReturn = useDialogFocusReturn()
+  const host = useInkOverlayHost(ink)
   if (ink) {
+    if (!host) return null
     return (
-      <DialogPortal container={inkOverlayHost()}>
+      <DialogPortal container={host}>
         <DialogPrimitive.Overlay className="pi-scrim" />
         <DialogPrimitive.Content
           ref={ref}
@@ -58,6 +62,14 @@ const DialogContent = React.forwardRef<
           onPointerDownOutside={event => {
             keepToastStackClickable(event)
             onPointerDownOutside?.(event)
+          }}
+          onOpenAutoFocus={event => {
+            focusReturn.remember()
+            onOpenAutoFocus?.(event)
+          }}
+          onCloseAutoFocus={event => {
+            onCloseAutoFocus?.(event)
+            if (!event.defaultPrevented) focusReturn.onCloseAutoFocus(event)
           }}
           {...props}
         >
@@ -92,6 +104,8 @@ const DialogContent = React.forwardRef<
         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.05)',
       }}
       onPointerDownOutside={onPointerDownOutside}
+      onOpenAutoFocus={onOpenAutoFocus}
+      onCloseAutoFocus={onCloseAutoFocus}
       {...props}
     >
       {children}

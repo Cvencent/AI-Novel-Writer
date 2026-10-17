@@ -248,7 +248,7 @@ node scripts/redesign/drive.mjs --scenario chapter-switch --shell stage --out <�
 | `arch-graph` | 关系图谱放大、滚轮、拖拽（画面变化）都生效；`after` 点中心节点打开档案 | 关系图谱 | 否 | lane 8 |
 | `arch-cards` | 角色名单里粘贴两张角色卡，运行侧页确认后守塔人进名单、林岚仍只有一个 | 角色名单 | 是 | lane 9 |
 | `arch-import-dialog` | 导入角色卡对话框与外发确认是同一个纸墨对话框的两步（`.pi-dialog`、底色等于 `--surface`，不另弹确认框）；`after` 返回并关闭 | 外发确认 | 是 | lane 9 |
-| `arch-dark` | 用 `--theme dark` 跑：架构页文字对比度达标（名称与正文 4.5:1，说明 3:1），分节卡底色等于 `--paper` 的计算值 | 架构页 | 否 | lane 10 |
+| `arch-dark` | 用 `--theme dark` 跑（漏传时开头的主题断言失败）：架构页文字对比度达标（名称与正文 4.5:1，说明 3:1），分节卡底色等于 `--paper` 的计算值 | 架构页 | 否 | lane 10 |
 | `arch-timing` | 从点流程脊「架构」到四节可交互的毫秒数（`measured.openMs` 按动画帧轮询；`openDomMs` 是 DOM 达到就绪的时刻，屏幕外窗口的动画帧会被节流；`ipcDuringOpen` 是这段时间主进程按通道收到的 invoke 数），200 位角色时角色列表第 1 页滚动帧率（`measured.scrollFps`）。trunk 是旧故事架构标签与旧角色列表，head 是架构阶段与角色名单 | 角色列表 | 否 | perf |
 | `arch-tour` | 30～60 秒的导览：四节与主按钮、对话框的覆盖与保留、清空此节的危险确认、角色名单保存与关系图谱。配 `--video` 录评审视频 | 架构页 | 否 | Review gate |
 
@@ -274,7 +274,7 @@ node scripts/redesign/drive.mjs --scenario arch-timing --out <目录>
 | `blueprint-clear` | 更多蓝图操作的危险分组里清空全部蓝图，危险确认后列表为空，出现空状态与 AI 生成蓝图 | 空状态 | 否 | lane 7 |
 | `blueprint-recover` | 规划 16 章，生成第 13～16 章蓝图（假模型回正文，生成失败留下恢复稿）：蓝图页出现恢复稿提示条，「编辑恢复稿」打开恢复稿标签，「继续生成缺少的章节」可用；`after` 点它，模型再次收到请求 | 恢复稿标签 | 是 | lane 8 |
 | `blueprint-save` | 改第 6 章标题：整页只有顶栏一处「未保存」，Ctrl S 后变「已保存」，重新加载后标题仍在 | 已保存 | 否 | lane 9 |
-| `blueprint-finalize-next` | 第 3 章草稿定稿，设置里开着「定稿后打开下一章」（F-056）：落到蓝图标签、选中第 4 章、只弹出写作弹层，没有旧的创作对话框 | 写作弹层 | 是 | F-056 |
+| `blueprint-finalize-next` | 第 3 章草稿定稿，设置里开着「定稿后打开下一章」（F-056）：落到第 4 章的单章视图，写作弹层由这一章「写作此章」旁的「本次写作选项」打开（`aria-controls` 指向弹层）并贴着它展开，只弹出写作弹层，没有旧的创作对话框 | 写作弹层 | 是 | F-056 |
 | `blueprint-tour` | 30–60 秒导览：选章改标题保存、清空的危险确认、生成蓝图覆盖、批量创作、写作弹层、一致性预检、仅本次忽略后写完。配 `--video` 录评审视频 | 写完一章 | 是 | Review gate |
 | `blueprint-timing` | 300 章蓝图：从点蓝图到第 300 章出现在列表里（`openMs`），从点第 150 章到它的标题出现（`switchMs`），渲染进程内按帧计时。旧外壳点项目树「章节蓝图」与列表项，两种外壳都能跑 | 第 150 章 | 否 | perf |
 
@@ -367,7 +367,7 @@ node scripts/redesign/drive.mjs --scenario refs-timing --shell stage --out <目�
 
 ## 外部审查修复（RD-X1）
 
-场景在 `scripts/redesign/x1-scenarios.mjs`，都走新外壳。竞态用主进程通道上的门稳定复现：`holdChannel(app, 通道, { after })` 卡住接下来的调用，`after: true` 时先交给原处理函数、卡住的是回复（主进程已做完、渲染进程迟迟收不到）；`untilHeld` 等到有调用卡在门上，`releaseChannel` 放行。`recordCalls` 记下通道之后每次调用所属的作品路径，`stubChannel` 把通道换成固定回复并计数；两者遇到主进程没有的通道都直接报错，通道改名后断言不会因为记不到调用而假绿。`seedTwoBooks` 先建「港口」（三章定稿，第 3 章定稿带历史审稿），再建并打开灯塔；两部作品第 3 章的稿 id 相同。假模型另有 `fake.failProse()`：之后的正文回复（含 `streamProse` 的流式回复）以 `content_filter` 结束，写稿在这次打开里失败。蓝图页的 `generateRange` 让「架构还不完整」警告与运行侧页展开竞争等待，调用前运行侧页要收起。每个场景对 RD-V 栈顶的构建（`--app-root`）跑一次应失败，对 head 跑一次应通过。
+场景在 `scripts/redesign/x1-scenarios.mjs`，都走新外壳。竞态用主进程通道上的门稳定复现：`holdChannel(app, 通道, { after })` 卡住接下来的调用，`after: true` 时先交给原处理函数、卡住的是回复（主进程已做完、渲染进程迟迟收不到）；`untilHeld` 等到有调用卡在门上，`releaseChannel` 放行。`recordCalls` 记下通道之后每次调用所属的作品路径，`stubChannel` 把通道换成固定回复并计数；两者遇到主进程没有的通道都直接报错，通道改名后断言不会因为记不到调用而假绿。`seedTwoBooks` 先建「港口」（三章定稿，第 3 章定稿带历史审稿），再建并打开灯塔；两部作品第 3 章的稿 id 相同。假模型另有 `fake.failProse()`：之后的正文回复（含 `streamProse` 的流式回复）以 `content_filter` 结束，写稿在这次打开里失败。蓝图页的 `generateRange` 让「架构还不完整」警告与运行侧页展开竞争等待，调用前运行侧页要收起。除 `x1-open-folder-cancel`（RD-V 栈顶上也应通过）和 `x1-import-overlap`（RD-V 栈顶不适用）外，每个场景对 RD-V 栈顶的构建（`--app-root`）跑一次应失败；所有场景对 head 跑一次都应通过。
 
 | 名称 | 检查 | 截图停在 | 夹具模型 | 对应 |
 |---|---|---|---|---|
@@ -407,3 +407,26 @@ node scripts/redesign/drive.mjs --scenario refs-timing --shell stage --out <目�
 | `x2-recheck` | `replyReview` 让审稿回第 4 章关键事件未完成（带证据）；审稿、按意见修稿、全部用修稿合并，自动复验跑完：提示「复验完成：x / y 项意见已解决」，审稿报告逐项标复验结果 | 审稿报告 | 是 | #392 T3 |
 | `x2-blueprint-save` | 蓝图页改第 5 章标题并「保存此章」，流程脊第 5 章显示新标题 | 第 3 章 | 否 | #377 R1 |
 | `x2-open-chapter` | 读第 4 章正文卡住时点流程脊「设定」，放行后仍在设定 | 设定页 | 否 | #377 R2 |
+
+## 外部审查修复（RD-X3）
+
+场景在 `scripts/redesign/rdx3-scenarios.mjs`，都走新外壳。要看修复前的样子，用 `--app-root` 指向 RD-V 栈顶（`87097dbb`）的构建再跑一次：这些场景在那边应当失败。
+
+| 名称 | 检查 | 截图停在 | 夹具模型 |
+|---|---|---|---|
+| `rdx3-popover-1280`、`rdx3-popover-1024` | 视口设成 1280×720 或 1024×640，第 3 章出场三人，主进程的 `db:continuity-list-before` 换成三人都已死的事实：写作弹层出三条预检提醒，停在视口内（下沿留 8px）并在内部滚动，滚到底「仅本次忽略」在视口内点得到，内部滚动不关弹层；中途拍 `-top`，`after` 换回原处理函数并按 Esc | 滚到底的写作弹层 | 是 |
+| `rdx3-keyboard` | 按 Tab 走到流程脊当前阶段行、激活的内容标签、拆分主按钮两半、运行侧页分段页签的选中项，各自 `:focus-visible` 且 `box-shadow` 含强调色，逐个截图；`measured` 是五处的 `box-shadow` | 运行侧页的分段页签 | 否 |
+| `rdx3-import-dialog` | 作品菜单「小说拆解与仿写…」：对话框里只有一个 `.pi-btn--primary`，带 `aria-pressed` 的切换按钮都是次按钮；`after` 按 Esc | 拆解对话框 | 否 |
+| `rdx3-toast-resize` | 推入 11 条常驻出错通知（推入函数的找法同 `rdv-toast-flood`），1440×900 下不溢出；视口缩到 1100×640 后栈标 `data-overflow`、最新一条露在栈底、卡片右缘到窗口右缘的距离不变。`measured.shiftWithoutCompensation` 是去掉滚动条补偿时卡片会左移的像素 | 缩窗后的满栈 | 否 |
+| `rdx3-long-title` | 主进程把 `project:open` 返回的作品名换成 80 个字（项目文件夹不能这么长），视口 1024×640：顶栏作品名以省略号收尾，关闭按钮右缘在窗口内 | 顶栏 | 否 |
+| `rdx3-inline-confirm-focus` | 写一章让诊断分页有日志：「清空日志…」的确认条用鼠标点「保留」、按 Esc、键盘打开后 Esc 与回车「保留」，恢复候选「放弃…」的确认条点「保留」与按 Esc，每次焦点都回到打开它的按钮。`measured.focusLog` 是页面里记下的每次焦点移动 | 诊断分页 | 是 |
+| `rdx3-plan-ring` | 蓝图页选中第 5 章，当前章行与第 6 章行各按 Tab 聚焦：截行四周的图数强调色像素，聚焦比不聚焦多出一整圈 2px 环（不少于 4 ×（宽 + 高）× 0.8），只选中的当前章没有这圈环；`withoutContainment` 是去掉列表项 content-visibility 后的同一计数，与聚焦时相等说明环没被裁。像素解码在 `png.mjs`，与 `pixel-diff.mjs` 共用 | 第 6 章行聚焦 | 否 |
+| `rdx3-work-menu-focus` | 作品菜单「导出…」「小说拆解与仿写…」「清除生成内容…」打开的对话框，按 Esc、点「取消」或「关闭」关掉后焦点都回到作品菜单按钮 | 回到作品菜单按钮后 | 否 |
+| `rdx3-toast-wheel` | 作品菜单「清除生成内容…」开着（Radix 模态）时推入 24 条常驻出错通知：栈可滚动、滚动条 6px，鼠标停在栈上真滚轮往上滚超过 100px | 滚上去的满栈 | 否 |
+| `rdx3-write-after-discard` | 开着「定稿后打开下一章」，第 3 章定稿后扣住第 4 章的读取，期间在设置页改出未保存的模型名；放行后弹「放弃未保存的修改？」，点「放弃修改」：第 4 章自动弹出的写作弹层还开着、焦点在弹层里，弹层打开后焦点没有落到弹层外。`measured.log` 是页面里按时间记下的弹层开合与焦点移动 | 写作弹层 | 是 |
+| `rdx3-write-after-discard-sheet` | 同上，但放弃确认弹出前点过运行侧页的「历史」页签：确认关掉后的还焦点不抢走写作弹层的焦点。两者先后不定，只断言「历史」若拿到焦点是在弹层打开之前 | 写作弹层 | 是 |
+| `rdx3-prompt-over-exit` | 设定里改出未保存的输入后只勾蓝图清除生成内容，主进程扣住 `db:project-clear-generated-data`（原处理在 `after` 里放回）；期间从主进程关窗弹出退出确认，再放行一个失败：「清除失败」提示画在退出确认之上（`isTopmost`），退出确认露在提示外的上沿命中提示的遮罩、截图亮度比提示纸面暗至少 10（`exposedEdge`，无重影），「确定」点得到，确定后退出确认还在且在最上层 | 退出确认 | 否 |
+| `rdx3-exit-over-prompt` | 同上但反过来：先放行一个说明很长的失败，「清除失败」提示比退出确认高；提示开着时关窗，退出确认在最上层、焦点在它里面，提示露在外的上下沿命中退出确认的遮罩并被压暗；取消退出确认后提示在最上层、「确定」点得到 | 退出确认 | 否 |
+| `rdx3-candidates-en` | 夹具模型的角色提取只回一张卡；从「角色」粘贴一张角色卡，运行侧页出确认卡后在设置的外观页把界面语言切成英文，确认卡写「1 character candidate」（不是 candidates）；`after` 切回中文，再等批次就绪、把守塔人按新建确认，走完这次待确认的运行，退出时不再弹「创作任务仍在运行」 | 运行侧页 | 是 |
+| `rdx3-prose-keys` | 打开第 4 章草稿（新外壳单章视图或旧外壳草稿编辑器，`--shell` 选），末尾输入「※※※」「——他说，钟声提前了。」「◇◆◇」三段：新外壳纸面上两行分节符不缩进、对白缩进 36px（旧外壳编辑器本来不缩进，不查）；Tab 插两个 em 空格，Esc 后停 2.5 秒再按 Tab 焦点移出编辑区、不插空格，Esc 后按了方向键 Tab 又插空格。两种外壳各跑一次 | 焦点移出编辑区后 | 否 |
+| `rdx3-hover-focus` | 书房里鼠标停在「新建作品」卡上再按 Tab 聚焦它，`box-shadow` 是焦点环（悬停样式不盖掉它）；打开作品后键盘打开作品菜单，首项、方向键下一项、End 末项的 `box-shadow` 都是菜单自己的 2px 内侧环，不是外壳的外圈；中途拍 `-start`、`-menu-first`、`-menu-last` | 菜单末项聚焦 | 否 |

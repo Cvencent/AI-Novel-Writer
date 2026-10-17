@@ -10,6 +10,7 @@ import { InkDialog } from '../InkDialog'
 import { threadRoute, type RouteStop } from './plot-shape'
 import type { PlotThreads as PlotThreadsData } from './StagePlot'
 import { STATUS_LABELS } from './use-plot-threads'
+import { pluralEn } from '../../../shared/plural-en'
 
 type Text = (zh: string, en: string) => string
 
@@ -41,7 +42,7 @@ function Route({ thread, text }: { thread: NarrativeThreadView; text: Text }) {
 function threadNote(thread: NarrativeThreadView, dormantThreshold: number, text: Text) {
   const open = thread.status !== 'resolved' && thread.status !== 'abandoned'
   if (open && thread.overdue) return <span className="stage-thread-sub" data-tone="warn"><TriangleAlert size={12} aria-hidden="true" />{text('已过计划章节，还没有推进到位', 'Past its planned chapter and not advanced yet')}</span>
-  if (open && thread.dormantChapters >= dormantThreshold) return <span className="stage-thread-sub" data-tone="warn"><TriangleAlert size={12} aria-hidden="true" />{text(`已沉寂 ${thread.dormantChapters} 章`, `Quiet for ${thread.dormantChapters} chapters`)}</span>
+  if (open && thread.dormantChapters >= dormantThreshold) return <span className="stage-thread-sub" data-tone="warn"><TriangleAlert size={12} aria-hidden="true" />{text(`已沉寂 ${thread.dormantChapters} 章`, `Quiet for ${thread.dormantChapters} ${pluralEn(thread.dormantChapters, 'chapter')}`)}</span>
   return <span className="stage-thread-sub">{thread.type} · {text(...STATUS_LABELS[thread.status])}</span>
 }
 

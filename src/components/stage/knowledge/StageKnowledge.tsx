@@ -17,6 +17,7 @@ import { InkDialog } from '../InkDialog'
 import { commandLabel } from '../shortcut-keys'
 import { highlight } from './search-highlight'
 import { EMPTY_DRAFT, isImportedDocument, useKnowledgeBase } from './use-knowledge-base'
+import { pluralEn } from '../../../shared/plural-en'
 
 type Shelf = 'imported' | 'chapters'
 
@@ -185,7 +186,7 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
                 ) : <>
                   <p className="stage-kb-meta">
                     {documentCopy.edited ? text('已改过的项目副本', 'Edited project copy') : text('项目副本', 'Project copy')}
-                    {' · '}{text(`${countDraftUnits(draftContent).toLocaleString(locale)} 字`, `${countDraftUnits(draftContent).toLocaleString(locale)} words`)}
+                    {' · '}{text(`${countDraftUnits(draftContent).toLocaleString(locale)} 字`, `${countDraftUnits(draftContent).toLocaleString(locale)} ${pluralEn(countDraftUnits(draftContent), 'word')}`)}
                     {' · '}{text('修改不会影响你电脑上的原文件', 'Edits never change the original file on your computer')}
                   </p>
                   <textarea
@@ -236,7 +237,7 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
           {vectorless > 0 && (
             <Notice
               tone="warn"
-              title={text(`有 ${vectorless} 段资料还不能按意思查找`, `${vectorless} passages cannot be searched by meaning yet`)}
+              title={text(`有 ${vectorless} 段资料还不能按意思查找`, `${vectorless} ${pluralEn(vectorless, 'passage')} cannot be searched by meaning yet`)}
               actions={<Button variant="secondary" size="sm" onClick={openSettings}>{text('去设置补全', 'Complete in settings')}</Button>}
             />
           )}

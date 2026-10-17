@@ -30,6 +30,7 @@ import CodeMirrorEditor from './CodeMirrorEditor'
 import { requireIpcSuccess } from '../../services/ipc-result'
 import { SaveFeedback } from './save-feedback'
 import { currentProjectSessionForPath, isCurrentProjectSession, useChapterBlueprints } from './use-chapter-blueprints'
+import { pluralEn } from '../../shared/plural-en'
 
 const ROLE_COLORS: Record<string, string> = {
   高潮: 'bg-red-500/20 text-[var(--color-error-text)]',
@@ -230,7 +231,7 @@ function ChapterCardEditorSession({
     if (visibleBlueprints.length === 0) return
     const ok = await confirm(text(
       `确认清空全部 ${visibleBlueprints.length} 章蓝图？\n此操作不可撤销，但不会删除草稿或正文章节。`,
-      `Clear all ${visibleBlueprints.length} chapter blueprints?\nThis cannot be undone, but drafts and manuscript chapters will remain.`,
+      `Clear the ${visibleBlueprints.length} chapter ${pluralEn(visibleBlueprints.length, 'blueprint')}?\nThis cannot be undone, but drafts and manuscript chapters will remain.`,
     ), {
       title: text('清空全部蓝图', 'Clear all blueprints'),
       confirmText: text('清空全部', 'Clear all'),
@@ -297,7 +298,7 @@ function ChapterCardEditorSession({
             {text('章节蓝图', 'Chapter blueprints')}
             {visibleBlueprints.length > 0 && (
               <span style={{ color: 'var(--color-text-muted)' }} className="ml-1 font-normal">
-                {text(`(${visibleBlueprints.length} 章)`, `(${visibleBlueprints.length} chapters)`)}
+                {text(`(${visibleBlueprints.length} 章)`, `(${visibleBlueprints.length} ${pluralEn(visibleBlueprints.length, 'chapter')})`)}
               </span>
             )}
           </span>

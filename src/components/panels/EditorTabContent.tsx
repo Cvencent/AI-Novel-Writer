@@ -29,6 +29,7 @@ import {
 } from '../project-session-gate'
 import { savePhysicalChapterForSession } from './editor-area-physical-save'
 import '../editor/novel-editor.css'
+import { pluralEn } from '../../shared/plural-en'
 
 // ─── 正文章节编辑器包装层（含字数信息栏） ─────────────────────────────────────────────
 function ProseEditorWrapper({
@@ -103,7 +104,7 @@ function ProseEditorWrapper({
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {wordCount > 0 && (
             <span className="text-xs tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
-              {text(`${wordCount.toLocaleString()} 字`, `${wordCount.toLocaleString()} words`)}
+              {text(`${wordCount.toLocaleString()} 字`, `${wordCount.toLocaleString()} ${pluralEn(wordCount, 'word')}`)}
             </span>
           )}
           {/* 未保存圆点指示灯 */}

@@ -20,12 +20,14 @@ export interface InkPromptOptions {
 
 function InkPrompt({ kind, title, message, confirmText, cancelText, onResolve }: InkPromptOptions & { onResolve: (value: boolean) => void }) {
   const [open, setOpen] = useState(true)
-  const result = useRef(false)
+  /** 第一次的决定。关掉后要淡出 140ms，这期间内容还在、按钮还点得到，后点的不能改写它。 */
+  const result = useRef<boolean | null>(null)
   const confirmRef = useRef<HTMLButtonElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
   const marked = kind !== 'confirm'
 
   const close = (value: boolean) => {
+    if (result.current !== null) return
     result.current = value
     setOpen(false)
   }
@@ -42,7 +44,7 @@ function InkPrompt({ kind, title, message, confirmText, cancelText, onResolve }:
         }}
         onPointerDownOutside={keepToastStackClickable}
         // 关掉后 Radix 等 140ms 淡出走完、内容卸载才触发它（减少动态效果时立即），这时才把结果交给调用方
-        onCloseAutoFocus={() => onResolve(result.current)}
+        onCloseAutoFocus={() => onResolve(result.current ?? false)}
       >
         <div className="pi-dialog-head">
           {marked && <span className="pi-dialog-mark" aria-hidden><OctagonAlert /></span>}

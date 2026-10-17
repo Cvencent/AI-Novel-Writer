@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 
@@ -481,6 +481,57 @@ describe('纸面', () => {
       ['  最后一班列车晚点了十七分钟。', '0px'],
     ])
     expect(activeTab()?.content).toBe(indented)
+  })
+
+  it('分节线与 # 标题行不缩进，只有正文段落缩进两字', async () => {
+    const content = ['# 第三章 雾钟', '雨从傍晚开始就没有停过。', '---', '最后一班列车晚点了十七分钟。', '***', '* * *', '## 尾声', '车门在身后合上。'].join('\n\n')
+    const draft = backend.addDraft({ status: 'draft', content })
+    await mount()
+    await openDraft(draft.id)
+    await expect.element(page.getByText('雨从傍晚开始就没有停过。')).toBeVisible()
+    const lines = [...host!.querySelectorAll<HTMLElement>('.stage-ch-prose .cm-line')].filter(line => line.textContent)
+    expect(lines.map(line => getComputedStyle(line).textIndent)).toEqual(['0px', '36px', '0px', '36px', '0px', '0px', '0px', '36px'])
+    expect(activeTab()?.content).toBe(content)
+  })
+
+  it('正文里 Tab 插入两个 em 空格；先按 Esc 再按 Tab 或 Shift+Tab 移出编辑区，不插空格；Esc 后按了别的键，Tab 又插空格', async () => {
+    const draft = backend.addDraft({ status: 'draft', content: '雨从傍晚开始就没有停过。' })
+    await mount()
+    await openDraft(draft.id)
+    await expect.element(page.getByText('雨从傍晚开始就没有停过。')).toBeVisible()
+    const prose = host!.querySelector<HTMLElement>('.stage-ch-prose .cm-content')!
+    const inEditor = () => prose.contains(document.activeElement)
+    await userEvent.click(page.getByText('雨从傍晚开始就没有停过。'))
+    await userEvent.keyboard('{End}{Tab}')
+    expect(activeTab()?.content).toBe('雨从傍晚开始就没有停过。\u2003\u2003')
+
+    await userEvent.keyboard('{Escape}')
+    await new Promise(resolve => setTimeout(resolve, 2500))
+    await userEvent.keyboard('{Tab}')
+    const outAfterPause = !inEditor()
+    await userEvent.click(page.getByText('雨从傍晚开始就没有停过。'))
+    await userEvent.keyboard('{End}{Escape}{Shift>}{Tab}{/Shift}')
+    const outBackward = !inEditor()
+    await userEvent.click(page.getByText('雨从傍晚开始就没有停过。'))
+    await userEvent.keyboard('{End}{Escape}{ArrowLeft}{Tab}')
+    expect([outAfterPause, outBackward, inEditor()]).toEqual([true, true, true])
+    expect(activeTab()?.content).toBe('雨从傍晚开始就没有停过。\u2003\u2003\u2003\u2003')
+  })
+
+  it('中文分节符整行不缩进；以破折号开头的对白、以符号开头的正文仍缩进', async () => {
+    const breaks = ['＊＊＊', '※※※', '◇ ◇ ◇', '◇◆◇', '○●○', '———', '——————', '·····', '～～～', '~ ~ ~', '＊　＊　＊']
+    const prose = ['——他说，钟声提前了。', '※注：钟声提前了一刻。', '○', '——', '◇雾从海面升起。']
+    const content = [...breaks, ...prose].join('\n\n')
+    const draft = backend.addDraft({ status: 'draft', content })
+    await mount()
+    await openDraft(draft.id)
+    await expect.element(page.getByText('——他说，钟声提前了。')).toBeVisible()
+    const lines = [...host!.querySelectorAll<HTMLElement>('.stage-ch-prose .cm-line')].filter(line => line.textContent)
+    expect(lines.map(line => [line.textContent, getComputedStyle(line).textIndent])).toEqual([
+      ...breaks.map(line => [line, '0px']),
+      ...prose.map(line => [line, '36px']),
+    ])
+    expect(activeTab()?.content).toBe(content)
   })
 
   it('沉浸写作：纸面全出血，底部写出字数与设定里的每章目标字数及进度', async () => {

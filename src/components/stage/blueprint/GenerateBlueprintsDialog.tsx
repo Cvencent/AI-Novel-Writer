@@ -8,6 +8,7 @@ import { Button } from '../../ui/Button'
 import { Notice } from '../../ui/Notice'
 import { SegmentedControl } from '../../ui/SegmentedControl'
 import { InkDialog } from '../InkDialog'
+import { pluralEn } from '../../../shared/plural-en'
 
 const numberValue = (value: string): number | '' => value === '' ? '' : Number(value)
 
@@ -24,10 +25,10 @@ export default function GenerateBlueprintsDialog(props: DirectoryConfigProps) {
   const zh = resolveWritingLanguage(form.currentProject.novelConfig.writingLanguage) === 'zh-CN'
 
   const description = props.existingCount > 0
-    ? text(`按情节大纲为章节生成蓝图。已有 ${props.existingCount} 章蓝图，默认保留不动。`, `Generate chapter blueprints from the plot outline. ${props.existingCount} existing blueprints are kept by default.`)
+    ? text(`按情节大纲为章节生成蓝图。已有 ${props.existingCount} 章蓝图，默认保留不动。`, `Generate chapter blueprints from the plot outline. ${props.existingCount} existing ${pluralEn(props.existingCount, 'blueprint')} ${pluralEn(props.existingCount, 'is', 'are')} kept by default.`)
     : hasPriorAuthority
       ? text(`正文已定稿到第 ${appendStart - 1} 章，蓝图从第 ${appendStart} 章开始。`, `The manuscript is finalized through chapter ${appendStart - 1}; blueprints start at chapter ${appendStart}.`)
-      : text(`按情节大纲为章节生成蓝图。作品共 ${total} 章。`, `Generate chapter blueprints from the plot outline. The book has ${total} chapters.`)
+      : text(`按情节大纲为章节生成蓝图。作品共 ${total} 章。`, `Generate chapter blueprints from the plot outline. The book has ${total} ${pluralEn(total, 'chapter')}.`)
 
   return (
     <InkDialog
@@ -116,7 +117,7 @@ export default function GenerateBlueprintsDialog(props: DirectoryConfigProps) {
           </label>
           <label className="stage-bp-option">
             <input type="radio" name={ids.range} checked={form.rangeMode === 'full'} onChange={() => form.setRangeMode('full')} />
-            {text(`全部 ${total} 章`, `All ${total} chapters`)}
+            {text(`全部 ${total} 章`, `All ${total} ${pluralEn(total, 'chapter')}`)}
           </label>
           <p className="stage-bp-dialog-hint">
             {text(getBlueprintBatchAdvice('zh-CN', form.previewCost.chapterCount), getBlueprintBatchAdvice('en-US', form.previewCost.chapterCount))}

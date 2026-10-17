@@ -72,13 +72,51 @@ async function countMainInvokes(app) {
   assert.ok(wrapped > 0, '能在主进程里记下 invoke 通道')
 }
 
+/** 运行侧页的恢复列表读这几样：中断的生成任务、批量进度、每个任务的上下文、旧恢复候选。 */
+const RECOVERY_READS = ['generation:list', 'generation:list-batches', 'generation:read-context', 'db:recovery-candidate-list']
+
+/**
+ * 从现在起数主进程答完的恢复读取。包装每个进程只装一次，之后的调用只清零：重复包装会丢掉中间别的包装（如 countMainInvokes）。
+ */
+async function countRecoveryReads(app) {
+  await app.evaluate(({ ipcMain }, channels) => {
+    globalThis.__driveRecoveryReads = { ...Object.fromEntries(channels.map(channel => [channel, 0])), views: null }
+    if (globalThis.__driveRecoveryWrapped) return
+    globalThis.__driveRecoveryWrapped = true
+    const handlers = ipcMain._invokeHandlers
+    for (const channel of channels) {
+      const original = handlers.get(channel)
+      handlers.set(channel, async (...args) => {
+        // 记在请求到达时的窗口里：清零前发出、清零后才答完的请求不算进新窗口
+        const reads = globalThis.__driveRecoveryReads
+        const result = await original(...args)
+        reads[channel] += 1
+        if (channel === 'generation:list') reads.views = result.length
+        return result
+      })
+    }
+  }, RECOVERY_READS)
+}
+
+/** 列表读完：各样都答过，且最近一次列出的每个生成任务都读过上下文（页面全部拿到才写进列表）。 */
+async function recoveryReadsDone(app, page) {
+  for (const deadline = Date.now() + 10_000; ; await page.waitForTimeout(50)) {
+    const reads = await app.evaluate(() => globalThis.__driveRecoveryReads)
+    if (RECOVERY_READS.every(channel => channel === 'generation:read-context' || reads[channel] > 0)
+      && reads.views !== null && reads['generation:read-context'] >= reads.views) break
+    assert.ok(Date.now() < deadline, `10 秒内恢复列表没有重新读完：${JSON.stringify(reads)}`)
+  }
+  // 最后一次回复到页面、交给 React 渲染，等两帧
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+}
+
 /** 助手任务里作者能看到的对话：输入、每一轮的可见回复与动作。运行状态与租约期限由主进程在重开作品时登记，不算对话内容。 */
 function conversation(recovery) {
   return JSON.stringify({ input: recovery.context.input, rounds: recovery.rounds.map(round => ({ visibleText: round.visibleText, actions: round.actions })) })
 }
 
 /** 示例作品加一条第 5 章的旧恢复候选（写作中断时留下的正文）。 */
-const seedWithCandidate = context => seedStageSample(context, { beforeReload: async ({ page, invoke, path: projectPath, session }) => {
+export const seedWithCandidate = context => seedStageSample(context, { beforeReload: async ({ page, invoke, path: projectPath, session }) => {
   const recorded = await invoke(page, 'db:recovery-candidate-record', { runId: randomUUID(), stepId: '写稿', chapterNumber: 5, chapterTitle: '潮汐表',
     source: { chapterNumber: 5, title: '潮汐表', role: '发展', purpose: '推进灯塔与沉船的线索', keyEvents: '林岚在灯塔里找到新的线索', characters: [] },
     sourceDraft: null, visibleText: '潮水退去，钟声早了一刻。林岚把潮汐表翻到三十年前那一页。', failureCode: 'timeout', failureReason: '模型长时间没有响应' },
@@ -213,14 +251,15 @@ export const RUN_SCENARIOS = {
     await card.getByRole('button', { name: '放弃…' }).click()
     await card.getByRole('group').getByText(/^放弃后这 \d+ 字无法找回。$/).waitFor({ state: 'visible' })
     assert.equal(await page.evaluate(() => document.activeElement?.textContent), '保留', '就地确认出现时焦点在「保留」')
-  }, after: async ({ page }) => {
+  }, after: async ({ app, page }) => {
     const card = runSheet.recovery(page).getByRole('article', { name: '原始候选 · 第5章 潮汐表' })
     await card.getByRole('group').getByRole('button', { name: '放弃', exact: true }).click()
     await card.waitFor({ state: 'detached' })
     await runSheet.sheet(page).getByRole('button', { name: '收起运行侧页' }).first().click()
+    await countRecoveryReads(app)
     await runSheet.openFromPalette(page)
     await runSheet.tab(page, '进行中').waitFor({ state: 'visible' })
-    await page.waitForTimeout(800)
+    await recoveryReadsDone(app, page)
     assert.equal(await card.count(), 0, '重新读取后候选不再列出')
   } },
 
@@ -326,9 +365,12 @@ export const RUN_SCENARIOS = {
     for (const deadline = Date.now() + 20_000; !context.projectLoaded; await page.waitForTimeout(100)) {
       assert.ok(Date.now() < deadline, '20 秒内作品数据没有加载完')
     }
+    await countRecoveryReads(context.app)
     await runSheet.openFromPalette(page)
     await runSheet.tab(page, '进行中').waitFor({ state: 'visible' })
-    await page.waitForTimeout(1500)
+    await recoveryReadsDone(context.app, page)
+    const reads = await context.app.evaluate(() => globalThis.__driveRecoveryReads)
+    assert.equal(reads.views, 1, '主进程列出了这条助手任务，页面也读完了它的上下文：下面的否定断言针对的是读完后的列表')
     assert.doesNotMatch(await runSheet.visibleWords(page), /助手任务|恢复此助手任务|复制回复/, '运行侧页不列出助手任务')
     assert.doesNotMatch(await everyName(page), CHAT_WORDS)
   }, after: async context => {

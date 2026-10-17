@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act } from 'react'
+import { act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { page, userEvent } from 'vitest/browser'
 
@@ -8,6 +8,7 @@ import type { ProjectData } from '../../../shared/ipc-channels'
 import { setActiveProjectSessionContext } from '../../../shared/project-session-context'
 import { useAppearanceStore } from '../../../stores/appearance-bootstrap'
 import { useProjectStore } from '../../../stores/project-store'
+import { useLocaleStore } from '../../../stores/locale-store'
 import { useThemeStore } from '../../../stores/theme-store'
 import { actionToast } from '../ActionToast'
 import { alertError } from '../AlertDialog'
@@ -19,6 +20,7 @@ import ClearProjectDataDialog from '../../dialogs/ClearProjectDataDialog'
 import StagePalette from '../../stage/StagePalette'
 import { DangerConfirm } from '../DangerConfirm'
 import { InkDialog } from '../../stage/InkDialog'
+import { Menu } from '../Menu'
 import { withReducedMotion } from './reduced-motion'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -37,6 +39,28 @@ async function promptClosed() {
 }
 const host = () => document.getElementById('ai-novel-ink-overlay')
 const focused = () => document.activeElement as HTMLElement
+/** 截 element 所在区域的图；返回按视口坐标取像素与数像素的函数（截图可能按测试页缩放）。 */
+async function stackPixels(element: HTMLElement) {
+  const box = element.getBoundingClientRect()
+  const base64 = await page.screenshot({ element, save: false })
+  const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${base64}`)).blob())
+  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
+  const context = canvas.getContext('2d')!
+  context.drawImage(bitmap, 0, 0)
+  const { data } = context.getImageData(0, 0, bitmap.width, bitmap.height)
+  const scale = bitmap.width / box.width
+  const at = (x: number, y: number) => {
+    const index = (Math.floor((y - box.top) * scale) * bitmap.width + Math.floor((x - box.left) * scale)) * 4
+    return [data[index], data[index + 1], data[index + 2]]
+  }
+  const count = (left: number, top: number, right: number, bottom: number, match: (rgb: number[]) => boolean) => {
+    let found = 0
+    for (let y = top; y < bottom; y += 1 / scale) for (let x = left; x < right; x += 1 / scale) if (match(at(x, y))) found++
+    return found
+  }
+  return { at, count }
+}
+
 const liveToasts = () => [...document.querySelectorAll<HTMLElement>('.pi-toast:not([data-exiting])')]
 const toastTitles = () => liveToasts().map(item => item.querySelector('.pi-toast-title')!.textContent)
 const buttonNamed = (scope: ParentNode, name: string) => [...scope.querySelectorAll('button')].find(b => b.textContent === name)!
@@ -115,6 +139,17 @@ describe('命令式弹窗', () => {
     expect(dialog.querySelector('.pi-dialog-consequence')!.textContent).toContain('删除后无法恢复')
     await page.screenshot({ path: `${SHOTS}/rdv-confirm-danger-light.png` })
     await userEvent.keyboard('{Enter}')
+    await promptClosed()
+    expect(answer).toBe(false)
+  })
+
+  it('淡出期间再点另一个按钮不改写结果：先点取消、趁对话框还没消失又点到删除，得到的仍是 false', async () => {
+    let answer: boolean | undefined
+    await act(async () => { void confirm('将删除第 3 章的定稿正文。删除后无法恢复。', { title: '删除定稿正文？', confirmText: '删除', danger: true }).then(value => { answer = value }) })
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!
+    await act(async () => buttonNamed(dialog, '取消').click())
+    expect(dialog.isConnected).toBe(true)
+    await act(async () => buttonNamed(dialog, '删除').click())
     await promptClosed()
     expect(answer).toBe(false)
   })
@@ -501,6 +536,123 @@ describe('提示栈', () => {
     expect(toastTitles()).toHaveLength(23)
   })
 
+  it('溢出时栈的滚动条用全局的 6px 细条，不换成系统的 thin 样式', async () => {
+    await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
+    await act(async () => {
+      for (let i = 1; i <= 24; i++) toast.error(`出错 ${i}`, 0)
+    })
+    await wait(200)
+    const stack = document.querySelector<HTMLElement>('.pi-toast-stack')!
+    expect(stack.hasAttribute('data-overflow')).toBe(true)
+    expect([getComputedStyle(stack).scrollbarWidth, getComputedStyle(stack, '::-webkit-scrollbar').width]).toEqual(['auto', '6px'])
+  })
+
+  it.each(['light', 'dark'] as const)('%s 主题溢出的栈滚到底时，最上面露出半截的卡片仍不透明，页面不从卡片里透出；上沿有提示还有更多的淡出带，滚到顶时消失', async (theme) => {
+    await act(async () => useThemeStore.setState({ resolvedTheme: theme === 'dark' ? 'dark' : 'paper' }))
+    // 卡片背后铺一层纯红：卡片哪里变透明，截图里那里就带红
+    const backdrop = document.createElement('div')
+    backdrop.style.cssText = 'position: fixed; inset: 0; background: rgb(255, 0, 0);'
+    document.body.prepend(backdrop)
+    try {
+      await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
+      await act(async () => {
+        for (let i = 1; i <= 24; i++) toast.error(`出错 ${i}`, 0)
+      })
+      await wait(400)
+      const stack = document.querySelector<HTMLElement>('.pi-toast-stack')!
+      expect(stack.hasAttribute('data-overflow')).toBe(true)
+      const stackBox = stack.getBoundingClientRect()
+      const topCard = liveToasts().find(card => card.getBoundingClientRect().bottom > stackBox.top + 24)!
+      const card = topCard.getBoundingClientRect()
+      expect(card.top).toBeLessThan(stackBox.top + 16)
+      const sample = await stackPixels(stack)
+      const red = ([r, g, b]: number[]) => r - g > 40 && r - b > 40
+      // 卡片里没有字的一段（标题只有「出错 N」，右边留到关闭按钮之前），上下避开圆角边的抗锯齿；文字的彩色抗锯齿边会被当成红
+      const reddish = sample.count(card.left + 160, Math.max(card.top, stackBox.top) + 2, card.right - 48, card.bottom - 2, red)
+      // 栈的上沿（卡片列中间）被淡出带盖着，不是背后的页面
+      const bandTop = sample.at((card.left + card.right) / 2, stackBox.top + 3)
+      expect([reddish, red(bandTop), getComputedStyle(stack, '::before').opacity], JSON.stringify({ bandTop, card: [card.top, card.bottom], stack: [stackBox.top, stackBox.bottom] }))
+        .toEqual([0, false, '1'])
+
+      await act(async () => { stack.scrollTop = 0 })
+      await wait(50)
+      expect(liveToasts()[0].getBoundingClientRect().top - stack.getBoundingClientRect().top).toBeGreaterThanOrEqual(16)
+      const atTop = await stackPixels(stack)
+      const firstCard = liveToasts()[0].getBoundingClientRect()
+      expect(atTop.count(firstCard.left + 160, firstCard.top + 2, firstCard.right - 48, firstCard.top + 12, red)).toBe(0)
+      // 滚到顶时上面没有卡片，淡出带消失：栈的上沿与最早一条的圆角外都露出背后的页面，卡片顶上没有盖着东西
+      expect([getComputedStyle(stack, '::before').opacity, red(atTop.at((firstCard.left + firstCard.right) / 2, stackBox.top + 3)), red(atTop.at(firstCard.left + 1, firstCard.top + 1))])
+        .toEqual(['0', true, true])
+    } finally {
+      backdrop.remove()
+    }
+  })
+
+  it('减少动态效果下溢出的栈滚到底时上沿有淡出带，滚到顶时淡出带照样消失，最早一条的圆角外露出页面（#412）', async () => {
+    const backdrop = document.createElement('div')
+    backdrop.style.cssText = 'position: fixed; inset: 0; background: rgb(255, 0, 0);'
+    document.body.prepend(backdrop)
+    try {
+      await withReducedMotion(async () => {
+        await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
+        await act(async () => {
+          for (let i = 1; i <= 24; i++) toast.error(`出错 ${i}`, 0)
+        })
+        await wait(400)
+        const stack = document.querySelector<HTMLElement>('.pi-toast-stack')!
+        expect(stack.hasAttribute('data-overflow')).toBe(true)
+        expect(getComputedStyle(stack, '::before').opacity).toBe('1')
+
+        await act(async () => { stack.scrollTop = 0 })
+        await wait(50)
+        const atTop = await stackPixels(stack)
+        const firstCard = liveToasts()[0].getBoundingClientRect()
+        const red = ([r, g, b]: number[]) => r - g > 40 && r - b > 40
+        expect([getComputedStyle(stack, '::before').opacity, red(atTop.at(firstCard.left + 1, firstCard.top + 1))]).toEqual(['0', true])
+      })
+    } finally {
+      backdrop.remove()
+    }
+  })
+
+  it('模态开着时溢出的栈仍能用滚轮滚动：滚动锁不拦栈上的滚轮', async () => {
+    await act(async () => { void confirm('切换项目？') })
+    await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
+    await act(async () => {
+      for (let i = 1; i <= 24; i++) toast.error(`出错 ${i}`, 0)
+    })
+    await wait(200)
+    const stack = document.querySelector<HTMLElement>('.pi-toast-stack')!
+    expect(stack.hasAttribute('data-overflow')).toBe(true)
+    const wheel = new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true })
+    liveToasts()[20].dispatchEvent(wheel)
+    expect(wheel.defaultPrevented).toBe(false)
+    await userEvent.keyboard('{Escape}')
+  })
+
+  it('缩窗后栈重新判断溢出：改成可滚动、最新一条露在底部，卡片不因滚动条左移', async () => {
+    await userEvent.hover(document.body, { position: { x: 4, y: 4 } })
+    await act(async () => {
+      for (let i = 1; i <= 8; i++) toast.error(`出错 ${i}`, 0)
+    })
+    await wait(200)
+    const stack = document.querySelector<HTMLElement>('.pi-toast-stack')!
+    expect(stack.hasAttribute('data-overflow')).toBe(false)
+    const rightBefore = liveToasts().at(-1)!.getBoundingClientRect().right
+
+    await page.viewport(1100, 420)
+    await vi.waitFor(() => expect(window.innerHeight).toBe(420))
+    await wait(100)
+    expect(stack.hasAttribute('data-overflow')).toBe(true)
+    expect(stack.scrollHeight).toBeGreaterThan(stack.clientHeight)
+    const box = stack.getBoundingClientRect()
+    const newest = liveToasts().at(-1)!.getBoundingClientRect()
+    expect(newest.bottom).toBeLessThanOrEqual(box.bottom + 0.5)
+    expect(newest.top).toBeGreaterThanOrEqual(box.top)
+    expect(Math.abs(newest.right - rightBefore)).toBeLessThanOrEqual(0.5)
+    await page.screenshot({ path: '../../../../.runtime/rdx3-shots/toast-stack-resized.png' })
+  })
+
   it('栈没满时不裁卡片的投影', async () => {
     await act(async () => toast.error('导出失败', 0))
     expect(getComputedStyle(document.querySelector('.pi-toast-stack')!).overflowY).toBe('visible')
@@ -619,6 +771,20 @@ describe('清除生成内容', () => {
     expect(buttonNamed(dialog, '清除所选').disabled).toBe(true)
   })
 
+  it('英文界面只选一类时写 1 kind，不写 1 kinds', async () => {
+    const locale = useLocaleStore.getState()
+    useLocaleStore.setState({ locale: 'en-US' })
+    try {
+      const dialog = await renderClear()
+      const boxes = [...dialog.querySelectorAll<HTMLElement>('.pi-check-row > .pi-check')]
+      await userEvent.click(boxes[0])
+      await userEvent.click(boxes[1])
+      expect(dialog.querySelector('.pi-dialog-consequence > p')!.textContent).toMatch(/^Clears 1 kind of data: /)
+    } finally {
+      useLocaleStore.setState(locale, true)
+    }
+  })
+
   it('按勾选清除；清除中按钮写「清除中…」，Esc 与点外部关不掉；失败走 alertError 后可再试', async () => {
     const onClose = vi.fn()
     const dialog = await renderClear(onClose)
@@ -647,6 +813,54 @@ describe('清除生成内容', () => {
     await userEvent.click(buttonNamed(alert, '确定'))
     await vi.waitFor(() => expect(buttonNamed(dialog, '清除所选').disabled).toBe(false))
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  /** 照顶栏作品菜单的接法：菜单项打开受控的旧对话框与清除确认，都没有 Dialog.Trigger。 */
+  function WorkMenu() {
+    const [open, setOpen] = useState<'export' | 'clear' | null>(null)
+    return (
+      <>
+        <Menu label="作品菜单" groups={[{ id: 'files', items: [
+          { id: 'export', label: '导出…', onSelect: () => setOpen('export') },
+          { id: 'clear', label: '清除生成内容…', onSelect: () => setOpen('clear') },
+        ] }]} />
+        <Dialog open={open === 'export'} onOpenChange={next => { if (!next) setOpen(null) }}>
+          <DialogContent><DialogHeader><DialogTitle>导出项目</DialogTitle></DialogHeader></DialogContent>
+        </Dialog>
+        <ClearProjectDataDialog open={open === 'clear'} onClose={() => setOpen(null)} />
+      </>
+    )
+  }
+
+  it('从作品菜单打开的导出与清除确认，取消或 Esc 关闭后焦点回到作品菜单按钮，不落到 body', async () => {
+    container = document.createElement('div')
+    container.className = 'paper-ink'
+    container.dataset.theme = 'light'
+    document.body.append(container)
+    root = createRoot(container)
+    await act(async () => root!.render(<WorkMenu />))
+    const trigger = page.getByRole('button', { name: '作品菜单' })
+    const pick = async (item: string) => {
+      await userEvent.click(trigger)
+      await userEvent.click(page.getByRole('menuitem', { name: item }))
+      return vi.waitFor(() => document.querySelector<HTMLElement>('[role="dialog"]')!)
+    }
+    const closed = () => vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull())
+
+    await pick('导出…')
+    await userEvent.keyboard('{Escape}')
+    await closed()
+    expect(focused()).toBe(trigger.element())
+
+    const clear = await pick('清除生成内容…')
+    await userEvent.click(buttonNamed(clear, '取消'))
+    await closed()
+    expect(focused()).toBe(trigger.element())
+
+    await pick('清除生成内容…')
+    await userEvent.keyboard('{Escape}')
+    await closed()
+    expect(focused()).toBe(trigger.element())
   })
 })
 
@@ -710,6 +924,16 @@ describe('新外壳的普通对话框', () => {
 })
 
 describe('新外壳下的旧按钮变体', () => {
+  it('旧 asChild 按钮在新外壳下仍渲染成它包着的元素，带纸墨类名', async () => {
+    container = document.createElement('div')
+    container.className = 'paper-ink'
+    document.body.append(container)
+    root = createRoot(container)
+    await act(async () => root!.render(<Button asChild variant="outline"><a href="#export">导出</a></Button>))
+    const link = container.querySelector('a')!
+    expect([link.textContent, link.classList.contains('pi-btn--secondary'), container.querySelector('button')]).toEqual(['导出', true, null])
+  })
+
   it('旧对话框与旧面板里的默认、AI、描边、幽灵、危险、图标按钮换成纸墨六种，主按钮与页面同为黛蓝', async () => {
     container = document.createElement('div')
     container.className = 'paper-ink'

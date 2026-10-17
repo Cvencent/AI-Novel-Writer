@@ -10,6 +10,7 @@ import { AUDIENCE_EN, GENRE_EN } from '../editor/novel-config-labels'
 import { resolveWritingLanguage } from '../../shared/writing-language'
 import { PLANNING_ACTION_CHAPTER_LIMIT, PLANNING_TARGET_UNITS_LIMIT } from '../../shared/plot-outline-contract'
 import { useArchitectureConfirmForm, type ArchitectureConfirmFormOptions } from './use-architecture-confirm-form'
+import { pluralEn } from '../../shared/plural-en'
 
 /** 四节的说明；名字取 ARCH_STEP_NAMES。 */
 const ARCH_FILES: Array<{ key: ArchStepKey; desc: string; descEn: string }> = [
@@ -62,7 +63,7 @@ export default function ArchitectureConfirmDialog(props: ArchitectureConfirmForm
               <ConfigRow label={text('类型', 'Genre')} value={genre} />
               <ConfigRow label={text('受众', 'Audience')} value={audience} />
               <ConfigRow label={text('总章数', 'Chapters')} value={text(`${config.totalChapters} 章`, `${config.totalChapters}`)} />
-              <ConfigRow label={text('每章字数', 'Words/chapter')} value={text(`${config.wordsPerChapter} 字`, `${config.wordsPerChapter} words`)} />
+              <ConfigRow label={text('每章字数', 'Words/chapter')} value={text(`${config.wordsPerChapter} 字`, `${config.wordsPerChapter} ${pluralEn(config.wordsPerChapter, 'word')}`)} />
             </div>
             {config.coreOutline && (
               <p
@@ -154,7 +155,7 @@ export default function ArchitectureConfirmDialog(props: ArchitectureConfirmForm
                 className="text-xs leading-relaxed m-0"
                 style={{ color: 'var(--color-text-secondary)' }}
               >
-                  {text(`全书共 ${totalChapters} 章，每次最多生成 ${PLANNING_ACTION_CHAPTER_LIMIT} 章。完成后可继续下一批。`, `The book has ${totalChapters} chapters. Generate up to ${PLANNING_ACTION_CHAPTER_LIMIT} chapters per action, then continue with the next batch.`)}
+                  {text(`全书共 ${totalChapters} 章，每次最多生成 ${PLANNING_ACTION_CHAPTER_LIMIT} 章。完成后可继续下一批。`, `The book has ${totalChapters} ${pluralEn(totalChapters, 'chapter')}. Generate up to ${PLANNING_ACTION_CHAPTER_LIMIT} ${pluralEn(PLANNING_ACTION_CHAPTER_LIMIT, 'chapter')} per action, then continue with the next batch.`)}
                 </p>
                 <div className="flex items-center gap-1.5 text-xs">
                   <span style={{ color: 'var(--color-text-muted)' }}>{text('第', 'From ch.')}</span>
