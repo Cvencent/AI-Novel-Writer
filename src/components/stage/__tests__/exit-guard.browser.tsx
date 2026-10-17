@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { page } from 'vitest/browser'
@@ -10,9 +11,15 @@ import {
   registerEditorExitSaveHandler,
   useEditorStore,
 } from '../../../stores/editor-store'
-import { GuardedTitleBar } from './guarded-title-bar'
+import { useWindowCloseGuard } from '../../layout/use-window-close-guard'
+import ExitGuardDialog from '../ExitGuardDialog'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+/** 关窗守卫由 App 在外壳之外持有；测试按 App 的方式把它接到退出确认上。 */
+function GuardedExit() {
+  return <ExitGuardDialog guard={useWindowCloseGuard()} />
+}
 
 const PROJECT = 'C:\\novels\\native-exit'
 const originalEditorState = useEditorStore.getState()
@@ -75,9 +82,9 @@ afterEach(async () => {
   Reflect.deleteProperty(window, 'aiNovelAPI')
 })
 
-describe('TitleBar native exit settlement', () => {
+describe('关窗时的退出确认', () => {
   it('lets a clean system close proceed without prompting', async () => {
-    await act(async () => root.render(<GuardedTitleBar />))
+    await act(async () => root.render(<GuardedExit />))
 
     await act(async () => closeRequested?.({ requestId: 'close-clean' }))
 
@@ -97,7 +104,7 @@ describe('TitleBar native exit settlement', () => {
         dirty: true,
       }],
     })
-    await act(async () => root.render(<GuardedTitleBar />))
+    await act(async () => root.render(<GuardedExit />))
 
     await act(async () => closeRequested?.({ requestId: 'close-cancel' }))
     await expect.element(page.getByRole('dialog')).toBeVisible()
@@ -151,7 +158,7 @@ describe('TitleBar native exit settlement', () => {
       }],
     })
     invoke.mockImplementationOnce(failure)
-    await act(async () => root.render(<GuardedTitleBar />))
+    await act(async () => root.render(<GuardedExit />))
 
     await act(async () => closeRequested?.({ requestId: 'close-rejected' }))
     await act(async () => page.getByRole('button', { name: '放弃并退出' }).click())
@@ -169,16 +176,16 @@ describe('TitleBar native exit settlement', () => {
     })
     const cancellation = deferred<{ success: boolean }>()
     invoke.mockReturnValueOnce(cancellation.promise)
-    await act(async () => root.render(<GuardedTitleBar />))
+    await act(async () => root.render(<GuardedExit />))
     await act(async () => closeRequested?.({ requestId: 'close-busy' }))
 
     await act(async () => page.getByRole('button', { name: '取消' }).click())
 
     await expect.element(page.getByRole('button', { name: '取消' })).toBeDisabled()
     await expect.element(page.getByRole('button', { name: '放弃并退出' })).toBeDisabled()
-    await expect.element(page.getByRole('button', { name: '处理中...' })).toBeDisabled()
+    await expect.element(page.getByRole('button', { name: '正在处理…' })).toBeDisabled()
     await act(async () => cancellation.resolve({ success: true }))
-    await vi.waitFor(() => expect(container.querySelector('[role="dialog"]')).toBeNull())
+    await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull())
   })
 
   it('blocks native close while the current project has an active workflow', async () => {
@@ -186,12 +193,12 @@ describe('TitleBar native exit settlement', () => {
     useWorkflowStore.setState({
       activeRuns: [{ projectPath: PROJECT, status: 'running' }] as never,
     })
-    await act(async () => root.render(<GuardedTitleBar />))
+    await act(async () => root.render(<GuardedExit />))
 
     await act(async () => closeRequested?.({ requestId: 'close-workflow' }))
 
     await expect.element(page.getByText('创作任务仍在运行')).toBeVisible()
-    await expect.element(page.getByText('请先等待当前创作任务完成，或在任务面板中取消任务后再退出。')).toBeVisible()
+    await expect.element(page.getByText('请等当前任务完成，或在运行侧页里取消任务后再退出。')).toBeVisible()
     expect(invoke).not.toHaveBeenCalled()
     expect(useWorkflowStore.getState().activeRuns).toHaveLength(1)
     expect(useWorkflowStore.getState().activeRuns[0]?.status).toBe('running')

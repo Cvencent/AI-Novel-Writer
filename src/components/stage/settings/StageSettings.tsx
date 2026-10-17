@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { ArrowLeft } from 'lucide-react'
-import { useLayoutStore } from '../../../stores/layout-store'
+import { useLayoutStore, type SettingsSection } from '../../../stores/layout-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import ProjectBackupPanel from '../../backups/ProjectBackupPanel'
 import PromptSettings from '../../settings/PromptSettings'
@@ -15,9 +15,9 @@ import AboutSection from './AboutSection'
 import AppearanceSection from './AppearanceSection'
 import ModelsSection from './ModelsSection'
 import ProxySection from './ProxySection'
-import { SETTINGS_GROUPS, SETTINGS_PAGES, settingsPageOf, type SettingsPage } from './settings-pages'
+import { SETTINGS_GROUPS, SETTINGS_PAGES } from './settings-pages'
 
-function PageHeader({ page, action }: { page: SettingsPage; action?: ReactNode }) {
+function PageHeader({ page, action }: { page: SettingsSection; action?: ReactNode }) {
   const text = useLocaleStore(s => s.text)
   const spec = SETTINGS_PAGES.find(candidate => candidate.id === page)!
   return (
@@ -36,7 +36,7 @@ function Legacy({ children }: { children: ReactNode }) {
   return <div className="stage-set-legacy">{children}</div>
 }
 
-function PageBody({ page }: { page: SettingsPage }) {
+function PageBody({ page }: { page: SettingsSection }) {
   switch (page) {
     case 'llm':
       return <ModelsSection purposes={['generation', 'refinement', 'summary']} header={action => <PageHeader page="llm" action={action} />} />
@@ -77,7 +77,7 @@ const isTyping = (target: EventTarget | null) =>
  */
 export default function StageSettings({ library }: { library: boolean }) {
   const text = useLocaleStore(s => s.text)
-  const page = settingsPageOf(useLayoutStore(s => s.settingsSection))
+  const page = useLayoutStore(s => s.settingsSection)
   const pendingLeave = useSettingsLeave(s => s.pending)
   useSettingsLeaveHost()
   const bodyRef = useRef<HTMLDivElement>(null)

@@ -35,6 +35,6 @@ const MODAL_SELECTOR = '[role="dialog"]:not(.pi-popover), [role="alertdialog"]'
  */
 export function isModalOpen(): boolean {
   const layout = useLayoutStore.getState()
-  return layout.exportOpen || layout.newProjectOpen || layout.importNovelOpen || layout.chapterCreationOpen
+  return layout.exportOpen || layout.newProjectOpen || layout.importNovelOpen
     || document.querySelector(MODAL_SELECTOR) !== null
 }

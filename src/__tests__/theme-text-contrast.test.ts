@@ -156,15 +156,9 @@ describe('readable theme text contrast contract', () => {
 
   it('does not use the decorative warning color for known information-bearing copy', () => {
     const informationalTextContracts = [
-      ['src/components/layout/TitleBar.tsx', "style={{ color: hasDirty ? 'var(--color-warning)' : 'var(--color-success)' }}"],
-      ['src/components/panels/BottomPanel.tsx', "style={{ color: 'var(--color-warning)' }} title={text('暂停将在当前章节完成后生效'"],
-      ['src/components/panels/BottomPanel.tsx', "case 'warn':  return 'var(--color-warning)'"],
       ['src/components/ui/Badge.tsx', "text-[var(--color-warning)]"],
-      ['src/components/editor/DraftEditor.tsx', "style={{ color: 'var(--color-warning)', backgroundColor: 'var(--color-hover)' }}"],
       ['src/components/editor/ArchFileViewer.tsx', "? 'var(--color-text-secondary)'\n              : 'var(--color-warning)'"],
       ['src/components/editor/ArchFileViewer.tsx', "color: 'var(--color-warning)',\n            backgroundColor: 'var(--color-editor-bg)'"],
-      ['src/components/editor/WorldBuildingEditor.tsx', "? 'var(--color-warning)'\n                          : 'var(--color-text-muted)'"],
-      ['src/components/editor/WorldBuildingEditor.tsx', "? 'var(--color-warning)'\n                            : 'var(--color-success)'"],
       ['src/styles/agent-tools.css', ".confirm-card-header {\n  display: flex;"],
     ] as const
 

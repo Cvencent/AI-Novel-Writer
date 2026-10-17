@@ -27,7 +27,7 @@ describe('Electron main window chrome contract', () => {
   it('registers window control IPC for frameless minimize maximize and close buttons', () => {
     const ipcHandlers = source('electron/ipc-handlers.ts')
     const ipcChannels = source('src/shared/ipc-channels.ts')
-    const titleBar = source('src/components/layout/TitleBar.tsx')
+    const titleBar = source('src/components/stage/StageTopBar.tsx')
 
     expect(ipcHandlers).toContain('registerWindowController')
     for (const channel of ['window:minimize', 'window:toggle-maximize', 'window:close']) {

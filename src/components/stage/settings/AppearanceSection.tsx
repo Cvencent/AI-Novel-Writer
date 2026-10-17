@@ -1,13 +1,11 @@
 import { useId, useRef, type KeyboardEvent, type ReactNode } from 'react'
 import { Minus, Moon, Plus, Sun } from 'lucide-react'
 import type { Locale } from '../../../i18n/types'
-import { useAppearanceStore } from '../../../stores/appearance-bootstrap'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { FONT_OPTIONS, useThemeStore, type FontId } from '../../../stores/theme-store'
 import { useAutoOpenNextChapter } from '../../settings/use-auto-open-next-chapter'
 import { Button } from '../../ui/Button'
 import { Check } from '../../ui/Check'
-import { SegmentedControl } from '../../ui/SegmentedControl'
 import { inkTheme } from '../ink-theme'
 import { commandLabel } from '../shortcut-keys'
 
@@ -73,13 +71,12 @@ function FontSelect({ id, value, onChange }: { id: string; value: FontId; onChan
   )
 }
 
-/** 外观：界面布局、主题、语言、字体、缩放与定稿后打开下一章。改动立即生效。 */
+/** 外观：主题、语言、字体、缩放与定稿后打开下一章。改动立即生效。 */
 export default function AppearanceSection() {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
   const setLocale = useLocaleStore(s => s.setLocale)
   const { zoom, zoomIn, zoomOut, zoomReset, uiFont, setUiFont, writingFont, setWritingFont } = useThemeStore()
-  const resolvedShell = useAppearanceStore(s => s.resolvedShell)
   const autoOpenNext = useAutoOpenNextChapter()
   const languageId = useId()
   const uiFontId = useId()
@@ -124,18 +121,6 @@ export default function AppearanceSection() {
       >
         {autoOpenNext.error && <p className="stage-set-error" role="alert">{autoOpenNext.error}</p>}
       </Row>
-      <Row
-        title={text('界面布局', 'Layout')}
-        desc={text('创作流程按设定、架构、蓝图、正文组织一部作品，仍在完善中，随时可以切回工作台。', 'Creative flow organizes a book into setup, architecture, blueprint and manuscript. It is in preview; you can switch back to the workbench at any time.')}
-        control={(
-          <SegmentedControl
-            label={text('界面布局', 'Layout')}
-            value={resolvedShell === 'stage' ? 'stage' : 'workbench'}
-            options={[{ value: 'workbench', label: text('工作台', 'Workbench') }, { value: 'stage', label: text('创作流程（预览）', 'Creative flow (preview)') }]}
-            onChange={value => useAppearanceStore.getState().update({ shellPreference: value === 'stage' ? 'stage' : 'unset' })}
-          />
-        )}
-      />
     </div>
   )
 }

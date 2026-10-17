@@ -12,30 +12,14 @@ const SCANNED_EXTENSIONS = new Set(['.ts', '.tsx', '.css'])
 
 export const COLOR_LITERAL_ALLOWLIST = Object.freeze([
   'src/components/dialogs/ArchitectureConfirmDialog.tsx',
-  'src/components/dialogs/ChapterCreationDialog.tsx',
   'src/components/dialogs/ImportNovelDialog.tsx',
-  'src/components/editor/ChapterCardEditor.tsx',
-  'src/components/editor/DraftEditor.tsx',
-  'src/components/editor/NovelConfigEditor.tsx',
   'src/components/editor/RelationshipGraph.tsx',
-  'src/components/editor/three-way-merge.css',
-  'src/components/editor/WorldBuildingEditor.tsx',
-  'src/components/layout/StatusBar.tsx',
-  'src/components/pages/WelcomePage.tsx',
   'src/components/panels/agent/AgentHeader.tsx',
   'src/components/panels/agent/AgentInputBox.tsx',
   'src/components/panels/agent/AgentMessage.tsx',
   'src/components/panels/agent/MentionMenu.tsx',
   'src/components/panels/agent/SlashCommandMenu.tsx',
-  'src/components/panels/AIOutputPanel.tsx',
-  'src/components/panels/BottomPanel.tsx',
-  'src/components/panels/sidebar/ProjectTree.tsx',
-  'src/components/panels/WorkflowConfirmationPanel.tsx',
-  'src/components/settings/SettingsModal.tsx',
-  'src/components/ui/ActionToast.tsx',
-  'src/components/ui/Dialog.tsx',
   'src/components/ui/MarkdownContent.tsx',
-  'src/components/ui/PostProcessStatusPanel.tsx',
 ])
 
 const COLOR_LITERAL = /(?<![\w&/])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})(?![\w-])|\b(?:rgba?|hsla?)\(/gi

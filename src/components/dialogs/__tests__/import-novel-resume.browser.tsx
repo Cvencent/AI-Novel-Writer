@@ -4,13 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 
 import ImportNovelDialog from '../ImportNovelDialog'
-import ProjectTree from '../../panels/sidebar/ProjectTree'
-import BottomPanel from '../../panels/BottomPanel'
+import RunSheet from '../../stage/run/RunSheet'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useEditorStore } from '../../../stores/editor-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore, type WorkflowDefinition, type WorkflowRun } from '../../../stores/workflow-store'
-import { useLayoutStore } from '../../../stores/layout-store'
 import { useDraftStore } from '../../../stores/draft-store'
 import { useAppearanceStore } from '../../../stores/appearance-bootstrap'
 import { useThemeStore } from '../../../stores/theme-store'
@@ -97,7 +95,6 @@ async function chooseCurrentSource() {
 beforeEach(async () => {
   useLocaleStore.setState({ locale: 'zh-CN' })
   useEditorStore.getState().clearTabs()
-  useLayoutStore.setState({ bottomPanelOpen: true, bottomTab: 'tasks' })
   useProjectStore.setState({
     currentProject: project as never,
     refreshFileTree: vi.fn().mockResolvedValue(undefined),
@@ -141,6 +138,9 @@ beforeEach(async () => {
     if (channel === 'db:project-core-get') return null
     if (channel === 'db:blueprint-get-all') return []
     if (channel === 'db:draft-list') return []
+    // 运行侧页读恢复项：这里都没有。
+    if (['db:recovery-candidate-list', 'generation:list', 'generation:list-batches', 'skills:list-user'].includes(channel)) return []
+    if (channel === 'fs:check-exists') return false
     return { success: true }
   })
   Object.defineProperty(window, 'aiNovelAPI', {
@@ -164,8 +164,6 @@ beforeEach(async () => {
   root = createRoot(container)
   await act(async () => root.render(
     <div>
-      <ProjectTree />
-      <div style={{ height: 360 }}><BottomPanel /></div>
       <ImportNovelDialog open onClose={vi.fn()} />
     </div>,
   ))
@@ -191,32 +189,6 @@ describe('current-project reference import', () => {
     await act(async () => root.render(<ImportNovelDialog open onClose={vi.fn()} />))
     await expect.element(location).toHaveValue('')
     expect(invoke.mock.calls.some(([channel]) => channel === 'project:create')).toBe(false)
-  })
-
-  it('updates existing configuration and blueprint tab names to the current interface language', async () => {
-    const clickProjectItem = (label: string) => {
-      const row = [...container.querySelectorAll<HTMLElement>('.tree-item')]
-        .find(element => element.textContent?.includes(label))
-      expect(row).toBeDefined()
-      row?.click()
-    }
-
-    await act(async () => {
-      clickProjectItem('小说配置')
-      clickProjectItem('章节蓝图')
-    })
-    expect(useEditorStore.getState().tabs.find(tab => tab.type === 'config')?.name).toBe('小说配置')
-    expect(useEditorStore.getState().tabs.find(tab => tab.type === 'chapter-card')?.name).toBe('章节蓝图')
-
-    await act(async () => useLocaleStore.getState().setLocale('en-US'))
-    await act(async () => {
-      clickProjectItem('Novel configuration')
-      clickProjectItem('Chapter blueprints')
-    })
-    expect(useEditorStore.getState().tabs.filter(tab => tab.type === 'config')).toHaveLength(1)
-    expect(useEditorStore.getState().tabs.filter(tab => tab.type === 'chapter-card')).toHaveLength(1)
-    expect(useEditorStore.getState().tabs.find(tab => tab.type === 'config')?.name).toBe('Novel configuration')
-    expect(useEditorStore.getState().tabs.find(tab => tab.type === 'chapter-card')?.name).toBe('Chapter blueprints')
   })
 
   it('advertises EPUB reference import in both UI languages', async () => {
@@ -371,16 +343,12 @@ describe('current-project reference import', () => {
 
     await act(async () => root.render(
       <div>
-        <ProjectTree />
-        <div style={{ height: 360 }}><BottomPanel /></div>
-        <ImportNovelDialog open={false} onClose={vi.fn()} />
+          <ImportNovelDialog open={false} onClose={vi.fn()} />
       </div>,
     ))
     await act(async () => root.render(
       <div>
-        <ProjectTree />
-        <div style={{ height: 360 }}><BottomPanel /></div>
-        <ImportNovelDialog open onClose={vi.fn()} />
+          <ImportNovelDialog open onClose={vi.fn()} />
       </div>,
     ))
     await act(async () => page.getByRole('button', { name: '选择' }).click())
@@ -419,7 +387,13 @@ describe('current-project reference import', () => {
     expect(startWorkflow).not.toHaveBeenCalled()
   })
 
-  it('starts the persisted run from real clicks while keeping the current project tree and task logs visible', async () => {
+  it('starts the persisted run from real clicks and shows it in the run sheet', async () => {
+    await act(async () => root.render(
+      <div>
+        <div className="paper-ink" style={{ height: 360, display: 'flex' }}><RunSheet sheet={{ kind: 'run', tab: 'active' }} /></div>
+        <ImportNovelDialog open onClose={vi.fn()} />
+      </div>,
+    ))
     await chooseCurrentSource()
     await act(async () => page.getByRole('button', { name: /导入当前项目（1 章）/ }).click())
 
@@ -435,9 +409,7 @@ describe('current-project reference import', () => {
     expect(selectionCall?.[2]).toMatchObject({
       projectId: project.id, leaseId: project.sessionLease, projectPath: project.path,
     })
-    await expect.element(page.getByText('Current Project', { exact: true })).toBeVisible()
     await expect.element(page.getByText('导入参照文本与构建知识库', { exact: true })).toBeVisible()
-    await expect.element(page.getByText('参照章节 1 正在写入知识库', { exact: true })).toBeVisible()
   })
 
   it('shows the merged new-import inspection in English without a renderer grant step', async () => {
@@ -1220,6 +1192,8 @@ describe('新外壳里的导入对话框', () => {
     useAppearanceStore.setState({ resolvedShell: 'stage' })
     useThemeStore.setState({ resolvedTheme: theme })
     try {
+      // 先卸掉 beforeEach 在浅色下开的对话框，按这个主题重新打开，量的才是打开时的颜色而不是换主题的过渡
+      await act(async () => root.render(<div />))
       await act(async () => root.render(<div className="paper-ink"><ImportNovelDialog open onClose={vi.fn()} /></div>))
       const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!
       const layer = getComputedStyle(dialog).backgroundColor

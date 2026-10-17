@@ -12,7 +12,7 @@ import ClearProjectDataDialog from '../dialogs/ClearProjectDataDialog'
 import { leaveSettingsThen, openProjectFolder } from '../settings/unsaved-settings'
 import type { MenuGroupSpec } from '../ui/Menu'
 import NewWorkDialog from './library/NewWorkDialog'
-import { SETTINGS_PAGES, settingsPageOf } from './settings/settings-pages'
+import { SETTINGS_PAGES } from './settings/settings-pages'
 import { preloadStagePages } from './stage-pages'
 import StagePalette from './StagePalette'
 import { paletteItem, type PaletteItem } from './palette-filter'
@@ -136,7 +136,7 @@ export default function StageShell({ theme }: { theme: Theme }) {
     return [...go, ...chapters, ...references, ...actions, ...(library ? books : [])]
   }, [view.stages, view.chapters, hasProject, library, text, toggleFocus, recentProjects])
 
-  const settingsName = SETTINGS_PAGES.find(page => page.id === settingsPageOf(settingsSection))?.name
+  const settingsName = SETTINGS_PAGES.find(page => page.id === settingsSection)?.name
   const crumbs = settingsOpen && settingsName ? [text('设置', 'Settings'), text(...settingsName)] : crumbsFor(view, library, activeName, text)
   const focusChapter = view.location?.kind === 'stage' ? view.location.chapter : undefined
   const focusRow = view.chapters.find(row => row.number === focusChapter)

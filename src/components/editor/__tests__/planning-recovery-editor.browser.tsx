@@ -13,9 +13,9 @@ import { useWorkflowStore } from '../../../stores/workflow-store'
 import { useLLMStore } from '../../../stores/llm-store'
 import { globalEventBus } from '../../../shared/event-bus'
 import ArchFileViewer from '../ArchFileViewer'
-import ChapterCardEditor from '../ChapterCardEditor'
-import WorldBuildingEditor from '../WorldBuildingEditor'
-import AIOutputPanel from '../../panels/AIOutputPanel'
+import StageArchitecture from '../../stage/architecture/StageArchitecture'
+import StageBlueprint from '../../stage/blueprint/StageBlueprint'
+import RunSheet from '../../stage/run/RunSheet'
 import BlueprintRecovery from '../../stage/blueprint/BlueprintRecovery'
 import StageWorkspace from '../../stage/StageWorkspace'
 
@@ -567,8 +567,8 @@ describe('planning recovery editors', () => {
   it.each(['architecture', 'blueprint', 'failure-panel'] as const)('%s opens the same editable recovery draft twice without replacing dirty text', async entry => {
     showCandidate = true
     context = fixture(entry === 'blueprint' ? 'blueprint' : 'outline')
-    await act(async () => root.render(entry === 'architecture' ? <WorldBuildingEditor projectKey={session.projectPath} />
-      : entry === 'blueprint' ? <ChapterCardEditor projectKey={session.projectPath} /> : <AIOutputPanel />))
+    await act(async () => root.render(entry === 'architecture' ? <StageArchitecture projectKey={session.projectPath} />
+      : entry === 'blueprint' ? <StageBlueprint projectKey={session.projectPath} /> : <RunSheet sheet={{ kind: 'run', tab: 'active' }} />))
     await vi.waitFor(() => expect(button('编辑恢复稿')).toBeDefined())
     await act(async () => button('编辑恢复稿').click())
     const tab = useEditorStore.getState().tabs[0]

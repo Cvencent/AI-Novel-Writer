@@ -257,7 +257,7 @@ it('启动后偏好写入失败保留已挂载编辑器及其未保存正文', a
   expect(localStorage.getItem(APPEARANCE_STORAGE_KEY)).toBe('外部变化')
 })
 
-it('已挂载的真实 App 在偏好写入失败后仍呈现 V3', async () => {
+it('已挂载的真实 App 在偏好写入失败后仍保留新外壳', async () => {
   const invoke = vi.fn(async (channel: string) => {
     if (channel === 'config:get') return { locale: 'zh-CN' }
     if (channel === 'project:recent-list') return []
@@ -267,12 +267,12 @@ it('已挂载的真实 App 在偏好写入失败后仍呈现 V3', async () => {
   })
   window.aiNovelAPI = { invoke, on: () => () => {}, once: () => {}, send: () => {}, setZoomLevel: () => {}, setZoomFactor: () => {} } as unknown as NonNullable<Window['aiNovelAPI']>
   await act(async () => root.render(<RendererStartup dependencies={dependencies()} loadWorkspace={() => import('../../../App')} />))
-  await vi.waitFor(() => expect(host.querySelector('[data-shell-presentation="writer"][data-shell-variant="v3"]')).not.toBeNull(), { timeout: 5000 })
-  const shell = host.querySelector('[data-shell-presentation="writer"][data-shell-variant="v3"]')
+  await vi.waitFor(() => expect(host.querySelector('[data-shell-presentation="stage"]')).not.toBeNull(), { timeout: 5000 })
+  const shell = host.querySelector('[data-shell-presentation="stage"]')
   localStorage.setItem(APPEARANCE_STORAGE_KEY, '外部变化')
   await act(async () => { expect(useAppearanceStore.getState().update({ colorTheme: 'dark' })).toBe(false) })
   expect(host.querySelector('[role="alert"]')?.textContent).toContain('当前工作台保持原状')
-  expect(host.querySelector('[data-shell-presentation="writer"][data-shell-variant="v3"]')).toBe(shell)
+  expect(host.querySelector('[data-shell-presentation="stage"]')).toBe(shell)
   expect(localStorage.getItem(APPEARANCE_STORAGE_KEY)).toBe('外部变化')
 })
 

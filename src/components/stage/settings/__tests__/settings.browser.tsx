@@ -14,7 +14,6 @@ import { navigate } from '../../../../stores/navigation/navigation-intents'
 import { useStageStore } from '../../../../stores/navigation/stage-store'
 import { useProjectStore } from '../../../../stores/project-store'
 import { useThemeStore } from '../../../../stores/theme-store'
-import { leaveSettings, useSettingsLeave, useUnsavedSettings } from '../../../settings/unsaved-settings'
 import { useStageShortcuts } from '../../use-stage-shortcuts'
 import StageSettings from '../StageSettings'
 
@@ -96,7 +95,7 @@ afterEach(async () => {
 })
 
 describe('设置页', () => {
-  it('按常用、高级、其他三组排列，按参数打开对应分组；旧的「编辑器」分区落在外观', async () => {
+  it('按常用、高级、其他三组排列，按参数打开对应分组', async () => {
     useLayoutStore.setState({ settingsSection: 'backup' })
     await mount()
     const groups = [...host!.querySelectorAll('nav [role="group"]')].map(group => ({
@@ -114,10 +113,6 @@ describe('设置页', () => {
     await click(byName('关于与更新'))
     expect(useLayoutStore.getState().settingsSection).toBe('about')
     expect(heading()).toBe('关于与更新')
-
-    await act(async () => useLayoutStore.setState({ settingsSection: 'editor' }))
-    expect(heading()).toBe('外观')
-    expect(host!.querySelector('[aria-current="page"]')?.textContent).toBe('外观')
   })
 
   it('检索模型页带当前作品的检索索引检查与重建', async () => {
@@ -360,21 +355,6 @@ describe('设置页', () => {
     await act(async () => navigate({ kind: 'settings', section: 'backup' }))
     await click(dialogButton('放弃修改'))
     expect(useLayoutStore.getState()).toMatchObject({ settingsOpen: true, settingsSection: 'backup' })
-  })
-
-  it('旧外壳的设置弹窗里有没保存的输入时，离开动作照常执行，不留下没人显示的确认', async () => {
-    function Dirty() {
-      useUnsavedSettings(true)
-      return null
-    }
-    host = document.createElement('div')
-    document.body.append(host)
-    root = createRoot(host)
-    await act(async () => root!.render(<Dirty />))
-    const action = vi.fn()
-    leaveSettings(action)
-    expect(action).toHaveBeenCalledTimes(1)
-    expect(useSettingsLeave.getState().pending).toBeNull()
   })
 
   it('打开作品途中的默认落点不收起设置页；去具体的阶段才收起', async () => {

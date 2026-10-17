@@ -21,7 +21,7 @@ import { useStageStore } from './stage-store'
  */
 function enterWork(): void {
   useStageStore.setState({ focus: false })
-  if (useLayoutStore.getState().sidebarView === 'home') useLayoutStore.setState({ sidebarView: 'project', activeRailItem: 'project' })
+  if (useLayoutStore.getState().sidebarView === 'home') useLayoutStore.setState({ sidebarView: 'project' })
 }
 
 function currentSession(): ProjectSessionContext | null {
