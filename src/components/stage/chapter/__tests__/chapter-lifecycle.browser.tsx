@@ -15,6 +15,7 @@ import { openChapterPlan } from '../../../../stores/navigation/stage-navigation'
 import { useProjectStore } from '../../../../stores/project-store'
 import { useWorkflowStore } from '../../../../stores/workflow-store'
 import { openDraftTab } from '../../../../stores/open-draft-tab'
+import { commandLabel } from '../../shortcut-keys'
 import StageSpine from '../../StageSpine'
 import StageWorkspace from '../../StageWorkspace'
 import { useStageView } from '../../use-stage-work'
@@ -126,6 +127,13 @@ describe('单章视图的主按钮随五种状态变化', () => {
     expect({ draftContent: params.draftContent, reviewFocus: params.reviewFocus, source: params.sourceDraft.id })
       .toEqual({ draftContent: ORIGINAL, reviewFocus: '剧情连贯性、剧情合理性、前后章节串联', source: draft.id })
     expect(started()).toHaveLength(1)
+  })
+
+  it('草稿：提示里的保存快捷键按平台写，Windows 上是 Ctrl S 而不是 ⌘S', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    await mount()
+    await openDraft(draft.id)
+    await expect.element(page.getByText(/^可以直接改正文/)).toHaveTextContent(`可以直接改正文，${commandLabel('s')} 保存`)
   })
 
   it('已审稿：勾选数与「按 N 项意见修稿」同步；点它先确认清单，再按这份清单与本次模型修稿', async () => {
