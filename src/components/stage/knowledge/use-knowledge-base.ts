@@ -46,17 +46,21 @@ export function useKnowledgeIndex() {
   const [status, setStatus] = useState<VectorRebuildStatus | null>(null)
   const [statusError, setStatusError] = useState('')
   const [backfilling, setBackfilling] = useState(false)
+  // 只有最后一次读取写状态：连改两次检索模型时，先发的那次晚到也不会写回过时的提示。
+  const statusRequest = useRef(0)
 
   const loadStatus = useCallback(async () => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession) return
+    const request = ++statusRequest.current
+    const latest = () => request === statusRequest.current && isProjectSessionCurrent(projectSession)
     try {
       const result = await ipc.invokeWithProjectSession(projectSession, 'kb:get-vector-rebuild-status', projectSession.projectPath)
-      if (!isProjectSessionCurrent(projectSession)) return
+      if (!latest()) return
       setStatus(unwrapKnowledgeValue(result))
       setStatusError('')
     } catch (error) {
-      if (isProjectSessionCurrent(projectSession)) setStatusError(appErrorMessage(locale, error))
+      if (latest()) setStatusError(appErrorMessage(locale, error))
     }
   }, [locale])
 
