@@ -99,8 +99,10 @@ export const capsule = page => root(page).getByRole('button', { expanded: false 
 export const settingsNav = page => root(page).getByRole('navigation', { name: '设置分组' })
 export const settingsLink = (page, name) => settingsNav(page).getByRole('button', { name, exact: true })
 
+/** 设置：打开着作品时在流程脊底部，书房里在顶栏右侧。设置是外壳里的一页。 */
 export async function openSettings(page) {
-  await spine(page).getByRole('button', { name: '设置', exact: true }).click()
+  if (await spine(page).isVisible()) await spine(page).getByRole('button', { name: '设置', exact: true }).click()
+  else await root(page).getByRole('banner').getByRole('button', { name: '设置', exact: true }).click()
   await settingsNav(page).waitFor({ state: 'visible' })
 }
 

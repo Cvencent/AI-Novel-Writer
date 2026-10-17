@@ -53,14 +53,6 @@ async function assertStage(page, actionId) {
   await stage.waitForStage(page)
   assert.equal(await stage.root(page).getAttribute('data-shell-presentation'), 'stage', `${actionId}: current shell is not the paper-ink stage`)
 }
-/** 设置：打开着作品时在流程脊底部，书房里在顶栏右侧。设置是外壳里的一页。 */
-async function openSettings(page) {
-  if (await stage.spine(page).isVisible()) await stage.openSettings(page)
-  else {
-    await stage.root(page).getByRole('banner').getByRole('button', { name: '设置', exact: true }).click()
-    await stage.settingsNav(page).waitFor({ state: 'visible' })
-  }
-}
 const settingsHeading = (page, name) => stage.root(page).getByRole('heading', { level: 1, name, exact: true })
 
 async function main() {
@@ -90,7 +82,7 @@ async function main() {
 
     currentStep = 'U03.A01-library-settings'
     await assertStage(page, 'U03.A01')
-    await openSettings(page)
+    await stage.openSettings(page)
     await settingsHeading(page, 'AI 模型').waitFor()
     recordPrecondition('U03.A01-library-settings', 'stage shell assertion preceded the settings entry and the real settings page rendered')
     await stage.closeSettings(page)
@@ -112,7 +104,7 @@ async function main() {
     const originalConfig = fs.existsSync(configPath) ? fs.readFileSync(configPath) : null
     const malformedConfig = '{ malformed proxy config'
     fs.writeFileSync(configPath, malformedConfig)
-    await openSettings(page)
+    await stage.openSettings(page)
     await stage.showSettingsPage(page, '网络代理')
     const proxySwitch = stage.root(page).getByRole('switch', { name: '启用代理' })
     // 开关是视觉隐藏的原生 checkbox，点它所在的 label。
