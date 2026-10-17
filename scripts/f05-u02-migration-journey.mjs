@@ -279,7 +279,12 @@ async function main() {
       assert.equal(state.theme, null)
       assert.equal(state.shell, null)
       await assertOpenStage(fresh.page, 'light')
-      pass('fresh-default-stage', 'U02.A02', 'A fresh installed profile opens the light paper-ink library and writes only the v3 profile', 'fresh-to-stage')
+      // RD-10 lane 2：全新安装首次启动停在空书房。
+      await stage.root(fresh.page).getByText('书架还是空的', { exact: true }).waitFor({ state: 'visible' })
+      await stage.modelMissingNotice(fresh.page).waitFor({ state: 'visible' })
+      screenshots.fresh = path.join(root, 'rd10-fresh.png')
+      await windowShot(fresh.app, screenshots.fresh)
+      pass('fresh-default-stage', 'U02.A02', 'A fresh installed profile opens the empty light paper-ink library and writes only the v3 profile', 'fresh-to-stage')
     } finally { await fresh.app.close() }
 
     // RD-10 之前的外观偏好（v1 带 writer、v2 带 classic）加旧图片皮肤：星空迁为深色，纸面迁为浅色，皮肤不再生效，旧键与旧清单原样保留。
