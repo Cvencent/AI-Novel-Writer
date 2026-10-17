@@ -76,8 +76,8 @@ async function showDraft(filePath: string, chapterNumber: number, session: Proje
 }
 
 /**
- * 新外壳里，审稿报告与修稿合并不再是独立标签，而是单章视图的侧页与合并视图（ia.md）。
- * 工作流命令在两种外壳里都打开 review-report 与 diff 标签；这里在新外壳中把它们改道：关掉那个标签，
+ * 审稿报告与修稿合并不是独立标签，而是单章视图的侧页与合并视图（ia.md）。
+ * 工作流命令仍会打开 review-report 与 diff 标签；这里把它们改道：关掉那个标签，
  * 切到（或打开）这一稿的单章视图，并请它重读数据、展开审稿侧页或合并视图。
  * 草稿生成后自动打开的草稿标签（F-061）顶替同一章的待写标签，留在原位置。
  * 只处理当前作品的标签；版本历史的只读对比（diff 标签不带 revisionPath）不改道。

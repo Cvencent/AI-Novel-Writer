@@ -553,7 +553,7 @@ export default function CodeMirrorEditor({
         </div>
       </div>
 
-      {/* 选区工具条：纸墨浮层，旧外壳里也自带纸墨令牌与深浅色 */}
+      {/* 选区工具条：纸墨浮层，自带纸墨令牌与深浅色 */}
       {bubbleOpen && (editable || aiResult !== null) && bubblePos.top !== 0 && (
         <div
           role="toolbar"

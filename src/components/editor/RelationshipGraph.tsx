@@ -148,6 +148,7 @@ export default function RelationshipGraph({ characters, selectedCharacterId, onO
       const canvasStyles = getComputedStyle(canvas)
       const readableTextColor = canvasStyles.color
       const relationshipLabelColor = canvasStyles.getPropertyValue('--color-text-secondary').trim()
+      const edgeColor = canvasStyles.getPropertyValue('--color-border').trim()
       const nodes = new Map(nodesRef.current.map(node => [node.characterId, node]))
       context.clearRect(0, 0, canvas.width, canvas.height)
       context.save()
@@ -165,7 +166,7 @@ export default function RelationshipGraph({ characters, selectedCharacterId, onO
         context.beginPath()
         context.moveTo(from.x, from.y)
         context.lineTo(to.x, to.y)
-        context.strokeStyle = 'rgba(148,163,184,0.3)'
+        context.strokeStyle = edgeColor
         context.stroke()
         const firstRelation = edge.relations[0]?.label
         if (firstRelation) {
@@ -228,12 +229,10 @@ export default function RelationshipGraph({ characters, selectedCharacterId, onO
     } else drawFrame()
 
     const themeObserver = new MutationObserver(drawFrame)
-    const skinRoot = canvas.closest<HTMLElement>('.app-skin-root')
-    for (const root of new Set<HTMLElement>([document.documentElement, ...(skinRoot ? [skinRoot] : [])])) {
-      themeObserver.observe(root, {
-        attributes: true,
-        attributeFilter: ['class', 'style', 'data-theme', 'data-skin', 'data-skin-readability'],
-      })
+    // 深浅色切换时根元素换 .dark，纸墨作用域换 data-theme，两处都要重画
+    const inkRoot = canvas.closest<HTMLElement>('.paper-ink')
+    for (const root of new Set<HTMLElement>([document.documentElement, ...(inkRoot ? [inkRoot] : [])])) {
+      themeObserver.observe(root, { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] })
     }
     return () => { themeObserver.disconnect(); drawRef.current = null }
   }, [characters, duplicateNames, graph, canvasSize, fitView])

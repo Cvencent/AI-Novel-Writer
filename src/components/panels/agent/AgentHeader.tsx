@@ -99,7 +99,7 @@ export default function AgentHeader() {
                 width: subView === 'main' ? 200 : 260,
                 backgroundColor: 'var(--color-sidebar)',
                 border: '1px solid var(--color-border)',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+                boxShadow: 'var(--shadow-popover)',
               }}
             >
               {/* ===== 主菜单视图 ===== */}

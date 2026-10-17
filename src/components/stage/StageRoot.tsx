@@ -25,7 +25,7 @@ function StageFallback({ retry }: { retry: () => void }) {
 }
 
 /**
- * 新外壳的根：纸墨作用域、渲染出错兜底与退出确认。
+ * 外壳的根：纸墨作用域、渲染出错兜底与退出确认。
  * 退出确认挂在外壳之外，外壳渲染出错后关窗仍能保存或放弃未保存的内容。
  */
 export default function StageRoot({ theme, exitGuard, children }: { theme: Theme; exitGuard: WindowCloseGuard; children: ReactNode }) {

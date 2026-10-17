@@ -624,7 +624,7 @@ describe('旧 ui/Dialog 在新外壳下', () => {
     root = createRoot(container)
     await act(async () => root!.render(
       <Dialog open>
-        <DialogContent className="max-w-[420px]">
+        <DialogContent className="max-w-[480px]">
           <DialogHeader><DialogTitle>导出项目</DialogTitle></DialogHeader>
           <p className="px-6 text-[var(--color-accent)]">正文</p>
           <DialogFooter className="justify-end"><button type="button">导出</button></DialogFooter>
@@ -634,7 +634,7 @@ describe('旧 ui/Dialog 在新外壳下', () => {
     const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!
     expect(dialog.closest('.paper-ink')).toBe(host())
     expect(dialog.className).toContain('pi-dialog')
-    expect(dialog.getBoundingClientRect().width).toBe(420)
+    expect(dialog.getBoundingClientRect().width).toBe(480)
     expect(getComputedStyle(dialog.querySelector('p')!).color).toBe(LIGHT.accent)
     expect(getComputedStyle(dialog.querySelector('.pi-dialog-foot')!).justifyContent).toBe('flex-end')
     expect(dialog.querySelector('.pi-dialog-close')!.className).toContain('pi-btn--icon')

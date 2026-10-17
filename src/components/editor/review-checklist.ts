@@ -293,7 +293,7 @@ export interface ReviewChecklistInput {
 
 /**
  * 审稿清单：逐项纳入或忽略、作者补充问题与总体指导、确认为不可变快照、按确认意见修稿、合并后复验。
- * 旧外壳的审稿报告标签与新外壳单章视图的审稿侧页共用；挂载方用 useReviewCycle 的 sessionKey 作 key，报告变了就重置。
+ * 单章视图的审稿侧页用它；挂载方用 useReviewCycle 的 sessionKey 作 key，报告变了就重置。
  */
 export function useReviewChecklist({
   reportText,

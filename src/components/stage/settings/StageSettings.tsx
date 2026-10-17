@@ -73,7 +73,7 @@ const isTyping = (target: EventTarget | null) =>
 
 /**
  * 设置页：左侧按常用、高级、其他分组，右侧是当前一页。占满内容面板，书房与作品里都能打开；
- * 「返回」或 Esc 回到打开前的页面，有没保存的输入时先确认。当前分区记在 layout-store，切换外壳重挂后仍停在原处。
+ * 「返回」或 Esc 回到打开前的页面，有没保存的输入时先确认。当前分区记在 layout-store，书房与作品之间切换重挂后仍停在原处。
  */
 export default function StageSettings({ library }: { library: boolean }) {
   const text = useLocaleStore(s => s.text)
