@@ -69,6 +69,8 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
   const hasMeaningSearch = stats.vectorDimension > 0
   const vectorless = index.status?.embeddingConfigured ? index.status.vectorlessCount : 0
   const loadError = kb.loadError || index.statusError
+  // 最近一次读资料列表失败时，空列表与计数都不能当真。
+  const documentsKnown = kb.documentsLoaded && !kb.loadError
 
   const pick = (docId: string) => {
     if (docId === kb.selectedDocId) return
@@ -114,8 +116,8 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
             value={shelf}
             onChange={setShelf}
             options={[
-              { value: 'imported', label: kb.documentsLoaded ? text(`我导入的 ${imported.length}`, `Imported ${imported.length}`) : text('我导入的', 'Imported') },
-              { value: 'chapters', label: kb.documentsLoaded ? text(`定稿章节 ${chapters.length}`, `Final chapters ${chapters.length}`) : text('定稿章节', 'Final chapters') },
+              { value: 'imported', label: documentsKnown ? text(`我导入的 ${imported.length}`, `Imported ${imported.length}`) : text('我导入的', 'Imported') },
+              { value: 'chapters', label: documentsKnown ? text(`定稿章节 ${chapters.length}`, `Final chapters ${chapters.length}`) : text('定稿章节', 'Final chapters') },
             ]}
           />
           <ul className="stage-kb-list">
@@ -132,7 +134,7 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
                 </button>
               </li>
             ))}
-            {listed.length === 0 && (
+            {listed.length === 0 && !kb.loadError && (
               <li className="stage-kb-help">{kb.documentsLoaded ? emptyShelf : text('正在读取…', 'Loading…')}</li>
             )}
           </ul>
@@ -148,6 +150,7 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
           {loadError && <Notice tone="danger" title={text('读取知识库失败', 'Could not read the knowledge base')}>{loadError}</Notice>}
           {!selected ? (
             !kb.documentsLoaded ? <p className="stage-kb-help stage-kb-hint" role="status">{text('正在读取资料…', 'Loading materials…')}</p>
+            : kb.loadError ? null
             : documents.length === 0 ? (
               <EmptyState
                 icon={<BookOpen />}
