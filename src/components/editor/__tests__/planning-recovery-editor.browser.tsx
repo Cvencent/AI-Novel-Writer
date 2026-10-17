@@ -136,6 +136,20 @@ describe('planning recovery editors', () => {
     expect(useEditorStore.getState().tabs[0]).toMatchObject({ content: blueprintText, dirty: false })
     noModel()
   })
+  it('蓝图恢复页打开时读不出恢复上下文：提示只写原因，不带 Error 前缀', async () => {
+    context = fixture('blueprint')
+    openPlanningRecoveryDraft(context, session.projectPath, '蓝图恢复稿')
+    const plain = invoke.getMockImplementation() as (channel: string, ...args: unknown[]) => Promise<unknown>
+    invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'generation:read-context') throw new Error('恢复上下文读取失败')
+      return plain(channel, ...args)
+    })
+    const tab = useEditorStore.getState().tabs[0]
+    await act(async () => root.render(<BlueprintRecovery tab={tab} projectKey={session.projectPath} />))
+    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')?.textContent).toBe('恢复上下文读取失败'))
+    noModel()
+  })
+
   it.each(['button', 'workflow'] as const)('reports a rejected recovery refresh from %s', async source => {
     await render('outline')
     invoke.mockRejectedValueOnce(new Error('Recovery context reload failed'))

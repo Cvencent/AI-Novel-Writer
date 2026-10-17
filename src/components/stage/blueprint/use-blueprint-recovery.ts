@@ -35,7 +35,7 @@ export function useBlueprintRecovery(tab: EditorTab, projectKey: string) {
     setContext(next)
     return next
   }, [session, tab.planningRecovery, text])
-  useEffect(() => { void Promise.resolve().then(refresh).catch(reason => setError(String(reason))) }, [refresh])
+  useEffect(() => { void Promise.resolve().then(refresh).catch(reason => setError(reason instanceof Error ? reason.message : String(reason))) }, [refresh])
 
   const save = useCallback(async (propagate = false) => {
     if (busyRef.current) { if (propagate) throw new Error(text('保存仍在进行', 'Saving is still in progress.')); return }
