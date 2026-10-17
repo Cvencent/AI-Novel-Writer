@@ -92,11 +92,6 @@ vi.mock('../services/release-official-homepage-smoke', () => ({
   releaseOfficialHomepageSmokeWasRequested: () => false,
   runReleaseOfficialHomepageSmoke: vi.fn(),
 }))
-vi.mock('../services/release-skin-smoke', () => ({
-  claimReleaseSkinSmokeInvocation: vi.fn(),
-  releaseSkinSmokeWasRequested: () => false,
-  runReleaseSkinSmoke: vi.fn(),
-}))
 vi.mock('../controllers/official-homepage-controller', () => ({ registerOfficialHomepageController: vi.fn() }))
 vi.mock('../services/official-homepage-navigation', () => ({
   createOfficialHomepageWindowOpenHandler: () => vi.fn(),
