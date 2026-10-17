@@ -254,6 +254,26 @@ describe('知识库', () => {
     expect(shelves()).toEqual(['我导入的 3', '定稿章节 1'])
   })
 
+  it('资料列表读取失败：只显示读取失败，不说知识库是空的、不叫作者去左边选资料、不显示 0；点「刷新资料」读到就列出', async () => {
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel, ...args) => channel === 'kb:list-documents' ? Promise.reject(new Error('磁盘忙')) : base(channel, ...args))
+    await act(async () => root!.render(<StageKnowledge tabId={KB_TAB} />))
+    const reader = () => host!.querySelector('[aria-label="资料原文"]')!.textContent
+    await vi.waitFor(() => expect(reader()).toContain('读取知识库失败'))
+    const page = host!.textContent
+    expect(page).not.toContain('知识库里还没有资料')
+    expect(page).not.toContain('从左边选一份资料查看原文')
+    expect(page).not.toContain('还没有导入资料')
+    const shelves = () => [...host!.querySelectorAll('[aria-label="资料来源"] button')].map(option => option.textContent)
+    expect(shelves()).toEqual(['我导入的', '定稿章节'])
+
+    invoke.mockImplementation(base)
+    await click('刷新资料')
+    await vi.waitFor(() => expect(button(/车站档案/)).toBeTruthy())
+    expect(reader()).not.toContain('读取知识库失败')
+    expect(shelves()).toEqual(['我导入的 3', '定稿章节 1'])
+  })
+
   describe('连续改「最多显示」，两次查找乱序返回', () => {
     const hits = (count: number) => Array.from({ length: count }, (_, index) => ({ text: `……三号站台第 ${index + 1} 段……`, score: 0.5, fileName: '车站档案.md' }))
     let replies: Map<number, (count: number) => void>
