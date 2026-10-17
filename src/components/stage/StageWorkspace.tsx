@@ -7,7 +7,7 @@ import { navigate } from '../../stores/navigation/navigation-intents'
 import { useStageStore } from '../../stores/navigation/stage-store'
 import type { ProjectData } from '../../shared/ipc-channels'
 import { ErrorBoundary } from '../ErrorBoundary'
-import EditorTabContent from '../panels/EditorTabContent'
+import ArchFileViewer from '../editor/ArchFileViewer'
 import { Button } from '../ui/Button'
 import { EmptyState } from '../ui/EmptyState'
 import { DangerConfirm } from '../ui/DangerConfirm'
@@ -24,16 +24,19 @@ import { commandLabel } from './shortcut-keys'
 import BlueprintRecovery from './blueprint/BlueprintRecovery'
 import StageBlueprint from './blueprint/StageBlueprint'
 import ChapterView from './chapter/ChapterView'
+import ProseDocument, { isProseDocumentTab } from './chapter/ProseDocument'
 import { installChapterTabRouting, isChapterViewTab } from './chapter/chapter-tab-routing'
 import { stageTabName } from './stage-text'
 import { cancelCloseTab, confirmCloseTab, requestCloseTab, STAGE_CONTENT_ID } from './tab-close'
 
-/** 设定、架构、角色名单、蓝图、单章正文与资料页是新外壳的页面，其余标签沿用旧编辑区。 */
+/** 每种标签对应的页面。架构文档（含大纲恢复稿与角色名单全文）沿用 ArchFileViewer。 */
 function TabContent({ tab, project }: { tab: EditorTab; project: ProjectData }) {
+  const text = useLocaleStore(s => s.text)
   if (tab.type === 'config' && tab.projectKey) return <SetupPage projectKey={tab.projectKey} />
   if (tab.type === 'world-building' && tab.projectKey) return <StageArchitecture projectKey={tab.projectKey} />
   if (tab.type === 'character' && tab.projectKey) return <StageCharacters projectKey={tab.projectKey} />
   if (isChapterViewTab(tab)) return <ChapterView tab={tab} />
+  if (isProseDocumentTab(tab) && tab.projectKey === project.path) return <ProseDocument tab={tab} project={project} />
   if (tab.type === 'chapter-card' && tab.projectKey && tab.planningRecovery) {
     return <BlueprintRecovery key={`${tab.id}:${project.sessionLease}`} tab={tab} projectKey={tab.projectKey} />
   }
@@ -45,7 +48,16 @@ function TabContent({ tab, project }: { tab: EditorTab; project: ProjectData }) 
   if (tab.type === 'narrative-thread' && tab.projectKey === project.path) {
     return <StagePlot projectKey={tab.projectKey} initialView={tab.narrativeThreadView ?? 'plans'} viewRequest={tab.narrativeThreadViewRequest} />
   }
-  return <EditorTabContent activeTab={tab} currentProject={project} />
+  if (tab.type === 'arch-file' && tab.filePath && tab.projectKey) {
+    return <ArchFileViewer key={tab.id} tabId={tab.id} filePath={tab.filePath} projectKey={tab.projectKey} content={tab.content ?? ''} savedContent={tab.savedContent ?? tab.content ?? ''} />
+  }
+  return (
+    <EmptyState
+      heading={text('这个标签没有可显示的页面', 'This tab has no page to show')}
+      description={text('它可能属于另一部作品，或者来自旧版界面。关掉它不会改动作品。', 'It may belong to another book or come from the old interface. Closing it does not change the book.')}
+      action={<Button variant="secondary" onClick={() => requestCloseTab(tab.id)}>{text('关闭标签', 'Close tab')}</Button>}
+    />
+  )
 }
 
 export default function StageWorkspace({ library, focus }: { library: boolean; focus: boolean }) {
