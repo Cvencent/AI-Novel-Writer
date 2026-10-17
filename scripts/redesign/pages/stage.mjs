@@ -309,8 +309,9 @@ export async function openFromLibraryAt(page, name, index) {
   await spine(page).waitFor({ state: 'visible' })
 }
 
-/** 点流程脊里的第 number 章，等正文编辑区出现。 */
+/** 点流程脊里的第 number 章，等正文编辑区出现。章节列表只在「正文」阶段展开，落点在别的阶段时先点「正文」。 */
 export async function openChapter(page, number) {
+  if (!await chapterList(page).isVisible()) await stageButton(page, '正文').click()
   await chapterButton(page, number).click()
   await prose(page).waitFor({ state: 'visible' })
   return prose(page)
