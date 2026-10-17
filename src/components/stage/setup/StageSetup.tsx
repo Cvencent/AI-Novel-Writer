@@ -46,11 +46,12 @@ export default function StageSetup({ projectKey }: { projectKey: string }) {
 }
 
 /** 数字框允许暂时为空，失焦时回退到默认值。 */
-function NumberInput({ id, value, fallback, min, label, onChange }: {
+function NumberInput({ id, value, fallback, min, max, label, onChange }: {
   id?: string
   value: number | ''
   fallback: number
   min: number
+  max?: number
   label: string
   onChange: (value: number | '') => void
 }) {
@@ -61,6 +62,7 @@ function NumberInput({ id, value, fallback, min, label, onChange }: {
       type="number"
       inputMode="numeric"
       min={min}
+      max={max}
       aria-label={label}
       value={value}
       onChange={event => onChange(event.target.value === '' ? '' : Number.parseInt(event.target.value, 10))}
@@ -230,15 +232,9 @@ function AdvancedPanel({ config, form, onCollapse }: { config: NovelConfig; form
           )}</p>
         </div>
         <div className="stage-setup-adv-ctl">
-          <input
-            id={inputId}
-            className="stage-setup-num-input"
-            type="number"
-            min={MIN_NARRATIVE_THREAD_DORMANT_THRESHOLD}
-            max={MAX_NARRATIVE_THREAD_DORMANT_THRESHOLD}
-            value={threshold}
-            onChange={event => form.update('narrativeThreadDormantChapterThreshold', resolveNarrativeThreadDormantThreshold(Number(event.target.value)))}
-          />
+          <NumberInput id={inputId} value={config.narrativeThreadDormantChapterThreshold as unknown === '' ? '' : threshold}
+            fallback={DEFAULT_NARRATIVE_THREAD_DORMANT_THRESHOLD} min={MIN_NARRATIVE_THREAD_DORMANT_THRESHOLD} max={MAX_NARRATIVE_THREAD_DORMANT_THRESHOLD} label={text('伏笔沉寂提醒（章）', 'Dormant thread reminder (chapters)')}
+            onChange={value => form.update('narrativeThreadDormantChapterThreshold', (value === '' ? '' : resolveNarrativeThreadDormantThreshold(value)) as number)} />
           <Button variant="text" size="sm" disabled={threshold === DEFAULT_NARRATIVE_THREAD_DORMANT_THRESHOLD}
             onClick={() => form.update('narrativeThreadDormantChapterThreshold', DEFAULT_NARRATIVE_THREAD_DORMANT_THRESHOLD)}>
             <RotateCcw size={13} aria-hidden="true" />{text('恢复默认', 'Restore default')}

@@ -72,7 +72,13 @@ describe('四个阶段的状态由项目数据派生', () => {
     expect(stages[1]).toMatchObject({ filled: 2, total: 4, progress: { state: 'active', ratio: 0.5 } })
     expect(stages[2]).toMatchObject({ planned: 3, total: 12, progress: { state: 'done' } })
     expect(stages[3].progress).toEqual({ state: 'todo' })
-    expect(landingStage(stages)).toBe('architecture')
+    // 用户决定 B（#394 §6）：已有蓝图时架构没写完不拉回架构，落点跳到下一个未完成的阶段。
+    expect(landingStage(stages)).toBe('manuscript')
+    expect(landingStage(deriveStages(facts({ architecture: { premise: true, characters: true }, blueprints: [] })))).toBe('architecture')
+    // 已有正文就落在写作位置：没有蓝图（大纲没写完或已写完）也不落到空的蓝图页。
+    const written = { blueprints: [], drafts: { 1: [draft(1, 1, 'finalized')] } }
+    expect(landingStage(deriveStages(facts({ ...written, architecture: { premise: true, characters: true } })))).toBe('manuscript')
+    expect(landingStage(deriveStages(facts(written)))).toBe('manuscript')
     expect(deriveStages(facts({ blueprints: [] }))[2].progress).toEqual({ state: 'todo' })
   })
 
@@ -124,7 +130,8 @@ describe('四个阶段的状态由项目数据派生', () => {
     ])
     expect(rows[2].draft?.version).toBe(2)
     expect(rows[1].draft?.status).toBe('finalized')
-    expect(focusChapter(rows)?.number).toBe(3)
+    // 用户决定（#407 第 2 轮）：几章都在写时落在最后一章在写的。
+    expect(focusChapter(rows)?.number).toBe(5)
   })
 })
 

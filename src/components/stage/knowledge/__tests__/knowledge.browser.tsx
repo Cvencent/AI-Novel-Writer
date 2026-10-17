@@ -217,6 +217,157 @@ describe('知识库', () => {
 
   })
 
+  it('改「最多显示」按上次查找的词重查，不用输入框里还没提交的字', async () => {
+    await renderPage()
+    const input = document.querySelector<HTMLInputElement>('form[role="search"] input')!
+    await type(input, '三号站台 失踪')
+    await act(async () => document.querySelector<HTMLFormElement>('form[role="search"]')!.requestSubmit())
+    await vi.waitFor(() => expect(document.body.textContent).toContain('找到 2 条'))
+    await type(input, '还没提交')
+    const limit = document.querySelector<HTMLSelectElement>('.stage-kb-topk')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(limit, '5')
+      limit.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    await vi.waitFor(() => expect(invoke.mock.calls.filter(([channel]) => channel === 'kb:search').map(call => call.slice(1, 3)))
+      .toEqual([['三号站台 失踪', 10], ['三号站台 失踪', 5]]))
+  })
+
+  it('资料列表读完之前阅读栏与左栏都说正在读取，不说没有资料、不显示 0，读完才列出与计数', async () => {
+    let release!: () => void
+    const listed = new Promise<void>(resolve => { release = resolve })
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel, ...args) => {
+      if (channel === 'kb:list-documents') await listed
+      return base(channel, ...args)
+    })
+    await act(async () => root!.render(<StageKnowledge tabId={KB_TAB} />))
+    await vi.waitFor(() => expect(invoke.mock.calls.some(([channel]) => channel === 'kb:list-documents')).toBe(true))
+    expect(document.body.textContent).not.toContain('知识库里还没有资料')
+    expect(host!.querySelector('[aria-label="资料原文"] [role="status"]')?.textContent).toBe('正在读取资料…')
+    const shelves = () => [...host!.querySelectorAll('[aria-label="资料来源"] button')].map(option => option.textContent)
+    expect(shelves()).toEqual(['我导入的', '定稿章节'])
+    expect(host!.querySelector('.stage-kb-list')?.textContent).toBe('正在读取…')
+    await act(async () => release())
+    await vi.waitFor(() => expect(button(/车站档案/)).toBeTruthy())
+    expect(host!.querySelector('[aria-label="资料原文"] [role="status"]')).toBeNull()
+    expect(shelves()).toEqual(['我导入的 3', '定稿章节 1'])
+  })
+
+  it('资料列表读取失败：只显示读取失败，不说知识库是空的、不叫作者去左边选资料、不显示 0；点「刷新资料」读到就列出', async () => {
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel, ...args) => channel === 'kb:list-documents' ? Promise.reject(new Error('磁盘忙')) : base(channel, ...args))
+    await act(async () => root!.render(<StageKnowledge tabId={KB_TAB} />))
+    const reader = () => host!.querySelector('[aria-label="资料原文"]')!.textContent
+    await vi.waitFor(() => expect(reader()).toContain('读取知识库失败'))
+    const page = host!.textContent
+    expect(page).not.toContain('知识库里还没有资料')
+    expect(page).not.toContain('从左边选一份资料查看原文')
+    expect(page).not.toContain('还没有导入资料')
+    const shelves = () => [...host!.querySelectorAll('[aria-label="资料来源"] button')].map(option => option.textContent)
+    expect(shelves()).toEqual(['我导入的', '定稿章节'])
+
+    invoke.mockImplementation(base)
+    await click('刷新资料')
+    await vi.waitFor(() => expect(button(/车站档案/)).toBeTruthy())
+    expect(reader()).not.toContain('读取知识库失败')
+    expect(shelves()).toEqual(['我导入的 3', '定稿章节 1'])
+  })
+
+  describe('连续改「最多显示」，两次查找乱序返回', () => {
+    const hits = (count: number) => Array.from({ length: count }, (_, index) => ({ text: `……三号站台第 ${index + 1} 段……`, score: 0.5, fileName: '车站档案.md' }))
+    let replies: Map<number, (count: number) => void>
+
+    async function searchThenChange(limits: number[]) {
+      await renderPage()
+      await type(document.querySelector<HTMLInputElement>('form[role="search"] input')!, '三号站台')
+      await act(async () => document.querySelector<HTMLFormElement>('form[role="search"]')!.requestSubmit())
+      await vi.waitFor(() => expect(document.body.textContent).toContain('找到 2 条'))
+      replies = new Map()
+      const base = invoke.getMockImplementation()!
+      invoke.mockImplementation(async (channel, ...args) => channel === 'kb:search'
+        ? new Promise(resolve => replies.set(args[1] as number, count => resolve(hits(count))))
+        : base(channel, ...args))
+      const limit = document.querySelector<HTMLSelectElement>('.stage-kb-topk')!
+      for (const value of limits) {
+        await act(async () => {
+          Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(limit, String(value))
+          limit.dispatchEvent(new Event('change', { bubbles: true }))
+        })
+      }
+      await vi.waitFor(() => expect([...replies.keys()]).toEqual(limits))
+    }
+    const findButton = () => [...document.querySelectorAll('button')].find(button => button.textContent === '查找')!
+    const reply = async (limit: number, count: number) => act(async () => replies.get(limit)!(count))
+
+    it('先改的那次晚到，不盖掉后改的结果', async () => {
+      await searchThenChange([5, 20])
+      await reply(20, 7)
+      await vi.waitFor(() => expect(document.body.textContent).toContain('找到 7 条'))
+      await reply(5, 5)
+      expect(document.body.textContent).toContain('找到 7 条')
+      expect(document.querySelector<HTMLSelectElement>('.stage-kb-topk')!.value).toBe('20')
+    })
+
+    it('先改的那次先到，后改的还在查：仍在查找中，查找按钮不可点', async () => {
+      await searchThenChange([5, 20])
+      await reply(5, 5)
+      expect(findButton().disabled).toBe(true)
+      await reply(20, 7)
+      await vi.waitFor(() => expect(document.body.textContent).toContain('找到 7 条'))
+      expect(findButton().disabled).toBe(false)
+    })
+  })
+
+  describe('查找还没返回时又有操作', () => {
+    let held: Map<string, (count: number) => void>
+    const hitsFor = (query: string, count: number) => Array.from({ length: count }, (_, index) => ({ text: `……${query}第 ${index + 1} 段……`, score: 0.5, fileName: '车站档案.md' }))
+    const holdSearches = () => {
+      held = new Map()
+      const base = invoke.getMockImplementation()!
+      invoke.mockImplementation(async (channel, ...args) => channel === 'kb:search'
+        ? new Promise(resolve => held.set(`${args[0]}|${args[1]}`, count => resolve(hitsFor(args[0] as string, count))))
+        : base(channel, ...args))
+    }
+    const submit = async (query: string) => {
+      await type(document.querySelector<HTMLInputElement>('form[role="search"] input')!, query)
+      await act(async () => document.querySelector<HTMLFormElement>('form[role="search"]')!.requestSubmit())
+    }
+    const results = () => [...document.querySelectorAll('[aria-label="查找结果"] li p')].map(node => node.textContent)
+
+    it('查 A 出结果后提交 B，B 还没回来时改「最多显示」：按 B 重查，最后显示的是 B 的结果', async () => {
+      await renderPage()
+      await submit('三号站台')
+      await vi.waitFor(() => expect(document.body.textContent).toContain('找到 2 条'))
+      holdSearches()
+      await submit('母亲的照片')
+      await vi.waitFor(() => expect([...held.keys()]).toEqual(['母亲的照片|10']))
+      const limit = document.querySelector<HTMLSelectElement>('.stage-kb-topk')!
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(limit, '20')
+        limit.dispatchEvent(new Event('change', { bubbles: true }))
+      })
+      await vi.waitFor(() => expect(held.size).toBe(2))
+      for (const [key, resolve] of held) await act(async () => resolve(key.endsWith('|20') ? 3 : 1))
+      await vi.waitFor(() => expect(document.body.textContent).toContain('找到 3 条'))
+      expect([...held.keys()]).toEqual(['母亲的照片|10', '母亲的照片|20'])
+      expect(results()).toEqual(['……母亲的照片第 3 段……', '……母亲的照片第 2 段……', '……母亲的照片第 1 段……'])
+    })
+
+    it('查找还没返回时点清除：结果不再冒出来，也不说没有找到', async () => {
+      await renderPage()
+      holdSearches()
+      await submit('三号站台')
+      await vi.waitFor(() => expect([...held.keys()]).toEqual(['三号站台|10']))
+      await click('清除查找')
+      await act(async () => held.get('三号站台|10')!(2))
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)) })
+      expect(results()).toEqual([])
+      expect(document.body.textContent).not.toContain('找到 2 条')
+      expect(document.body.textContent).not.toContain('没有找到相关的资料')
+    })
+  })
+
   it('定稿章节按定稿登记分架：有项目副本也不进「我导入的」，旧版无副本的导入资料不算定稿', async () => {
     await renderPage()
     expect(button(/我导入的 3/)).toBeTruthy()
@@ -461,6 +612,84 @@ describe('知识库', () => {
     expect(invoke.mock.calls.map(([channel]) => channel)).not.toContain('kb:clear-all')
     await click('清空知识库')
     await vi.waitFor(() => expect(invoke.mock.calls.map(([channel]) => channel)).toContain('kb:clear-all'))
+  })
+
+  it('查找之后清空知识库，或查找出错：不说「没有找到相关的资料」', async () => {
+    vi.spyOn(toast, 'error').mockImplementation(() => undefined)
+    await renderPage()
+    await type(document.querySelector<HTMLInputElement>('form[role="search"] input')!, '三号站台')
+    await act(async () => document.querySelector<HTMLFormElement>('form[role="search"]')!.requestSubmit())
+    await vi.waitFor(() => expect(document.body.textContent).toContain('找到 2 条'))
+    await click('清空知识库…')
+    await click('清空知识库')
+    await vi.waitFor(() => expect(document.body.textContent).not.toContain('找到 2 条'))
+    expect(document.body.textContent).not.toContain('没有找到相关的资料。')
+
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel, ...args) => channel === 'kb:search' ? Promise.reject(new Error('检索服务不可用')) : base(channel, ...args))
+    await act(async () => document.querySelector<HTMLFormElement>('form[role="search"]')!.requestSubmit())
+    await vi.waitFor(() => expect(toast.error).toHaveBeenCalled())
+    expect(document.body.textContent).not.toContain('没有找到相关的资料。')
+  })
+
+  it('读资料的项目副本失败：提示后不停在正在读取，再点同一份会重读', async () => {
+    const error = vi.spyOn(toast, 'error').mockImplementation(() => undefined)
+    const base = invoke.getMockImplementation()!
+    let failing = true
+    invoke.mockImplementation(async (channel, ...args) => channel === 'kb:read-document-copy' && failing ? Promise.reject(new Error('磁盘忙')) : base(channel, ...args))
+    await renderPage()
+    await click(/车站档案/)
+    await vi.waitFor(() => expect(error).toHaveBeenCalled())
+    expect(document.body.textContent).not.toContain('正在读取…')
+    failing = false
+    await click(/车站档案/)
+    await vi.waitFor(() => expect(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="项目副本内容"]')?.value).toBe(copies.station))
+  })
+
+  it('设置里保存或删除检索模型后，后台挂着的知识库页随之重新检查索引', async () => {
+    await renderPage()
+    await vi.waitFor(() => expect(document.body.textContent).toContain('有 4 段资料还不能按意思查找'))
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel, ...args) => channel === 'kb:get-vector-rebuild-status'
+      ? { embeddingConfigured: false, canRebuild: false, totalChunks: 9, vectorlessCount: 9, activeVectorDimension: 0 }
+      : base(channel, ...args))
+    await act(async () => useLLMStore.setState({ models: [], defaultEmbeddingModelId: null }))
+    await vi.waitFor(() => expect(document.body.textContent).not.toContain('还不能按意思查找'))
+  })
+
+  it('检索模型连改两次、两次索引检查乱序返回：先改的那次晚到，不把过时的提示写回来', async () => {
+    await renderPage()
+    await vi.waitFor(() => expect(document.body.textContent).toContain('有 4 段资料还不能按意思查找'))
+    const base = invoke.getMockImplementation()!
+    const answers = [
+      { embeddingConfigured: true, canRebuild: true, totalChunks: 9, vectorlessCount: 2, activeVectorDimension: 0 },
+      { embeddingConfigured: false, canRebuild: false, totalChunks: 9, vectorlessCount: 9, activeVectorDimension: 0 },
+    ]
+    const releases: (() => void)[] = []
+    invoke.mockImplementation(async (channel, ...args) => {
+      if (channel !== 'kb:get-vector-rebuild-status') return base(channel, ...args)
+      const answer = answers[releases.length]
+      await new Promise<void>(resolve => releases.push(resolve))
+      return answer
+    })
+    await act(async () => useLLMStore.setState({ models: [] }))
+    await act(async () => useLLMStore.setState({ models: [] }))
+    await vi.waitFor(() => expect(releases).toHaveLength(2))
+    await act(async () => releases[1]())
+    await vi.waitFor(() => expect(document.body.textContent).not.toContain('还不能按意思查找'))
+    await act(async () => releases[0]())
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)) })
+    expect(document.body.textContent).not.toContain('有 2 段资料还不能按意思查找')
+  })
+
+  it('打开知识库页只读一次索引状态；点「刷新资料」再读一次', async () => {
+    const statusReads = () => invoke.mock.calls.filter(([channel]) => channel === 'kb:get-vector-rebuild-status').length
+    await renderPage()
+    await vi.waitFor(() => expect(document.body.textContent).toContain('有 4 段资料还不能按意思查找'))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)) })
+    expect(statusReads()).toBe(1)
+    await click('刷新资料')
+    await vi.waitFor(() => expect(statusReads()).toBe(2))
   })
 
   it('知识库页没有重建索引；它在设置的检索模型页里', async () => {

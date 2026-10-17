@@ -167,6 +167,31 @@ describe('书房', () => {
     expect(useProjectStore.getState().openProject).toHaveBeenCalledWith(ISLAND.path)
   })
 
+  const overviewOf = (name: string) => host!.querySelector<HTMLElement>(`[aria-label="《${name}》概览"]`)
+
+  it('预览别的书后回到当前作品，概览重新显示当前作品，不停在正在读取', async () => {
+    openCurrent()
+    useProjectStore.setState({ recentProjects: [LIGHTHOUSE, ISLAND] })
+    await mount()
+    await vi.waitFor(() => expect(overviewOf('灯塔')?.textContent).toContain('守塔人把灯又擦了一遍。'))
+    await click(button('预览《雾岛》'))
+    await vi.waitFor(() => expect(overviewOf('雾岛')?.getAttribute('aria-busy')).toBe('false'))
+    await click(button('回到《灯塔》'))
+    await vi.waitFor(() => expect(overviewOf('灯塔')?.textContent).toContain('守塔人把灯又擦了一遍。'))
+    expect(overviewOf('灯塔')?.getAttribute('aria-busy')).toBe('false')
+  })
+
+  it('正在预览的书被移出最近项目：概览回到当前作品，不把那本书的统计写在当前作品名下', async () => {
+    openCurrent()
+    useProjectStore.setState({ recentProjects: [LIGHTHOUSE, ISLAND] })
+    await mount()
+    await click(button('预览《雾岛》'))
+    await vi.waitFor(() => expect(overviewOf('雾岛')?.getAttribute('aria-busy')).toBe('false'))
+    await act(async () => useProjectStore.setState({ recentProjects: [LIGHTHOUSE] }))
+    await vi.waitFor(() => expect(overviewOf('灯塔')?.textContent).toContain('守塔人把灯又擦了一遍。'))
+    expect(overviewOf('雾岛')).toBeNull()
+  })
+
   it('设定必填齐了的书，预览里设定是完成，与打开后一致', async () => {
     const base = invoke.getMockImplementation()!
     invoke.mockImplementation(async (channel: string, ...args: unknown[]) => channel === 'project:peek-overview' ? { ...READY, setupReady: true } : base(channel, ...args))
@@ -259,5 +284,28 @@ describe('书房', () => {
 
     await click(button('继续写作 · 架构'))
     expect(useLayoutStore.getState().sidebarView).not.toBe('home')
+  })
+
+  it('几章都在写时「继续写作」指向最后一章在写的；只有空稿的章不算开始', async () => {
+    openCurrent()
+    useProjectStore.setState({ recentProjects: [LIGHTHOUSE] })
+    await mount()
+    const session = { projectId: 'lighthouse', leaseId: 'lease-1', projectPath: LIGHTHOUSE.path }
+    const draft = (chapterNumber: number, wordCount: number) => [{ id: chapterNumber * 10, chapterNumber, version: 1, status: 'draft', wordCount,
+      createdAt: '2026-10-13 20:00:00', updatedAt: '2026-10-13 20:00:00', source: 'write', filePath: `ai-novel://draft/${chapterNumber * 10}`, fileName: 'draft_v1.md' }]
+    const architecture = { premise: true, characters: true, worldbuilding: true, synopsis: false }
+    const primary = () => [...host!.querySelectorAll('.pi-btn--primary')].map(element => element.textContent)
+
+    await act(async () => {
+      useStageStore.setState({ work: { session, architecture, blueprints: [1, 2, 3].map(chapterNumber => ({ chapterNumber, title: `第${chapterNumber}章` })) }, spineFacts: session })
+      useDraftStore.setState({ draftsByChapter: { 1: draft(1, 1800), 2: draft(2, 2400), 3: draft(3, 0) } as never, dataProjectSession: session, loading: false })
+    })
+    expect(primary()).toEqual(['继续写作 · 第 2 章 · 待审稿'])
+
+    await act(async () => {
+      useStageStore.setState({ work: { session, architecture, blueprints: [] } })
+      useDraftStore.setState({ draftsByChapter: { 1: draft(1, 0) } as never })
+    })
+    expect(primary()).toEqual(['继续写作 · 架构'])
   })
 })

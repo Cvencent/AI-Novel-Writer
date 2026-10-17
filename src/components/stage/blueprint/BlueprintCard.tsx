@@ -2,11 +2,13 @@ import { useId, useState, type KeyboardEvent } from 'react'
 import { MoreHorizontal, X } from 'lucide-react'
 import type { ChapterBlueprint } from '../../../services/workflows/directory-workflow'
 import { chapterRoleOptions, chapterRoleSelectValue } from '../../../shared/chapter-role'
+import { sqliteTime } from '../../../shared/sqlite-time'
 import type { ChapterRow } from '../../../stores/navigation/stage-progress'
 import { useLocaleStore } from '../../../stores/locale-store'
 import type { EditableChapterBlueprintField } from '../../editor/chapter-card-draft-ledger'
 import { Button } from '../../ui/Button'
 import { Menu } from '../../ui/Menu'
+import { isComposing } from '../shortcut-keys'
 import { CHAPTER_PHASE_TEXT, CHAPTER_RUNNING_TEXT } from '../stage-text'
 
 interface BlueprintCardProps {
@@ -30,12 +32,13 @@ export default function BlueprintCard({ blueprint, row, saving, onField, onSave,
   const number = blueprint.chapterNumber
 
   const addPeople = () => {
-    const names = person.split(/[,，、\s]+/u).map(name => name.trim()).filter(name => name && !blueprint.characters.includes(name))
+    const names = [...new Set(person.split(/[,，、\s]+/u).map(name => name.trim()))].filter(name => name && !blueprint.characters.includes(name))
     setPerson('')
     if (names.length > 0) onField('characters', [...blueprint.characters, ...names])
   }
 
   const onPersonKey = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (isComposing({ isComposing: event.nativeEvent.isComposing, keyCode: event.keyCode })) return
     if (event.key === 'Enter' || event.key === ',' || event.key === '，' || event.key === '、') {
       event.preventDefault()
       addPeople()
@@ -87,14 +90,15 @@ export default function BlueprintCard({ blueprint, row, saving, onField, onSave,
         <div className="stage-bp-field">
           <label htmlFor={ids.person}>{text('出场人物', 'Characters')}</label>
           <div className="stage-bp-people">
-            {blueprint.characters.map(name => (
-              <span key={name} className="stage-bp-person">
+            {/* 旧数据里可能有重名：按位置区分，移除只去掉点的那一个。 */}
+            {blueprint.characters.map((name, index) => (
+              <span key={`${index}:${name}`} className="stage-bp-person">
                 {name}
                 <Button
                   variant="icon"
                   size="sm"
                   aria-label={text(`移除 ${name}`, `Remove ${name}`)}
-                  onClick={() => onField('characters', blueprint.characters.filter(item => item !== name))}
+                  onClick={() => onField('characters', blueprint.characters.filter((_, at) => at !== index))}
                 >
                   <X size={12} aria-hidden />
                 </Button>
@@ -144,7 +148,7 @@ export default function BlueprintCard({ blueprint, row, saving, onField, onSave,
           <label htmlFor={ids.notes}>
             {text('章节要点', 'Chapter notes')}{' '}
             <em>{blueprint.notesUpdatedAt
-              ? text(`定稿后自动生成 · ${new Date(blueprint.notesUpdatedAt).toLocaleDateString(locale)}`, `Generated after finalization · ${new Date(blueprint.notesUpdatedAt).toLocaleDateString(locale)}`)
+              ? text(`定稿后自动生成 · ${sqliteTime(blueprint.notesUpdatedAt).toLocaleDateString(locale)}`, `Generated after finalization · ${sqliteTime(blueprint.notesUpdatedAt).toLocaleDateString(locale)}`)
               : text('定稿后自动生成，也可以先手写给 AI 参考', 'Generated after finalization; you can also write them first for reference')}</em>
           </label>
           <textarea id={ids.notes} className="stage-bp-ctl" rows={3} value={blueprint.notes || ''} onChange={event => onField('notes', event.target.value)} />

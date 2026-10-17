@@ -45,7 +45,8 @@ export function useBatchChapterForm({ isOpen, startChapterNumber, onClose }: Bat
   const defaultModelId = useLLMStore(s => s.defaultModelId)
   const startWorkflow = useWorkflowStore.getState().startWorkflow
   const addLog = useWorkflowStore.getState().addLog
-  const [chapterCount, setChapterCount] = useState(1)
+  // 允许暂时为空：清空后重新输入时不被立刻填回 1；失焦时与开始写时再规整。
+  const [chapterCount, setChapterCount] = useState<number | ''>(1)
   const [chapterWordsTarget, setChapterWordsTarget] = useState<number | ''>(() => (
     normalizeChapterWordsTarget(currentProject?.novelConfig.wordsPerChapter)
   ))

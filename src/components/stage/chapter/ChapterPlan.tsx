@@ -25,7 +25,7 @@ export default function ChapterPlan({ tab, chapterNumber, projectKey }: { tab: E
   const locale = useLocaleStore(s => s.locale)
   const focus = useStageStore(s => s.focus)
   const wordsPerChapter = useProjectStore(s => s.currentProject?.novelConfig.wordsPerChapter)
-  const blueprint = useChapterBlueprint(chapterNumber, projectKey)
+  const { blueprint, failed: blueprintFailed, reload: reloadBlueprint } = useChapterBlueprint(chapterNumber, projectKey)
   const { chapters } = useStageView()
   const row = chapters.find(candidate => candidate.number === chapterNumber)
   const draft = row?.draft ?? null
@@ -79,6 +79,15 @@ export default function ChapterPlan({ tab, chapterNumber, projectKey }: { tab: E
                 title={text('正在写这一章', 'Writing this chapter')}
                 actions={<Button variant="secondary" size="sm" onClick={() => navigate({ kind: 'run', facet: 'output' })}>{text('查看运行', 'Open run')}</Button>}
               />
+            )}
+            {blueprintFailed && (
+              <Notice
+                tone="warn"
+                title={text('读取本章蓝图失败', 'Could not read this chapter’s blueprint')}
+                actions={<Button variant="secondary" size="sm" onClick={reloadBlueprint}>{text('重新读取', 'Read again')}</Button>}
+              >
+                {text('写作此章按本章蓝图写，读到之后才能开始。', 'Writing follows this chapter’s blueprint, so it can start once the blueprint is read.')}
+              </Notice>
             )}
             {blueprint === null && (
               <Notice

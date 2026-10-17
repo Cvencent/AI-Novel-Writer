@@ -49,7 +49,6 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
   const [pendingDocId, setPendingDocId] = useState<string | null>(null)
   const [clearOpen, setClearOpen] = useState(false)
   const [extraction, setExtraction] = useState<PendingExtraction | null>(null)
-  const [searchedQuery, setSearchedQuery] = useState('')
   const saveRef = useRef(kb.saveDocument)
   useEffect(() => { saveRef.current = kb.saveDocument })
   // 与正文编辑器一样，注册在页面卸载后仍保留，关标签时由编辑器仓库移除。
@@ -61,12 +60,17 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
   const chapters = useMemo(() => documents.filter(document => !isImportedDocument(document))
     .sort((left, right) => (left.finalizedChapter ?? 0) - (right.finalizedChapter ?? 0)), [documents])
   const listed = shelf === 'imported' ? imported : chapters
+  const emptyShelf = shelf === 'imported'
+    ? text('还没有导入资料。', 'No material imported yet.')
+    : text('定稿后，章节会自动收进这里。', 'Chapters are added here automatically once finalized.')
   const selected = documents.find(document => document.id === kb.selectedDocId) ?? null
   const selectedImported = selected !== null && isImportedDocument(selected)
   const pendingName = documents.find(document => document.id === pendingDocId)
   const hasMeaningSearch = stats.vectorDimension > 0
   const vectorless = index.status?.embeddingConfigured ? index.status.vectorlessCount : 0
   const loadError = kb.loadError || index.statusError
+  // 最近一次读资料列表失败时，空列表与计数都不能当真。
+  const documentsKnown = kb.documentsLoaded && !kb.loadError
 
   const pick = (docId: string) => {
     if (docId === kb.selectedDocId) return
@@ -77,14 +81,12 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
   const runSearch = (event: FormEvent) => {
     event.preventDefault()
     if (!kb.searchQuery.trim()) return
-    setSearchedQuery(kb.searchQuery)
     void kb.search()
   }
 
   const clearSearch = () => {
     kb.setSearchQuery('')
-    kb.setSearchResults([])
-    setSearchedQuery('')
+    kb.clearResults()
   }
 
   const startImport = () => void kb.importPlanningMaterials(model => new Promise<boolean>(resolve => setExtraction({ model, resolve })))
@@ -114,8 +116,8 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
             value={shelf}
             onChange={setShelf}
             options={[
-              { value: 'imported', label: text(`我导入的 ${imported.length}`, `Imported ${imported.length}`) },
-              { value: 'chapters', label: text(`定稿章节 ${chapters.length}`, `Final chapters ${chapters.length}`) },
+              { value: 'imported', label: documentsKnown ? text(`我导入的 ${imported.length}`, `Imported ${imported.length}`) : text('我导入的', 'Imported') },
+              { value: 'chapters', label: documentsKnown ? text(`定稿章节 ${chapters.length}`, `Final chapters ${chapters.length}`) : text('定稿章节', 'Final chapters') },
             ]}
           />
           <ul className="stage-kb-list">
@@ -132,10 +134,8 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
                 </button>
               </li>
             ))}
-            {listed.length === 0 && (
-              <li className="stage-kb-help">{shelf === 'imported'
-                ? text('还没有导入资料。', 'No material imported yet.')
-                : text('定稿后，章节会自动收进这里。', 'Chapters are added here automatically once finalized.')}</li>
+            {listed.length === 0 && !kb.loadError && (
+              <li className="stage-kb-help">{kb.documentsLoaded ? emptyShelf : text('正在读取…', 'Loading…')}</li>
             )}
           </ul>
           <div className="stage-kb-danger">
@@ -149,7 +149,9 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
         <section className="stage-kb-col stage-kb-reader" aria-label={text('资料原文', 'Material text')}>
           {loadError && <Notice tone="danger" title={text('读取知识库失败', 'Could not read the knowledge base')}>{loadError}</Notice>}
           {!selected ? (
-            documents.length === 0 ? (
+            !kb.documentsLoaded ? <p className="stage-kb-help stage-kb-hint" role="status">{text('正在读取资料…', 'Loading materials…')}</p>
+            : kb.loadError ? null
+            : documents.length === 0 ? (
               <EmptyState
                 icon={<BookOpen />}
                 heading={text('知识库里还没有资料', 'No material yet')}
@@ -243,20 +245,20 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
               <span>{text(`找到 ${searchResults.length} 条`, `${searchResults.length} found`)}</span>
               <label>
                 {text('最多显示', 'Show up to')}
-                <select className="pi-input stage-kb-topk" value={kb.topK} onChange={event => kb.setTopK(Number(event.target.value))}>
+                <select className="pi-input stage-kb-topk" value={kb.topK} onChange={event => kb.changeLimit(Number(event.target.value))}>
                   {TOP_K_OPTIONS.map(value => <option key={value} value={value}>{text(`${value} 条`, `${value}`)}</option>)}
                 </select>
               </label>
             </div>
           )}
-          {searchResults.length === 0 && searchedQuery && !kb.searching && (
+          {searchResults.length === 0 && kb.searchedQuery && !kb.searching && (
             <p className="stage-kb-help">{text('没有找到相关的资料。', 'Nothing related was found.')}</p>
           )}
           <ol className="stage-kb-results" aria-label={text('查找结果', 'Search results')}>
             {[...searchResults].reverse().map((result, position) => (
               <li key={position} className="stage-kb-result">
                 <div className="stage-kb-result-source"><FileText size={12} aria-hidden="true" />{result.fileName.replace(/\.[^.]+$/, '')}</div>
-                <p>{highlight(result.text, searchedQuery)}</p>
+                <p>{highlight(result.text, kb.searchedQuery)}</p>
               </li>
             ))}
           </ol>

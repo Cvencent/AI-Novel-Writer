@@ -163,6 +163,8 @@ export function stageNavigate(intent: NavigationIntent): void {
 
 function arrive(intent: Exclude<NavigationIntent, { kind: 'settings' }>): void {
   enterWork()
+  // 去别的阶段或资料页是作者新的选择：还在读正文的那一章读完后不再抢回标签。
+  if ((intent.kind === 'stage' && intent.stage) || intent.kind === 'resource') openChapterRequest++
   switch (intent.kind) {
     case 'stage':
       if (!intent.stage) {

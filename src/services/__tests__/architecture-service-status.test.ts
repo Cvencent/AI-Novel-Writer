@@ -60,10 +60,11 @@ describe('流程脊的架构四节是否已确认：与架构页徽标同一判�
     expect((await checkArchConfirmed(session)).synopsis).toBe(true)
   })
 
-  it('正文里留着分批标记、但作者在末尾补写过（主进程已不能紧接续写）：按已确认算', async () => {
+  it('正文里留着分批标记、但作者在末尾补写过（主进程已不能紧接续写）：未确认，按接不上续写算', async () => {
     synopsis = `${partialOutline}\n\n作者补的一句。`
     partial = batchCheckpoint
-    expect((await checkArchConfirmed(session)).synopsis).toBe(true)
+    expect(outlineProgress(synopsis, partial, 'zh-CN', 24)).toEqual({ kind: 'unresumable' })
+    expect((await checkArchConfirmed(session)).synopsis).toBe(false)
   })
 
   it('分批写到第 16 章后重写第 1–5 章：检查点记成本批终章第 5 章，大纲仍按正式大纲算写到第 16 章', async () => {

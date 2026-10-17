@@ -53,7 +53,7 @@ import { readPortableRuntimeFreeze } from './portable-runtime-freeze'
 import { readLegacyRosterSource, adoptLegacyCards } from './legacy-roster-source'
 import { buildLegacyRosterJsonRepairTask, buildLegacyRosterReplacementTask, parseLegacyRosterJson } from '../../src/shared/legacy-roster-generation-pure'
 import { validateGraphGenerationInput, readGraphGenerationContext } from './graph-generation-source'
-import { planningTargetInstruction, parsePlanningTargetUnits, renderPlotOutlineRange, plotOutlineRecoveryDraft, validPlotOutlineAuthorPrefix, type PlotOutlineSource, type PlotOutlineProgress, type PlotOutlineRecovery, type PlotOutlineAuthorEditReceipt } from '../../src/shared/plot-outline-contract'
+import { planningTargetInstruction, parsePlanningTargetUnits, renderPlotOutlineRange, plotOutlineRecoveryDraft, plotOutlineSourceInvalid, validPlotOutlineAuthorPrefix, type PlotOutlineSource, type PlotOutlineProgress, type PlotOutlineRecovery, type PlotOutlineAuthorEditReceipt } from '../../src/shared/plot-outline-contract'
 import { ProjectCoreRepository, type ProjectCoreSynopsisExpected, type ProjectCoreSynopsisCommitRequest } from '../repositories/project-core-repository'
 const graphOperations = { plot: 'plot-tree-snapshot', plan: 'narrative-thread-plan-candidate', event: 'narrative-thread-event-candidate' } as const
 
@@ -634,6 +634,8 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     finalizations.assertMutable(run)
     graphs.assertMutable(run)
     legacyRosters.assertMutable(run)
+    const outline = repository.readPlotOutline(run.runId)
+    if (outline && plotOutlineSourceInvalid(outline)) throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
     const receipt = currentModelReceipt(run.binding)
     const next = deps.rebuildBinding(run.binding, receipt)
     const lease = deps.leases.begin(receipt.modelId)
@@ -722,6 +724,7 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     const base = { sourceHandle: handleOf(run), remainingRange, targetUnits: parsePlanningTargetUnits(target ? Number(target.text) : undefined) }
     const continued = repository.readPlanningContinuation(run.runId)
     if (continued) return { ...base, state: 'continued', nextHandle: continued.nextHandle }
+    if (outline && plotOutlineSourceInvalid(outline)) return { ...base, state: 'source-invalid' }
     if (projectGenerationInFlight()) return { ...base, state: 'in-flight' }
     let current = false
     try {
@@ -756,7 +759,8 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     let draft = plotOutlineRecoveryDraft(outline, latest?.text)
     let writeState: PlotOutlineRecovery['writeState'] = { kind: 'blocked', reason: 'source-changed' }
     try {
-      if (saved) {
+      if (plotOutlineSourceInvalid(outline)) writeState = { kind: 'blocked', reason: 'source-invalid' }
+      else if (saved) {
         const current = ProjectCoreRepository.get(deps.database)?.synopsis
         if (current !== undefined && textHash(current) === saved.synopsisHash && plotOutlineTargetCurrent(run, outline, current)) {
           draft = current
@@ -777,15 +781,17 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     if (!author || request.generationRunHandle || typeof request.synopsis !== 'string') throw new Error('GENERATION_PLOT_OUTLINE_AUTHOR_EDIT_INVALID')
     if (author.leaseEpoch !== deps.epoch) throw new Error('GENERATION_EPOCH_STALE')
     const run = requireRun(author.sourceHandle), outline = repository.readPlotOutline(run.runId)
-    if (!outline || !isDeepStrictEqual(request.expected, outline.sourceExpected)
-      || !validPlotOutlineAuthorPrefix(request.synopsis, outline, author.committedRange)) throw new Error('GENERATION_PLOT_OUTLINE_AUTHOR_EDIT_INVALID')
+    if (!outline || !isDeepStrictEqual(request.expected, outline.sourceExpected)) throw new Error('GENERATION_PLOT_OUTLINE_AUTHOR_EDIT_INVALID')
     const receipt = repository.plotOutlineAuthorEditReceipt(run.runId, author.operationId, author.committedRange, textHash(request.synopsis))
     const saved = repository.readPlotOutlineAuthorEdit(run.runId)
+    // 回执与正文哈希都对上的重试，写的就是当时校验过、已落库的那份；升级前存下的编辑不再按现行规则重判。
     if (saved) {
       if (!isDeepStrictEqual(saved, receipt)) throw new Error('GENERATION_PLOT_OUTLINE_AUTHOR_RECEIPT_CONFLICT')
       if (!plotOutlineTargetCurrent(run, outline, request.synopsis)) throw new Error('GENERATION_SOURCE_CHANGED')
       return { ...saved, idempotent: true }
     }
+    if (plotOutlineSourceInvalid(outline)) throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
+    if (!validPlotOutlineAuthorPrefix(request.synopsis, outline, author.committedRange)) throw new Error('GENERATION_PLOT_OUTLINE_AUTHOR_EDIT_INVALID')
     repository.assertPlotOutlineWritable(run.runId)
     if (projectGenerationInFlight()) throw new Error('GENERATION_PLOT_OUTLINE_AUTHOR_IN_FLIGHT')
     if (!compareGenerationSourceBindings(run.binding, deps.rebuildBinding(run.binding, currentModelReceipt(run.binding)))) throw new Error('GENERATION_SOURCE_CHANGED')
@@ -869,7 +875,8 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
       } } : manifest.operation === 'chapter-blueprint-directory' && continuation ? { blueprintRecovery: {
         sourceHandle: handleOf(run), leaseEpoch: deps.epoch, draft: viewOf(run).candidates?.at(-1)?.text ?? '',
         editRange: continuation.remainingRange, saved: blueprintSaved,
-        writeState: blueprintSaved ? 'author-saved' as const : continuation.state === 'save-prefix' ? 'ready' as const : continuation.state,
+        // source-invalid 只出现在情节大纲任务上
+        writeState: blueprintSaved ? 'author-saved' as const : continuation.state === 'save-prefix' ? 'ready' as const : continuation.state as Exclude<PlanningContinuation['state'], 'save-prefix' | 'source-invalid'>,
       } } : {}),
       authorInputs: structuredClone(manifest.authorInputs as GenerationAuthorInput[] ?? []),
       selectedDraftIds: structuredClone(manifest.selectedDraftIds as number[] ?? []), selectedFinalizedDraftIds: structuredClone(manifest.selectedFinalizedDraftIds as number[] ?? []),

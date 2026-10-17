@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { getVectorRebuildPresentation } from '../../pages/knowledge-rebuild-presentation'
@@ -13,11 +12,6 @@ export default function KnowledgeIndexSection() {
   const project = useProjectStore(s => s.currentProject)
   const { status, statusError, backfilling, loadStatus, backfill } = useKnowledgeIndex()
   const presentation = getVectorRebuildPresentation(status)
-
-  useEffect(() => {
-    void loadStatus()
-  }, [loadStatus])
-
   const description = !project
     ? text('打开一部作品后，可以在这里检查它的检索索引。', 'Open a book to check its search index here.')
     : !presentation

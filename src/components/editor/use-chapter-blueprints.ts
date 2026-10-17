@@ -21,7 +21,7 @@ import { launchCreativeWorkflow } from '../../services/workflows/creative-workfl
 import { blueprintWritePrefill } from '../../services/workflows/chapter-write-launch'
 import { guardDirectoryGeneration } from '../../services/workflow-guards'
 import { toast } from '../ui/Toast'
-import { globalEventBus } from '../../shared/event-bus'
+import { globalEventBus, type EventPayloadMap } from '../../shared/event-bus'
 import { shouldRefreshBlueprints } from './blueprint-refresh'
 import { useLocaleStore } from '../../stores/locale-store'
 import { registerEditorExitSaveHandler, useEditorStore } from '../../stores/editor-store'
@@ -118,6 +118,7 @@ export function useChapterBlueprints({
   const [dataProjectSession, setDataProjectSession] = useState<ProjectSessionContext | null>(null)
   const dataProjectSessionRef = useRef<ProjectSessionContext | null>(null)
   const loadRequestGateRef = useRef(new LatestRequestGate())
+  const ownSaveRefresh = useRef<EventPayloadMap['REFRESH_RESOURCE'] | null>(null)
   const currentProjectSession = projectSessionContextFromProject(currentProject)
   const renderedProjectId = currentProjectSession?.projectId ?? null
   const renderedProjectLeaseId = currentProjectSession?.leaseId ?? null
@@ -350,7 +351,8 @@ export function useChapterBlueprints({
   useEffect(() => {
     return globalEventBus.on('REFRESH_RESOURCE', (payload) => {
       if (
-        sameProjectSessionContext(
+        payload !== ownSaveRefresh.current
+        && sameProjectSessionContext(
           payload.projectSession,
           currentProjectSessionForPath(projectKey),
         )
@@ -372,6 +374,16 @@ export function useChapterBlueprints({
     markChapterDirty(blueprintsRef.current.map((b, i) => (
       i === selectedIdx ? updateEditableChapterBlueprintField(b, key, value) : b
     )), selected.chapterNumber)
+  }
+
+  /**
+   * 保存后让流程脊的章节标题与 Ctrl P 的蓝图快照重读。本地已是保存后的内容，自己的监听认出这一条就不重读，
+   * 免得编辑器闪成加载态、丢焦点与滚动。
+   */
+  const announceSaved = (projectSession: ProjectSessionContext) => {
+    const payload: EventPayloadMap['REFRESH_RESOURCE'] = { resources: ['blueprints'], projectPath: projectKey, projectSession }
+    ownSaveRefresh.current = payload
+    globalEventBus.emit('REFRESH_RESOURCE', payload)
   }
 
   /** 保存当前章节蓝图 */
@@ -397,6 +409,7 @@ export function useChapterBlueprints({
       )
       persistProjectDraftState(projectKey, projectSession, current.blueprints, nextDirty)
       setSaveOutcome(nextDirty.size === 0 ? 'saved' : 'idle')
+      announceSaved(projectSession)
       addLog('info', text(`第 ${selected.chapterNumber} 章蓝图已保存`, `Saved blueprint for Chapter ${selected.chapterNumber}`))
     } catch (err) {
       if (!isCurrentProjectSession(projectSession)) return
@@ -433,6 +446,7 @@ export function useChapterBlueprints({
       )
       persistProjectDraftState(projectKey, projectSession, current.blueprints, nextDirty)
       setSaveOutcome(nextDirty.size === 0 ? 'saved' : 'idle')
+      announceSaved(projectSession)
       addLog('info', text(`已保存全部 ${saveInput.length} 章蓝图`, `Saved all ${saveInput.length} chapter blueprints`))
     } catch (err) {
       if (!isCurrentProjectSession(projectSession)) return
@@ -537,7 +551,7 @@ export function useChapterBlueprints({
       setSelectedChapter(chapter => chapter === target.chapterNumber ? neighbor : chapter)
     }
     globalEventBus.emit('REFRESH_RESOURCE', {
-      resources: ['blueprints', 'fileTree'],
+      resources: ['blueprints'],
       projectPath: projectKey,
       projectSession,
     })
@@ -569,7 +583,7 @@ export function useChapterBlueprints({
     persistProjectDraftState(projectKey, projectSession, next.blueprints, next.dirtyChapterNumbers)
     if (isCurrentProjectSession(projectSession)) setSelectedChapter(null)
     globalEventBus.emit('REFRESH_RESOURCE', {
-      resources: ['blueprints', 'fileTree'],
+      resources: ['blueprints'],
       projectPath: projectKey,
       projectSession,
     })

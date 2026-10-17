@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Copy, Lock, Trash2 } from 'lucide-react'
-import { llmCallTime, type LLMCallRecord } from '../../../services/stats-service'
+import type { LLMCallRecord } from '../../../services/stats-service'
+import { sqliteTime } from '../../../shared/sqlite-time'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
 import { copySafeDiagnostic, useModelCalls } from '../../run/use-model-calls'
@@ -39,7 +40,7 @@ function RunLog({ text }: { text: Text }) {
 
   useEffect(() => {
     if (follow && box.current) box.current.scrollTop = box.current.scrollHeight
-  }, [logs.length, follow])
+  }, [logs, follow])
 
   return (
     <section className="run-section" aria-labelledby={titleId}>
@@ -128,7 +129,7 @@ function CallRow({ call, text, onCopy }: { call: LLMCallRecord; text: Text; onCo
   const usage = (value: number | null) => value === null ? '—' : value.toLocaleString(locale)
   return (
     <tr>
-      <td className="run-table-num">{clockTime(llmCallTime(call.createdAt), locale)}</td>
+      <td className="run-table-num">{clockTime(sqliteTime(call.createdAt), locale)}</td>
       <td>{callPurpose(call.purpose, text)}</td>
       <td>{call.modelName || '—'}</td>
       <td className="run-table-num" data-align="end">{usage(call.promptTokens)}</td>

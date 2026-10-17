@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 
 import type { ProjectData } from '../../../../shared/ipc-channels'
 import { globalEventBus } from '../../../../shared/event-bus'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
+import { disposeProjectService, initProjectService } from '../../../../services/project-service'
 import type { ChapterBlueprint } from '../../../../services/workflows/directory-workflow'
 import { editorSaveHandler, useEditorStore } from '../../../../stores/editor-store'
 import { useLocaleStore } from '../../../../stores/locale-store'
@@ -192,6 +193,53 @@ describe('蓝图阶段', () => {
     await vi.waitFor(() => expect(calls('db:blueprint-upsert').map(call => call[1])).toMatchObject([{ chapterNumber: 1, title: '旧港潮汐' }]))
   })
 
+  it('保存此章、删除此章、清空蓝图之后项目树不重读目录：蓝图只在数据库里', async () => {
+    initProjectService()
+    try {
+      await renderPage()
+      await act(async () => page.getByRole('textbox', { name: '章节标题' }).fill('旧港潮汐'))
+      await act(async () => page.getByRole('button', { name: '保存此章' }).click())
+      await vi.waitFor(() => expect(calls('db:blueprint-upsert')).toHaveLength(1))
+      await act(async () => page.getByRole('button', { name: /^3\D/ }).click())
+      await act(async () => page.getByRole('button', { name: '第 3 章更多操作' }).click())
+      await act(async () => page.getByRole('group', { name: '危险' }).getByRole('menuitem', { name: '删除此章…' }).click())
+      await act(async () => page.getByRole('dialog', { name: '删除第 3 章蓝图？' }).getByRole('button', { name: '删除此章' }).click())
+      await vi.waitFor(() => expect(calls('db:blueprint-delete')).toHaveLength(1))
+      await act(async () => page.getByRole('button', { name: '更多蓝图操作' }).click())
+      await act(async () => page.getByRole('menuitem', { name: '清空全部蓝图…' }).click())
+      await act(async () => page.getByRole('dialog', { name: '清空全部蓝图？' }).getByRole('button', { name: '清空全部' }).click())
+      await vi.waitFor(() => expect(calls('db:blueprint-clear-all')).toHaveLength(1))
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)) })
+      expect(calls('fs:list-dir')).toEqual([])
+    } finally {
+      disposeProjectService()
+    }
+  })
+
+  it('保存此章与保存全部成功后通知流程脊、Ctrl P 重读蓝图；保存失败不通知', async () => {
+    const refreshes: string[][] = []
+    const off = globalEventBus.on('REFRESH_RESOURCE', ({ resources }) => { refreshes.push([...resources]) })
+    try {
+      await renderPage()
+      await act(async () => page.getByRole('textbox', { name: '章节标题' }).fill('旧港潮汐'))
+      await act(async () => page.getByRole('button', { name: '保存此章' }).click())
+      await vi.waitFor(() => expect(refreshes).toEqual([['blueprints']]))
+
+      const save = editorSaveHandler({ id: 'chapter-card-editor', type: 'chapter-card', projectKey: PROJECT_PATH })
+      await act(async () => { await save!() })
+      expect(refreshes).toEqual([['blueprints'], ['blueprints']])
+
+      const base = invoke.getMockImplementation() as (channel: string, ...args: unknown[]) => Promise<unknown>
+      invoke.mockImplementation(async (channel: string, ...args: unknown[]) => channel === 'db:blueprint-upsert'
+        ? { success: false, error: '磁盘已满' } : base(channel, ...args))
+      await act(async () => page.getByRole('button', { name: '保存此章' }).click())
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)) })
+      expect(refreshes).toHaveLength(2)
+    } finally {
+      off()
+    }
+  })
+
   it('保存此章与开始生成进行中时按钮带 aria-busy，结束后撤掉', async () => {
     await renderPage()
     const base = invoke.getMockImplementation() as (channel: string, ...args: unknown[]) => Promise<unknown>
@@ -226,6 +274,27 @@ describe('蓝图阶段', () => {
     await act(async () => { await save!() })
     const [[, saved]] = calls('db:blueprint-upsert-many')
     expect((saved as ChapterBlueprint[])[0].characters).toEqual(['林岚', '沈砺'])
+  })
+
+  it('出场人物重名：一次输入两遍只加一个；已有重名时移除一个只少一个', async () => {
+    stored = [{ ...blueprint(1, '旧港'), characters: ['林岚', '守塔人', '守塔人'] }, blueprint(2, '北堤')]
+    await renderPage()
+    await act(async () => page.getByRole('button', { name: '移除 守塔人' }).first().click())
+    await act(async () => page.getByLabelText('出场人物').fill('沈砺、沈砺'))
+    await act(async () => page.getByLabelText('出场人物').element().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+    const save = editorSaveHandler({ id: 'chapter-card-editor', type: 'chapter-card', projectKey: PROJECT_PATH })
+    await act(async () => { await save!() })
+    const [[, saved]] = calls('db:blueprint-upsert-many')
+    expect((saved as ChapterBlueprint[])[0].characters).toEqual(['林岚', '守塔人', '沈砺'])
+  })
+
+  it('输入法组字时按回车是选词，不把拼音当人物加进来', async () => {
+    await renderPage()
+    const input = page.getByLabelText('出场人物')
+    await act(async () => input.fill('shen'))
+    await act(async () => input.element().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true })))
+    expect((input.element() as HTMLInputElement).value).toBe('shen')
+    expect([...container!.querySelectorAll('button[aria-label^="移除 "]')].map(button => button.getAttribute('aria-label'))).toEqual(['移除 林岚', '移除 守塔人'])
   })
 
   it('生成蓝图选覆盖时先危险确认，取消后不启动，生成对话框回来且不当作错误', async () => {
@@ -293,6 +362,20 @@ describe('蓝图阶段', () => {
     await expect.element(dialog.getByRole('button', { name: '开始写 4 章' })).toBeVisible()
     await act(async () => dialog.getByRole('radio', { name: /自动定稿/ }).click())
     await expect.element(dialog.getByRole('button', { name: '继续确认自动定稿' })).toBeVisible()
+  })
+
+  it('「写几章」清空后重新输入：删掉 1 再输 3 得 3，不是 13；空着离开回到 1', async () => {
+    await renderPage()
+    await act(async () => page.getByRole('button', { name: '批量创作' }).click())
+    const count = page.getByRole('dialog', { name: '批量创作' }).getByLabelText(/写几章/)
+    const input = count.element() as HTMLInputElement
+    await act(async () => input.focus())
+    await userEvent.keyboard('{End}{Backspace}')
+    await userEvent.keyboard('3')
+    expect(input.value).toBe('3')
+    await userEvent.keyboard('{Backspace}')
+    await act(async () => input.blur())
+    expect(input.value).toBe('1')
   })
 
   it('更多蓝图操作里新建章节：新章接在权威下一章已有蓝图之后并被选中', async () => {

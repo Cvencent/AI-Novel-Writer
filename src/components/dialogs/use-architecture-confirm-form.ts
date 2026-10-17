@@ -110,19 +110,35 @@ export function useArchitectureConfirmForm({
   const from = Number(synopsisFrom)
   const to = Number(synopsisTo)
 
+  const rangeFilled = Boolean(checked.synopsis && synopsisFrom.trim() && synopsisTo.trim()
+    && Number.isSafeInteger(from) && Number.isSafeInteger(to) && from >= 1 && to >= from)
+  // 超过单批上限或全书章数的范围，主进程开跑前就会拒绝，对话框里直接判无效。
+  const outOfBounds = rangeFilled && (to - from + 1 > PLANNING_ACTION_CHAPTER_LIMIT || (totalChapters > 0 && to > totalChapters))
+  const boundsIssue = text(
+    `情节大纲范围无效。请选择第 1–${totalChapters} 章内连续的 1–${PLANNING_ACTION_CHAPTER_LIMIT} 章。`,
+    `Invalid plot-outline range. Select 1-${PLANNING_ACTION_CHAPTER_LIMIT} consecutive chapters within chapters 1-${totalChapters}.`,
+  )
+
   /** 这一批交给主进程会怎样；范围本身不完整或越界时为 null，由提交时的范围校验报错。 */
-  const synopsisEffect: PlotOutlineRangeEffect | null = checked.synopsis && synopsisFrom.trim() && synopsisTo.trim()
-    && Number.isSafeInteger(from) && Number.isSafeInteger(to) && from >= 1 && to >= from
+  const synopsisEffect: PlotOutlineRangeEffect | null = rangeFilled && !outOfBounds
     ? plotOutlineRangeEffect(synopsisSource, { from, to })
     : null
 
-  const synopsisRangeIssue = synopsisEffect?.kind !== 'invalid' ? null
-    : !synopsisEffect.hasEntries
-      ? text('已有大纲没有按章的标题，只能从第 1 章起整份重写。', 'The existing outline has no chapter headings, so it can only be rewritten whole from chapter 1.')
-      : from > synopsisEffect.lastChapter + 1
-        ? text(`已有大纲写到第 ${synopsisEffect.lastChapter} 章，不能跳到第 ${from} 章开始。请从第 ${synopsisEffect.lastChapter + 1} 章续写，或从第 1–${synopsisEffect.lastChapter} 章中的某一章起重写。`,
-          `The outline reaches chapter ${synopsisEffect.lastChapter}, so it cannot skip to chapter ${from}. Continue from chapter ${synopsisEffect.lastChapter + 1}, or rewrite from a chapter between 1 and ${synopsisEffect.lastChapter}.`)
-        : text('这个范围会切开已有的章节条目，或已有大纲末尾的分批说明与正文对不上，后台会拒绝。请换一个起止章。', 'This range splits an existing chapter entry, or the batch note at the end of the outline does not match its text, so it would be rejected. Choose other chapters.')
+  /** 选定范围为什么会被主进程拒绝；能开跑时为 null。 */
+  const synopsisRangeIssueText = (): string | null => {
+    if (outOfBounds) return boundsIssue
+    if (synopsisEffect?.kind !== 'invalid') return null
+    if (!synopsisSource.synopsis.trim()) return text('还没有情节大纲，请从第 1 章起生成。', 'There is no plot outline yet. Start from chapter 1.')
+    if (!synopsisEffect.hasEntries) return text('已有大纲没有按章的标题，只能从第 1 章起整份重写。', 'The existing outline has no chapter headings, so it can only be rewritten whole from chapter 1.')
+    const { orderIssue, lastChapter } = synopsisEffect
+    if (orderIssue?.kind === 'duplicate') return text(`已有大纲里第 ${orderIssue.chapter} 章出现了不止一次，按范围重写会打乱或丢掉其他章，后台会拒绝。请先删掉或改正重复的那一章。`,
+      `Chapter ${orderIssue.chapter} appears more than once in the existing outline, so rewriting a range would scramble or drop other chapters and would be rejected. Remove or correct the duplicate first.`)
+    if (orderIssue) return text('已有大纲的章节没有按章号顺序排列，按范围重写会打乱或丢掉其他章，后台会拒绝。请先把大纲里的章节按章号排好。', 'The chapters in the existing outline are out of order, so rewriting a range would scramble or drop other chapters and would be rejected. Put the outline chapters in order first.')
+    if (from > lastChapter + 1) return text(`已有大纲写到第 ${lastChapter} 章，不能跳到第 ${from} 章开始。请从第 ${lastChapter + 1} 章续写，或从第 1–${lastChapter} 章中的某一章起重写。`,
+      `The outline reaches chapter ${lastChapter}, so it cannot skip to chapter ${from}. Continue from chapter ${lastChapter + 1}, or rewrite from a chapter between 1 and ${lastChapter}.`)
+    return text('这个范围会切开已有的章节条目，或已有大纲末尾的分批说明与正文对不上，后台会拒绝。请换一个起止章。', 'This range splits an existing chapter entry, or the batch note at the end of the outline does not match its text, so it would be rejected. Choose other chapters.')
+  }
+  const synopsisRangeIssue = synopsisRangeIssueText()
 
   /** 选定范围的说明：覆盖哪几章、哪几章原样保留；续写接在哪一章之后。 */
   const synopsisEffectNote = (): string | null => {
@@ -143,7 +159,7 @@ export function useArchitectureConfirmForm({
   const stepMark = (key: ArchStepKey): ArchStepMark => {
     if (!checked[key]) return archStatus[key] ? 'keep' : 'new'
     if (key !== 'synopsis') return archStatus[key] ? 'overwrite' : 'new'
-    if (!synopsisEffect) return archStatus.synopsis ? 'overwrite' : 'new'
+    if (!synopsisEffect) return outOfBounds ? 'invalid' : archStatus.synopsis ? 'overwrite' : 'new'
     return synopsisEffect.kind
   }
 
@@ -156,10 +172,10 @@ export function useArchitectureConfirmForm({
     return text(...MARK_TEXT[mark])
   }
 
-  /** 状态文字：已确认；有内容但未确认（大纲没写完或被打断、名单待修复）为未完成；没有内容为待生成。 */
+  /** 状态文字：已确认；有内容但未确认（大纲没写完或被打断、名单待修复）为不完整，与架构页徽标同一叫法；没有内容为待生成。 */
   const statusLabel = (key: ArchStepKey): string => confirmed[key]
     ? text('已确认', 'Confirmed')
-    : archStatus[key] ? text('未完成', 'Unfinished') : text('待生成', 'Not started')
+    : archStatus[key] ? text('不完整', 'Incomplete') : text('待生成', 'Not started')
 
   const resolveSynopsisRange = (): { ok: true; range?: { from: number; to: number } } | { ok: false; message?: string } => {
     if (!checked.synopsis) return { ok: true }
@@ -183,10 +199,7 @@ export function useArchitectureConfirmForm({
       // 范围合法性（超出总章数或起大于止）
       const resolution = resolveSynopsisRange()
       if (!resolution.ok) {
-        setGuardError(resolution.message ?? text(
-          `情节大纲范围无效。请选择第 1–${totalChapters} 章内连续的 1–${PLANNING_ACTION_CHAPTER_LIMIT} 章。`,
-          `Invalid plot-outline range. Select 1-${PLANNING_ACTION_CHAPTER_LIMIT} consecutive chapters within chapters 1-${totalChapters}.`,
-        ))
+        setGuardError(resolution.message ?? boundsIssue)
         return
       }
 

@@ -18,7 +18,7 @@ export default function VersionHistory({ projectKey }: { projectKey: string }) {
     if (!comparison || chapterNumber === null) return
     const currentContent = comparison.current === null
       ? text('（章节尚无内容）', '(Chapter has no content yet)')
-      : (comparison.current || text('（内容被错误截断）', '(Content was truncated unexpectedly)'))
+      : (comparison.current || text('（当前稿正文为空）', '(The current draft is empty)'))
 
     useEditorStore.getState().openFile({
       id: `diff-version-${versionId}`,

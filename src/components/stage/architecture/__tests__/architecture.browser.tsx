@@ -8,7 +8,7 @@ import '../../../../styles/paper-ink/index.css'
 import '../../stage.css'
 import type { ProjectData } from '../../../../shared/ipc-channels'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
-import { synopsisFactsFingerprint } from '../../../../shared/plot-outline-checkpoint'
+import { renderSynopsisDbText, synopsisFactsFingerprint } from '../../../../shared/plot-outline-checkpoint'
 import { PLOT_OUTLINE_PROTOCOL, renderPlotOutlineSynopsis } from '../../../../shared/plot-outline-contract'
 import { EMPTY_CARD, useCharacterStore } from '../../../../stores/character-store'
 import { useEditorStore } from '../../../../stores/editor-store'
@@ -230,6 +230,27 @@ describe('架构阶段', () => {
     expect(mark('synopsis')).toBe('续写')
   })
 
+  it.each([
+    ['检查点缺失', () => {
+      core = { ...core, synopsis: renderSynopsisDbText(outlineBody(1, 16), 'zh-CN', 24, { synopsis_incomplete: true }) }
+      partial = null
+    }],
+    ['末尾多一个换行', () => {
+      seedPartialOutline()
+      core = { ...core, synopsis: `${core.synopsis as string}\n` }
+    }],
+  ])('大纲带分批尾标但%s、接不上续写：不算已确认，页头 3 / 4，下一步不可点', async (_case, seed) => {
+    seed()
+    core = { ...core, worldbuilding: '世界观。'.repeat(30) }
+    rosterStatus = 'ready'
+    await render()
+    const outline = host!.querySelector('[data-section="synopsis"]')!
+    expect(outline.querySelector('.arch-badge')?.textContent).toBe('不完整')
+    expect(outline.textContent).toContain('大纲末尾还留着分批生成的说明，但正文已和它对不上（可能手动改过）。')
+    expect(host!.querySelector('.arch-progress')?.textContent).toBe(' · 3 / 4 已确认')
+    expect(primary()).toBe('继续生成架构')
+  })
+
   it('续写入口只预选情节大纲：先在别的节打开「AI 重新生成此节」再取消，不会把那一节带进续写', async () => {
     seedPartialOutline()
     await render()
@@ -301,6 +322,37 @@ describe('架构阶段', () => {
     await vi.waitFor(() => expect(launchedSteps()[0]).toContain('synopsis'))
   })
 
+  it('超过单批上限或全书章数的范围在对话框里直接标无效，提交不可点', async () => {
+    seedPartialOutline()
+    await render()
+    await openOutlineRegenerate()
+    const limitIssue = '情节大纲范围无效。请选择第 1–24 章内连续的 1–10 章。'
+
+    await range(1, 16)
+    expect(mark('synopsis')).toBe('范围无效')
+    expect(issue()).toBe(limitIssue)
+    expect(effect()).toBeNull()
+    expect(submit().disabled).toBe(true)
+
+    await range(17, 30)
+    expect(mark('synopsis')).toBe('范围无效')
+    expect(issue()).toBe(limitIssue)
+    expect(submit().disabled).toBe(true)
+
+    await range(7, 16)
+    expect(mark('synopsis')).toBe('将覆盖第 7–16 章')
+    expect(issue()).toBeNull()
+    expect(submit().disabled).toBe(false)
+  })
+
+  it('还没有大纲时把起始章改成 2：提示从第 1 章起，不说「已有大纲没有按章的标题」', async () => {
+    await render()
+    await click('继续生成架构')
+    await range(2, 4)
+    expect(issue()).toBe('还没有情节大纲，请从第 1 章起生成。')
+    expect(submit().disabled).toBe(true)
+  })
+
   it('大纲分批写满全书后仍可重写其中一段', async () => {
     const body = outlineBody(1, 24)
     core = { ...core, synopsis: renderPlotOutlineSynopsis(body, 24, OUTLINE_SOURCE) }
@@ -316,6 +368,67 @@ describe('架构阶段', () => {
     expect(mark('synopsis')).toBe('将覆盖第 1–5 章')
     expect(effect()).toBe('第 1–5 章按本次结果替换，第 6–24 章原样保留。')
     expect(submit().disabled).toBe(false)
+  })
+
+  it('作者调过章节顺序的大纲（1、5、2、3、4）选第 3–5 章：判无效并说明章节没按章号排，不承诺其余章原样保留', async () => {
+    const body = [1, 5, 2, 3, 4].map(n => outlineBody(n, n)).join('\n\n')
+    core = { ...core, synopsis: renderPlotOutlineSynopsis(body, 5, OUTLINE_SOURCE) }
+    await render()
+    await openOutlineRegenerate()
+    await range(3, 5)
+    expect(mark('synopsis')).toBe('范围无效')
+    expect(issue()).toBe('已有大纲的章节没有按章号顺序排列，按范围重写会打乱或丢掉其他章，后台会拒绝。请先把大纲里的章节按章号排好。')
+    expect(effect()).toBeNull()
+    expect(submit().disabled).toBe(true)
+  })
+
+  it('大纲里同一章出现两次（1、2、3、2）选第 4–5 章：说明重复的是第 2 章，而不是说没按章号排', async () => {
+    const body = [1, 2, 3, 2].map(n => outlineBody(n, n)).join('\n\n')
+    core = { ...core, synopsis: renderPlotOutlineSynopsis(body, 3, OUTLINE_SOURCE) }
+    await render()
+    await openOutlineRegenerate()
+    await range(4, 5)
+    expect(mark('synopsis')).toBe('范围无效')
+    expect(issue()).toBe('已有大纲里第 2 章出现了不止一次，按范围重写会打乱或丢掉其他章，后台会拒绝。请先删掉或改正重复的那一章。')
+    expect(submit().disabled).toBe(true)
+  })
+
+  const PROLOGUE = '## 第0章：序章\n守塔人听见第十三声钟。'
+
+  it('只有序章的作品生成第 1–2 章后：徽标部分完成 2 / 24，续写从第 3 章起、序章不算缺章', async () => {
+    const body = outlineBody(1, 2)
+    core = { ...core, synopsis: renderPlotOutlineSynopsis(`${PROLOGUE}\n\n${body}`, 2, OUTLINE_SOURCE) }
+    partial = {
+      synopsis_protocol: PLOT_OUTLINE_PROTOCOL, synopsis_result: body, synopsis_incomplete: false, synopsis_covered_to: 2, synopsis_range: { from: 1, to: 2 },
+      synopsis_facts_fingerprint: 'stored-inputs', synopsis_db_hash: synopsisFactsFingerprint([core.synopsis as string]),
+    }
+    filledSpine(['premise', 'synopsis'])
+    await render()
+    const outline = host!.querySelector('[data-section="synopsis"]')!
+    expect(outline.querySelector('.arch-badge')?.textContent).toBe('部分完成 · 2 / 24 章')
+
+    await click('续写第 3 章起')
+    expect(inputValue('本次生成范围的起始章')).toBe('3')
+    await range(3, 4)
+    expect(mark('synopsis')).toBe('续写')
+    expect(effect()).toBe('接在第 2 章之后写第 3–4 章，已有章节不动。')
+    expect(issue()).toBeNull()
+    await act(async () => submit().click())
+    await vi.waitFor(() => expect(launchedSteps()).toEqual([['synopsis']]))
+  })
+
+  it.each([
+    ['第 0 章出现两次（0、1、2、0）', [0, 1, 2, 0], '已有大纲里第 0 章出现了不止一次，按范围重写会打乱或丢掉其他章，后台会拒绝。请先删掉或改正重复的那一章。'],
+    ['第 0 章不在最前（1、0、2）', [1, 0, 2], '已有大纲的章节没有按章号顺序排列，按范围重写会打乱或丢掉其他章，后台会拒绝。请先把大纲里的章节按章号排好。'],
+  ])('%s选第 3–4 章：判无效并说明原因', async (_, order, expected) => {
+    const body = order.map(n => n === 0 ? PROLOGUE : outlineBody(n, n)).join('\n\n')
+    core = { ...core, synopsis: renderPlotOutlineSynopsis(body, 2, OUTLINE_SOURCE) }
+    await render()
+    await openOutlineRegenerate()
+    await range(3, 4)
+    expect(mark('synopsis')).toBe('范围无效')
+    expect(issue()).toBe(expected)
+    expect(submit().disabled).toBe(true)
   })
 
   it('有一批被打断时，范围仍按数据库里的正式大纲判定，不看检查点的进度', async () => {
@@ -350,7 +463,7 @@ describe('架构阶段', () => {
     expect(['premise', 'characters', 'worldbuilding', 'synopsis'].map(stepChecked)).toEqual([false, false, false, true])
     expect(inputValue('本次生成范围的起始章')).toBe('17')
     expect(inputValue('本次生成范围的结束章')).toBe('21')
-    expect(document.querySelector('[data-step="synopsis"] .arch-step-status')?.textContent).toBe('未完成')
+    expect(document.querySelector('[data-step="synopsis"] .arch-step-status')?.textContent).toBe('不完整')
     expect(mark('synopsis')).toBe('续写')
     await act(async () => submit().click())
     await vi.waitFor(() => expect(launchedSteps()).toEqual([['synopsis']]))

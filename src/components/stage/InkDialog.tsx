@@ -11,13 +11,15 @@ interface InkDialogProps {
   children?: ReactNode
   /** 底部按钮，主操作放最后。 */
   footer: ReactNode
+  /** 点对话框外面不关闭：两步之间高度会变的对话框，双击第二下可能落到外面。Esc 与按钮照常关闭。 */
+  keepOnOutsideClick?: boolean
 }
 
 /**
  * 新外壳里不涉及危险的对话框（新建作品、移除书架记录、更新拦截）。危险操作用 ui/DangerConfirm。
  * 与 DangerConfirm 一样 Portal 到最近的 .paper-ink 根，取到纸墨令牌与深色主题。
  */
-export function InkDialog({ open, onOpenChange, title, description, children, footer }: InkDialogProps) {
+export function InkDialog({ open, onOpenChange, title, description, children, footer, keepOnOutsideClick = false }: InkDialogProps) {
   const sentinelRef = useRef<HTMLSpanElement>(null)
   const root = usePaperInkRoot(sentinelRef)
   return (
@@ -26,7 +28,10 @@ export function InkDialog({ open, onOpenChange, title, description, children, fo
       {root !== undefined && (
         <DialogPrimitive.Portal container={root}>
           <DialogPrimitive.Overlay className="pi-scrim" />
-          <DialogPrimitive.Content className="pi-dialog stage-dialog" onPointerDownOutside={keepToastStackClickable} {...(description ? {} : { 'aria-describedby': undefined })}>
+          <DialogPrimitive.Content className="pi-dialog stage-dialog" onPointerDownOutside={event => {
+            keepToastStackClickable(event)
+            if (keepOnOutsideClick) event.preventDefault()
+          }} {...(description ? {} : { 'aria-describedby': undefined })}>
             <div className="pi-dialog-head">
               <DialogPrimitive.Title className="pi-dialog-title">{title}</DialogPrimitive.Title>
             </div>

@@ -7,7 +7,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import type { ModelProfile, ProjectData } from '../../../../shared/ipc-channels'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
 import { useAppearanceStore } from '../../../../stores/appearance-bootstrap'
-import { useEditorStore } from '../../../../stores/editor-store'
+import { registerEditorExitSaveHandler, useEditorStore } from '../../../../stores/editor-store'
 import { useLayoutStore } from '../../../../stores/layout-store'
 import { useLLMStore } from '../../../../stores/llm-store'
 import { navigate } from '../../../../stores/navigation/navigation-intents'
@@ -27,7 +27,7 @@ function snapshot<T>(store: StoreApi<T>): () => void {
   const state = store.getState()
   return () => store.setState(state, true)
 }
-const restores = [snapshot(useLayoutStore), snapshot(useLLMStore), snapshot(useThemeStore), snapshot(useAppearanceStore), snapshot(useProjectStore), snapshot(useEditorStore)]
+const restores = [snapshot(useLayoutStore), snapshot(useStageStore), snapshot(useLLMStore), snapshot(useThemeStore), snapshot(useAppearanceStore), snapshot(useProjectStore), snapshot(useEditorStore)]
 
 const MODEL = { id: 'flash', name: 'DeepSeek V4 Flash', provider: 'deepseek', protocol: 'openai', modelName: 'deepseek-v4-flash',
   apiKey: 'k', baseUrl: 'https://api.deepseek.com', temperature: 0.7, maxTokens: 4096, purposes: ['generation'] } as ModelProfile
@@ -36,8 +36,9 @@ const LOCAL = { ...MODEL, id: 'local', name: '本机 Ollama', provider: 'ollama'
 let root: Root | undefined
 let host: HTMLDivElement | undefined
 
+/** 与 StageShell 同样接线：外壳的快捷键先于设置页注册，沉浸写作读 stage-store。 */
 function Shortcuts({ library }: { library: boolean }) {
-  useStageShortcuts({ library, focus: false })
+  useStageShortcuts({ library, focus: useStageStore(s => s.focus) })
   return null
 }
 
@@ -126,6 +127,44 @@ describe('设置页', () => {
     expect(host!.querySelector('[aria-label="当前作品的检索索引"]')?.textContent).toContain('打开一部作品后，可以在这里检查它的检索索引。')
   })
 
+  it('同一页里配好检索模型后，索引区重新检查，出现补全按钮；删掉后又回到未配置', async () => {
+    const session = { projectId: '灯塔', projectPath: 'C:/novels/lighthouse', leaseId: '本次打开' }
+    let configured = false
+    win.aiNovelAPI!.invoke = async channel => channel === 'kb:get-vector-rebuild-status'
+      ? { embeddingConfigured: configured, canRebuild: configured, totalChunks: 9, vectorlessCount: 4, activeVectorDimension: 0 }
+      : channel === 'config:get' ? {} : undefined
+    useProjectStore.setState({ currentProject: { id: session.projectId, path: session.projectPath, sessionLease: session.leaseId, name: '灯塔', novelConfig: {} } as unknown as ProjectData })
+    setActiveProjectSessionContext(session)
+    useLayoutStore.setState({ settingsSection: 'embedding' })
+    await mount()
+    const index = () => host!.querySelector('[aria-label="当前作品的检索索引"]')?.textContent ?? ''
+    await vi.waitFor(() => expect(index()).toContain('配置并启用检索模型后'))
+
+    const embedding = { ...LOCAL, id: 'embed', name: '本机向量', purposes: ['embedding'] } as ModelProfile
+    configured = true
+    await act(async () => useLLMStore.setState({ models: [MODEL, LOCAL, embedding], defaultEmbeddingModelId: 'embed' }))
+    await vi.waitFor(() => expect(byName('检查并重建向量索引')).toBeTruthy())
+    expect(index()).toContain('当前作品有 4 段资料还没有按检索模型建立索引')
+
+    configured = false
+    await act(async () => useLLMStore.setState({ models: [MODEL, LOCAL], defaultEmbeddingModelId: null }))
+    await vi.waitFor(() => expect(index()).toContain('配置并启用检索模型后'))
+    expect(byName('检查并重建向量索引')).toBeUndefined()
+  })
+
+  it('设置页开着时 Ctrl S 不保存藏在后面的标签', async () => {
+    const save = vi.fn(async () => undefined)
+    const off = registerEditorExitSaveHandler({ tabId: 'config-tab', type: 'config', save })
+    try {
+      useEditorStore.setState({ tabs: [{ id: 'config-tab', name: '设定', type: 'config', dirty: true }], activeTabId: 'config-tab' })
+      await mount()
+      await key('s', window, { ctrlKey: true })
+      expect(save).not.toHaveBeenCalled()
+    } finally {
+      off()
+    }
+  })
+
   it('删除模型先出现危险确认，写明后果；取消不删，确认才删', async () => {
     await mount()
     expect([...host!.querySelectorAll('[aria-label="AI 模型"] li')].map(item => item.querySelector('.stage-set-model-name')?.textContent))
@@ -211,6 +250,15 @@ describe('设置页', () => {
     await act(async () => useLayoutStore.setState({ settingsOpen: true }))
     await click(byName('返回书房'))
     expect(useLayoutStore.getState().settingsOpen).toBe(false)
+  })
+
+  it('沉浸写作里打开设置页：Esc 收起设置页，仍在沉浸写作；再按 Esc 才退出沉浸', async () => {
+    useStageStore.setState({ focus: true })
+    await mount()
+    await key('Escape')
+    expect([useLayoutStore.getState().settingsOpen, useStageStore.getState().focus]).toEqual([false, true])
+    await key('Escape')
+    expect(useStageStore.getState().focus).toBe(false)
   })
 
   it('输入框里按 Esc 不关闭设置页', async () => {

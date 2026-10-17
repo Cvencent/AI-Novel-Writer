@@ -71,7 +71,7 @@ function BatchWriteDialogSession(props: BatchChapterProps) {
             <input
               id={ids.count} type="number" className="pi-input" min={MIN_BATCH_CHAPTERS} max={MAX_BATCH_CHAPTERS}
               value={form.chapterCount} disabled={starting}
-              onChange={event => { form.setChapterCount(Number(event.target.value) || MIN_BATCH_CHAPTERS); changed() }}
+              onChange={event => { form.setChapterCount(event.target.value === '' ? '' : Number(event.target.value)); changed() }}
               onBlur={() => form.setChapterCount(normalizeBatchChapterCount(form.chapterCount))}
             />
           </div>

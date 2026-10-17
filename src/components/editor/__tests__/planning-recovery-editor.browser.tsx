@@ -561,6 +561,21 @@ describe('planning recovery editors', () => {
     expect(useEditorStore.getState().tabs[0]).toMatchObject({ content: '我已修正的候选', dirty: true })
     noModel()
   })
+  it.each([
+    ['第 2 章重复', [1, 2, 3, 2], '这次生成开跑时，大纲里第 2 章出现了不止一次，不能接着生成，恢复稿也不能保存。可以复制已生成的章节，改好大纲后重新生成。'],
+    ['按序但缺第 2 章', [1, 3], '这次生成开跑时，大纲的章节编号与所选范围对不上或缺少章节，不能接着生成，恢复稿也不能保存。可以复制已生成的章节，改好大纲后重新生成。'],
+  ])('升级前开跑、来源无效（%s）的大纲恢复稿写明原因，不能继续生成', async (_case, order, note) => {
+    context = fixture('outline')
+    context.plotOutline!.sourceExpected.synopsis = `# 情节大纲\n\n${order.map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}`
+    context.plotOutline!.cursor = { kind: 'stopped', chapterNumber: 1, reason: 'source-invalid' }
+    context.plotOutline!.confirmedPrefix = null
+    context.plotOutlineRecovery!.writeState = { kind: 'blocked', reason: 'source-invalid' }
+    context.planningContinuation!.state = 'source-invalid'
+    await render('outline')
+    const panel = container.querySelector('[aria-label="大纲恢复"]')!
+    expect([...panel.querySelectorAll('p')].map(paragraph => paragraph.textContent)).toContain(note)
+    expect(button('继续生成缺少的章节').disabled).toBe(true); noModel()
+  })
   it('closing a recovery tab preserves the ordinary blueprint exit-save handler', async () => {
     context = fixture('blueprint'); await render('blueprint')
     const recoveryId = useEditorStore.getState().tabs[0].id

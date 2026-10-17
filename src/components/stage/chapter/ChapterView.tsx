@@ -8,6 +8,8 @@ import { chapterPhase } from '../../../stores/navigation/stage-progress'
 import { useStageStore } from '../../../stores/navigation/stage-store'
 import { useProjectStore } from '../../../stores/project-store'
 import type { ReviewEntry } from '../../../services/draft-index'
+import { ipc } from '../../../services/ipc-client'
+import { confirmationSourceReviewId, parseHumanConfirmedReviewSnapshot } from '../../../shared/human-confirmed-review'
 import CodeMirrorEditor from '../../editor/CodeMirrorEditor'
 import { useReviewCycle } from '../../editor/review-checklist'
 import { useDraftActions } from '../../editor/use-draft-actions'
@@ -21,22 +23,40 @@ import ChapterPlan from './ChapterPlan'
 import { STAGE_STEP } from './chapter-lifecycle'
 import VersionSwitcher from './VersionSwitcher'
 
-/** 这一稿最新的审稿报告原文；审稿记录变化时重读。 */
-function useLatestReview(reviews: readonly ReviewEntry[], projectKey: string) {
-  const latest = reviews.at(-1) ?? null
-  const [report, setReport] = useState<{ id: number; content: string } | null>(null)
+/**
+ * 这一稿显示哪份审稿与原文：最新一份有复验周期的审稿（确认后的清单按它指向的原审稿算），都没有周期（旧审稿）时取最新一份。
+ * 合并后的自动复验另存一份审稿，它没有自己的周期，逐项结果写回原审稿的周期；显示原审稿才看得到复验完成几项与逐项结果。
+ * 审稿记录变化时重读。
+ */
+function useShownReview(reviews: readonly ReviewEntry[], projectKey: string) {
+  const key = reviews.map(review => review.id).join(',')
+  const [report, setReport] = useState<{ key: string; id: number; content: string } | null>(null)
   useEffect(() => {
-    if (!latest) return
+    if (reviews.length === 0) return
     const session = captureProjectSession(useProjectStore.getState().currentProject)
     if (!session || !isProjectSessionPath(session, projectKey)) return
     let cancelled = false
-    // 读不出原文时按空报告处理：动作条照常出现，侧页里没有可勾选的意见，作者可以重新审稿。
-    void readDraftBody(formatResourceUri({ kind: 'review', id: latest.id }), projectKey, session).catch(() => '').then(content => {
-      if (!cancelled && isProjectSessionCurrent(session)) setReport({ id: latest.id, content })
-    })
+    const live = () => !cancelled && isProjectSessionCurrent(session)
+    void (async () => {
+      let shown: { id: number; content: string } | null = null
+      for (const entry of [...reviews].reverse()) {
+        // 读不出原文时按空报告处理：动作条照常出现，侧页里没有可勾选的意见，作者可以重新审稿。
+        const content = await readDraftBody(formatResourceUri({ kind: 'review', id: entry.id }), projectKey, session).catch(() => '')
+        if (!live()) return
+        shown ??= { id: entry.id, content }
+        const cycleReviewId = confirmationSourceReviewId(parseHumanConfirmedReviewSnapshot(content), entry.id)
+        const cycle = await ipc.invokeWithProjectSession(session, 'db:review-cycle-get', cycleReviewId, session.projectPath).catch(() => null)
+        if (!live()) return
+        if (cycle) {
+          shown = { id: entry.id, content }
+          break
+        }
+      }
+      if (shown) setReport({ key: reviews.map(review => review.id).join(','), ...shown })
+    })()
     return () => { cancelled = true }
-  }, [latest, projectKey])
-  return latest && report?.id === latest.id ? report : null
+  }, [reviews, projectKey])
+  return report?.key === key ? report : null
 }
 
 /**
@@ -62,10 +82,11 @@ function DraftChapter({ tab, filePath, projectKey }: { tab: EditorTab; filePath:
   const request = useStageStore(s => s.chapterRequest)
   const draft = useDraftActions({ tabId: tab.id, filePath, content: tab.content ?? '', projectKey })
   const chapterNumber = draft.meta?.chapterNumber ?? tab.chapterNumber
-  const blueprint = useChapterBlueprint(chapterNumber, projectKey)
-  const latest = useLatestReview(draft.reviews, projectKey)
+  const { blueprint } = useChapterBlueprint(chapterNumber, projectKey)
+  const latest = useShownReview(draft.reviews, projectKey)
   const review = useReviewCycle({ reportText: latest?.content ?? '', reviewId: latest?.id, projectKey,
-    refreshKey: `${draft.status}:${draft.pendingRevisions.map(revision => revision.id).join(',')}` })
+    // 复验完成时新增一份审稿而显示的仍是原审稿，审稿记录也算进来，周期随之重读。
+    refreshKey: `${draft.status}:${draft.pendingRevisions.map(revision => revision.id).join(',')}:${draft.reviews.map(entry => entry.id).join(',')}` })
   const [charCount, setCharCount] = useState(() => countDraftUnits(tab.content ?? ''))
   // 沉浸写作底部的字数进度，目标取设定里的每章字数。
   const target = useProjectStore(s => s.currentProject?.novelConfig.wordsPerChapter) || 0

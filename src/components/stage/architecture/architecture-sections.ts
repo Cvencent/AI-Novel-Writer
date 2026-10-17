@@ -31,9 +31,14 @@ export function sectionBadge(key: ArchStepKey, overview: ArchitectureOverview): 
   }
   if (key === 'synopsis') {
     const { progress, candidate } = overview.synopsis
-    if (progress.kind === 'partial') return { kind: 'partial', coveredTo: progress.coveredTo, total: progress.total }
-    if (progress.kind === 'interrupted') return { kind: 'incomplete' }
-    return candidate ? { kind: 'candidate' } : { kind: 'empty' }
+    switch (progress.kind) {
+      case 'partial': return { kind: 'partial', coveredTo: progress.coveredTo, total: progress.total }
+      case 'interrupted':
+      case 'unresumable': return { kind: 'incomplete' }
+      case 'empty':
+      case 'complete': return candidate ? { kind: 'candidate' } : { kind: 'empty' }
+      default: return progress satisfies never
+    }
   }
   if (key === 'worldbuilding' && overview.worldBuilding.candidate) return { kind: 'candidate' }
   return { kind: 'empty' }

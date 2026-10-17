@@ -229,10 +229,16 @@ export const EXTRA_SCENARIOS = {
     await shell.clickRail(page, '角色')
     await assertBottomOpensOn(page, () => materials.importCharacterCards(page, '姓名：守塔人\n身份：灯塔看守，记得每一次钟声。'))
   }, after: ({ page }) => runPanel.cancelActiveRuns(page) },
-  'nav-batch': { model: true, setup: seedWithoutDraft, run: async ({ page }) => {
+  // 卡住模型让截图停在「批量创作运行中」，与 verify/SKILL.md 的说明一致；不卡时截图可能已是完成后的画面。
+  'nav-batch': { model: true, setup: seedWithoutDraft, run: async ({ page, fake }) => {
+    fake.gate.hold()
     await project.openBlueprints(page)
     await assertBottomOpensOn(page, () => chapter.startBatch(page, FAKE_MODEL.id, 100))
-  }, after: ({ page }) => runPanel.waitForWorkflowDone(page) },
+    await untilGateHolds(fake.gate)
+  }, after: async ({ page, fake }) => {
+    fake.gate.release()
+    await runPanel.waitForWorkflowDone(page)
+  } },
   'nav-home-import': { model: true, setup: seedWithoutDraft, run: async ({ app, page, roots, fake }) => {
     const file = path.join(roots.temp, '参考小说.txt')
     fs.writeFileSync(file, `第1章 旧港\n${FIXTURE_PROSE}\n\n第2章 北堤\n${FIXTURE_PROSE}\n`)
@@ -359,7 +365,7 @@ export async function seedStageSample(context,
   if (!open) return
   if (await stage.root(page).count() > 0) {
     await stage.openFromLibrary(page, STAGE_SAMPLE.name)
-    if (landOnChapter3) await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
+    if (landOnChapter3) await moveToChapter3(page)
     return
   }
   await bookshelf.openProject(page, STAGE_SAMPLE.name)
@@ -367,6 +373,25 @@ export async function seedStageSample(context,
   if (!landOnChapter3) return
   await project.draftOfChapter(page, 3).click()
   await chapter.editor(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text)).waitFor({ state: 'visible' })
+}
+
+/**
+ * 示例作品第 3、4 章都在写，打开时落在最后一章在写的那章（用户决定）：示例本身落第 4 章，种子另建更后面的稿时落那一章。
+ * 各场景从第 3 章开始：等任一章正文出现，不在第 3 章就切过去，再关掉其他所有标签，与原先只开着第 3 章一样。
+ * 对照用的旧构建落在第 3 章，不用切。
+ */
+async function moveToChapter3(page) {
+  const chapter3 = stage.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text))
+  await stage.prose(page).filter({ hasText: /\S/ }).first().waitFor({ state: 'visible', timeout: 20_000 })
+  const otherTabs = stage.tabList(page).getByRole('button', { name: /^关闭「(?!第 3 章 ·)/ })
+  if (await chapter3.count() > 0 && await otherTabs.count() === 0) return
+  await stage.chapterButton(page, 3).click()
+  await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
+  for (let open = await otherTabs.count(); open > 0; open -= 1) {
+    await otherTabs.first().click()
+    await otherTabs.nth(open - 1).waitFor({ state: 'detached' })
+  }
+  await stage.tabList(page).waitFor({ state: 'detached' })
 }
 
 /**
@@ -512,7 +537,7 @@ async function assertSpineMatchesSample(page) {
   const rows = await stage.chapterRows(page)
   assert.deepEqual(rows.map(row => row.number), STAGE_SAMPLE.titles.map((_, index) => index + 1))
   assert.deepEqual(rows.slice(0, 5).map(row => row.phase), ['final', 'final', 'reviewed', 'draft', 'todo'])
-  assert.deepEqual(rows.filter(row => row.current).map(row => row.number), [3], '落点应是第一章写到一半的第 3 章')
+  assert.deepEqual(rows.filter(row => row.current).map(row => row.number), [3], '预置后停在第 3 章')
 }
 
 /** 新外壳场景只在 head 上跑（trunk 没有新外壳）；chapter-switch 两种外壳都能跑，用于性能对照。 */
@@ -564,7 +589,7 @@ function bookOpened(page) {
   const loaded = page.waitForEvent('console', { predicate: message => message.text().includes('项目数据加载完成'), timeout: 30_000 })
   return async () => {
     await loaded
-    await page.getByRole('navigation', { name: '位置' }).getByText('第 3 章').waitFor({ state: 'visible' })
+    await page.getByRole('navigation', { name: '位置' }).getByText('第 4 章').waitFor({ state: 'visible' })
   }
 }
 
@@ -1054,17 +1079,17 @@ export const STAGE_SCENARIOS = {
   'stage-reopen': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page }) => {
     await stage.backToLibrary(page, STAGE_SAMPLE.name)
     await stage.openFromPalette(page, STAGE_SAMPLE.name)
-    await stage.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text)).first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
-    assert.deepEqual(await stage.landing(page), { crumbs: ['正文', '第 3 章'], empty: false }, '重开同一部作品再次落到第 3 章')
+    await stage.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[4].text)).first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
+    assert.deepEqual(await stage.landing(page), { crumbs: ['正文', '第 4 章'], empty: false }, '重开同一部作品再次落到最后一章在写的第 4 章')
   } },
   'stage-partial-blueprint': { model: false, shell: 'stage',
     setup: context => seedStageSample(context, { totalChapters: 100, landOnChapter3: false }),
     run: async ({ page }) => {
-      await stage.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[3].text)).first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
+      await stage.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[4].text)).first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
       assert.deepEqual({ ...(await stage.landing(page)), blueprint: (await stage.stageStates(page)).blueprint },
-        { crumbs: ['正文', '第 3 章'], empty: false, blueprint: 'done' }, '规划 100 章只写了 12 章蓝图时，蓝图已完成，落点仍是正文第 3 章')
+        { crumbs: ['正文', '第 4 章'], empty: false, blueprint: 'done' }, '规划 100 章只写了 12 章蓝图时，蓝图已完成，落点仍是正文第 4 章')
     } },
-  /** 第 1 章回到了草稿，成了最早一章写到一半的，所以打开作品就落在它上面；再从章节列表点它仍是这份草稿。 */
+  /** 第 1 章回到了草稿，但最后一章在写的仍是第 4 章，所以打开作品落在第 4 章；从章节列表点第 1 章打开的是这份新草稿。 */
   'stage-revert-after-final': { model: false, shell: 'stage',
     setup: context => seedStageSample(context, { landOnChapter3: false, beforeReload: async ({ page, invoke, path, session }) => {
       const version = await invoke(page, 'db:draft-next-version', 1, path, session)
@@ -1073,6 +1098,8 @@ export const STAGE_SCENARIOS = {
       assert.equal(created.success, true, created.error)
     } }),
     run: async ({ page }) => {
+      await stage.prose(page).getByText(firstLine(STAGE_SAMPLE.drafts[4].text)).first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
+      assert.deepEqual(await stage.landing(page), { crumbs: ['正文', '第 4 章'], empty: false }, '第 1 章回到草稿后，落点仍是最后一章在写的第 4 章')
       await stage.chapterList(page).waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
       await stage.chapterButton(page, 1).click()
       const reverted = stage.prose(page).getByText(firstLine(STAGE_SAMPLE.reverted)).first()
@@ -1158,15 +1185,15 @@ export const STAGE_SCENARIOS = {
       await pause(1500)
     }
     await stage.stageButton(page, '正文').click()
-    await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
+    await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[4].text))
     await pause(1500)
     await page.keyboard.press('Control+K')
     await stage.paletteInput(page).waitFor({ state: 'visible' })
     await pause(700)
-    await stage.paletteInput(page).pressSequentially('守塔', { delay: 220 })
+    await stage.paletteInput(page).pressSequentially('雾钟', { delay: 220 })
     await pause(900)
     await page.keyboard.press('Enter')
-    await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[4].text))
+    await stage.waitForProse(page, firstLine(STAGE_SAMPLE.drafts[3].text))
     await pause(1500)
     await page.keyboard.press('Control+P')
     await stage.paletteInput(page).waitFor({ state: 'visible' })

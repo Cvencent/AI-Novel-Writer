@@ -6,6 +6,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { blueprintWritePrefill } from '../../../../services/workflows/chapter-write-launch'
 import { countDraftUnits } from '../../../../shared/draft-units'
 import { formatResourceUri } from '../../../../shared/project-paths'
+import { toast } from '../../../ui/Toast'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
 import { useAppearanceStore } from '../../../../stores/appearance-bootstrap'
 import { useDraftStore } from '../../../../stores/draft-store'
@@ -170,6 +171,22 @@ describe('标签与外壳', () => {
     await expect.element(page.getByRole('heading', { name: '审稿报告' })).toBeVisible()
     await expect.element(page.getByRole('button', { name: '按 2 项意见修稿' })).toBeVisible()
     expect(tabs().map(tab => [tab.type, tab.filePath])).toEqual([['chapter', sourcePath]])
+  })
+
+  it('审稿报告标签改道时读这一章的稿失败：提示作者，而不是标签关了什么也没有', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    const review = backend.addReview(draft)
+    const error = vi.spyOn(toast, 'error').mockImplementation(() => undefined)
+    const base = backend.invoke.getMockImplementation()!
+    backend.invoke.mockImplementation(async (channel: string, ...args: unknown[]) => channel === 'db:draft-list'
+      ? Promise.reject(new Error('数据库忙')) : base(channel, ...args))
+    await mount()
+    const sourcePath = formatResourceUri({ kind: 'draft', id: draft.id })
+    await act(async () => useEditorStore.getState().openFile({
+      id: `review-${sourcePath}-1`, name: '审稿报告：第3章', type: 'review-report', content: AI_REVIEW, filePath: sourcePath,
+      reviewReport: AI_REVIEW, chapterNumber: 3, chapterDir: 'ai-novel://draft/ch3', reviewId: review.id, projectKey: SESSION.projectPath,
+    }))
+    await vi.waitFor(() => expect(error).toHaveBeenCalledWith('打开第 3 章失败：数据库忙'))
   })
 
   it('修稿完成时命令打开的合并标签改道到单章视图的合并视图', async () => {
@@ -380,6 +397,22 @@ describe('写作此章、标签顶替与跨作品的请求', () => {
     await act(async () => stageNavigate({ kind: 'chapter', chapterNumber: 5, write: blueprintWritePrefill({ ...BLUEPRINT, chapterNumber: 5 }) }))
     await expect.element(page.getByText('这一章还没有蓝图')).toBeVisible()
     expect([activeTab()?.type, activeTab()?.chapterNumber, useStageStore.getState().writeRequest]).toEqual(['chapter', 5, null])
+  })
+
+  it('读本章蓝图失败：写明读取失败并可重试，不当成没有蓝图，写作请求留着；重试读到后弹出写作弹层', async () => {
+    const base = backend.invoke.getMockImplementation()!
+    let failing = true
+    backend.invoke.mockImplementation(async (channel: string, ...args: unknown[]) => channel === 'db:blueprint-get' && failing
+      ? Promise.reject(new Error('数据库忙')) : base(channel, ...args))
+    await mount()
+    await act(async () => stageNavigate({ kind: 'chapter', chapterNumber: 3, write: blueprintWritePrefill(BLUEPRINT) }))
+    await expect.element(page.getByText('读取本章蓝图失败')).toBeVisible()
+    await expect.element(page.getByText('写作此章按本章蓝图写，读到之后才能开始。')).toBeVisible()
+    expect(page.getByText('这一章还没有蓝图').elements()).toHaveLength(0)
+    expect(useStageStore.getState().writeRequest?.chapterNumber).toBe(3)
+    failing = false
+    await act(async () => page.getByRole('button', { name: '重新读取' }).click())
+    await expect.element(page.getByRole('dialog', { name: '本次写作选项' })).toBeVisible()
   })
 
   it('没有蓝图的待写章已经开着，之后再来的写作请求也落空', async () => {

@@ -96,7 +96,13 @@ export function installChapterTabRouting(): () => void {
       } finally {
         handling = false
       }
-      void showDraft(active.filePath, active.chapterNumber, session)
+      const chapterNumber = active.chapterNumber
+      // 改道时那个标签已经关了：读不出这一章的稿就告诉作者，不能什么也不打开。
+      void showDraft(active.filePath, chapterNumber, session).catch(error => {
+        const text = useLocaleStore.getState().text
+        const reason = error instanceof Error ? error.message : String(error)
+        toast.error(text(`打开第 ${chapterNumber} 章失败：${reason}`, `Could not open chapter ${chapterNumber}: ${reason}`))
+      })
       return
     }
 

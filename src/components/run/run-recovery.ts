@@ -5,6 +5,7 @@ import { canCommitRecoveredReview } from '../../services/workflows/commands/revi
 import { withoutDraftReconciliationArtifacts } from '../../shared/draft-reconciliation'
 import type { EditorInlineRecovery } from '../../shared/editor-inline-generation'
 import type { GenerationBatchHistory, GenerationRecoveryContext } from '../../shared/generation-owner-contract'
+import { plotOutlineSourceInvalidText } from '../../shared/plot-outline-contract'
 import type { RecoveryCandidate } from '../../shared/recovery-candidate'
 import type { ReviewRevisionRecovery } from '../../shared/review-revision-generation'
 import { workflowResourceKey, type WorkflowRun } from '../../stores/workflow-store'
@@ -162,13 +163,21 @@ export function planningTitle(recovery: Pick<GenerationRecoveryContext, 'plotOut
     : t('大纲恢复稿', 'Outline recovery draft')
 }
 
+/** 升级前以现行规则判无效的大纲开跑、不能继续的大纲恢复稿：说明是重复章号、乱序还是章号与范围对不上；不是来源无效时为 null，由调用方用通用说明。 */
+export function outlineSourceInvalidNote(recovery: Pick<GenerationRecoveryContext, 'plotOutline' | 'plotOutlineRecovery'>, locale: Locale): string | null {
+  const writeState = recovery.plotOutlineRecovery?.writeState
+  if (writeState?.kind !== 'blocked' || writeState.reason !== 'source-invalid') return null
+  return plotOutlineSourceInvalidText(recovery.plotOutline?.sourceExpected.synopsis ?? '', locale)
+}
+
 function planningEntry(recovery: GenerationRecoveryContext, locale: Locale): PlanningEntry {
   const t = lang(locale)
   return {
     kind: 'planning',
     key: recovery.handle.runId,
     title: planningTitle(recovery, locale),
-    note: t('自动生成已保留候选。可编辑并本地保存，或明确继续缺少的章节。', 'The candidate is preserved. Edit and save it locally, or explicitly generate the remaining chapters.'),
+    note: outlineSourceInvalidNote(recovery, locale)
+      ?? t('自动生成已保留候选。可编辑并本地保存，或明确继续缺少的章节。', 'The candidate is preserved. Edit and save it locally, or explicitly generate the remaining chapters.'),
     actionLabel: t('编辑恢复稿', 'Edit recovery draft'),
     recovery,
   }

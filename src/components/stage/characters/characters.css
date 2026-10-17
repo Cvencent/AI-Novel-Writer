@@ -78,10 +78,9 @@
   gap: var(--s-2);
 }
 
-.cast-suggestion-error {
-  color: var(--danger);
-  font-size: var(--fs-12);
-  overflow-wrap: anywhere;
+.cast-suggestion-error .cast-suggestion-text {
+  color: var(--warn);
+  white-space: normal;
 }
 
 /* ================= 名单与档案 ================= */
@@ -139,14 +138,15 @@
 }
 
 .cast-roster-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--s-2);
 }
 
+/* 中文两个按钮并排；英文的「Paste / import character cards」放不下时换到下一行，不再挤出按钮。 */
 .cast-roster-actions .pi-btn {
+  flex: 1 1 auto;
   justify-content: center;
-  min-width: 0;
 }
 
 .cast-list {
@@ -234,6 +234,9 @@
 .cast-roster-foot > span {
   flex: 1;
   min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .cast-profile {
@@ -443,6 +446,8 @@
 
 .cast-import-source {
   width: 100%;
+  height: auto;
+  padding: 10px 12px;
   resize: vertical;
   font: var(--fs-13)/1.7 var(--font-ui);
 }

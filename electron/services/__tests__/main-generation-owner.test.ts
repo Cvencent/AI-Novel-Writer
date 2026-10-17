@@ -118,6 +118,23 @@ function acceptOutline(owner: ReturnType<typeof fixture>['owner'], handle: Param
   return owner.composeVisible(handle, [...(progress.composition?.artifactIds ?? []), ...progress.cursor.artifactIds], textHash(text), PLOT_OUTLINE_PROTOCOL)
 }
 const outlineEntry = (chapter: number) => `## 第${chapter}章：线索${chapter}\n林岚确认第${chapter}份证词，与同伴商议下一步。`
+/**
+ * 旧版本开跑时不查章号顺序：冻结来源与正式大纲都换成 legacy，整份绑定（指纹、上下文快照、来源引用）按它重算，
+ * 已生成章节的指纹随之改写，等同升级前在这份大纲上开跑并落库的任务。
+ */
+function freezeLegacyOutline(f: ReturnType<typeof fixture>, runId: string, legacy: string) {
+  f.db.prepare("UPDATE generation_runs SET binding_json=json_set(binding_json,'$.sourceManifest.plotOutlineSource.core.synopsis',?) WHERE run_id=?").run(legacy, runId)
+  f.db.prepare('UPDATE project_core SET synopsis=?').run(legacy)
+  const frozen = new GenerationRunRepository(() => f.db).get(runId).binding
+  const rebuilt = rebuildGenerationSourceBinding({ db: f.db, projectStorageRoot: path.join(f.root, 'project'), globalDataRoot: path.join(f.root, 'global'),
+    readBuiltinPrompt: (key, language) => JSON.stringify(getBuiltinPromptTemplate(key, language)), readBuiltinSkill: readBuiltinWritingSkill },
+  frozen, frozen.epoch, undefined, readMainGenerationPolicy(frozen.sourceManifest.policy)).binding
+  const fingerprint = JSON.stringify(rebuilt.fingerprint)
+  f.db.prepare("UPDATE generation_runs SET binding_json=json_set(binding_json,'$.fingerprint',json(?),'$.contextSnapshotId',?,'$.sourceRefs',json(?)) WHERE run_id=?")
+    .run(fingerprint, rebuilt.contextSnapshotId, JSON.stringify(rebuilt.sourceRefs), runId)
+  f.db.prepare("UPDATE generation_artifacts SET artifact_json=json_set(artifact_json,'$.fingerprint',json(?)) WHERE run_id=?").run(fingerprint, runId)
+  f.db.prepare("UPDATE generation_attempts SET usage_receipt_json=json_set(usage_receipt_json,'$.artifactIdentity.fingerprint',json(?)) WHERE run_id=? AND json_extract(usage_receipt_json,'$.artifactIdentity') IS NOT NULL").run(fingerprint, runId)
+}
 
 function openAggregateRun(f: ReturnType<typeof fixture>, selection: BeginGenerationRequest) {
   const inputs = selection.authorInputs!
@@ -481,6 +498,66 @@ describe('explicit planning recovery with real SQLite', () => {
     expect(next.plotOutline?.range).toEqual({ from: 2, to: 3 })
     expect(next.plotOutline?.confirmedPrefix).toBe(outlineEntry(1))
     expect(dispatch).toHaveBeenCalledTimes(3)
+  })
+  it('升级前以乱序大纲（1、5、2、3、4）开跑的第 3–5 章任务：列表与恢复照常读出，判为不能继续，派发、续接与保存都拒绝', async () => {
+    const dispatch = vi.fn<GenerationRunServiceDependencies['dispatch']>(async (request, options) => {
+      options.onVisible({ kind: 'delta', text: outlineEntry(Number((request as { task: GenerationTask }).task.purpose.split(':')[2])) })
+      return { finishReason: 'stop', usage: null }
+    })
+    const f = fixture(dispatch), expected = { totalChapters: 5, writingLanguage: 'zh-CN' as const }
+    f.db.prepare('UPDATE project_core SET synopsis=?,total_chapters=5').run(renderPlotOutlineSynopsis([1, 2, 3, 4, 5].map(outlineEntry).join('\n\n'), 5, expected))
+    const run = f.owner.begin(outlineSelection(f, 5, 3))
+    await f.owner.execute({ handle: run.handle, invocationNonce: 'three', task: outlineTask(run.plotOutline!) }); acceptOutline(f.owner, run.handle)
+    const legacy = renderPlotOutlineSynopsis([1, 5, 2, 3, 4].map(outlineEntry).join('\n\n'), 5, expected)
+    freezeLegacyOutline(f, run.handle.runId, legacy)
+    const repository = new GenerationRunRepository(() => f.db)
+    repository.pause(run.handle.rootActionId)
+
+    expect(f.owner.list().find(view => view.handle.runId === run.handle.runId)?.plotOutline?.cursor).toEqual({ kind: 'stopped', chapterNumber: 4, reason: 'source-invalid' })
+    const context = f.owner.readContext(run.handle)
+    expect(context.plotOutlineRecovery).toMatchObject({ draft: outlineEntry(3), writeState: { kind: 'blocked', reason: 'source-invalid' } })
+    expect(context.planningContinuation?.state).toBe('source-invalid')
+    expect(context.plotOutline?.confirmedPrefix).toBeNull()
+    const paused = { root: repository.budget(run.handle.rootActionId).root, run: repository.get(run.handle.runId) }
+    expect(paused.root.status).toBe('paused')
+    await expect(f.owner.resume(run.handle)).rejects.toThrow('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
+    expect(repository.budget(run.handle.rootActionId).root).toEqual(paused.root)
+    expect(repository.get(run.handle.runId)).toEqual(paused.run)
+    await expect(f.owner.execute({ handle: run.handle, invocationNonce: 'after-upgrade', task: { ...task, purpose: plotOutlinePurpose(4, 'normal') } }))
+      .rejects.toThrow('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
+    expect(() => f.owner.restart(run.handle, { ...outlineSelection(f, 5, 4), uiActionNonce: 'continue-after-upgrade' })).toThrow('GENERATION_PLANNING_CONTINUATION_SOURCE_INVALID')
+    const payload: ProjectCoreSynopsisCommitRequest = { synopsis: legacy, expected: context.plotOutline!.sourceExpected,
+      authorRecovery: { sourceHandle: run.handle, leaseEpoch: context.plotOutlineRecovery!.leaseEpoch, operationId: 'save-after-upgrade', committedRange: { from: 3, to: 3 } } }
+    expect(() => f.db.transaction(() => f.owner.commitPlotOutlineAuthorEdit(payload)).immediate()).toThrow('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
+    expect(ProjectCoreRepository.get(f.db)!.synopsis).toBe(legacy)
+    expect(dispatch).toHaveBeenCalledTimes(1)
+  })
+  it('升级前以乱序大纲开跑、已存下作者编辑的任务：同一编辑的重试仍返回已保存，换一次新的写入仍拒绝', async () => {
+    const dispatch = vi.fn<GenerationRunServiceDependencies['dispatch']>(async (request, options) => {
+      options.onVisible({ kind: 'delta', text: outlineEntry(Number((request as { task: GenerationTask }).task.purpose.split(':')[2])) })
+      return { finishReason: 'stop', usage: null }
+    })
+    const f = fixture(dispatch), expected = { totalChapters: 5, writingLanguage: 'zh-CN' as const }
+    f.db.prepare('UPDATE project_core SET synopsis=?,total_chapters=5').run(renderPlotOutlineSynopsis([1, 2, 3, 4, 5].map(outlineEntry).join('\n\n'), 5, expected))
+    const run = f.owner.begin(outlineSelection(f, 5, 3))
+    await f.owner.execute({ handle: run.handle, invocationNonce: 'three', task: outlineTask(run.plotOutline!) }); acceptOutline(f.owner, run.handle)
+    const legacy = renderPlotOutlineSynopsis([1, 5, 2, 3, 4].map(outlineEntry).join('\n\n'), 5, expected)
+    freezeLegacyOutline(f, run.handle.runId, legacy)
+    const repository = new GenerationRunRepository(() => f.db)
+    // 旧版本照当时的规则存下了作者对第 3 章的编辑：回执与正式大纲一起落库，渲染端的快照还停在待确认。
+    const saved = legacy.replace('林岚确认第3份证词', '作者改写了第3份证词')
+    f.db.transaction(() => {
+      repository.recordPlotOutlineAuthorEdit(repository.plotOutlineAuthorEditReceipt(run.handle.runId, 'saved-before-upgrade', { from: 3, to: 3 }, textHash(saved)))
+      f.db.prepare('UPDATE project_core SET synopsis=?').run(saved)
+    }).immediate()
+
+    const context = f.owner.readContext(run.handle)
+    const edit = (operationId: string): ProjectCoreSynopsisCommitRequest => ({ synopsis: saved, expected: context.plotOutline!.sourceExpected,
+      authorRecovery: { sourceHandle: run.handle, leaseEpoch: context.plotOutlineRecovery!.leaseEpoch, operationId, committedRange: { from: 3, to: 3 } } })
+    expect(f.db.transaction(() => f.owner.commitPlotOutlineAuthorEdit(edit('saved-before-upgrade'))).immediate())
+      .toMatchObject({ operationId: 'saved-before-upgrade', committedRange: { from: 3, to: 3 }, idempotent: true })
+    expect(() => f.db.transaction(() => f.owner.commitPlotOutlineAuthorEdit(edit('another-after-upgrade'))).immediate()).toThrow('GENERATION_PLOT_OUTLINE_AUTHOR_RECEIPT_CONFLICT')
+    expect(ProjectCoreRepository.get(f.db)!.synopsis).toBe(saved)
   })
   it('rejects explicit continuation while in flight or after a source change without creating a replacement', async () => {
     let release!: () => void

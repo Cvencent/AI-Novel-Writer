@@ -73,5 +73,5 @@ export function usePendingCharacterProposals(session: ProjectSessionContext) {
     }
   }
 
-  return { summaries, batch, choices, setChoices, busy, error, identities, read, decide }
+  return { summaries, batch, choices, setChoices, busy, error, identities, read, decide, reload: loadSummaries }
 }

@@ -72,8 +72,14 @@ function installIpc(options: {
   authoritySequence?: AuthoritativeChapterSequence | (() => AuthoritativeChapterSequence)
   saveError?: string
 } = {}) {
+  // 与数据库一样，保存过的蓝图之后再读就是保存后的样子。
+  let stored = options.blueprints ?? [blueprint(1)]
+  const upsert = (saved: { chapterNumber: number }[]) => {
+    stored = [...stored.filter(item => !saved.some(next => next.chapterNumber === item.chapterNumber)), ...saved]
+      .sort((left, right) => left.chapterNumber - right.chapterNumber) as typeof stored
+  }
   const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
-    if (channel === 'db:blueprint-get-all') return options.blueprints ?? [blueprint(1)]
+    if (channel === 'db:blueprint-get-all') return stored
     if (channel === 'db:draft-authority-sequence') return typeof options.authoritySequence === 'function'
       ? options.authoritySequence()
       : options.authoritySequence ?? {
@@ -92,11 +98,14 @@ function installIpc(options: {
       return { success: true, cleared: ['generatedText'] }
     }
     if (channel === 'db:blueprint-upsert-many') {
-      return options.saveError
-        ? { success: false, error: options.saveError }
-        : { success: true }
+      if (options.saveError) return { success: false, error: options.saveError }
+      upsert(args[0] as { chapterNumber: number }[])
+      return { success: true }
     }
-    if (channel === 'db:blueprint-upsert') return { success: true }
+    if (channel === 'db:blueprint-upsert') {
+      upsert([args[0] as { chapterNumber: number }])
+      return { success: true }
+    }
     if (channel === 'fs:list-dir') return []
     throw new Error(`unexpected IPC ${channel}`)
   })
@@ -163,6 +172,32 @@ describe('ChapterCardEditor writing entry', () => {
       .find(button => button.textContent?.trim() === '保存')!.click())
     expect(invoke.mock.calls.find(call => call[0] === 'db:blueprint-upsert')?.[1])
       .toEqual(expect.objectContaining({ characters: ['林岚', '沈砺'] }))
+  })
+
+  it.each(['保存', '保存全部'])('点「%s」后编辑器不闪成「加载章节蓝图」，输入框还是原来那个、焦点还在', async save => {
+    const invoke = installIpc({ blueprints: [{ ...blueprint(1), characters: [] }] })
+    await renderEditor()
+    await vi.waitFor(() => expect(container?.querySelector('h3')).not.toBeNull())
+    const input = container!.querySelector<HTMLInputElement>('input[placeholder="如：主角、反派A"]')!
+    await act(async () => userEvent.click(input))
+    for (const character of '林岚') await act(async () => userEvent.keyboard(character))
+    // 真实 IPC 要走一个来回：重读慢一点，React 才有机会把加载态画出来。
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'db:blueprint-get-all') await new Promise(resolve => setTimeout(resolve, 30))
+      return base(channel, ...args)
+    })
+    const seen: string[] = []
+    const observer = new MutationObserver(() => {
+      if (container!.textContent?.includes('加载章节蓝图')) seen.push('加载章节蓝图')
+    })
+    observer.observe(container!, { childList: true, subtree: true, characterData: true })
+    await act(async () => Array.from(container!.querySelectorAll('button'))
+      .find(button => button.textContent?.trim() === save)!.click())
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)) })
+    observer.disconnect()
+    expect({ seen: [...new Set(seen)], connected: input.isConnected, focused: document.activeElement === input })
+      .toEqual({ seen: [], connected: true, focused: true })
   })
 
   it('keeps Chromium composition preedit until committing a Chinese name', async () => {

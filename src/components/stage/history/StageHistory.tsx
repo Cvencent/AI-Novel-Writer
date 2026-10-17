@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowRight, Lock, RotateCcw } from 'lucide-react'
 import type { VersionRecord } from '../../../services/version-service'
 import { useDraftStore } from '../../../stores/draft-store'
@@ -6,8 +6,10 @@ import { useLocaleStore } from '../../../stores/locale-store'
 import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useProjectStore } from '../../../stores/project-store'
 import { sameProjectSessionContext, projectSessionContextFromProject } from '../../../shared/project-session-context'
+import { sqliteTime } from '../../../shared/sqlite-time'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
+import { Notice } from '../../ui/Notice'
 import { toast } from '../../ui/Toast'
 import RevertDialog from './RevertDialog'
 import { useVersionHistory, type VersionComparison } from './use-version-history'
@@ -53,6 +55,17 @@ function DiffView({ older, current }: { older: string; current: string }) {
   )
 }
 
+/** 读得快的章不闪「正在读取」：挂上 150ms 后才出现。用计时而不是动画延迟，减弱动画时也一样。 */
+function SlowLoading() {
+  const text = useLocaleStore(s => s.text)
+  const [shown, setShown] = useState(false)
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShown(true), 150)
+    return () => window.clearTimeout(timer)
+  }, [])
+  return shown ? <p className="stage-hist-help stage-hist-loading" role="status">{text('正在读取…', 'Loading…')}</p> : null
+}
+
 /**
  * 版本历史：左列章节，中列这一章的各稿（新的在上），右列所选一稿与当前稿的只读对比。
  * 回退用旧稿新建一稿，不覆盖、不删除任何一稿。
@@ -63,7 +76,7 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
   const project = useProjectStore(s => s.currentProject)
   const draftsByChapter = useDraftStore(s => s.draftsByChapter)
   const draftSession = useDraftStore(s => s.dataProjectSession)
-  const { chapters, loading, selectedChapter, selectChapter, versions, readComparison, createRollbackDraft } = useVersionHistory(projectKey)
+  const { chapters, loading, selectedChapter, selectChapter, versions, versionsLoading, versionsFailed, reloadVersions, readComparison, createRollbackDraft } = useVersionHistory(projectKey)
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null)
   const [comparison, setComparison] = useState<VersionComparison | null>(null)
   const [reverting, setReverting] = useState(false)
@@ -76,7 +89,7 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
   const selected = ordered.find(version => version.id === selectedVersionId) ?? null
   const chapter = chapters.find(candidate => candidate.number === selectedChapter)
 
-  const formatTime = (value: string) => new Date(value).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  const formatTime = (value: string) => sqliteTime(value).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 
   const pickChapter = (chapterNumber: number) => {
     comparisonRequest.current++
@@ -89,8 +102,17 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
     const request = ++comparisonRequest.current
     setSelectedVersionId(versionId)
     setComparison(null)
-    const next = await readComparison(versionId)
-    if (request === comparisonRequest.current) setComparison(next)
+    try {
+      const next = await readComparison(versionId)
+      if (request !== comparisonRequest.current) return
+      // 读不到（这一稿已被删掉、作品已重新打开）时回到「选一稿」，不停在正在读取。
+      if (next === null) setSelectedVersionId(null)
+      else setComparison(next)
+    } catch (error) {
+      if (request !== comparisonRequest.current) return
+      setSelectedVersionId(null)
+      toast.error(text(`读取这一稿失败：${error instanceof Error ? error.message : String(error)}`, `Could not read this version: ${error instanceof Error ? error.message : String(error)}`))
+    }
   }
 
   const revert = async () => {
@@ -100,7 +122,9 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
       const created = await createRollbackDraft(selected.id)
       if (created === null) return
       setRevertOpen(false)
-      toast.success(text(`已新建草稿 v${created}，原有各稿都保留`, `Draft v${created} created. Every earlier version is kept.`))
+      toast.success(created.version === null
+        ? text('已新建回滚草稿，原有各稿都保留', 'Rollback draft created. Every earlier version is kept.')
+        : text(`已新建草稿 v${created.version}，原有各稿都保留`, `Draft v${created.version} created. Every earlier version is kept.`))
       const session = projectSessionContextFromProject(useProjectStore.getState().currentProject)
       if (session) void useDraftStore.getState().loadAllDrafts(session.projectPath, session)
       comparisonRequest.current++
@@ -159,7 +183,16 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
           {chapter ? <>
             <div className="stage-hist-eyebrow">{text(`第 ${chapter.number} 章`, `Chapter ${chapter.number}`)}</div>
             <h2 className="stage-hist-chapter-title">{chapter.title}</h2>
-            {ordered.length === 0
+            {versionsLoading
+              ? <SlowLoading key={chapter.number} />
+              : versionsFailed
+              ? (
+                <Notice tone="warn" title={text('没能读出这一章的各稿', 'Could not read the versions of this chapter')}
+                  actions={<Button variant="secondary" size="sm" onClick={reloadVersions}>{text('重新读取', 'Read again')}</Button>}>
+                  {text('这次没读出来，可以重新读取。', 'This read did not go through. You can read again.')}
+                </Notice>
+              )
+              : ordered.length === 0
               ? <p className="stage-hist-help">{text('这一章还没有稿。写出第一稿后会出现在这里。', 'No drafts yet. The first draft will appear here.')}</p>
               : (
                 <ol className="stage-hist-timeline" aria-label={text('版本时间线', 'Version timeline')}>

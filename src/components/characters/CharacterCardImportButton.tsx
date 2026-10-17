@@ -195,6 +195,7 @@ function SessionImportButton({ session, compact, disabled, ink }: Props & { sess
       <InkDialog
         open={open}
         onOpenChange={value => { if (!busy) { setOpen(value); setConsent(null) } }}
+        keepOnOutsideClick
         title={consent ? text('AI 提取角色卡', 'AI character-card extraction') : label}
         description={consent
           ? <span className="cast-import-consent">{consentText(consent.model)}</span>

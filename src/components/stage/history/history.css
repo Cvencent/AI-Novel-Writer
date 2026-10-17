@@ -45,6 +45,10 @@
   color: var(--ink-3);
 }
 
+.stage-hist-loading {
+  animation: pi-fade var(--dur-fast) var(--ease);
+}
+
 .stage-hist-list,
 .stage-hist-timeline {
   list-style: none;

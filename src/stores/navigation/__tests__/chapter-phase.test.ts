@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setActiveProjectSessionContext } from '../../../shared/project-session-context'
 import { refreshChapterFacts } from '../chapter-facts'
 import type { DraftMeta } from '../../../services/draft-index'
-import { chapterPhase, deriveChapters, deriveStages, focusChapter, landingStage, type ChapterFacts } from '../stage-progress'
+import { chapterPhase, deriveChapters, deriveStages, focusChapter, landingStage, type ChapterFacts, type WorkFacts } from '../stage-progress'
 import { useStageStore } from '../stage-store'
 
 interface FakeRevision { id: number; status: 'pending' | 'merged' | 'discarded'; updatedAt: string; sourceContent: string | null }
@@ -153,14 +153,27 @@ describe('打开作品的落点不等审稿与修稿记录：落到哪个阶段�
     runningChapters: new Set<number>(),
   }
 
-  it('有无记录，都落在正文第 2 章，正文进度都是 1/6', () => {
+  it('有无记录，都落在最后一章在写的第 4 章，正文进度都是 1/6', () => {
     const open = (chapterFacts?: Record<number, ChapterFacts>) => {
       const chapters = deriveChapters({ ...work, chapterFacts })
       const stages = deriveStages({ ...work, chapterFacts }, chapters)
       return { landing: landingStage(stages), manuscript: stages.at(-1), focus: focusChapter(chapters)?.number }
     }
-    const landed = { landing: 'manuscript', focus: 2, manuscript: { stage: 'manuscript', finalized: 1, total: 6, progress: { state: 'active', ratio: 1 / 6 } } }
+    const landed = { landing: 'manuscript', focus: 4, manuscript: { stage: 'manuscript', finalized: 1, total: 6, progress: { state: 'active', ratio: 1 / 6 } } }
     expect(open()).toEqual(landed)
     expect(open({ 12: reviewed, 13: reviewed, 14: merge })).toEqual(landed)
+  })
+
+  it('一章有定稿、之后又新建了一份空草稿：仍算写过；没有蓝图、大纲没写完也落在这一章的正文', () => {
+    const emptyAfterFinal = [draft(11, 1, 'finalized'), { ...draft(12, 1, 'draft'), version: 2, wordCount: 0 }]
+    const open = (drafts: WorkFacts['drafts']) => {
+      const facts = { ...work, architecture: { ...work.architecture, synopsis: false }, blueprints: [], drafts }
+      const chapters = deriveChapters(facts)
+      const stages = deriveStages(facts, chapters)
+      return { landing: landingStage(stages), focus: focusChapter(chapters)?.number, manuscript: stages.at(-1)?.progress }
+    }
+    expect(open({ 1: emptyAfterFinal })).toEqual({ landing: 'manuscript', focus: 1, manuscript: { state: 'active', ratio: 0 } })
+    // 几章都在写时落在最后一章在写的：定稿后新建空草稿的章也算在写。
+    expect(open({ 1: [draft(15, 1, 'draft')], 2: emptyAfterFinal.map(meta => ({ ...meta, chapterNumber: 2 })) }).focus).toBe(2)
   })
 })

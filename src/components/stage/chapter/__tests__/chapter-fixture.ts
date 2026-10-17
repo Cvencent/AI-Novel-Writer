@@ -1,6 +1,6 @@
 import { vi } from 'vitest'
 import type { ModelProfile, ProjectData } from '../../../../shared/ipc-channels'
-import type { ReviewCycleProjection } from '../../../../shared/review-cycle'
+import type { ReviewCycleProjection, ReviewFindingStatus } from '../../../../shared/review-cycle'
 import type { ChapterBlueprint } from '../../../../services/workflows/directory-workflow'
 
 export const PROJECT_PATH = 'C:\\novels\\chapter-view'
@@ -186,6 +186,20 @@ export function createChapterBackend() {
     state.cycles.set(review.id, { cycleId: `cycle-${review.id}`, reviewId: review.id, revisionStatus: 'not-generated', recheckCount: 0, findings: [] })
     return review
   }
+  /**
+   * 和主进程一样：合并后的自动复验另存一份审稿（每项带 findingId，没有自己的复验周期），
+   * 逐项结果写回原审稿的周期，周期记为已复验。
+   */
+  const addRecheck = (draft: Draft, review: Review, statuses: ReviewFindingStatus[]): Review => {
+    state.cycles.set(review.id, { ...state.cycles.get(review.id)!, revisionStatus: 'merge-committed', recheckCount: 1, recheckDisposition: 'completed',
+      findings: statuses.map((status, index) => ({ findingId: `finding-${index}`, reviewItemIndex: index, category: '', kind: 'literary' as const, status })) })
+    const content = JSON.stringify({ summary: '', items: statuses.map((_, index) => ({ category: '', severity: 'unknown', findingId: `finding-${index}`,
+      targetId: null, description: '复核未提供唯一且可验证的新证据。' })) })
+    const recheck: Review = { id: ++state.nextId, baseDraftId: draft.id, reviewIndex: state.reviews.filter(candidate => candidate.baseDraftId === draft.id).length + 1,
+      content, source: { ...draft }, createdAt: now() }
+    state.reviews.push(recheck)
+    return recheck
+  }
   const addRevision = (draft: Draft, revisionType: Revision['revisionType'] = 'review-fix'): Revision => {
     const createdAt = now()
     const revision: Revision = { id: ++state.nextId, baseDraftId: draft.id, revisionIndex: state.revisions.filter(candidate => candidate.baseDraftId === draft.id).length + 1,
@@ -196,7 +210,7 @@ export function createChapterBackend() {
   }
   const writes = (channel: string) => state.calls.filter(call => call.channel === channel).map(call => call.args)
 
-  return { state, invoke, install, addDraft, addReview, addRevision, writes }
+  return { state, invoke, install, addDraft, addReview, addRecheck, addRevision, writes }
 }
 
 export function chapterProject(): ProjectData {

@@ -185,11 +185,14 @@ export type OutlineProgress =
   | { kind: 'interrupted' }
   /** 正式大纲写到第 coveredTo 章，全书 total 章。 */
   | { kind: 'partial'; coveredTo: number; total: number }
+  /** 正文末尾还带着分批说明，却不能从它接着写：检查点没了，或说明与正文对不上（比如末尾多了换行、手动改过）。 */
+  | { kind: 'unresumable' }
   | { kind: 'complete' }
 
 export function outlineProgress(synopsis: string, checkpoint: unknown, writingLanguage: WritingLanguage, totalChapters: number): OutlineProgress {
   if (synopsis.length <= 50) return { kind: 'empty' }
   if (isRecoverableSynopsisCheckpoint(checkpoint, synopsis, writingLanguage, totalChapters)) return { kind: 'interrupted' }
   const next = plotOutlineNextChapter({ synopsis, totalChapters, writingLanguage })
-  return next > 1 ? { kind: 'partial', coveredTo: next - 1, total: totalChapters } : { kind: 'complete' }
+  if (next > 1) return { kind: 'partial', coveredTo: next - 1, total: totalChapters }
+  return hasVisiblePartialSynopsisMarker(synopsis) ? { kind: 'unresumable' } : { kind: 'complete' }
 }

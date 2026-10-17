@@ -46,19 +46,33 @@ export function useKnowledgeIndex() {
   const [status, setStatus] = useState<VectorRebuildStatus | null>(null)
   const [statusError, setStatusError] = useState('')
   const [backfilling, setBackfilling] = useState(false)
+  // 只有最后一次读取写状态：连改两次检索模型时，先发的那次晚到也不会写回过时的提示。
+  const statusRequest = useRef(0)
 
   const loadStatus = useCallback(async () => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession) return
+    const request = ++statusRequest.current
+    const latest = () => request === statusRequest.current && isProjectSessionCurrent(projectSession)
     try {
       const result = await ipc.invokeWithProjectSession(projectSession, 'kb:get-vector-rebuild-status', projectSession.projectPath)
-      if (!isProjectSessionCurrent(projectSession)) return
+      if (!latest()) return
       setStatus(unwrapKnowledgeValue(result))
       setStatusError('')
     } catch (error) {
-      if (isProjectSessionCurrent(projectSession)) setStatusError(appErrorMessage(locale, error))
+      if (latest()) setStatusError(appErrorMessage(locale, error))
     }
   }, [locale])
+
+  // 状态检查的唯一自动触发：挂载、换了作品或重新打开，以及模型配置变了（设置里保存或删除检索模型只改模型仓库，
+  // 设置页与后台挂着的知识库页都不会重新挂载）。资料增删由各自的操作与资源刷新事件显式重读。
+  const projectPath = useProjectStore(s => s.currentProject?.path)
+  const sessionLease = useProjectStore(s => s.currentProject?.sessionLease)
+  const models = useLLMStore(s => s.models)
+  const embeddingModelId = useLLMStore(s => s.defaultEmbeddingModelId)
+  useEffect(() => {
+    Promise.resolve().then(() => loadStatus())
+  }, [loadStatus, projectPath, sessionLease, models, embeddingModelId])
 
   const backfill = useCallback(async () => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
@@ -108,10 +122,28 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
   const index = useKnowledgeIndex()
   const { loadStatus, reset: resetIndex } = index
   const [documents, setDocuments] = useState<KBDocument[]>([])
+  // 这次打开的资料列表读过一次（成功或失败）之前，空列表不等于知识库是空的。
+  const [documentsLoaded, setDocumentsLoaded] = useState(false)
   const [stats, setStats] = useState<KBStatsData>(EMPTY_STATS)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  // 当前结果是按哪个词查出来的；结果被保存、更新检索、清空或换作品清掉时一起清，查找出错时也清，「没有找到」只说真查过的词。
+  const [searchedQuery, setSearchedQuery] = useState('')
   const [searching, setSearching] = useState(false)
+  // 每次查找与清除都作废之前还没返回的查找：只有最新的一次写结果、结束「查找中」。submittedQuery 是最近一次提交的词（可能还在查）。
+  const searchRequest = useRef(0)
+  const submittedQuery = useRef('')
+  const resetResults = useCallback(() => {
+    setSearchResults([])
+    setSearchedQuery('')
+  }, [])
+  /** 清掉查找结果，并作废还没返回的查找。 */
+  const clearResults = useCallback(() => {
+    searchRequest.current++
+    submittedQuery.current = ''
+    setSearching(false)
+    resetResults()
+  }, [resetResults])
   const [topK, setTopK] = useState(10)
   const [clearing, setClearing] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -152,6 +184,7 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
       if (!isProjectSessionCurrent(projectSession)) return
       setLoadError(appErrorMessage(locale, error))
     }
+    setDocumentsLoaded(true)
   }, [locale])
 
   /** 打开一份资料的项目副本。有未保存的修改时调用方须先征得作者同意。 */
@@ -165,7 +198,10 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
       const result = unwrapKnowledgeValue(await ipc.invokeWithProjectSession(session, 'kb:read-document-copy', docId, session.projectPath))
       if (isProjectSessionCurrent(session)) replaceDraft(loading, { docId, copy: result, content: result.content ?? '' })
     } catch (error) {
-      if (isProjectSessionCurrent(session) && readDraft() === loading) toast.error(appErrorMessage(locale, error))
+      if (!isProjectSessionCurrent(session) || readDraft() !== loading) return
+      // 读不出来就回到没选资料的样子：不留「正在读取」，作者再点这一份会重读。
+      setDraft(EMPTY_DRAFT)
+      toast.error(appErrorMessage(locale, error))
     }
   }
   const openDocumentRef = useRef(openDocument)
@@ -182,12 +218,12 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
       if (!mounted) return
       if (switched) {
         setDocuments([])
+        setDocumentsLoaded(false)
         setStats(EMPTY_STATS)
-        setSearchResults([])
+        clearResults()
         setDraft(EMPTY_DRAFT)
         resetIndex()
         setLoadError('')
-        setSearching(false)
         setClearing(false)
       } else if (restoredDraft.current) {
         // 标签切回来时重读所选资料，刷新检索状态；有未保存改动就原样留着，保存时由副本校验发现冲突。
@@ -197,14 +233,9 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
       }
       restoredDraft.current = null
       void loadData()
-      void loadStatus()
     })
     return () => { mounted = false }
-  }, [projectPath, sessionLease, loadData, loadStatus, resetIndex, setDraft])
-
-  useEffect(() => {
-    Promise.resolve().then(() => loadStatus())
-  }, [loadStatus, documents])
+  }, [projectPath, sessionLease, loadData, resetIndex, setDraft, clearResults])
 
   useEffect(() => {
     const current = () => captureProjectSession(useProjectStore.getState().currentProject)
@@ -245,7 +276,7 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
       if (!isProjectSessionCurrent(session)) return
       if (!result.success) { toast.error(result.error || text('保存失败', 'Save failed')); return }
       if (readDraft() === saving) await openDocument(docId, true)
-      setSearchResults([])
+      clearResults()
       toast.success(text('项目副本已保存；更新检索后，写作时才能查到新内容', 'Project copy saved. Update search so writing can find the new text.'))
     } catch (error) {
       if (isProjectSessionCurrent(session)) toast.error(appErrorMessage(locale, error))
@@ -267,7 +298,7 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
       await loadData()
       await loadStatus()
       if (readDraft() === reindexing) await openDocument(result.docId, true)
-      setSearchResults([])
+      clearResults()
       toast.success(text('检索已更新，写作时能查到新内容', 'Search updated. Writing can now find the new text.'))
     } catch (error) {
       if (isProjectSessionCurrent(session)) toast.error(appErrorMessage(locale, error))
@@ -276,20 +307,32 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
     }
   }
 
-  const search = async () => {
+  /** 查找。只有最后一次查找写结果、结束「查找中」，先发的晚到不算。 */
+  const search = async (query = searchQuery, limit = topK) => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession) return
+    const request = ++searchRequest.current
+    submittedQuery.current = query
+    const latest = () => request === searchRequest.current && isProjectSessionCurrent(projectSession)
     setSearching(true)
     try {
-      const result = await ipc.invokeWithProjectSession(projectSession, 'kb:search', searchQuery, topK, projectSession.projectPath)
-      if (!isProjectSessionCurrent(projectSession)) return
+      const result = await ipc.invokeWithProjectSession(projectSession, 'kb:search', query, limit, projectSession.projectPath)
+      if (!latest()) return
       setSearchResults(unwrapKnowledgeValue(result))
+      setSearchedQuery(query)
     } catch (error) {
-      if (!isProjectSessionCurrent(projectSession)) return
+      if (!latest()) return
+      resetResults()
       toast.error(appErrorMessage(locale, error))
     } finally {
-      if (isProjectSessionCurrent(projectSession)) setSearching(false)
+      if (latest()) setSearching(false)
     }
+  }
+
+  /** 改「最多显示」：按最近一次提交的词（还在查的也算）与新的条数重查，不用已显示结果的旧词。 */
+  const changeLimit = (limit: number) => {
+    setTopK(limit)
+    if (submittedQuery.current) void search(submittedQuery.current, limit)
   }
 
   /** 清空当前作品的知识库。session 是作者确认前取下的会话；确认期间换了作品就不清。 */
@@ -307,7 +350,7 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
         setDraft(EMPTY_DRAFT)
         setDocuments([])
         setStats(EMPTY_STATS)
-        setSearchResults([])
+        clearResults()
         resetIndex()
         globalEventBus.emit('REFRESH_RESOURCE', { resources: ['all'], projectPath: expectedProjectPath, projectSession })
         toast.success(text('知识库已清空', 'Knowledge base cleared'))
@@ -364,12 +407,17 @@ export function useKnowledgeBase(draftSlot?: KnowledgeDraftSlot) {
     }
   }
 
+  /** 「刷新资料」：资料列表与索引状态一起重读。 */
+  const reload = useCallback(async () => {
+    await Promise.all([loadData(), loadStatus()])
+  }, [loadData, loadStatus])
+
   return {
-    index, reload: loadData,
-    documents, stats, loadError,
+    index, reload,
+    documents, documentsLoaded, stats, loadError,
     selectedDocId, documentCopy, draftContent, setDraftContent, documentBusy, dirty,
     openDocument, saveDocument, reindexDocument,
-    searchQuery, setSearchQuery, topK, setTopK, searchResults, setSearchResults, searching, search,
+    searchQuery, setSearchQuery, topK, setTopK, changeLimit, searchResults, setSearchResults, searchedQuery, clearResults, searching, search,
     clearing, clearAll,
     importing, importPlanningMaterials,
   }

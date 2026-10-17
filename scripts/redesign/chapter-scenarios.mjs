@@ -252,6 +252,8 @@ const LONG_TEXT = Array.from({ length: 50 }, (_, index) => {
 /** 打开 1 万字的第 5 章：新外壳点流程脊里的章，旧外壳点草稿箱里的草稿。 */
 async function openLongChapter(page) {
   const target = await isStage(page) ? stage.chapterButton(page, LONG_CHAPTER) : project.draftOfChapter(page, LONG_CHAPTER)
+  const longProse = (await proseOf(page)).getByText('第1段。', { exact: false })
+  assert.equal(await longProse.count(), 0, '点击前第 5 章没有打开，计时从点击算起')
   await target.scrollIntoViewIfNeeded()
   await target.hover()
   await page.waitForTimeout(300)
@@ -469,7 +471,7 @@ export const CHAPTER_SCENARIOS = {
 
   /**
    * 审稿侧页属于展开它的那一稿：打开作品落在已审稿的第 3 章，侧页刚出现与 4 秒后一样展开（不再先开后收）；
-   * 换到带历史审稿的已定稿第 2 章不跟过去，回到第 3 章仍展开。
+   * 换到带历史审稿的已定稿第 2 章不跟过去，回到第 3 章仍展开。删掉第 4 章的稿，落点（最后一章在写的）就是第 3 章。
    */
   'chapter-sheet-landing': { model: false, shell: 'stage', setup: seed({ extra: async ({ page, invoke, path, session }) => {
     const [finalized] = (await invoke(page, 'db:draft-list', 2, path, session)).filter(draft => draft.status === 'finalized')
@@ -477,6 +479,9 @@ export const CHAPTER_SCENARIOS = {
     const expectedSource = { id: full.id, chapterNumber: 2, version: full.version, status: full.status, content: full.content }
     const created = await invoke(page, 'db:review-create', { baseDraftId: full.id, content: STAGE_SAMPLE.drafts[3].review, expectedSource }, path, session)
     assert.equal(created.success, true, created.error)
+    for (const draft of await invoke(page, 'db:draft-list', 4, path, session)) {
+      assert.equal((await invoke(page, 'db:draft-delete', draft.id, path, session)).success, true)
+    }
   } }), run: async ({ page }) => {
     await chapterView.reviewSheet(page).waitFor({ state: 'visible' })
     const landing0s = (await sheetLayout(page)).sheets

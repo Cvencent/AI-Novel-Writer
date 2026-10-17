@@ -38,8 +38,11 @@ export function useShelfOverview() {
     itemId: string
     requestKey: string
   } | null>(null)
-  const [result, setResult] = useState<{ requestKey: string; overview: ProjectOverview } | null>(null)
-  const request = useRef(0)
+  // 当前作品与预览各占一格：预览别的书不会冲掉当前作品已读到的概览，回到当前作品时直接显示。
+  const [currentResult, setCurrentResult] = useState<{ requestKey: string; overview: ProjectOverview } | null>(null)
+  const [previewResult, setPreviewResult] = useState<{ requestKey: string; overview: ProjectOverview } | null>(null)
+  const currentRequest = useRef(0)
+  const previewRequest = useRef(0)
 
   useEffect(() => {
     try {
@@ -53,25 +56,28 @@ export function useShelfOverview() {
   }, [])
 
   useEffect(() => {
-    const requestId = ++request.current
+    const requestId = ++currentRequest.current
     if (!currentKey) return
     const session = captureProjectSession(useProjectStore.getState().currentProject)
     if (!session) return
     const requestKey = `current:${currentKey}`
     void ipc.invokeWithProjectSession(session, 'project:overview-current').then(result => {
-      if (request.current === requestId && isProjectSessionCurrent(session)) {
-        setResult({ requestKey, overview: result })
+      if (currentRequest.current === requestId && isProjectSessionCurrent(session)) {
+        setCurrentResult({ requestKey, overview: result })
       }
     }).catch(() => {
-      if (request.current === requestId && isProjectSessionCurrent(session)) {
-        setResult({ requestKey, overview: { state: 'unavailable' } })
+      if (currentRequest.current === requestId && isProjectSessionCurrent(session)) {
+        setCurrentResult({ requestKey, overview: { state: 'unavailable' } })
       }
     })
-    return () => { request.current += 1 }
+    return () => { currentRequest.current += 1 }
   }, [currentKey])
 
-  const activeSelection = selection?.currentKey === currentKey ? selection : null
+  // 预览的书被移出最近项目后，选择随之作废，概览回到当前作品。
+  const activeSelection = selection?.currentKey === currentKey
+    && recentProjects.some(project => (project.previewCapabilityId ?? project.path) === selection.itemId) ? selection : null
   const requestKey = activeSelection?.requestKey ?? (currentKey ? `current:${currentKey}` : '')
+  const result = activeSelection ? previewResult : currentResult
   const overview: ShelfOverview = result?.requestKey === requestKey
     ? result.overview
     : activeSelection || currentSession
@@ -87,17 +93,17 @@ export function useShelfOverview() {
       return
     }
 
-    const requestId = ++request.current
+    const requestId = ++previewRequest.current
     const requestKey = `preview:${itemId}`
     setSelection({ currentKey, itemId, requestKey })
     if (!project.previewCapabilityId) {
-      setResult({ requestKey, overview: { state: 'unavailable' } })
+      setPreviewResult({ requestKey, overview: { state: 'unavailable' } })
       return
     }
     void ipc.invoke('project:peek-overview', project.previewCapabilityId).then((result: ProjectOverview) => {
-      if (request.current === requestId) setResult({ requestKey, overview: result })
+      if (previewRequest.current === requestId) setPreviewResult({ requestKey, overview: result })
     }).catch(() => {
-      if (request.current === requestId) setResult({ requestKey, overview: { state: 'unavailable' } })
+      if (previewRequest.current === requestId) setPreviewResult({ requestKey, overview: { state: 'unavailable' } })
     })
   }
 

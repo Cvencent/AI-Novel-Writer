@@ -69,6 +69,8 @@ export interface ChapterRow {
   running: boolean
   /** 打开这一章时载入的稿：有定稿之后才建的未归档草稿时取它，否则取定稿，再否则取最新的未归档草稿；待写章为空。 */
   draft: DraftMeta | null
+  /** 这一章有定稿；当前稿可能是定稿之后新建的草稿。 */
+  hasFinal: boolean
 }
 
 export interface WorkFacts {
@@ -98,6 +100,9 @@ export function missingSetup(config: WorkFacts['config']): SetupField[] {
     : blank(config[field]))
 }
 
+/** 这一章动过笔：有定稿（之后又新建了空草稿也算），或当前稿有正文。只有空的当前稿不算；没记字数的旧稿按有正文算。 */
+const begun = (row: ChapterRow) => row.hasFinal || (row.phase !== 'todo' && row.draft?.wordCount !== 0)
+
 /**
  * 四个阶段的状态，顺序固定为设定、架构、蓝图、正文。完成判定按 ia.md：设定必填项齐全，架构四节都有内容，
  * 蓝图至少 1 章（分批规划的作品不会因为没规划完就一直停在蓝图），正文按章统计。
@@ -109,7 +114,7 @@ export function deriveStages(facts: WorkFacts, chapters: readonly ChapterRow[] =
   const total = Math.max(0, facts.config.totalChapters || 0)
   const planned = facts.blueprints.length
   const finalized = chapters.filter(row => row.phase === 'final').length
-  const started = chapters.some(row => row.phase !== 'todo')
+  const started = chapters.some(begun)
   return [
     { stage: 'setup', missing,
       progress: missing.length === 0 ? DONE : { state: 'active', ratio: (SETUP_FIELDS.length - missing.length) / SETUP_FIELDS.length } },
@@ -149,21 +154,30 @@ export function deriveChapters(facts: Pick<WorkFacts, 'blueprints' | 'drafts' | 
       phase: working ? chapterPhase(working.status, facts.chapterFacts?.[working.id]) : final ? 'final' : 'todo',
       running: facts.runningChapters.has(number),
       draft: working ?? final,
+      hasFinal: final !== null,
     }
   })
 }
 
-/** 点「正文」时打开的章：最早一章写到一半的，其次最早待写的，都没有时取最后一章定稿。 */
+/**
+ * 打开作品、书房「继续写作」与点「正文」打开的章：几章都在写时取最后一章在写的（用户决定），
+ * 其次最早一章还没动笔的（待写或只有空稿），都没有时取最后一章定稿。
+ */
 export function focusChapter(rows: readonly ChapterRow[]): ChapterRow | null {
-  return rows.find(row => row.phase !== 'todo' && row.phase !== 'final')
-    ?? rows.find(row => row.phase === 'todo')
+  return rows.filter(row => begun(row) && row.phase !== 'final').at(-1)
+    ?? rows.find(row => !begun(row))
     ?? rows.at(-1)
     ?? null
 }
 
-/** 打开作品时落在第一个未完成的阶段；四个阶段都完成时落在正文。 */
+/**
+ * 打开作品时落在第一个未完成的阶段；四个阶段都完成时落在正文。设定齐了且已有蓝图或正文时落在当前写作位置（正文）：
+ * 架构没写完（比如大纲分批只写了一部分）不把作者拉回架构，有正文没有蓝图也不落到空的蓝图页；流程脊与架构页照旧显示部分完成。
+ */
 export function landingStage(stages: readonly StageStatus[]): WorkStage {
-  return stages.find(status => status.progress.state !== 'done')?.stage ?? 'manuscript'
+  const first = stages.find(status => status.progress.state !== 'done')?.stage ?? 'manuscript'
+  const begun = stages.some(status => (status.stage === 'blueprint' || status.stage === 'manuscript') && status.progress.state !== 'todo')
+  return begun && first !== 'setup' ? 'manuscript' : first
 }
 
 export type StageLocation =
