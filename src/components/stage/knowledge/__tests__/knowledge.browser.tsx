@@ -657,6 +657,31 @@ describe('知识库', () => {
     await vi.waitFor(() => expect(document.body.textContent).not.toContain('还不能按意思查找'))
   })
 
+  it('检索模型连改两次、两次索引检查乱序返回：先改的那次晚到，不把过时的提示写回来', async () => {
+    await renderPage()
+    await vi.waitFor(() => expect(document.body.textContent).toContain('有 4 段资料还不能按意思查找'))
+    const base = invoke.getMockImplementation()!
+    const answers = [
+      { embeddingConfigured: true, canRebuild: true, totalChunks: 9, vectorlessCount: 2, activeVectorDimension: 0 },
+      { embeddingConfigured: false, canRebuild: false, totalChunks: 9, vectorlessCount: 9, activeVectorDimension: 0 },
+    ]
+    const releases: (() => void)[] = []
+    invoke.mockImplementation(async (channel, ...args) => {
+      if (channel !== 'kb:get-vector-rebuild-status') return base(channel, ...args)
+      const answer = answers[releases.length]
+      await new Promise<void>(resolve => releases.push(resolve))
+      return answer
+    })
+    await act(async () => useLLMStore.setState({ models: [] }))
+    await act(async () => useLLMStore.setState({ models: [] }))
+    await vi.waitFor(() => expect(releases).toHaveLength(2))
+    await act(async () => releases[1]())
+    await vi.waitFor(() => expect(document.body.textContent).not.toContain('还不能按意思查找'))
+    await act(async () => releases[0]())
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)) })
+    expect(document.body.textContent).not.toContain('有 2 段资料还不能按意思查找')
+  })
+
   it('打开知识库页只读一次索引状态；点「刷新资料」再读一次', async () => {
     const statusReads = () => invoke.mock.calls.filter(([channel]) => channel === 'kb:get-vector-rebuild-status').length
     await renderPage()
