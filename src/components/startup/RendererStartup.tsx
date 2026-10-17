@@ -6,7 +6,6 @@ import type { StartupState, StartupMigrationNotice, StartupBlockedCode } from '.
 
 const desktopStartup: AppearanceBootstrapDependencies = {
   waitForMainReady: () => ipc.invoke('startup:get-state'),
-  readSkinSnapshot: ready => ipc.invoke('startup:skin-snapshot', ready),
   acknowledgeReadback: ack => ipc.invoke('startup:appearance-ack', ack),
 }
 const loadApp = () => import('../../App')

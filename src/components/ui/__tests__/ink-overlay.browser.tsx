@@ -6,7 +6,6 @@ import { page, userEvent } from 'vitest/browser'
 import '../../../index.css'
 import type { ProjectData } from '../../../shared/ipc-channels'
 import { setActiveProjectSessionContext } from '../../../shared/project-session-context'
-import { useAppearanceStore } from '../../../stores/appearance-bootstrap'
 import { useProjectStore } from '../../../stores/project-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useThemeStore } from '../../../stores/theme-store'
@@ -81,8 +80,7 @@ const onOpenChange = vi.fn()
 
 beforeEach(async () => {
   await page.viewport(1100, 760)
-  useAppearanceStore.setState({ resolvedShell: 'stage' })
-  useThemeStore.setState({ resolvedTheme: 'paper' })
+  useThemeStore.setState({ resolvedTheme: 'light' })
 })
 
 afterEach(async () => {
@@ -94,10 +92,7 @@ afterEach(async () => {
   root = undefined
   container = undefined
   host()?.remove()
-  document.getElementById('ai-novel-toast-root')?.remove()
-  document.getElementById('ai-novel-action-toast-root')?.remove()
-  useAppearanceStore.setState({ resolvedShell: 'classic' })
-  useThemeStore.setState({ resolvedTheme: 'paper' })
+  useThemeStore.setState({ resolvedTheme: 'light' })
 })
 
 describe('命令式弹窗', () => {
@@ -124,7 +119,7 @@ describe('命令式弹窗', () => {
   it('主题切换时宿主跟着换 data-theme', async () => {
     await act(async () => { void alertError('写入失败') })
     expect(host()!.dataset.theme).toBe('light')
-    await act(async () => useThemeStore.setState({ resolvedTheme: 'galaxy' }))
+    await act(async () => useThemeStore.setState({ resolvedTheme: 'dark' }))
     expect(host()!.dataset.theme).toBe('dark')
     await userEvent.keyboard('{Escape}')
   })
@@ -476,7 +471,7 @@ describe('提示栈', () => {
   })
 
   it.each(['light', 'dark'] as const)('%s 主题溢出的栈滚到底时，最上面露出半截的卡片仍不透明，页面不从卡片里透出；上沿有提示还有更多的淡出带，滚到顶时消失', async (theme) => {
-    await act(async () => useThemeStore.setState({ resolvedTheme: theme === 'dark' ? 'dark' : 'paper' }))
+    await act(async () => useThemeStore.setState({ resolvedTheme: theme }))
     // 卡片背后铺一层纯红：卡片哪里变透明，截图里那里就带红
     const backdrop = document.createElement('div')
     backdrop.style.cssText = 'position: fixed; inset: 0; background: rgb(255, 0, 0);'

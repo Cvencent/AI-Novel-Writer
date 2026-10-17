@@ -39,8 +39,6 @@ const mocks = vi.hoisted(() => {
     createGitHubReleaseUpdateBackend: vi.fn(),
     isMacUpdateReminderEnabled: vi.fn(() => false),
     openExternal: vi.fn(async () => undefined),
-    initializeSkin: vi.fn(() => calls.push('skin')),
-    skinSnapshot: vi.fn((generation: string) => ({ globalGeneration: generation, skinRevision: 0, backgroundSkin: 'classic' })),
     app: {
       commandLine: { appendSwitch: vi.fn(), getSwitchValue: vi.fn(() => '') },
       getPath: vi.fn((name: string) => name === 'appData' ? mocks.appData : mocks.userData),
@@ -65,7 +63,6 @@ vi.mock('electron', () => ({
   shell: { openExternal: mocks.openExternal },
 }))
 vi.mock('../ipc-handlers', () => ({ registerIPCHandlers: mocks.registerIPCHandlers }))
-vi.mock('../services/skin-service', () => ({ skinService: { initialize: mocks.initializeSkin, getStartupSnapshot: mocks.skinSnapshot } }))
 vi.mock('../mcp/mcp-ipc-bridge', () => ({ registerMCPHandlers: mocks.registerMCPHandlers }))
 vi.mock('../controllers/update-controller', () => ({ registerUpdateController: vi.fn() }))
 vi.mock('../services/electron-updater-adapter', () => ({ createElectronUpdaterBackend: vi.fn() }))
@@ -114,8 +111,6 @@ describe('interactive Electron startup', () => {
     mocks.openExternal.mockClear()
     mocks.BrowserWindow.mockClear()
     mocks.app.requestSingleInstanceLock.mockReturnValue(true)
-    mocks.initializeSkin.mockReset().mockImplementation(() => mocks.calls.push('skin'))
-    mocks.skinSnapshot.mockReset().mockImplementation(generation => ({ globalGeneration: generation, skinRevision: 0, backgroundSkin: 'classic' }))
     const fixtureBase = path.resolve('.runtime/.cache/main-startup-tests')
     fs.mkdirSync(fixtureBase, { recursive: true })
     fixtureRoot = fs.mkdtempSync(path.join(fixtureBase, 'run-'))
@@ -141,7 +136,6 @@ describe('interactive Electron startup', () => {
 
     expect(mocks.calls.indexOf('ipc')).toBeLessThan(mocks.calls.indexOf('create-window'))
     expect(mocks.calls.indexOf('mcp')).toBeLessThan(mocks.calls.indexOf('create-window'))
-    expect(mocks.calls.indexOf('skin')).toBeLessThan(mocks.calls.indexOf('ipc'))
     expect(JSON.parse(fs.readFileSync(path.join(canonical, '.migration/receipt.json'), 'utf8')).completed).toBe(true)
     expect(fs.readFileSync(path.join(legacy, 'config.json'), 'utf8')).toBe('{}')
     expect(fs.readFileSync(path.join(mocks.userData, 'retained.json'), 'utf8')).toBe('original Chromium profile')
@@ -180,18 +174,20 @@ describe('interactive Electron startup', () => {
     expect(mocks.registerIPCHandlers).not.toHaveBeenCalled()
     expect(mocks.registerMCPHandlers).not.toHaveBeenCalled()
     expect(mocks.startUpdateRuntime).not.toHaveBeenCalled()
-    expect(mocks.initializeSkin).not.toHaveBeenCalled()
     expect(fs.existsSync(canonical)).toBe(false)
     expect(fs.readFileSync(path.join(legacy, 'config.json'), 'utf8')).toBe('{corrupt')
     expect(mocks.BrowserWindow).toHaveBeenCalledWith(expect.objectContaining({ frame: true }))
   })
 
-  it('does not grant normal IPC after a skin snapshot failure', async () => {
-    mocks.skinSnapshot.mockImplementation(() => { throw new Error('SKIN_UNREADABLE') })
+  it.each(['{"version":1,"activeSkin":"anime"}', '{"version":1,"activeSkin":"custom"}', '{broken'])('旧版本留下的皮肤清单 %s 不再读取，不阻断启动，原样带进新数据目录', async manifest => {
+    fs.mkdirSync(path.join(legacy, 'skins'))
+    fs.writeFileSync(path.join(legacy, 'skins', 'manifest.json'), manifest)
     await import('../main')
-    await vi.waitFor(() => expect(mocks.BrowserWindow).toHaveBeenCalledOnce())
-    expect(mocks.registerIPCHandlers).not.toHaveBeenCalled()
-    expect(mocks.registerMCPHandlers).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(mocks.calls).toContain('update-runtime'))
+    expect(mocks.registerIPCHandlers).toHaveBeenCalledOnce()
+    const receipt = JSON.parse(fs.readFileSync(path.join(canonical, '.migration/receipt.json'), 'utf8'))
+    expect(fs.readFileSync(path.join(canonical, 'generations', receipt.generation, 'skins', 'manifest.json'), 'utf8')).toBe(manifest)
+    expect(fs.readFileSync(path.join(legacy, 'skins', 'manifest.json'), 'utf8')).toBe(manifest)
   })
 
   it('does not migrate or create a window without the existing single-instance lock', async () => {

@@ -52,7 +52,7 @@ beforeEach(async () => {
   host.style.cssText = 'width: 1280px; height: 800px; display: flex;'
   document.body.append(host)
   root = createRoot(host)
-  await act(async () => root!.render(<StageShell theme="paper" />))
+  await act(async () => root!.render(<StageShell theme="light" />))
 })
 
 afterEach(async () => {

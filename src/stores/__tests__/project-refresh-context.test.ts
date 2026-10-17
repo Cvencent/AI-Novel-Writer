@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectData } from '../../shared/ipc-channels'
 import { checkArchStatus, getBlueprintCount } from '../../services/architecture-service'
 import { useDraftStore } from '../draft-store'
-import { useAppearanceStore } from '../appearance-bootstrap'
 import { useLayoutStore } from '../layout-store'
 import { navigate } from '../navigation/navigation-intents'
 import { useStageStore } from '../navigation/stage-store'
@@ -81,9 +80,8 @@ beforeEach(() => {
 describe('project refresh context', () => {
   describe('新外壳：打开作品的默认落点在提交时就落下，之后作者的导航不被收尾改回', () => {
     async function openBWithSlowTree(before: () => void, during: () => void) {
-      const originals = [useLayoutStore.getState(), useStageStore.getState(), useAppearanceStore.getState()] as const
+      const originals = [useLayoutStore.getState(), useStageStore.getState()] as const
       const tree = deferred<unknown[]>()
-      useAppearanceStore.setState({ resolvedShell: 'stage' })
       useStageStore.setState({ sheet: null, focus: false })
       before()
       invoke.mockImplementation((channel: string, targetPath: string, requestToken: string) => {
@@ -104,7 +102,6 @@ describe('project refresh context', () => {
         tree.resolve([])
         useLayoutStore.setState(originals[0], true)
         useStageStore.setState(originals[1], true)
-        useAppearanceStore.setState(originals[2], true)
       }
     }
 

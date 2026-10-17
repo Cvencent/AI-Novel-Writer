@@ -6,7 +6,6 @@ import { EditorState, type Extension } from '@codemirror/state'
 import { openSearchPanel, closeSearchPanel, search } from '@codemirror/search'
 import { Sparkles, Bold, Check } from 'lucide-react'
 import { Button } from '../ui/Button'
-import { inkTheme } from '../stage/ink-theme'
 import { paragraphIndent } from './paragraph-indent'
 import { proseTab } from './prose-tab'
 import { useThemeStore } from '../../stores/theme-store'
@@ -67,7 +66,7 @@ export default function CodeMirrorEditor({
   fitContent = false,
   paragraphIndent: indentParagraphs = false,
 }: CodeMirrorEditorProps) {
-  const inkThemeName = useThemeStore(s => inkTheme(s.resolvedTheme))
+  const inkThemeName = useThemeStore(s => s.resolvedTheme)
   const uiText = useLocaleStore(s => s.text)
   const uiLocale = useLocaleStore(s => s.locale)
   const editorRef = useRef<ReactCodeMirrorRef>(null)

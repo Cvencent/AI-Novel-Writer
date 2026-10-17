@@ -7,7 +7,6 @@ import App from '../App'
 import type { Locale } from '../i18n/types'
 import type { ProjectData } from '../shared/ipc-channels'
 import { setActiveProjectSessionContext } from '../shared/project-session-context'
-import { useAppearanceStore } from '../stores/appearance-bootstrap'
 import { useLayoutStore } from '../stores/layout-store'
 import { useLocaleStore } from '../stores/locale-store'
 import { navigate } from '../stores/navigation/navigation-intents'
@@ -23,7 +22,7 @@ const project = { id: session.projectId, name: '灯塔', path: session.projectPa
   protagonistProfile: '', globalGuidance: '', writingStyle: '', referenceWorks: '', narrativePOV: 'third_limited', plotStructure: 'three_act', writingLanguage: 'zh-CN',
 } } as unknown as ProjectData
 
-const restores = [useAppearanceStore, useLayoutStore, useLocaleStore, useProjectStore, useWorkflowStore].map(store => {
+const restores = [useLayoutStore, useLocaleStore, useProjectStore, useWorkflowStore].map(store => {
   const state = (store as StoreApi<unknown>).getState()
   return () => (store as StoreApi<unknown>).setState(state, true)
 })

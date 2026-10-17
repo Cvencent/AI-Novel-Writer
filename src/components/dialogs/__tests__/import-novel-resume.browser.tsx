@@ -10,7 +10,6 @@ import { useEditorStore } from '../../../stores/editor-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore, type WorkflowDefinition, type WorkflowRun } from '../../../stores/workflow-store'
 import { useDraftStore } from '../../../stores/draft-store'
-import { useAppearanceStore } from '../../../stores/appearance-bootstrap'
 import { useThemeStore } from '../../../stores/theme-store'
 import { composite, contrast } from '../../ui/__tests__/color-contrast'
 import type { ImportRunPreparationResult, ImportRunSnapshot } from '../../../shared/import-run'
@@ -1149,47 +1148,40 @@ describe('current-project reference import', () => {
 
 describe('新外壳里的导入对话框', () => {
   it('同屏只有一个上墨的主按钮：用途、目标与可续导入的选中项是带对勾的次按钮', async () => {
-    const restore = useAppearanceStore.getState()
-    useAppearanceStore.setState({ resolvedShell: 'stage' })
-    try {
-      await act(async () => root.render(<div className="paper-ink"><ImportNovelDialog open onClose={vi.fn()} /></div>))
-      expect([...document.querySelectorAll('[role="dialog"] .pi-btn--primary')].map(button => button.textContent)).toEqual(['开始拆解仿写（0 章）'])
-      await act(async () => root.render(<div />))
-      invoke.mockImplementation(async (channel: string) => {
-        if (channel === 'db:import-run-list-resumable') return [importRun({ id: 'first-run', status: 'failed' }), importRun({ id: 'second-run', status: 'failed' })]
-        if (channel === 'db:project-core-get') return null
-        if (channel === 'db:blueprint-get-all') return []
-        return { success: true }
-      })
-      await act(async () => root.render(<div className="paper-ink"><ImportNovelDialog open onClose={vi.fn()} /></div>))
-      await act(async () => page.getByTestId('import-target-current').click())
-      await expect.element(page.getByTestId('import-resumable-runs')).toBeVisible()
-      const dialog = document.querySelector('[role="dialog"]')!
-      expect([...dialog.querySelectorAll('.pi-btn--primary:not(:disabled)')].map(button => button.textContent)).toEqual(['继续导入'])
-      const toggles = [...dialog.querySelectorAll<HTMLButtonElement>('button[aria-pressed]')]
-      expect(toggles.map(button => [button.dataset.testid, button.getAttribute('aria-pressed'), button.classList.contains('pi-btn--secondary')])).toEqual([
-        ['import-purpose-reference', 'true', true], ['import-purpose-author', 'false', true],
-        ['import-target-new', 'false', true], ['import-target-current', 'true', true],
-        ['import-resumable-choice-first-run', 'true', true], ['import-resumable-choice-second-run', 'false', true],
-      ])
-      const pressed = getComputedStyle(page.getByTestId('import-target-current').element())
-      const raised = getComputedStyle(page.getByTestId('import-target-new').element())
-      expect(pressed.backgroundColor).not.toBe(raised.backgroundColor)
-      expect(pressed.borderTopColor).not.toBe(raised.borderTopColor)
-      await page.screenshot({ path: '../../../../.runtime/rdx3-shots/import-dialog-stage.png' })
-    } finally {
-      useAppearanceStore.setState(restore, true)
-    }
+    await act(async () => root.render(<div className="paper-ink"><ImportNovelDialog open onClose={vi.fn()} /></div>))
+    expect([...document.querySelectorAll('[role="dialog"] .pi-btn--primary')].map(button => button.textContent)).toEqual(['开始拆解仿写（0 章）'])
+    await act(async () => root.render(<div />))
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === 'db:import-run-list-resumable') return [importRun({ id: 'first-run', status: 'failed' }), importRun({ id: 'second-run', status: 'failed' })]
+      if (channel === 'db:project-core-get') return null
+      if (channel === 'db:blueprint-get-all') return []
+      return { success: true }
+    })
+    await act(async () => root.render(<div className="paper-ink"><ImportNovelDialog open onClose={vi.fn()} /></div>))
+    await act(async () => page.getByTestId('import-target-current').click())
+    await expect.element(page.getByTestId('import-resumable-runs')).toBeVisible()
+    const dialog = document.querySelector('[role="dialog"]')!
+    expect([...dialog.querySelectorAll('.pi-btn--primary:not(:disabled)')].map(button => button.textContent)).toEqual(['继续导入'])
+    const toggles = [...dialog.querySelectorAll<HTMLButtonElement>('button[aria-pressed]')]
+    expect(toggles.map(button => [button.dataset.testid, button.getAttribute('aria-pressed'), button.classList.contains('pi-btn--secondary')])).toEqual([
+      ['import-purpose-reference', 'true', true], ['import-purpose-author', 'false', true],
+      ['import-target-new', 'false', true], ['import-target-current', 'true', true],
+      ['import-resumable-choice-first-run', 'true', true], ['import-resumable-choice-second-run', 'false', true],
+    ])
+    const pressed = getComputedStyle(page.getByTestId('import-target-current').element())
+    const raised = getComputedStyle(page.getByTestId('import-target-new').element())
+    expect(pressed.backgroundColor).not.toBe(raised.backgroundColor)
+    expect(pressed.borderTopColor).not.toBe(raised.borderTopColor)
+    await page.screenshot({ path: '../../../../.runtime/rdx3-shots/import-dialog-stage.png' })
   })
 
   const INK = {
-    paper: { layer: 'rgb(255, 254, 251)', accent: 'rgb(44, 74, 140)' },
+    light: { layer: 'rgb(255, 254, 251)', accent: 'rgb(44, 74, 140)' },
     dark: { layer: 'rgb(29, 29, 34)', accent: 'rgb(169, 190, 240)' },
   }
 
-  it.each(['paper', 'dark'] as const)('选中项有对勾和强调色边线，边线对底色不低于 3:1，文字不低于 4.5:1（%s）', async (theme) => {
-    const restore = [useAppearanceStore.getState(), useThemeStore.getState()] as const
-    useAppearanceStore.setState({ resolvedShell: 'stage' })
+  it.each(['light', 'dark'] as const)('选中项有对勾和强调色边线，边线对底色不低于 3:1，文字不低于 4.5:1（%s）', async (theme) => {
+    const restore = useThemeStore.getState()
     useThemeStore.setState({ resolvedTheme: theme })
     try {
       // 先卸掉 beforeEach 在浅色下开的对话框，按这个主题重新打开，量的才是打开时的颜色而不是换主题的过渡
@@ -1215,8 +1207,7 @@ describe('新外壳里的导入对话框', () => {
       expect([shownIcons(on), shownIcons(off)]).toEqual([['lucide-check'], ['lucide-file-text']])
       await page.screenshot({ path: `../../../../.runtime/rdx3-shots/import-dialog-selected-${theme}.png` })
     } finally {
-      useAppearanceStore.setState(restore[0], true)
-      useThemeStore.setState(restore[1], true)
+      useThemeStore.setState(restore, true)
     }
   })
 })

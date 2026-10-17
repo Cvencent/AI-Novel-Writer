@@ -21,7 +21,6 @@ vi.mock('electron', () => ({
 }))
 vi.mock('../services/app-data-locator', () => ({
   assertGlobalDataReady: vi.fn(),
-  getGlobalDataGeneration: () => 'generation',
   getGlobalDataRoot: () => mocks.storageRoot,
 }))
 vi.mock('../services/skin-service', () => ({ skinService: { getStartupSnapshot: vi.fn() } }))

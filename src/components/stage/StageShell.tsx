@@ -19,7 +19,6 @@ import { paletteItem, type PaletteItem } from './palette-filter'
 import StageSpine from './StageSpine'
 import StageTopBar from './StageTopBar'
 import StageWorkspace from './StageWorkspace'
-import { inkTheme } from './ink-theme'
 import { CHAPTER_PHASE_TEXT, CHAPTER_RUNNING_TEXT, RESOURCE_NAMES, STAGE_NAMES, stageTabName } from './stage-text'
 import { refreshStageWork, useLandingPage, useStageView, useStageWorkRefresh, type StageView } from './use-stage-work'
 import { useStageShortcuts } from './use-stage-shortcuts'
@@ -146,7 +145,7 @@ export default function StageShell({ theme }: { theme: Theme }) {
     <div
       ref={setRoot}
       className="paper-ink stage-shell"
-      data-theme={inkTheme(theme)}
+      data-theme={theme}
       data-shell-presentation="stage"
       data-focus={focus || undefined}
       data-library={library || undefined}

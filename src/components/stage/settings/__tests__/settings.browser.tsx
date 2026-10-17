@@ -6,7 +6,6 @@ import { createRoot, type Root } from 'react-dom/client'
 
 import type { ModelProfile, ProjectData } from '../../../../shared/ipc-channels'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
-import { useAppearanceStore } from '../../../../stores/appearance-bootstrap'
 import { registerEditorExitSaveHandler, useEditorStore } from '../../../../stores/editor-store'
 import { useLayoutStore } from '../../../../stores/layout-store'
 import { useLLMStore } from '../../../../stores/llm-store'
@@ -26,7 +25,7 @@ function snapshot<T>(store: StoreApi<T>): () => void {
   const state = store.getState()
   return () => store.setState(state, true)
 }
-const restores = [snapshot(useLayoutStore), snapshot(useStageStore), snapshot(useLLMStore), snapshot(useThemeStore), snapshot(useAppearanceStore), snapshot(useProjectStore), snapshot(useEditorStore)]
+const restores = [snapshot(useLayoutStore), snapshot(useStageStore), snapshot(useLLMStore), snapshot(useThemeStore), snapshot(useProjectStore), snapshot(useEditorStore)]
 
 const MODEL = { id: 'flash', name: 'DeepSeek V4 Flash', provider: 'deepseek', protocol: 'openai', modelName: 'deepseek-v4-flash',
   apiKey: 'k', baseUrl: 'https://api.deepseek.com', temperature: 0.7, maxTokens: 4096, purposes: ['generation'] } as ModelProfile
@@ -79,7 +78,6 @@ beforeEach(() => {
     invoke: async channel => channel === 'config:get' ? {} : channel === 'update:get-state' ? { status: 'disabled', currentVersion: '1.2.2', isReminderDeferred: false } : undefined,
     on: () => () => undefined,
   }
-  useAppearanceStore.setState({ resolvedShell: 'stage' })
   useLLMStore.setState({ loaded: true, models: [MODEL, LOCAL], defaultModelId: 'flash', defaultEmbeddingModelId: null, deleteModel: vi.fn(async () => true) })
   useLayoutStore.setState({ settingsOpen: true, settingsSection: 'llm' })
 })
@@ -220,7 +218,7 @@ describe('设置页', () => {
 
   it('主题单选组只占一个 Tab 停靠点，方向键换主题并移动焦点，带修饰键时不动', async () => {
     const setTheme = vi.fn((theme: string) => useThemeStore.setState({ theme } as never))
-    useThemeStore.setState({ theme: 'paper', setTheme } as never)
+    useThemeStore.setState({ theme: 'light', setTheme } as never)
     useLayoutStore.setState({ settingsSection: 'appearance' })
     await mount()
     const radios = () => [...host!.querySelectorAll<HTMLButtonElement>('[role="radiogroup"][aria-label="主题"] [role="radio"]')]

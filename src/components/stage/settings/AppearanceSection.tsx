@@ -6,7 +6,6 @@ import { FONT_OPTIONS, useThemeStore, type FontId } from '../../../stores/theme-
 import { useAutoOpenNextChapter } from '../../settings/use-auto-open-next-chapter'
 import { Button } from '../../ui/Button'
 import { Check } from '../../ui/Check'
-import { inkTheme } from '../ink-theme'
 import { commandLabel } from '../shortcut-keys'
 
 /** 一行设置：左边标题与说明，右边控件与标题对齐；children（示例句、错误）占整行，放在下面。 */
@@ -30,13 +29,12 @@ function ThemeChoice() {
   const text = useLocaleStore(s => s.text)
   const theme = useThemeStore(s => s.theme)
   const setTheme = useThemeStore(s => s.setTheme)
-  const ink = inkTheme(theme)
   const radios = useRef<(HTMLButtonElement | null)[]>([])
   const themes = [
     { id: 'light', icon: <Sun size={18} aria-hidden="true" />, name: text('浅色', 'Light'), desc: text('纸面与墨色', 'Paper and ink') },
     { id: 'dark', icon: <Moon size={18} aria-hidden="true" />, name: text('深色', 'Dark'), desc: text('夜里写作', 'For the night') },
   ] as const
-  const selected = themes.findIndex(option => option.id === ink)
+  const selected = themes.findIndex(option => option.id === theme)
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!THEME_KEYS.has(event.key) || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
@@ -51,8 +49,8 @@ function ThemeChoice() {
     <div className="stage-set-themes" role="radiogroup" aria-label={text('主题', 'Theme')} onKeyDown={onKeyDown}>
       {themes.map((option, index) => (
         <button key={option.id} ref={element => { radios.current[index] = element }} type="button" role="radio"
-          aria-checked={ink === option.id} tabIndex={index === selected ? 0 : -1} className="stage-set-theme"
-          data-theme-option={option.id} onClick={() => { if (ink !== option.id) setTheme(option.id) }}>
+          aria-checked={theme === option.id} tabIndex={index === selected ? 0 : -1} className="stage-set-theme"
+          data-theme-option={option.id} onClick={() => { if (theme !== option.id) setTheme(option.id) }}>
           {option.icon}
           <span className="stage-set-theme-name">{option.name}</span>
           <span className="stage-set-theme-desc">{option.desc}</span>

@@ -36,7 +36,6 @@ import { installWindowCloseGuard } from './controllers/window-controller'
 import { registerStartupController } from './controllers/startup-controller'
 import { resolveGlobalDataRoots } from './services/app-data-locator'
 import { runGlobalDataMigration, activateGlobalData } from './services/global-data-migration'
-import { skinService } from './services/skin-service'
 import { ensureVelaHome } from './utils/config-utils'
 import type { StartupBlockedCode, StartupMigrationNotice } from '../src/shared/startup-contract'
 
@@ -244,7 +243,7 @@ app.whenReady().then(async () => {
     ipc: ipcMain,
     getTrustedSender: () => win?.webContents ?? null,
     rendererUrl: VITE_DEV_SERVER_URL || pathToFileURL(path.join(RENDERER_DIST, 'index.html')).href,
-    getSnapshot: () => startupGeneration ? skinService.getStartupSnapshot(startupGeneration) : null,
+    getGlobalGeneration: () => startupGeneration,
     getBlockedCode: () => startupBlockedCode,
     getMigrationNotice: () => startupMigrationNotice,
   })
@@ -307,13 +306,6 @@ function prepareGlobalRuntime(): boolean {
   }
   activateGlobalData(migrated)
   ensureVelaHome()
-  try {
-    skinService.initialize()
-    skinService.getStartupSnapshot(migrated.globalGeneration)
-  } catch {
-    startupBlockedCode = 'SKIN_NOT_READY'
-    return false
-  }
   startupGeneration = migrated.globalGeneration
   startupMigrationNotice = { legacySourceIgnored: migrated.legacySourceIgnored, preservedUnknownCount: migrated.preservedUnknownCount }
   startupBlockedCode = undefined

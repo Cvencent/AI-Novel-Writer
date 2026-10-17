@@ -1,6 +1,5 @@
 import { useLayoutEffect, useState } from 'react'
 import { useThemeStore } from '../../stores/theme-store'
-import { inkTheme } from '../stage/ink-theme'
 
 const HOST_ID = 'ai-novel-ink-overlay'
 const TOAST_MOUNT_ID = 'ai-novel-ink-toasts'
@@ -16,9 +15,9 @@ export function inkOverlayHost(): HTMLElement {
   const host = document.createElement('div')
   host.id = HOST_ID
   host.className = 'paper-ink pi-overlay-host'
-  host.dataset.theme = inkTheme(useThemeStore.getState().resolvedTheme)
+  host.dataset.theme = useThemeStore.getState().resolvedTheme
   unsubscribeTheme?.()
-  unsubscribeTheme = useThemeStore.subscribe(state => { host.dataset.theme = inkTheme(state.resolvedTheme) })
+  unsubscribeTheme = useThemeStore.subscribe(state => { host.dataset.theme = state.resolvedTheme })
   // 提示栈的挂载点随宿主一起建并且是 live region：Radix 模态用 hideOthers 把其余节点标 aria-hidden 时放过已有的 [aria-live]，
   // 模态开着时到达的通知读屏仍读得到
   const toasts = document.createElement('div')
