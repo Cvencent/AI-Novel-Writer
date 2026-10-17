@@ -6,9 +6,16 @@ import { captureProjectSession, isProjectSessionCurrent } from '../project-sessi
 
 export const STAGE_CONTENT_ID = 'stage-content'
 
-/** 被关掉的标签带走了焦点（标签条可能随之收起），把焦点交给内容区，键盘不会落到页面之外。 */
+/**
+ * 被关掉的标签带走了焦点（标签条可能随之收起），下一帧把焦点交给内容区，键盘不会落到页面之外。
+ * 这一帧里焦点已经落到页面里别处（例如又打开了标签菜单）就不抢。
+ */
 function focusContent(): void {
-  requestAnimationFrame(() => document.getElementById(STAGE_CONTENT_ID)?.focus({ preventScroll: true }))
+  requestAnimationFrame(() => {
+    const active = document.activeElement
+    if (active && active !== document.body && active.isConnected) return
+    document.getElementById(STAGE_CONTENT_ID)?.focus({ preventScroll: true })
+  })
 }
 
 /** 关闭标签：没有未保存修改就直接关；有修改时先请作者确认放弃。标签条与 ⌘W / Ctrl W 都走这里。 */

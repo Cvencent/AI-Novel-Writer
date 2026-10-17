@@ -92,8 +92,16 @@ describe('标签菜单', () => {
     expect(document.querySelector('[role="dialog"]')?.textContent).toContain('有 1 个标签有未保存的修改')
     await act(async () => dialogButton('放弃并关闭')!.click())
     expect(openTabs()).toEqual([])
-    // 关标签后焦点在下一帧交给内容区；等它落下，免得落到下一个用例刚打开的菜单之外把菜单关掉。
-    await act(async () => { await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))) })
+  })
+
+  it('关掉标签后焦点交接排在下一帧；这一帧里已经又打开了标签菜单，就不抢走菜单的焦点', async () => {
+    const frames: FrameRequestCallback[] = []
+    await render([page('甲'), page('乙'), page('丙')], '乙')
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => frames.push(callback))
+    await choose('关闭右侧标签')
+    await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="标签操作"]')!.click())
+    await act(async () => { for (const callback of frames.splice(0)) callback(performance.now()) })
+    expect([...document.querySelectorAll('[role="menuitem"]')].map(item => item.textContent).slice(0, 2)).toEqual(['甲', '乙（当前）'])
   })
 
   it('关闭全部标签后回到空的内容区', async () => {
