@@ -11,6 +11,13 @@ import { useStageStore } from '../../../stores/navigation/stage-store'
 import { openDraftTab } from '../../../stores/open-draft-tab'
 import { toast } from '../../ui/Toast'
 
+export const RECOVERY_PREFIX = 'ai-novel://recovery/'
+
+/** 不由单章视图承接的正文标签：运行侧页「继续编辑」打开的恢复候选，与已经合并或放弃、只能查看的修稿。 */
+export function isProseDocumentTab(tab: EditorTab): boolean {
+  return tab.type === 'chapter' && Boolean(tab.filePath?.startsWith(RECOVERY_PREFIX) || tab.filePath?.startsWith('ai-novel://revision/'))
+}
+
 /** 正文类标签里由单章视图承接的：一稿草稿或定稿（ai-novel://draft/、ai-novel://manuscript/），以及待写章（没有 filePath）。 */
 export function isChapterViewTab(tab: EditorTab): boolean {
   if (tab.type !== 'chapter') return false

@@ -11,13 +11,7 @@ import { Button } from '../../ui/Button'
 import { Notice } from '../../ui/Notice'
 import { toast } from '../../ui/Toast'
 import { commandLabel } from '../shortcut-keys'
-
-const RECOVERY_PREFIX = 'ai-novel://recovery/'
-
-/** 不由单章视图承接的正文标签：运行侧页「继续编辑」打开的恢复候选，与已经合并或放弃、只能查看的修稿。 */
-export function isProseDocumentTab(tab: EditorTab): boolean {
-  return tab.type === 'chapter' && Boolean(tab.filePath?.startsWith(RECOVERY_PREFIX) || tab.filePath?.startsWith('ai-novel://revision/'))
-}
+import { RECOVERY_PREFIX } from './chapter-tab-routing'
 
 /**
  * 恢复候选可以编辑，保存只写回这份候选，不会写进正式草稿（F-072）；作者确认没问题后，再从章节里另起一稿。
