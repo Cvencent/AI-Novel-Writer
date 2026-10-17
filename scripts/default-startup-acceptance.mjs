@@ -74,10 +74,11 @@ async function verify() {
       session = await launch(roots)
       try {
         assert.equal(session.state.globalGeneration, generation)
-        const stored = await session.page.evaluate(({ appearanceKey, themeKey, shellKey }) => ({
-          profile: JSON.parse(localStorage.getItem(appearanceKey)), theme: localStorage.getItem(themeKey),
-          shell: localStorage.getItem(shellKey), unrelated: localStorage.getItem('startup-unrelated-selection'),
-        }), { appearanceKey, themeKey, shellKey })
+        const stored = await session.page.evaluate(({ appearanceKey, previousAppearanceKey, themeKey, shellKey }) => ({
+          profile: JSON.parse(localStorage.getItem(appearanceKey)), previous: localStorage.getItem(previousAppearanceKey),
+          theme: localStorage.getItem(themeKey), shell: localStorage.getItem(shellKey), unrelated: localStorage.getItem('startup-unrelated-selection'),
+        }), { appearanceKey, previousAppearanceKey, themeKey, shellKey })
+        assert.equal(stored.previous, null, 'migration must not write the previous appearance key')
         assert.equal(stored.profile.schemaVersion, 3)
         assert.equal(stored.profile.colorTheme, 'dark')
         assert.equal(stored.profile.zoom, 1.1)
