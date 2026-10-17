@@ -60,7 +60,7 @@ async function launch(responseModes = []) {
         const mode = globalThis.__draftAcceptance.responseModes.shift()
         if (!mode) throw new Error('UNEXPECTED_SYNTHETIC_DISPATCH')
         const chunks = [
-          { choices: [{ delta: { content: mode === 'outline' ? fixture.outlineText : fixture.visibleText }, finish_reason: mode === 'outline' ? 'stop' : 'length' }] },
+          { choices: [{ delta: { content: mode === 'outline' ? fixture.outlineText : fixture.visibleText }, finish_reason: 'stop' }] },
           { choices: [], usage: { prompt_tokens: 40, completion_tokens: 400, total_tokens: 440 } },
         ]
         return new Response(chunks.map(chunk => `data: ${JSON.stringify(chunk)}\n\n`).join('') + 'data: [DONE]\n\n',
@@ -122,12 +122,13 @@ export async function plan(page, context, prepared) {
 export async function generate(page, context, planned) {
   const generated = await invoke(page, 'generation:execute', { handle: planned.handle, invocationNonce: randomUUID(),
     task: planned.expected.initialDraftTask }, context)
-  assert.equal(generated.outcome.finishReason, 'length')
+  // 2026-10-05 起（3ef79610）只有正常结束（stop）的正文能直接存成草稿，按长度截断的要先续写或精简；这里验证的是重开后的身份保护与保存。
+  assert.equal(generated.outcome.finishReason, 'stop')
   // artifacts only projects the current lease; an outline from the prior process is in recovery context.
   const proseId = generated.outcome.receipt.visibleArtifact.artifactId
   assert.notEqual(proseId, planned.expected.artifactId)
   const prose = generated.run.artifacts.find(artifact => artifact.artifactId === proseId)
-  assert.equal(prose.status, 'failed')
+  assert.equal(prose.status, 'completed')
   assert.equal(prose.compositionEligible, true)
   assert.equal(generated.run.handle.rootActionId, planned.handle.rootActionId)
   assert.equal(generated.run.ledger.physicalRequests, 2)
