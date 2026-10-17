@@ -21,6 +21,7 @@ import StageKnowledge from './knowledge/StageKnowledge'
 import StagePlot from './plot/StagePlot'
 import StageTabs from './StageTabs'
 import { commandLabel } from './shortcut-keys'
+import BlueprintRecovery from './blueprint/BlueprintRecovery'
 import StageBlueprint from './blueprint/StageBlueprint'
 import ChapterView from './chapter/ChapterView'
 import { installChapterTabRouting, isChapterViewTab } from './chapter/chapter-tab-routing'
@@ -33,7 +34,10 @@ function TabContent({ tab, project }: { tab: EditorTab; project: ProjectData }) 
   if (tab.type === 'world-building' && tab.projectKey) return <StageArchitecture projectKey={tab.projectKey} />
   if (tab.type === 'character' && tab.projectKey) return <StageCharacters projectKey={tab.projectKey} />
   if (isChapterViewTab(tab)) return <ChapterView tab={tab} />
-  if (tab.type === 'chapter-card' && tab.projectKey && !tab.planningRecovery) {
+  if (tab.type === 'chapter-card' && tab.projectKey && tab.planningRecovery) {
+    return <BlueprintRecovery key={`${tab.id}:${project.sessionLease}`} tab={tab} projectKey={tab.projectKey} />
+  }
+  if (tab.type === 'chapter-card' && tab.projectKey) {
     return <StageBlueprint projectKey={tab.projectKey} initialChapterNumber={tab.chapterNumber} selectRequest={tab.chapterSelectRequest} />
   }
   if (tab.type === 'version-history' && tab.projectKey === project.path) return <StageHistory projectKey={tab.projectKey} />

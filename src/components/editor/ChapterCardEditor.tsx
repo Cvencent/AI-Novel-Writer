@@ -1,19 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState } from 'react'
 import {
   Save, BookOpen, RefreshCw, Plus, Trash2,
   Sparkles, PenLine, ListChecks, AlertTriangle
 } from 'lucide-react'
 import { useProjectStore } from '../../stores/project-store'
-import { ipc } from '../../services/ipc-client'
-import {
-  projectSessionContextFromProject,
-  sameProjectSessionContext,
-} from '../../shared/project-session-context'
-import {
-  parseTextBlueprintsStrict,
-  type DirectoryWorkflowParams,
-} from '../../services/workflows/directory-workflow'
-import { launchCreativeWorkflow } from '../../services/workflows/creative-workflow-launcher'
+import type { DirectoryWorkflowParams } from '../../services/workflows/directory-workflow'
 import DirectoryConfigDialog from '../dialogs/DirectoryConfigDialog'
 import BatchChapterCreationDialog from '../dialogs/BatchChapterCreationDialog'
 import { Button } from '../ui/Button'
@@ -25,11 +16,11 @@ import { chapterRoleOptions, chapterRoleSelectValue, getChapterRoleLabels } from
 import { cn } from '../../lib/utils'
 import { confirm } from '../ui/Confirm'
 import { useLocaleStore } from '../../stores/locale-store'
-import { openPlanningRecoveryDraft, registerEditorExitSaveHandler, useEditorStore, type EditorTab, type PlanningRecoverySaveSnapshot } from '../../stores/editor-store'
+import { openPlanningRecoveryDraft, useEditorStore, type EditorTab } from '../../stores/editor-store'
 import CodeMirrorEditor from './CodeMirrorEditor'
-import { requireIpcSuccess } from '../../services/ipc-result'
 import { SaveFeedback } from './save-feedback'
 import { currentProjectSessionForPath, isCurrentProjectSession, useChapterBlueprints } from './use-chapter-blueprints'
+import { useBlueprintRecovery } from '../stage/blueprint/use-blueprint-recovery'
 import { pluralEn } from '../../shared/plural-en'
 
 const ROLE_COLORS: Record<string, string> = {
@@ -49,90 +40,7 @@ export default function ChapterCardEditor(props: { projectKey: string; initialCh
 
 function BlueprintRecoveryEditor({ tab, projectKey }: { tab: EditorTab; projectKey: string }) {
   const text = useLocaleStore(state => state.text)
-  const [session] = useState(() => currentProjectSessionForPath(projectKey))
-  const currentProject = useProjectStore(state => state.currentProject)
-  const sessionCurrent = sameProjectSessionContext(session, projectSessionContextFromProject(currentProject))
-  const planningTargetUnit = currentProject?.novelConfig.writingLanguage === 'en-US' ? text('词', 'words') : text('字', 'characters')
-  const [context, setContext] = useState(tab.planningRecovery)
-  const [end, setEnd] = useState(String(tab.planningSaveEnd ?? ''))
-  const endRef = useRef(end)
-  const [busy, setBusy] = useState(false)
-  const busyRef = useRef(false)
-  const [error, setError] = useState('')
-  const currentTab = useEditorStore(state => state.tabs.find(item => item.id === tab.id)) ?? tab
-  const refresh = useCallback(async () => {
-    const expectedSession = session
-    const original = tab.planningRecovery
-    if (!expectedSession || !isCurrentProjectSession(expectedSession) || !original) throw new Error(text('项目会话已切换，请重新打开恢复稿', 'The project session changed. Reopen the recovery draft.'))
-    const next = await ipc.invokeWithProjectSession(expectedSession, 'generation:read-context', { handle: original.handle })
-    if (!isCurrentProjectSession(expectedSession)) throw new Error(text('项目会话已切换', 'The project session changed.'))
-    setContext(next)
-    return next
-  }, [session, tab.planningRecovery, text])
-  useEffect(() => { void Promise.resolve().then(refresh).catch(reason => setError(String(reason))) }, [refresh])
-  const save = useCallback(async (propagate = false) => {
-    if (busyRef.current) { if (propagate) throw new Error(text('保存仍在进行', 'Saving is still in progress.')); return }
-    busyRef.current = true
-    setBusy(true)
-    const snapshot = useEditorStore.getState().tabs.find(item => item.id === tab.id)
-    try {
-      if (!session) throw new Error(text('项目会话已切换', 'The project session changed.'))
-      const fresh = await refresh()
-      const candidate = fresh.blueprintRecovery
-      if (candidate?.writeState === 'unavailable') throw new Error(text('旧恢复稿不能保存或续接，可继续编辑或复制', 'This recovery draft cannot be saved or continued. You can still edit or copy it.'))
-      const originalRange = tab.planningRecovery?.blueprintRecovery?.editRange
-      if (!snapshot || !candidate || candidate.leaseEpoch !== session.leaseId || !originalRange || !snapshot.planningSaveOperationId
-        || candidate.writeState !== 'ready' && !candidate.saved) throw new Error(text('当前无法保存，请等待生成结束或检查来源变化', 'Wait for generation to finish or check changed sources before saving.'))
-      const pending = useEditorStore.getState().tabs.find(item => item.id === tab.id)?.planningSaveSnapshot
-      if (pending?.status === 'saved' || candidate.saved && !pending) throw new Error(text('本次恢复已保存，后续修改仅供复制。', 'This recovery is saved. Further edits can only be copied.'))
-      let submission = pending
-      if (!submission) {
-        const authorEnd = Number(endRef.current)
-        if (!Number.isSafeInteger(authorEnd) || authorEnd < originalRange.from || authorEnd > originalRange.to) throw new Error(text('请选择连续完整章节的终点', 'Choose the last complete consecutive chapter.'))
-        const blueprints = parseTextBlueprintsStrict(snapshot.content ?? '', originalRange.from, authorEnd, 'author')
-        submission = {
-          content: snapshot.content ?? '', contentRevision: snapshot.contentRevision ?? 0,
-          status: 'pending', channel: 'db:blueprint-commit-range',
-          request: { mode: 'replace-range', operationId: snapshot.planningSaveOperationId,
-            startChapter: originalRange.from, endChapter: authorEnd, blueprints,
-            authorRecovery: { sourceHandle: candidate.sourceHandle, leaseEpoch: candidate.leaseEpoch } },
-        } satisfies PlanningRecoverySaveSnapshot
-        useEditorStore.getState().setPlanningSaveSnapshot(tab.id, submission)
-      }
-      if (submission.channel !== 'db:blueprint-commit-range') throw new Error('INVALID_PLANNING_SAVE_CHANNEL')
-      const result = await ipc.invokeWithProjectSession(session, 'db:blueprint-commit-range', {
-        ...submission.request, authorRecovery: { ...submission.request.authorRecovery, leaseEpoch: candidate.leaseEpoch },
-      }, projectKey)
-      if (!result.success && !pending && isCurrentProjectSession(session)) useEditorStore.getState().setPlanningSaveSnapshot(tab.id, undefined)
-      requireIpcSuccess(result, '保存恢复蓝图')
-      if (!isCurrentProjectSession(session)) return
-      useEditorStore.getState().setPlanningSaveSnapshot(tab.id, { ...submission, status: 'saved' })
-      useEditorStore.getState().settleTabSave(tab.id, submission)
-      setError('')
-      await refresh()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); if (propagate) throw reason }
-    finally { busyRef.current = false; setBusy(false) }
-  }, [projectKey, refresh, session, tab.id, tab.planningRecovery, text])
-  useEffect(() => {
-    registerEditorExitSaveHandler({ tabId: tab.id, type: 'chapter-card', save: () => save(true) })
-  }, [save, tab.id])
-  const continuePlanning = async () => {
-    if (busyRef.current) return
-    busyRef.current = true; setBusy(true)
-    try {
-      if (!session) throw new Error(text('项目会话已切换', 'The project session changed.'))
-      const fresh = await refresh()
-      const continuation = fresh.planningContinuation
-      if (!continuation?.remainingRange || !['ready', 'continued'].includes(continuation.state)) throw new Error(text('当前不能继续，请等待生成结束或检查来源变化', 'Wait for generation to finish or check changed sources before continuing.'))
-      await launchCreativeWorkflow({ workflow: 'generate_blueprint', params: { mode: 'append',
-        startChapter: continuation.remainingRange.from, count: continuation.remainingRange.to - continuation.remainingRange.from + 1,
-        targetUnits: continuation.targetUnits, restartFrom: continuation.sourceHandle,
-      } }, session)
-      await refresh()
-      setError('')
-    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
-    finally { busyRef.current = false; setBusy(false) }
-  }
+  const { context, currentTab, sessionCurrent, busy, error, end, setEnd, save, continuePlanning, planningTargetUnit } = useBlueprintRecovery(tab, projectKey)
   const candidate = context?.blueprintRecovery
   const continuation = context?.planningContinuation
   return <div className="h-full flex flex-col" aria-label={text('蓝图恢复', 'Blueprint recovery')}>
@@ -146,11 +54,7 @@ function BlueprintRecoveryEditor({ tab, projectKey }: { tab: EditorTab; projectK
             : text('蓝图作者保存记录校验失败，旧恢复稿不能保存或续接', 'The blueprint author save record failed validation. This recovery draft cannot be saved or continued.')}</p>
         <p>{text('原文已保留，可继续编辑或复制', 'The original text is preserved. You can still edit or copy it.')}</p>
       </> : <p>{text('蓝图未完整生成，原文已保留。请补齐 JSON 中的引号、括号和必填内容，只保留要保存的连续完整章节。保存只写入本地，不会调用模型。', 'The incomplete blueprint text is preserved. Complete the JSON quotes, brackets and required fields. Keep only complete consecutive chapters to save. Saving is local and does not call a model.')}</p>}
-      <label>{text('保存到第几章', 'Last complete chapter')} <input type="number" disabled={candidate?.writeState === 'unavailable'} min={tab.planningRecovery?.blueprintRecovery?.editRange?.from} max={tab.planningRecovery?.blueprintRecovery?.editRange?.to} value={end} onChange={event => {
-        const value = event.target.value
-        endRef.current = value; setEnd(value)
-        useEditorStore.setState(state => ({ tabs: state.tabs.map(item => item.id === tab.id ? { ...item, planningSaveEnd: value } : item) }))
-      }} /></label>
+      <label>{text('保存到第几章', 'Last complete chapter')} <input type="number" disabled={candidate?.writeState === 'unavailable'} min={tab.planningRecovery?.blueprintRecovery?.editRange?.from} max={tab.planningRecovery?.blueprintRecovery?.editRange?.to} value={end} onChange={event => setEnd(event.target.value)} /></label>
       <Button disabled={busy || !sessionCurrent || currentTab.planningSaveSnapshot?.status === 'saved' || candidate?.writeState !== 'ready' && !(candidate?.saved && currentTab.planningSaveSnapshot?.status === 'pending')} onClick={() => { void save() }}>{text('保存恢复蓝图', 'Save recovered blueprints')}</Button>
       <Button disabled={busy || !sessionCurrent || !continuation?.remainingRange || !['ready', 'continued'].includes(continuation.state)} onClick={() => { void continuePlanning() }}>{text('继续生成缺少的章节', 'Generate remaining chapters')}</Button>
       {continuation?.remainingRange && <p>{text(`待完成第 ${continuation.remainingRange.from} 至 ${continuation.remainingRange.to} 章，每章目标 ${continuation.targetUnits} ${planningTargetUnit}。`, `Chapters ${continuation.remainingRange.from} to ${continuation.remainingRange.to} remain. Target ${continuation.targetUnits} ${planningTargetUnit} per chapter.`)}</p>}
