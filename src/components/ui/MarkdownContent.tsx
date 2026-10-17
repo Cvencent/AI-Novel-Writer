@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react'
 import { Brain, ChevronRight } from 'lucide-react'
+import { useLocaleStore } from '../../stores/locale-store'
 
 interface MarkdownContentProps {
   content: string
@@ -204,6 +205,7 @@ function renderInline(text: string): React.ReactNode {
 // ===== 代码块组件 =====
 
 function CodeBlock({ lang, code }: { lang: string; code: string }) {
+  const text = useLocaleStore(s => s.text)
   const codeRef = useRef<HTMLElement>(null)
 
   const handleCopy = () => {
@@ -233,7 +235,7 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
           onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--color-border)')}
           onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
         >
-          复制
+          {text('复制', 'Copy')}
         </button>
       </div>
       {/* 代码内容 */}
