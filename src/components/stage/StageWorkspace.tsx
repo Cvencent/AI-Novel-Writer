@@ -19,6 +19,7 @@ import { SettingsPage, SetupPage } from './stage-pages'
 import StageHistory from './history/StageHistory'
 import StageKnowledge from './knowledge/StageKnowledge'
 import StagePlot from './plot/StagePlot'
+import StageTabMenu from './StageTabMenu'
 import StageTabs from './StageTabs'
 import { commandLabel } from './shortcut-keys'
 import BlueprintRecovery from './blueprint/BlueprintRecovery'
@@ -91,14 +92,17 @@ export default function StageWorkspace({ library, focus }: { library: boolean; f
   return (
     <main className="stage-panel">
       {showTabs && (
-        <StageTabs
-          tabs={tabs}
-          activeTabId={activeTab?.id ?? null}
-          onSelect={tabId => useEditorStore.getState().setActiveTab(tabId)}
-          onClose={requestCloseTab}
-          tabDomId={tabDomId}
-          panelId={STAGE_CONTENT_ID}
-        />
+        <div className="stage-tabbar">
+          <StageTabs
+            tabs={tabs}
+            activeTabId={activeTab?.id ?? null}
+            onSelect={tabId => useEditorStore.getState().setActiveTab(tabId)}
+            onClose={requestCloseTab}
+            tabDomId={tabDomId}
+            panelId={STAGE_CONTENT_ID}
+          />
+          <StageTabMenu tabs={tabs} activeTabId={activeTab?.id ?? null} onSelect={tabId => useEditorStore.getState().setActiveTab(tabId)} />
+        </div>
       )}
       <div className="stage-body">
         {settingsOpen && <SettingsPage library={false} />}

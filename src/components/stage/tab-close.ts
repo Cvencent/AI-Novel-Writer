@@ -34,3 +34,28 @@ export function confirmCloseTab(): void {
 export function cancelCloseTab(): void {
   useStageStore.setState({ closingTabId: null })
 }
+
+/**
+ * 一次关几个标签（标签菜单的关闭其他、右侧、全部）：没有未保存修改的直接关，
+ * 返回有未保存修改、要作者确认后才能放弃的那些。
+ */
+export function closeCleanTabs(tabIds: readonly string[]): string[] {
+  const editor = useEditorStore.getState()
+  const dirty: string[] = []
+  for (const tabId of tabIds) {
+    const tab = editor.tabs.find(candidate => candidate.id === tabId)
+    if (!tab || tab.pinned) continue
+    if (tab.dirty) dirty.push(tabId)
+    else useEditorStore.getState().closeTab(tabId)
+  }
+  if (dirty.length < tabIds.length) focusContent()
+  return dirty
+}
+
+/** 作者确认放弃后，丢掉这些标签的未保存修改并关掉；作品已换就什么也不做。 */
+export function discardAndCloseTabs(tabIds: readonly string[]): void {
+  const session = captureProjectSession(useProjectStore.getState().currentProject)
+  if (!session || !isProjectSessionCurrent(session)) return
+  for (const tabId of tabIds) discardAndCloseEditorTab(tabId, session)
+  focusContent()
+}
