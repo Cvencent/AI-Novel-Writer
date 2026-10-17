@@ -85,6 +85,17 @@ describe('标签菜单', () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull()
   })
 
+  it('关闭全部时一个没修改一个有修改：没修改的关上后标签条收起，确认照样弹出，放弃才关上有修改的', async () => {
+    await render([page('甲'), page('乙', true)], '甲')
+    await choose('关闭全部标签')
+    expect(openTabs()).toEqual(['乙'])
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('有 1 个标签有未保存的修改')
+    await act(async () => dialogButton('放弃并关闭')!.click())
+    expect(openTabs()).toEqual([])
+    // 关标签后焦点在下一帧交给内容区；等它落下，免得落到下一个用例刚打开的菜单之外把菜单关掉。
+    await act(async () => { await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))) })
+  })
+
   it('关闭全部标签后回到空的内容区', async () => {
     await render([page('甲'), page('乙')], '乙')
     await choose('关闭全部标签')

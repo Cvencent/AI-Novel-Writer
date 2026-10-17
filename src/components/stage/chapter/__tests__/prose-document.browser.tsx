@@ -115,4 +115,12 @@ describe('恢复候选与只读修稿', () => {
     expect(writes()).toEqual([])
     expect(useEditorStore.getState().tabs[0]).toMatchObject({ dirty: false, content: '林岚从海港带回了信。' })
   })
+
+  it('标签记的作品路径与当前作品只差大小写和分隔符时，仍显示这份正文', async () => {
+    useEditorStore.setState({ tabs: [{ id: '修稿', name: '修稿合并：第3章（merged）', type: 'chapter', filePath: 'ai-novel://revision/9',
+      content: '林岚从海港带回了信。', savedContent: '林岚从海港带回了信。', dirty: false, projectKey: 'c:\\Novels\\Lighthouse', draftStatus: 'archived' }], activeTabId: '修稿' })
+    await act(async () => root!.render(<StageWorkspace library={false} focus={false} />))
+    await vi.waitFor(() => expect(host!.textContent).toContain('林岚从海港带回了信。'))
+    expect(host!.textContent).not.toContain('这个标签没有可显示的页面')
+  })
 })
