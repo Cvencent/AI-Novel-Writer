@@ -34,8 +34,8 @@ function readOrMigrate(storage: Pick<Storage, 'getItem'>, systemTheme: () => Col
   const stored = storage.getItem(APPEARANCE_STORAGE_KEY)
   if (stored !== null) return { profile: parseAppearanceProfile(stored), stored }
   const previous = storage.getItem(PREVIOUS_APPEARANCE_STORAGE_KEY)
-  if (previous !== null) return { profile: migratePreviousAppearance(previous), stored }
-  return { profile: migrateLegacyAppearance(storage.getItem(LEGACY_THEME_STORAGE_KEY), systemTheme()), stored }
+  if (previous !== null) return { profile: migratePreviousAppearance(previous), stored: null }
+  return { profile: migrateLegacyAppearance(storage.getItem(LEGACY_THEME_STORAGE_KEY), systemTheme()), stored: null }
 }
 
 /** One writer per renderer. Importing the module performs no storage read or write. */
