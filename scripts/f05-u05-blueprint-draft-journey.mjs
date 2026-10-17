@@ -621,19 +621,7 @@ async function main() {
     assert.equal(autoBatch.mode, 'auto_finalize')
     assert.equal(autoBatch.targetUnits, 100)
     assert.equal(autoBatch.modelId, model.id)
-    let finalized, confirmed
-    const finalizeDeadline = Date.now() + timeout
-    while (Date.now() < finalizeDeadline) {
-      finalized = readProjectDb(context.projectPath, db => db.prepare('SELECT d.id AS draftId,d.chapter_number AS chapterNumber,d.status,o.finalization_id AS finalizationId,o.content_hash AS contentHash,o.publication_status AS publicationStatus FROM drafts d LEFT JOIN finalization_outbox o ON o.draft_id=d.id ORDER BY d.chapter_number').all())
-      confirmed = await invoke(page, 'generation:read-batch', { batchId: autoBatch.batchId }, batchSession)
-      if (finalized[0]?.publicationStatus === 'published' && confirmed.completedChapters[0]?.postProcessComplete) break
-      await new Promise(resolve => setTimeout(resolve, 250))
-    }
-    assert.equal(finalized.length, 1)
-    assert.equal(finalized[0].status, 'finalized')
-    assert.ok(finalized[0].finalizationId && finalized[0].publicationStatus === 'published')
-    assert.equal(confirmed.completedChapters[0]?.postProcessComplete, true)
-    const autoAttempts = readProjectDb(context.projectPath, db => db.prepare('SELECT r.binding_json AS binding,a.attempt_json AS attempt,a.usage_receipt_json AS receipt FROM generation_runs r JOIN generation_attempts a ON a.run_id=r.run_id').all()
+    const readAutoAttempts = () => readProjectDb(context.projectPath, db => db.prepare('SELECT r.binding_json AS binding,a.attempt_json AS attempt,a.usage_receipt_json AS receipt FROM generation_runs r JOIN generation_attempts a ON a.run_id=r.run_id').all()
       .map(row => ({ operation: JSON.parse(row.binding).sourceManifest.operation,
         purpose: JSON.parse(row.receipt).purpose,
         status: JSON.parse(row.attempt).status,
@@ -641,6 +629,21 @@ async function main() {
         finishReason: JSON.parse(row.receipt).result?.finishReason }))
       .filter(row => ['chapter-draft', 'finalized-chapter-notes', 'finalized-character-state'].includes(row.operation)
         && row.purpose !== 'chapter-draft-short-outline'))
+    let finalized, confirmed, autoAttempts
+    const finalizeDeadline = Date.now() + timeout
+    while (Date.now() < finalizeDeadline) {
+      finalized = readProjectDb(context.projectPath, db => db.prepare('SELECT d.id AS draftId,d.chapter_number AS chapterNumber,d.status,o.finalization_id AS finalizationId,o.content_hash AS contentHash,o.publication_status AS publicationStatus FROM drafts d LEFT JOIN finalization_outbox o ON o.draft_id=d.id ORDER BY d.chapter_number').all())
+      confirmed = await invoke(page, 'generation:read-batch', { batchId: autoBatch.batchId }, batchSession)
+      autoAttempts = readAutoAttempts()
+      // postProcessComplete 只看关键后处理（入库检索与章节笔记）；角色状态建议不在其中，会在它之后才结算。
+      if (finalized[0]?.publicationStatus === 'published' && confirmed.completedChapters[0]?.postProcessComplete
+        && autoAttempts.some(row => row.operation === 'finalized-character-state' && row.status === 'settled')) break
+      await new Promise(resolve => setTimeout(resolve, 250))
+    }
+    assert.equal(finalized.length, 1)
+    assert.equal(finalized[0].status, 'finalized')
+    assert.ok(finalized[0].finalizationId && finalized[0].publicationStatus === 'published')
+    assert.equal(confirmed.completedChapters[0]?.postProcessComplete, true)
     assert.deepEqual(autoAttempts.map(row => row.operation).sort(), ['chapter-draft', 'finalized-chapter-notes', 'finalized-character-state'])
     assert.ok(autoAttempts.every(row => row.status === 'settled' && row.trusted === true && row.finishReason === 'stop'))
     const finalizedBody = readProjectDb(context.projectPath, db => db.prepare('SELECT c.body FROM drafts d JOIN contents c ON c.id=d.content_id WHERE d.chapter_number=1').get().body)
