@@ -330,6 +330,32 @@ describe('角色名单', () => {
     expect(button('选择头像')).toBeTruthy()
   })
 
+  it('1024 宽窗口里的关系图谱：工具条与人物侧栏的控件都在图谱框里、点得到；宽时显示中心人物', async () => {
+    // 1024 宽窗口去掉流程脊与边距，角色名单页约 738px：名单 272，档案两侧各留 40，图谱框只剩约 385。
+    host!.style.width = '738px'
+    await render()
+    await click('关系图谱')
+    const graph = host!.querySelector<HTMLElement>('.cast-graph')!
+    const controls = ['缩小关系图谱', '放大关系图谱', '适合视图', '重置图谱布局', '折叠人物侧栏', '搜索图谱人物', '下一页人物']
+    // 只看名单页自己的层：被裁掉的控件在那个点上不会出现，被页内元素盖住时最上面的是别人。别的用例留下的全局通知不算。
+    const unreachable = () => controls.filter(label => {
+      const control = graph.querySelector<HTMLElement>(`[aria-label="${label}"]`)
+      if (!control) return true
+      const rect = control.getBoundingClientRect()
+      const hit = document.elementsFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2).find(element => host!.contains(element))
+      return !hit || !control.contains(hit)
+    })
+    await vi.waitFor(() => expect(unreachable()).toEqual([]))
+
+    host!.style.width = '1200px'
+    await vi.waitFor(() => {
+      const centerLabel = [...graph.querySelectorAll<HTMLElement>('span')].find(span => span.textContent === '中心: 林舟')
+      expect(centerLabel, '中心人物').toBeTruthy()
+      expect(getComputedStyle(centerLabel!).display).not.toBe('none')
+    })
+    expect(unreachable()).toEqual([])
+  })
+
   it('外发确认不能被第一步按钮上的双击或连按回车跳过，只有在第二步单独确认才发送', async () => {
     useLLMStore.setState({ models: [{ id: 'm1', name: '夹具模型', modelName: 'fixture-1', baseUrl: 'https://fixture.example/v1' }], defaultModelId: 'm1' } as never)
     const startWorkflow = vi.fn(async () => 'r1')
