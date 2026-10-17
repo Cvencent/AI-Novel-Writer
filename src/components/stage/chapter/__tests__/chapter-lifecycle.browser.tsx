@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 
 import type { ProjectData } from '../../../../shared/ipc-channels'
 import { parseHumanConfirmedReviewSnapshot } from '../../../../shared/human-confirmed-review'
+import { globalEventBus } from '../../../../shared/event-bus'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
 import { useDraftStore } from '../../../../stores/draft-store'
 import { useEditorStore } from '../../../../stores/editor-store'
@@ -157,6 +158,29 @@ describe('单章视图的主按钮随五种状态变化', () => {
     const [params] = workflows.createRefineFromReviewWorkflow.mock.calls[0]
     expect({ reviewSourceId: params.reviewSourceId, model: params.generationModelId, content: params.draftContent })
       .toEqual({ reviewSourceId: backend.state.reviews.at(-1)!.id, model: 'glm', content: ORIGINAL })
+  })
+
+  it('重新审稿后按意见修稿：确认的清单只带新审稿复验周期里的意见，不沿用上一份审稿的', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    const first = backend.addReview(draft)
+    const finding = (findingId: string) => ({ findingId, reviewItemIndex: 0, category: '前后矛盾', kind: 'literary' as const, status: 'unverified' as const })
+    backend.state.cycles.set(first.id, { ...backend.state.cycles.get(first.id)!, findings: [finding('first-cycle-finding')] })
+    await mount()
+    await openDraft(draft.id)
+    await expect.element(page.getByRole('button', { name: '按 2 项意见修稿' })).toBeVisible()
+
+    // 第二次审稿留下新的审稿与它自己的复验周期；审稿工作流结束后单章视图重读这一稿的审稿。
+    const second = backend.addReview(draft)
+    backend.state.cycles.set(second.id, { ...backend.state.cycles.get(second.id)!, findings: [finding('second-cycle-finding')] })
+    await act(async () => globalEventBus.emit('WORKFLOW_COMPLETE', { type: 'review', projectPath: SESSION.projectPath, projectSession: SESSION, runId: 'second-review' }))
+    await vi.waitFor(() => expect(backend.writes('db:review-cycle-get').some(([reviewId]) => Number(reviewId) === second.id)).toBe(true))
+    await expect.element(page.getByRole('button', { name: '按 2 项意见修稿' })).toBeVisible()
+    await click('按 2 项意见修稿')
+
+    await vi.waitFor(() => expect(backend.writes('db:review-create')).toHaveLength(1))
+    const confirmed = parseHumanConfirmedReviewSnapshot((backend.writes('db:review-create')[0][0] as { content: string }).content)!
+    expect({ sourceReviewId: confirmed.sourceReviewId, cycleId: confirmed.cycleId, findingIds: confirmed.items.flatMap(item => item.findingId ?? []) })
+      .toEqual({ sourceReviewId: second.id, cycleId: `cycle-${second.id}`, findingIds: ['second-cycle-finding'] })
   })
 
   it('已审稿：每条意见都选「不修改此项」时，主按钮变成确认不修改，确认后弃修决定写进审稿记录', async () => {
