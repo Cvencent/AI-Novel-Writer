@@ -218,6 +218,20 @@ async function batchDialog(page, count, mode) {
 /** 运行侧页里这次批量创作的「取消」：只有进行中的运行才有。 */
 const batchCancel = page => runSheet.sheet(page).getByRole('button', { name: /^取消「批量草稿待审/ }).first()
 /** 运行侧页「历史」里标题为 title 的最近一次运行记为已完成。 */
+/** 等运行侧页「进行中」没有运行；返回开始等之前还在跑的运行标题。 */
+async function waitNoActiveRuns(page) {
+  await runSheet.openFromPalette(page)
+  await runSheet.tab(page, '进行中').click()
+  const initially = await runSheet.activeTitles(page)
+  const deadline = Date.now() + timeout
+  let active = initially
+  while (active.length > 0) {
+    if (Date.now() > deadline) throw new Error(`RUNS_NOT_QUIESCENT ${JSON.stringify(active)}`)
+    await new Promise(resolve => setTimeout(resolve, 250))
+    active = await runSheet.activeTitles(page)
+  }
+  return initially
+}
 async function assertRunCompleted(page, title) {
   await runSheet.openFromPalette(page)
   await runSheet.tab(page, '历史').click()
@@ -597,11 +611,14 @@ async function main() {
     assert.ok(resumedBodies[1].body.includes(proseTwo) && !resumedBodies[1].body.includes(prose))
     assert.equal(fixture.requests.slice(a07RequestOffset).filter(row => row.mode === 'draft_review').length, 1,
       'next chapter was not dispatched exactly once after the failed chapter retry succeeded')
+    // 两稿进库时批次运行还在收尾；下一步要新建并打开另一部作品，先等运行侧页「进行中」清空，
+    // 否则还在跑的批次与换作品重叠（曾在 A05 开头报主进程执行上下文被销毁，失败截图里批次停在 95%）。
+    const activeWhenCommitted = await waitNoActiveRuns(page)
     pass('U05.A07-failure-stops-explicit-retry-continues', 'U05.A07',
       'first-chapter HTTP 503 stopped before chapter 2; 继续此批次 in the run sheet reissued chapter 1, then continued to chapter 2',
       { initialFailureRequests: failedRequests.length, retryRequests: retryRequests.length,
         batchId: resumedBatch.batchId, completedChapters: resumedBatch.completedChapters.map(row => row.chapterNumber),
-        savedChapters: resumedDrafts.map(row => row.chapterNumber) })
+        savedChapters: resumedDrafts.map(row => row.chapterNumber), activeRunsWhenDraftsCommitted: activeWhenCommitted })
 
     if (!selectedAction) {
     mark('U05.A05-auto-finalize')
