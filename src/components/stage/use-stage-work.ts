@@ -23,7 +23,7 @@ let refreshSequence = 0
 
 /**
  * 读一次流程脊需要而 project-store、draft-store 里没有的数据：架构四节是否已确认、蓝图章号与标题；草稿顺带刷新。
- * 守卫与项目树的刷新相同：只认最后一次请求，项目会话或会话代数变了就丢弃结果。
+ * 只认最后一次请求，项目会话或会话代数变了就丢弃结果。
  */
 export async function refreshStageWork(text: (zh: string, en: string) => string): Promise<void> {
   const { currentProject, projectSessionEpoch } = useProjectStore.getState()
@@ -57,13 +57,13 @@ export async function refreshStageWork(text: (zh: string, en: string) => string)
   }
 }
 
-/** 与项目树同一个键：任一运行的状态或步骤状态变化都要重新读。 */
+/** 任一运行的状态或步骤状态变化都要重新读。 */
 function workflowRefreshKey(runs: readonly WorkflowRun[]): string {
   return runs.map(run => `${run.id}:${run.status}|${run.steps.map(step => step.status).join(',')}`).join(';')
 }
 
 /**
- * 刷新时机与过滤和项目树相同：换项目或会话代数变化时立即刷新；工作流步骤推进、架构更新、蓝图资源变化时合并成一次。
+ * 换项目或会话代数变化时立即刷新；工作流步骤推进、架构更新、蓝图资源变化时合并成一次。
  * 项目身份与工作流共用一个 effect，打开作品时只刷新一次。
  */
 export function useStageWorkRefresh(): void {

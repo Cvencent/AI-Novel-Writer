@@ -9,7 +9,7 @@ interface MarkdownContentProps {
 
 /** 
  * Markdown 渲染组件（含 <think> 思考过程折叠支持）
- * 用于 Agent 对话、AI 输出面板的正文格式化显示
+ * 用于助手对话与运行卡片的模型输出
  */
 export default function MarkdownContent({ content, streaming }: MarkdownContentProps) {
   // 解析 <think> 标签：将内容拆分为 [thinking?, ...markdownSegments]
