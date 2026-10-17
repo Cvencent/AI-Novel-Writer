@@ -209,14 +209,16 @@ async function waitRunsQuiet(page, title) {
   await runSheet.tab(page, '历史').click()
   const history = page.getByRole('list', { name: '运行历史' })
   await history.locator('.run-history-title').filter({ hasText: new RegExp(`^${title}$`) }).first().waitFor({ state: 'visible', timeout: 90_000 })
+  // 运行历史只在「历史」页挂载，切到「进行中」之前读。
+  const historyTitles = await history.locator('.run-history-title').allTextContents()
   await runSheet.tab(page, '进行中').click()
   let active = []
   for (let attempt = 0; attempt < 360; attempt++) {
     active = await runSheet.activeTitles(page)
-    if (active.length === 0) return { active, historyTitles: await history.locator('.run-history-title').allTextContents() }
+    if (active.length === 0) return { active, historyTitles }
     await new Promise(resolve => setTimeout(resolve, 250))
   }
-  throw new Error(`RUNS_NOT_QUIESCENT ${JSON.stringify({ active, title })}`)
+  throw new Error(`RUNS_NOT_QUIESCENT ${JSON.stringify({ active, title, historyTitles })}`)
 }
 async function waitRunCompleted(page, title) {
   await runSheet.openFromPalette(page)

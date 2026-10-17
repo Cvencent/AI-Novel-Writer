@@ -71,6 +71,8 @@ async function historyRows(page) {
   await runSheet.openFromPalette(page)
   await runSheet.tab(page, '历史').click()
   const list = page.getByRole('list', { name: '运行历史' })
+  // 「历史」页是点了之后才挂载的：先等列表或空状态出现，空历史的对照才有意义。
+  await list.or(runSheet.sheet(page).getByText('还没有运行记录', { exact: true })).first().waitFor({ state: 'visible' })
   if (await list.count() === 0) return []
   return list.getByRole('listitem').evaluateAll(items => items.map(item => ({
     title: item.querySelector('.run-history-title')?.textContent ?? '',
@@ -238,6 +240,7 @@ async function main() {
       { durableRunIds: runs.map(run => run.runId), rendererHistoryCount: reopenedRows.length })
   } catch (error) {
     failure = error
+    fs.mkdirSync(path.join(repository, '.runtime', '.cache', 'f05-u13-history-seals', runId), { recursive: true })
     await lastPage?.screenshot({ path: path.join(repository, '.runtime', '.cache', 'f05-u13-history-seals', runId, 'failure.png') }).catch(() => {})
   }
   finally { if (app) await quit(app); if (server.listening) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)) } }

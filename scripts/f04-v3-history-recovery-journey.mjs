@@ -52,7 +52,14 @@ const server = createServer(async (request, response) => {
     || request.headers.authorization !== `Bearer ${model.apiKey}`) { response.writeHead(403).end(); return }
   let raw = ''
   for await (const chunk of request) raw += chunk
-  const prompt = (JSON.parse(raw).messages ?? []).map(message => String(message.content)).join('\n')
+  let prompt
+  try {
+    prompt = (JSON.parse(raw).messages ?? []).map(message => String(message.content)).join('\n')
+  } catch {
+    // 处理函数是 async 的：这里抛出会成为未处理的拒绝，直接结束旅程进程，回执与失败截图都来不及写。
+    response.writeHead(400).end()
+    return
+  }
   response.writeHead(200, { 'Content-Type': 'text/event-stream' })
   if (prompt.includes('只写短细纲')) {
     fixture.outlines++

@@ -135,7 +135,7 @@ async function startGenerate(page) {
     await dialog.waitFor({ state: 'hidden' })
   } catch (error) {
     const state = await dialog.evaluate(element => ({
-      guardError: element.querySelector('span.whitespace-pre-line')?.textContent?.slice(0, 500) ?? null,
+      guardError: element.querySelector('span.arch-guard')?.textContent?.slice(0, 500) ?? null,
       confirm: [...element.querySelectorAll('button')].filter(button => /开始生成|校验中/.test(button.textContent ?? ''))
         .map(button => ({ text: button.textContent?.trim().slice(0, 80), disabled: button.disabled })),
       range: [...element.querySelectorAll('input[type="number"]')].map(input => input.value),
@@ -184,6 +184,15 @@ const historyRows = page => page.getByRole('list', { name: '运行历史' }).get
 async function showRunHistory(page) {
   await runSheet.openFromPalette(page)
   await runSheet.tab(page, '历史').click()
+}
+/** 失败时的诊断：运行历史只在「历史」页挂载，先切过去再读；读不到就返回空，不盖掉原来的错误。 */
+async function historyTextsForDiagnostics(page) {
+  try {
+    await showRunHistory(page)
+    return await historyRows(page).allTextContents()
+  } catch {
+    return []
+  }
 }
 async function waitWorkflowReleased(page, previousCount) {
   await showRunHistory(page)
@@ -320,7 +329,7 @@ async function main() {
       first = await waitCore(page, context, core => core?.synopsis?.includes('第1章：旧港线索1') && core?.synopsis?.includes('已覆盖至第 2 章'), 'first outline batch')
     } catch (error) {
       const notice = await alertTexts(page)
-      const taskHistory = await historyRows(page).allTextContents()
+      const taskHistory = await historyTextsForDiagnostics(page)
       throw new Error(`first outline batch failed: ${JSON.stringify({ notice: notice.map(text => text.slice(0, 500)), taskHistory: taskHistory.slice(0, 3) })}; ${String(error)}`)
     }
     await waitWorkflowReleased(page, priorRuns)
@@ -347,7 +356,7 @@ async function main() {
     } catch (error) {
       const dialog = await page.getByRole('dialog').allTextContents()
       const notice = await alertTexts(page)
-      const taskHistory = await historyRows(page).allTextContents()
+      const taskHistory = await historyTextsForDiagnostics(page)
       throw new Error(`continued outline batch failed: ${JSON.stringify({ dialog: dialog.map(text => text.slice(0, 500)), notice: notice.map(text => text.slice(0, 500)), taskHistory: taskHistory.slice(0, 3) })}; ${String(error)}`)
     }
     await waitWorkflowReleased(page, priorRuns)
@@ -386,7 +395,7 @@ async function main() {
       const composition = partial?.world_building_generation_handle
         ? await invoke(page, 'generation:read-visible-composition', partial.world_building_generation_handle, context).catch(() => null)
         : null
-      const taskHistory = await historyRows(page).allTextContents()
+      const taskHistory = await historyTextsForDiagnostics(page)
       const alerts = await alertTexts(page)
       const statuses = await page.getByRole('status').allTextContents()
       throw new Error(`length candidate UI missing: ${JSON.stringify({
@@ -470,7 +479,7 @@ async function main() {
         ? await invoke(page, 'generation:read-visible-composition', partial.world_building_generation_handle, context).catch(() => null)
         : null
       const alerts = await alertTexts(page)
-      const taskHistory = await historyRows(page).allTextContents()
+      const taskHistory = await historyTextsForDiagnostics(page)
       throw new Error(`source-change candidate was not persisted after provider completed: ${JSON.stringify({
         handlePresent: Boolean(partial?.world_building_generation_handle),
         incomplete: partial?.world_building_incomplete,
@@ -501,7 +510,7 @@ async function main() {
         ? await invoke(page, 'generation:read-visible-composition', partial.world_building_generation_handle, context).catch(() => null)
         : null
       const alerts = await alertTexts(page)
-      const taskHistory = await historyRows(page).allTextContents()
+      const taskHistory = await historyTextsForDiagnostics(page)
       throw new Error(`source-change candidate UI missing: ${JSON.stringify({
         candidateMirrorPresent: Boolean(partial?.world_building_partial_result),
         handlePresent: Boolean(partial?.world_building_generation_handle),
