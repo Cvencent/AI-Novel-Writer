@@ -37,6 +37,7 @@ export default function AgentHeader() {
   // 当前会话为空（无消息）时禁止新建
   const activeConv = getActiveConversation()
   const isCurrentEmpty = !activeConv || activeConv.messages.filter(m => m.role !== 'system').length === 0
+  const newLabel = isCurrentEmpty ? text('当前对话为空，请先发送消息', 'The current conversation is empty') : text('新建对话', 'New conversation')
 
   return (
     <div
@@ -61,7 +62,8 @@ export default function AgentHeader() {
         <Button
           variant="icon"
           size="sm"
-          aria-label={isCurrentEmpty ? text('当前对话为空，请先发送消息', 'The current conversation is empty') : text('新建对话', 'New conversation')}
+          aria-label={newLabel}
+          title={newLabel}
           disabled={isCurrentEmpty}
           onClick={handleNew}
         >
@@ -73,6 +75,7 @@ export default function AgentHeader() {
           variant="icon"
           size="sm"
           aria-label={text('历史对话', 'Conversation history')}
+          title={text('历史对话', 'Conversation history')}
           onClick={toggleHistory}
           aria-pressed={showHistory}
         >
@@ -85,8 +88,9 @@ export default function AgentHeader() {
             variant="icon"
             size="sm"
             aria-label={text('更多选项', 'More options')}
+            title={text('更多选项', 'More options')}
             onClick={() => { setShowMore(v => !v); setSubView('main') }}
-            aria-pressed={showMore}
+            aria-expanded={showMore}
           >
             <MoreHorizontal size={15} strokeWidth={1.5} />
           </Button>
