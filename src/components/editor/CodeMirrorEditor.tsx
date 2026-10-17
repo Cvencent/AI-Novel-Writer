@@ -496,6 +496,7 @@ export default function CodeMirrorEditor({
   }
 
   // 固定 basicSetup 内存引用，防止 React 每次渲染生成新对象导致内部扩展被重载（搜索框消失的罪魁祸首）
+  // 正文不要补全：打字后补全请求还没结束时，它的键位表会先把 Esc 吞掉，「先 Esc 再 Tab」就移不出编辑区。
   const cmBasicSetup = useMemo(() => ({
     lineNumbers: false,
     foldGutter: false,
@@ -505,7 +506,9 @@ export default function CodeMirrorEditor({
     highlightActiveLine: false,
     highlightActiveLineGutter: false,
     searchKeymap: true,
-  }), [])
+    autocompletion: mode !== 'prose',
+    completionKeymap: mode !== 'prose',
+  }), [mode])
 
   return (
     <div className={fitContent ? 'relative' : 'relative h-full flex flex-col min-h-0'}
