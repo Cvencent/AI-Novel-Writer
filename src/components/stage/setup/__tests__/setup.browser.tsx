@@ -12,8 +12,11 @@ import { useLayoutStore } from '../../../../stores/layout-store'
 import { useLLMStore } from '../../../../stores/llm-store'
 import { useProjectStore } from '../../../../stores/project-store'
 import { useWorkflowStore } from '../../../../stores/workflow-store'
+import { IS_MAC } from '../../shortcut-keys'
 import { useStageShortcuts } from '../../use-stage-shortcuts'
 import StageSetup from '../StageSetup'
+
+const COMMAND = IS_MAC ? { metaKey: true } : { ctrlKey: true }
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -186,7 +189,7 @@ describe('设定页', () => {
     dirtyConfigTab()
     useProjectStore.setState({ saveProject: vi.fn(() => new Promise<boolean>(resolve => { finishSave = resolve })) } as never)
     await mount()
-    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, bubbles: true, cancelable: true })) })
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ...COMMAND, bubbles: true, cancelable: true })) })
     expect(next().disabled).toBe(true)
     await act(async () => {
       useEditorStore.setState(state => ({ tabs: state.tabs.map(tab => ({ ...tab, dirty: false })) }))
@@ -269,7 +272,7 @@ describe('设定页', () => {
 
     await write(field(/^核心大纲/) as HTMLTextAreaElement, '雾钟提前两刻响起。')
     expect(alertText()).toBe('')
-    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, bubbles: true, cancelable: true })) })
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ...COMMAND, bubbles: true, cancelable: true })) })
     await expect.poll(alertText).toBe(SAVE_FAILED)
     expect(useProjectStore.getState().saveProject).toHaveBeenCalledTimes(2)
   })
@@ -379,7 +382,7 @@ describe('设定页的保存跨切标签', () => {
     dirtyConfigTab()
     useProjectStore.setState({ saveProject: vi.fn(() => new Promise<boolean>(resolve => { finishSave = resolve })) } as never)
     await mount()
-    const ctrlS = () => act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, bubbles: true, cancelable: true })) })
+    const ctrlS = () => act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ...COMMAND, bubbles: true, cancelable: true })) })
     await ctrlS()
     await act(async () => root!.render(<Shortcuts />))
     await act(async () => root!.render(<><Shortcuts /><StageSetup projectKey={PATH} /></>))
