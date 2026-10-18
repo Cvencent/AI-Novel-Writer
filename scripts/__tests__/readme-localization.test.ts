@@ -6,7 +6,7 @@ describe('README language variants', () => {
     const readme = readFileSync('README.md', 'utf8')
     expect(readme).toContain('v130-hero-zh.webp')
     expect(readme).toContain('v130-zh-chapter.webp')
-    expect(readme).not.toContain('v130-en-')
+    expect(readme).not.toMatch(/v130-(?:hero-en|en-)/)
     expect(readme).toMatch(/\[English\]\(README_en\.md\)\s*\|\s*\*\*中文\*\*/)
   })
 
@@ -14,7 +14,7 @@ describe('README language variants', () => {
     const readme = readFileSync('README_en.md', 'utf8')
     expect(readme).toContain('v130-hero-en.webp')
     expect(readme).toContain('v130-en-chapter.webp')
-    expect(readme).not.toContain('v130-zh-')
+    expect(readme).not.toMatch(/v130-(?:hero-zh|zh-)/)
     expect(readme).toMatch(/\*\*English\*\*\s*\|\s*\[中文\]\(README\.md\)/)
   })
 })

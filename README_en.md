@@ -201,7 +201,7 @@ Yes. It is open source under the GPL-3.0 license. Any cost of calling a cloud mo
 Any model behind an OpenAI-compatible Chat Completions API works, and Google Gemini uses its native protocol. Settings include presets for DeepSeek, SiliconFlow, Zhipu, OpenAI, xAI, Gemini, Ollama, and NovelAI. Output quality depends on the model you choose. The app makes no promise about model output.
 
 **Where is my data stored?**
-On your own computer: the book folder plus a local SQLite database. Settings and context are sent to your configured model service only when you start a generation.
+On your own computer: the book folder plus a local SQLite database. The relevant prompts, story setup, and context are sent to your configured model service only when you start a generation.
 
 **How long can a novel be?**
 You set the total number of chapters, with no fixed limit. For each chapter, AI receives the chapter's blueprint, the related characters, the worldbuilding, summaries of earlier chapters, and the full previous chapter, so the whole book never has to fit in one conversation. Batch write handles up to 10 chapters per run, and you can keep going run after run.
