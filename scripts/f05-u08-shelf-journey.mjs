@@ -100,7 +100,8 @@ const home = async page => {
   await stage.showLibrary(page)
 }
 /** 概览卡的统计：正文字数、定稿章节、角色。 */
-const stats = overview => overview.getByRole('list', { name: '统计' }).innerText().catch(() => overview.innerText())
+// 统计格是带 aria-label 的 <dl>，按 ARIA 没有 list 角色，按标签找；找不到就让这一步失败。
+const stats = overview => overview.getByLabel('统计', { exact: true }).innerText()
 const statOf = (text, label) => Number(new RegExp(`${label}\\s*([\\d,]+)`).exec(text)?.[1]?.replaceAll(',', '') ?? NaN)
 const bars = overview => overview.getByRole('list', { name: '阶段进度' }).locator('[data-stage]')
   .evaluateAll(rows => rows.map(row => ({ stage: row.dataset.stage, state: row.dataset.state, label: row.textContent?.trim() ?? '' })))

@@ -238,9 +238,10 @@ async function main() {
     sourceProject: repository, createdAt: new Date().toISOString(), ttlHours: 24,
     retainedReason: 'isolated SQLite and failure evidence for independent review',
     cleanupCommand: `Remove-Item -LiteralPath '${scratch.replaceAll("'", "''")}' -Recurse -Force` }, null, 2))
-  // 纸墨外壳里确认清单与启动修稿是同一个按钮：静态审稿项目（A03）确认时会顺带发起一次修稿，另记、回 422，不占在线项目的编号。
+  // 纸墨外壳里确认清单与启动修稿是同一个按钮：静态审稿项目（A03）确认时会顺带发起一次修稿。它的审稿是直接写进仓库的、没有生成记录，
+  // 主进程准备修稿时就拒绝（GENERATION_REVIEW_LINEAGE_UNPROVEN），不调用模型；A03 结束时核对夹具一次对话请求都没收到，否则在线项目的编号会整体错位。
   // 在线项目的第 2 次请求是原样返回的空修稿（A05，先挂住，等记下正式数据再放行），第 3 次才是真正的修稿（A04）。
-  const fixture = { requests: [], staticRequests: [], externalModelRequests: 0, promptBoundaries: [], candidateReviewAccepted: false,
+  const fixture = { requests: [], externalModelRequests: 0, promptBoundaries: [], candidateReviewAccepted: false,
     noopHeld: false, releaseNoop: null }
   const server = createServer(async (request, response) => {
     const authorized = request.headers.authorization === `Bearer ${liveModel.apiKey}`
@@ -265,10 +266,6 @@ async function main() {
     const payload = JSON.parse(Buffer.concat(await Array.fromAsync(request)).toString('utf8'))
     const prompt = Array.isArray(payload.messages) ? payload.messages.map(message => typeof message?.content === 'string'
       ? message.content : JSON.stringify(message?.content ?? '')).join('\n') : ''
-    if (prompt.includes(keptStaticItem)) {
-      fixture.staticRequests.push({ method: request.method, route, authorized })
-      response.writeHead(422).end(); return
-    }
     fixture.requests.push({ method: request.method, route, authorized })
     const dispatch = fixture.requests.filter(item => item.route === '/v1/chat/completions').length
     const messageRoles = Array.isArray(payload.messages) ? payload.messages.map(message => message?.role ?? null) : []
@@ -393,7 +390,7 @@ async function main() {
     const rejected = issue(page, '拒绝：删掉灯塔场景。')
     await rejected.locator('label.pi-check').click()
     assert.deepEqual((await issueStates(page)).map(item => item.checked), [true, false, false])
-    // 纸墨外壳没有单独的「确认审稿清单」：「按 N 项意见修稿」先把清单确认成新快照，再按它启动修稿（夹具对这次修稿回 422）。
+    // 纸墨外壳没有单独的「确认审稿清单」：「按 N 项意见修稿」先把清单确认成新快照，再按它启动修稿（主进程在准备阶段就拒绝这次修稿，不调用模型）。
     await reviseButton(page, 1).click()
     const confirmedStatic = await waitForRows(projectPath, state => state.reviews.length === 2)
     const rows = confirmedStatic.reviews
@@ -411,14 +408,17 @@ async function main() {
     ])
     assert.equal(rows[1].baseDraftId, draftId)
     assert.equal(rows[1].reviewIndex, rows[0].reviewIndex + 1)
-    // 顺带发起的修稿被夹具拒绝：等它结束（运行失败或审稿侧页报错），不留进行中的运行。
+    // 顺带发起的修稿被主进程拒绝：等它结束（运行失败或审稿侧页报错），不留进行中的运行。
     await lastRunCard(page).locator('.run-card-meta').filter({ hasText: / · 失败$/ })
       .or(reviewSheet(page).getByRole('alert')).first().waitFor({ state: 'visible', timeout: 60_000 })
+    assert.equal(fixture.requests.filter(item => item.route === '/v1/chat/completions').length, 0,
+      'the static project revision reached the model, so the live project dispatch numbers would shift')
+    const staticRunCard = await lastRunCard(page).innerText().catch(() => null)
     assert.deepEqual(formalRows(projectPath).revisions, [], 'the rejected static revision stored a revision')
     assert.deepEqual(draftRow(projectPath, draftId), sourceDraft)
-    pass('U12.A03-stage-confirm', 'Unchecking one AI suggestion and choosing 按 1 项意见修稿 appended an exact source-bound snapshot (apply / ignore / ignore) without changing the AI report; the fixture refused the revision itself, so no revision was stored',
+    pass('U12.A03-stage-confirm', 'Unchecking one AI suggestion and choosing 按 1 项意见修稿 appended an exact source-bound snapshot (apply / ignore / ignore) without changing the AI report; the main process refused the revision before any model call, so no revision was stored',
       { sourceReviewId, confirmationReviewId: rows[1].id, decisions: confirmation.items.map(item => item.decision),
-        staticRevisionRequests: fixture.staticRequests.length }, 'U12.A03')
+        modelRequests: 0, staticRunCard }, 'U12.A03')
     await app.close(); app = null
 
     currentStep = 'U12.A03-process-reopen'
@@ -962,10 +962,10 @@ async function main() {
       scope: a06Only ? ['U12.A06'] : ['U12.A01', 'U12.A02', 'U12.A03', 'U12.A04', 'U12.A05', 'U12.A06', 'U12.A07', 'U12.A08'], testedSha, executionHead: git('rev-parse', 'HEAD'),
       artifact: { executablePath, executableSha256: sha256(executablePath), asarPath, asarSha256: sha256(asarPath) },
       driver: { path: driverPath, sha256: sha256(driverPath) }, profile: { scratch, projectPath, liveProjectPath },
-      provider: { kind: 'loopback-synthetic-openai-sse', localRequests: fixture.requests, staticProjectRequests: fixture.staticRequests,
+      provider: { kind: 'loopback-synthetic-openai-sse', localRequests: fixture.requests,
         externalModelRequests: fixture.externalModelRequests, promptBoundaries: fixture.promptBoundaries },
       deviations: [
-        'U12.A03: the stage confirms the checklist inside 按 N 项意见修稿; the confirmation also starts a revision, which the fixture refuses for the static project.',
+        'U12.A03: the stage confirms the checklist inside 按 N 项意见修稿; the confirmation also starts a revision, which the main process refuses before any model call because the seeded review has no generation lineage (GENERATION_REVIEW_LINEAGE_UNPROVEN).',
         'U12.A05 runs before U12.A04: the stage requires a pending revision to be merged or discarded before another review revision can start.',
       ],
       steps, unverifiedActions: ['U12.A01', 'U12.A02', 'U12.A03', 'U12.A04', 'U12.A05', 'U12.A06', 'U12.A07', 'U12.A08']

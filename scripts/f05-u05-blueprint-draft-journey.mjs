@@ -217,7 +217,6 @@ async function batchDialog(page, count, mode) {
 }
 /** 运行侧页里这次批量创作的「取消」：只有进行中的运行才有。 */
 const batchCancel = page => runSheet.sheet(page).getByRole('button', { name: /^取消「批量草稿待审/ }).first()
-/** 运行侧页「历史」里标题为 title 的最近一次运行记为已完成。 */
 /** 等运行侧页「进行中」没有运行；返回开始等之前还在跑的运行标题。 */
 async function waitNoActiveRuns(page) {
   await runSheet.openFromPalette(page)
@@ -232,6 +231,7 @@ async function waitNoActiveRuns(page) {
   }
   return initially
 }
+/** 运行侧页「历史」里标题为 title 的最近一次运行记为已完成。 */
 async function assertRunCompleted(page, title) {
   await runSheet.openFromPalette(page)
   await runSheet.tab(page, '历史').click()
