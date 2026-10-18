@@ -1,4 +1,4 @@
-// RD-10 的实机 lane 与功能保全矩阵截图：键盘写一章、打字后立刻 Esc、英文界面全程、1280 与 1920 两种宽度、窄资料栏、标签操作菜单、恢复候选正文页。
+// RD-10 的实机 lane 与功能保全矩阵截图：键盘写一章、打字后立刻 Esc、英文界面全程、1280 与 1920 两种宽度、窄资料栏、标签操作菜单（含标签多到横向滚动时）、恢复候选正文页。
 import assert from 'node:assert/strict'
 
 import { FAKE_MODEL, FIXTURE_PROSE } from './fake-model.mjs'
@@ -305,6 +305,37 @@ export const RD10_SCENARIOS = {
     const items = await menu.getByRole('menuitem').allInnerTexts()
     for (const item of ['关闭当前标签', '关闭其他标签', '关闭右侧标签', '关闭全部标签']) assert.ok(items.some(text => text.includes(item)), `菜单里有「${item}」`)
     return { items }
+  }, after: async ({ page }) => {
+    await page.keyboard.press('Escape')
+  } },
+
+  /**
+   * 标签多到横向滚动：1280×900 下开着运行侧页，依次打开作品资料各页与几章，最后打开的标签在最右端处于激活。
+   * 「标签操作」按钮中心那一点上要是按钮本身（不被标签盖住），在那里真实点一下打开的是菜单，标签一个不少。
+   */
+  'rd10-tab-overflow': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page, shoot }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await runSheet.openFromPalette(page)
+    for (const name of ['设定', '剧情与伏笔', '知识库', '版本历史']) await palette(page, name)
+    // 样例里只有前 4 章有正文，空白章没有编辑区，openChapter 等不到
+    for (const chapter of [1, 2, 4]) await stage.openChapter(page, chapter)
+    await blueprint.open(page)
+    const strip = await page.locator('.stage-tabs').evaluate(element => ({ scroll: element.scrollWidth, client: element.clientWidth, left: element.scrollLeft }))
+    assert(strip.scroll > strip.client, `标签条没有横向滚动：${JSON.stringify(strip)}`)
+    const tabs = await stage.tabList(page).getByRole('tab').count()
+    const trigger = stage.root(page).getByRole('button', { name: '标签操作', exact: true })
+    const box = await trigger.boundingBox()
+    const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    const onTop = await trigger.evaluate((button, point) => {
+      const hit = document.elementFromPoint(point.x, point.y)
+      return { inside: button.contains(hit), hit: hit?.outerHTML.slice(0, 120) ?? null }
+    }, center)
+    assert(onTop.inside, `「标签操作」上面压着 ${onTop.hit}`)
+    await page.mouse.click(center.x, center.y)
+    await page.getByRole('menu').waitFor({ state: 'visible' })
+    assert.equal(await stage.tabList(page).getByRole('tab').count(), tabs, '点「标签操作」的位置关掉了标签')
+    await shoot('rd10-tab-overflow')
+    return { strip, tabs, onTop }
   }, after: async ({ page }) => {
     await page.keyboard.press('Escape')
   } },
