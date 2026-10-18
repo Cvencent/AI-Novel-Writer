@@ -12,7 +12,7 @@
 
 <p align="center">
   <strong>Free, open-source AI novel writing software for the desktop, built for long novels and serialized web fiction.</strong><br />
-  Go from setup, story architecture, and chapter blueprints to drafting, review, revision, and final chapters, one chapter at a time.<br />
+  Go from setup, story architecture, and chapter blueprints to drafting, review, revision, and final chapters, one chapter at a time. You can also break down a reference novel to imitate its style, or import your manuscript and continue it.<br />
   Local-first: your books stay on your own computer. No model is bundled: use your own API key, or run a local model with Ollama.
 </p>
 
@@ -48,9 +48,15 @@ AI Novel Writer works in the order a novel gets written. Each step is saved in t
 
 The library lists every book you have written. Select a cover to preview it: the current step, word count, final chapters, and characters. You can start a new book or import a copy of a project from an older version.
 
-"Novel breakdown & imitation" imports a novel as a .txt, .md, or .epub file and splits it into chapters. The text can serve as a reference for imitation, or it can be your own manuscript that you keep writing.
-
 ![Library with two books on the shelf and the preview and progress of "Lighthouse" on the right](docs/assets/readme/v130-en-library.webp)
+
+### Breakdown, imitation, and continuation
+
+"Novel breakdown & imitation" in the library imports a novel as a .txt, .md, or .epub file, splits it into chapters, and asks what the text is for.
+
+- **Breakdown and imitation**: choose "Reference novel". AI breaks down its structure, extracts its style, infers chapter blueprints, and produces imitation constraints for your later writing. A reference novel goes only into the knowledge base and the breakdown; it never mixes into your prose.
+- **Continue your manuscript**: choose "My manuscript". The chapters you already wrote are imported by chapter number as finalized text, and AI continues the following chapters from those characters and events.
+- **Continue a passage**: select text in the prose editor, and the toolbar offers Refine, Expand, Continue, and To dialogue.
 
 ### Setup and architecture: build the story first
 
@@ -92,6 +98,12 @@ Every generation run appears in the run sheet, with In progress, History, and Di
 - **Knowledge base**: import reference material (.txt, .md). Local full-text search works even without a retrieval model.
 - **Version history**: every past version of a chapter is kept. Compare it with the current draft, or restore it as a new draft.
 - **Export and backup**: export as merged Markdown, one Markdown file per chapter, or plain text. Archive a book on your computer or back it up to a WebDAV cloud you connect. Restoring always creates a new copy.
+
+### Writing skills: bring your own writing rules
+
+On the "Writing skills" settings page, enter the address of a skill on GitHub to import a prompt-only writing skill, such as one that removes the typical AI tone, or one for a particular style or genre. The app downloads the skill and shows you its content before you install it. Bind it to the planning, drafting, review, or revision stage, and every generation in that stage includes it.
+
+Only self-contained SKILL.md prompts are supported. Scripts, hooks, subagents, and tool requirements are not installed, so a skill cannot run code on your computer.
 
 ### Dark theme and two interface languages
 
@@ -198,6 +210,9 @@ Yes. The interface is available in Chinese and English, and each book's writing 
 
 **How do I upgrade projects from an older version to 1.3.0?**
 If you have 1.1.0 or 1.2.x installed, upgrade through the in-app updater (on macOS, download the new installer by hand). Upgrading leaves your books unchanged and migrates the old appearance preference to light or dark. To convert an older project to the new format, choose "Import" in the library and then "Import an old project copy". Importing creates a new copy and leaves the original project untouched.
+
+**Can I import skills, such as one that removes the AI tone?**
+Yes. On the "Writing skills" settings page, enter the skill's GitHub address, review its content, install it, and bind it to a stage such as drafting or revision. Only prompt-only SKILL.md files are supported; no scripts are installed or run.
 
 **Where did the assistant chat go?**
 The new 1.3.0 interface hides the assistant chat entry for now. It will return separately. Drafting, review, revision, and the rest of the workflow are unaffected.
