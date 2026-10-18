@@ -1,4 +1,4 @@
-// RD-10 的实机 lane 与功能保全矩阵截图：键盘写一章、打字后立刻 Esc、英文界面全程、1280 与 1920 两种宽度、标签操作菜单、恢复候选正文页。
+// RD-10 的实机 lane 与功能保全矩阵截图：键盘写一章、打字后立刻 Esc、英文界面全程、1280 与 1920 两种宽度、窄资料栏、标签操作菜单、恢复候选正文页。
 import assert from 'node:assert/strict'
 
 import { FAKE_MODEL, FIXTURE_PROSE } from './fake-model.mjs'
@@ -83,6 +83,32 @@ async function untranslated(page) {
   for (const fragment of SAMPLE_CONTENT) cleaned = cleaned.split(fragment).join(' ')
   return [...new Set(cleaned.split('\n').map(line => line.trim()).filter(line => line !== brand && /\p{Script=Han}/u.test(line)))]
 }
+
+/**
+ * 知识库资料栏里放不下的东西：每个按钮都要留在所在的框里、文字不伸出按钮，分段两项各自不折行，资料栏本身没有横向溢出。
+ * 返回资料栏宽度、分段文案与问题清单。
+ */
+const knowledgeColumn = page => page.evaluate(() => {
+  const column = document.querySelector('.stage-kb-docs')
+  if (!column) return { missing: true }
+  const inner = element => {
+    const rect = element.getBoundingClientRect()
+    const style = getComputedStyle(element)
+    return { left: rect.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft),
+      right: rect.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight) }
+  }
+  const problems = []
+  for (const button of column.querySelectorAll('button')) {
+    const name = button.textContent.trim() || button.getAttribute('aria-label')
+    const rect = button.getBoundingClientRect()
+    const frame = inner(button.parentElement)
+    if (button.scrollWidth > button.clientWidth) problems.push(`${name}：文字伸出按钮 ${button.scrollWidth - button.clientWidth}px`)
+    if (rect.left < frame.left - 0.5 || rect.right > frame.right + 0.5) problems.push(`${name}：伸出所在的框`)
+  }
+  for (const item of column.querySelectorAll('.pi-seg-item')) if (item.scrollHeight > item.clientHeight) problems.push(`${item.textContent}：折行`)
+  return { width: Math.round(column.getBoundingClientRect().width), overflow: column.scrollWidth - column.clientWidth, problems,
+    segments: [...column.querySelectorAll('.pi-seg-item')].map(item => item.textContent) }
+})
 
 const noHorizontalOverflow = page => page.evaluate(() => {
   const scroller = document.scrollingElement
@@ -198,6 +224,37 @@ export const RD10_SCENARIOS = {
     }
     const overflowing = Object.entries(measured).filter(([, value]) => value.document > 0 || value.shell > 0)
     assert.deepEqual(overflowing, [], `横向溢出：${JSON.stringify(overflowing)}`)
+    return measured
+  } },
+
+  /**
+   * 窄资料栏：1280×900 下打开知识库再展开运行侧页，内容区约 620px、资料栏只剩 200px。中文、英文各量一次，
+   * 资料栏里的按钮与分段都不伸出各自的框（`measured.<语言>.problems` 为空），各截一张。
+   */
+  'rd10-knowledge-narrow': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ page, invoke, reload, shoot }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    const measured = {}
+    for (const [locale, knowledge, sheet] of [['zh-CN', '知识库', '运行侧页'], ['en-US', 'Knowledge base', 'Run sheet']]) {
+      if (locale === 'en-US') {
+        assert.equal((await invoke(page, 'config:set', { locale })).success, true)
+        await reload()
+        await page.getByRole('list', { name: 'Recent books' }).waitFor({ state: 'visible' })
+        await stage.openFromLibraryEn(page, STAGE_SAMPLE.name)
+        await page.getByRole('navigation', { name: 'Writing flow' }).waitFor({ state: 'visible' })
+      }
+      await palette(page, knowledge)
+      await page.locator('.stage-kb-docs .pi-seg-item').first().waitFor({ state: 'visible' })
+      await palette(page, sheet)
+      await runSheet.sheet(page).waitFor({ state: 'visible' })
+      await page.waitForTimeout(400)
+      measured[locale] = await knowledgeColumn(page)
+      await shoot(`rd10-knowledge-narrow-${locale === 'zh-CN' ? 'zh' : 'en'}`)
+    }
+    for (const [locale, result] of Object.entries(measured)) {
+      assert(!result.missing && result.width <= 210, `${locale} 没有进入窄资料栏：${JSON.stringify(result)}`)
+      assert.deepEqual(result.problems, [], `${locale} 资料栏里有东西伸出去：${JSON.stringify(result)}`)
+      assert.equal(result.overflow, 0, `${locale} 资料栏横向溢出 ${result.overflow}px`)
+    }
     return measured
   } },
 

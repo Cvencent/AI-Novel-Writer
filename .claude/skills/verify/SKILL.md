@@ -455,6 +455,7 @@ node scripts/redesign/drive.mjs --scenario refs-timing --shell stage --out <目�
 | `rd10-esc-after-typing` | 第 4 章正文里分别用逐键按键、insertText、CDP 模拟的输入法组字（imeSetComposition 再 insertText）各打几个字，每次打完立刻按 Esc、Tab：焦点离开编辑区，正文里不多出全角空格（`measured.results` 三项都 `left: true`、`emSpacesAdded: 0`） | 最后一次 Tab 之后 | 否 | lane 7 |
 | `rd10-en` | 界面语言切成英文后走书房、四个阶段、角色名单、第 3 章与第 1 章、运行侧页、三个作品资料页、导出与清除对话框、设置各页；每页的可见文字与可访问名称去掉作品内容后不剩汉字，`measured.untranslated` 为空 | 设置的外观页 | 否 | lane 6 |
 | `rd10-widths` | 1280×900 与 1920×1080 下依次截第 3 章、角色名单、蓝图、书房（`rd10-widths-<宽>-<页>`），文档与外壳都没有横向溢出。浅色、深色各跑一次（`--theme`） | 1920 宽的书房 | 否 | lane 10 |
+| `rd10-knowledge-narrow` | 1280×900 下打开知识库再展开运行侧页（资料栏只剩约 200px），中文、英文各一次：资料栏里每个按钮留在所在的框里、文字不伸出按钮，分段两项不折行，资料栏没有横向溢出（`measured.<语言>.problems` 为空） | 英文界面的窄资料栏 | 否 | lane 10、F27 |
 | `rd10-tab-menu` | 打开设定与蓝图共三个标签，展开「标签操作」：已打开的页面与关闭当前、其他、右侧、全部四个动作 | 标签操作菜单 | 否 | F-183、F-184 |
 | `rd10-candidate-page` | 运行侧页可恢复的正文候选「继续编辑」打开纸墨正文页，候选正文在纸面上 | 恢复候选正文页 | 否 | F-072 |
 | `rd10-tour` | 评审视频（配 `--video`，约 45 秒）：书房概览、打开作品走四个阶段与角色名单、正文第 3 章，设置的外观只有浅色与深色两套（没有皮肤与界面布局），切到深色再切回，回书房 | 书房 | 否 | Review gate |
