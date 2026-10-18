@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { page as browserPage } from 'vitest/browser'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import type { StoreApi } from 'zustand'
@@ -102,6 +103,26 @@ describe('标签菜单', () => {
     await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="标签操作"]')!.click())
     await act(async () => { for (const callback of frames.splice(0)) callback(performance.now()) })
     expect([...document.querySelectorAll('[role="menuitem"]')].map(item => item.textContent).slice(0, 2)).toEqual(['甲', '乙（当前）'])
+  })
+
+  it('标签多到横向滚动时激活最右边的标签：「标签操作」按钮露在外面，点那里打开菜单，不关掉标签', async () => {
+    // 下面按坐标找「标签操作」上面压着什么，视口要装得下整条 1280 宽的标签条
+    await browserPage.viewport(1280, 800)
+    const many = Array.from({ length: 24 }, (_, index) => page(`第 ${index + 1} 页 · 雾钟与灯塔的来信`))
+    await render(many, many[0].id)
+    const strip = document.querySelector<HTMLElement>('.stage-tabs')!
+    expect(strip.scrollWidth, '标签条要能横向滚动').toBeGreaterThan(strip.clientWidth)
+    await act(async () => useEditorStore.getState().setActiveTab(many.at(-1)!.id))
+    expect(strip.scrollLeft, '激活最右边的标签后标签条滚到了右端').toBeGreaterThan(0)
+
+    const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="标签操作"]')!
+    const rect = trigger.getBoundingClientRect()
+    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+    expect(trigger.contains(hit), `「标签操作」的位置上是 ${hit?.outerHTML.slice(0, 120)}`).toBe(true)
+    // 落点可能是按钮里的图标（SVG 没有 click()），按真实点击派发冒泡的 click
+    await act(async () => { hit!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
+    expect(document.querySelectorAll('[role="menuitem"]').length, '点那里打开标签菜单').toBeGreaterThan(0)
+    expect(openTabs()).toHaveLength(24)
   })
 
   it('关闭全部标签后回到空的内容区', async () => {
