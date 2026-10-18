@@ -12,7 +12,7 @@
 
 <p align="center">
   <strong>Free, open-source AI novel writing software for the desktop, built for long novels and serialized web fiction.</strong><br />
-  Go from setup, story architecture, and chapter blueprints to drafting, review, revision, and final chapters, one chapter at a time. You can also break down a reference novel to imitate its style, or import your manuscript and continue it.<br />
+  Go from setup, story architecture, and chapter blueprints to drafting, review, revision, and final chapters, one chapter at a time. You can also break down a reference novel to imitate its style, import your manuscript and continue it, or rewrite to your own instructions.<br />
   Local-first: your books stay on your own computer. No model is bundled: use your own API key, or run a local model with Ollama.
 </p>
 
@@ -50,13 +50,14 @@ The library lists every book you have written. Select a cover to preview it: the
 
 ![Library with two books on the shelf and the preview and progress of "Lighthouse" on the right](docs/assets/readme/v130-en-library.webp)
 
-### Breakdown, imitation, and continuation
+### Breakdown, imitation, continuation, and rewriting
 
 "Novel breakdown & imitation" in the library imports a novel as a .txt, .md, or .epub file, splits it into chapters, and asks what the text is for.
 
 - **Breakdown and imitation**: choose "Reference novel". AI breaks down its structure, extracts its style, infers chapter blueprints, and produces imitation constraints for your later writing. A reference novel goes only into the knowledge base and the breakdown; it never mixes into your prose.
 - **Continue your manuscript**: choose "My manuscript". The chapters you already wrote are imported by chapter number as finalized text, and AI continues the following chapters from those characters and events.
-- **Continue a passage**: select text in the prose editor, and the toolbar offers Refine, Expand, Continue, and To dialogue.
+- **Continue a passage**: select text in the prose editor and choose Continue on the toolbar; AI writes on from that passage.
+- **Rewrite**: to rewrite a whole chapter, use Revise. Write the direction you want, optionally check review notes, and compare the result with the original paragraph by paragraph to choose which version to keep. For a short passage, select it and use Refine, Expand, or To dialogue on the toolbar.
 
 ### Setup and architecture: build the story first
 
