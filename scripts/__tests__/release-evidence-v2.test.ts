@@ -417,10 +417,14 @@ describe('release evidence v2 CLI', () => {
       (receipt: LaunchReceipt) => { receipt.direct.productVersion = `${releaseVersion}-beta.1` },
       (receipt: LaunchReceipt) => { receipt.direct.productVersion = 'garbage' },
       (receipt: LaunchReceipt) => { delete receipt.direct.productVersion },
-      (receipt: LaunchReceipt) => { receipt.direct.packageVersion = productVersion },
+      ...(productVersion === releaseVersion
+        ? [(receipt: LaunchReceipt) => { receipt.direct.packageVersion = `${releaseVersion}-preview` }]
+        : [
+          (receipt: LaunchReceipt) => { receipt.direct.packageVersion = productVersion },
+          (receipt: LaunchReceipt) => { delete receipt.direct.packageVersion },
+        ]),
       (receipt: LaunchReceipt) => { receipt.direct.packageVersion = '1.2.0-preview' },
       (receipt: LaunchReceipt) => { receipt.direct.packageVersion = null },
-      (receipt: LaunchReceipt) => { delete receipt.direct.packageVersion },
       (receipt: LaunchReceipt) => { receipt.expectedVersion = '0.8.0' },
       (receipt: LaunchReceipt) => { delete receipt.expectedVersion },
     ]) {
