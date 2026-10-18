@@ -411,14 +411,14 @@ async function main() {
     // 顺带发起的修稿被主进程拒绝：等它结束（运行失败或审稿侧页报错），不留进行中的运行。
     await lastRunCard(page).locator('.run-card-meta').filter({ hasText: / · 失败$/ })
       .or(reviewSheet(page).getByRole('alert')).first().waitFor({ state: 'visible', timeout: 60_000 })
-    assert.equal(fixture.requests.filter(item => item.route === '/v1/chat/completions').length, 0,
+    assert.equal(liveChatRequests().length, 0,
       'the static project revision reached the model, so the live project dispatch numbers would shift')
     const staticRunCard = await lastRunCard(page).innerText().catch(() => null)
     assert.deepEqual(formalRows(projectPath).revisions, [], 'the rejected static revision stored a revision')
     assert.deepEqual(draftRow(projectPath, draftId), sourceDraft)
     pass('U12.A03-stage-confirm', 'Unchecking one AI suggestion and choosing 按 1 项意见修稿 appended an exact source-bound snapshot (apply / ignore / ignore) without changing the AI report; the main process refused the revision before any model call, so no revision was stored',
       { sourceReviewId, confirmationReviewId: rows[1].id, decisions: confirmation.items.map(item => item.decision),
-        modelRequests: 0, staticRunCard }, 'U12.A03')
+        modelRequests: liveChatRequests().length, staticRunCard }, 'U12.A03')
     await app.close(); app = null
 
     currentStep = 'U12.A03-process-reopen'

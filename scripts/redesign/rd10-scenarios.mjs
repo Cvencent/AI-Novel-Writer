@@ -251,7 +251,8 @@ export const RD10_SCENARIOS = {
       await shoot(`rd10-knowledge-narrow-${locale === 'zh-CN' ? 'zh' : 'en'}`)
     }
     for (const [locale, result] of Object.entries(measured)) {
-      assert(!result.missing && result.width <= 210, `${locale} 没有进入窄资料栏：${JSON.stringify(result)}`)
+      assert(!result.missing && result.width >= 190 && result.width <= 210, `${locale} 没有进入窄资料栏：${JSON.stringify(result)}`)
+      assert.equal(result.segments.length, 2, `${locale} 资料来源分段不是两项：${JSON.stringify(result)}`)
       assert.deepEqual(result.problems, [], `${locale} 资料栏里有东西伸出去：${JSON.stringify(result)}`)
       assert.equal(result.overflow, 0, `${locale} 资料栏横向溢出 ${result.overflow}px`)
     }
@@ -317,14 +318,19 @@ export const RD10_SCENARIOS = {
     await page.setViewportSize({ width: 1280, height: 900 })
     await runSheet.openFromPalette(page)
     for (const name of ['设定', '剧情与伏笔', '知识库', '版本历史']) await palette(page, name)
-    // 样例里只有前 4 章有正文，空白章没有编辑区，openChapter 等不到
+    // 样例里只有前 4 章有正文，空白章没有编辑区，openChapter 等不到；第 3 章是开局的落点，标签已经开着
     for (const chapter of [1, 2, 4]) await stage.openChapter(page, chapter)
     await blueprint.open(page)
+    const tabList = await stage.tabList(page).getByRole('tab').all()
+    assert.equal(await tabList.at(-1).getAttribute('aria-selected'), 'true', '最后打开的标签没有激活')
+    // 等标签条把激活标签滚进来再量，量到的才是滚到最右端的状态
+    await page.waitForTimeout(200)
     const strip = await page.locator('.stage-tabs').evaluate(element => ({ scroll: element.scrollWidth, client: element.clientWidth, left: element.scrollLeft }))
-    assert(strip.scroll > strip.client, `标签条没有横向滚动：${JSON.stringify(strip)}`)
+    assert(strip.scroll > strip.client && strip.left > 0, `标签条没有横向滚动到右端：${JSON.stringify(strip)}`)
     const tabs = await stage.tabList(page).getByRole('tab').count()
     const trigger = stage.root(page).getByRole('button', { name: '标签操作', exact: true })
     const box = await trigger.boundingBox()
+    assert(box, `「标签操作」没有布局出来：${JSON.stringify(strip)}`)
     const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
     const onTop = await trigger.evaluate((button, point) => {
       const hit = document.elementFromPoint(point.x, point.y)
