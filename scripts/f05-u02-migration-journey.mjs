@@ -11,9 +11,9 @@ import * as stage from './redesign/pages/stage.mjs'
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const arg = name => process.argv.find(value => value.startsWith(`--${name}=`))?.slice(name.length + 3)
-const packageDir = path.resolve(arg('package-dir') ?? '')
-const executablePath = path.join(packageDir, 'AI小说作家.exe')
-const asarPath = path.join(packageDir, 'resources', 'app.asar')
+const packageDir = arg('package-dir') && path.resolve(arg('package-dir'))
+const executablePath = path.join(packageDir ?? '', 'AI小说作家.exe')
+const asarPath = path.join(packageDir ?? '', 'resources', 'app.asar')
 const testedSha = arg('package-source-sha')
 const expectedExeSha = arg('exe-sha256')
 const expectedAsarSha = arg('asar-sha256')
@@ -244,7 +244,7 @@ async function currentProjectState(name, roots, session, source) {
 }
 
 async function main() {
-  assert(path.isAbsolute(packageDir) && /^[a-f0-9]{40}$/.test(testedSha ?? '') && /^[a-f0-9]{64}$/.test(expectedExeSha ?? '')
+  assert(packageDir && path.isAbsolute(packageDir) && /^[a-f0-9]{40}$/.test(testedSha ?? '') && /^[a-f0-9]{64}$/.test(expectedExeSha ?? '')
     && /^[a-f0-9]{64}$/.test(expectedAsarSha ?? ''), 'Specify --package-dir, --package-source-sha and fixed exe/asar SHA256')
   assert.equal(git('rev-parse', `${testedSha}^{commit}`), testedSha, 'package source SHA is unavailable')
   assert.equal(sha256(executablePath), expectedExeSha)

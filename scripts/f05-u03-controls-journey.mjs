@@ -119,12 +119,11 @@ async function main() {
     // 改过没存的代理设置会让返回时先问是否放弃；这里没有要留的修改。
     await stage.settingsNav(page).getByRole('button', { name: /^返回(作品|书房)$/ }).click()
     const discard = page.getByRole('dialog', { name: /放弃/ })
-    if (await discard.isVisible().catch(() => false)) await discard.getByRole('button', { name: /放弃/ }).last().click()
+    if (await discard.isVisible()) await discard.getByRole('button', { name: /放弃/ }).last().click()
     await stage.settingsNav(page).waitFor({ state: 'detached' })
     if (originalConfig) fs.writeFileSync(configPath, originalConfig)
     else fs.rmSync(configPath, { force: true })
     await page.reload()
-    await assertStage(page, 'U03.A14')
 
     currentStep = 'U03.A14-safe-diagnostic-copy'
     await assertStage(page, 'U03.A14')

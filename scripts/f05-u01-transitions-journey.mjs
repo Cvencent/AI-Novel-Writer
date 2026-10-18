@@ -69,7 +69,7 @@ function provenance() {
   const changedPaths = git('diff', '--name-only', `${testedSha}..${executionHead}`).split('\n').filter(Boolean)
   assert.equal(git('diff', '--name-only', `${testedSha}..${executionHead}`, '--', ...productInputs), '', 'product inputs changed since package source SHA')
   const dirtyProductPaths = git('status', '--porcelain', '--', ...productInputs).split('\n').filter(Boolean)
-  assert.deepEqual(dirtyProductPaths.filter(line => !/src\/.*\/__tests__\//.test(line)), [], 'dirty product inputs since package build')
+  assert.deepEqual(dirtyProductPaths.filter(line => !/(?:src|electron)\/.*\/__tests__\//.test(line)), [], 'dirty product inputs since package build')
   assert.equal(hash(executablePath), expectedExe)
   assert.equal(hash(asarPath), expectedAsar)
   return { testedSha, executionHead, changedPaths, dirtyProductPaths,
@@ -544,6 +544,9 @@ async function main() {
     await stage.previewBook(page, names.a)
     const previewA = stage.overview(page, names.a)
     assert.equal(await previewA.getByRole('button', { name: `打开《${names.a}》`, exact: true }).isVisible(), true)
+    // 只读预览不露正文：等统计格出现（预览已读完）再数，免得在读取中数到 0
+    await previewA.getByLabel('统计', { exact: true }).waitFor({ state: 'visible' })
+    assert.equal(await previewA.locator('blockquote').count(), 0, 'read-only preview exposed draft body')
     assert.equal((await invoke(page, 'project:get-runtime-context')).activeProjectPath, projects.b, 'preview switched the active project')
     assert.equal(coreOutline(), fixtureConfig.a, 'preview changed A configuration')
     assert.equal(hash(projectFile), aFileBeforeRecent, 'preview rewrote A project file')
