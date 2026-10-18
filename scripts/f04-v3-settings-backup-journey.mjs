@@ -106,11 +106,11 @@ async function launch() {
 }
 
 /** 角色名单页：架构阶段的「角色名单」一节进入；名单里的行带 data-character-id。 */
-async function openCast(page) {
+async function openRosterFromArchitecture(page) {
   await arch.open(page)
   await arch.openCast(page)
 }
-const castRow = (page, characterId) => arch.castRoster(page).locator(`[data-character-id="${characterId}"]`)
+const castRowById = (page, characterId) => arch.castRoster(page).locator(`[data-character-id="${characterId}"]`)
 async function saveCharacter(page) {
   await stage.root(page).getByRole('button', { name: '保存角色', exact: true }).click()
   await stage.root(page).locator('.cast-save-state').filter({ hasText: '已保存' }).waitFor({ state: 'visible', timeout: 20_000 })
@@ -182,7 +182,7 @@ async function main() {
 
     currentStep = 'v3-avatar-source'
     await stage.closeSettings(page)
-    await openCast(page)
+    await openRosterFromArchitecture(page)
     await arch.castRoster(page).getByRole('button', { name: '新建角色' }).click()
     await page.getByLabel('姓名', { exact: true }).fill(characterName)
     await saveCharacter(page)
@@ -203,11 +203,13 @@ async function main() {
     picker('选择角色头像', avatarFile)
     await page.getByRole('button', { name: '取消头像更改', exact: true }).waitFor({ state: 'visible' })
     await saveCharacter(page)
+    // 第一次保存留下的「已保存」可能还在，等暂存的头像提交完（「取消头像更改」消失）再读数据库
+    await page.getByRole('button', { name: '取消头像更改', exact: true }).waitFor({ state: 'detached', timeout: 20_000 })
     sourceSnapshot = avatarState(project.projectPath, characterId)
     assert.equal(sourceSnapshot.character.name, characterName)
-    await castRow(page, characterId).locator('img').waitFor({ state: 'visible' })
-    assert.equal(await imageHash(castRow(page, characterId).locator('img')), sourceSnapshot.assetSha256)
-    await castRow(page, characterId).click()
+    await castRowById(page, characterId).locator('img').waitFor({ state: 'visible' })
+    assert.equal(await imageHash(castRowById(page, characterId).locator('img')), sourceSnapshot.assetSha256)
+    await castRowById(page, characterId).click()
     assert.equal(await imageHash(page.locator(`img[alt="${characterName}头像"]`)), sourceSnapshot.assetSha256)
     pass('v3-avatar-source', { characterId, characterName, avatar: sourceSnapshot.avatar, assetSha256: sourceSnapshot.assetSha256 })
     await page.screenshot({ path: path.join(receiptDir, 'v3-avatar-source.png') })
@@ -217,7 +219,7 @@ async function main() {
     await stage.root(page).getByRole('heading', { level: 1, name: '项目备份' }).waitFor({ state: 'visible' })
     assert.equal(await stage.currentSettingsPage(page), '项目备份')
     pass('work-menu-backup-entry', { sameSettingsPage: true })
-    await page.screenshot({ path: path.join(receiptDir, 'v3-backup-from-masthead.png') })
+    await page.screenshot({ path: path.join(receiptDir, 'v3-backup-from-work-menu.png') })
 
     const panel = page.getByTestId('project-backup-panel')
     currentStep = 'u10-a12-export'
@@ -276,8 +278,8 @@ async function main() {
     await stage.waitForWork(page, projectName)
     assert.equal(path.resolve((await invoke(page, 'project:get-runtime-context')).activeProjectPath), path.resolve(restoredPath),
       'library opened original instead of restored copy')
-    await openCast(page)
-    const restoredCard = castRow(page, characterId)
+    await openRosterFromArchitecture(page)
+    const restoredCard = castRowById(page, characterId)
     await restoredCard.waitFor({ state: 'visible' })
     await restoredCard.locator('img').waitFor({ state: 'visible' })
     assert.equal(await imageHash(restoredCard.locator('img')), sourceSnapshot.assetSha256, 'reopened V3 card avatar differs')

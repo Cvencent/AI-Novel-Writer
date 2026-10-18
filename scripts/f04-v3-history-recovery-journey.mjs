@@ -252,6 +252,10 @@ async function main() {
     await cancel.click()
     await cancel.waitFor({ state: 'hidden', timeout: 30_000 })
     assert.deepEqual(savedDraft(projects.B), [], 'cancelled B must not save a draft')
+    // 取消按钮在运行转为「取消中」时就隐藏，运行要等执行器退出才进历史；先等历史里出现这一条再读，免得读到空表
+    await showRunSheetTab(page, '历史')
+    await page.getByRole('list', { name: '运行历史' }).getByRole('listitem')
+      .filter({ has: page.locator('.run-history-title', { hasText: RUN_TITLE }) }).first().waitFor({ state: 'visible', timeout: 30_000 })
     const rowsB = await historyRows(page)
     assert.deepEqual(rowsB, [{ title: RUN_TITLE, completed: false }], 'B history must hold only its own stopped run')
     assert.equal((await runSheet.sheet(page).innerText()).includes('甲项目合成正文。'), false, 'A body leaked into B after stop')
