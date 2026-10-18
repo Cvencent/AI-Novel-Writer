@@ -455,7 +455,7 @@ describe('Windows official in-app update E2E contract', () => {
 
     expect(workflow).toContain('workflow_dispatch:')
     expect(workflow).not.toMatch(/^\s*(push|pull_request|schedule):/m)
-    expect(workflow).toMatch(/^permissions:\r?\n  contents: read\r?\n\r?\n/m)
+    expect(workflow).toMatch(/^permissions:\r?\n {2}contents: read\r?\n\r?\n/m)
     const updateStep = workflow.slice(
       workflow.indexOf('- name: Upgrade the official installed app through its live UI'),
       workflow.indexOf('- name: Upload official update E2E evidence'),
