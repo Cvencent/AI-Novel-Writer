@@ -2,7 +2,6 @@ import { useEffect, useId, useState } from 'react'
 import { ChevronRight, PenLine } from 'lucide-react'
 import type { ConsistencyPreflightResult } from '../../../services/consistency-preflight'
 import { ipc } from '../../../services/ipc-client'
-import { requireIpcSuccess } from '../../../services/ipc-result'
 import {
   chapterDefaultWordsTarget,
   chapterWriteFormFromPrefill,
@@ -124,13 +123,14 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
   }
 
   /** 保存或撤销一致性安排：进行中按钮不可再点，失败时在弹层里写明原因。成功时返回发起时的会话。 */
-  const changeArrangement = async (action: string, call: (session: ProjectSessionContext) => Promise<{ success: boolean; error?: string }>) => {
+  const changeArrangement = async (failure: string, call: (session: ProjectSessionContext) => Promise<{ success: boolean; error?: string }>) => {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
     if (!session || busy) return null
     setBusy(true)
     setMessage(null)
     try {
-      requireIpcSuccess(await call(session), action)
+      const result = await call(session)
+      if (!result.success) throw new Error(result.error || failure)
       return session
     } catch (error) {
       if (isProjectSessionCurrent(session)) setMessage(error instanceof Error ? error.message : String(error))
@@ -141,13 +141,13 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
   }
 
   const saveArrangement = async (stableFactKey: string, reason: string) => {
-    const saved = await changeArrangement(text('保存一致性安排', 'Save consistency arrangement'),
+    const saved = await changeArrangement(text('保存一致性安排失败', 'Could not save the consistency arrangement.'),
       session => ipc.invokeWithProjectSession(session, 'db:consistency-exemption-save', stableFactKey, reason, session.projectPath))
     if (saved) await start(false, saved)
   }
 
   const revokeArrangement = async (stableFactKey: string) => {
-    const revoked = await changeArrangement(text('撤销一致性安排', 'Revoke consistency arrangement'),
+    const revoked = await changeArrangement(text('撤销一致性安排失败', 'Could not revoke the consistency arrangement.'),
       session => ipc.invokeWithProjectSession(session, 'db:consistency-exemption-revoke', stableFactKey, session.projectPath))
     if (!revoked) return
     setPreflight(current => current ? {

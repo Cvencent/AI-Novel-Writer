@@ -439,6 +439,19 @@ describe('写作此章弹层', () => {
     expect(startWorkflow).not.toHaveBeenCalled()
   })
 
+  it('英文界面下保存安排被拒、又没带原因时，提示也是英文', async () => {
+    useLocaleStore.setState({ locale: 'en-US' })
+    continuityProjections = DEAD_KEEPER
+    exemptionSave = async () => ({ success: false })
+    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="Write chapter 5" />)
+    await act(async () => page.getByRole('button', { name: 'Write chapter 5' }).click())
+    const popover = page.getByRole('dialog', { name: 'Options for this run' })
+    await act(async () => popover.getByLabelText('Why this is intentional').fill('The keeper appears as a ghost on purpose.'))
+    await act(async () => popover.getByRole('button', { name: 'Save arrangement' }).click())
+    await expect.element(popover.getByRole('alert')).toHaveTextContent(/^Could not save the consistency arrangement.$/)
+    expect(startWorkflow).not.toHaveBeenCalled()
+  })
+
   it('保存安排还没返回时换了作品：保存成功后不在新作品里按旧蓝图开始写', async () => {
     continuityProjections = DEAD_KEEPER
     let finishSave: (result: { success: boolean }) => void = () => {}

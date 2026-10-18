@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ipc } from '../../../services/ipc-client'
-import { requireIpcSuccess } from '../../../services/ipc-result'
 import { launchCreativeWorkflow } from '../../../services/workflows/creative-workflow-launcher'
 import { parseTextBlueprintsStrict } from '../../../services/workflows/directory-workflow'
 import { projectSessionContextFromProject, sameProjectSessionContext } from '../../../shared/project-session-context'
@@ -71,7 +70,7 @@ export function useBlueprintRecovery(tab: EditorTab, projectKey: string) {
         ...submission.request, authorRecovery: { ...submission.request.authorRecovery, leaseEpoch: candidate.leaseEpoch },
       }, projectKey)
       if (!result.success && !pending && isCurrentProjectSession(session)) useEditorStore.getState().setPlanningSaveSnapshot(tab.id, undefined)
-      requireIpcSuccess(result, '保存恢复蓝图')
+      if (!result.success) throw new Error(result.error || text('保存恢复蓝图失败', 'Could not save the recovered blueprints.'))
       if (!isCurrentProjectSession(session)) return
       useEditorStore.getState().setPlanningSaveSnapshot(tab.id, { ...submission, status: 'saved' })
       useEditorStore.getState().settleTabSave(tab.id, submission)

@@ -13,6 +13,7 @@ import { useLocaleStore } from '../../../../stores/locale-store'
 import { useStageStore } from '../../../../stores/navigation/stage-store'
 import { useProjectStore } from '../../../../stores/project-store'
 import { useWorkflowStore } from '../../../../stores/workflow-store'
+import { toast } from '../../../ui/Toast'
 import StageWorkspace from '../../StageWorkspace'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -101,6 +102,24 @@ describe('恢复候选与只读修稿', () => {
     await act(async () => saveDirtyEditorChangesForExit(session.projectPath))
     expect(useEditorStore.getState().tabs[0]).toMatchObject({ dirty: false, content: `${candidate.visibleText}风停了。` })
     expect(writes().map(([channel, , text]) => [channel, text])).toEqual([['db:recovery-candidate-update', `${candidate.visibleText}风停了。`]])
+  })
+
+  it('英文界面下保存恢复候选被拒、又没带原因时，提示也是英文，候选保持未保存', async () => {
+    useLocaleStore.setState({ locale: 'en-US' })
+    const errors = vi.spyOn(toast, 'error').mockImplementation(() => undefined)
+    const plain = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel, ...args) => channel === 'db:recovery-candidate-update' ? { success: false } : plain(channel, ...args))
+    useEditorStore.setState({ tabs: [{ id: 'recovery:candidate-1', name: 'Recovery candidate', type: 'chapter', filePath: 'ai-novel://recovery/candidate-1',
+      content: candidate.visibleText, savedContent: candidate.visibleText, dirty: false, projectKey: session.projectPath }], activeTabId: 'recovery:candidate-1' })
+    await act(async () => root!.render(<StageWorkspace library={false} focus={false} />))
+    await vi.waitFor(() => expect(host!.querySelector('.cm-editor')).not.toBeNull())
+    await act(async () => {
+      const view = EditorView.findFromDOM(host!.querySelector<HTMLElement>('.cm-editor')!)!
+      view.dispatch({ changes: { from: view.state.doc.length, insert: ' The wind dropped.' } })
+    })
+    await act(async () => { saveKey(host!.querySelector<HTMLElement>('.cm-content')!) })
+    await vi.waitFor(() => expect(errors).toHaveBeenCalledWith('Could not save the recovery candidate.'))
+    expect(useEditorStore.getState().tabs[0].dirty).toBe(true)
   })
 
   it.each(['merged', 'discarded'])('已%s的修稿只读显示，按 Ctrl S 不写任何东西', async status => {

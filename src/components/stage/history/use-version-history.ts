@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ipc } from '../../../services/ipc-client'
-import { requireIpcSuccess } from '../../../services/ipc-result'
 import type { VersionRecord } from '../../../services/version-service'
 import { countDraftUnits } from '../../../shared/draft-units'
 import { useLocaleStore } from '../../../stores/locale-store'
@@ -131,13 +130,14 @@ export function useVersionHistory(projectKey: string) {
     if (!isProjectSessionCurrent(projectSession) || content === undefined) return null
     const nextVersion = await ipc.invokeWithProjectSession(projectSession, 'db:draft-next-version', selectedChapter, projectSession.projectPath)
     if (!isProjectSessionCurrent(projectSession)) return null
-    const created = requireIpcSuccess(await ipc.invokeWithProjectSession(projectSession, 'db:draft-create', {
+    const created = await ipc.invokeWithProjectSession(projectSession, 'db:draft-create', {
       chapterNumber: selectedChapter,
       version: nextVersion,
       source: 'rewrite',
       content,
       wordCount: countDraftUnits(content),
-    }, projectSession.projectPath), text('创建回滚草稿', 'Create rollback draft'))
+    }, projectSession.projectPath)
+    if (!created.success) throw new Error(created.error || text('没有新建回滚草稿', 'the rollback draft was not created'))
     if (!isProjectSessionCurrent(projectSession)) return null
     // 版本号在数据库事务里分配，估算值可能被同时写入的稿占掉，以刷新后的列表为准。
     const refreshed = await loadVersions(selectedChapter)

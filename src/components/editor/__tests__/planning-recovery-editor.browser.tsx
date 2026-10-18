@@ -149,6 +149,22 @@ describe('planning recovery editors', () => {
     await vi.waitFor(() => expect(container.querySelector('[role="alert"]')?.textContent).toBe('恢复上下文读取失败'))
     noModel()
   })
+  it('英文界面下保存恢复蓝图被拒、又没带原因时，提示也是英文', async () => {
+    useLocaleStore.setState({ locale: 'en-US' })
+    context = fixture('blueprint')
+    await render('blueprint')
+    await edit(blueprintText)
+    pendingSave = async () => ({ success: false })
+    await act(async () => button('Save recovered blueprints').click())
+    const alert = await vi.waitFor(() => {
+      const found = container.querySelector('[role="alert"]')?.textContent
+      expect(found).toBeTruthy()
+      return found!
+    })
+    expect(alert).toBe('Could not save the recovered blueprints.')
+    expect(useEditorStore.getState().tabs[0].dirty).toBe(true)
+    noModel()
+  })
 
   it.each(['button', 'workflow'] as const)('reports a rejected recovery refresh from %s', async source => {
     await render('outline')
