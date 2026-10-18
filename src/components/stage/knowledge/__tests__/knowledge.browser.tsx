@@ -42,6 +42,8 @@ const copies: Record<string, string> = {
   ch2: '林舟在抽屉底下翻出一张旧照片。',
 }
 
+// 应用切换界面语言时会改 <html lang>，按钮的字距跟着 :lang() 变；量宽度的用例要照样设，结束后还原。
+const PAGE_LANG = document.documentElement.lang
 let root: Root | undefined
 let host: HTMLDivElement | undefined
 let invoke: ReturnType<typeof vi.fn<(channel: string, ...args: unknown[]) => Promise<unknown>>>
@@ -97,6 +99,7 @@ afterEach(async () => {
   host?.remove()
   setActiveProjectSessionContext(null)
   for (const restore of restores) restore()
+  document.documentElement.lang = PAGE_LANG
   vi.restoreAllMocks()
 })
 
@@ -729,18 +732,49 @@ describe('知识库', () => {
     const items = [...document.querySelectorAll<HTMLButtonElement>('.stage-kb-docs .pi-seg-item')]
     expect(items.map(item => item.textContent)).toEqual(['我导入的 3', '定稿章节 1'])
     for (const item of items) expect(item.scrollHeight, item.textContent ?? '').toBeLessThanOrEqual(item.clientHeight)
+    expect(items[1].getBoundingClientRect().top, '两项排在同一行').toBe(items[0].getBoundingClientRect().top)
   })
 
-  it('英文界面同样宽度下资料来源分段既不折行也不溢出', async () => {
-    useLocaleStore.setState({ locale: 'en-US' })
-    host!.style.width = '623px'
-    await act(async () => root!.render(<StageKnowledge tabId={KB_TAB} />))
-    await vi.waitFor(() => expect(button(/Imported 3/)).toBeTruthy())
-    for (const item of document.querySelectorAll<HTMLButtonElement>('.stage-kb-docs .pi-seg-item')) {
-      expect(item.scrollHeight, item.textContent ?? '').toBeLessThanOrEqual(item.clientHeight)
-      expect(item.scrollWidth, item.textContent ?? '').toBeLessThanOrEqual(item.clientWidth)
-    }
-  })
+  for (const locale of ['zh-CN', 'en-US'] as Locale[]) {
+    it(`${locale} 下同样宽度、计数到四位数时资料栏里的按钮与分段都不伸出各自的框，文案与计数不被截断`, async () => {
+      useLocaleStore.setState({ locale })
+      document.documentElement.lang = locale
+      host!.style.width = '623px'
+      const plain = invoke.getMockImplementation()!
+      const contentBox = (element: HTMLElement) => {
+        const box = element.getBoundingClientRect()
+        const style = getComputedStyle(element)
+        return {
+          left: box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft),
+          right: box.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight),
+        }
+      }
+      for (const [imported, chapters] of [[3, 1], [30, 1200]]) {
+        if (imported !== 3) invoke.mockImplementation(async (channel, ...args) => channel === 'kb:list-documents' ? [
+          ...Array.from({ length: imported }, (_, index) => ({ id: `doc-${index}`, fileName: `资料${index}.md`, importedAt: '', chunkCount: 1, filePath: `knowledge-copy:doc-${index}` })),
+          ...Array.from({ length: chapters }, (_, index) => ({ id: `ch-${index}`, fileName: `第${index + 1}章.txt`, importedAt: '', chunkCount: 1, filePath: `knowledge-copy:ch-${index}`, finalizedChapter: index + 1 })),
+        ] : plain(channel, ...args))
+        const labels = locale === 'zh-CN' ? [`我导入的 ${imported}`, `定稿章节 ${chapters}`] : [`Imported ${imported}`, `Final chapters ${chapters}`]
+        await act(async () => root!.render(<StageKnowledge key={imported} tabId={KB_TAB} />))
+        await vi.waitFor(() => expect(button(new RegExp(`^${labels[0]}$`))).toBeTruthy())
+        const column = document.querySelector<HTMLElement>('.stage-kb-docs')!
+        const items = [...column.querySelectorAll<HTMLButtonElement>('.pi-seg-item')]
+        expect(items.map(item => item.textContent)).toEqual(labels)
+        for (const item of items) expect(item.scrollHeight, `${item.textContent} 折行`).toBeLessThanOrEqual(item.clientHeight)
+        const buttons = [...column.querySelectorAll<HTMLButtonElement>('button')]
+        expect(buttons.map(item => item.textContent)).toEqual(expect.arrayContaining([...labels, ...(locale === 'zh-CN' ? ['导入创作资料', '清空知识库…'] : ['Import planning material', 'Clear knowledge base…'])]))
+        for (const item of buttons) {
+          const name = `${item.textContent || item.getAttribute('aria-label')}（${imported}/${chapters}）`
+          expect(item.scrollWidth, `${name} 的文字伸出按钮`).toBeLessThanOrEqual(item.clientWidth)
+          const rect = item.getBoundingClientRect()
+          const frame = contentBox(item.parentElement!)
+          expect(rect.left, `${name} 伸出左边`).toBeGreaterThanOrEqual(frame.left - 0.5)
+          expect(rect.right, `${name} 伸出右边`).toBeLessThanOrEqual(frame.right + 0.5)
+        }
+        expect(column.scrollWidth, `资料栏横向溢出（${imported}/${chapters}）`).toBeLessThanOrEqual(column.clientWidth)
+      }
+    })
+  }
 
   it('索引状态读取失败后再读成功：失败提示消失', async () => {
     const plain = invoke.getMockImplementation()!
