@@ -13,8 +13,11 @@ import { navigate } from '../../../../stores/navigation/navigation-intents'
 import { useStageStore } from '../../../../stores/navigation/stage-store'
 import { useProjectStore } from '../../../../stores/project-store'
 import { useThemeStore } from '../../../../stores/theme-store'
+import { IS_MAC } from '../../shortcut-keys'
 import { useStageShortcuts } from '../../use-stage-shortcuts'
 import StageSettings from '../StageSettings'
+
+const COMMAND = IS_MAC ? { metaKey: true } : { ctrlKey: true }
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -151,7 +154,7 @@ describe('设置页', () => {
     try {
       useEditorStore.setState({ tabs: [{ id: 'config-tab', name: '设定', type: 'config', dirty: true }], activeTabId: 'config-tab' })
       await mount()
-      await key('s', window, { ctrlKey: true })
+      await key('s', window, COMMAND)
       expect(save).not.toHaveBeenCalled()
     } finally {
       off()
@@ -309,7 +312,7 @@ describe('设置页', () => {
     expect(useLayoutStore.getState().settingsOpen).toBe(true)
     expect(input('如：DeepSeek 主力 / GPT-4o 备用').value).toBe('主力模型')
 
-    await key('w', window, { ctrlKey: true, code: 'KeyW' })
+    await key('w', window, { ...COMMAND, code: 'KeyW' })
     expect(discardDialog()).toBeTruthy()
     await click(dialogButton('继续编辑'))
 
