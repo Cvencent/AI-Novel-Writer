@@ -5,10 +5,12 @@
 </div>
 
 <p align="center">
-  <img src="docs/assets/readme/ai-novel-writer-logo-transparent.png" width="104" height="104" alt="AI Novel Writer Logo" />
+  <img src="docs/assets/brand/pagekin-icon-256.png" width="112" height="112" alt="Pagekin logo: a sheet of paper with a curled corner and two round eyes" />
 </p>
 
-<h1 align="center">AI Novel Writer</h1>
+<h1 align="center">Pagekin</h1>
+
+<p align="center"><sub>Formerly “AI Novel Writer” (AI 小说作家). Chinese name: 书童, “the scholar’s page”.</sub></p>
 
 <p align="center">
   <strong>Free, open-source AI novel writing software for the desktop, built for long novels and serialized web fiction.</strong><br />
@@ -27,7 +29,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/readme/v130-hero-en.webp" alt="AI Novel Writer 1.3.0: product summary on the left and real screenshots of the library, chapter view, blueprint, run sheet, architecture, and cast on the right" width="100%" />
+  <img src="docs/assets/readme/v130-hero-en.webp" alt="Pagekin 1.3.0: product summary on the left and real screenshots of the library, chapter view, blueprint, run sheet, architecture, and cast on the right" width="100%" />
 </p>
 
 > ## What's new in 1.3.0
@@ -42,7 +44,7 @@
 
 ## What it does
 
-AI Novel Writer works in the order a novel gets written. Each step is saved in the book and feeds the next one. AI drafts, and you confirm every step.
+Pagekin works in the order a novel gets written: you are the author, it is your page. Each step is saved in the book and feeds the next one. AI drafts, and you confirm every step.
 
 ### Library: all your books in one place
 
@@ -114,7 +116,7 @@ Appearance offers light and dark. The interface is available in Chinese and Engl
 
 ## Supported models and services
 
-AI Novel Writer does not provide models or host quotas. In settings, enter your own service address, model name, and API key. Two request protocols are supported:
+Pagekin does not provide models or host quotas. In settings, enter your own service address, model name, and API key. Two request protocols are supported:
 
 - **OpenAI-compatible**: any service compatible with the Chat Completions API.
 - **Native Gemini**: Google Gemini.
@@ -194,7 +196,7 @@ The app does not provide model accounts, cloud generation, or promotional messag
 
 ## FAQ
 
-**Is AI Novel Writer free?**
+**Is Pagekin free?**
 Yes. It is open source under the GPL-3.0 license. Any cost of calling a cloud model is between you and the model provider. A local model through Ollama needs no provider at all.
 
 **Which models do I need?**

@@ -1,6 +1,6 @@
-# AI Novel Writer (AI 小说作家)
+# Pagekin (书童), formerly AI Novel Writer (AI 小说作家)
 
-> AI Novel Writer is a free, open-source (GPL-3.0) desktop application for Windows and macOS for writing long novels and serialized web fiction with AI. It guides a book through setup, story architecture, chapter blueprints, drafting, review, revision, and finalization. Books are stored locally, and users bring their own model through an OpenAI-compatible API, native Google Gemini, or a local Ollama server.
+> Pagekin (书童, formerly AI Novel Writer) is a free, open-source (GPL-3.0) desktop application for Windows and macOS for writing long novels and serialized web fiction with AI. It guides a book through setup, story architecture, chapter blueprints, drafting, review, revision, and finalization. Books are stored locally, and users bring their own model through an OpenAI-compatible API, native Google Gemini, or a local Ollama server.
 
 Key facts:
 

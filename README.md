@@ -5,10 +5,12 @@
 </div>
 
 <p align="center">
-  <img src="docs/assets/readme/ai-novel-writer-logo-transparent.png" width="104" height="104" alt="AI 小说作家 Logo" />
+  <img src="docs/assets/brand/pagekin-icon-256.png" width="112" height="112" alt="书童 Pagekin Logo：一张卷起页角的纸，两只圆眼睛" />
 </p>
 
-<h1 align="center">AI 小说作家 / AI Novel Writer</h1>
+<h1 align="center">书童 Pagekin</h1>
+
+<p align="center"><sub>原名「AI 小说作家 / AI Novel Writer」</sub></p>
 
 <p align="center">
   <strong>开源免费的 AI 小说写作桌面软件，为长篇小说和网文连载设计。</strong><br />
@@ -27,7 +29,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/readme/v130-hero-zh.webp" alt="AI 小说作家 1.3.0：左侧是产品介绍，右侧是书房、正文、蓝图、运行侧页、架构和角色名单的真实界面截图" width="100%" />
+  <img src="docs/assets/readme/v130-hero-zh.webp" alt="书童 Pagekin 1.3.0：左侧是产品介绍，右侧是书房、正文、蓝图、运行侧页、架构和角色名单的真实界面截图" width="100%" />
 </p>
 
 > ## 1.3.0 更新
@@ -42,7 +44,7 @@
 
 ## 它能做什么
 
-AI 小说作家按写一本小说的顺序工作。每一步的结果都存进作品，下一步接着用。AI 负责起草，每一步由你确认。
+书童按写一本小说的顺序工作：你是作者，它是书童。每一步的结果都存进作品，下一步接着用。AI 负责起草，每一步由你确认。
 
 ### 书房：管理你的全部作品
 
@@ -114,7 +116,7 @@ AI 小说作家按写一本小说的顺序工作。每一步的结果都存进�
 
 ## 支持的模型与服务
 
-AI 小说作家不提供模型，也不代管额度。你在设置里填上自己的服务地址、模型名和 API Key。软件支持两种调用协议：
+书童不提供模型，也不代管额度。你在设置里填上自己的服务地址、模型名和 API Key。软件支持两种调用协议：
 
 - **OpenAI 兼容协议**：Chat Completions 接口兼容的服务都可以用。
 - **Gemini 原生协议**：Google Gemini。
@@ -194,7 +196,7 @@ ai-novel-writer-mac-x64-<版本号>-installer.dmg
 
 ## 常见问题
 
-**AI 小说作家免费吗？**
+**书童免费吗？**
 免费。软件以 GPL-3.0 协议开源。调用云端模型产生的费用由你和模型服务商结算，与本软件无关。用 Ollama 跑本地模型则不需要付费给任何服务商。
 
 **需要什么模型？**
