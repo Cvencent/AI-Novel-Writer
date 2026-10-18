@@ -66,8 +66,6 @@
     /* Tooltip */
     --color-tooltip-bg: #2B2A26;
     --color-tooltip-text: #FCFAF3;
-    /* 骨架屏 */
-    --color-skeleton: rgba(43, 42, 38, 0.06);
     /* Badge */
     --color-badge-bg: rgba(181, 64, 44, 0.08);
     --color-badge-text: #B5402C;
@@ -131,7 +129,6 @@
 
     --color-tooltip-bg: #252526;
     --color-tooltip-text: #CCCCCC;
-    --color-skeleton: rgba(255, 255, 255, 0.05);
     --color-badge-bg: #4D4D4D;
     --color-badge-text: #FFFFFF;
 
