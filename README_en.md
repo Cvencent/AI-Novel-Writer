@@ -13,7 +13,7 @@
 <p align="center">
   <strong>Free, open-source AI novel writing software for the desktop, built for long novels and serialized web fiction.</strong><br />
   Go from setup, story architecture, and chapter blueprints to drafting, review, revision, and final chapters, one chapter at a time.<br />
-  Local-first: your books stay on your own computer. Bring your own model: use your own API key, or run a local model with Ollama.
+  Local-first: your books stay on your own computer. No model is bundled: use your own API key, or run a local model with Ollama.
 </p>
 
 <p align="center">
