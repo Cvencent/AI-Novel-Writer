@@ -191,10 +191,12 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
                     {documentCopy.indexStatus === 'stale' && (
                       <Notice
                         tone="warn"
-                        title={text('改动还没进入检索', 'Changes are not searchable yet')}
+                        title={documentCopy.edited ? text('改动还没进入检索', 'Changes are not searchable yet') : text('还没进入检索', 'Not searchable yet')}
                         actions={<Button variant="secondary" size="sm" disabled={documentBusy} onClick={() => void kb.reindexDocument()}>{text('更新检索', 'Update search')}</Button>}
                       >
-                        {text('这份副本以前改过，旧内容已不再参与检索和写作；更新后写作时就能查到上面的内容。', 'This copy was edited earlier, so its old text is no longer used for search or writing. Update to make the text above available.')}
+                        {documentCopy.edited
+                          ? text('这份副本以前改过，旧内容已不再参与检索和写作；更新后写作时就能查到上面的内容。', 'This copy was edited earlier, so its old text is no longer used for search or writing. Update to make the text above available.')
+                          : text('这一章的原文还没进入检索，写作时查不到；更新后就能查到上面的内容。', 'This chapter’s text is not in search yet, so writing cannot find it. Update to make the text above available.')}
                       </Notice>
                     )}
                   </>
@@ -214,10 +216,12 @@ export default function StageKnowledge({ tabId }: { tabId: string }) {
                   {documentCopy.indexStatus === 'stale' ? (
                     <Notice
                       tone="warn"
-                      title={text('改动还没进入检索', 'Changes are not searchable yet')}
+                      title={documentCopy.edited ? text('改动还没进入检索', 'Changes are not searchable yet') : text('还没进入检索', 'Not searchable yet')}
                       actions={<Button variant="secondary" size="sm" disabled={documentBusy || dirty} onClick={() => void kb.reindexDocument()}>{text('更新检索', 'Update search')}</Button>}
                     >
-                      {text('旧内容已不再参与检索和写作，更新后写作时就能查到新内容。', 'The old text is no longer used for search or writing. Update to make the new text available.')}
+                      {documentCopy.edited
+                        ? text('旧内容已不再参与检索和写作，更新后写作时就能查到新内容。', 'The old text is no longer used for search or writing. Update to make the new text available.')
+                        : text('这份资料的原文还没进入检索，写作时查不到；更新后就能查到。', 'This material’s text is not in search yet, so writing cannot find it. Update to make it available.')}
                     </Notice>
                   ) : <p className="stage-kb-help">{text('保存后需要更新检索，写作时才能查到新内容。', 'After saving, update search so writing can find the new text.')}</p>}
                 </>}

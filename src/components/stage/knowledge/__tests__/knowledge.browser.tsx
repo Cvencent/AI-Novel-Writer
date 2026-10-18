@@ -410,6 +410,41 @@ describe('知识库', () => {
     expect(invoke.mock.calls.filter(([channel]) => channel === 'kb:reindex-document-copy').map(([, docId]) => docId)).toEqual(['ch2'])
   })
 
+  it('定稿章节没改过、检索却过时（比如上次更新检索没做完）：提示不说改过，照样能更新检索', async () => {
+    const plain = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'kb:read-document-copy' && args[0] === 'ch2') return { available: true, content: copies.ch2, contentHash: 'h-ch2', edited: false, indexStatus: 'stale' }
+      if (channel === 'kb:reindex-document-copy') return { success: true, docId: 'ch2', chunkCount: 4 }
+      return plain(channel, ...args)
+    })
+    await renderPage()
+    await click(/定稿章节 1/)
+    await click(/母亲的旧照片/)
+    await vi.waitFor(() => expect(document.body.textContent).toContain(copies.ch2))
+    const notice = [...document.querySelectorAll('.stage-kb-reader .pi-notice')].map(node => node.textContent).join('\n')
+    expect(notice).toContain('还没进入检索')
+    expect(notice).not.toMatch(/改过|改动/)
+    await click('更新检索')
+    expect(invoke.mock.calls.filter(([channel]) => channel === 'kb:reindex-document-copy').map(([, docId]) => docId)).toEqual(['ch2'])
+  })
+
+  it('导入的资料没改过、检索却过时：提示不说改过，照样能更新检索', async () => {
+    const plain = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'kb:read-document-copy' && args[0] === 'station') return { available: true, content: copies.station, contentHash: 'h-station', edited: false, indexStatus: 'stale' }
+      if (channel === 'kb:reindex-document-copy') return { success: true, docId: 'station', chunkCount: 3 }
+      return plain(channel, ...args)
+    })
+    await renderPage()
+    await click(/车站档案/)
+    await vi.waitFor(() => expect((document.querySelector('textarea') as HTMLTextAreaElement | null)?.value).toBe(copies.station))
+    const notice = [...document.querySelectorAll('.stage-kb-reader .pi-notice')].map(node => node.textContent).join('\n')
+    expect(notice).toContain('还没进入检索')
+    expect(notice).not.toMatch(/改过|改动|旧内容/)
+    await click('更新检索')
+    expect(invoke.mock.calls.filter(([channel]) => channel === 'kb:reindex-document-copy').map(([, docId]) => docId)).toEqual(['station'])
+  })
+
   it('定稿章节的副本已进入检索时只读显示原文，不提供更新检索', async () => {
     await renderPage()
     await click(/定稿章节 1/)
