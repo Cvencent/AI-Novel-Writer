@@ -1,5 +1,7 @@
 import { parsePlanningTargetUnits, planningTargetInstruction, DEFAULT_PLANNING_ACTION_CHAPTERS } from '../../../shared/plot-outline-contract'
 import { buildOutlineRetrievalContext, extractCharacterNames } from '../../../shared/outline-retrieval-context'
+import { extractChapterDigest, splitChapterBlock } from '../../../shared/outline-chapter-digest'
+import { extractChapterShape, isShapeRepetitive } from '../../../shared/chapter-shape'
 import type { CharacterProposalChoices } from '../../character-proposal-choices'
 import { decodeCharacterIdentityManifest, decodeCharacterDetails, validateCharacterDetail, type CharacterIdentitySlot, type CharacterDetailOutput } from '../../../shared/character-proposal-parser'
 import type { CharacterProposalBatch } from '../../../shared/character-proposal'
@@ -1923,9 +1925,19 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
           `【所属粗纲段（第 ${this.options.arcContext.from}–${this.options.arcContext.to} 章，形态 ${this.options.arcContext.beat}）】\n本批细纲必须服从这一段的方向与转折，不要改变它的走向：\n${this.options.arcContext.summary}`,
           `[Owning arc segment (chapters ${this.options.arcContext.from}-${this.options.arcContext.to}, beat ${this.options.arcContext.beat})]\nThis batch must follow the segment's direction and turning points without changing them:\n${this.options.arcContext.summary}`)
       : ''
+    const recentSummaries = await ipc.invokeWithProjectSession(
+      projectSession, 'db:outline-summary-list-before', from - 1, 5, expectedProjectPath,
+    ).catch(() => [])
+    const summaryDirective = Array.isArray(recentSummaries) && recentSummaries.length > 0
+      ? promptLanguageText(writingLanguage,
+          '【最近章节摘要（连续性参照，不要与之矛盾）】\n' + recentSummaries.map((item: { chapterNumber: number; chapterNotes: string }) => '- 第 ' + item.chapterNumber + ' 章：' + item.chapterNotes).join('\n'),
+          '[Recent chapter summaries (continuity reference, do not contradict)]\n' + recentSummaries.map((item: { chapterNumber: number; chapterNotes: string }) => '- Chapter ' + item.chapterNumber + ': ' + item.chapterNotes).join('\n'))
+      : ''
+
     const taskPrompt = [
       promptBuilder.build(),
       ...(arcDirective ? [arcDirective] : []),
+      ...(summaryDirective ? [summaryDirective] : []),
       synopsisBatchInstruction(writingLanguage, from, to, totalChapters, outlineContext?.stats.compacted ?? false),
       confirmedPrefix
         ? (() => {
@@ -1938,6 +1950,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
           })()
         : '',
     ].filter(Boolean).join('\n\n')
+
 
     const previousBatchPartial = mode === 'batch' && this.requireGenerationExecution().mainOwned ? { ...partial } : undefined
     if (this.requireGenerationExecution().mainOwned && !resumeRequested) {
@@ -2120,6 +2133,47 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       text('故事架构写入数据库失败', 'Failed to write story architecture to the database.'),
     )
     this.assertNotCancelled(context)
+
+    // 为本章范围内的每一章写入结构化摘要，作为后续生成的连续性记忆。
+    await (async () => {
+      const chapterBlocks = confirmedBody.split(/^(?=#{0,4}\s*第\s*\d+\s*章)/mu).filter(Boolean)
+      for (const raw of chapterBlocks) {
+        const block = raw.startsWith('## ') ? raw : '## ' + raw
+        const { chapterNumber } = splitChapterBlock(block)
+        if (chapterNumber === null || chapterNumber < from || chapterNumber > to) continue
+        const digest = extractChapterDigest(block, characterNames)
+        if (!digest.chapterNotes) continue
+        for (const name of digest.characterNames) {
+          await ipc.invokeWithProjectSession(projectSession, 'db:outline-character-state-apply', {
+            characterName: name,
+            chapterNumber,
+            recentEvents: digest.chapterNotes,
+          }, expectedProjectPath).catch(() => null)
+        }
+        await ipc.invokeWithProjectSession(projectSession, 'db:outline-summary-save', {
+          chapterNumber,
+          chapterNotes: digest.chapterNotes,
+          characterStates: JSON.stringify({ characters: digest.characterNames }),
+          continuityFacts: digest.continuityFacts,
+        }, expectedProjectPath).catch(() => null)
+      }
+    })()
+
+    // 形态重复告警：连续多章同开场且固定班底重合时提示作者。
+    // 这是作者项目第 150–508 章「同一模板」问题的检测点。
+    await (async () => {
+      const blocks = confirmedBody.split(/^(?=#{0,4}\s*第\s*\d+\s*章)/mu).filter(Boolean)
+      const shapes = blocks.map(block => extractChapterShape(block, characterNames))
+      for (let index = 5; index < shapes.length; index += 1) {
+        if (isShapeRepetitive(shapes[index]!, shapes.slice(Math.max(0, index - 5), index))) {
+          callbacks.log(text(
+            '形态重复提醒：最近多章开场结构与固定班底高度相似，建议后续章节换一种推进方式。',
+            'Shape warning: recent chapters share the same opening structure and recurring cast; vary the approach.',
+          ))
+          break
+        }
+      }
+    })().catch(() => null)
 
     // 本批属于某个粗纲段时，登记章节归属，供粗纲改动后的陈旧判定使用。
     if (this.options.arcContext) {

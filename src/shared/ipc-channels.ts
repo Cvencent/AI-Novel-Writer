@@ -882,6 +882,18 @@ export interface DatabaseChannels {
     args: [expectedProjectPath: string]
     return: number[]
   }
+  'db:outline-summary-save': {
+    args: [summary: { chapterNumber: number; chapterNotes: string; characterStates: string; continuityFacts: string[] }, expectedProjectPath: string]
+    return: { success: boolean; error?: string }
+  }
+  'db:outline-character-state-apply': {
+    args: [patch: { characterName: string; chapterNumber: number; recentEvents: string; location?: string; keyItems?: string }, expectedProjectPath: string]
+    return: { success: boolean; applied?: boolean; error?: string }
+  }
+  'db:outline-summary-list-before': {
+    args: [chapterNumber: number, limit: number, expectedProjectPath: string]
+    return: import('../../electron/repositories/outline-summary-repository').OutlineChapterSummary[]
+  }
   'db:arc-binding-bind-range': {
     args: [chapterFrom: number, chapterTo: number, arcId: number, arcRevision: number, expectedProjectPath: string]
     return: { success: boolean; count?: number; error?: string }

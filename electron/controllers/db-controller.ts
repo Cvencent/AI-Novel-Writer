@@ -3,6 +3,8 @@ import { isProjectSessionContext } from '../../src/shared/project-session-contex
 import { closeProjectDatabase, getCurrentProjectPath, getProjectDb } from '../database'
 import { ArcOutlineRepository } from '../repositories/arc-outline-repository'
 import { OutlineSegmentBindingRepository } from '../repositories/outline-segment-binding-repository'
+import { OutlineSummaryRepository } from '../repositories/outline-summary-repository'
+import { OutlineCharacterStateRepository } from '../repositories/outline-character-state-repository'
 import type { MainGenerationRunHandle } from '../../src/services/generation/generation-runtime'
 import { assertGenerationSourcesCurrent, assertGenerationSynopsisCommit, commitGenerationPlotOutlineAuthorEdit, commitGenerationBlueprintAuthorEdit, assertImportGenerationSourcesCurrent, recordGenerationDirectoryCommit, withGenerationAgentChildEffect } from './generation-controller'
 import { projectAccess } from '../services/project-access'
@@ -129,6 +131,8 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:arc-outline-confirm',
   'db:arc-outline-revise',
   'db:arc-binding-bind-range',
+  'db:outline-summary-save',
+  'db:outline-character-state-apply',
 ])
 
 function registerProjectDatabaseHandler(channel: string, handler: ProjectDatabaseHandler): void {
@@ -198,6 +202,26 @@ export function registerDatabaseController() {
   ipcMain.handle('db:arc-outline-stale-list', async (_event, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return OutlineSegmentBindingRepository.listStale()
+  })
+
+  ipcMain.handle('db:outline-character-state-apply', async (_event, patch, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, applied: OutlineCharacterStateRepository.apply(patch) }
+    } catch (error) { return { success: false, error: String(error) } }
+  })
+
+  ipcMain.handle('db:outline-summary-save', async (_event, summary, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      OutlineSummaryRepository.save(summary)
+      return { success: true }
+    } catch (error) { return { success: false, error: String(error) } }
+  })
+
+  ipcMain.handle('db:outline-summary-list-before', async (_event, chapterNumber: number, limit: number, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return OutlineSummaryRepository.listBefore(chapterNumber, limit)
   })
 
   ipcMain.handle('db:arc-binding-bind-range', async (_event, chapterFrom: number, chapterTo: number, arcId: number, arcRevision: number, expectedProjectPath: string) => {

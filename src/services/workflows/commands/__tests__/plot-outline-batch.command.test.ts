@@ -1118,3 +1118,53 @@ describe('粗纲段接入细纲生成', () => {
     expect(prompt).not.toContain('所属粗纲段')
   })
 })
+
+describe('细纲的连续性记忆', () => {
+  it('批次提交后为每章写入结构化摘要', async () => {
+    const body = Array.from({ length: 20 }, (_v, i) =>
+      `第${i + 1}章：章节${i + 1}\n主角于是推进了第${i + 1}条线索，并因此失去了旧线索，最终改变了计划。`,
+    ).join('\n\n')
+    useLLMStore.setState({ defaultModelId: 'model-1', generateStream: responseStream([body]) })
+    const harness = harnessWith()
+
+    await makeCommand({ synopsisRange: { from: 1, to: 20 } }).execute({ step: {}, context, callbacks })
+
+    const saves = harness.invoke.mock.calls.filter(([channel]) => channel === 'db:outline-summary-save')
+    expect(saves.length).toBe(20)
+    const chapters = saves.map(call => (call[1] as { chapterNumber: number }).chapterNumber)
+    expect(chapters[0]).toBe(1)
+    expect(chapters[chapters.length - 1]).toBe(20)
+  })
+
+  it('生成时注入最近章节摘要', async () => {
+    const prefixBody = '## 第一卷\n\n第一章至第二十章已确认大纲内容（长度足够的已确认前缀）。'.repeat(3)
+    const dbOutline = `# 情节大纲\n\n${prefixBody}\n\n> 本大纲已覆盖至第 20 章（全书 100 章），其余章节将在后续批次继续生成。`
+    const harness = harnessWith({
+      synopsis_result: prefixBody,
+      synopsis_covered_to: 20,
+      synopsis_range: { from: 1, to: 20 },
+      synopsis_facts_fingerprint: currentFingerprint({ from: 1, to: 20 }),
+      synopsis_db_hash: dbHashOf(dbOutline),
+      synopsis_step_guidance: '',
+    }, dbOutline)
+    const original = harness.invoke.getMockImplementation()! as (channel: string, ...args: unknown[]) => Promise<unknown>
+    harness.invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'db:outline-summary-list-before') {
+        return [{ chapterNumber: 20, chapterNotes: '上一章主角找回账册。', characterStates: '{}', continuityFacts: [] }]
+      }
+      return original(channel, ...args)
+    })
+    const body = Array.from({ length: 20 }, (_v, i) =>
+      `第${i + 21}章：章节${i + 21}\n主角于是推进了第${i + 21}条线索，并因此失去了旧线索，最终改变了计划。`,
+    ).join('\n\n')
+    useLLMStore.setState({ defaultModelId: 'model-1', generateStream: responseStream([body]) })
+
+    await makeCommand({ synopsisRange: { from: 21, to: 40 } }).execute({ step: {}, context, callbacks })
+
+    const prompt = (useLLMStore.getState().generateStream as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]
+      .map((message: { content: string }) => message.content)
+      .join('\n')
+    expect(prompt).toContain('上一章主角找回账册。')
+    expect(prompt).toContain('连续性参照')
+  })
+})
