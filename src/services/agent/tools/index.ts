@@ -11,6 +11,7 @@ import { searchKnowledgeTool } from './search-knowledge.tool'
 import { readArchitectureTool } from './read-architecture.tool'
 import { readBlueprintTool } from './read-blueprint.tool'
 import { readCharactersTool } from './read-characters.tool'
+import { createCharacterTool, updateCharacterTool, deleteCharacterTool } from './write-characters.tool'
 import { readProjectStateTool } from './read-project-state.tool'
 import { readDraftsTool } from './read-drafts.tool'
 import { listChaptersTool } from './list-chapters.tool'
@@ -35,6 +36,11 @@ export const builtinTools = [
   readDraftsTool,
   listChaptersTool,
   inspectWritingSkillTool,
+  // 角色增删改 Tool（细纲生成时模型自主调用，直接写入名单）
+  createCharacterTool,
+  updateCharacterTool,
+  deleteCharacterTool,
+
   // 行动 Tool（需确认）
   writeFileTool,
   openEditorTool,

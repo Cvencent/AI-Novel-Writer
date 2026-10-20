@@ -21,12 +21,14 @@ import {
   redactVisibleCompletionText,
   type BoundedCompletionMode,
 } from '../bounded-completion'
-import { workflowUiText, workflowWritingLanguage } from '../workflow-project-session'
+import { requireWorkflowProjectSession, workflowUiText, workflowWritingLanguage } from '../workflow-project-session'
 import type { WritingSkillStage } from '../../../shared/writing-skills'
 import { ipc } from '../../ipc-client'
 import type { VisibleCompositionReceipt } from '../../../shared/generation-owner-contract'
 import { composeVisibleContinuation } from '../../../shared/visible-continuation'
 import { createWorkflowMainGenerationRuntime, type WorkflowMainGenerationSelection, type WorkflowMainGenerationRequest, type WorkflowMainGenerationRuntime } from '../workflow-main-generation'
+import { runWorkflowToolLoop, type WorkflowToolCallRecord } from '../tool-loop'
+import { createAgentExecutionContext } from '../../agent/tools/project-context'
 export type { WorkflowMainGenerationSelection } from '../workflow-main-generation'
 
 export interface CommandExecuteParams {
@@ -417,6 +419,84 @@ export abstract class BaseWorkflowCommand<TResult = string> {
    * have a bounded continuation policy (draft generation) may consume a
    * `length` result; all other workflow commands should use callLLM instead.
    */
+  /**
+   * 带工具循环的生成：模型可以在正文之外发出 <tool_call>，
+   * 由本方法执行工具、回填 <tool_result>，再继续生成。
+   *
+   * 复用同一个 GenerationRuntime 会话，因此预算、取消、留痕口径与普通调用一致。
+   * 工具清单可显式限定（例如细纲只允许角色与检索相关工具）。
+   */
+  protected async callLLMWithTools(
+    prompt: string,
+    systemPrompt: string,
+    callbacks: StepCallbacks,
+    options: WorkflowLLMOptions & {
+      allowedTools?: readonly string[]
+      onToolCall?: (record: WorkflowToolCallRecord) => void
+      maxToolRounds?: number
+    },
+    context?: WorkflowContext,
+  ): Promise<LLMCompletion & { toolCalls: WorkflowToolCallRecord[] }> {
+    this.assertNotCancelled(context)
+    const execution = this.requireGenerationExecution()
+    if (context && execution.context !== context) {
+      throw new Error('生成调用上下文与当前命令执行期不一致。')
+    }
+    const projectSession = context ? requireWorkflowProjectSession(context) : null
+    if (!projectSession) throw new Error('工具循环需要冻结的项目会话')
+
+    const toolExecution = createAgentExecutionContext(
+      context?.generationModelId ?? null,
+      context?.uiLocale ?? 'zh-CN',
+    )
+    const frozenExecution = Object.freeze({ ...toolExecution, projectSession })
+
+    callbacks.setProgress(10)
+    const writingSkillStage = options.writingSkillStage
+    const skill = writingSkillStage && context ? context.writingSkills?.[writingSkillStage] : undefined
+
+    let lastReceipt: GenerationAttemptReceipt | null = null
+    let lastFinish: LLMFinishReason = 'stop'
+    const loop = await runWorkflowToolLoop({
+      systemPrompt,
+      userPrompt: prompt,
+      writingLanguage: toolExecution.writingLanguage,
+      executionContext: frozenExecution as never,
+      ...(options.allowedTools ? { allowedTools: options.allowedTools } : {}),
+      ...(options.maxToolRounds !== undefined ? { maxRounds: options.maxToolRounds } : {}),
+      onToolCall: record => {
+        options.onToolCall?.(record)
+        // 工具调用过程可见：写入工作流日志，运行面板与日志页都能看到。
+        callbacks.log(record.status === 'completed'
+          ? `工具 ${record.name} 完成`
+          : `工具 ${record.name} 失败：${record.error ?? ''}`)
+      },
+      generate: async messages => {
+        const task: GenerationTask = {
+          purpose: options.purpose ?? 'workflow-tools',
+          reasoningStage: options.reasoningStage,
+          output: 'visible-text',
+          messages: messages.map(message => ({ role: message.role, content: message.content })),
+          ...(skill ? { promptBudget: { limitUtf8Bytes: new TextEncoder().encode(messages.map(m => m.content).join('')).byteLength, sections: [] } } : {}),
+        }
+        const outcome = await execution.session.complete(task, { signal: execution.signal })
+        lastReceipt = outcome.receipt
+        lastFinish = outcome.finishReason
+        this.reportGenerationPromptBudget(callbacks, outcome.receipt)
+        return outcome.content
+      },
+    })
+    this.assertNotCancelled(context)
+    if (!execution.mainOwned) callbacks.appendText(loop.text)
+    callbacks.setProgress(90)
+    return {
+      content: loop.text,
+      finishReason: lastFinish,
+      toolCalls: loop.toolCalls,
+      receipt: lastReceipt ?? ({} as GenerationAttemptReceipt),
+    }
+  }
+
   protected async callLLMResult(
     prompt: string,
     systemPrompt: string,

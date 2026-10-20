@@ -1,0 +1,123 @@
+/**
+ * 工作流侧的工具循环。
+ *
+ * 背景：生成链路（callLLMResult）原本是单次请求-响应，模型没有能力调用工具。
+ * 这里把 Agent 引擎那套工具协议搬到工作流里：模型在正文之外发出 <tool_call>，
+ * 系统执行对应工具、把 <tool_result> 回填，再让模型继续，直到它给出最终正文。
+ *
+ * 复用同一份协议解析器与同一个 toolRegistry，因此工具定义只有一处。
+ */
+import { parseAgentResponseProtocol, cleanAgentProtocolVisibleText } from '../../shared/agent-response-protocol'
+import { toolRegistry, type AgentExecutionContext, type ToolResult } from '../agent/tool-registry'
+import type { WritingLanguage } from '../../shared/writing-language'
+
+/** 单轮工具调用的记录，供运行面板与日志展示。 */
+export interface WorkflowToolCallRecord {
+  name: string
+  arguments: Record<string, unknown>
+  status: 'completed' | 'failed'
+  result?: string
+  error?: string
+}
+
+export interface WorkflowToolLoopOptions {
+  /** 发起一轮生成：给定完整消息列表，返回模型原文。 */
+  generate: (messages: { role: 'system' | 'user' | 'assistant' | 'user'; content: string }[]) => Promise<string>
+  systemPrompt: string
+  userPrompt: string
+  writingLanguage: WritingLanguage
+  /** 允许模型使用的工具名；不传时使用全部内置工具。 */
+  allowedTools?: readonly string[]
+  /** 最大轮数，防止无限循环。 */
+  maxRounds?: number
+  /** 工具执行上下文（含冻结项目会话）。 */
+  executionContext: AgentExecutionContext
+  /** 每次工具调用结束后的回调，用于实时展示与记录。 */
+  onToolCall?: (record: WorkflowToolCallRecord) => void
+  /** 工具结果回填的最大字符数。 */
+  maxResultChars?: number
+}
+
+export interface WorkflowToolLoopResult {
+  /** 去掉协议标记后的可见正文。 */
+  text: string
+  /** 全部工具调用记录。 */
+  toolCalls: WorkflowToolCallRecord[]
+}
+
+const DEFAULT_MAX_ROUNDS = 8
+const DEFAULT_MAX_RESULT_CHARS = 6000
+
+function toolPromptFor(names: readonly string[], language: WritingLanguage): string {
+  return toolRegistry.generateToolPrompt(language, tool => names.includes(tool.name))
+}
+
+/**
+ * 运行「生成 → 工具调用 → 回填 → 继续生成」循环。
+ * 模型不再发出 tool_call 时，循环结束并返回正文。
+ */
+export async function runWorkflowToolLoop(options: WorkflowToolLoopOptions): Promise<WorkflowToolLoopResult> {
+  const {
+    generate, systemPrompt, userPrompt, writingLanguage, executionContext,
+    maxRounds = DEFAULT_MAX_ROUNDS,
+    maxResultChars = DEFAULT_MAX_RESULT_CHARS,
+  } = options
+  const allowed = options.allowedTools ?? toolRegistry.listAll().map(tool => tool.name)
+  const registered = new Set(allowed)
+  const toolPrompt = toolPromptFor(allowed, writingLanguage)
+  const records: WorkflowToolCallRecord[] = []
+  const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
+    { role: 'system', content: toolPrompt ? systemPrompt + '\n\n' + toolPrompt : systemPrompt },
+    { role: 'user', content: userPrompt },
+  ]
+
+  for (let round = 0; round < maxRounds; round += 1) {
+    const raw = await generate(messages)
+    const parsed = parseAgentResponseProtocol(raw, [...registered])
+    // 只接受本次允许清单内的工具；不在清单里的调用视为普通正文里的噪声，
+    // 否则未知工具会在每一轮重复出现并耗尽轮次预算。
+    const accepted = parsed.toolCalls.filter(call => registered.has(call.name))
+    const visible = cleanAgentProtocolVisibleText(parsed.textParts.join(''), [...registered]).trim()
+
+    if (accepted.length === 0) {
+      return { text: visible, toolCalls: records }
+    }
+
+    messages.push({ role: 'assistant', content: raw })
+    const observations: string[] = []
+    for (const call of accepted) {
+      const tool = toolRegistry.get(call.name)
+      const record: WorkflowToolCallRecord = { name: call.name, arguments: call.arguments, status: 'failed' }
+      if (!tool) {
+        record.error = 'unknown tool'
+        records.push(record)
+        options.onToolCall?.(record)
+        observations.push(`<tool_result name="${call.name}" error="true">unknown tool</tool_result>`)
+        continue
+      }
+      let result: ToolResult
+      try {
+        result = await tool.execute(call.arguments, executionContext)
+      } catch (error) {
+        record.error = error instanceof Error ? error.message : String(error)
+        records.push(record)
+        options.onToolCall?.(record)
+        observations.push(`<tool_result name="${call.name}" error="true">${record.error}</tool_result>`)
+        continue
+      }
+      const content = (result.success ? result.content : result.error ?? result.content ?? '').slice(0, maxResultChars)
+      record.status = result.success ? 'completed' : 'failed'
+      if (result.success) record.result = content
+      else record.error = content
+      records.push(record)
+      options.onToolCall?.(record)
+      observations.push(result.success
+        ? `<tool_result name="${call.name}">\n${content}\n</tool_result>`
+        : `<tool_result name="${call.name}" error="true">\n${content}\n</tool_result>`)
+    }
+    messages.push({ role: 'user', content: observations.join('\n') })
+    // 模型可能只发工具调用、没有正文；继续下一轮让它给出正文。
+    if (round === maxRounds - 1) return { text: visible, toolCalls: records }
+  }
+  return { text: '', toolCalls: records }
+}
