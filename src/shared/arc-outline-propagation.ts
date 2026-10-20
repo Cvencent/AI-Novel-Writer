@@ -36,6 +36,6 @@ export function planArcEditPropagation(
  * 作者手改细纲某一章：不动粗纲。
  * 返回 touchesArc:false 是刻意的——细纲编辑即权威，不触发粗纲改动，也不弹窗。
  */
-export function planChapterEditPropagation(_chapterNumber: number): { touchesArc: false } {
+export function planChapterEditPropagation(): { touchesArc: false } {
   return { touchesArc: false }
 }

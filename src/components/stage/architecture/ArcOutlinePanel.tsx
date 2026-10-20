@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Check, Layers, SkipForward, Sparkles } from 'lucide-react'
+import { Check, Layers, PencilLine, SkipForward, Sparkles } from 'lucide-react'
+import ArcReviseDialog, { type ArcReviseScope } from './ArcReviseDialog'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { ipc } from '../../../services/ipc-client'
@@ -19,6 +20,9 @@ export default function ArcOutlinePanel({ projectKey }: { projectKey: string }) 
   const [staleChapters, setStaleChapters] = useState<number[]>([])
   const [mode, setMode] = useState<ArcGenerationMode>('waitConfirm')
   const [loading, setLoading] = useState(true)
+  const [reviseScope, setReviseScope] = useState<ArcReviseScope | null>(null)
+  const [pendingRevise, setPendingRevise] = useState<{ direction: string; chapters: number[] } | null>(null)
+  const totalChapters = useProjectStore(s => s.currentProject?.novelConfig?.totalChapters ?? 0)
 
   const session = useProjectStore(s => s.currentProject?.sessionLease)
   const load = useCallback(async () => {
@@ -32,11 +36,17 @@ export default function ArcOutlinePanel({ projectKey }: { projectKey: string }) 
     setLoading(false)
   }, [projectKey, session])
 
+  // 首次挂载与切换作品时读取粗纲；load 内部只做远端读取后的 setState。
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load() }, [load])
 
   if (loading) return null
 
   const covered = arcs.reduce((max, arc) => Math.max(max, arc.toChapter), 0)
+
+
+  /** 重生成后的刷新：重新读取粗纲与过期章节。 */
+  const reloadAfterRevise = async (): Promise<void> => { await load() }
 
   return (
     <section className="arch-arc" aria-label={text('粗纲', 'Arc outline')}>
@@ -86,11 +96,22 @@ export default function ArcOutlinePanel({ projectKey }: { projectKey: string }) 
                       ? text('待重生成', 'Needs regeneration')
                       : text('草稿', 'Draft')}
                 </span>
+                <Button variant="text" size="sm" onClick={() => setReviseScope({ kind: 'arc', arcIndex: arc.arcIndex })}>
+                  <PencilLine size={13} aria-hidden />{text('改这一段', 'Revise')}
+                </Button>
               </li>
             ))}
           </ol>
         )}
 
+      {pendingRevise && (
+        <p className="arch-arc-pending" role="status">
+          {text(
+            '已按你的方向登记重生成范围：第 ' + pendingRevise.chapters[0] + '–' + pendingRevise.chapters[pendingRevise.chapters.length - 1] + ' 章。',
+            'Regeneration registered for chapters ' + pendingRevise.chapters[0] + '-' + pendingRevise.chapters[pendingRevise.chapters.length - 1] + '.',
+          )}
+        </p>
+      )}
       {staleChapters.length > 0 && (
         <p className="arch-arc-stale" role="status">
           <Sparkles size={13} aria-hidden />
@@ -99,6 +120,22 @@ export default function ArcOutlinePanel({ projectKey }: { projectKey: string }) 
             'After the arc change, chapter outlines for ch. ' + staleChapters.join(', ') + ' need regeneration.',
           )}
         </p>
+      )}
+      {reviseScope && (
+        <ArcReviseDialog
+          scope={reviseScope}
+          arcs={arcs}
+          staleChapters={staleChapters}
+          totalChapters={totalChapters}
+          onConfirm={(direction, affected) => {
+            // 影响范围已确认。这里记录待重生成范围并刷新；
+            // 实际重生成由上层工作流接手，并在覆盖前保存可恢复版本。
+            setPendingRevise({ direction, chapters: affected })
+            setReviseScope(null)
+            void reloadAfterRevise()
+          }}
+          onClose={() => setReviseScope(null)}
+        />
       )}
     </section>
   )

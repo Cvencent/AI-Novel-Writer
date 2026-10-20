@@ -44,6 +44,6 @@ describe('planArcEditPropagation', () => {
 
 describe('planChapterEditPropagation', () => {
   it('改细纲章不触发粗纲改动', () => {
-    expect(planChapterEditPropagation(7)).toEqual({ touchesArc: false })
+    expect(planChapterEditPropagation()).toEqual({ touchesArc: false })
   })
 })
