@@ -30,6 +30,7 @@ export type CreativeWorkflowName =
   | 'finalize'
   | 'generate_blueprint'
   | 'generate_architecture'
+  | 'generate_arc_outline'
 
 export type CreativeIntent =
   | { workflow: 'generate_draft'; chapterNumber: number }
@@ -45,7 +46,10 @@ export type CreativeIntent =
       /** 从输出长度中断的候选续写世界观。 */
       resumeWorldBuilding?: ArchitectureWorkflowParams['resumeWorldBuilding']
       expectedRecoveryHandle?: ArchitectureWorkflowParams['expectedRecoveryHandle']
+      /** 按粗纲段生成细纲时注入的段上下文。 */
+      arcContext?: ArchitectureWorkflowParams['arcContext']
     }
+  | { workflow: 'generate_arc_outline'; mode: 'next' | 'reverse' | 'revise'; targetUnits?: number; revise?: { arcIndex: number; expectedRevision: number; direction: string } }
   | { workflow: 'generate_blueprint'; params?: DirectoryWorkflowParams }
   | { workflow: 'review' | 'refine' | 'finalize'; chapterNumber: number }
 
@@ -92,6 +96,8 @@ async function guardIntent(
     )
     return
   }
+  // 粗纲只依赖前提与世界观；命令自身会校验，不借用架构生成的前置闸门。
+  if (intent.workflow === 'generate_arc_outline') return
   if (intent.workflow === 'generate_blueprint') {
     requireGuardAccepted(
       await guardDirectoryGeneration(projectSession.projectPath, projectSession, uiLocale),
@@ -134,6 +140,17 @@ async function definitionFor(
       resumeSynopsis: intent.resumeSynopsis,
       resumeWorldBuilding: intent.resumeWorldBuilding,
       expectedRecoveryHandle: intent.expectedRecoveryHandle,
+      arcContext: intent.arcContext,
+    }, uiLocale)
+  }
+  if (intent.workflow === 'generate_arc_outline') {
+    const { createArcOutlineWorkflow } = await import('./arc-outline-workflow')
+    return createArcOutlineWorkflow({
+      projectPath: project.path,
+      projectSession,
+      targetUnits: intent.targetUnits,
+      mode: intent.mode,
+      ...(intent.revise ? { revise: intent.revise } : {}),
     }, uiLocale)
   }
   if (intent.workflow === 'generate_blueprint') {

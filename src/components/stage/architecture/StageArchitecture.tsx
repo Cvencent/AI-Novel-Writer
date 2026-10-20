@@ -144,7 +144,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
           </div>
         </header>
 
-        <ArcOutlinePanel projectKey={projectKey} />
+        <ArcOutlinePanel projectKey={projectKey} fineSource={overview.synopsisSource} fineProgress={overview.synopsis.progress} />
         <ContinuousOutlinePanel />
 
         <div className="arch-sections">

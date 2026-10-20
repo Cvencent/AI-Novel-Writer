@@ -28,6 +28,7 @@ import type { VisibleCompositionReceipt } from '../../../shared/generation-owner
 import { composeVisibleContinuation } from '../../../shared/visible-continuation'
 import { createWorkflowMainGenerationRuntime, type WorkflowMainGenerationSelection, type WorkflowMainGenerationRequest, type WorkflowMainGenerationRuntime } from '../workflow-main-generation'
 import { runWorkflowToolLoop, type WorkflowToolCallRecord } from '../tool-loop'
+import { cleanAgentProtocolVisibleText } from '../../../shared/agent-response-protocol'
 import { createAgentExecutionContext } from '../../agent/tools/project-context'
 export type { WorkflowMainGenerationSelection } from '../workflow-main-generation'
 
@@ -434,6 +435,10 @@ export abstract class BaseWorkflowCommand<TResult = string> {
       allowedTools?: readonly string[]
       onToolCall?: (record: WorkflowToolCallRecord) => void
       maxToolRounds?: number
+      /** Expected prior visible composition for a main-owned run. */
+      seedText?: string
+      /** Recoverable visible text before a length/continuation failure. */
+      onPartialAvailable?: (content: string) => void
     },
     context?: WorkflowContext,
   ): Promise<LLMCompletion & { toolCalls: WorkflowToolCallRecord[] }> {
@@ -455,8 +460,15 @@ export abstract class BaseWorkflowCommand<TResult = string> {
     const writingSkillStage = options.writingSkillStage
     const skill = writingSkillStage && context ? context.writingSkills?.[writingSkillStage] : undefined
 
+    const mainOwned = execution.mainOwned
+    const priorComposition = mainOwned ? await this.readMainVisibleComposition() : null
+    if (mainOwned && options.seedText !== undefined && (options.seedText.trim() || '') !== (priorComposition?.text ?? '')) {
+      throw new Error('GENERATION_COMPOSITION_SEED_MISMATCH')
+    }
+    const artifactRef = { value: null } as { value: { artifactId: string } | null }
     let lastReceipt: GenerationAttemptReceipt | null = null
     let lastFinish: LLMFinishReason = 'stop'
+    const outcomeRef = { value: null } as { value: { content: string; finishReason: LLMFinishReason; receipt: GenerationAttemptReceipt } | null }
     const loop = await runWorkflowToolLoop({
       systemPrompt,
       userPrompt: prompt,
@@ -481,19 +493,46 @@ export abstract class BaseWorkflowCommand<TResult = string> {
         }
         const outcome = await execution.session.complete(task, { signal: execution.signal })
         lastReceipt = outcome.receipt
+        artifactRef.value = outcome.receipt.visibleArtifact ?? null
         lastFinish = outcome.finishReason
+        outcomeRef.value ??= outcome
         this.reportGenerationPromptBudget(callbacks, outcome.receipt)
         return outcome.content
       },
     })
     this.assertNotCancelled(context)
-    if (!execution.mainOwned) callbacks.appendText(loop.text)
+    if (lastFinish !== 'stop') {
+      // 工具轮次里模型可能先调工具、再在同一个 finishReason=length 的响应里写正文。
+      // 从最后一轮原文提取可见部分，避免把已经写出的章节丢掉。
+      const recovered = loop.lastVisibleText || cleanAgentProtocolVisibleText(loop.lastRawResponse, (options.allowedTools ?? []))
+      options.onPartialAvailable?.(recovered)
+      throw createBoundedCompletionError(lastFinish, context?.uiLocale ?? 'zh-CN')
+    }
+    if (mainOwned && loop.text.trim()) {
+      const artifact = artifactRef.value
+      const handle = context?.mainGenerationRunHandle
+      if (!artifact || !handle) throw new Error('GENERATION_COMPOSITION_ARTIFACT_REQUIRED')
+      const next = priorComposition?.text
+        ? composeVisibleContinuation(priorComposition.text, loop.text)
+        : loop.text.trim()
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(next))
+      const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+      const receipt = await ipc.invokeWithProjectSession(
+        requireWorkflowProjectSession(context!),
+        'generation:compose-visible',
+        handle,
+        [...(priorComposition?.artifactIds ?? []), artifact.artifactId],
+        hash,
+      )
+      if (receipt.text !== next || receipt.textHash !== hash) throw new Error('GENERATION_COMPOSITION_RECEIPT_MISMATCH')
+    }
+    if (!mainOwned) callbacks.appendText(loop.text)
     callbacks.setProgress(90)
     return {
       content: loop.text,
       finishReason: lastFinish,
       toolCalls: loop.toolCalls,
-      receipt: lastReceipt ?? ({} as GenerationAttemptReceipt),
+      receipt: lastReceipt ?? outcomeRef.value?.receipt ?? ({} as GenerationAttemptReceipt),
     }
   }
 

@@ -496,3 +496,6 @@
   font-size: 13px;
   color: var(--color-warning);
 }
+.arch-arc-error { margin: 12px 0 0; font-size: 13px; color: var(--color-error-text); }
+.arch-arc-actions { flex-wrap: wrap; }
+.arch-arc-item { flex-wrap: wrap; }

@@ -65,6 +65,8 @@ export interface ArchitectureWorkflowParams {
   resumeWorldBuilding?: boolean
   /** The exact run whose confirmed candidate the author selected in the UI. */
   expectedRecoveryHandle?: MainGenerationRunHandle
+  /** 所属粗纲段：提供时细纲提示词注入该段，并在提交后登记章节归属。 */
+  arcContext?: { arcId: number; rev: number; from: number; to: number; summary: string; beat: string } | null
 }
 
 export interface ConfigGenerationWorkflowParams {
@@ -196,6 +198,7 @@ export function createArchitectureWorkflow(
           restartHandle: params.restartFrom,
           ...(resumingSynopsis ? { resumeHandle: await recoveryHandle(context, 'synopsis') } : {}),
           synopsisRange,
+          arcContext: params.arcContext ?? null,
         }).execute({ step, context, callbacks })
       },
     },

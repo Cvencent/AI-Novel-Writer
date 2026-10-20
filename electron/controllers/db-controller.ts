@@ -131,6 +131,9 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:arc-outline-save',
   'db:arc-outline-confirm',
   'db:arc-outline-revise',
+  'db:arc-outline-replace-segment',
+  'db:arc-outline-mark-needs-regen',
+  'db:arc-binding-mark-stale',
   'db:arc-binding-bind-range',
   'db:outline-summary-save',
   'db:outline-character-state-apply',
@@ -200,6 +203,20 @@ export function registerDatabaseController() {
     } catch (error) { return { success: false, error: String(error) } }
   })
 
+  ipcMain.handle('db:arc-outline-replace-segment', async (_event, arcIndex: number, expectedRevision: number, input, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, record: ArcOutlineRepository.replaceSegment(arcIndex, expectedRevision, input) }
+    } catch (error) { return { success: false, error: String(error) } }
+  })
+
+  ipcMain.handle('db:arc-outline-mark-needs-regen', async (_event, arcIndex: number, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, count: ArcOutlineRepository.markNeedsRegenFrom(arcIndex) }
+    } catch (error) { return { success: false, error: String(error) } }
+  })
+
   ipcMain.handle('db:arc-outline-stale-list', async (_event, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return OutlineSegmentBindingRepository.listStale()
@@ -239,6 +256,13 @@ export function registerDatabaseController() {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
       return { success: true, count: OutlineSegmentBindingRepository.bindRange(chapterFrom, chapterTo, arcId, arcRevision) }
+    } catch (error) { return { success: false, error: String(error) } }
+  })
+
+  ipcMain.handle('db:arc-binding-mark-stale', async (_event, arcId: number, currentRevision: number, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, chapters: OutlineSegmentBindingRepository.markStaleFrom(arcId, currentRevision) }
     } catch (error) { return { success: false, error: String(error) } }
   })
 

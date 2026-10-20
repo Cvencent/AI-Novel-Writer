@@ -9,6 +9,7 @@
  */
 import { parseAgentResponseProtocol, cleanAgentProtocolVisibleText } from '../../shared/agent-response-protocol'
 import { toolRegistry, type AgentExecutionContext, type ToolResult } from '../agent/tool-registry'
+import { registerBuiltinTools } from '../agent/tools'
 import type { WritingLanguage } from '../../shared/writing-language'
 
 /** 单轮工具调用的记录，供运行面板与日志展示。 */
@@ -34,6 +35,12 @@ export interface WorkflowToolLoopOptions {
   executionContext: AgentExecutionContext
   /** 每次工具调用结束后的回调，用于实时展示与记录。 */
   onToolCall?: (record: WorkflowToolCallRecord) => void
+  /** 每轮完整原始返回（含工具调用标记）与随后回填的工具结果。 */
+  onRound?: (round: {
+    index: number
+    rawResponse: string
+    toolResults: readonly WorkflowToolCallRecord[]
+  }) => void
   /** 工具结果回填的最大字符数。 */
   maxResultChars?: number
 }
@@ -43,6 +50,10 @@ export interface WorkflowToolLoopResult {
   text: string
   /** 全部工具调用记录。 */
   toolCalls: WorkflowToolCallRecord[]
+  /** 最后一轮模型原文；非 stop 时用于恢复已生成部分。 */
+  lastRawResponse: string
+  /** 没有任何工具调用的最后一轮可见正文。 */
+  lastVisibleText: string
 }
 
 const DEFAULT_MAX_ROUNDS = 8
@@ -62,10 +73,14 @@ export async function runWorkflowToolLoop(options: WorkflowToolLoopOptions): Pro
     maxRounds = DEFAULT_MAX_ROUNDS,
     maxResultChars = DEFAULT_MAX_RESULT_CHARS,
   } = options
+  // 工作流可能在用户从未打开过 Agent 面板时启动；这里保证内置工具已注册。
+  if (toolRegistry.size === 0) registerBuiltinTools()
   const allowed = options.allowedTools ?? toolRegistry.listAll().map(tool => tool.name)
   const registered = new Set(allowed)
   const toolPrompt = toolPromptFor(allowed, writingLanguage)
   const records: WorkflowToolCallRecord[] = []
+  let lastRawResponse = ''
+  let lastVisibleText = ''
   const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
     { role: 'system', content: toolPrompt ? systemPrompt + '\n\n' + toolPrompt : systemPrompt },
     { role: 'user', content: userPrompt },
@@ -73,24 +88,29 @@ export async function runWorkflowToolLoop(options: WorkflowToolLoopOptions): Pro
 
   for (let round = 0; round < maxRounds; round += 1) {
     const raw = await generate(messages)
+    lastRawResponse = raw
     const parsed = parseAgentResponseProtocol(raw, [...registered])
     // 只接受本次允许清单内的工具；不在清单里的调用视为普通正文里的噪声，
     // 否则未知工具会在每一轮重复出现并耗尽轮次预算。
     const accepted = parsed.toolCalls.filter(call => registered.has(call.name))
     const visible = cleanAgentProtocolVisibleText(parsed.textParts.join(''), [...registered]).trim()
+    lastVisibleText = visible
 
     if (accepted.length === 0) {
-      return { text: visible, toolCalls: records }
+      options.onRound?.({ index: round, rawResponse: raw, toolResults: [] })
+      return { text: visible, toolCalls: records, lastRawResponse, lastVisibleText }
     }
 
     messages.push({ role: 'assistant', content: raw })
     const observations: string[] = []
+    const roundRecords: WorkflowToolCallRecord[] = []
     for (const call of accepted) {
       const tool = toolRegistry.get(call.name)
       const record: WorkflowToolCallRecord = { name: call.name, arguments: call.arguments, status: 'failed' }
       if (!tool) {
         record.error = 'unknown tool'
         records.push(record)
+        roundRecords.push(record)
         options.onToolCall?.(record)
         observations.push(`<tool_result name="${call.name}" error="true">unknown tool</tool_result>`)
         continue
@@ -101,6 +121,7 @@ export async function runWorkflowToolLoop(options: WorkflowToolLoopOptions): Pro
       } catch (error) {
         record.error = error instanceof Error ? error.message : String(error)
         records.push(record)
+        roundRecords.push(record)
         options.onToolCall?.(record)
         observations.push(`<tool_result name="${call.name}" error="true">${record.error}</tool_result>`)
         continue
@@ -110,14 +131,16 @@ export async function runWorkflowToolLoop(options: WorkflowToolLoopOptions): Pro
       if (result.success) record.result = content
       else record.error = content
       records.push(record)
+      roundRecords.push(record)
       options.onToolCall?.(record)
       observations.push(result.success
         ? `<tool_result name="${call.name}">\n${content}\n</tool_result>`
         : `<tool_result name="${call.name}" error="true">\n${content}\n</tool_result>`)
     }
+    options.onRound?.({ index: round, rawResponse: raw, toolResults: roundRecords })
     messages.push({ role: 'user', content: observations.join('\n') })
     // 模型可能只发工具调用、没有正文；继续下一轮让它给出正文。
-    if (round === maxRounds - 1) return { text: visible, toolCalls: records }
+    if (round === maxRounds - 1) return { text: visible, toolCalls: records, lastRawResponse, lastVisibleText }
   }
-  return { text: '', toolCalls: records }
+  return { text: '', toolCalls: records, lastRawResponse, lastVisibleText }
 }

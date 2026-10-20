@@ -3,6 +3,7 @@ import { getProjectDb } from '../database'
 import { ensureArcOutlineTables } from './arc-outline-schema'
 
 export type ArcBeat = 'setup' | 'escalation' | 'reversal' | 'low' | 'climax' | 'aftermath' | 'transition'
+export const ARC_BEATS: readonly ArcBeat[] = ['setup', 'escalation', 'reversal', 'low', 'climax', 'aftermath', 'transition']
 export type ArcStatus = 'draft' | 'confirmed' | 'needs_regen'
 
 export interface ArcOutlineRecord {
@@ -134,6 +135,40 @@ export class ArcOutlineRepository {
       const updated = database.prepare('SELECT * FROM arc_outlines WHERE arc_index = ?').get(arcIndex) as ArcOutlineRow
       return toRecord(updated)
     }).immediate()
+  }
+
+  /** 按作者方向重生成一段：标题、正文、beat 一起替换，修订号 +1 并回到待确认。 */
+  static replaceSegment(
+    arcIndex: number,
+    expectedRevision: number,
+    input: { title: string; summary: string; beat: ArcBeat },
+    db?: BetterSqlite3.Database,
+  ): ArcOutlineRecord {
+    const database = requireDb(db)
+    if (!input.title.trim() || !input.summary.trim()) throw new Error('ARC_OUTLINE_TEXT_REQUIRED')
+    if (!(ARC_BEATS as readonly string[]).includes(input.beat)) throw new Error('ARC_OUTLINE_BEAT_INVALID')
+    return database.transaction(() => {
+      const row = database.prepare('SELECT * FROM arc_outlines WHERE arc_index = ?').get(arcIndex) as ArcOutlineRow | undefined
+      if (!row) throw new Error('ARC_OUTLINE_NOT_FOUND')
+      if (row.revision !== expectedRevision) throw new Error('ARC_OUTLINE_REVISION_STALE')
+      database.prepare(`
+        UPDATE arc_outlines
+        SET title = ?, summary = ?, beat = ?, status = 'draft', revision = revision + 1, updated_at = datetime('now')
+        WHERE arc_index = ?
+      `).run(input.title.trim(), input.summary.trim(), input.beat, arcIndex)
+      const updated = database.prepare('SELECT * FROM arc_outlines WHERE arc_index = ?').get(arcIndex) as ArcOutlineRow
+      return toRecord(updated)
+    }).immediate()
+  }
+
+  /** 把该段之后的后续段标记为需要重新生成（它们依赖被改段的结果）。 */
+  static markNeedsRegenFrom(arcIndex: number, db?: BetterSqlite3.Database): number {
+    const database = requireDb(db)
+    const result = database.prepare(`
+      UPDATE arc_outlines SET status = 'needs_regen', updated_at = datetime('now')
+      WHERE arc_index > ? AND status <> 'needs_regen'
+    `).run(arcIndex)
+    return result.changes
   }
 
   /** 删除指定段及其之后的所有段；返回删除条数。 */

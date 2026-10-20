@@ -8,7 +8,7 @@ import type { CharacterProposalBatch } from '../../../shared/character-proposal'
 import { defaultCharacterProposalRelationships, defaultCharacterProposalSelections, formatCharacterProposalPreview } from '../character-proposal-preview'
 import type { MainGenerationRunHandle } from '../../generation/generation-runtime'
 import type { ArchitecturePlanningIntent, GenerationRecoveryContext } from '../../../shared/generation-owner-contract'
-import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, plotOutlineSourceInvalidText, joinPlotOutlineEntries, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
+import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, plotOutlineSourceInvalidText, joinPlotOutlineEntries, renderPlotOutlineRange, plotOutlineConfirmedPrefix, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
 import { CANONICAL_PROJECT_DIRECTORY } from '../../../shared/project-format'
 import { assertCheckpointDbMirrorCurrent, MIN_SYNOPSIS_PARTIAL_PERSIST_CHARS, renderSynopsisDbText, synopsisFactsFingerprint, type SynopsisCheckpoint } from '../../../shared/plot-outline-checkpoint'
 import {
@@ -1787,7 +1787,34 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       }
       from = requested?.from ?? 1
       to = requested?.to ?? totalChapters
-      if (from === 1) {
+      if (this.options.arcContext) {
+        // 按粗纲段重生成细纲：允许覆盖该段的任意章区间，前缀与后续章节由
+        // renderPlotOutlineRange 原样保留。粗纲确认后即使原文已有内容，也应
+        // 能从该段起重新落章，而不是被“只能从第 1 章全量覆盖”拦住。
+        const segment = this.options.arcContext
+        if (from < segment.from || to > segment.to) {
+          throw new Error(text(
+            `本批第 ${from}–${to} 章超出所属粗纲段第 ${segment.from}–${segment.to} 章的范围。`,
+            `Chapters ${from}-${to} fall outside the owning arc segment (${segment.from}-${segment.to}).`,
+          ))
+        }
+        if (interrupted) {
+          throw new Error(text(
+            '当前存在未完成的批次（可断点续写）。请先完成该批次，再按粗纲段生成。',
+            'A batch is still incomplete (it can be resumed). Finish it before generating from an arc segment.',
+          ))
+        }
+        // 非主进程运行时不会预先给出 confirmedPrefix；从正式大纲里取出本段之前
+        // 的连续前缀，提交时才能保留前文，而不是只写回本批。
+        if (!confirmedPrefix && from > 1) {
+          confirmedPrefix = plotOutlineConfirmedPrefix(
+            { synopsis: sourceExpected.synopsis, totalChapters, writingLanguage },
+            { from, to },
+          )
+          seedText = confirmedPrefix
+        }
+        mode = 'fresh'
+      } else if (from === 1) {
         // 覆盖重写（显式发起）或首次生成。若只覆盖到一半会静默丢弃
         // 第 to+1–coveredTo 章的已确认大纲 → 拒绝，要求续批或全量重写。
         if (!interrupted && coveredTo > 0 && to < coveredTo) {
@@ -1952,26 +1979,34 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     ].filter(Boolean).join('\n\n')
 
 
-    const previousBatchPartial = mode === 'batch' && this.requireGenerationExecution().mainOwned ? { ...partial } : undefined
+    const previousBatchPartial = (mode === 'batch' || Boolean(this.options.arcContext)) && this.requireGenerationExecution().mainOwned
+      ? { ...partial }
+      : undefined
     if (this.requireGenerationExecution().mainOwned && !resumeRequested) {
       await this.persistInterruptedSynopsis(projectSession, expectedProjectPath, context, '', { from, to }, factsFingerprint, effectiveStepGuidance, sourceExpected)
     }
     const stagedBatchPartial = previousBatchPartial ? { ...partial } : undefined
-    const generationSeedText = mode === 'batch' && confirmedPrefix ? '' : seedText
+    // 按粗纲段覆盖生成时也必须只把本批增量交给模型；已有大纲全文由
+    // outlineContext 以有界上下文注入。否则模型会重写整份前缀，覆盖范围
+    // 校验失败，且固定预算会被历史全文挤爆。
+    const batchIncrementOnly = (mode === 'batch' || Boolean(this.options.arcContext)) && Boolean(confirmedPrefix)
+    const generationSeedText = batchIncrementOnly ? '' : seedText
     const validationSeedText = mode === 'resume' && confirmedPrefix
       ? composeVisibleContinuation(confirmedPrefix, seedText)
       : seedText
 
     // ===== 有界生成：seed 续写 + 自动续写；任何失败先交出已合并文本 =====
+    const composedWithSeed = (content: string) => seedText ? composeVisibleContinuation(seedText, content) : content
     let interruptedContent = ''
     let merged = ''
     const runCompletion = async (): Promise<string> => {
-      const generated = await this.callLLMWithAppendContinuation({
+      // 细纲生成走工具循环：模型可以自己查角色、判断要不要加人或改人。
+      // 工具调用过程写入工作流日志，运行面板与日志页都能看到。
+      const toolCompletion = await this.callLLMWithTools(
         taskPrompt,
-        systemPrompt: promptBuilder.getSystemRole(),
+        promptBuilder.getSystemRole(),
         callbacks,
-        context,
-        llmOptions: {
+        {
           purpose: mode === 'resume'
             ? 'generate-plot-architecture-resume'
             : mode === 'batch'
@@ -1979,11 +2014,24 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
               : 'generate-plot-architecture',
           reasoningStage: 'planning',
           writingSkillStage: 'planning',
+          allowedTools: [
+            'read_characters', 'create_character', 'update_character', 'delete_character',
+            'search_knowledge', 'read_architecture',
+          ],
+          maxToolRounds: 6,
+          seedText: generationSeedText,
+          onPartialAvailable: content => {
+            interruptedContent = mode === 'resume' && seedText
+              ? composedWithSeed(content)
+              : composeVisibleContinuation(confirmedPrefix, content)
+          },
         },
-        seedText: generationSeedText,
-        maxContinuations: 3,
-        onPartialAvailable: content => { interruptedContent = composeVisibleContinuation(confirmedPrefix, content) },
-      })
+        context,
+      )
+      const generated = (mode === 'resume' || mode === 'batch') && seedText
+        ? composedWithSeed(toolCompletion.content)
+        : toolCompletion.content
+      interruptedContent = composeVisibleContinuation(confirmedPrefix, generated)
       if (confirmedPrefix && !generated.trim()) throw new Error(text('情节大纲生成失败，AI 返回空内容', 'Plot outline generation failed because the AI returned empty content.'))
       merged = composeVisibleContinuation(confirmedPrefix, generated)
       return merged
@@ -2091,14 +2139,19 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
 
     // ===== 落盘：先写检查点（权威进度 + DB 镜像指纹），再镜像到 DB 正文 =====
     const previousPartial = previousBatchPartial ?? { ...partial }
+    // 按粗纲段覆盖时 confirmedBody 是“前缀 + 本段新增”的连续正文；
+    // 其它批次保持既有语义。检查点与 DB 必须持有同一份连续正文。
     partial.synopsis_result = confirmedBody
     partial.synopsis_incomplete = false
-    partial.synopsis_covered_to = to
+    // 重写中间段后，已覆盖终点仍是正式大纲里最后一章，而不是本批终点。
+    partial.synopsis_covered_to = this.options.arcContext ? Math.max(to, coveredTo) : to
     partial.synopsis_range = { from, to }
     partial.synopsis_facts_fingerprint = factsFingerprint
     partial.synopsis_body_hash = synopsisFactsFingerprint([confirmedBody])
     partial.synopsis_step_guidance = effectiveStepGuidance
-    const dbOutlineText = renderSynopsisDbText(confirmedBody, writingLanguage, totalChapters, partial)
+    const dbOutlineText = this.options.arcContext
+      ? renderPlotOutlineRange(confirmedBody, { from, to }, sourceExpected)
+      : renderSynopsisDbText(confirmedBody, writingLanguage, totalChapters, partial)
     partial.synopsis_db_hash = synopsisFactsFingerprint([dbOutlineText])
     context.data.partial = partial
     this.assertNotCancelled(context)

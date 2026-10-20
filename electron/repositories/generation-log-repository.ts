@@ -14,10 +14,18 @@ export interface ModelCallSummary {
   hasOutput: boolean
 }
 
-/** 单次调用的完整详情：Prompt、返回、元信息。 */
+/** 单次调用中模型发起的一个工具调用。 */
+export interface ModelToolCallDetail {
+  name: string
+  arguments: Record<string, unknown>
+  result: string
+}
+
+/** 单次调用的完整详情：Prompt、返回、工具调用与元信息。 */
 export interface ModelCallDetail extends ModelCallSummary {
   promptMessages: { role: string; content: string }[]
   output: string
+  toolCalls: ModelToolCallDetail[]
 }
 
 interface AttemptRow {
@@ -48,6 +56,47 @@ function readMessages(row: AttemptRow): { role: string; content: string }[] {
     return typeof record.role === 'string' && typeof record.content === 'string'
       ? [{ role: record.role, content: record.content }]
       : []
+  })
+}
+
+/** 从一次调用的消息串里提取工具调用参数与随后回填的返回。 */
+function readToolCalls(messages: readonly { role: string; content: string }[]): ModelToolCallDetail[] {
+  const calls: Array<{ name: string; arguments: Record<string, unknown>; result: string }> = []
+  const resultQueue: Array<{ name: string; result: string }> = []
+  for (const message of messages) {
+    if (message.role === 'assistant') {
+      for (const match of message.content.matchAll(/<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gu)) {
+        try {
+          const parsed = JSON.parse(match[1]!) as { name?: unknown; arguments?: unknown }
+          if (typeof parsed.name === 'string' && parsed.name.trim()) {
+            calls.push({
+              name: parsed.name.trim(),
+              arguments: parsed.arguments && typeof parsed.arguments === 'object' && !Array.isArray(parsed.arguments)
+                ? parsed.arguments as Record<string, unknown>
+                : {},
+              result: '',
+            })
+          }
+        } catch { /* malformed tool markup is shown as raw prompt text instead */ }
+      }
+    }
+    if (message.role === 'user') {
+      for (const match of message.content.matchAll(/<tool_result\s+name="([^"]+)"[^>]*>\s*([\s\S]*?)\s*<\/tool_result>/gu)) {
+        resultQueue.push({ name: match[1]!, result: match[2]!.trim() })
+      }
+    }
+  }
+  for (const call of calls) {
+    const index = resultQueue.findIndex(item => item.name === call.name)
+    if (index >= 0) call.result = resultQueue.splice(index, 1)[0]!.result
+  }
+  // 工具循环的后续轮次会把完整历史再次带上；按工具名、参数和返回去重。
+  const seen = new Set<string>()
+  return calls.filter(call => {
+    const key = call.name + '\u0000' + JSON.stringify(call.arguments) + '\u0000' + call.result
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
   })
 }
 
@@ -105,6 +154,7 @@ export class GenerationLogRepository {
       hasOutput: Boolean(artifactPayload.text),
       promptMessages: readMessages(row),
       output: artifactPayload.text ?? '',
+      toolCalls: readToolCalls(readMessages(row)),
     }
   }
 }
