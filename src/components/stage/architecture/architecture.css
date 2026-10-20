@@ -361,3 +361,67 @@
   color: var(--ink-3);
   font-size: var(--fs-12);
 }
+
+/* ================= 连续生成进度面板 ================= */
+.arch-continuous {
+  border-radius: 12px;
+  background: var(--paper);
+  box-shadow: 0 0 0 1px var(--rule);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.arch-continuous-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+}
+
+.arch-continuous-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  color: var(--ink);
+  font: 500 var(--fs-14)/1.2 var(--font-ui);
+}
+
+.arch-continuous-count {
+  color: var(--ink-3);
+  font: 400 var(--fs-12)/1 var(--font-ui);
+}
+
+.arch-continuous-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.arch-continuous-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--rule);
+  overflow: hidden;
+}
+
+.arch-continuous-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent, var(--ink));
+  transition: width var(--dur-fast) var(--ease);
+}
+
+.arch-continuous-meta,
+.arch-continuous-message {
+  margin: 0;
+  color: var(--ink-3);
+  font: 400 var(--fs-12)/1.5 var(--font-ui);
+}
+
+.arch-continuous-batch {
+  margin-left: var(--s-3);
+}

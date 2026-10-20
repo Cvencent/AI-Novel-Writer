@@ -16,6 +16,9 @@ import { Menu } from '../../ui/Menu'
 import { toast } from '../../ui/Toast'
 import { refreshStageWork } from '../use-stage-work'
 import ArchitectureGenerateDialog from './ArchitectureGenerateDialog'
+import ContinuousOutlinePanel from './ContinuousOutlinePanel'
+import { startContinuousOutline } from '../../../services/workflows/continuous-outline-runner'
+import { plotOutlineNextChapter } from '../../../shared/plot-outline-contract'
 import ArchitectureSection from './ArchitectureSection'
 import { excerpt, mainAction, sectionBadge, SECTION_ORDER } from './architecture-sections'
 
@@ -51,6 +54,12 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
 
   const total = SECTION_ORDER.length
   const action = mainAction(filled ?? 0, total)
+  /** 情节大纲尚未覆盖到全书末章时，提供「一次生成全部剩余大纲」入口。 */
+  const outlineIncomplete = (() => {
+    const source = overview.synopsisSource
+    if (!source || source.totalChapters <= 0) return false
+    return plotOutlineNextChapter(source) <= source.totalChapters
+  })()
 
   const reload = () => {
     void overview.loadStatus()
@@ -105,6 +114,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
               groups={[{ id: 'page', items: [
                 { id: 'refresh', label: text('刷新状态', 'Refresh status'), onSelect: reload },
                 ...(action === 'next' ? [{ id: 'generate', label: text('AI 生成架构…', 'Generate with AI…'), onSelect: () => overview.openGenerateDialog() }] : []),
+                ...(outlineIncomplete ? [{ id: 'generate-all', label: text('一次生成全部剩余大纲…', 'Generate all remaining outline…'), onSelect: () => startContinuousOutline() }] : []),
               ] }]}
             />
             {action === 'next'
@@ -126,6 +136,8 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
               )}
           </div>
         </header>
+
+        <ContinuousOutlinePanel />
 
         <div className="arch-sections">
           {SECTION_ORDER.map(key => (

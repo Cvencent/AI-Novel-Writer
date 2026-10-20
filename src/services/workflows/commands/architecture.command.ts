@@ -1,4 +1,5 @@
 import { parsePlanningTargetUnits, planningTargetInstruction, DEFAULT_PLANNING_ACTION_CHAPTERS } from '../../../shared/plot-outline-contract'
+import { buildOutlineRetrievalContext, extractCharacterNames } from '../../../shared/outline-retrieval-context'
 import type { CharacterProposalChoices } from '../../character-proposal-choices'
 import { decodeCharacterIdentityManifest, decodeCharacterDetails, validateCharacterDetail, type CharacterIdentitySlot, type CharacterDetailOutput } from '../../../shared/character-proposal-parser'
 import type { CharacterProposalBatch } from '../../../shared/character-proposal'
@@ -380,13 +381,20 @@ function synopsisBatchInstruction(
   from: number,
   to: number,
   totalChapters: number,
+  compacted = false,
 ): string {
   const leading = from > 1
-    ? promptLanguageText(
-        writingLanguage,
-        `第 1–${from - 1} 章的大纲已在【已完成大纲前缀】中给出：不得重复、改写或复述该前缀；从第 ${from} 章起自然衔接继续书写。`,
-        `Chapters 1-${from - 1} are already covered in the [confirmed outline prefix]: do not repeat, rewrite, or restate it; continue naturally from chapter ${from}.`,
-      )
+    ? (compacted
+        ? promptLanguageText(
+            writingLanguage,
+            `第 1–${from - 1} 章的大纲已在【已完成大纲上下文】中给出（较早章节为区间摘要，最近章节为全文）：不得重复、改写或复述该上下文；从第 ${from} 章起自然衔接继续书写。`,
+            `Chapters 1-${from - 1} are covered in the [confirmed outline context] (earlier chapters as range digests, recent chapters in full): do not repeat, rewrite, or restate it; continue naturally from chapter ${from}.`,
+          )
+        : promptLanguageText(
+            writingLanguage,
+            `第 1–${from - 1} 章的大纲已在【已完成大纲前缀】中给出：不得重复、改写或复述该前缀；从第 ${from} 章起自然衔接继续书写。`,
+            `Chapters 1-${from - 1} are already covered in the [confirmed outline prefix]: do not repeat, rewrite, or restate it; continue naturally from chapter ${from}.`,
+          ))
     : ''
   const trailing = to < totalChapters
     ? promptLanguageText(
@@ -1866,11 +1874,32 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       ))
     }
 
+    // 关键修复：不再把「已完成大纲前缀」全文拼进 prompt（3000 章会长到无法装入上下文）。
+    // 改为注入有界的检索式上下文：最近章节保留全文，更早章节压成对数式区间摘要。
+    const outlineContext = confirmedPrefix
+      ? buildOutlineRetrievalContext(confirmedPrefix, {
+          writingLanguage,
+          characterNames: extractCharacterNames(sourceExpected.charactersArch ?? ''),
+        })
+      : null
+    if (outlineContext) {
+      callbacks.log(text(
+        `  大纲上下文：共 ${outlineContext.stats.totalChapters} 章，注入 ${outlineContext.stats.usedChars} 字符（预算 ${outlineContext.stats.budgetChars}）${outlineContext.stats.compacted ? '，已压缩较早章节' : ''}`,
+        `  Outline context: ${outlineContext.stats.totalChapters} chapters, ${outlineContext.stats.usedChars} chars injected (budget ${outlineContext.stats.budgetChars})${outlineContext.stats.compacted ? ', earlier chapters compacted' : ''}`,
+      ))
+    }
     const taskPrompt = [
       promptBuilder.build(),
-      synopsisBatchInstruction(writingLanguage, from, to, totalChapters),
+      synopsisBatchInstruction(writingLanguage, from, to, totalChapters, outlineContext?.stats.compacted ?? false),
       confirmedPrefix
-        ? promptLanguageText(writingLanguage, `【已完成大纲前缀】\n${confirmedPrefix}`, `[Confirmed outline prefix]\n${confirmedPrefix}`)
+        ? (() => {
+            // 关键修复：不再把「已完成大纲前缀」全文拼进 prompt（3000 章会长到无法装入上下文）。
+            // 改为注入有界的检索式上下文：最近章节保留全文，更早章节压成对数式区间摘要。
+            if (!outlineContext) return ''
+            return outlineContext.stats.compacted
+              ? promptLanguageText(writingLanguage, `【已完成大纲上下文】\n${outlineContext.text}`, `[Confirmed outline context]\n${outlineContext.text}`)
+              : promptLanguageText(writingLanguage, `【已完成大纲前缀】\n${outlineContext.text}`, `[Confirmed outline prefix]\n${outlineContext.text}`)
+          })()
         : '',
     ].filter(Boolean).join('\n\n')
 
