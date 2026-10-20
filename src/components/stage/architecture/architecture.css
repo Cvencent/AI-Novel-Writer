@@ -425,3 +425,74 @@
 .arch-continuous-batch {
   margin-left: var(--s-3);
 }
+
+
+/* ── 粗纲面板 ───────────────────────────────────────────── */
+.arch-arc {
+  margin: 0 0 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+.arch-arc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.arch-arc-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.arch-arc-count {
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+.arch-arc-actions { display: inline-flex; gap: 8px; }
+.arch-arc-empty {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+}
+.arch-arc-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.arch-arc-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-subtle);
+  font-size: 13px;
+}
+.arch-arc-range { color: var(--color-text-secondary); white-space: nowrap; }
+.arch-arc-name { flex: 1; color: var(--color-text-primary); }
+.arch-arc-beat {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.arch-arc-status { color: var(--color-text-secondary); white-space: nowrap; }
+.arch-arc-item[data-status='confirmed'] .arch-arc-status { color: var(--color-success); }
+.arch-arc-item[data-status='needs_regen'] .arch-arc-status { color: var(--color-warning); }
+.arch-arc-stale {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--color-warning);
+}

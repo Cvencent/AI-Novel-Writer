@@ -17,6 +17,7 @@ import { toast } from '../../ui/Toast'
 import { refreshStageWork } from '../use-stage-work'
 import ArchitectureGenerateDialog from './ArchitectureGenerateDialog'
 import ContinuousOutlinePanel from './ContinuousOutlinePanel'
+import ArcOutlinePanel from './ArcOutlinePanel'
 import { startContinuousOutline } from '../../../services/workflows/continuous-outline-runner'
 import { plotOutlineNextChapter } from '../../../shared/plot-outline-contract'
 import ArchitectureSection from './ArchitectureSection'
@@ -117,12 +118,6 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
                 ...(outlineIncomplete ? [{ id: 'generate-all', label: text('一次生成全部剩余大纲…', 'Generate all remaining outline…'), onSelect: () => startContinuousOutline() }] : []),
               ] }]}
             />
-            {outlineIncomplete && (
-              <Button variant="primary" onClick={() => startContinuousOutline()} title={text('从已确认的下一章开始，逐批生成到全书结束', 'Generate every remaining batch through the end of the book')}>
-                <Sparkles size={14} aria-hidden />
-                {text('一键生成全部剩余大纲', 'Generate all remaining outline')}
-              </Button>
-            )}
             {action === 'next'
               ? (
                 <Button variant="primary" onClick={() => navigate({ kind: 'stage', stage: 'blueprint' })}>
@@ -140,9 +135,16 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
                   </Button>
                 </>
               )}
+            {outlineIncomplete && (
+              <Button variant="secondary" onClick={() => startContinuousOutline()} title={text('从已确认的下一章开始，逐批生成到全书结束', 'Generate every remaining batch through the end of the book')}>
+                <Sparkles size={14} aria-hidden />
+                {text('一键生成全部剩余大纲', 'Generate all remaining outline')}
+              </Button>
+            )}
           </div>
         </header>
 
+        <ArcOutlinePanel projectKey={projectKey} />
         <ContinuousOutlinePanel />
 
         <div className="arch-sections">

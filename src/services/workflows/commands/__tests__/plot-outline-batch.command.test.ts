@@ -1071,7 +1071,7 @@ describe('粗纲段接入细纲生成', () => {
       `第${i + 1}章：核对记录\n周岚核对记录并据此推进调查，确认本章线索的来源。`,
     ).join('\n\n')
     useLLMStore.setState({ defaultModelId: 'model-1', generateStream: responseStream([body]) })
-    const harness = harnessWith()
+    harnessWith()
 
     await makeCommand({
       synopsisRange: { from: 1, to: 20 },

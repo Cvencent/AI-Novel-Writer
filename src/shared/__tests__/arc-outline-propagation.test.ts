@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ArcStatus } from '../../electron/repositories/arc-outline-repository'
+import type { ArcStatus } from '../../../electron/repositories/arc-outline-repository'
 import { planArcEditPropagation, planChapterEditPropagation } from '../arc-outline-propagation'
 
 const arcs: { arcIndex: number; revision: number; status: ArcStatus }[] = [
