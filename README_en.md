@@ -32,15 +32,15 @@
   <img src="docs/assets/readme/v130-hero-en.webp" alt="Pagekin 1.3.0: product summary on the left and real screenshots of the library, chapter view, blueprint, run sheet, architecture, and cast on the right" width="100%" />
 </p>
 
-> ## What's new in 1.3.0
+> ## What's new in 1.5.0
 >
-> - The whole interface is now the new Paper and Ink writing interface, organized as setup, architecture, blueprint, and manuscript.
-> - A chapter goes from unwritten to final on one page: drafting, review, revision, merging, and finalization.
-> - The blueprint page's "Write chapter N" opens a small popover instead of a large form.
-> - Every generation run is shown in one run sheet, where you can cancel, pause a batch, or confirm continuation.
-> - Appearance offers light and dark only. The assistant chat entry is hidden for now and will return separately.
+> - The outline now has two layers: an arc outline that sets direction with no character names (the model decides the span), and a chapter outline that assigns characters and events per chapter.
+> - Arc segments can be confirmed one at a time or filled automatically across the whole book; any segment can be rewritten in natural language and later segments are marked for regeneration.
+> - Chapter outlines generate inside a confirmed arc segment and preserve the surrounding outline instead of rewriting the whole book from chapter 1.
+> - While generating chapter outlines the model can look up, add, update, and delete characters, and search the knowledge base and architecture.
+> - A new Logs entry beside Settings shows every call's full prompt, full response, and each tool call's arguments and result.
 >
-> See the [1.3.0 release notes](https://github.com/EthanYoQ/AI-Novel-Writer/releases/tag/v1.3.0) for details.
+> See the [1.5.0 release notes](https://github.com/Cvencent/AI-Novel-Writer/releases/tag/v1.5.0) for details.
 
 ## What it does
 

@@ -63,10 +63,10 @@ describe('release metadata', () => {
       'not notarized',
     ]) expect(notes).toContain(expected)
 
-    expect(chineseReadme).toContain('> ## 1.3.0 更新')
-    expect(englishReadme).toContain("> ## What's new in 1.3.0")
+    expect(chineseReadme).toContain('> ## 1.5.0 更新')
+    expect(englishReadme).toContain("> ## What's new in 1.5.0")
     for (const readme of [chineseReadme, englishReadme]) {
-      expect(readme).toContain('https://github.com/EthanYoQ/AI-Novel-Writer/releases/tag/v1.3.0)')
+      expect(readme).toContain('https://github.com/Cvencent/AI-Novel-Writer/releases/tag/v1.5.0)')
     }
 
     const zhRetained = previousNotes
