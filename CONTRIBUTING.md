@@ -7,7 +7,7 @@
 1. 先搜索现有 Issues，确认没有相同问题；相同问题请补充信息或添加 reaction，不要重复创建。
 2. 一个 Issue 只描述一个 Bug 或一项需求。Bug 请使用 Bug 表单，功能建议请使用功能表单。
 3. 描述用户看到的问题、复现步骤和期望结果。没有把握的配置项可以填写“未知”，不要猜测。
-4. 一般使用问题请发到 [Discussions](https://github.com/EthanYoQ/AI-Novel-Writer/discussions)。
+4. 一般使用问题请发到 [Discussions](https://github.com/Cvencent/AI-Novel-Writer/discussions)。
 
 这是公开仓库。提交前必须脱敏：不得上传 API Key、Token、完整小说正文、未公开创作资料、私人本机路径、个人信息、完整项目数据库或整包日志。请使用虚构占位内容、最小复现片段和问题发生前后的必要日志。
 

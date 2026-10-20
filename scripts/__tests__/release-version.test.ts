@@ -92,8 +92,8 @@ describe('release metadata', () => {
         'Windows x64',
         'Apple Silicon',
         'Intel',
-        '1.3.0',
-        'https://github.com/EthanYoQ/AI-Novel-Writer/releases/latest)',
+        '1.5.0',
+        'https://github.com/Cvencent/AI-Novel-Writer/releases/latest)',
       ]) expect(readme).toContain(expected)
 
       for (const installer of [

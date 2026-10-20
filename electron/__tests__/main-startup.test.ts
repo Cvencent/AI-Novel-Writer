@@ -67,7 +67,7 @@ vi.mock('../mcp/mcp-ipc-bridge', () => ({ registerMCPHandlers: mocks.registerMCP
 vi.mock('../controllers/update-controller', () => ({ registerUpdateController: vi.fn() }))
 vi.mock('../services/electron-updater-adapter', () => ({ createElectronUpdaterBackend: vi.fn() }))
 vi.mock('../services/github-release-update-backend', () => ({
-  GITHUB_LATEST_RELEASE_PAGE: 'https://github.com/EthanYoQ/AI-Novel-Writer/releases/latest',
+  GITHUB_LATEST_RELEASE_PAGE: 'https://github.com/Cvencent/AI-Novel-Writer/releases/latest',
   createGitHubReleaseUpdateBackend: mocks.createGitHubReleaseUpdateBackend,
 }))
 vi.mock('../services/update-preferences-store', () => ({
@@ -229,6 +229,6 @@ describe('interactive Electron startup', () => {
       createBackend: mocks.createGitHubReleaseUpdateBackend,
     })
     await options.openRelease()
-    expect(mocks.openExternal).toHaveBeenCalledWith('https://github.com/EthanYoQ/AI-Novel-Writer/releases/latest')
+    expect(mocks.openExternal).toHaveBeenCalledWith('https://github.com/Cvencent/AI-Novel-Writer/releases/latest')
   })
 })

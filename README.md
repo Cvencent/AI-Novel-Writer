@@ -19,13 +19,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/EthanYoQ/AI-Novel-Writer/releases/latest"><img src="https://img.shields.io/badge/%E4%B8%8B%E8%BD%BD-Windows%20%7C%20macOS-2b4c8c?style=for-the-badge" alt="下载 Windows 与 macOS 安装包" /></a>
+  <a href="https://github.com/Cvencent/AI-Novel-Writer/releases/latest"><img src="https://img.shields.io/badge/%E4%B8%8B%E8%BD%BD-Windows%20%7C%20macOS-2b4c8c?style=for-the-badge" alt="下载 Windows 与 macOS 安装包" /></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/EthanYoQ/AI-Novel-Writer/releases"><img src="https://badgen.net/github/tag/EthanYoQ/AI-Novel-Writer?label=release" alt="Release" /></a>
-  <a href="https://github.com/EthanYoQ/AI-Novel-Writer/blob/master/LICENSE"><img src="https://badgen.net/badge/license/GPL-3.0/blue" alt="GPL-3.0 License" /></a>
-  <a href="https://github.com/EthanYoQ/AI-Novel-Writer/stargazers"><img src="https://badgen.net/github/stars/EthanYoQ/AI-Novel-Writer" alt="GitHub stars" /></a>
+  <a href="https://github.com/Cvencent/AI-Novel-Writer/releases"><img src="https://badgen.net/github/tag/Cvencent/AI-Novel-Writer?label=release" alt="Release" /></a>
+  <a href="https://github.com/Cvencent/AI-Novel-Writer/blob/master/LICENSE"><img src="https://badgen.net/badge/license/GPL-3.0/blue" alt="GPL-3.0 License" /></a>
+  <a href="https://github.com/Cvencent/AI-Novel-Writer/stargazers"><img src="https://badgen.net/github/stars/Cvencent/AI-Novel-Writer" alt="GitHub stars" /></a>
 </p>
 
 <p align="center">
@@ -153,7 +153,7 @@ API Key：  可以留空；界面要求时填任意占位值
 
 ## 下载与安装
 
-请只从 [GitHub Releases](https://github.com/EthanYoQ/AI-Novel-Writer/releases/latest) 下载正式安装包。
+请只从 [GitHub Releases](https://github.com/Cvencent/AI-Novel-Writer/releases/latest) 下载正式安装包。
 
 ### Windows x64
 
@@ -234,7 +234,7 @@ Windows 安装包未签名，Mac 安装包只有 ad-hoc 签名、没有经过 Ap
 需要 Node.js 20 以上和仓库指定版本的 pnpm。
 
 ```sh
-git clone https://github.com/EthanYoQ/AI-Novel-Writer.git
+git clone https://github.com/Cvencent/AI-Novel-Writer.git
 cd AI-Novel-Writer
 pnpm install --frozen-lockfile
 pnpm rebuild:electron
@@ -245,7 +245,7 @@ pnpm dev
 
 ## 参与贡献
 
-Bug 和功能建议请提交到 [GitHub Issues](https://github.com/EthanYoQ/AI-Novel-Writer/issues)，使用问题请发到 [Discussions](https://github.com/EthanYoQ/AI-Novel-Writer/discussions)。提交 Pull Request 前请先读 [CONTRIBUTING.md](CONTRIBUTING.md)。这是公开仓库，提交内容请先脱敏，不要上传 API Key、完整小说正文或本机路径。
+Bug 和功能建议请提交到 [GitHub Issues](https://github.com/Cvencent/AI-Novel-Writer/issues)，使用问题请发到 [Discussions](https://github.com/Cvencent/AI-Novel-Writer/discussions)。提交 Pull Request 前请先读 [CONTRIBUTING.md](CONTRIBUTING.md)。这是公开仓库，提交内容请先脱敏，不要上传 API Key、完整小说正文或本机路径。
 
 ## DeepSeek Harness 插件（冻结维护）
 

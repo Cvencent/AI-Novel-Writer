@@ -19,13 +19,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/EthanYoQ/AI-Novel-Writer/releases/latest"><img src="https://img.shields.io/badge/Download-Windows%20%7C%20macOS-2b4c8c?style=for-the-badge" alt="Download for Windows and macOS" /></a>
+  <a href="https://github.com/Cvencent/AI-Novel-Writer/releases/latest"><img src="https://img.shields.io/badge/Download-Windows%20%7C%20macOS-2b4c8c?style=for-the-badge" alt="Download for Windows and macOS" /></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/EthanYoQ/AI-Novel-Writer/releases"><img src="https://badgen.net/github/tag/EthanYoQ/AI-Novel-Writer?label=release" alt="Release" /></a>
-  <a href="https://github.com/EthanYoQ/AI-Novel-Writer/blob/master/LICENSE"><img src="https://badgen.net/badge/license/GPL-3.0/blue" alt="GPL-3.0 License" /></a>
-  <a href="https://github.com/EthanYoQ/AI-Novel-Writer/stargazers"><img src="https://badgen.net/github/stars/EthanYoQ/AI-Novel-Writer" alt="GitHub stars" /></a>
+  <a href="https://github.com/Cvencent/AI-Novel-Writer/releases"><img src="https://badgen.net/github/tag/Cvencent/AI-Novel-Writer?label=release" alt="Release" /></a>
+  <a href="https://github.com/Cvencent/AI-Novel-Writer/blob/master/LICENSE"><img src="https://badgen.net/badge/license/GPL-3.0/blue" alt="GPL-3.0 License" /></a>
+  <a href="https://github.com/Cvencent/AI-Novel-Writer/stargazers"><img src="https://badgen.net/github/stars/Cvencent/AI-Novel-Writer" alt="GitHub stars" /></a>
 </p>
 
 <p align="center">
@@ -153,7 +153,7 @@ Embedding models also use the `/v1` address. Do not use `http://127.0.0.1:11434/
 
 ## Download and install
 
-Download official installers only from [GitHub Releases](https://github.com/EthanYoQ/AI-Novel-Writer/releases/latest).
+Download official installers only from [GitHub Releases](https://github.com/Cvencent/AI-Novel-Writer/releases/latest).
 
 ### Windows x64
 
@@ -234,7 +234,7 @@ The Windows installer is unsigned, and the Mac installers are only ad-hoc signed
 You need Node.js 20 or later and the pnpm version pinned in the repository.
 
 ```sh
-git clone https://github.com/EthanYoQ/AI-Novel-Writer.git
+git clone https://github.com/Cvencent/AI-Novel-Writer.git
 cd AI-Novel-Writer
 pnpm install --frozen-lockfile
 pnpm rebuild:electron
@@ -245,7 +245,7 @@ Official installers are built in GitHub Actions. The Windows x64, macOS Apple Si
 
 ## Contributing
 
-Report bugs and request features in [GitHub Issues](https://github.com/EthanYoQ/AI-Novel-Writer/issues), and ask usage questions in [Discussions](https://github.com/EthanYoQ/AI-Novel-Writer/discussions). Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. This is a public repository, so remove API keys, full novel text, and local paths from anything you submit.
+Report bugs and request features in [GitHub Issues](https://github.com/Cvencent/AI-Novel-Writer/issues), and ask usage questions in [Discussions](https://github.com/Cvencent/AI-Novel-Writer/discussions). Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. This is a public repository, so remove API keys, full novel text, and local paths from anything you submit.
 
 ## DeepSeek Harness plugin (frozen)
 

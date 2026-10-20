@@ -18,18 +18,18 @@ Key facts:
 
 ## Docs
 
-- [README (Chinese)](https://github.com/EthanYoQ/AI-Novel-Writer/blob/master/README.md): product overview, supported models, installation, data and privacy, FAQ
-- [README (English)](https://github.com/EthanYoQ/AI-Novel-Writer/blob/master/README_en.md): the same content in English
-- [Contributing guide](https://github.com/EthanYoQ/AI-Novel-Writer/blob/master/CONTRIBUTING.md): how to file issues and submit pull requests
-- [Developer documentation index](https://github.com/EthanYoQ/AI-Novel-Writer/blob/master/docs/README.md): documentation authority, ADRs, and development rules
+- [README (Chinese)](https://github.com/Cvencent/AI-Novel-Writer/blob/master/README.md): product overview, supported models, installation, data and privacy, FAQ
+- [README (English)](https://github.com/Cvencent/AI-Novel-Writer/blob/master/README_en.md): the same content in English
+- [Contributing guide](https://github.com/Cvencent/AI-Novel-Writer/blob/master/CONTRIBUTING.md): how to file issues and submit pull requests
+- [Developer documentation index](https://github.com/Cvencent/AI-Novel-Writer/blob/master/docs/README.md): documentation authority, ADRs, and development rules
 
 ## Downloads
 
-- [Latest release](https://github.com/EthanYoQ/AI-Novel-Writer/releases/latest): Windows and macOS installers
-- [1.3.0 release notes](https://github.com/EthanYoQ/AI-Novel-Writer/releases/tag/v1.3.0): changes in the Paper and Ink interface release
-- [All releases](https://github.com/EthanYoQ/AI-Novel-Writer/releases): release history
+- [Latest release](https://github.com/Cvencent/AI-Novel-Writer/releases/latest): Windows and macOS installers
+- [1.3.0 release notes](https://github.com/Cvencent/AI-Novel-Writer/releases/tag/v1.3.0): changes in the Paper and Ink interface release
+- [All releases](https://github.com/Cvencent/AI-Novel-Writer/releases): release history
 
 ## Optional
 
-- [DeepSeek Harness plugin](https://github.com/EthanYoQ/AI-Novel-Writer/blob/master/plugins/dsh-ai-novel-writer/README.md): a frozen 0.1.0 Web plugin preview (MIT), far smaller than the desktop app
-- [License](https://github.com/EthanYoQ/AI-Novel-Writer/blob/master/LICENSE): GPL-3.0
+- [DeepSeek Harness plugin](https://github.com/Cvencent/AI-Novel-Writer/blob/master/plugins/dsh-ai-novel-writer/README.md): a frozen 0.1.0 Web plugin preview (MIT), far smaller than the desktop app
+- [License](https://github.com/Cvencent/AI-Novel-Writer/blob/master/LICENSE): GPL-3.0
