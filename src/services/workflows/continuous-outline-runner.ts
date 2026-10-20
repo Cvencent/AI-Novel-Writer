@@ -19,6 +19,7 @@ import { useWorkflowStore, type WorkflowRun } from '../../stores/workflow-store'
 import { useLocaleStore } from '../../stores/locale-store'
 import { launchCreativeWorkflow } from './creative-workflow-launcher'
 import { outlineProgress, type OutlineProgress } from '../../shared/plot-outline-checkpoint'
+import { parseOutlineChapters } from '../../shared/outline-retrieval-context'
 import { PLANNING_ACTION_CHAPTER_LIMIT } from '../../shared/plot-outline-contract'
 import { CANONICAL_PROJECT_DIRECTORY } from '../../shared/project-format'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
@@ -81,6 +82,59 @@ interface ProjectSnapshotInfo {
   totalChapters: number
   coveredChapters: number
   progressKind: OutlineProgress['kind']
+  outlineText: string
+}
+
+const OUTLINE_INDEX_BATCH_CHAPTERS = 20
+const OUTLINE_INDEX_SUFFIX = '情节大纲.md'
+
+function outlineIndexFileName(from: number, to: number): string {
+  return `第${from}–${to}章 ${OUTLINE_INDEX_SUFFIX}`
+}
+
+/**
+ * 把已生成的大纲补进项目检索库。每 20 章一份文档；同名文档由知识库
+ * 原子替换，因此重复启动不会无限累积旧副本。
+ */
+async function ensureOutlineIndexed(
+  session: ProjectSessionContext,
+  outlineText: string,
+  onProgress: (message: string) => void,
+): Promise<void> {
+  const chapters = parseOutlineChapters(outlineText)
+  if (chapters.length === 0) return
+  const listed = await ipc.invokeWithProjectSession(
+    session,
+    'kb:list-documents',
+    session.projectPath,
+  ).catch(() => null)
+  const documents = Array.isArray(listed) ? listed : []
+  const existing = new Set(documents.map(document => document.fileName))
+  let imported = 0
+  const groups: Array<typeof chapters> = []
+  for (let index = 0; index < chapters.length; index += OUTLINE_INDEX_BATCH_CHAPTERS) {
+    groups.push(chapters.slice(index, index + OUTLINE_INDEX_BATCH_CHAPTERS))
+  }
+  for (const [index, group] of groups.entries()) {
+    const first = group[0]!.chapter
+    const last = group[group.length - 1]!.chapter
+    const fileName = outlineIndexFileName(first, last)
+    if (existing.has(fileName)) continue
+    onProgress(`正在补建大纲检索索引：${index + 1} / ${groups.length}（第 ${first}–${last} 章）…`)
+    const content = group.map(entry => `## 第${entry.chapter}章：${entry.title}\n\n${entry.body.trim()}`).join('\n\n')
+    const result = await ipc.invokeWithProjectSession(
+      session,
+      'kb:import-text',
+      content,
+      fileName,
+      session.projectPath,
+    ).catch(() => null)
+    if (result?.success) {
+      imported += 1
+      existing.add(fileName)
+    }
+  }
+  if (imported > 0) onProgress(`大纲检索索引已补齐：新增 ${imported} 份、共 ${chapters.length} 章。`)
 }
 
 /** 读取项目真实进度：以 DB 大纲与检查点为准。 */
@@ -102,7 +156,7 @@ async function readProjectProgress(session: ProjectSessionContext): Promise<Proj
     : prog.kind === 'partial'
       ? prog.coveredTo
       : checkpointCovered
-  return { session, totalChapters, coveredChapters, progressKind: prog.kind }
+  return { session, totalChapters, coveredChapters, progressKind: prog.kind, outlineText: core.synopsis ?? '' }
 }
 
 /** 等待某一批工作流结束；期间把本批章级进度回传给调用方。 */
@@ -177,6 +231,9 @@ async function runLoop(session: ProjectSessionContext, token: number, targetUnit
     remainingChapters: Math.max(0, initial.totalChapters - initial.coveredChapters),
     batchesCompleted: 0, consecutiveFailures: 0, batchPercent: 0,
     message: text('开始连续生成情节大纲…', 'Starting continuous plot-outline generation…'),
+  })
+  await ensureOutlineIndexed(initial.session, initial.outlineText, message => emit({ message })).catch(() => {
+    emit({ message: text('已有大纲补建检索索引失败；会继续生成，稍后可在知识库页重试。', 'Existing outlines could not be indexed; generation will continue and indexing can be retried later.') })
   })
 
   for (;;) {

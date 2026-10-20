@@ -324,9 +324,10 @@ export function plotOutlineRecoveryDraft(progress: PlotOutlineProgress, failedCa
   const chapter = progress.range.from + completed
   let body = progress.composition?.text ?? ''
   if (progress.cursor.kind === 'accept') body = joinPlotOutlineEntries(body, progress.cursor.text)
-  else if (progress.cursor.kind !== 'complete') {
-    const heading = progress.sourceExpected.writingLanguage === 'en-US' ? `## Chapter ${chapter}: ` : `## 第${chapter}章：`
-    body = joinPlotOutlineEntries(body, failedCandidate?.trim() || `${heading}\n`)
+  else if (progress.cursor.kind !== 'complete' && failedCandidate?.trim()) {
+    // 只并入真正有内容的候选。绝不能补一个「有标题、无正文」的空章，
+    // 否则恢复稿无法通过连续完整章节校验，作者也会被卡在保存失败。
+    body = joinPlotOutlineEntries(body, failedCandidate.trim())
   }
   return renderPlotOutlineRange(body, { from: progress.range.from, to: Math.min(chapter, progress.range.to) }, progress.sourceExpected)
 }

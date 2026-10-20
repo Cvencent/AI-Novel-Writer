@@ -33,13 +33,21 @@ export interface OutlineDigestBlock {
   brief: string
 }
 
+export interface OutlineCharacterRelation {
+  source: string
+  target: string
+  relation: string
+}
+
 export interface OutlineRetrievalOptions {
   writingLanguage?: WritingLanguage
   budgetChars?: number
   recentFullChapters?: number
   maxDigestBlocks?: number
   characterNames?: readonly string[]
+  characterRelations?: readonly OutlineCharacterRelation[]
   maxCharacterEntries?: number
+  maxRelationEntries?: number
 }
 
 export interface OutlineRetrievalStats {
@@ -61,6 +69,7 @@ export const DEFAULT_OUTLINE_CONTEXT_BUDGET = 9000
 export const DEFAULT_RECENT_FULL_CHAPTERS = 6
 export const DEFAULT_MAX_DIGEST_BLOCKS = 48
 const DEFAULT_MAX_CHARACTER_ENTRIES = 60
+const DEFAULT_MAX_RELATION_ENTRIES = 36
 const DIGEST_BRIEF_CHARS = 60
 const MERGED_BRIEF_CHARS = 80
 
@@ -133,6 +142,47 @@ export function rollupDigestBlocks(blocks: readonly OutlineDigestBlock[], maxBlo
   return result
 }
 
+function latestSharedChapter(entries: readonly OutlineChapterEntry[], source: string, target: string): number {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]!
+    const text = entry.title + '\n' + entry.body
+    if (text.includes(source) && text.includes(target)) return entry.chapter
+  }
+  return -1
+}
+
+function buildRelationIndex(
+  entries: readonly OutlineChapterEntry[],
+  relations: readonly OutlineCharacterRelation[],
+  names: readonly string[],
+  maxEntries: number,
+  language: WritingLanguage,
+): string {
+  if (relations.length === 0) return ''
+  const known = new Set(names)
+  const seen = new Set<string>()
+  const lines: string[] = []
+  for (const relation of relations) {
+    const source = relation.source.trim()
+    const target = relation.target.trim()
+    const description = relation.relation.replace(/\s+/gu, ' ').trim()
+    if (!source || !target || source === target || !description) continue
+    if (known.size > 0 && (!known.has(source) || !known.has(target))) continue
+    const key = source + '\u0001' + target
+    if (seen.has(key)) continue
+    seen.add(key)
+    const chapter = latestSharedChapter(entries, source, target)
+    lines.push(language === 'en-US'
+      ? ('- ' + source + ' -> ' + target + ': ' + description + (chapter > 0 ? ' (latest together: ch. ' + chapter + ')' : ''))
+      : ('- ' + source + ' → ' + target + '：' + description + (chapter > 0 ? '（最近共同出场：第 ' + chapter + ' 章）' : '')))
+    if (lines.length >= maxEntries) break
+  }
+  if (lines.length === 0) return ''
+  return language === 'en-US'
+    ? ('[Key character relationships]\n' + lines.join('\n'))
+    : ('【关键人物关系】\n' + lines.join('\n'))
+}
+
 function buildCharacterIndex(entries: readonly OutlineChapterEntry[], names: readonly string[], maxEntries: number, language: WritingLanguage): string {
   if (names.length === 0 || entries.length === 0) return ''
   const lines: string[] = []
@@ -164,6 +214,7 @@ export function buildOutlineRetrievalContext(body: string, options: OutlineRetri
   const recentFull = Math.max(0, Math.floor(options.recentFullChapters ?? DEFAULT_RECENT_FULL_CHAPTERS))
   const maxDigestBlocks = Math.max(2, Math.floor(options.maxDigestBlocks ?? DEFAULT_MAX_DIGEST_BLOCKS))
   const maxCharacterEntries = Math.max(0, Math.floor(options.maxCharacterEntries ?? DEFAULT_MAX_CHARACTER_ENTRIES))
+  const maxRelationEntries = Math.max(0, Math.floor(options.maxRelationEntries ?? DEFAULT_MAX_RELATION_ENTRIES))
 
   const entries = parseOutlineChapters(body)
   const trimmedBody = body.trim()
@@ -225,10 +276,13 @@ export function buildOutlineRetrievalContext(body: string, options: OutlineRetri
     used += lineLength
   }
 
-  const characterIndex = buildCharacterIndex(entries, options.characterNames ?? [], maxCharacterEntries, language)
+  const characterNames = options.characterNames ?? []
+  const characterIndex = buildCharacterIndex(entries, characterNames, maxCharacterEntries, language)
+  const relationIndex = buildRelationIndex(entries, options.characterRelations ?? [], characterNames, maxRelationEntries, language)
   const withDigest = header + digestSection(kept) + recentText
-  const text = (characterIndex && withDigest.length + characterIndex.length + 2 <= budgetChars * 1.15)
-    ? withDigest + '\n' + characterIndex
+  const indexes = [characterIndex, relationIndex].filter(Boolean).join('\n\n')
+  const text = (indexes && withDigest.length + indexes.length + 2 <= budgetChars * 1.2)
+    ? withDigest + '\n' + indexes
     : withDigest
 
   const coveredByDigest = kept.reduce((sum: number, block) => sum + (block.to - block.from + 1), 0)

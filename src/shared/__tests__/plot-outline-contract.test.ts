@@ -5,6 +5,34 @@ import { outlineProgress } from '../plot-outline-checkpoint'
 import type { ProjectCoreSynopsisExpected } from '../../../electron/repositories/project-core-repository'
 import { synopsisForDraftChapter } from '../../services/workflows/commands/generate-draft.command'
 
+describe('plotOutlineRecoveryDraft', () => {
+  const expected = {
+    synopsis: '# 情节大纲\n\n' + [1, 2].map(n => `## 第${n}章：前置${n}\n前置正文${n}。`).join('\n\n') + '\n\n> 本大纲已覆盖至第 2 章（全书 10 章），其余章节将在后续批次继续生成。', premise: '', charactersArch: '', worldbuilding: '', genre: '', totalChapters: 10,
+    wordsPerChapter: 3000, writingLanguage: 'zh-CN' as const, plotStructure: '', narrativePov: '', globalGuidance: '',
+  } satisfies ProjectCoreSynopsisExpected
+  it('没有候选正文时不补空章标题，保证恢复稿可保存', () => {
+    const progress = {
+      protocol: PLOT_OUTLINE_PROTOCOL, range: { from: 3, to: 5 }, content: PLOT_OUTLINE_CONTENT, targetUnits: 600,
+      cursor: { kind: 'request' as const, chapterNumber: 3, attempt: 'normal' as const },
+      confirmedPrefix: '# 情节大纲\n\n' + [1, 2].map(n => `## 第${n}章：前置${n}\n前置正文${n}。`).join('\n\n'), composition: null, sourceExpected: expected,
+    }
+    const draft = plotOutlineRecoveryDraft(progress as never, undefined)
+    expect(draft).not.toMatch(/##\s*第3章：\s*\n\s*$/u)
+    expect(draft.trim()).not.toMatch(/##\s*第\d+章：\s*$/u)
+  })
+
+  it('有候选正文时按正常格式并入恢复稿', () => {
+    const progress = {
+      protocol: PLOT_OUTLINE_PROTOCOL, range: { from: 3, to: 5 }, content: PLOT_OUTLINE_CONTENT, targetUnits: 600,
+      cursor: { kind: 'request' as const, chapterNumber: 3, attempt: 'normal' as const },
+      confirmedPrefix: '', composition: null, sourceExpected: expected,
+    }
+    const draft = plotOutlineRecoveryDraft(progress as never, '## 第3章：真实章节\n这一章有完整正文。')
+    expect(draft).toContain('## 第3章：真实章节')
+    expect(draft).toContain('这一章有完整正文。')
+  })
+})
+
 describe('chapter Markdown outline contract', () => {
   it('作者手动调过章节顺序（1、5、2、3、4）时按范围重写会丢掉第 2 章：判无效，开跑与写回都拒绝', () => {
     const source = { synopsis: `# 情节大纲\n\n${[1, 5, 2, 3, 4].map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}`, totalChapters: 12, writingLanguage: 'zh-CN' as const }

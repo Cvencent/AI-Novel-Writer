@@ -82,6 +82,21 @@ describe('buildOutlineRetrievalContext', () => {
     expect(result.text).toContain('林越：第 1 章 → 第 2 章')
     expect(result.text).toContain('沈星澜：第 2 章 → 第 50 章')
   })
+
+  it('人物关系索引把稳定关系与最近共同出场章节一起注入', () => {
+    const head = '## 第1章：起\n\n林越出场。\n\n## 第2章：承\n\n林越与沈星澜同行。\n\n'
+    const filler = Array.from({ length: 40 }, (_v, i) => '## 第' + (i + 3) + '章：续\n\n' + '填充正文内容用来撑爆预算。'.repeat(20) + '\n').join('\n')
+    const tail = '## 第50章：转\n\n沈星澜独自行动。\n'
+    const result = buildOutlineRetrievalContext(head + filler + tail, {
+      budgetChars: 2400,
+      recentFullChapters: 1,
+      characterNames: ['林越', '沈星澜'],
+      characterRelations: [{ source: '林越', target: '沈星澜', relation: '互相试探的盟友；源核与源族线索交汇' }],
+    })
+    expect(result.text).toContain('【关键人物关系】')
+    expect(result.text).toContain('林越 → 沈星澜：互相试探的盟友；源核与源族线索交汇')
+    expect(result.text).toContain('第 2 章')
+  })
 })
 
 describe('extractCharacterNames', () => {

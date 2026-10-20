@@ -10,6 +10,7 @@ import {
   type ContinuousOutlineProgress,
 } from '../../../services/workflows/continuous-outline-runner'
 import { Button } from '../../ui/Button'
+import { pluralEn } from '../../../shared/plural-en'
 
 /**
  * 连续大纲生成进度面板。
@@ -68,7 +69,7 @@ export default function ContinuousOutlinePanel({ targetUnits }: { targetUnits?: 
         <span className="arch-continuous-fill" style={{ width: percent + '%' }} />
       </div>
       <p className="arch-continuous-meta">
-        {text(`${percent}% · 剩余 ${progress.remainingChapters} 章 · 已完成 ${progress.batchesCompleted} 批`, `${percent}% · ${progress.remainingChapters} chapters left · ${progress.batchesCompleted} batches done`)}
+        {text(`${percent}% · 剩余 ${progress.remainingChapters} 章 · 已完成 ${progress.batchesCompleted} 批`, `${percent}% · ${progress.remainingChapters} ${pluralEn(progress.remainingChapters, 'chapter')} left · ${progress.batchesCompleted} ${pluralEn(progress.batchesCompleted, 'batch', 'batches')} done`)}
         {progress.currentBatch && (
           <span className="arch-continuous-batch">
             {text(`当前批次 第 ${progress.currentBatch.from}–${progress.currentBatch.to} 章（${batchPercent}%）`, `Current batch ch. ${progress.currentBatch.from}-${progress.currentBatch.to} (${batchPercent}%)`)}

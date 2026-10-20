@@ -238,6 +238,21 @@ const ZH_CHAPTER_TITLE_RE = new RegExp(
 )
 const EN_CHAPTER_TITLE_RE = /^[\t ]*(?:#{1,6}[\t ]+|[-*+][\t ]+)?Chapters?[\t ]+(\d+)(?:[\t ]*[–—-][\t ]*(\d+))?(?=[\t ]*(?:[:.：—-]|$))/gimu
 
+function outlineBatchSlice(body: string, from: number, to: number): string {
+  const ranges: Array<{ index: number; start: number; end: number }> = []
+  for (const match of body.matchAll(/^##\s*(?:第\s*(\d+)(?:\s*[-–—]\s*(\d+))?\s*章|Chapter\s+(\d+)(?:\s*[-–—]\s*(\d+))?)[^\n]*$/gmu)) {
+    ranges.push({
+      index: match.index ?? 0,
+      start: Number(match[1] ?? match[3]),
+      end: Number(match[2] ?? match[1] ?? match[4] ?? match[3]),
+    })
+  }
+  const first = ranges.find(range => range.end >= from && range.start <= to)
+  if (!first) return ''
+  const following = ranges.find(range => range.index > first.index && range.start > to)
+  return body.slice(first.index, following?.index ?? body.length).trim()
+}
+
 function parseChapterNumberToken(token: string): number | null {
   if (/^\d+$/u.test(token)) {
     const value = Number(token)
@@ -1876,10 +1891,23 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
 
     // 关键修复：不再把「已完成大纲前缀」全文拼进 prompt（3000 章会长到无法装入上下文）。
     // 改为注入有界的检索式上下文：最近章节保留全文，更早章节压成对数式区间摘要。
+    const rosterForOutline = await ipc.invokeWithProjectSession(
+      projectSession,
+      'db:character-roster-read',
+      expectedProjectPath,
+    ).catch(() => null)
+    const characterNames = rosterForOutline?.entries?.map(entry => entry.name).filter(Boolean)
+      ?? extractCharacterNames(sourceExpected.charactersArch ?? '')
+    const characterRelations = rosterForOutline?.entries?.flatMap(entry => entry.relationships.map(relation => ({
+      source: entry.name,
+      target: relation.target,
+      relation: relation.relation,
+    }))) ?? []
     const outlineContext = confirmedPrefix
       ? buildOutlineRetrievalContext(confirmedPrefix, {
           writingLanguage,
-          characterNames: extractCharacterNames(sourceExpected.charactersArch ?? ''),
+          characterNames,
+          characterRelations,
         })
       : null
     if (outlineContext) {
@@ -2085,6 +2113,31 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     )
     this.assertNotCancelled(context)
 
+    // 本批确认后立即把新章节写入项目检索库。索引失败不回滚已确认大纲，
+    // 也不阻断后续批次；知识库页可显式重建缺失索引。
+    const batchBody = outlineBatchSlice(confirmedBody, from, to)
+    if (batchBody.trim()) {
+      const outlineIndexName = `第${from}–${to}章 情节大纲.md`
+      const indexed = await ipc.invokeWithProjectSession(
+        projectSession,
+        'kb:import-text',
+        batchBody,
+        outlineIndexName,
+        expectedProjectPath,
+      ).catch(() => null)
+      if (indexed?.success) {
+        callbacks.log(text(
+          `已将第 ${from}–${to} 章大纲写入项目检索库（${indexed.chunkCount ?? 0} 段）`,
+          `Indexed chapters ${from}-${to} of the outline into project retrieval (${indexed.chunkCount ?? 0} chunks).`,
+        ))
+      } else {
+        callbacks.log(text(
+          '大纲已保存，但本轮自动入检索库失败；可在知识库页重建索引。',
+          'The outline was saved, but automatic retrieval indexing failed; rebuild it from the knowledge page if needed.',
+        ))
+      }
+    }
+
     // 全书完成的「全流程」运行（前提+角色+世界观+大纲一次做完）才清理检查点文件；
     // 分块/续批运行保留检查点供后续批次与断点续写使用。
     if (to >= totalChapters
@@ -2204,6 +2257,30 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     const committed = await ipc.invokeWithProjectSession(session, 'db:project-core-synopsis-commit', { synopsis, expected: sourceExpected, generationRunHandle: handle }, expectedProjectPath)
     requireIpcSuccess(committed, text('保存完整情节大纲', 'Save the complete plot outline'))
     await saveNavigation(outline, true)
+
+    // 逐章大纲的最终提交路径也自动索引本批，确保自动生成与手动续写行为一致。
+    const indexedBatch = outlineBatchSlice(outline.composition?.text ?? '', outline.range.from, outline.range.to)
+    if (indexedBatch.trim()) {
+      const indexName = `第${outline.range.from}–${outline.range.to}章 情节大纲.md`
+      const indexed = await ipc.invokeWithProjectSession(
+        session,
+        'kb:import-text',
+        indexedBatch,
+        indexName,
+        expectedProjectPath,
+      ).catch(() => null)
+      if (indexed?.success) {
+        callbacks.log(text(
+          `已将第 ${outline.range.from}–${outline.range.to} 章大纲写入项目检索库（${indexed.chunkCount ?? 0} 段）`,
+          `Indexed chapters ${outline.range.from}-${outline.range.to} of the outline into project retrieval (${indexed.chunkCount ?? 0} chunks).`,
+        ))
+      } else {
+        callbacks.log(text(
+          '大纲已保存，但本轮自动入检索库失败；可在知识库页重建索引。',
+          'The outline was saved, but automatic retrieval indexing failed; rebuild it from the knowledge page if needed.',
+        ))
+      }
+    }
     const { globalEventBus } = await import('../../../shared/event-bus')
     globalEventBus.emit('ARCH_FILE_UPDATED', { fileName: 'synopsis.md', projectPath: expectedProjectPath, projectSession: session, runId: context.runId })
     callbacks.log(text(`第 ${outline.range.from}–${outline.range.to} 章大纲已完整保存。`, `The complete outline for chapters ${outline.range.from}-${outline.range.to} was saved.`))
