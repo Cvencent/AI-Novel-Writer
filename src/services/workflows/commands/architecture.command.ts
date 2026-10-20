@@ -1586,6 +1586,8 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         restartHandle?: MainGenerationRunHandle
       /** 本次生成范围 [from..to]；缺省 = 第 1 章到全书（显式覆盖重写）。 */
       synopsisRange?: PlotOutlineChapterRange | null
+      /** 所属粗纲段：提供时注入细纲提示词，并在提交后登记章节归属。 */
+      arcContext?: { arcId: number; rev: number; from: number; to: number; summary: string; beat: string } | null
     } = {},
   ) {
     super(generationDependencies)
@@ -1916,8 +1918,14 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         `  Outline context: ${outlineContext.stats.totalChapters} chapters, ${outlineContext.stats.usedChars} chars injected (budget ${outlineContext.stats.budgetChars})${outlineContext.stats.compacted ? ', earlier chapters compacted' : ''}`,
       ))
     }
+    const arcDirective = this.options.arcContext
+      ? promptLanguageText(writingLanguage,
+          `【所属粗纲段（第 ${this.options.arcContext.from}–${this.options.arcContext.to} 章，形态 ${this.options.arcContext.beat}）】\n本批细纲必须服从这一段的方向与转折，不要改变它的走向：\n${this.options.arcContext.summary}`,
+          `[Owning arc segment (chapters ${this.options.arcContext.from}-${this.options.arcContext.to}, beat ${this.options.arcContext.beat})]\nThis batch must follow the segment's direction and turning points without changing them:\n${this.options.arcContext.summary}`)
+      : ''
     const taskPrompt = [
       promptBuilder.build(),
+      ...(arcDirective ? [arcDirective] : []),
       synopsisBatchInstruction(writingLanguage, from, to, totalChapters, outlineContext?.stats.compacted ?? false),
       confirmedPrefix
         ? (() => {
@@ -2112,6 +2120,19 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       text('故事架构写入数据库失败', 'Failed to write story architecture to the database.'),
     )
     this.assertNotCancelled(context)
+
+    // 本批属于某个粗纲段时，登记章节归属，供粗纲改动后的陈旧判定使用。
+    if (this.options.arcContext) {
+      await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:arc-binding-bind-range',
+        from,
+        to,
+        this.options.arcContext.arcId,
+        this.options.arcContext.rev,
+        expectedProjectPath,
+      ).catch(() => null)
+    }
 
     // 本批确认后立即把新章节写入项目检索库。索引失败不回滚已确认大纲，
     // 也不阻断后续批次；知识库页可显式重建缺失索引。

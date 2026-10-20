@@ -232,7 +232,7 @@ function snapshot() {
   return { expectedProjectPath: projectAPath, novelConfig } as never
 }
 
-function makeCommand(options?: { resumeSynopsis?: boolean; synopsisRange?: { from: number; to: number } }, mainOwned = false) {
+function makeCommand(options?: { resumeSynopsis?: boolean; synopsisRange?: { from: number; to: number }; arcContext?: { arcId: number; rev: number; from: number; to: number; summary: string; beat: string } | null }, mainOwned = false) {
   return new GeneratePlotArchitectureCommand(
     ['synopsis'],
     snapshot(),
@@ -1062,5 +1062,59 @@ describe('GeneratePlotArchitectureCommand 批次状态机', () => {
       synopsis_range: { from: 1, to: 100 },
       synopsis_result: expect.stringContaining('第一章：铁砧镇的学徒') as never,
     }))
+  })
+})
+
+describe('粗纲段接入细纲生成', () => {
+  it('提供 arcContext 时把粗纲段注入提示词', async () => {
+    const body = Array.from({ length: 20 }, (_v, i) =>
+      `第${i + 1}章：核对记录\n周岚核对记录并据此推进调查，确认本章线索的来源。`,
+    ).join('\n\n')
+    useLLMStore.setState({ defaultModelId: 'model-1', generateStream: responseStream([body]) })
+    const harness = harnessWith()
+
+    await makeCommand({
+      synopsisRange: { from: 1, to: 20 },
+      arcContext: { arcId: 7, rev: 2, from: 1, to: 20, summary: '第一段：主角进入学院并觉醒。', beat: 'setup' },
+    }).execute({ step: {}, context, callbacks })
+
+    const prompt = (useLLMStore.getState().generateStream as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]
+      .map((message: { content: string }) => message.content)
+      .join('\n')
+    expect(prompt).toContain('第一段：主角进入学院并觉醒。')
+    expect(prompt).toContain('形态 setup')
+  })
+
+  it('提供 arcContext 时提交后登记章节归属', async () => {
+    const body = Array.from({ length: 20 }, (_v, i) =>
+      `第${i + 1}章：核对记录\n周岚核对记录并据此推进调查，确认本章线索的来源。`,
+    ).join('\n\n')
+    useLLMStore.setState({ defaultModelId: 'model-1', generateStream: responseStream([body]) })
+    const harness = harnessWith()
+
+    await makeCommand({
+      synopsisRange: { from: 1, to: 20 },
+      arcContext: { arcId: 7, rev: 2, from: 1, to: 20, summary: '第一段。', beat: 'setup' },
+    }).execute({ step: {}, context, callbacks })
+
+    const bindCall = harness.invoke.mock.calls.find(([channel]) => channel === 'db:arc-binding-bind-range')
+    expect(bindCall).toBeDefined()
+    expect(bindCall!.slice(1, 5)).toEqual([1, 20, 7, 2])
+  })
+
+  it('不提供 arcContext 时不写绑定且提示词不含粗纲段', async () => {
+    const body = Array.from({ length: 20 }, (_v, i) =>
+      `第${i + 1}章：核对记录\n周岚核对记录并据此推进调查，确认本章线索的来源。`,
+    ).join('\n\n')
+    useLLMStore.setState({ defaultModelId: 'model-1', generateStream: responseStream([body]) })
+    const harness = harnessWith()
+
+    await makeCommand({ synopsisRange: { from: 1, to: 20 } }).execute({ step: {}, context, callbacks })
+
+    expect(harness.invoke.mock.calls.some(([channel]) => channel === 'db:arc-binding-bind-range')).toBe(false)
+    const prompt = (useLLMStore.getState().generateStream as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]
+      .map((message: { content: string }) => message.content)
+      .join('\n')
+    expect(prompt).not.toContain('所属粗纲段')
   })
 })
