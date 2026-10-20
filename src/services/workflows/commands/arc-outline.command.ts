@@ -286,6 +286,12 @@ beat: {beat}
     }
     const names = validateArcNoProperNames(segment.summary, characterNames)
     if (!names.ok) throw new Error('ARC_OUTLINE_PROPER_NAME_FOUND:' + names.found.join(','))
+    // 重写后的 beat 必须仍与相邻段形成形态差异，避免连续同一种推进方式。
+    const adjacentBeats = arcs
+      .filter(arc => arc.arcIndex === target.arcIndex - 1 || arc.arcIndex === target.arcIndex + 1)
+      .map(arc => arc.beat)
+    const diversity = validateBeatDiversity(segment.beat, adjacentBeats)
+    if (!diversity.ok) throw new Error(diversity.code)
 
     const saved = await ipc.invokeWithProjectSession(projectSession, 'db:arc-outline-replace-segment',
       target.arcIndex,

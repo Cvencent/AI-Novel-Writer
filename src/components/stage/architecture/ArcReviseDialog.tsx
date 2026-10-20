@@ -30,10 +30,7 @@ export default function ArcReviseDialog({ scope, arcs, staleChapters, totalChapt
     if (scope.kind === 'arc') {
       const arc = arcs.find(item => item.arcIndex === scope.arcIndex)
       if (!arc) return []
-      // 该段已有过期章节时只重生成过期的；否则整段重生成。
-      if (staleChapters.length > 0) {
-        return staleChapters.filter(chapter => chapter >= arc.fromChapter && chapter <= arc.toChapter)
-      }
+      // 对话式改段会重写整段粗纲，因此影响范围始终是该段全部章节。
       return Array.from({ length: arc.toChapter - arc.fromChapter + 1 }, (_v, i) => arc.fromChapter + i)
     }
     // 从某章之后重来：覆盖该章到全书末尾。
@@ -83,7 +80,15 @@ export default function ArcReviseDialog({ scope, arcs, staleChapters, totalChapt
               )
             : text('没有需要重新生成的章节。', 'No chapters need regeneration.')}
         </span>
-        <span>{text('覆盖前会先保存一份可恢复版本。', 'A recoverable copy is saved before overwriting.')}</span>
+        {staleChapters.length > 0 && (
+          <span>
+            {text(
+              `其中 ${staleChapters.length} 章细纲已因上次粗纲改动标记为过期。`,
+              `${staleChapters.length} chapter outlines are already marked stale from the previous arc change.`,
+            )}
+          </span>
+        )}
+        <span>{text('改粗纲会重写整段，覆盖前会先保存一份可恢复版本。', 'Rewriting an arc segment replaces the whole segment; a recoverable copy is saved before overwriting.')}</span>
       </Notice>
     </InkDialog>
   )

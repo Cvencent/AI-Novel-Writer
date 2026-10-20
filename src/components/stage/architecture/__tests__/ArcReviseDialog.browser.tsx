@@ -62,11 +62,12 @@ describe('ArcReviseDialog', () => {
     expect(textContent).toContain('受影响章号：1、2、3')
   })
 
-  it('存在过期章节时只列过期章号', async () => {
+  it('存在过期章节时提示已有细纲过期，但仍展示整段影响范围', async () => {
     await render({ staleChapters: [3, 4, 5] })
     const textContent = document.body.textContent ?? ''
-    expect(textContent).toContain('将重新生成 3 章')
-    expect(textContent).toContain('3、4、5')
+    expect(textContent).toContain('其中 3 章细纲已因上次粗纲改动标记为过期')
+    expect(textContent).toContain('将重新生成 40 章')
+    expect(textContent).toContain('受影响章号：1、2、3')
   })
 
   it('未填方向时确认按钮禁用', async () => {

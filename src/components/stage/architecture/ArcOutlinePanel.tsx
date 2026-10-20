@@ -56,7 +56,7 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress }
       setFineCovered(fineProgress?.kind === 'partial' ? fineProgress.coveredTo : 0)
     }
     setLoading(false)
-  }, [projectKey, session, fineSource, fineProgress, totalChapters])
+  }, [projectKey, session, fineSource, fineProgress])
 
   // 首次挂载与切换作品时读取粗纲；load 内部只做远端读取后的 setState。
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -240,11 +240,9 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress }
                 <Button variant="text" size="sm" onClick={() => setReviseScope({ kind: 'arc', arcIndex: arc.arcIndex })}>
                   <PencilLine size={13} aria-hidden />{text('改这一段', 'Revise')}
                 </Button>
-                {arc.arcIndex === arcs.length && arcs.length > 0 && (
-                  <Button variant="text" size="sm" onClick={() => setReviseScope({ kind: 'from-chapter', chapterNumber: arcs[arcs.length - 1]!.fromChapter })}>
-                    {text('从本章之后重来', 'Regenerate after this chapter')}
-                  </Button>
-                )}
+                <Button variant="text" size="sm" onClick={() => setReviseScope({ kind: 'from-chapter', chapterNumber: arc.fromChapter })}>
+                  {text('从本章之后重来', 'Regenerate after this chapter')}
+                </Button>
               </li>
             ))}
           </ol>
