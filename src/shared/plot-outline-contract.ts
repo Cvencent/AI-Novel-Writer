@@ -4,6 +4,7 @@ import type { VisibleCompositionReceipt } from './generation-owner-contract'
 import type { MainGenerationRunHandle } from '../services/generation/generation-runtime'
 import type { WritingLanguage } from './writing-language'
 import type { Locale } from '../i18n/types'
+import { buildOutlineRetrievalContext, DEFAULT_OUTLINE_CONTEXT_BUDGET } from './outline-retrieval-context'
 
 export const DEFAULT_PLANNING_ACTION_CHAPTERS = 5
 export const PLANNING_ACTION_CHAPTER_LIMIT = 10
@@ -330,15 +331,52 @@ export function plotOutlineRecoveryDraft(progress: PlotOutlineProgress, failedCa
   return renderPlotOutlineRange(body, { from: progress.range.from, to: Math.min(chapter, progress.range.to) }, progress.sourceExpected)
 }
 
-export function plotOutlineRequestContract(progress: PlotOutlineProgress, chapter: number, attempt: PlotOutlineAttemptKind): string {
+export interface PlotOutlineContextOptions {
+  /** 注入上下文的最大字符数。 */
+  budgetChars?: number
+  /** 最近 N 章保留全文。 */
+  recentFullChapters?: number
+  /** 已知人物名，用于生成人物索引。 */
+  characterNames?: readonly string[]
+}
+
+/**
+ * 构造本次请求注入模型的大纲上下文。
+ *
+ * 关键修复：旧实现把「已接受大纲前缀」全文拼进 prompt，前缀随章数线性增长，
+ * 到 300 章时单次输入约 27 万 token，输出额度被挤空导致必然失败。
+ * 现在改走 buildOutlineRetrievalContext：最近章节保留全文，更早章节压成
+ * 对数式区间摘要，总长度恒定有界；合并与校验仍使用完整前缀（本地计算）。
+ */
+export function plotOutlineContextForPrompt(
+  progress: PlotOutlineProgress,
+  options: PlotOutlineContextOptions = {},
+): { text: string; stats: { totalChapters: number; usedChars: number; compacted: boolean; budgetChars: number } } {
   if (progress.confirmedPrefix === null) throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
-  const prefix = joinPlotOutlineEntries(progress.confirmedPrefix, progress.composition?.text ?? '')
+  const fullPrefix = joinPlotOutlineEntries(progress.confirmedPrefix, progress.composition?.text ?? '')
+  const built = buildOutlineRetrievalContext(fullPrefix, {
+    writingLanguage: progress.sourceExpected.writingLanguage,
+    budgetChars: options.budgetChars ?? DEFAULT_OUTLINE_CONTEXT_BUDGET,
+    recentFullChapters: options.recentFullChapters,
+    characterNames: options.characterNames,
+  })
+  return { text: built.text, stats: built.stats }
+}
+
+export function plotOutlineRequestContract(
+  progress: PlotOutlineProgress,
+  chapter: number,
+  attempt: PlotOutlineAttemptKind,
+  options: PlotOutlineContextOptions = {},
+): string {
+  if (progress.confirmedPrefix === null) throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
+  const contextText = plotOutlineContextForPrompt(progress, options).text
   const english = progress.sourceExpected.writingLanguage === 'en-US'
   return english
-    ? `[Accepted outline prefix]\n${prefix}\n[/Accepted outline prefix]\n\n`
-      + `Write only Chapter ${chapter}, inside the selected range ${progress.range.from}-${progress.range.to}. Use exactly one level-two Markdown heading "## Chapter ${chapter}: Title" with Arabic chapter digits, followed by a non-empty body. No chapter groups, list headings, other chapters, preface, progress line or later overview. ${planningTargetInstruction('outline', progress.targetUnits, progress.sourceExpected.writingLanguage)} Preserve all author facts, required events and ending requirements. Do not rewrite the accepted prefix.`
-      + (attempt === 'compact' ? '\nRebuild this chapter once from the original frozen facts and accepted prefix. The failed candidate is not a source. Produce a complete concise replacement, not a continuation or a cut-off excerpt.' : '')
-    : `【已接受大纲前缀】\n${prefix}\n【已接受大纲前缀结束】\n\n`
-      + `本次只写第 ${chapter} 章，所选范围为第 ${progress.range.from}–${progress.range.to} 章。只用一个二级 Markdown 章标题“## 第${chapter}章：标题”，章号使用阿拉伯数字，标题下一行写非空正文。不得输出章组、列表标题、其他章、开场说明、进度行或后续概览。${planningTargetInstruction('outline', progress.targetUnits, progress.sourceExpected.writingLanguage)}保留作者硬事实、明确事件和尾部要求，不改写已接受前缀。`
-      + (attempt === 'compact' ? '\n本次从原始冻结事实和已接受前缀重新构建此章。失败候选不是来源。输出一份完整简洁的替代大纲，不得续接失败候选或截取其片段。' : '')
+    ? `[Accepted outline context]\n${contextText}\n[/Accepted outline context]\n\n`
+      + `Write only Chapter ${chapter}, inside the selected range ${progress.range.from}-${progress.range.to}. Use exactly one level-two Markdown heading "## Chapter ${chapter}: Title" with Arabic chapter digits, followed by a non-empty body. No chapter groups, list headings, other chapters, preface, progress line or later overview. ${planningTargetInstruction('outline', progress.targetUnits, progress.sourceExpected.writingLanguage)} Preserve all author facts, required events and ending requirements. Do not rewrite the accepted context.`
+      + (attempt === 'compact' ? '\nRebuild this chapter once from the original frozen facts and accepted context. The failed candidate is not a source. Produce a complete concise replacement, not a continuation or a cut-off excerpt.' : '')
+    : `【已接受大纲上下文】\n${contextText}\n【已接受大纲上下文结束】\n\n`
+      + `本次只写第 ${chapter} 章，所选范围为第 ${progress.range.from}–${progress.range.to} 章。只用一个二级 Markdown 章标题“## 第${chapter}章：标题”，章号使用阿拉伯数字，标题下一行写非空正文。不得输出章组、列表标题、其他章、开场说明、进度行或后续概览。${planningTargetInstruction('outline', progress.targetUnits, progress.sourceExpected.writingLanguage)}保留作者硬事实、明确事件和尾部要求，不改写已接受上下文。`
+      + (attempt === 'compact' ? '\n本次从原始冻结事实和已接受上下文重新构建此章。失败候选不是来源。输出一份完整简洁的替代大纲，不得续接失败候选或截取其片段。' : '')
 }
