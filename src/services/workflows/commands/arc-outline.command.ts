@@ -84,7 +84,7 @@ export class GenerateArcOutlineCommand extends BaseWorkflowCommand<string> {
   async execute(params: CommandExecuteParams): Promise<string> {
     return this.executeWithGenerationRuntime('text', params, () => this.executeWithinGeneration(params), {
       authorInputs: [{ id: 'arc:author-config', text: JSON.stringify(this.snapshot.novelConfig) }],
-      operation: 'generate-arc-outline', promptKeys: [], skillStages: ['planning'], output: 'visible-text',
+      operation: 'generate-arc-outline', promptKeys: ['arc_outline'], skillStages: ['planning'], output: 'visible-text',
     })
   }
 
@@ -187,7 +187,7 @@ export class RegenerateArcOutlineSegmentCommand extends BaseWorkflowCommand<stri
         { id: 'arc:author-config', text: JSON.stringify(this.snapshot.novelConfig) },
         { id: 'arc:author-direction', text: this.input.direction },
       ],
-      operation: 'regenerate-arc-outline-segment', promptKeys: [], skillStages: ['planning'], output: 'visible-text',
+      operation: 'regenerate-arc-outline-segment', promptKeys: ['arc_outline'], skillStages: ['planning'], output: 'visible-text',
     })
   }
 
@@ -339,7 +339,7 @@ export class ReverseArcOutlineCommand extends BaseWorkflowCommand<string> {
   async execute(params: CommandExecuteParams): Promise<string> {
     return this.executeWithGenerationRuntime('text', params, () => this.executeWithinGeneration(params), {
       authorInputs: [{ id: 'arc:author-config', text: JSON.stringify(this.snapshot.novelConfig) }],
-      operation: 'reverse-arc-outline', promptKeys: [], skillStages: ['planning'], output: 'visible-text',
+      operation: 'reverse-arc-outline', promptKeys: ['arc_outline'], skillStages: ['planning'], output: 'visible-text',
     })
   }
 

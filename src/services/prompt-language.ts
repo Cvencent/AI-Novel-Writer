@@ -32,6 +32,7 @@ export const CORE_LOCALIZED_BUILTIN_PROMPT_KEYS = Object.freeze([
   'character_dynamics',
   'world_building',
   'synopsis',
+  'arc_outline',
   'chapter_blueprint',
   'chapter_blueprint_chunk',
   'first_chapter_draft',
@@ -294,6 +295,28 @@ Build three connected dimensions, each with a concrete source of conflict:
 2. Make the advantage's interaction with the world rules specific and actionable.
 3. Preserve explicit author facts from the story premise and protagonist profile together with the project-wide guidance. Facts unrelated to world mechanics need not be repeated, but the world must not contradict them.
 4. Return the world-building text only, with no code, analysis, or explanation.`,
+    systemSuffix: `[Author guidance for this step — highest priority when present]
+{{step_guidance}}`,
+  },
+  arc_outline: {
+    systemRole: 'You are a story architect for long-form fiction. Preserve author facts and plan direction and causality only; never write a chapter-by-chapter ledger and never use proper character names.',
+    content: `Plan arc segments for a long novel.
+
+[Authoritative assets]
+- Story premise: {{premise}}
+- World system: {{world_building}}
+- Genre: {{genre}}
+- Total chapters: {{number_of_chapters}}
+
+[Task]
+Split the whole book into arc segments. Each segment states direction only: the main event chain and causality, conflict and cost, turning points and pacing, outcomes and state changes.
+
+[Requirements]
+1. Decide the span yourself from the size of that dramatic proposition: a large proposition earns a long segment, a small one a short segment.
+2. The segment body must never contain any proper character name; use role words such as "the protagonist" or "the rival".
+3. Do not write a chapter-by-chapter ledger.
+4. Segments must connect end to end with no gaps or overlaps.
+5. Return only the arc-outline text, with no explanation or commentary.`,
     systemSuffix: `[Author guidance for this step — highest priority when present]
 {{step_guidance}}`,
   },
