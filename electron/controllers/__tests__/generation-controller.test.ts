@@ -669,7 +669,7 @@ describe('chapter outline command through registered main IPC and formal CAS', (
     expect(commit).toHaveBeenCalledTimes(1)
     expect(ProjectCoreRepository.get()?.synopsis).toBe(f.target)
     expect(f.navigation()).toMatchObject({ synopsis_protocol: PLOT_OUTLINE_PROTOCOL, synopsis_incomplete: false })
-    expect(f.prompts[1]).toContain('本次从原始冻结事实和已接受前缀重新构建此章')
+    expect(f.prompts[1]).toContain('本次从原始冻结事实和已接受上下文重新构建此章')
     for (const prompt of f.prompts) {
       for (const fact of f.facts) expect(prompt.split(fact)).toHaveLength(2)
       expect(prompt).toContain('步骤尾部：最终章必须归还借来的钥匙。')

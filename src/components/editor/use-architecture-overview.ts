@@ -457,6 +457,8 @@ export function useArchitectureOverview(projectKey: string) {
     wordCounts,
     /** 故事前提、世界观、情节大纲的正式内容；角色名单以角色卡为准，不在这里。 */
     contents,
+    /** 正式大纲的来源事实（正文、总章数、写作语言）；供「一次生成全部剩余大纲」等入口判断进度。 */
+    synopsisSource,
     planningRecovery,
     synopsis: {
       progress: synopsisProgress,
