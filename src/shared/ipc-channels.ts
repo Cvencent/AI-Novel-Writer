@@ -50,6 +50,7 @@ import type {
   NarrativeThreadView,
 } from './narrative-thread'
 import type { PlotTreeSnapshot, PlotTreeSourceBundle } from './plot-tree'
+import type { ArcOutlineRecord, ArcOutlineSaveInput } from '../../electron/repositories/arc-outline-repository'
 import type {
   UpdateActionResponse,
   UpdateCheckResponse,
@@ -860,6 +861,30 @@ export interface DatabaseChannels {
   'db:project-core-get': {
     args: [expectedProjectPath: string]
     return: ProjectCoreData | null
+  }
+  'db:arc-outline-list': {
+    args: [expectedProjectPath: string]
+    return: ArcOutlineRecord[]
+  }
+  'db:arc-outline-save': {
+    args: [input: ArcOutlineSaveInput, expectedProjectPath: string]
+    return: { success: boolean; record?: ArcOutlineRecord; error?: string }
+  }
+  'db:arc-outline-confirm': {
+    args: [arcIndex: number, expectedRevision: number, expectedProjectPath: string]
+    return: { success: boolean; record?: ArcOutlineRecord; error?: string }
+  }
+  'db:arc-outline-revise': {
+    args: [arcIndex: number, expectedRevision: number, summary: string, expectedProjectPath: string]
+    return: { success: boolean; record?: ArcOutlineRecord; error?: string }
+  }
+  'db:arc-outline-stale-list': {
+    args: [expectedProjectPath: string]
+    return: number[]
+  }
+  'db:arc-binding-bind-range': {
+    args: [chapterFrom: number, chapterTo: number, arcId: number, arcRevision: number, expectedProjectPath: string]
+    return: { success: boolean; count?: number; error?: string }
   }
   'db:project-core-update': {
     args: [data: Partial<ProjectCoreData>, expectedProjectPath: string]

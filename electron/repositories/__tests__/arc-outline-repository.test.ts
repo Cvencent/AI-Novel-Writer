@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { closeProjectDatabase } from '../../database'
 import { openCanonicalProjectFixture } from '../../../test/helpers/canonical-project-fixture'
-import { ArcOutlineRepository } from '../arc-outline-repository'
+import { ArcOutlineRepository, type ArcBeat } from '../arc-outline-repository'
 
 let projectRoot = ''
 
@@ -19,7 +19,7 @@ afterEach(() => {
   fs.rmSync(projectRoot, { recursive: true, force: true })
 })
 
-const arc = (arcIndex: number, fromChapter: number, toChapter: number, beat = 'setup' as const) => ({
+const arc = (arcIndex: number, fromChapter: number, toChapter: number, beat: ArcBeat = 'setup') => ({
   arcIndex, fromChapter, toChapter, title: `第${arcIndex}段`, summary: `第${arcIndex}段走向`, beat,
 })
 

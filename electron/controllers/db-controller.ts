@@ -1,6 +1,8 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { isProjectSessionContext } from '../../src/shared/project-session-context'
 import { closeProjectDatabase, getCurrentProjectPath, getProjectDb } from '../database'
+import { ArcOutlineRepository } from '../repositories/arc-outline-repository'
+import { OutlineSegmentBindingRepository } from '../repositories/outline-segment-binding-repository'
 import type { MainGenerationRunHandle } from '../../src/services/generation/generation-runtime'
 import { assertGenerationSourcesCurrent, assertGenerationSynopsisCommit, commitGenerationPlotOutlineAuthorEdit, commitGenerationBlueprintAuthorEdit, assertImportGenerationSourcesCurrent, recordGenerationDirectoryCommit, withGenerationAgentChildEffect } from './generation-controller'
 import { projectAccess } from '../services/project-access'
@@ -123,6 +125,10 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:narrative-thread-event-confirm',
   'db:plot-tree-save',
   'db:plot-tree-clear',
+  'db:arc-outline-save',
+  'db:arc-outline-confirm',
+  'db:arc-outline-revise',
+  'db:arc-binding-bind-range',
 ])
 
 function registerProjectDatabaseHandler(channel: string, handler: ProjectDatabaseHandler): void {
@@ -158,6 +164,47 @@ export function registerDatabaseController() {
   ipcMain.handle('db:project-core-get', async (_event, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return ProjectCoreRepository.get()
+  })
+
+  // ============================================================
+  // 1b. arc_outlines — 粗纲与章节归属
+  // ============================================================
+  ipcMain.handle('db:arc-outline-list', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return ArcOutlineRepository.list()
+  })
+
+  ipcMain.handle('db:arc-outline-save', async (_event, input, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, record: ArcOutlineRepository.save(input) }
+    } catch (error) { return { success: false, error: String(error) } }
+  })
+
+  ipcMain.handle('db:arc-outline-confirm', async (_event, arcIndex: number, expectedRevision: number, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, record: ArcOutlineRepository.confirm(arcIndex, expectedRevision) }
+    } catch (error) { return { success: false, error: String(error) } }
+  })
+
+  ipcMain.handle('db:arc-outline-revise', async (_event, arcIndex: number, expectedRevision: number, summary: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, record: ArcOutlineRepository.revise(arcIndex, expectedRevision, summary) }
+    } catch (error) { return { success: false, error: String(error) } }
+  })
+
+  ipcMain.handle('db:arc-outline-stale-list', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return OutlineSegmentBindingRepository.listStale()
+  })
+
+  ipcMain.handle('db:arc-binding-bind-range', async (_event, chapterFrom: number, chapterTo: number, arcId: number, arcRevision: number, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, count: OutlineSegmentBindingRepository.bindRange(chapterFrom, chapterTo, arcId, arcRevision) }
+    } catch (error) { return { success: false, error: String(error) } }
   })
 
   ipcMain.handle('db:project-core-update', async (
