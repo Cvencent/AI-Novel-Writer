@@ -12,10 +12,16 @@ const PAGE_TABS: Partial<Record<WorkStage | ResourcePage, (text: Text) => void>>
   blueprint: text => openBuiltinEditor('chapter-card-editor', text('章节蓝图', 'Chapter blueprint'), 'chapter-card'),
   plot: text => openBuiltinEditor('narrative-thread-editor', text('剧情树与叙事线索', 'Plot tree & narrative threads'), 'narrative-thread', 'plot-tree'),
   history: text => openBuiltinEditor('version-history', text('版本历史', 'Version history'), 'version-history'),
+  logs: text => openPageTabLogs(text),
   setup: text => {
     const projectKey = useProjectStore.getState().currentProject?.path
     if (projectKey) useEditorStore.getState().openFile({ id: 'config', name: text('小说配置', 'Novel configuration'), type: 'config', projectKey })
   },
+}
+
+function openPageTabLogs(text: Text): void {
+  const projectKey = useProjectStore.getState().currentProject?.path
+  if (projectKey) useEditorStore.getState().openFile({ id: 'generation-logs', name: text('日志', 'Logs'), type: 'generation-logs', projectKey })
 }
 
 export function openPageTab(page: WorkStage | ResourcePage): void {

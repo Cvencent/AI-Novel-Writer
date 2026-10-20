@@ -197,6 +197,7 @@ const TAB_LOCATION: Record<EditorTab['type'], StageLocation> = {
   'narrative-thread': { kind: 'resource', page: 'plot' },
   knowledge: { kind: 'resource', page: 'knowledge' },
   'version-history': { kind: 'resource', page: 'history' },
+  'generation-logs': { kind: 'resource', page: 'logs' },
 }
 
 /** 当前标签属于哪个阶段或资料页；正文类标签带上章号。 */

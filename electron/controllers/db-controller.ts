@@ -5,6 +5,7 @@ import { ArcOutlineRepository } from '../repositories/arc-outline-repository'
 import { OutlineSegmentBindingRepository } from '../repositories/outline-segment-binding-repository'
 import { OutlineSummaryRepository } from '../repositories/outline-summary-repository'
 import { OutlineCharacterStateRepository } from '../repositories/outline-character-state-repository'
+import { GenerationLogRepository } from '../repositories/generation-log-repository'
 import type { MainGenerationRunHandle } from '../../src/services/generation/generation-runtime'
 import { assertGenerationSourcesCurrent, assertGenerationSynopsisCommit, commitGenerationPlotOutlineAuthorEdit, commitGenerationBlueprintAuthorEdit, assertImportGenerationSourcesCurrent, recordGenerationDirectoryCommit, withGenerationAgentChildEffect } from './generation-controller'
 import { projectAccess } from '../services/project-access'
@@ -202,6 +203,16 @@ export function registerDatabaseController() {
   ipcMain.handle('db:arc-outline-stale-list', async (_event, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return OutlineSegmentBindingRepository.listStale()
+  })
+
+  ipcMain.handle('db:generation-log-list', async (_event, limit: number, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return GenerationLogRepository.list(limit)
+  })
+
+  ipcMain.handle('db:generation-log-read', async (_event, attemptId: string, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return GenerationLogRepository.read(attemptId)
   })
 
   ipcMain.handle('db:outline-character-state-apply', async (_event, patch, expectedProjectPath: string) => {

@@ -169,6 +169,7 @@ export default function StageShell({ theme }: { theme: Theme }) {
             onChapter={chapterNumber => navigate({ kind: 'chapter', chapterNumber })}
             onResource={page => navigate({ kind: 'resource', page })}
             onSettings={() => navigate({ kind: 'settings', section: 'llm' })}
+            onLogs={() => navigate({ kind: 'resource', page: 'logs' })}
           />
         )}
         <StageWorkspace library={library} focus={focus} />

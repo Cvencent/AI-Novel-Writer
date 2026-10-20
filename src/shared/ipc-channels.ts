@@ -890,6 +890,14 @@ export interface DatabaseChannels {
     args: [patch: { characterName: string; chapterNumber: number; recentEvents: string; location?: string; keyItems?: string }, expectedProjectPath: string]
     return: { success: boolean; applied?: boolean; error?: string }
   }
+  'db:generation-log-list': {
+    args: [limit: number, expectedProjectPath: string]
+    return: import('../../electron/repositories/generation-log-repository').ModelCallSummary[]
+  }
+  'db:generation-log-read': {
+    args: [attemptId: string, expectedProjectPath: string]
+    return: import('../../electron/repositories/generation-log-repository').ModelCallDetail | null
+  }
   'db:outline-summary-list-before': {
     args: [chapterNumber: number, limit: number, expectedProjectPath: string]
     return: import('../../electron/repositories/outline-summary-repository').OutlineChapterSummary[]

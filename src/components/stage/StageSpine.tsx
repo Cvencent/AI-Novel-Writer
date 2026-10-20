@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
-import { Check, CircleDashed, GitBranch, History, Library, Settings, type LucideIcon } from 'lucide-react'
+import { Check, CircleDashed, GitBranch, History, Library, ScrollText, Settings, type LucideIcon } from 'lucide-react'
 import { useLocaleStore } from '../../stores/locale-store'
 import type { ResourcePage, WorkStage } from '../../stores/navigation/navigation-intents'
 import { chapterLabel } from '../../shared/chapter-label'
@@ -10,7 +10,7 @@ import { pluralEn } from '../../shared/plural-en'
 
 type Text = (zh: string, en: string) => string
 
-const RESOURCE_ICONS: Record<ResourcePage, LucideIcon> = { plot: GitBranch, knowledge: Library, history: History }
+const RESOURCE_ICONS: Record<ResourcePage, LucideIcon> = { plot: GitBranch, knowledge: Library, history: History, logs: ScrollText }
 
 /** 未开始时说明这一步做什么，开始后给出进度。 */
 function stageMeta(status: StageStatus, text: Text): string {
@@ -56,9 +56,12 @@ interface StageSpineProps {
   /** 设置页开着时只有「设置」是当前位置。 */
   settingsOpen?: boolean
   onSettings: () => void
+  /** 日志页与设置平级。入口为可选项，未传时不渲染该行。 */
+  logsOpen?: boolean
+  onLogs?: () => void
 }
 
-export default function StageSpine({ stages, chapters, location: activeLocation, settingsOpen, onStage, onChapter, onResource, onSettings }: StageSpineProps) {
+export default function StageSpine({ stages, chapters, location: activeLocation, settingsOpen, onStage, onChapter, onResource, onSettings, logsOpen, onLogs }: StageSpineProps) {
   const location = settingsOpen ? null : activeLocation
   const text = useLocaleStore(s => s.text)
   const currentStage = location?.kind === 'stage' ? location.stage : null
@@ -116,7 +119,7 @@ export default function StageSpine({ stages, chapters, location: activeLocation,
 
       <div className="stage-spine-label stage-spine-label--resources" aria-hidden="true">{text('作品资料', 'Reference')}</div>
       <ul className="stage-resources" aria-label={text('作品资料', 'Reference')}>
-        {(Object.keys(RESOURCE_NAMES) as ResourcePage[]).map(page => {
+        {(Object.keys(RESOURCE_NAMES) as ResourcePage[]).filter(page => page !== 'logs').map(page => {
           const Icon = RESOURCE_ICONS[page]
           return row(page, location?.kind === 'resource' && location.page === page, () => onResource(page), <>
             <Icon className="stage-row-icon" size={16} strokeWidth={1.75} aria-hidden="true" />
@@ -126,6 +129,12 @@ export default function StageSpine({ stages, chapters, location: activeLocation,
       </ul>
 
       <div className="stage-spine-foot">
+        {onLogs && (
+          <button type="button" className="stage-row" aria-current={logsOpen ? 'page' : undefined} onClick={onLogs}>
+            <ScrollText className="stage-row-icon" size={16} strokeWidth={1.75} aria-hidden="true" />
+            <span className="stage-row-label">{text('日志', 'Logs')}</span>
+          </button>
+        )}
         <button type="button" className="stage-row" aria-current={settingsOpen ? 'page' : undefined} onClick={onSettings}>
           <Settings className="stage-row-icon" size={16} strokeWidth={1.75} aria-hidden="true" />
           <span className="stage-row-label">{text('设置', 'Settings')}</span>

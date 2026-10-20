@@ -19,6 +19,7 @@ import StageLibrary from './library/StageLibrary'
 import { SettingsPage, SetupPage } from './stage-pages'
 import StageHistory from './history/StageHistory'
 import StageKnowledge from './knowledge/StageKnowledge'
+import StageLogs from './logs/StageLogs'
 import StagePlot from './plot/StagePlot'
 import StageTabMenu, { CloseTabsConfirm } from './StageTabMenu'
 import StageTabs from './StageTabs'
@@ -48,6 +49,7 @@ function TabContent({ tab, project }: { tab: EditorTab; project: ProjectData }) 
   }
   if (tab.type === 'version-history' && sameProject) return <StageHistory projectKey={project.path} />
   if (tab.type === 'knowledge' && sameProject) return <StageKnowledge tabId={tab.id} />
+  if (tab.type === 'generation-logs' && sameProject) return <StageLogs />
   if (tab.type === 'narrative-thread' && sameProject) {
     return <StagePlot projectKey={project.path} initialView={tab.narrativeThreadView ?? 'plans'} viewRequest={tab.narrativeThreadViewRequest} />
   }
