@@ -56,3 +56,77 @@ export function validateBeatDiversity(beat: ArcBeat, recentBeats: readonly ArcBe
   if (tail.length < window) return { ok: true }
   return tail.every(item => item === beat) ? { ok: false, code: 'ARC_BEAT_REPEATED' } : { ok: true }
 }
+
+/** 模型返回的粗纲段（未落库前的解析结果）。 */
+export interface ParsedArcSegment {
+  fromChapter: number
+  toChapter: number
+  title: string
+  beat: ArcBeat
+  summary: string
+}
+
+export type ArcParseIssue =
+  | 'ARC_PARSE_NO_SEGMENT'
+  | 'ARC_PARSE_MISSING_BEAT'
+  | 'ARC_PARSE_ILLEGAL_BEAT'
+  | 'ARC_PARSE_EMPTY_SUMMARY'
+  | 'ARC_PARSE_BAD_HEADING'
+
+export type ArcParseResult =
+  | { ok: true; segment: ParsedArcSegment }
+  | { ok: false; code: ArcParseIssue }
+
+const ARC_HEADING = /^#{1,4}\s*第\s*(\d+)\s*[–—~-]\s*(\d+)\s*章\s*[:：]\s*(.*)$/u
+const ARC_SINGLE_HEADING = /^#{1,4}\s*第\s*(\d+)\s*章\s*[:：]\s*(.*)$/u
+
+/**
+ * 解析模型返回的单个粗纲段。要求：
+ *   ## 第{from}–{to}章：{标题}
+ *   beat: {beat}
+ *   {正文}
+ */
+export function parseArcSegment(text: string): ArcParseResult {
+  const lines = text.replace(/\r\n?/gu, '\n').split('\n')
+  let fromChapter = -1
+  let toChapter = -1
+  let title = ''
+  let beat: ArcBeat | null = null
+  const body: string[] = []
+  let sawHeading = false
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim()
+    if (!sawHeading) {
+      if (!line) continue
+      const range = ARC_HEADING.exec(line)
+      if (range) {
+        fromChapter = Number(range[1]); toChapter = Number(range[2]); title = (range[3] ?? '').trim()
+        sawHeading = true
+        continue
+      }
+      const single = ARC_SINGLE_HEADING.exec(line)
+      if (single) {
+        fromChapter = Number(single[1]); toChapter = Number(single[1]); title = (single[2] ?? '').trim()
+        sawHeading = true
+        continue
+      }
+      return { ok: false, code: 'ARC_PARSE_BAD_HEADING' }
+    }
+    if (!line) { body.push(''); continue }
+    const beatMatch = /^beat\s*[:：]\s*(\S+)\s*$/iu.exec(line)
+    if (beatMatch && beat === null) {
+      const candidate = beatMatch[1]!.toLowerCase()
+      if (!(ARC_BEATS as readonly string[]).includes(candidate)) return { ok: false, code: 'ARC_PARSE_ILLEGAL_BEAT' }
+      beat = candidate as ArcBeat
+      continue
+    }
+    body.push(rawLine)
+  }
+
+  if (!sawHeading) return { ok: false, code: 'ARC_PARSE_NO_SEGMENT' }
+  if (beat === null) return { ok: false, code: 'ARC_PARSE_MISSING_BEAT' }
+  const summary = body.join('\n').trim()
+  if (!summary) return { ok: false, code: 'ARC_PARSE_EMPTY_SUMMARY' }
+  return { ok: true, segment: { fromChapter, toChapter, title, beat, summary } }
+}
