@@ -594,6 +594,26 @@ describe('GeneratePlotArchitectureCommand 批次状态机', () => {
     expect(harness.partialWrites.at(-1)).toMatchObject({ synopsis_covered_to: 100, synopsis_incomplete: false })
   })
 
+  it('主进程逐章路径提交后写入章节摘要与粗纲归属', async () => {
+    useLLMStore.setState({ defaultModelId: '合成模型' })
+    const prefixBody = `第1–10章：已确认前缀\n${'林舟依据税册追查并守住家人，行动和后果按章节连续。'.repeat(5)}`
+    const dbOutline = `# 情节大纲\n\n${prefixBody}\n\n> 本大纲已覆盖至第 10 章（全书 100 章），其余章节将在后续批次继续生成。`
+    const nextSegment = `## 第11章：新线索\n林舟在旧仓库发现账册。\n\n## 第12章：追查\n林舟顺着账册追到码头。\n\n${progressLine(11, 12, 100)}`
+    const harness = harnessWith({ synopsis_result: prefixBody, synopsis_covered_to: 10, synopsis_range: { from: 1, to: 10 }, synopsis_facts_fingerprint: currentFingerprint({ from: 1, to: 10 }), synopsis_db_hash: dbHashOf(dbOutline), synopsis_step_guidance: '' }, dbOutline)
+    mainOwnedResponses(harness, nextSegment)
+
+    await makeCommand({
+      synopsisRange: { from: 11, to: 12 },
+      arcContext: { arcId: 42, rev: 3, from: 11, to: 12, summary: '主角追查账册真相。', beat: 'escalation' },
+    }, true).execute({ step: {}, context, callbacks })
+
+    const summarySaves = harness.invoke.mock.calls.filter(([channel]) => channel === 'db:outline-summary-save')
+    expect(summarySaves.length).toBeGreaterThanOrEqual(2)
+    const bind = harness.invoke.mock.calls.find(([channel]) => channel === 'db:arc-binding-bind-range')
+    expect(bind).toBeDefined()
+    expect(bind!.slice(1, 5)).toEqual([11, 12, 42, 3])
+  })
+
   it('主进程新续批零进展失败时 CAS 恢复旧可用检查点', async () => {
     useLLMStore.setState({ defaultModelId: '合成模型' })
     const prefixBody = `第1–20章：已确认前缀\n${'林舟依据税册追查并守住家人，行动和后果按章节连续。'.repeat(5)}`

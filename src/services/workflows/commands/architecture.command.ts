@@ -2409,6 +2409,37 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         ))
       }
     }
+    // 主进程逐章生成路径同样要写连贯性记忆与粗纲归属，否则粗纲改动
+    // 无法把这些章节判为 stale，后续批次也读不到章节摘要。
+    await (async () => {
+      const batchBody = outline.composition?.text ?? ''
+      const roster = await ipc.invokeWithProjectSession(session, 'db:character-roster-read', expectedProjectPath).catch(() => null)
+      const names = roster?.entries?.map((entry: { name: string }) => entry.name).filter(Boolean) ?? []
+      const chapterBlocks = batchBody.split(/^(?=#{0,4}\s*第\s*\d+\s*章)/mu).filter(Boolean)
+      for (const raw of chapterBlocks) {
+        const block = raw.startsWith('## ') ? raw : '## ' + raw
+        const { chapterNumber } = splitChapterBlock(block)
+        if (chapterNumber === null || chapterNumber < outline.range.from || chapterNumber > outline.range.to) continue
+        const digest = extractChapterDigest(block, names)
+        if (!digest.chapterNotes) continue
+        for (const name of digest.characterNames) {
+          await ipc.invokeWithProjectSession(session, 'db:outline-character-state-apply', {
+            characterName: name, chapterNumber, recentEvents: digest.chapterNotes,
+          }, expectedProjectPath).catch(() => null)
+        }
+        await ipc.invokeWithProjectSession(session, 'db:outline-summary-save', {
+          chapterNumber, chapterNotes: digest.chapterNotes,
+          characterStates: JSON.stringify({ characters: digest.characterNames }),
+          continuityFacts: digest.continuityFacts,
+        }, expectedProjectPath).catch(() => null)
+      }
+      if (this.options.arcContext) {
+        await ipc.invokeWithProjectSession(session, 'db:arc-binding-bind-range',
+          outline.range.from, outline.range.to,
+          this.options.arcContext.arcId, this.options.arcContext.rev,
+          expectedProjectPath).catch(() => null)
+      }
+    })().catch(() => null)
     const { globalEventBus } = await import('../../../shared/event-bus')
     globalEventBus.emit('ARCH_FILE_UPDATED', { fileName: 'synopsis.md', projectPath: expectedProjectPath, projectSession: session, runId: context.runId })
     callbacks.log(text(`第 ${outline.range.from}–${outline.range.to} 章大纲已完整保存。`, `The complete outline for chapters ${outline.range.from}-${outline.range.to} was saved.`))

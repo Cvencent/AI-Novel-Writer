@@ -58,6 +58,36 @@ describe('GenerationLogRepository', () => {
     expect(detail.output).toBe('粗纲输出文本')
   })
 
+  it('解析工具调用的名称、参数与返回内容', () => {
+    const db = getProjectDb()!
+    db.prepare(`INSERT INTO generation_roots (root_action_id, idempotency_key, action_json, budget_json)
+      VALUES ('root-tool', 'idem-tool', '{}', '{}')`).run()
+    db.prepare(`INSERT INTO generation_runs (run_id, root_action_id, binding_json, status, created_at_ms, open_key)
+      VALUES ('run-tool', 'root-tool', '{}', 'completed', 1, 'open-tool')`).run()
+    const messages = [
+      { role: 'system', content: '系统' },
+      { role: 'user', content: '写细纲' },
+      { role: 'assistant', content: '<tool_call>{"name":"create_character","arguments":{"name":"新角色"}}</tool_call>' },
+      { role: 'user', content: '<tool_result name="create_character">\n已新增角色「新角色」。\n</tool_result>' },
+      { role: 'assistant', content: '## 第1章：开头\n正文。' },
+    ]
+    db.prepare(`INSERT INTO generation_attempts (attempt_id, reservation_id, run_id, root_action_id, attempt_json, usage_receipt_json, invocation_nonce)
+      VALUES ('a-tool', 'res-tool', 'run-tool', 'root-tool', ?, ?, 'nonce-tool')`).run(
+      JSON.stringify({ attemptId: 'a-tool', status: 'settled', requestedOutputTokens: 8192 }),
+      JSON.stringify({ purpose: 'plot-outline:chapter:1', modelId: 'test-model', replayTask: { messages }, artifactIdentity: { artifactId: 'art-tool' } }),
+    )
+    db.prepare(`INSERT INTO generation_artifacts (artifact_id, attempt_id, run_id, artifact_json, revision, status)
+      VALUES ('art-tool', 'a-tool', 'run-tool', ?, 1, 'settled')`).run(JSON.stringify({ text: '## 第1章：开头\n正文。' }))
+
+    const detail = GenerationLogRepository.read('a-tool')!
+    expect(detail.toolCalls).toHaveLength(1)
+    expect(detail.toolCalls[0]).toMatchObject({
+      name: 'create_character',
+      arguments: { name: '新角色' },
+      result: '已新增角色「新角色」。',
+    })
+  })
+
   it('未知 attemptId 返回 null', () => {
     expect(GenerationLogRepository.read('missing')).toBeNull()
   })
