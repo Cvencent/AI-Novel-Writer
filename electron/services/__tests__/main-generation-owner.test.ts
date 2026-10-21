@@ -513,7 +513,9 @@ describe('explicit planning recovery with real SQLite', () => {
     const repository = new GenerationRunRepository(() => f.db)
     repository.pause(run.handle.rootActionId)
 
-    expect(f.owner.list().find(view => view.handle.runId === run.handle.runId)?.plotOutline?.cursor).toEqual({ kind: 'stopped', chapterNumber: 4, reason: 'source-invalid' })
+    // 列表只回句柄与元数据；完整视图（含 plotOutline）按需走 read。
+    expect(f.owner.list().find(view => view.handle.runId === run.handle.runId)?.operation).toBe('generate-plot-outline')
+    expect(f.owner.read(run.handle).plotOutline?.cursor).toEqual({ kind: 'stopped', chapterNumber: 4, reason: 'source-invalid' })
     const context = f.owner.readContext(run.handle)
     expect(context.plotOutlineRecovery).toMatchObject({ draft: outlineEntry(3), writeState: { kind: 'blocked', reason: 'source-invalid' } })
     expect(context.planningContinuation?.state).toBe('source-invalid')
@@ -1940,7 +1942,7 @@ describe('main generation owner with actual SQLite and provider adapter', () => 
     expect(JSON.stringify(f.db.prepare('SELECT artifact_json FROM generation_artifacts').all())).not.toContain('隐藏')
     await f.owner.execute({ handle: view.handle, invocationNonce: 'call', task })
     expect(fetch).toHaveBeenCalledTimes(1)
-    expect(f.owner.list()[0].ledger?.physicalRequests).toBe(1)
+    expect(f.owner.read(view.handle).ledger?.physicalRequests).toBe(1)
   })
   it('retains safe stream diagnostics through the owner, SQLite reopen and snapshot IPC without retry', async () => {
     const snapshots: import('../../../src/services/generation/generation-runtime').MainGenerationSnapshot[] = []

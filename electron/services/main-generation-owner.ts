@@ -4,7 +4,7 @@ import { isDeepStrictEqual } from 'node:util'
 import type { BeginGenerationRequest, ExecuteGenerationRequest, BeginGenerationBatchRequest, GenerationDraftCommitRequest, GenerationRecoveryContext, MaterialDecisionReceipt, VisibleCompositionAlgorithm, GenerationOwnerChannels, ShortOutlineRetry, PlanningContinuation } from '../../src/shared/generation-owner-contract'
 import { isDraftVisibleTextVersion } from '../../src/shared/draft-visible-text'
 import { generationOutputContract, type GenerationAuthorInput } from '../../src/shared/generation-owner-contract'
-import type { MainGenerationExecuteReceipt, MainGenerationRunHandle, MainGenerationRunView, MainGenerationSnapshot } from '../../src/services/generation/generation-runtime'
+import type { MainGenerationExecuteReceipt, MainGenerationRunHandle, MainGenerationRunSummary, MainGenerationRunView, MainGenerationSnapshot } from '../../src/services/generation/generation-runtime'
 import type { ModelProfile, ModelExecutionLeaseReceipt, LLMFinishReason } from '../../src/shared/ipc-channels'
 import type { CreativeStrategy } from '../../src/shared/reasoning-types'
 import { tokenLiability } from '../../src/shared/generation-contract'
@@ -154,9 +154,19 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     const row = deps.database.prepare('SELECT usage_receipt_json FROM generation_attempts WHERE attempt_id=?').pluck().get(attemptId) as string | undefined
     return row ? String(JSON.parse(row).purpose ?? 'unknown') : 'unknown'
   }
-  const runAttempts = (runId: string) => (deps.database.prepare('SELECT attempt_id,invocation_nonce,attempt_json,usage_receipt_json FROM generation_attempts WHERE run_id=? ORDER BY rowid').all(runId) as { attempt_id: string; invocation_nonce: string; attempt_json: string; usage_receipt_json: string }[])
-    .map(row => ({ attemptId: row.attempt_id, invocationNonce: row.invocation_nonce, status: String(JSON.parse(row.attempt_json).status),
-      purpose: String(JSON.parse(row.usage_receipt_json).purpose ?? 'unknown') }))
+  /**
+   * 一个 run 的 attempt 摘要：id / nonce / 状态 / 阶段。
+   *
+   * 四列全都让 SQLite 投影：status 与 purpose 各只从 JSON 里取一个标量。
+   * 直接把两整份 JSON 读进来再 parse，会把该 run 的完整提示词搬进内存——全库这条
+   * 路径是 350MB 级别的搬运，而调用方要的只是一个状态枚举。
+   */
+  const runAttempts = (runId: string) => (deps.database.prepare(`SELECT attempt_id,invocation_nonce,
+      json_extract(attempt_json,'$.status') AS status,
+      json_extract(usage_receipt_json,'$.purpose') AS purpose
+    FROM generation_attempts WHERE run_id=? ORDER BY rowid`).all(runId) as { attempt_id: string; invocation_nonce: string; status: string | null; purpose: string | null }[])
+    .map(row => ({ attemptId: row.attempt_id, invocationNonce: row.invocation_nonce, status: String(row.status),
+      purpose: String(row.purpose ?? 'unknown') }))
   const readFailedShortOutlineTask = (run: DurableGenerationRun, failedAttemptId: string): GenerationTask => {
     const decision = run.binding.sourceManifest.materialDecision as MaterialDecisionReceipt | undefined
     const first = runAttempts(run.runId)[0]
@@ -208,6 +218,19 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     }
     return null
   }
+  /**
+   * 本 run 最后一个可见候选的文本。
+   *
+   * 与 viewOf 的 candidates 保持同一取舍：内存里这次会话刚流出来的候选优先于库里的旧快照，
+   * 但只取该 run 自己的 attempt，不把整份账本与正文重拼一遍。
+   */
+  const visibleCandidatesForRun = (run: DurableGenerationRun): { attemptId: string; text: string }[] =>
+    runAttempts(run.runId).flatMap(attempt => {
+      const artifact = volatileReceipts.get(attempt.attemptId)?.artifact
+        ?? repository.receiptForDisplay(attempt.attemptId, repository.budget(run.rootActionId))?.artifact
+      return artifact ? [{ attemptId: artifact.attemptId, text: artifact.text }] : []
+    })
+  const lastCandidateText = (run: DurableGenerationRun): string => visibleCandidatesForRun(run).at(-1)?.text ?? ''
   const shortOutlineContext = (run: DurableGenerationRun): GenerationRecoveryContext['draftShortOutline'] => {
     const decision = run.binding.sourceManifest.materialDecision as MaterialDecisionReceipt | undefined
     if (!decision?.shortOutlinePromptHash) return undefined
@@ -292,10 +315,40 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
         activeElapsedMs: budget.activeElapsedMs, blockedCode: budget.blockedCode }, artifacts, candidates,
       unsavedTails: service.readUnsavedTails().filter(tail => budget.attempts.some(attempt => attempt.attemptId === tail.attemptId)) }
   }
+  /**
+   * 运行列表。
+   *
+   * 调用方（运行侧页、蓝图恢复、剧情树、日志）要的都是**句柄与元数据**：
+   * 运行 id / 根 id / 操作名 / 状态。过去这里对每个 run 都调一遍 viewOf()，
+   * 而 viewOf 会水合该 run 的全部 attempt、重拼可见正文并算哈希、解析整份
+   * binding_json；作品写到几百章以后，历史 run 一多，一次列表就是几秒。
+   *
+   * 现在只做一次投影查询：operation 与 status 都由 SQLite 从 JSON 里取，
+   * 不把 binding_json 或 usage_receipt_json 搬进内存。
+   * 需要完整视图的调用方仍然走 repository.readRunView / generation:read。
+   */
+  /**
+   * 列表条目的组装：只碰已经投影出来的四列，不读 binding_json、不读 usage_receipt_json、
+   * 不水合 attempt、不重拼正文。列出的 run 数与内存占用都只跟「有几个 run」有关，
+   * 与每个 run 存了多少提示词无关。
+   */
+  const listViewOf = (row: { run_id: string; root_action_id: string; status: string; project_id: string; epoch: string; operation: string | null }): MainGenerationRunSummary => ({
+    handle: { projectId: row.project_id, epoch: row.epoch, rootActionId: row.root_action_id, runId: row.run_id },
+    status: row.status as MainGenerationRunView['status'],
+    operation: row.operation,
+  })
   const list = () => {
     assertCurrent()
-    const rows = deps.database.prepare('SELECT run_id FROM generation_runs ORDER BY created_at_ms DESC, rowid DESC').all() as { run_id: string }[]
-    return rows.map(row => repository.get(row.run_id)).filter(run => run.binding.projectId === deps.projectId).map(viewOf)
+    const rows = deps.database.prepare(`SELECT r.run_id, r.root_action_id, r.status,
+        json_extract(r.binding_json,'$.projectId') AS project_id,
+        json_extract(r.binding_json,'$.epoch') AS epoch,
+        json_extract(r.binding_json,'$.sourceManifest.operation') AS operation
+      FROM generation_runs r
+      WHERE json_extract(r.binding_json,'$.projectId') = ?
+      ORDER BY r.created_at_ms DESC, r.rowid DESC`).all(deps.projectId) as {
+      run_id: string; root_action_id: string; status: string; project_id: string; epoch: string; operation: string | null
+    }[]
+    return rows.map(row => listViewOf(row))
   }
   // S10B：'materialDecision'/'materialDecisionHash' 只在**取得准入之后**才可能出现在真正
   // 运行的 manifest 上（prepare 阶段早于材料装配），因此与 selectedFinalizedDraftIds 同类，
@@ -755,7 +808,9 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     const cursor = outline.cursor
     const currentAttempts = new Set(cursor.kind === 'request' || cursor.kind === 'stopped'
       ? runAttempts(run.runId).filter(attempt => attempt.purpose?.startsWith(`plot-outline:chapter:${cursor.chapterNumber}:`)).map(attempt => attempt.attemptId) : [])
-    const latest = [...(viewOf(run).candidates ?? [])].reverse().find(candidate => currentAttempts.has(candidate.attemptId))
+    // 只要当前章那次尝试的候选文本，语义与 viewOf().candidates 一致（volatile 优先），
+    // 但不做整份账本重建与正文重拼。
+    const latest = [...visibleCandidatesForRun(run)].reverse().find(candidate => currentAttempts.has(candidate.attemptId))
     let draft = plotOutlineRecoveryDraft(outline, latest?.text)
     let writeState: PlotOutlineRecovery['writeState'] = { kind: 'blocked', reason: 'source-changed' }
     try {
@@ -864,16 +919,18 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
         ? { draftId, chapterNumber: row.chapter_number, version: row.version, contentHash: ref.contentHash, content: row.body,
             ...(requiredCandidateDraftIds.has(draftId) ? { required: true } : {}) } : null
     })
-    const rows = deps.database.prepare('SELECT attempt_id,usage_receipt_json FROM generation_attempts WHERE run_id=? ORDER BY rowid').all(run.runId) as { attempt_id: string; usage_receipt_json: string }[]
+    // 这里只用到 attempt_id 与 purpose：把 purpose 交给 SQLite 投影出来。
+    // 直接读 usage_receipt_json 会把整份持久化提示词（全库 350MB+）搬进内存，只为取一个枚举值。
+    const rows = deps.database.prepare("SELECT attempt_id,json_extract(usage_receipt_json,'$.purpose') AS purpose FROM generation_attempts WHERE run_id=? ORDER BY rowid").all(run.runId) as { attempt_id: string; purpose: string | null }[]
     const last = composition ? deps.database.prepare('SELECT attempt_id FROM generation_artifacts WHERE artifact_id=?').pluck().get(composition.artifactIds.at(-1)) as string : undefined
     return { modelId: modelReceipt(run.binding).modelId, handle: handleOf(run), operation: manifest.operation as string, chapterNumber: manifest.chapterNumber as number | undefined,
       ...(plotOutline ? { plotOutline, plotOutlineRecovery: plotOutlineRecovery(run, plotOutline) } : {}),
       ...(continuation ? { planningContinuation: continuation } : {}),
       ...(blueprint && blueprint.kind !== 'available' ? { blueprintRecovery: {
-        sourceHandle: handleOf(run), leaseEpoch: deps.epoch, draft: viewOf(run).candidates?.at(-1)?.text ?? '',
+        sourceHandle: handleOf(run), leaseEpoch: deps.epoch, draft: lastCandidateText(run),
         editRange: null, saved: null, writeState: 'unavailable' as const, diagnostic: blueprint.diagnostic,
       } } : manifest.operation === 'chapter-blueprint-directory' && continuation ? { blueprintRecovery: {
-        sourceHandle: handleOf(run), leaseEpoch: deps.epoch, draft: viewOf(run).candidates?.at(-1)?.text ?? '',
+        sourceHandle: handleOf(run), leaseEpoch: deps.epoch, draft: lastCandidateText(run),
         editRange: continuation.remainingRange, saved: blueprintSaved,
         // source-invalid 只出现在情节大纲任务上
         writeState: blueprintSaved ? 'author-saved' as const : continuation.state === 'save-prefix' ? 'ready' as const : continuation.state as Exclude<PlanningContinuation['state'], 'save-prefix' | 'source-invalid'>,
@@ -882,15 +939,18 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
       selectedDraftIds: structuredClone(manifest.selectedDraftIds as number[] ?? []), selectedFinalizedDraftIds: structuredClone(manifest.selectedFinalizedDraftIds as number[] ?? []),
       selectedBlueprintChapterNumbers: structuredClone(manifest.selectedBlueprintChapterNumbers as number[] ?? []), composition,
       lastCompositionFinishReason: last ? repository.receipt(last).result?.finishReason ?? null : null,
-      attemptedPurposes: rows.map(row => JSON.parse(row.usage_receipt_json).purpose ?? 'unknown'),
+      attemptedPurposes: rows.map(row => row.purpose ?? 'unknown'),
       ...(materialDecision?.shortOutlinePromptHash ? { draftShortOutline: shortOutlineContext(run) } : {}),
-      ...(rows.some(row => JSON.parse(row.usage_receipt_json).purpose === DRAFT_RECONCILE_PURPOSE) ? { draftReconciliation: {
-        artifactIds: rows.filter(row => JSON.parse(row.usage_receipt_json).purpose === DRAFT_RECONCILE_PURPOSE)
+      ...(rows.some(row => row.purpose === DRAFT_RECONCILE_PURPOSE) ? { draftReconciliation: {
+        artifactIds: rows.filter(row => row.purpose === DRAFT_RECONCILE_PURPOSE)
           .flatMap(row => { const artifact = repository.receipt(row.attempt_id).artifact; return artifact ? [artifact.artifactId] : [] }),
         // 首稿已发出时，只有首稿提示经复核确实带了注入块，续写/压缩才沿用；首稿尚未发出时沿用记录的对账结果。
         completedOutput: (() => {
-          const firstDraft = rows.find(row => JSON.parse(row.usage_receipt_json).purpose === 'chapter-draft')
-          return !firstDraft || JSON.parse(firstDraft.usage_receipt_json).reconciliationInjected === true ? completedReconciliationOutput(run.runId) : null
+          // 只有走到对账分支才需要 reconciliationInjected：单独按 id 取一行，不整批搬 receipt。
+          const firstDraft = rows.find(row => row.purpose === 'chapter-draft')
+          if (!firstDraft) return completedReconciliationOutput(run.runId)
+          const injected = deps.database.prepare("SELECT json_extract(usage_receipt_json,'$.reconciliationInjected') FROM generation_attempts WHERE attempt_id=?").pluck().get(firstDraft.attempt_id) as number | null
+          return injected === 1 ? completedReconciliationOutput(run.runId) : null
         })() } } : {}),
       draftSave,
       ...(manifest.knowledgeSnapshot ? { knowledgeSnapshot: structuredClone(manifest.knowledgeSnapshot) as GenerationKnowledgeSnapshot } : {}),

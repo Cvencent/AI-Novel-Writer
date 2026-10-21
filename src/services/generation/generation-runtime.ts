@@ -95,6 +95,18 @@ export interface MainGenerationReasoningEvent extends MainGenerationRunHandle {
   attemptId: string
   text: string
 }
+/**
+ * 运行列表里的轻量条目。
+ *
+ * 列表只需要「这是哪个运行、做什么的、什么状态」；完整视图（attempt 账本、
+ * 候选正文、预算诊断）要按需单独读。作品写到几百章后历史 run 会很多，
+ * 一次列表如果把每个 run 都水合成完整视图，就是几秒级的卡顿。
+ */
+export interface MainGenerationRunSummary {
+  handle: MainGenerationRunHandle
+  status: MainGenerationRunView['status']
+  operation: string | null
+}
 export interface MainGenerationRunView {
   plotOutline?: import('../../shared/plot-outline-contract').PlotOutlineProgress
   budgetDiagnostics?: readonly import('./task-budget-planner').GenerationBudgetDiagnostic[]
@@ -117,7 +129,8 @@ export interface MainGenerationExecuteReceipt {
 export interface MainGenerationTransport {
   execute(request: { handle: MainGenerationRunHandle; invocationNonce: string; task: GenerationTask }): Promise<MainGenerationExecuteReceipt>
   read(handle: MainGenerationRunHandle): Promise<MainGenerationRunView>
-  list(projectSession: ProjectSessionContext): Promise<readonly MainGenerationRunView[]>
+  /** 轻量列表：只回句柄与元数据，不水合每个 run 的完整视图。 */
+  list(projectSession: ProjectSessionContext): Promise<readonly MainGenerationRunSummary[]>
   cancel(handle: MainGenerationRunHandle): Promise<MainGenerationRunView>
   subscribe(handle: MainGenerationRunHandle, listener: (snapshot: MainGenerationSnapshot) => void): () => void
   subscribeReasoning?: (handle: MainGenerationRunHandle, listener: (event: MainGenerationReasoningEvent) => void) => () => void
@@ -135,7 +148,7 @@ export interface MainOwnedGenerationRuntime extends GenerationRuntime {
   cancel(): Promise<MainGenerationRunView>
 }
 /** Pure read seam for F04; neither operation creates roots nor resumes execution. */
-export function listMainGenerationRuns(transport: MainGenerationTransport, session: ProjectSessionContext): Promise<readonly MainGenerationRunView[]> {
+export function listMainGenerationRuns(transport: MainGenerationTransport, session: ProjectSessionContext): Promise<readonly MainGenerationRunSummary[]> {
   return transport.list({ ...session })
 }
 export function readMainGenerationRun(transport: MainGenerationTransport, handle: MainGenerationRunHandle): Promise<MainGenerationRunView> {

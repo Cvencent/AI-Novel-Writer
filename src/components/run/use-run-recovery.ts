@@ -20,14 +20,32 @@ function currentSession(): ProjectSessionContext | null {
   return projectSessionContextFromProject(useProjectStore.getState().currentProject)
 }
 
-/** 读取这部作品所有可恢复的中断运行。助手任务（agent-round）随聊天隐藏，不读取也不列出，磁盘记录保留。 */
+/**
+ * 读取这部作品所有可恢复的中断运行。助手任务（agent-round）随聊天隐藏，不读取也不列出，磁盘记录保留。
+ *
+ * 列表接口只回句柄与元数据（作品写到几百章后历史 run 很多，逐个水合完整视图是几秒级的卡顿），
+ * 因此这里先用列表里的 operation 缩小范围，再只对**可能是恢复候选**的运行读完整视图与恢复上下文。
+ * 助手任务与已经跑完的任务从头到尾不会被水合。
+ */
 async function loadGenerationSources(session: ProjectSessionContext): Promise<{ sources: Omit<RecoverySources, 'candidates'>; partial: boolean }> {
-  const [views, progress] = await Promise.all([
+  const [summaries, progress] = await Promise.all([
     ipc.invokeWithProjectSession(session, 'generation:list'),
     ipc.invokeWithProjectSession(session, 'generation:list-batches'),
   ])
-  const contexts = await Promise.all(views.map(async view => ({ view,
-    recovery: await ipc.invokeWithProjectSession(session, 'generation:read-context', { handle: view.handle }),
+  // 先把明显不是恢复候选的排掉：助手任务不在运行侧页显示，其它不在待恢复集合里的也不用读。
+  // 运行侧页的恢复区只显示这几类运行留下的可恢复内容：
+  //   generate-plot-outline / chapter-blueprint-directory → 规划恢复稿
+  //   chapter-draft → 单章候选与未落盘正文
+  //   审修与选区建议 → 各自的恢复面板
+  // 其它 operation（角色名单生成、世界观生成、核心种子等）不产生恢复条目，
+  // 以前也会为它们逐个读一次恢复上下文，纯属白花时间。
+  const RECOVERABLE_OPERATIONS = new Set([
+    'generate-plot-outline', 'chapter-blueprint-directory', 'chapter-draft',
+    ...REVIEW_OPERATIONS, 'editor-inline',
+  ])
+  const candidates = summaries.filter(view => !view.operation || RECOVERABLE_OPERATIONS.has(view.operation))
+  const contexts = await Promise.all(candidates.map(async summary => ({ view: await ipc.invokeWithProjectSession(session, 'generation:read', summary.handle),
+    recovery: await ipc.invokeWithProjectSession(session, 'generation:read-context', { handle: summary.handle }),
   })))
   const reviews = await Promise.allSettled(contexts.filter(item => REVIEW_OPERATIONS.includes(item.recovery.operation))
     .map(async ({ view }) => ({ view, recovery: await ipc.invokeWithProjectSession(session, 'review-revision:read-recovery', { handle: view.handle }) })))

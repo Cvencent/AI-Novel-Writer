@@ -46,8 +46,13 @@ export function createMainGenerationTransport(captureSession = getActiveProjectS
     },
     async list(projectSession) {
       const session = freezeSession(projectSession)
-      const views = await ipc.invokeWithProjectSession(session, 'generation:list')
-      return views.map(view => bindView(view, session, true))
+      const rows = await ipc.invokeWithProjectSession(session, 'generation:list')
+      // 只是句柄与元数据，但会话仍然要记下来：后续 read/execute 用同一个租约。
+      for (const row of rows) {
+        assertHandle(session, row.handle, true)
+        sessions.set(handleKey(row.handle), session)
+      }
+      return rows
     },
     async cancel(handle) {
       const frozen = Object.freeze({ ...handle }), session = sessionFor(frozen)

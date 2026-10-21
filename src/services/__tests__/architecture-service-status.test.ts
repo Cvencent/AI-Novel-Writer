@@ -18,14 +18,18 @@ const batchCheckpoint = {
 
 let synopsis: string
 let partial: Record<string, unknown> | null
+/** 粗纲台账：checkArchConfirmed 会把它算作架构的一节。 */
+let arcRows: { status: string }[]
 
 beforeEach(() => {
   synopsis = LONG
   partial = null
+  arcRows = []
   invoke.mockReset()
   invoke.mockImplementation(async (_session: unknown, channel: string) => {
     if (channel === 'db:project-core-get') return { premise: LONG, worldbuilding: LONG, synopsis, totalChapters: 24, writingLanguage: 'zh-CN' }
     if (channel === 'fs:read-json') return partial ? { success: true, data: partial } : { success: false, error: 'not found' }
+    if (channel === 'db:arc-outline-list') return arcRows
     return { status: 'ready' }
   })
 })
@@ -43,7 +47,7 @@ describe('流程脊的架构四节是否已确认：与架构页徽标同一判�
   it('分批检查点写到第 16 章（全书 24 章）：大纲未确认', async () => {
     synopsis = partialOutline
     partial = batchCheckpoint
-    expect(await checkArchConfirmed(session)).toEqual({ premise: true, characters: true, worldbuilding: true, synopsis: false })
+    expect(await checkArchConfirmed(session)).toEqual({ premise: true, characters: true, worldbuilding: true, arc: false, synopsis: false })
   })
 
   it('有一批被打断（检查点 incomplete 且带运行记录）：大纲未确认', async () => {

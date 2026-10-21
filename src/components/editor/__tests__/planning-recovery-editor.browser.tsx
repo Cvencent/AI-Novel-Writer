@@ -31,7 +31,7 @@ const sourceExpected = { synopsis: '', premise: '原前提', charactersArch: '',
   wordsPerChapter: 2000, writingLanguage: 'zh-CN' as const, plotStructure: 'three_act', narrativePov: 'third_limited', globalGuidance: '' }
 function fixture(kind: 'outline' | 'blueprint'): GenerationRecoveryContext {
   const common: GenerationRecoveryContext = {
-    modelId: 'model', handle, operation: kind === 'outline' ? 'generate-plot-outline' : 'generate-directory', authorInputs: [],
+    modelId: 'model', handle, operation: kind === 'outline' ? 'generate-plot-outline' : 'chapter-blueprint-directory', authorInputs: [],
     selectedDraftIds: [], selectedFinalizedDraftIds: [], selectedBlueprintChapterNumbers: [], composition: null,
     lastCompositionFinishReason: 'length', attemptedPurposes: ['normal', 'compact'], draftSave: { kind: 'absent' },
     planningContinuation: { sourceHandle: handle, remainingRange: { from: 1, to: 3 }, targetUnits: 600, state: 'ready' },
@@ -74,7 +74,9 @@ beforeEach(() => {
       return rejectSave ? { success: false, error: rejectSave } : { success: true }
     }
     if (channel === 'db:project-core-get') return { ...sourceExpected, title: 'Recovery', synopsis: '完整大纲'.repeat(30), premise: '完整故事前提'.repeat(20), worldbuilding: '世界设定'.repeat(20) }
-    if (channel === 'generation:list') return showCandidate ? [{ handle, status: 'failed', artifacts: [], candidates: [] }] : []
+    // 列表按新契约只回句柄与元数据；operation 决定它是不是恢复候选。
+    if (channel === 'generation:list') return showCandidate ? [{ handle, status: 'failed', operation: context.operation }] : []
+    if (channel === 'generation:read') return { handle, status: 'failed', artifacts: [], budget: {}, nonReplayable: true, operation: context.operation }
     if (channel === 'generation:list-batches') return []
     if (channel === 'db:recovery-candidate-list') return []
     if (channel === 'skills:list-user' || channel === 'db:blueprint-get-all') return []

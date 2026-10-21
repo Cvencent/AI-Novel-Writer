@@ -249,10 +249,15 @@ describe('运行侧页', () => {
     const fallback = invoke.getMockImplementation()!
     invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
       const handle = (args[0] as { handle?: { runId: string } } | undefined)?.handle
+      // 列表按新契约只回句柄与元数据。
       if (channel === 'generation:list') return [
-        { handle: draft, status: 'failed', artifacts: [], unsavedTails: [{ attemptId: '尾请求', artifactId: '尾片', durableRevision: 0, text: '尚未保存的潮声', failureCode: 'STORAGE_FAILED' }] },
-        { handle: review, status: 'failed', artifacts: [] },
+        { handle: draft, status: 'failed', operation: 'chapter-draft' },
+        { handle: review, status: 'failed', operation: 'review-chapter' },
       ]
+      // 完整视图按 handle 单独读。
+      if (channel === 'generation:read') return handle?.runId === review.runId
+        ? { handle: review, status: 'failed', artifacts: [], budget: {}, nonReplayable: true }
+        : { handle: draft, status: 'failed', artifacts: [], unsavedTails: [{ attemptId: '尾请求', artifactId: '尾片', durableRevision: 0, text: '尚未保存的潮声', failureCode: 'STORAGE_FAILED' }], budget: {}, nonReplayable: true }
       if (channel === 'generation:read-context') return handle?.runId === review.runId
         ? { draftSave: { kind: 'absent' }, handle: review, operation: 'review-chapter' }
         : { draftSave: { kind: 'absent' }, handle: draft, operation: 'chapter-draft', chapterNumber: 1, modelId: '原模型', authorInputs: [], attemptedPurposes: ['chapter-draft'] }

@@ -16,7 +16,7 @@ function fixture() {
   } }
   const detach = vi.fn()
   const transport: MainGenerationTransport = {
-    read: vi.fn(async () => structuredClone(view)), list: vi.fn(async () => [structuredClone(view)]),
+    read: vi.fn(async () => structuredClone(view)), list: vi.fn(async () => [{ handle: structuredClone(view.handle), status: view.status, operation: view.operation ?? null }]),
     execute: vi.fn(async () => ({ outcome: structuredClone(outcome), run: structuredClone(view) })),
     cancel: vi.fn(async () => ({ ...structuredClone(view), status: 'cancelled' as const })),
     subscribe: vi.fn((_handle, callback) => { listener = callback; return detach }),
@@ -157,7 +157,10 @@ describe('main owned generation facade', () => {
     const runtime = await createGenerationRuntime({ runHandle: handle }, f.transport)
     await expect(runtime.execute(({ session }) => session.complete(task, { invocationNonce: '旧点击' }))).rejects.toThrow('NON_REPLAYABLE')
     expect(await readMainGenerationRun(f.transport, handle)).toEqual(f.view)
-    expect(await listMainGenerationRuns(f.transport, { projectId: handle.projectId, projectPath: '合成项目', leaseId: '会话' })).toEqual([f.view])
+    // 列表按新契约只回句柄与元数据（作品写到几百章后不再逐个水合完整视图）；
+    // 完整视图仍由 read 提供，两个壳消费同一份 read。
+    expect(await listMainGenerationRuns(f.transport, { projectId: handle.projectId, projectPath: '合成项目', leaseId: '会话' }))
+      .toEqual([{ handle: f.view.handle, status: f.view.status, operation: f.view.operation ?? null }])
     expect(f.transport.execute).not.toHaveBeenCalled(); await runtime.close()
   })
   it('read失败释放订阅，不把主进程错误改成空运行', async () => {

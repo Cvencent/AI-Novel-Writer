@@ -351,6 +351,16 @@ export class GenerationRunRepository {
         const run = this.get(row.run_id), usage: ReceiptUsage = JSON.parse(row.usage_receipt_json);
         return this.hydrateReceipt(row, run, usage, budget?.root.rootActionId === run.rootActionId ? budget : this.budget(run.rootActionId));
     }
+    /**
+     * 宽松读取：只用于「把某个 attempt 的可见正文拿来做恢复稿」这类只读投影。
+     *
+     * 与 receipt() 的区别只有一处：artifact 完整性校验失败时返回 null 而不是抛错。
+     * 恢复稿是给作者看的旁路内容，一条历史记录校验不过不应该让整个恢复列表打不开；
+     * 需要严格语义的写入与执行路径仍然走 receipt()。
+     */
+    receiptForDisplay(attemptId: string, budget?: GenerationBudgetReceipt): GenerationExecutionReceipt | null {
+        try { return this.receipt(attemptId, budget) } catch { return null }
+    }
     private hydrateReceipt(row: ReceiptRow, run: DurableGenerationRun, usage: ReceiptUsage, budget: GenerationBudgetReceipt): GenerationExecutionReceipt {
         const visible: VisibleArtifact | null = row.artifact_json === null ? null : JSON.parse(row.artifact_json);
         const identity = usage.artifactIdentity;

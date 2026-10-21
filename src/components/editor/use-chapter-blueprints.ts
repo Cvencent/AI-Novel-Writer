@@ -96,7 +96,10 @@ export function useChapterBlueprints({
     let current = true
     void (async () => {
       const views = await ipc.invokeWithProjectSession(session, 'generation:list')
-      for (const view of views) {
+      // 列表只回句柄与 operation：blueprintRecovery 只可能挂在目录蓝图任务上，
+      // 先按 operation 筛掉其余运行，别为每个历史 run 都读一次恢复上下文。
+      const directoryRuns = views.filter(view => view.operation === 'chapter-blueprint-directory')
+      for (const view of directoryRuns) {
         const recovery = await ipc.invokeWithProjectSession(session, 'generation:read-context', { handle: view.handle })
         if (!current || !isCurrentProjectSession(session)) return
         if (recovery.blueprintRecovery && recovery.blueprintRecovery.writeState !== 'complete') { setPlanningRecovery(recovery); return }
