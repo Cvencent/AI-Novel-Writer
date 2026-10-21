@@ -5,7 +5,7 @@ import { useWorkflowStore } from '../../stores/workflow-store'
 import { useLocaleStore } from '../../stores/locale-store'
 import { ipc } from '../../services/ipc-client'
 import { launchCreativeWorkflow } from '../../services/workflows/creative-workflow-launcher'
-import { ARCH_STEP_NAMES, type ArchStepKey } from '../../services/architecture-step-selection'
+import { ARCH_STEP_NAMES, type ArchGenerateStepKey, type ArchStepKey } from '../../services/architecture-step-selection'
 import { globalEventBus } from '../../shared/event-bus'
 import {
   createProjectArchTabId,
@@ -34,8 +34,9 @@ import { openPlanningRecoveryDraft } from '../../stores/editor-store'
 import { planningTitle } from '../run/run-recovery'
 import { outlineProgress, type OutlineProgress } from '../../shared/plot-outline-checkpoint'
 import type { PlotOutlineRangeSource } from '../../shared/plot-outline-contract'
+import type { ArcOutlineRecord } from '../../../electron/repositories/arc-outline-repository'
 
-/** 架构四节的文档、图标与说明；名字取 ARCH_STEP_NAMES。 */
+/** 架构五节的文档、图标与说明；名字取 ARCH_STEP_NAMES。 */
 export const ARCH_FILES: Array<{
   key: ArchStepKey
   fileName: string
@@ -46,11 +47,12 @@ export const ARCH_FILES: Array<{
     { key: 'premise', fileName: 'premise.md', iconName: 'target', descZh: '故事钩子 · 核心冲突链 · 主角优势 · 悬念骨架', descEn: 'Story hook · core conflict · protagonist edge · suspense structure' },
     { key: 'characters', fileName: 'characters.md', iconName: 'users', descZh: '角色弧光 · 关系网络 · 矛盾交织', descEn: 'Character arcs · relationships · interlocking tensions' },
     { key: 'worldbuilding', fileName: 'worldbuilding.md', iconName: 'globe', descZh: '核心规则 · 社会结构 · 深层危机', descEn: 'Core rules · social structure · underlying crisis' },
+    { key: 'arc', fileName: 'arc.md', iconName: 'layers', descZh: '按段管方向 · 段长由模型判断 · 不含人名', descEn: 'Direction by segment · model-chosen span · no character names' },
     { key: 'synopsis', fileName: 'synopsis.md', iconName: 'map', descZh: '结构推进 · 转折节奏 · 伏笔闭环', descEn: 'Story progression · turning points · setup and payoff' },
   ]
 
 interface GenerateIntent {
-  steps?: ArchStepKey[]
+  steps?: ArchGenerateStepKey[]
   synopsisRange?: { from: number; to: number }
 }
 
@@ -70,6 +72,8 @@ export function useArchitectureOverview(projectKey: string) {
   const [planningRecovery, setPlanningRecovery] = useState<GenerationRecoveryContext | null>(null)
   const [coreWordCounts, setCoreWordCounts] = useState<Record<string, number>>({})
   const [contents, setContents] = useState<Record<string, string>>({})
+  /** 粗纲段台账：这一节与细纲、蓝图共用同一份来源。 */
+  const [arcList, setArcList] = useState<ArcOutlineRecord[]>([])
   const [synopsisProgress, setSynopsisProgress] = useState<OutlineProgress>({ kind: 'empty' })
   const [synopsisRecoveryFailed, setSynopsisRecoveryFailed] = useState(false)
   const [synopsisSource, setSynopsisSource] = useState<PlotOutlineRangeSource>({ synopsis: '', totalChapters: 0, writingLanguage: 'zh-CN' })
@@ -108,6 +112,7 @@ export function useArchitectureOverview(projectKey: string) {
       setCoreStatus({})
       setCoreWordCounts({})
       setContents({})
+      setArcList([])
       setSynopsisProgress({ kind: 'empty' })
       setSynopsisRecoveryFailed(false)
       setSynopsisSource({ synopsis: '', totalChapters: 0, writingLanguage: 'zh-CN' })
@@ -124,14 +129,14 @@ export function useArchitectureOverview(projectKey: string) {
     const projectPath = projectSession.projectPath
     const requestId = archStatusRequestGate.current.begin()
     setLoading(true)
-    const core = await ipc.invokeWithProjectSession(
-      projectSession,
-      'db:project-core-get',
-      projectPath,
-    ).catch((error: unknown) => {
+    const [core, arcRecords] = await Promise.all([
+      ipc.invokeWithProjectSession(projectSession, 'db:project-core-get', projectPath),
+      ipc.invokeWithProjectSession(projectSession, 'db:arc-outline-list', projectPath).catch(() => []),
+    ]).catch((error: unknown) => {
       if (archStatusRequestGate.current.isLatest(requestId)) setCoreReadEnded(true)
       throw error
     })
+    setArcList(Array.isArray(arcRecords) ? arcRecords as ArcOutlineRecord[] : [])
     let progress: OutlineProgress
     let recoveryFailed = false
     let recoveredWorldBuildingCandidate = ''
@@ -241,8 +246,9 @@ export function useArchitectureOverview(projectKey: string) {
     premise: Boolean(coreStatus.premise),
     characters: rosterReady,
     worldbuilding: Boolean(coreStatus.worldbuilding),
+    arc: arcList.length > 0 && arcList.every(arc => arc.status === 'confirmed'),
     synopsis: synopsisProgress.kind === 'complete',
-  }), [coreStatus, rosterReady, synopsisProgress])
+  }), [coreStatus, rosterReady, arcList, synopsisProgress])
   const wordCounts = useMemo<Record<string, number>>(() => ({
     ...coreWordCounts,
     characters: rosterSnapshot?.status === 'ready' ? rosterSnapshot.renderedMarkdown.length : 0,
@@ -302,6 +308,9 @@ export function useArchitectureOverview(projectKey: string) {
         content = roster.status === 'ready'
           ? roster.renderedMarkdown
           : roster.legacyMarkdown ?? ''
+      } else if (f.key === 'arc') {
+        const { readCoreContent } = await import('../../services/resource-protocol')
+        content = await readCoreContent(filePath, projectSession)
       } else {
         const core = (await ipc.invokeWithProjectSession(
           projectSession,
@@ -341,7 +350,7 @@ export function useArchitectureOverview(projectKey: string) {
 
   /** 确认后启动架构工作流 */
   const handleConfirm = async (
-    selectedSteps: ArchStepKey[],
+    selectedSteps: ArchGenerateStepKey[],
     stepGuidance: Record<string, string>,
     synopsisRange?: { from: number; to: number },
     targetUnits?: number,
@@ -437,7 +446,7 @@ export function useArchitectureOverview(projectKey: string) {
   }
 
   /** 普通生成入口；steps 是「AI 生成此节」那一节，不携带续批预填。 */
-  const openGenerateDialog = (steps?: ArchStepKey[]) => setGenerateIntent({ steps })
+  const openGenerateDialog = (steps?: ArchGenerateStepKey[]) => setGenerateIntent({ steps })
 
   /** 情节大纲有可编辑的恢复稿时打开它。 */
   const openRecoveryDraft = () => {
@@ -448,6 +457,8 @@ export function useArchitectureOverview(projectKey: string) {
 
   return {
     projectMatches,
+    /** 本页所属作品路径；各节与对话框共用。 */
+    projectKey,
     /** 三节正文与名单都读完之前为真；名单读不到时也算读完，按没有名单显示。 */
     loading: loading || (projectMatches && !rosterSettled),
     /** 第一次读状态已结束（成功或失败）：之前各节还没有真实状态；之后刷新、或读取失败停在加载态时都为真。 */
@@ -460,6 +471,8 @@ export function useArchitectureOverview(projectKey: string) {
     /** 正式大纲的来源事实（正文、总章数、写作语言）；供「一次生成全部剩余大纲」等入口判断进度。 */
     synopsisSource,
     planningRecovery,
+    /** 粗纲段台账与总章数，供架构页的粗纲一节显示段数与进度。 */
+    arc: { list: arcList, totalChapters: synopsisSource.totalChapters, reload: loadStatus },
     synopsis: {
       progress: synopsisProgress,
       /** 正文末尾带分批说明、主进程却已不能紧接续写（多半手改过）：续写按钮用不了，只能在对话框里选范围。 */

@@ -17,7 +17,6 @@ import { toast } from '../../ui/Toast'
 import { refreshStageWork } from '../use-stage-work'
 import ArchitectureGenerateDialog from './ArchitectureGenerateDialog'
 import ContinuousOutlinePanel from './ContinuousOutlinePanel'
-import ArcOutlinePanel from './ArcOutlinePanel'
 import { startContinuousOutline } from '../../../services/workflows/continuous-outline-runner'
 import { plotOutlineNextChapter } from '../../../shared/plot-outline-contract'
 import ArchitectureSection from './ArchitectureSection'
@@ -90,6 +89,16 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
 
   const summary = (key: ArchStepKey) => {
     if (key === 'characters') return cast.summary
+    // 粗纲是一组分段台账，不是单一正文字段；摘要列出各段标题与区间。
+    if (key === 'arc') {
+      const arcs = overview.arc.list
+      if (arcs.length === 0) return text('还没有粗纲。先定方向，再按段生成逐章细纲。', 'No arc outline yet. Set direction first, then generate chapter outlines per segment.')
+      const shown = arcs.slice(0, 3).map(arc => text(
+        `第 ${arc.fromChapter}–${arc.toChapter} 章 ${arc.title}`,
+        `Ch. ${arc.fromChapter}-${arc.toChapter} ${arc.title}`,
+      )).join(text('；', '; '))
+      return shown + (arcs.length > 3 ? text('……', '…') : '')
+    }
     const content = overview.contents[key] ?? ''
     return overview.archStatus[key] && content
       ? excerpt(content, text('……', '…'))
@@ -144,7 +153,6 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
           </div>
         </header>
 
-        <ArcOutlinePanel projectKey={projectKey} fineSource={overview.synopsisSource} fineProgress={overview.synopsis.progress} />
         <ContinuousOutlinePanel />
 
         <div className="arch-sections">
@@ -156,7 +164,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
               badge={badges[key]}
               summary={summary(key)}
               onEdit={() => editSection(key)}
-              onGenerate={() => overview.openGenerateDialog([key])}
+              onGenerate={() => { if (key !== 'arc') overview.openGenerateDialog([key]) }}
               onClear={() => {
                 const session = captureProjectSession(useProjectStore.getState().currentProject)
                 if (session && isProjectSessionPath(session, projectKey)) setClearing({ key, session })

@@ -34,6 +34,8 @@ let host: HTMLDivElement | undefined
 let core: Record<string, unknown>
 let partial: Record<string, unknown> | null
 let rosterStatus: 'empty' | 'ready'
+/** 粗纲台账；用例可替换成已确认的段来验证粗纲一节。 */
+let arcRows: unknown[] = []
 let invoke: ReturnType<typeof vi.fn<(channel: string, ...args: unknown[]) => Promise<unknown>>>
 
 const button = (name: string | RegExp) => [...document.querySelectorAll('button')]
@@ -90,10 +92,12 @@ beforeEach(() => {
   core = { premise: PREMISE, worldbuilding: '', synopsis: '', totalChapters: 24, writingLanguage: 'zh-CN' }
   partial = null
   rosterStatus = 'empty'
+  arcRows = []
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
     if (channel === 'db:project-core-get') return core
     if (channel === 'fs:read-json') return partial ? { success: true, data: partial } : { success: false, error: 'not found' }
     if (channel === 'db:character-roster-read') return { schemaVersion: 1, revision: 1, migrationState: 'ready', status: rosterStatus, entries: [], renderedMarkdown: '林舟、沈砚', projectionHash: 'p', factHash: 'f' }
+    if (channel === 'db:arc-outline-list') return arcRows
     if (channel === 'generation:list') return []
     if (channel === 'generation:read-context' || channel === 'generation:read-visible-composition') return null
     if (channel === 'config:get') return { outlineTargetUnits: 300 }
@@ -133,23 +137,24 @@ afterEach(async () => {
 describe('架构阶段', () => {
   const LONG = '内容。'.repeat(30)
   it.each([
-    { state: '一节都没有', premise: '', cast: false, world: '', outline: 'none', count: 0, action: 'AI 生成架构' },
-    { state: '前提与角色名单', premise: PREMISE, cast: true, world: '', outline: 'none', count: 2, action: '继续生成架构' },
-    { state: '缺情节大纲', premise: PREMISE, cast: true, world: LONG, outline: 'none', count: 3, action: '继续生成架构' },
-    { state: '大纲只到第 16 章', premise: PREMISE, cast: true, world: LONG, outline: 'partial', count: 3, action: '继续生成架构' },
-    { state: '四节齐全', premise: PREMISE, cast: true, world: LONG, outline: 'full', count: 4, action: '下一步：章节蓝图' },
-  ])('主按钮与页头计数读四节徽标：$state', async ({ premise, cast, world, outline, count, action }) => {
+    { state: '一节都没有', premise: '', cast: false, world: '', outline: 'none', arc: false, count: 0, action: 'AI 生成架构' },
+    { state: '前提与角色名单', premise: PREMISE, cast: true, world: '', outline: 'none', arc: false, count: 2, action: '继续生成架构' },
+    { state: '缺情节大纲', premise: PREMISE, cast: true, world: LONG, outline: 'none', arc: true, count: 4, action: '继续生成架构' },
+    { state: '大纲只到第 16 章', premise: PREMISE, cast: true, world: LONG, outline: 'partial', arc: true, count: 4, action: '继续生成架构' },
+    { state: '五节齐全', premise: PREMISE, cast: true, world: LONG, outline: 'full', arc: true, count: 5, action: '下一步：章节蓝图' },
+  ])('主按钮与页头计数读五节徽标：$state', async ({ premise, cast, world, outline, arc, count, action }) => {
     if (outline === 'partial') seedPartialOutline()
     core = { ...core, premise, worldbuilding: world, ...(outline === 'full' ? { synopsis: LONG } : {}) }
     rosterStatus = cast ? 'ready' : 'empty'
+    arcRows = arc ? [{ id: 1, arcIndex: 1, fromChapter: 1, toChapter: 20, title: '第一段', summary: '方向', beat: 'setup', status: 'confirmed', revision: 1, createdAt: '', updatedAt: '' }] : []
     await render()
     const ready = [...host!.querySelectorAll('.arch-badge')].filter(badge => badge.textContent === '已确认').length
     expect(ready).toBe(count)
-    expect(host!.querySelector('.arch-eyebrow')?.textContent).toContain(`${count} / 4 已确认`)
+    expect(host!.querySelector('.arch-eyebrow')?.textContent).toContain(`${count} / 5 已确认`)
     expect(primary()).toBe(action)
     expect(host!.querySelectorAll('.arch-header .pi-btn--primary')).toHaveLength(1)
     const next = button('下一步：章节蓝图') as HTMLButtonElement
-    expect(next.disabled).toBe(count < 4)
+    expect(next.disabled).toBe(count < 5)
   })
 
   it('清空此节先出危险确认，取消后什么也不写、摘要不变；确认后才清空', async () => {
@@ -247,7 +252,7 @@ describe('架构阶段', () => {
     const outline = host!.querySelector('[data-section="synopsis"]')!
     expect(outline.querySelector('.arch-badge')?.textContent).toBe('不完整')
     expect(outline.textContent).toContain('大纲末尾还留着分批生成的说明，但正文已和它对不上（可能手动改过）。')
-    expect(host!.querySelector('.arch-progress')?.textContent).toBe(' · 3 / 4 已确认')
+    expect(host!.querySelector('.arch-progress')?.textContent).toBe(' · 3 / 5 已确认')
     expect(primary()).toBe('继续生成架构')
   })
 
@@ -458,7 +463,7 @@ describe('架构阶段', () => {
     core = { ...core, worldbuilding: '世界观。'.repeat(30) }
     rosterStatus = 'ready'
     await render()
-    expect(host!.querySelector('.arch-eyebrow')?.textContent).toContain('3 / 4 已确认')
+    expect(host!.querySelector('.arch-eyebrow')?.textContent).toContain('3 / 5 已确认')
     await click('继续生成架构')
     expect(['premise', 'characters', 'worldbuilding', 'synopsis'].map(stepChecked)).toEqual([false, false, false, true])
     expect(inputValue('本次生成范围的起始章')).toBe('17')
@@ -494,7 +499,39 @@ describe('架构阶段', () => {
     expect((button(/开始生成 0 项/) as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('第一次读到四节状态之前不显示各节的动作按钮，读到后按内容显示，之后刷新时不隐藏', async () => {
+  it('粗纲是独立一节，排在情节大纲前面，并能在标签里查看分段内容', async () => {
+    arcRows = [
+      { id: 1, arcIndex: 1, fromChapter: 1, toChapter: 20, title: '空白源核觉醒', summary: '主角觉醒异常源核，代价是记忆开始缺损。', beat: 'setup', status: 'confirmed', revision: 1, createdAt: '', updatedAt: '' },
+      { id: 2, arcIndex: 2, fromChapter: 21, toChapter: 50, title: '第一次反噬', summary: '滥用能力的代价浮出水面。', beat: 'escalation', status: 'draft', revision: 0, createdAt: '', updatedAt: '' },
+    ]
+    await render()
+
+    // 顺序：世界观 → 粗纲 → 情节大纲
+    const titles = [...host!.querySelectorAll('.arch-section-title')].map(node => node.textContent)
+    expect(titles).toEqual(['故事前提', '角色名单', '世界观', '粗纲', '情节大纲'])
+
+    const arc = host!.querySelector('[data-section="arc"]')!
+    expect(arc.querySelector('.arch-badge')?.textContent).toBe('2 段 · 已确认 1 段 · 到第 50 章')
+    // 段内容直接显示在节里，不必先打开标签。
+    expect(arc.textContent).toContain('空白源核觉醒')
+    expect(arc.textContent).toContain('第一次反噬')
+    expect(arc.textContent).toContain('第 1–20 章')
+    // 摘要与其它节同款，不再是「还没有内容」。
+    expect(arc.querySelector('.arch-section-summary')?.textContent).toContain('空白源核觉醒')
+    expect(arc.querySelector('.arch-section-summary')?.textContent).not.toContain('还没有内容')
+
+    // 和其它节一样，可以从节里打开一个标签看全文。
+    const view = [...arc.querySelectorAll('button')].find(node => (node.textContent || '').includes('查看粗纲')) as HTMLButtonElement
+    expect(view).toBeTruthy()
+    await act(async () => view.click())
+    await vi.waitFor(() => expect(useEditorStore.getState().tabs.some(tab => tab.filePath === 'ai-novel://core/arc')).toBe(true))
+    const tab = useEditorStore.getState().tabs.find(candidate => candidate.filePath === 'ai-novel://core/arc')!
+    expect(tab.name).toBe('粗纲')
+    expect(tab.content).toContain('## 第 1–20 章：空白源核觉醒')
+    expect(tab.content).toContain('第一次反噬')
+  })
+
+  it('第一次读到五节状态之前不显示各节的动作按钮，读到后按内容显示，之后刷新时不隐藏', async () => {
     filledSpine(['premise'])
     let release!: () => void
     let held!: Promise<void>
@@ -526,7 +563,7 @@ describe('架构阶段', () => {
     await vi.waitFor(() => expect(host!.querySelector('.arch-page[data-loading]')).toBeNull())
   })
 
-  it('四节状态读取失败时动作区照常显示并可聚焦，页头停在加载态、主按钮不可用', async () => {
+  it('五节状态读取失败时动作区照常显示并可聚焦，页头停在加载态、主按钮不可用', async () => {
     filledSpine(['premise', 'characters', 'worldbuilding', 'synopsis'])
     const answer = invoke.getMockImplementation()!
     invoke.mockImplementation(async (channel, ...args) => {

@@ -6,7 +6,7 @@ import { renderIcon } from '../panels/sidebar/sidebar-icons'
 
 import { registerEditorExitSaveHandler, useEditorStore, type PlanningRecoverySaveSnapshot } from '../../stores/editor-store'
 import ArchitectureConfirmDialog from '../dialogs/ArchitectureConfirmDialog'
-import { ARCH_STEP_NAMES, type ArchStepKey } from '../../services/architecture-step-selection'
+import { ARCH_STEP_NAMES, type ArchGenerateStepKey, type ArchStepKey } from '../../services/architecture-step-selection'
 import { Button } from '../ui/Button'
 import { ipc } from '../../services/ipc-client'
 import { requireIpcSuccess } from '../../services/ipc-result'
@@ -55,6 +55,7 @@ const ARCH_META: Record<ArchStepKey, { iconName: string; view: readonly [string,
   premise: { iconName: 'target', view: ARCH_STEP_NAMES.premise, desc: 'Logline、核心冲突、金手指定位', descEn: 'Logline, central conflict, and story hook' },
   characters: { iconName: 'users', view: ['角色名单全文', 'Cast as text'], desc: '角色弧光、关系网、矛盾交织', descEn: 'Character arcs, relationships, and conflicts' },
   worldbuilding: { iconName: 'globe', view: ARCH_STEP_NAMES.worldbuilding, desc: '核心规则、阶层断层、深层危机', descEn: 'Core rules, social divides, and deeper crises' },
+  arc: { iconName: 'layers', view: ARCH_STEP_NAMES.arc, desc: '按段管方向：每段覆盖若干章，只写走向不写人名', descEn: 'Direction by segment: each covers a span of chapters, with no character names' },
   synopsis: { iconName: 'map', view: ARCH_STEP_NAMES.synopsis, desc: '三幕式情节骨架', descEn: 'Three-act story structure' },
 }
 
@@ -74,6 +75,7 @@ function detectStepKey(filePath: string): ArchStepKey | null {
   if (filePath.endsWith('premise.md')) return 'premise'
   if (filePath.endsWith('characters.md')) return 'characters'
   if (filePath.endsWith('worldbuilding.md')) return 'worldbuilding'
+  if (filePath.endsWith('arc.md')) return 'arc'
   if (filePath.endsWith('synopsis.md')) return 'synopsis'
   return null
 }
@@ -479,7 +481,7 @@ function ArchFileViewerSession({
 
   /** 确认后启动架构生成工作流 */
   const handleConfirm = async (
-    selectedSteps: ArchStepKey[],
+    selectedSteps: ArchGenerateStepKey[],
     stepGuidance: Record<string, string>,
     synopsisRange?: { from: number; to: number },
     targetUnits?: number,
@@ -780,7 +782,7 @@ function ArchFileViewerSession({
           onClose={() => setShowDialog(false)}
           archStatus={fullArchStatus}
           synopsisSource={synopsisSource}
-          initialSelectedSteps={[stepKey]}
+          initialSelectedSteps={stepKey === 'arc' ? undefined : [stepKey]}
           onConfirm={handleConfirm}
         />
       )}

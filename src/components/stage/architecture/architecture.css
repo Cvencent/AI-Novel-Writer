@@ -499,3 +499,13 @@
 .arch-arc-error { margin: 12px 0 0; font-size: 13px; color: var(--color-error-text); }
 .arch-arc-actions { flex-wrap: wrap; }
 .arch-arc-item { flex-wrap: wrap; }
+
+/* 粗纲作为第五节嵌进来：去掉自己的外框，和别的节共用同一层排版 */
+.arch-arc-embedded {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.arch-arc-embedded .arch-arc-empty { margin-top: 8px; }

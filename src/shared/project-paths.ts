@@ -16,7 +16,7 @@ export const DIR_VELA_INTERNAL = '.ai-novel'
 export const DIR_PROMPTS = '.ai-novel/prompts'
 
 /** Virtual DB resources are not filesystem capabilities. Legacy input is read-only. */
-export type CoreResourceKey = 'premise' | 'worldbuilding' | 'characters' | 'synopsis'
+export type CoreResourceKey = 'premise' | 'worldbuilding' | 'characters' | 'arc' | 'synopsis'
 export type ResourceAddress =
   | { kind: 'core'; key: CoreResourceKey }
   | { kind: 'draft' | 'manuscript' | 'revision' | 'review'; id: number }
@@ -29,7 +29,7 @@ export function parseResourceUri(value: string): ParsedResource | null {
   if (!match) return null
   const legacy = match[1] === 'vela'
   const parts = match[2]!.split('/')
-  if (parts[0] === 'core' && parts.length === 2 && ['premise', 'worldbuilding', 'characters', 'synopsis'].includes(parts[1]!)) return { kind: 'core', key: parts[1] as CoreResourceKey, legacy }
+  if (parts[0] === 'core' && parts.length === 2 && ['premise', 'worldbuilding', 'characters', 'arc', 'synopsis'].includes(parts[1]!)) return { kind: 'core', key: parts[1] as CoreResourceKey, legacy }
   if (['draft', 'manuscript', 'revision', 'review'].includes(parts[0]!) && parts.length === 2) {
     const id = positiveId(parts[1]!)
     if (id !== null) return { kind: parts[0] as 'draft' | 'manuscript' | 'revision' | 'review', id, legacy }
@@ -55,5 +55,6 @@ export function canonicalResourceUri(value: string): string | null {
 export function isResourceUri(value: string): boolean { return parseResourceUri(value) !== null }
 export function resourceWriteAllowed(value: string): boolean {
   const resource = parseResourceUri(value)
-  return resource !== null && !resource.legacy && (resource.kind === 'draft' || resource.kind === 'core' && resource.key !== 'characters')
+  return resource !== null && !resource.legacy && (resource.kind === 'draft'
+    || resource.kind === 'core' && resource.key !== 'characters' && resource.key !== 'arc')
 }

@@ -1,4 +1,4 @@
-import { Copy, Ellipsis, Eye, EyeOff, PenLine, RotateCw, Sparkles, Users } from 'lucide-react'
+import { Copy, Ellipsis, Eye, EyeOff, Layers, PenLine, RotateCw, Sparkles, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { ARCH_STEP_NAMES, type ArchStepKey } from '../../../services/architecture-step-selection'
 import { useLocaleStore } from '../../../stores/locale-store'
@@ -8,6 +8,7 @@ import { Button } from '../../ui/Button'
 import { Menu, type MenuGroupSpec } from '../../ui/Menu'
 import { Notice } from '../../ui/Notice'
 import { badgeText, badgeTone, SECTION_NUMERALS, type SectionBadge } from './architecture-sections'
+import ArcOutlinePanel from './ArcOutlinePanel'
 
 interface SectionProps {
   sectionKey: ArchStepKey
@@ -134,13 +135,21 @@ export default function ArchitectureSection({ sectionKey, overview, badge, summa
   const cast = sectionKey === 'characters'
   const name = text(...ARCH_STEP_NAMES[sectionKey])
 
+  const arc = sectionKey === 'arc'
   const groups: MenuGroupSpec[] = [
     { id: 'section', items: [
       { id: 'reload', label: text('重新读取', 'Reload'), onSelect: onReload },
-      { id: 'generate', label: filled ? text('AI 重新生成此节…', 'Regenerate with AI…') : text('AI 生成此节…', 'Generate with AI…'), onSelect: onGenerate },
-      ...(cast ? [{ id: 'projection', label: text('查看角色名单全文', 'View cast as text'), onSelect: onEdit }] : []),
+      ...(arc
+        ? [
+          { id: 'view', label: text('查看粗纲全文', 'View arc outline'), onSelect: onEdit },
+          { id: 'generate-arc', label: text('生成下一段粗纲…', 'Generate next arc segment…'), onSelect: onGenerate },
+        ]
+        : [
+          { id: 'generate', label: filled ? text('AI 重新生成此节…', 'Regenerate with AI…') : text('AI 生成此节…', 'Generate with AI…'), onSelect: onGenerate },
+          ...(cast ? [{ id: 'projection', label: text('查看角色名单全文', 'View cast as text'), onSelect: onEdit }] : []),
+        ]),
     ] },
-    ...(!cast && filled ? [{ id: 'danger', label: text('危险', 'Danger'), tone: 'danger' as const, items: [
+    ...(!cast && !arc && filled ? [{ id: 'danger', label: text('危险', 'Danger'), tone: 'danger' as const, items: [
       { id: 'clear', label: text('清空此节…', 'Clear this section…'), onSelect: onClear },
     ] }] : []),
   ]
@@ -148,6 +157,17 @@ export default function ArchitectureSection({ sectionKey, overview, badge, summa
   let actions: ReactNode
   if (cast) {
     actions = <Button variant="text" size="sm" onClick={onOpenCast}><Users size={14} aria-hidden />{text('打开角色名单', 'Open cast')}</Button>
+  } else if (arc) {
+    actions = (
+      <>
+        <Button variant="text" size="sm" onClick={onEdit}>
+          <Layers size={14} aria-hidden />{overview.arc.list.length > 0 ? text('查看粗纲', 'View arc outline') : text('查看', 'View')}
+        </Button>
+        <Button variant="secondary" size="sm" onClick={onGenerate}>
+          <Sparkles size={14} aria-hidden />{overview.arc.list.length > 0 ? text('生成下一段', 'Next segment') : text('AI 生成粗纲', 'Generate arc outline')}
+        </Button>
+      </>
+    )
   } else if (filled) {
     actions = <Button variant="text" size="sm" onClick={onEdit}><PenLine size={14} aria-hidden />{text('编辑', 'Edit')}</Button>
   } else {
@@ -178,6 +198,7 @@ export default function ArchitectureSection({ sectionKey, overview, badge, summa
       {(sectionKey === 'worldbuilding' || sectionKey === 'synopsis') && (sectionKey === 'synopsis' ? overview.synopsis.candidate : overview.worldBuilding.candidate) && (
         <div className="arch-section-notes"><CandidateNotice sectionKey={sectionKey} overview={overview} /></div>
       )}
+      {sectionKey === 'arc' && <div className="arch-section-notes"><ArcOutlinePanel projectKey={overview.projectKey} fineSource={overview.synopsisSource} fineProgress={overview.synopsis.progress} embedded /></div>}
       {sectionKey === 'synopsis' && <div className="arch-section-notes arch-notes-collapsible"><OutlineNotice overview={overview} onGenerate={onGenerate} /></div>}
       {cast && <div className="arch-section-notes arch-notes-collapsible"><RosterNotice overview={overview} /></div>}
     </section>

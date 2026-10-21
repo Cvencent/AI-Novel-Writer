@@ -19,11 +19,13 @@ export type ArcGenerationMode = 'waitConfirm' | 'skipConfirm'
  * 粗纲面板：列出已生成的粗纲段，控制生成模式，并在存在过期细纲时提示。
  * 粗纲不含人名，只管方向；细纲才落到每章。
  */
-export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress }: {
+export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, embedded = false }: {
   projectKey: string
   /** 正式细纲来源事实；由架构页复用，避免这里重复读取 project_core。 */
   fineSource?: PlotOutlineRangeSource
   fineProgress?: OutlineProgress
+  /** 嵌在「粗纲」一节里时不再自带头部，避免与节标题重复。 */
+  embedded?: boolean
 }) {
   const text = useLocaleStore(s => s.text)
   const [arcs, setArcs] = useState<ArcOutlineRecord[]>([])
@@ -172,9 +174,9 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress }
     }
   }
 
-  return (
-    <section className="arch-arc" aria-label={text('粗纲', 'Arc outline')}>
-      <header className="arch-arc-head">
+  const body = (
+    <section className={embedded ? 'arch-arc arch-arc-embedded' : 'arch-arc'} aria-label={text('粗纲', 'Arc outline')}>
+      {!embedded && <header className="arch-arc-head">
         <span className="arch-arc-title">
           <Layers size={15} aria-hidden />
           {text('粗纲', 'Arc outline')}
@@ -186,7 +188,7 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress }
           )}
         </span>
         <span className="arch-arc-actions">
-          <Button variant="secondary" size="sm" disabled={busyArc || covered >= totalChapters} onClick={() => { void startArc('next') }}>
+          <Button variant="secondary" size="sm" hidden={embedded} disabled={busyArc || covered >= totalChapters} onClick={() => { void startArc('next') }}>
             <Sparkles size={14} aria-hidden />{busyArc ? text('提交中…', 'Starting…') : text('AI 生成粗纲', 'Generate arc outline')}
           </Button>
           {arcs.length === 0 && (
@@ -211,7 +213,7 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress }
             <SkipForward size={14} aria-hidden />{text('跳过确认', 'Skip confirmation')}
           </Button>
         </span>
-      </header>
+      </header>}
 
       {arcs.length === 0
         ? <p className="arch-arc-empty">{text('还没有粗纲。粗纲负责定方向，不含人名；确认后再生成逐章细纲。', 'No arc outline yet. The arc outline sets direction without character names; chapter outlines come after you confirm it.')}</p>
@@ -315,4 +317,6 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress }
       )}
     </section>
   )
+
+  return body
 }

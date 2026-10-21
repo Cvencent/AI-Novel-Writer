@@ -109,7 +109,31 @@ function domainColumns(db: BetterSqlite3.Database, preIdentity = false, preAsset
       .filter(column => !preIdentity || name !== 'characters' || !(M02_ADDED_CHARACTER_COLUMNS as readonly string[]).includes(column)),
   }))
 }
-function domain(db: BetterSqlite3.Database, selection = domainColumns(db)): ProjectSqliteEvidence['domain'] {
+/**
+ * Execution telemetry: append-only logs of model calls, runs and roots.
+ *
+ * These grow without bound as the author keeps writing. Hashing them made
+ * project open take tens of seconds on a long-running project (the 500 MB
+ * 源起 database spent ~2.7 s per verification inside generation_attempts alone,
+ * and open re-verifies several times). They are not author content and are
+ * never referenced by a migration's byte-preservation contract, so the
+ * author-content identity deliberately excludes them.
+ */
+export const TELEMETRY_TABLES: ReadonlySet<string> = new Set([
+  'generation_attempts',
+  'generation_runs',
+  'generation_roots',
+])
+
+function authorTables(db: BetterSqlite3.Database): string[] {
+  return (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as { name: string }[])
+    .map(({ name }) => name)
+    .filter(name => !TELEMETRY_TABLES.has(name))
+}
+
+function domain(db: BetterSqlite3.Database, supplied?: DomainColumns): ProjectSqliteEvidence['domain'] {
+  const authorNames = new Set(authorTables(db))
+  const selection = (supplied ?? domainColumns(db)).filter(({ name }) => authorNames.has(name))
   const tableCounts: Record<string, number> = {}, digest = createHash('sha256')
   for (const { name, columns } of selection) {
     const rows = db.prepare(`SELECT ${columns.map(quoteIdentifier).join(',')} FROM ${quoteIdentifier(name)}`).safeIntegers().raw().all()
@@ -259,21 +283,35 @@ export async function backupProjectSqlite(options: {
  */
 export function upgradeProjectSqlite(options: { databasePath: string; registry?: MigrationRegistry }): ProjectSqliteEvidence {
   const registry = options.registry ?? getDesktopMigrationRegistry()
-  const before = probeProjectSqlite({ databasePath: options.databasePath, registry })
-  if (before.schemaVersion === CURRENT_DESKTOP_SCHEMA_VERSION) return verifyProjectSqlite({ ...options, registry })
-  if (![1, 2, 3, 4, 5, 6].includes(before.schemaVersion)) throw new Error('CANONICAL_SCHEMA_UPGRADE_UNSUPPORTED')
+  // The overwhelmingly common case is an already-current project. Probing and
+  // verifying in one isolated snapshot avoids paying the full author-domain
+  // hash twice on every open; the upgrade path below still re-probes.
+  const snapshot = physicalSnapshot(options.databasePath)
+  let before: ProjectSqliteEvidence
+  let alreadyCurrent = false
+  try {
+    const db = new Database(snapshot.file, { readonly: true, fileMustExist: true })
+    db.pragma('foreign_keys = ON')
+    try {
+      before = inspect(db, registry)
+      alreadyCurrent = before.schemaVersion === CURRENT_DESKTOP_SCHEMA_VERSION
+      snapshot.unchanged()
+    } finally { db.close() }
+  } finally { snapshot.close() }
+  if (alreadyCurrent) return before!
+  if (![1, 2, 3, 4, 5, 6].includes(before!.schemaVersion)) throw new Error('CANONICAL_SCHEMA_UPGRADE_UNSUPPORTED')
   sourceFile(options.databasePath)
   const database = new Database(options.databasePath, { fileMustExist: true })
   try {
     database.pragma('foreign_keys = ON')
     // Revalidate the source identity after acquiring the writable connection.
-    const current = inspect(database, registry, before.schemaVersion)
-    if (current.fingerprint !== before.fingerprint || JSON.stringify(current.domain) !== JSON.stringify(before.domain)) throw new Error('PROJECT_MIGRATION_SOURCE_CHANGED')
+    const current = inspect(database, registry, before!.schemaVersion)
+    if (current.fingerprint !== before!.fingerprint || JSON.stringify(current.domain) !== JSON.stringify(before!.domain)) throw new Error('PROJECT_MIGRATION_SOURCE_CHANGED')
     return database.transaction(() => {
       const columnsBefore = domainColumns(database)
       migrateSchema(new SqliteSchemaAdapter(database), registry, CURRENT_DESKTOP_SCHEMA_VERSION)
       const after = inspect(database, registry, CURRENT_DESKTOP_SCHEMA_VERSION)
-      if (JSON.stringify(before.domain) !== JSON.stringify(domain(database, columnsBefore))) throw new Error('PROJECT_MIGRATION_SQLITE_CONTENT_CHANGED')
+      if (JSON.stringify(before!.domain) !== JSON.stringify(domain(database, columnsBefore))) throw new Error('PROJECT_MIGRATION_SQLITE_CONTENT_CHANGED')
       return after
     }).immediate()
   } finally { database.close() }

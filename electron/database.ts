@@ -10,7 +10,7 @@ import { initializeLegacyBaselineSchema } from './migrations/baseline-schema'
 import { CURRENT_DESKTOP_SCHEMA_VERSION, getDesktopMigrationRegistry } from './migrations/desktop-registry'
 import { migrateSchema, verifySchema } from './migrations/runner'
 import { SqliteSchemaAdapter } from './migrations/sqlite-schema-adapter'
-import { activateCanonicalProjectData, upgradeCanonicalProjectData, deactivateProjectData, getNewProjectDatabasePath, getProjectDatabasePath } from './services/project-data-locator'
+import { activateCanonicalProjectData, deactivateProjectData, getNewProjectDatabasePath, getProjectDatabasePath, upgradeCanonicalProjectData } from './services/project-data-locator'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3') as typeof import('better-sqlite3')
@@ -36,8 +36,11 @@ export function initProjectDatabase(projectPath: string): void {
   closeProjectDatabase()
   let database: BetterSqlite3.Database | undefined
   try {
-    upgradeCanonicalProjectData(projectPath)
-    activateCanonicalProjectData(projectPath)
+    // One open verifies the canonical schema once: the upgrade seam upgrades when
+    // needed and verifies the target, then admission reuses that result. Verifying
+    // separately in both seams doubled the cost on a 478 MB project.
+    const verifiedByUpgrade = upgradeCanonicalProjectData(projectPath)
+    activateCanonicalProjectData(projectPath, verifiedByUpgrade)
     database = new Database(getProjectDatabasePath(projectPath), { fileMustExist: true })
     const adapter = new SqliteSchemaAdapter(database)
     verifySchema(adapter, getDesktopMigrationRegistry(), CURRENT_DESKTOP_SCHEMA_VERSION)

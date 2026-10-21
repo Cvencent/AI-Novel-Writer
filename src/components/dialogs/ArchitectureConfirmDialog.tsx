@@ -1,5 +1,5 @@
 import { Wand2, AlertCircle, AlertTriangle, Check, ChevronDown, ChevronRight } from 'lucide-react'
-import { ARCH_STEP_NAMES, type ArchStepKey } from '../../services/architecture-step-selection'
+import { ARCH_STEP_NAMES, type ArchGenerateStepKey } from '../../services/architecture-step-selection'
 import {
   Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
 } from '../ui/Dialog'
@@ -13,7 +13,7 @@ import { useArchitectureConfirmForm, type ArchitectureConfirmFormOptions } from 
 import { pluralEn } from '../../shared/plural-en'
 
 /** 四节的说明；名字取 ARCH_STEP_NAMES。 */
-const ARCH_FILES: Array<{ key: ArchStepKey; desc: string; descEn: string }> = [
+const ARCH_FILES: Array<{ key: ArchGenerateStepKey; desc: string; descEn: string }> = [
   { key: 'premise', desc: 'Logline、核心冲突、金手指定位', descEn: 'Logline, core conflict, and protagonist advantage' },
   { key: 'characters', desc: '角色弧光、关系网、矛盾交织', descEn: 'Character arcs, relationships, and conflicts' },
   { key: 'worldbuilding', desc: '核心规则、阶层断层、深层危机', descEn: 'Core rules, social fault lines, and hidden crises' },

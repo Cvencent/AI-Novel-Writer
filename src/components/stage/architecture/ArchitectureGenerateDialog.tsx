@@ -8,7 +8,7 @@ import { Button } from '../../ui/Button'
 import { Check } from '../../ui/Check'
 import { Notice } from '../../ui/Notice'
 import { InkDialog } from '../InkDialog'
-import { SECTION_ORDER } from './architecture-sections'
+import { GENERATE_SECTION_ORDER } from './architecture-sections'
 import { pluralEn } from '../../../shared/plural-en'
 
 /** 生成架构的确认对话框。表单与校验沿用 ArchitectureConfirmDialog 的 useArchitectureConfirmForm，这里只换成纸墨样式。 */
@@ -17,7 +17,7 @@ export default function ArchitectureGenerateDialog(props: ArchitectureConfirmFor
   const form = useArchitectureConfirmForm(props)
   const { config, checked, selectedSteps, totalChapters } = form
   if (!config) return null
-  const allChecked = selectedSteps.length === SECTION_ORDER.length
+  const allChecked = selectedSteps.length === GENERATE_SECTION_ORDER.length
   const unit = resolveWritingLanguage(config.writingLanguage) === 'zh-CN' ? text('字', 'characters') : text('词', 'words')
   const overwritingCast = form.stepMark('characters') === 'overwrite'
 
@@ -46,9 +46,9 @@ export default function ArchitectureGenerateDialog(props: ArchitectureConfirmFor
         <div className="arch-steps" role="group" aria-label={text('要生成的节', 'Sections to generate')}>
           <div className="arch-step arch-step-all">
             <Check checked={allChecked} onChange={form.setAll} label={text('全选', 'Select all')} />
-            <span className="arch-step-count">{text(`已选 ${selectedSteps.length} / ${SECTION_ORDER.length}`, `${selectedSteps.length} / ${SECTION_ORDER.length} selected`)}</span>
+            <span className="arch-step-count">{text(`已选 ${selectedSteps.length} / ${GENERATE_SECTION_ORDER.length}`, `${selectedSteps.length} / ${GENERATE_SECTION_ORDER.length} selected`)}</span>
           </div>
-          {SECTION_ORDER.map(key => {
+          {GENERATE_SECTION_ORDER.map(key => {
             const mark = form.stepMark(key)
             return (
               <div key={key} className="arch-step" data-step={key}>
@@ -100,7 +100,7 @@ export default function ArchitectureGenerateDialog(props: ArchitectureConfirmFor
               {text('作者指导', 'Author guidance')}
               <span className="arch-guidance-hint">{text('可选，会和设定一起交给 AI', 'Optional, sent to AI with the setup')}</span>
             </Button>
-            {form.showGuidance && SECTION_ORDER.filter(key => checked[key]).map(key => (
+            {form.showGuidance && GENERATE_SECTION_ORDER.filter(key => checked[key]).map(key => (
               <label key={key} className="pi-field">
                 {text(...ARCH_STEP_NAMES[key])}
                 <textarea

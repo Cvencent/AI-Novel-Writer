@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useProjectStore } from '../../stores/project-store'
 import { guardArchitectureGeneration, guardCharacterRegeneration } from '../../services/workflow-guards'
-import { ARCH_STEP_NAMES, createDefaultArchitectureSelection, type ArchStepKey } from '../../services/architecture-step-selection'
+import { ARCH_STEP_NAMES, createDefaultArchitectureSelection, type ArchGenerateStepKey } from '../../services/architecture-step-selection'
 import { toast } from '../ui/Toast'
 import { useLocaleStore } from '../../stores/locale-store'
 import { ipc } from '../../services/ipc-client'
@@ -28,12 +28,12 @@ export interface ArchitectureConfirmFormOptions {
   archStatus: Record<string, boolean>
   /** 每节是否已确认（与架构页徽标同一判定）：决定状态文字与默认勾选；不传时按 archStatus。 */
   confirmed?: Record<string, boolean>
-  initialSelectedSteps?: ArchStepKey[]
+  initialSelectedSteps?: ArchGenerateStepKey[]
   initialSynopsisRange?: { from: number; to: number } | null
   /** 数据库里的正式大纲，主进程开跑时拿它判定范围；未保存的编辑不算。 */
   synopsisSource: PlotOutlineRangeSource
   onConfirm: (
-    selectedSteps: ArchStepKey[],
+    selectedSteps: ArchGenerateStepKey[],
     stepGuidance: Record<string, string>,
     synopsisRange?: { from: number; to: number },
     targetUnits?: number,
@@ -49,7 +49,7 @@ export function useArchitectureConfirmForm({
   const locale = useLocaleStore(s => s.locale)
 
   // 默认：未确认的全部勾选；或使用 initialSelectedSteps 覆盖
-  const [checked, setChecked] = useState<Record<ArchStepKey, boolean>>(() => {
+  const [checked, setChecked] = useState<Record<ArchGenerateStepKey, boolean>>(() => {
     return createDefaultArchitectureSelection(confirmed, initialSelectedSteps)
   })
   const wasOpen = useRef(false)
@@ -99,11 +99,11 @@ export function useArchitectureConfirmForm({
     wasOpen.current = isOpen
   }, [isOpen, resetChecked])
 
-  const toggleStep = (key: ArchStepKey) =>
+  const toggleStep = (key: ArchGenerateStepKey) =>
     setChecked(prev => ({ ...prev, [key]: !prev[key] }))
   const setAll = (value: boolean) => setChecked({ premise: value, characters: value, worldbuilding: value, synopsis: value })
 
-  const selectedSteps = (Object.keys(checked) as ArchStepKey[]).filter(k => checked[k])
+  const selectedSteps = (Object.keys(checked) as ArchGenerateStepKey[]).filter(k => checked[k])
   const noneSelected = selectedSteps.length === 0
   const config = currentProject?.novelConfig
   const totalChapters = Number(config?.totalChapters) > 0 ? Number(config?.totalChapters) : 0
@@ -156,7 +156,7 @@ export function useArchitectureConfirmForm({
       : text(`${replaced}。`, `${replaced}.`)
   }
 
-  const stepMark = (key: ArchStepKey): ArchStepMark => {
+  const stepMark = (key: ArchGenerateStepKey): ArchStepMark => {
     if (!checked[key]) return archStatus[key] ? 'keep' : 'new'
     if (key !== 'synopsis') return archStatus[key] ? 'overwrite' : 'new'
     if (!synopsisEffect) return outOfBounds ? 'invalid' : archStatus.synopsis ? 'overwrite' : 'new'
@@ -164,7 +164,7 @@ export function useArchitectureConfirmForm({
   }
 
   /** 标记文字；情节大纲覆盖的是部分章节时写明是哪几章。 */
-  const markLabel = (key: ArchStepKey): string => {
+  const markLabel = (key: ArchGenerateStepKey): string => {
     const mark = stepMark(key)
     if (key === 'synopsis' && mark === 'overwrite' && synopsisEffect?.kind === 'overwrite' && !synopsisEffect.whole) {
       return text(`将覆盖第 ${synopsisEffect.from}–${synopsisEffect.to} 章`, `Overwrite ch. ${synopsisEffect.from}–${synopsisEffect.to}`)
@@ -173,7 +173,7 @@ export function useArchitectureConfirmForm({
   }
 
   /** 状态文字：已确认；有内容但未确认（大纲没写完或被打断、名单待修复）为不完整，与架构页徽标同一叫法；没有内容为待生成。 */
-  const statusLabel = (key: ArchStepKey): string => confirmed[key]
+  const statusLabel = (key: ArchGenerateStepKey): string => confirmed[key]
     ? text('已确认', 'Confirmed')
     : archStatus[key] ? text('不完整', 'Incomplete') : text('待生成', 'Not started')
 
@@ -259,7 +259,7 @@ export function useArchitectureConfirmForm({
     synopsisRangeIssue,
     synopsisEffectNote: synopsisEffectNote(),
     stepGuidance,
-    setStepGuidance: (key: ArchStepKey, value: string) => setStepGuidance(prev => ({ ...prev, [key]: value })),
+    setStepGuidance: (key: ArchGenerateStepKey, value: string) => setStepGuidance(prev => ({ ...prev, [key]: value })),
     showGuidance,
     setShowGuidance,
     synopsisFrom,

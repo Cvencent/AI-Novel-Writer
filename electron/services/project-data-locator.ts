@@ -42,9 +42,14 @@ export function getNewProjectDatabasePath(projectPath: string): string {
 /** Admission always performs the real read-only SQLite verifier; shape-only
  * objects or a forged manifest cannot grant a business storage locator.
  */
-export function activateCanonicalProjectData(projectPath: string): string {
+/**
+ * Admit a canonical project. `alreadyVerified` is set only by the upgrade seam,
+ * which has just run the same read-only verifier on this exact manifest; passing
+ * it avoids verifying one large database twice on every project open.
+ */
+export function activateCanonicalProjectData(projectPath: string, alreadyVerified = false): string {
   const before = manifestState(projectPath)
-  verifyProjectSqlite({ databasePath: path.join(before.root, CANONICAL_PROJECT_DATABASE) })
+  if (!alreadyVerified) verifyProjectSqlite({ databasePath: path.join(before.root, CANONICAL_PROJECT_DATABASE) })
   const after = manifestState(projectPath)
   if (before.manifestHash !== after.manifestHash) throw new Error('PROJECT_MANIFEST_CHANGED')
   admitted.set(key(projectPath), before)
@@ -61,14 +66,19 @@ export function getProjectDatabasePath(projectPath: string): string { return pat
 export function deactivateProjectData(projectPath: string): void { admitted.delete(key(projectPath)) }
 
 
-/** Explicit lifecycle upgrade before admission, never a normal locator fallback. */
-export function upgradeCanonicalProjectData(projectPath: string): void {
+/** Explicit lifecycle upgrade before admission, never a normal locator fallback.
+ * Returns true when the database was verified as already current, so admission
+ * can skip a redundant second verification of the same bytes.
+ */
+export function upgradeCanonicalProjectData(projectPath: string): boolean {
   const before = manifestState(projectPath)
   if (admitted.has(key(projectPath))) {
     verifyProjectSqlite({ databasePath: path.join(before.root, CANONICAL_PROJECT_DATABASE) })
-    return
+    return true
   }
   upgradeProjectSqlite({ databasePath: path.join(before.root, CANONICAL_PROJECT_DATABASE) })
   const after = manifestState(projectPath)
   if (before.manifestHash !== after.manifestHash) throw new Error('PROJECT_MANIFEST_CHANGED')
+  // upgradeProjectSqlite ended by verifying the current target version.
+  return true
 }
