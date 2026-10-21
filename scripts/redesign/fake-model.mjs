@@ -75,7 +75,7 @@ export function arcSegment(prompt) {
 
 beat: ${beat}
 
-这一段只写方向：港口的雾钟提前响起，失踪者的共同点逐步浮出，主角顺着父亲的地图往北堤外查，每一次接近真相都要付出代价。对手开始抢先一步布置陷阱，师长留下的旧记录揭示出代价的来源。`
+这一段只写方向：港口的雾钟提前响起，失踪者的共同点逐步浮出，${process.env.AI_NOVEL_FAKE_ARC_NAME ?? '主角'}顺着父亲的地图往北堤外查，每一次接近真相都要付出代价。对手开始抢先一步布置陷阱，师长留下的旧记录揭示出代价的来源。`
 }
 
 function responseFor(prompt, { extraction, plotTree, review }) {

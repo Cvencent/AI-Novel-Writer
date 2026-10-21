@@ -254,6 +254,30 @@ export const ARCH_SCENARIOS = {
     }
   } },
 
+  /** lane 2.6：模型在粗纲里漏写人名时，按角色定位换成身份词后照常落库，而不是整段失败。 */
+  'arch-arc-name-fallback': { model: true, shell: 'stage', setup: seedArch({ totalChapters: 40 }), run: async context => {
+    const { page } = context
+    await openArchitecture(page)
+    // 让夹具模型这一步故意写出角色名单里的名字（林岚），复现 ARC_OUTLINE_PROPER_NAME_FOUND。
+    process.env.AI_NOVEL_FAKE_ARC_NAME = '林岚'
+    try {
+      await arch.section(page, 'arc').getByRole('button', { name: 'AI 生成粗纲' }).click()
+      await waitForRunDone(page)
+      const session = await uiSession(context.app)
+      let arcs = []
+      for (let attempt = 0; attempt < 120; attempt++) {
+        arcs = await context.invoke(page, 'db:arc-outline-list', session.projectPath, session).catch(() => [])
+        if (Array.isArray(arcs) && arcs.length > 0) break
+        await pause(500)
+      }
+      assert.equal(arcs.length, 1, '粗纲应该落库成功，而不是因为人名失败')
+      assert.doesNotMatch(arcs[0].summary, /林岚/, '人名应被替换掉')
+      assert.match(arcs[0].summary, /主角/, '人名应换成身份词「主角」')
+    } finally {
+      delete process.env.AI_NOVEL_FAKE_ARC_NAME
+    }
+  } },
+
   /** lane 3：五节都已确认时主按钮是下一步章节蓝图；after 点它进入蓝图。 */
   'arch-done': { model: false, shell: 'stage', setup: seedArch({ arcs: [{ arcIndex: 1, fromChapter: 1, toChapter: 12, title: '旧港的雾钟', summary: '林岚从停用的灯塔查起，逐步认出失踪者的共同点。', beat: 'setup' }] }), run: async ({ page }) => {
     await openArchitecture(page)
