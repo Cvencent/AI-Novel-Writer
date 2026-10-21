@@ -14,8 +14,8 @@ import StageLogs from '../StageLogs'
 
 const session = { projectId: '日志测试', projectPath: 'C:/novels/logs', leaseId: '本次打开' }
 const calls = [
-  { attemptId: 'a1', runId: 'r1', purpose: 'plot-outline:chapter:151', status: 'settled', modelName: 'test-model', requestedOutputTokens: 8192, hasPrompt: true, hasOutput: true },
-  { attemptId: 'a2', runId: 'r1', purpose: 'arc-outline:from:1', status: 'settled', modelName: 'test-model', requestedOutputTokens: 4096, hasPrompt: true, hasOutput: true },
+  { attemptId: 'a1', runId: 'r1', purpose: 'plot-outline:chapter:151', status: 'settled', modelName: 'test-model', requestedOutputTokens: 8192, hasPrompt: true, hasOutput: true, promptTrimmed: false },
+  { attemptId: 'a2', runId: 'r1', purpose: 'arc-outline:from:1', status: 'settled', modelName: 'test-model', requestedOutputTokens: 4096, hasPrompt: true, hasOutput: true, promptTrimmed: true },
 ]
 const detail = {
   ...calls[0],
@@ -120,6 +120,35 @@ describe('StageLogs', () => {
     const body = document.body.textContent ?? ''
     expect(body).toContain('这条调用没有可显示的记录。')
     expect(body).not.toContain('正在读取这次调用…')
+  })
+
+  it('列表标出 Prompt 已被保留策略清理的调用', async () => {
+    await render()
+    // a2 的 Prompt 已被清理，列表里要一眼能看出来
+    const rows = [...document.querySelectorAll('.stage-logs-item')]
+    const trimmedRow = rows.find(row => row.textContent?.includes('arc-outline:from:1'))
+    expect(trimmedRow?.textContent).toContain('Prompt 已清理')
+    const keptRow = rows.find(row => row.textContent?.includes('plot-outline:chapter:151'))
+    expect(keptRow?.textContent).not.toContain('Prompt 已清理')
+  })
+
+  it('展开已清理的调用时说明原因，而不是显示成空记录', async () => {
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === 'db:generation-log-list') return calls
+      if (channel === 'db:generation-log-read') {
+        return { ...calls[1], promptMessages: [], output: '返回仍在', promptTrimmed: true }
+      }
+      return null
+    })
+    await render()
+    const row = [...document.querySelectorAll('button')].find(b => b.textContent?.includes('arc-outline:from:1'))!
+    await act(async () => { row.click() })
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { await Promise.resolve() })
+    const body = document.body.textContent ?? ''
+    expect(body).toContain('已按保留策略清理')
+    expect(body).toContain('返回仍在')
+    expect(body).not.toContain('这次调用没有记录 Prompt')
   })
 
   it('没有调用记录时给出说明', async () => {

@@ -55,3 +55,17 @@
 .stage-logs-tool { display: flex; flex-direction: column; gap: 5px; padding: 9px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
 .stage-logs-tool-head { display: flex; align-items: center; gap: 6px; }
 .stage-logs-tool-name { font-family: var(--font-mono); font-size: 12px; color: var(--color-text-primary); }
+
+/* 保留策略清理提示：这条调用的完整 Prompt 已被清掉，但返回文本仍在。 */
+.stage-logs-trimmed {
+  margin: 8px 0 0; padding: 7px 9px;
+  font-size: 12px; line-height: 1.55;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-muted, rgba(127, 127, 127, 0.08));
+  border-left: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+/* 列表行上的「已清理」小标记，让作者一眼看出哪些调用还能看 Prompt。 */
+.stage-logs-row-trimmed {
+  font-size: 11px; color: var(--color-text-muted); white-space: nowrap;
+}

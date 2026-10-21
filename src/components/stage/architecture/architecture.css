@@ -509,3 +509,37 @@
   background: transparent;
 }
 .arch-arc-embedded .arch-arc-empty { margin-top: 8px; }
+
+/* 大纲目录：粗纲与情节大纲标签页右侧的段/章列表，点一项跳到对应位置。 */
+.arch-outline-nav {
+  width: 240px; flex-shrink: 0; min-height: 0;
+  display: flex; flex-direction: column;
+  border-left: 1px solid var(--color-border);
+  background: var(--color-editor-bg, transparent);
+}
+.arch-outline-nav-title {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: 0; padding: 8px 10px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
+}
+.arch-outline-nav-count {
+  font-variant-numeric: tabular-nums; font-weight: 500;
+  color: var(--color-text-muted);
+}
+.arch-outline-nav-list {
+  list-style: none; margin: 0; padding: 4px;
+  overflow-y: auto; min-height: 0; flex: 1;
+}
+.arch-outline-nav-item {
+  display: block; width: 100%; text-align: left;
+  padding: 5px 7px; border: 0; border-radius: var(--radius-sm);
+  background: transparent; cursor: pointer;
+  font-size: 12px; line-height: 1.45;
+  color: var(--color-text-secondary);
+}
+.arch-outline-nav-item:hover { background: var(--color-surface-hover, rgba(127, 127, 127, 0.1)); }
+.arch-outline-nav-item:focus-visible {
+  outline: 2px solid var(--color-accent); outline-offset: -1px;
+}

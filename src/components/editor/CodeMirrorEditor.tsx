@@ -35,6 +35,13 @@ export type CodeMirrorEditorProps = {
   fitContent?: boolean
   /** 段落首行缩进两字（只是显示，见 paragraph-indent）。 */
   paragraphIndent?: boolean
+  /**
+   * 把视图滚动到含有这段文字的那一行，并把它选中。
+   *
+   * 用途：粗纲/情节大纲的右侧目录点击某一段或某一章时，让编辑器跳到对应位置。
+   * 传的是原文里逐字出现的标题行；配一个递增的 requestId，点同一项两次也能重新定位。
+   */
+  revealRequest?: { text: string; requestId: number } | null
 }
 
 type EditorAIAction = {
@@ -65,6 +72,7 @@ export default function CodeMirrorEditor({
   paperHead = null,
   fitContent = false,
   paragraphIndent: indentParagraphs = false,
+  revealRequest = null,
 }: CodeMirrorEditorProps) {
   const inkThemeName = useThemeStore(s => s.resolvedTheme)
   const uiText = useLocaleStore(s => s.text)
@@ -389,6 +397,26 @@ export default function CodeMirrorEditor({
     return exts
   }, [mode, stablePaperHead, uiLocale, indentParagraphs])
 
+  /**
+   * 右侧目录点击后把视图滚到那一行。
+   *
+   * 只在 revealRequest 变化时跑（requestId 递增），所以点同一个条目两次也会重新定位。
+   * 找不到目标文字时什么也不做：目录与正文可能短暂不同步（比如刚保存过），不能因此报错或跳错位置。
+   */
+  useEffect(() => {
+    if (!revealRequest) return
+    const view = editorRef.current?.view
+    if (!view) return
+    const index = view.state.doc.toString().indexOf(revealRequest.text)
+    if (index < 0) return
+    const from = index
+    const to = index + revealRequest.text.length
+    view.dispatch({
+      selection: { anchor: from, head: to },
+      effects: EditorView.scrollIntoView(from, { y: 'start', yMargin: 24 }),
+    })
+    view.focus()
+  }, [revealRequest])
   // AI 菜单处理（流式调用，实时显示生成内容）
   const handleAIAction = async (action: EditorAIAction) => {
     let requestSequence: number | null = null

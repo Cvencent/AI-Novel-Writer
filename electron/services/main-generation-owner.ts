@@ -660,7 +660,10 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
       requestedOutputTokens: plan.requestedOutputTokens, inputUpperBoundTokens: plan.inputUpperBoundTokens,
       reasoningUpperBoundTokens: plan.reasoningUpperBoundTokens, usagePolicy: plan.usagePolicy, purpose: task.purpose,
       ...(plan.budgetDecision ? { budgetDecision: plan.budgetDecision } : {}),
-      ...(run.binding.sourceManifest.importSlot || materialDecision?.shortOutlinePromptHash || repository.readPlotOutline(run.runId) ? { replayTask: task } : {}),
+      // 每次都存完整 Prompt：日志页要能回看模型到底收到什么。
+      // 体积由保留策略兜底（只留最近 N 次，更早的 Prompt 清掉、返回文本保留），
+      // 所以这里不必再按任务类型挑着存。
+      replayTask: task,
       ...(reconciliationInjected ? { reconciliationInjected } : {}),
       ...(agentExecution ? { agentToolNames: (run.binding.sourceManifest.agentContext as AgentGenerationContext).input.tools.map(tool => tool.name) } : {}) })
     if (receipt.failureCode || receipt.unsavedTail) volatileReceipts.set(receipt.attempt.attemptId, receipt)

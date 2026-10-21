@@ -71,6 +71,75 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 
+describe('大纲目录', () => {
+  const renderViewer = async (filePath: string, content: string) => {
+    useLocaleStore.setState({ locale: 'zh-CN' })
+    await act(async () => root.render(
+      <ArchFileViewer tabId="arch-outline-nav" filePath={filePath}
+        projectKey={PROJECT_PATH} content={content} savedContent={content} />,
+    ))
+  }
+
+  it('情节大纲右侧列出每一章，点某一章就把编辑器定位过去', async () => {
+    const synopsis = [
+      '# 情节大纲',
+      '',
+      '## 第1章：雾钟',
+      '林越在旧港听见第一声钟。',
+      '',
+      '## 第42章：北堤',
+      '他顺着潮位找到第二处刻痕。',
+    ].join('\n')
+    await renderViewer('ai-novel://core/synopsis', synopsis)
+
+    const nav = container.querySelector('[aria-label="大纲目录"]')
+    expect(nav).not.toBeNull()
+    const items = [...nav!.querySelectorAll('button')]
+    expect(items.map(i => i.textContent)).toEqual(['第1章：雾钟', '第42章：北堤'])
+
+    // 点第 42 章：编辑器应该把视图定位到那一行（选区落在该标题上）
+    await act(async () => items[1]!.click())
+    await act(async () => { await Promise.resolve() })
+    const view = EditorView.findFromDOM(container.querySelector('.cm-editor') as HTMLElement)
+    expect(view).not.toBeNull()
+    const selected = view!.state.sliceDoc(view!.state.selection.main.from, view!.state.selection.main.to)
+    expect(selected).toContain('第42章：北堤')
+  })
+
+  it('粗纲右侧按段列出区间，而不是只显示从第 1 章开始', async () => {
+    const arc = [
+      '## 第 1–20 章：废核与第一块残片',
+      'beat: setup · 状态: confirmed',
+      '',
+      '方向一。',
+      '',
+      '## 第 191–310 章：记忆的倒影',
+      'beat: reversal · 状态: draft',
+      '',
+      '方向二。',
+    ].join('\n')
+    await renderViewer('ai-novel://core/arc', arc)
+
+    const nav = container.querySelector('[aria-label="大纲目录"]')
+    const items = [...nav!.querySelectorAll('button')]
+    expect(items.map(i => i.textContent)).toEqual(['第 1–20 章：废核与第一块残片', '第 191–310 章：记忆的倒影'])
+    // 段落区间要能在列表上直接看出来
+    expect(items[1]!.getAttribute('data-from')).toBe('191')
+    expect(items[1]!.getAttribute('data-to')).toBe('310')
+
+    await act(async () => items[1]!.click())
+    await act(async () => { await Promise.resolve() })
+    const view = EditorView.findFromDOM(container.querySelector('.cm-editor') as HTMLElement)
+    const selected = view!.state.sliceDoc(view!.state.selection.main.from, view!.state.selection.main.to)
+    expect(selected).toContain('第 191–310 章')
+  })
+
+  it('不长的节（故事前提）不显示目录，避免多余的右栏', async () => {
+    await renderViewer('ai-novel://core/premise', '# 故事前提\n\n## 一句话前提\n当高三生觉醒空白源核……')
+    expect(container.querySelector('[aria-label="大纲目录"]')).toBeNull()
+  })
+})
+
 describe('ArchFileViewer locale', () => {
   it.each([
     ['premise', '故事前提'],

@@ -12,6 +12,11 @@ export interface ModelCallSummary {
   createdAtMs: number | null
   hasPrompt: boolean
   hasOutput: boolean
+  /**
+   * 这条调用的完整 Prompt 已被保留策略清理（只留返回文本与元信息）。
+   * 与 hasPrompt=false 的区别：false 是这次调用本来就没记录 Prompt，true 是曾经有、后来按策略清掉了。
+   */
+  promptTrimmed: boolean
 }
 
 /** 单次调用中模型发起的一个工具调用。 */
@@ -44,6 +49,17 @@ function requireDb(db?: BetterSqlite3.Database): BetterSqlite3.Database {
 function safeJson<T>(raw: string | null, fallback: T): T {
   if (!raw) return fallback
   try { return JSON.parse(raw) as T } catch { return fallback }
+}
+
+/**
+ * 这条调用的 Prompt 是不是被保留策略清掉的。
+ *
+ * 清理时会在 usage_receipt_json 上留 promptTrimmedAt 标记，然后删掉 replayTask.messages。
+ * 有这个标记且没有 messages，就是「曾经有、后来按策略清理」，与「这次调用本来就没记 Prompt」区分开。
+ */
+function wasPromptTrimmed(row: AttemptRow): boolean {
+  const usage = safeJson<{ promptTrimmedAt?: unknown }>(row.usage_receipt_json, {})
+  return typeof usage.promptTrimmedAt === 'string' && usage.promptTrimmedAt.length > 0
 }
 
 function readMessages(row: AttemptRow): { role: string; content: string }[] {
@@ -126,6 +142,7 @@ export class GenerationLogRepository {
         createdAtMs: null,
         hasPrompt: readMessages(row).length > 0,
         hasOutput: Boolean(usage.artifactIdentity?.artifactId),
+        promptTrimmed: wasPromptTrimmed(row),
       }
     })
   }
@@ -152,9 +169,50 @@ export class GenerationLogRepository {
       createdAtMs: null,
       hasPrompt: readMessages(row).length > 0,
       hasOutput: Boolean(artifactPayload.text),
+      promptTrimmed: wasPromptTrimmed(row),
       promptMessages: readMessages(row),
       output: artifactPayload.text ?? '',
       toolCalls: readToolCalls(readMessages(row)),
     }
+  }
+
+  /**
+   * 保留策略：完整 Prompt 只留最近 keepCount 次调用，更早的记录删掉 replayTask.messages，
+   * 返回文本、purpose、模型、token 这些摘要信息全部留着。
+   *
+   * 为什么需要：大纲类调用的用户提示词会带上已确认大纲的上下文，单次可到 MB 级。
+   * 如果每次调用都永久保留完整 Prompt，作品的生成日志会随章节数线性膨胀（实测一部作品
+   * 可以涨到几百 MB），打开作品与切页都会变慢。
+   *
+   * 清理时在 usage_receipt_json 上写 promptTrimmedAt 标记，日志页据此明确告诉作者
+   * 「这条的 Prompt 已按保留策略清理」，而不是让它看起来像一条空记录。
+   *
+   * 排序按 rowid（写入顺序）：最近 keepCount 条保留，更早的清理。
+   * 返回这次清理掉的条数；不写任何小说内容，只动日志表里的 Prompt 字段。
+   */
+  static trimPromptHistory(keepCount: number, db?: BetterSqlite3.Database): number {
+    const database = requireDb(db)
+    const keep = Math.max(0, Math.floor(keepCount))
+    const rows = database.prepare(`SELECT attempt_id, usage_receipt_json FROM generation_attempts
+      WHERE usage_receipt_json IS NOT NULL
+        AND json_type(usage_receipt_json,'$.replayTask.messages') = 'array'
+      ORDER BY rowid DESC`).all() as { attempt_id: string; usage_receipt_json: string }[]
+    const stale = rows.slice(keep)
+    if (stale.length === 0) return 0
+    const update = database.prepare('UPDATE generation_attempts SET usage_receipt_json=? WHERE attempt_id=?')
+    database.transaction(() => {
+      for (const row of stale) {
+        const usage = safeJson<Record<string, unknown>>(row.usage_receipt_json, {})
+        const replayTask = usage.replayTask as Record<string, unknown> | undefined
+        if (!replayTask) continue
+        // 只删 messages；replayTask 里别的字段（purpose / reasoningStage / output）留着。
+        const { messages: _messages, ...rest } = replayTask
+        void _messages
+        const next = { ...usage, ...(Object.keys(rest).length > 0 ? { replayTask: rest } : {}), promptTrimmedAt: new Date().toISOString() }
+        if (Object.keys(rest).length === 0) delete (next as Record<string, unknown>).replayTask
+        update.run(JSON.stringify(next), row.attempt_id)
+      }
+    }).immediate()
+    return stale.length
   }
 }

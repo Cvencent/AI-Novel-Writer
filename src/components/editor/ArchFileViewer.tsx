@@ -1,6 +1,6 @@
 import { LegacyRosterRecoveryPanel } from './LegacyRosterRecoveryPanel'
-import { resourceWriteAllowed } from '../../shared/project-paths'
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { parseResourceUri, resourceWriteAllowed } from '../../shared/project-paths'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { Save, RefreshCw, Sparkles, Loader2, AlertTriangle, FileText } from 'lucide-react'
 import { renderIcon } from '../panels/sidebar/sidebar-icons'
 
@@ -10,7 +10,7 @@ import { ARCH_STEP_NAMES, type ArchGenerateStepKey, type ArchStepKey } from '../
 import { Button } from '../ui/Button'
 import { ipc } from '../../services/ipc-client'
 import { requireIpcSuccess } from '../../services/ipc-result'
-import { CORE_FIELD_MAP, parseCoreField } from '../../services/resource-protocol'
+import { ARC_RESOURCE_KEY, CORE_FIELD_MAP, parseCoreField } from '../../services/resource-protocol'
 import { appErrorMessage } from '../../i18n/app-errors'
 import { toast } from '../ui/Toast'
 import { CharacterCardImportButton } from '../characters/CharacterCardImportButton'
@@ -21,6 +21,7 @@ import { useLocaleStore } from '../../stores/locale-store'
 import { launchCreativeWorkflow } from '../../services/workflows/creative-workflow-launcher'
 import { createArchitectureWorkflow } from '../../services/workflows/architecture-workflow'
 import { renderPlotOutlineSynopsis, validPlotOutlineAuthorPrefix, type PlotOutlineRangeSource } from '../../shared/plot-outline-contract'
+import { parseOutlineNavigation } from '../../shared/outline-navigation'
 import { useWorkflowStore } from '../../stores/workflow-store'
 import { outlineSourceInvalidNote } from '../run/run-recovery'
 import { globalEventBus } from '../../shared/event-bus'
@@ -69,6 +70,9 @@ function castTextForView(markdown: string): string {
 
 /** 从文件路径推断出 ArchStepKey */
 function detectStepKey(filePath: string): ArchStepKey | null {
+  // 粗纲是多段台账、不在 CORE_FIELD_MAP 里，但它的资源 URI 与文档名同样是 core/arc。
+  const resource = parseResourceUri(filePath)
+  if (resource?.kind === 'core' && resource.key === ARC_RESOURCE_KEY) return 'arc'
   const field = parseCoreField(filePath)
   const coreKey = Object.keys(CORE_FIELD_MAP).find(key => CORE_FIELD_MAP[key] === field)
   if (coreKey) return coreKey as ArchStepKey
@@ -160,6 +164,18 @@ function ArchFileViewerSession({
   const lastCompletedArchitectureRunRef = useRef<string | null>(null)
   const [refreshBlockedMessage, setRefreshBlockedMessage] = useState<string | null>(null)
   const reloadGateRef = useRef(new ArchReloadGate())
+  /**
+   * 右侧目录的条目。只对粗纲与情节大纲这两节生成：它们是「一整篇长文本」，
+   * 作品写到几百章后必须能按段/按章跳转。其余节（前提、世界观、角色名单）本身不长，不需要目录。
+   */
+  const outlineNavigation = useMemo(
+    () => (stepKey === 'arc' || stepKey === 'synopsis') ? parseOutlineNavigation(editorContent) : [],
+    [stepKey, editorContent],
+  )
+
+  /** 右侧大纲目录：点某一段/某一章后，给编辑器一个递增的定位请求。 */
+  const [revealRequest, setRevealRequest] = useState<{ text: string; requestId: number } | null>(null)
+  const revealSequenceRef = useRef(0)
 
   const isArchRunning = useWorkflowStore(s => s.isTypeRunning('architecture_generation'))
   const {
@@ -757,8 +773,9 @@ function ArchFileViewerSession({
         </div>
       )}
 
-      {/* CodeMirrorEditor document 模式，隐藏底部栏（信息已整合到上方工具栏） */}
-      <div className="flex-1 overflow-hidden">
+      {/* 编辑区：粗纲与情节大纲在右侧多一列目录，可以按段/按章跳转 */}
+      <div className="flex-1 overflow-hidden flex min-h-0">
+        <div className="flex-1 overflow-hidden min-w-0">
         <CodeMirrorEditor
           mode="document"
           content={isCharacterProjection && rosterSnapshot?.status === 'ready' ? castTextForView(editorContent) : editorContent}
@@ -767,12 +784,43 @@ function ArchFileViewerSession({
           onChange={isCharacterProjection ? undefined : handleChange}
           onSave={isCharacterProjection ? undefined : handleSave}
           onCharCountChange={setCharCount}
+          revealRequest={revealRequest}
           hideStatusBar
           placeholder={text(
             '尚未生成内容，点击右上角「AI 生成」或直接在此编辑...',
             'No content yet. Click “AI Generate” in the top-right or start editing here...',
           )}
         />
+        </div>
+        {outlineNavigation.length > 0 && (
+          <nav
+            className="arch-outline-nav"
+            aria-label={text('大纲目录', 'Outline contents')}
+          >
+            <p className="arch-outline-nav-title">
+              {stepKey === 'arc' ? text('粗纲分段', 'Arc segments') : text('大纲章节', 'Outline chapters')}
+              <span className="arch-outline-nav-count">{outlineNavigation.length}</span>
+            </p>
+            <ol className="arch-outline-nav-list">
+              {outlineNavigation.map(item => (
+                <li key={item.heading}>
+                  <button
+                    type="button"
+                    className="arch-outline-nav-item"
+                    data-from={item.chapterFrom}
+                    data-to={item.chapterTo}
+                    onClick={() => {
+                      revealSequenceRef.current += 1
+                      setRevealRequest({ text: item.heading, requestId: revealSequenceRef.current })
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </nav>
+        )}
       </div>
 
       {/* AI 生成确认弹窗 */}

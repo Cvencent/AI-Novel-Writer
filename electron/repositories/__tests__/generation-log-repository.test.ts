@@ -92,6 +92,44 @@ describe('GenerationLogRepository', () => {
     expect(GenerationLogRepository.read('missing')).toBeNull()
   })
 
+  it('超过保留上限时，只清理更早记录里的 Prompt，返回文本与摘要都留着', () => {
+    // 保留策略：完整 Prompt 只留最近 N 次调用。更早的记录必须仍然能被列出、仍然有返回文本，
+    // 只是 Prompt 被清掉，并且明确标出「已按保留策略清理」，不能静默变成空。
+    const db = getProjectDb()!
+    const old = [1, 2, 3]
+    for (const n of old) seedCall('old-' + n, 'plot-outline:chapter:' + n, '早期提示词 ' + n, '早期返回 ' + n)
+    seedCall('kept-1', 'plot-outline:chapter:9', '最近提示词 1', '最近返回 1')
+    seedCall('kept-2', 'plot-outline:chapter:10', '最近提示词 2', '最近返回 2')
+
+    const removed = GenerationLogRepository.trimPromptHistory(2, db)
+    expect(removed).toBe(3)
+
+    // 更早的三条：Prompt 没了，但返回还在、purpose 还在
+    for (const n of old) {
+      const detail = GenerationLogRepository.read('old-' + n, db)!
+      expect(detail.promptMessages).toEqual([])
+      expect(detail.output).toBe('早期返回 ' + n)
+      expect(detail.purpose).toBe('plot-outline:chapter:' + n)
+      expect(detail.promptTrimmed).toBe(true)
+    }
+    // 最近的两次：Prompt 完整保留
+    for (const id of ['kept-1', 'kept-2']) {
+      const detail = GenerationLogRepository.read(id, db)!
+      expect(detail.promptMessages.length).toBeGreaterThan(0)
+      expect(detail.promptTrimmed).toBe(false)
+    }
+    // 列表仍然列出全部五条
+    expect(GenerationLogRepository.list(50, db)).toHaveLength(5)
+  })
+
+  it('保留上限之内不做任何清理', () => {
+    const db = getProjectDb()!
+    seedCall('a-1', 'p1', '提示词 1', '返回 1')
+    seedCall('a-2', 'p2', '提示词 2', '返回 2')
+    expect(GenerationLogRepository.trimPromptHistory(10, db)).toBe(0)
+    expect(GenerationLogRepository.read('a-1', db)!.promptTrimmed).toBe(false)
+  })
+
   it('list 限制上限为 500', () => {
     seedCall('a3', 'p', 'x', 'y')
     expect(GenerationLogRepository.list(9999)).toHaveLength(1)

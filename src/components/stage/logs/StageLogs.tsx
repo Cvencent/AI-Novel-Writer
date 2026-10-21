@@ -4,6 +4,7 @@ import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { ipc } from '../../../services/ipc-client'
 import { Button } from '../../ui/Button'
+import { GENERATION_PROMPT_RETENTION } from '../../../shared/generation-log-retention'
 
 /** 日志页里展示的一次模型调用（列表行）。 */
 interface ModelCallSummary {
@@ -15,6 +16,8 @@ interface ModelCallSummary {
   requestedOutputTokens: number | null
   hasPrompt: boolean
   hasOutput: boolean
+  /** 完整 Prompt 已被保留策略清理（曾经有，不是本来就没有）。 */
+  promptTrimmed: boolean
 }
 
 /** 展开后的完整详情。 */
@@ -54,6 +57,7 @@ function normalizeDetail(raw: unknown): ModelCallDetail | null {
     requestedOutputTokens: typeof record.requestedOutputTokens === 'number' ? record.requestedOutputTokens : null,
     hasPrompt: messages.length > 0,
     hasOutput: typeof record.output === 'string' && record.output.length > 0,
+    promptTrimmed: record.promptTrimmed === true,
     promptMessages: messages,
     output: typeof record.output === 'string' ? record.output : '',
     toolCalls: tools.map(tool => ({
@@ -144,6 +148,7 @@ export default function StageLogs() {
                 <span className="stage-logs-status" data-status={call.status}>{call.status}</span>
                 {call.modelName && <span className="stage-logs-model">{call.modelName}</span>}
                 {call.requestedOutputTokens !== null && <span className="stage-logs-tokens">{call.requestedOutputTokens} tok</span>}
+                {call.promptTrimmed && <span className="stage-logs-row-trimmed">{text('Prompt 已清理', 'Prompt trimmed')}</span>}
               </button>
               {open && (
                 <div className="stage-logs-detail">
@@ -151,6 +156,17 @@ export default function StageLogs() {
                   {!detail && !detailLoading && <p className="stage-logs-empty">{text('这条调用没有可显示的记录。', 'No record available for this call.')}</p>}
                   {detail && (
                     <>
+                      {detail.promptTrimmed && (
+                        <p className="stage-logs-trimmed">
+                          {text(
+                            '这次调用的完整 Prompt 已按保留策略清理（只保留最近 ' + GENERATION_PROMPT_RETENTION + ' 次）。返回文本、模型与用途仍然完整。',
+                            "This call's full prompt was trimmed by the retention policy (only the most recent " + GENERATION_PROMPT_RETENTION + ' calls keep prompts). The response, model and purpose are still complete.',
+                          )}
+                        </p>
+                      )}
+                      {!detail.promptTrimmed && detail.promptMessages.length === 0 && (
+                        <p className="stage-logs-empty">{text('这次调用没有记录 Prompt。', 'No prompt was recorded for this call.')}</p>
+                      )}
                       {detail.promptMessages.length > 0 && (
                         <section className="stage-logs-prompt">
                           <h2>{text('完整 Prompt', 'Full prompt')}</h2>
