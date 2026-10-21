@@ -13,6 +13,7 @@ import KnowledgeIndexSection from '../knowledge/KnowledgeIndexSection'
 import { isComposing, isModalOpen } from '../shortcut-keys'
 import AboutSection from './AboutSection'
 import AppearanceSection from './AppearanceSection'
+import MaintenanceSection from './MaintenanceSection'
 import ModelsSection from './ModelsSection'
 import ProxySection from './ProxySection'
 import { SETTINGS_GROUPS, SETTINGS_PAGES } from './settings-pages'
@@ -57,6 +58,8 @@ function PageBody({ page }: { page: SettingsSection }) {
       return <><PageHeader page={page} /><Legacy><SkillSettings /></Legacy></>
     case 'backup':
       return <><PageHeader page={page} /><Legacy><ProjectBackupPanel /></Legacy></>
+    case 'maintenance':
+      return <><PageHeader page={page} /><MaintenanceSection /></>
     case 'about':
       return <><PageHeader page={page} /><AboutSection /></>
   }

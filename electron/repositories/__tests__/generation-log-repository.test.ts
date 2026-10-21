@@ -130,6 +130,26 @@ describe('GenerationLogRepository', () => {
     expect(GenerationLogRepository.read('a-1', db)!.promptTrimmed).toBe(false)
   })
 
+  it('统计当前 Prompt 占用，供设置页显示「可回收多少」', () => {
+    const db = getProjectDb()!
+    seedCall('s-1', 'p', '很长的提示词'.repeat(100), '返回 1')
+    seedCall('s-2', 'p', '很长的提示词'.repeat(100), '返回 2')
+    const stats = GenerationLogRepository.promptStorageStats(db)
+    expect(stats.totalCalls).toBe(2)
+    expect(stats.callsWithPrompt).toBe(2)
+    // 至少能报出提示词占用的字节数，且大于 0
+    expect(stats.promptBytes).toBeGreaterThan(0)
+  })
+
+  it('清理到保留上限后，再统计就只剩保留的部分', () => {
+    const db = getProjectDb()!
+    for (const n of [1, 2, 3, 4]) seedCall('t-' + n, 'p', '提示词内容'.repeat(50), 'r')
+    expect(GenerationLogRepository.trimPromptHistory(1, db)).toBe(3)
+    const stats = GenerationLogRepository.promptStorageStats(db)
+    expect(stats.callsWithPrompt).toBe(1)
+    expect(stats.callsTrimmed).toBe(3)
+  })
+
   it('list 限制上限为 500', () => {
     seedCall('a3', 'p', 'x', 'y')
     expect(GenerationLogRepository.list(9999)).toHaveLength(1)

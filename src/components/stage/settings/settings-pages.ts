@@ -22,6 +22,7 @@ export const SETTINGS_GROUPS: readonly { id: string; name: Pair; pages: readonly
   ] },
   { id: 'other', name: ['其他', 'Other'], pages: [
     { id: 'backup', name: ['项目备份', 'Project backup'], lede: ['把作品打包存到本机，或备份到你绑定的云端。恢复时总是另存为一份新的作品副本。', 'Archive the book locally or to a cloud you connect. Restoring always creates a new copy.'] },
+    { id: 'maintenance', name: ['项目维护', 'Project maintenance'], lede: ['查看生成日志占了多少空间，并按保留策略回收。这里只动调用日志，不碰正文与大纲。', 'See how much space generation logs take and reclaim them by the retention policy. This only touches call logs, never your text or outlines.'] },
     { id: 'about', name: ['关于与更新', 'About & updates'], lede: ['版本信息与应用更新。', 'Version information and app updates.'] },
   ] },
 ]

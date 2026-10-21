@@ -6,6 +6,7 @@ import { OutlineSegmentBindingRepository } from '../repositories/outline-segment
 import { OutlineSummaryRepository } from '../repositories/outline-summary-repository'
 import { OutlineCharacterStateRepository } from '../repositories/outline-character-state-repository'
 import { GenerationLogRepository } from '../repositories/generation-log-repository'
+import { GENERATION_PROMPT_RETENTION } from '../../src/shared/generation-log-retention'
 import type { MainGenerationRunHandle } from '../../src/services/generation/generation-runtime'
 import { assertGenerationSourcesCurrent, assertGenerationSynopsisCommit, commitGenerationPlotOutlineAuthorEdit, commitGenerationBlueprintAuthorEdit, assertImportGenerationSourcesCurrent, recordGenerationDirectoryCommit, withGenerationAgentChildEffect } from './generation-controller'
 import { projectAccess } from '../services/project-access'
@@ -230,6 +231,39 @@ export function registerDatabaseController() {
   ipcMain.handle('db:generation-log-read', async (_event, attemptId: string, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return GenerationLogRepository.read(attemptId)
+  })
+
+  ipcMain.handle('db:generation-log-stats', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return GenerationLogRepository.promptStorageStats()
+  })
+
+  /**
+   * 手动执行 Prompt 保留策略，并在真的释放了空间时压缩数据库。
+   *
+   * 为什么是显式操作而不是打开时自动做：保留策略每写一次新调用就会跑（见 reserve），
+   * 但清理只是把旧 Prompt 置空，SQLite 不会自己把文件缩小，要 VACUUM 才行。
+   * 在 477MB 的库上 VACUUM 实测约 12 秒，绝不能挡在打开作品的路上，
+   * 所以交给作者在设置里明确触发一次。
+   */
+  ipcMain.handle('db:generation-log-compact', async (_event, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const database = getProjectDb()
+      if (!database) return { success: false, error: '项目数据库未打开' }
+      const before = GenerationLogRepository.promptStorageStats(database)
+      const trimmed = GenerationLogRepository.trimPromptHistory(GENERATION_PROMPT_RETENTION, database)
+      // 只有确实清掉了 Prompt 才值得花十几秒 VACUUM。
+      let vacuumed = false
+      if (trimmed > 0) {
+        database.exec('VACUUM')
+        vacuumed = true
+      }
+      const after = GenerationLogRepository.promptStorageStats(database)
+      return { success: true, trimmed, vacuumed, before, after }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
   })
 
   ipcMain.handle('db:outline-character-state-apply', async (_event, patch, expectedProjectPath: string) => {

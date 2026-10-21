@@ -190,6 +190,34 @@ export class GenerationLogRepository {
    * 排序按 rowid（写入顺序）：最近 keepCount 条保留，更早的清理。
    * 返回这次清理掉的条数；不写任何小说内容，只动日志表里的 Prompt 字段。
    */
+  /**
+   * 当前日志占用的概况，给设置页显示「能回收多少」。
+   *
+   * promptBytes 是还留着完整 Prompt 的那些记录的字节数（不含返回文本），
+   * 也就是执行保留策略后能真正释放的量。
+   */
+  static promptStorageStats(db?: BetterSqlite3.Database): {
+    totalCalls: number
+    callsWithPrompt: number
+    callsTrimmed: number
+    promptBytes: number
+  } {
+    const database = requireDb(db)
+    const row = database.prepare(`SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN json_type(usage_receipt_json,'$.replayTask.messages') = 'array' THEN 1 ELSE 0 END) AS with_prompt,
+        SUM(CASE WHEN json_type(usage_receipt_json,'$.promptTrimmedAt') IS NOT NULL THEN 1 ELSE 0 END) AS trimmed,
+        SUM(CASE WHEN json_type(usage_receipt_json,'$.replayTask.messages') = 'array'
+          THEN LENGTH(CAST(usage_receipt_json AS BLOB)) ELSE 0 END) AS prompt_bytes
+      FROM generation_attempts`).get() as { total: number; with_prompt: number | null; trimmed: number | null; prompt_bytes: number | null }
+    return {
+      totalCalls: Number(row.total) || 0,
+      callsWithPrompt: Number(row.with_prompt) || 0,
+      callsTrimmed: Number(row.trimmed) || 0,
+      promptBytes: Number(row.prompt_bytes) || 0,
+    }
+  }
+
   static trimPromptHistory(keepCount: number, db?: BetterSqlite3.Database): number {
     const database = requireDb(db)
     const keep = Math.max(0, Math.floor(keepCount))

@@ -910,6 +910,21 @@ export interface DatabaseChannels {
     args: [attemptId: string, expectedProjectPath: string]
     return: import('../../electron/repositories/generation-log-repository').ModelCallDetail | null
   }
+  'db:generation-log-stats': {
+    args: [expectedProjectPath: string]
+    return: { totalCalls: number; callsWithPrompt: number; callsTrimmed: number; promptBytes: number }
+  }
+  'db:generation-log-compact': {
+    args: [expectedProjectPath: string]
+    return: {
+      success: boolean
+      error?: string
+      trimmed?: number
+      vacuumed?: boolean
+      before?: { totalCalls: number; callsWithPrompt: number; callsTrimmed: number; promptBytes: number }
+      after?: { totalCalls: number; callsWithPrompt: number; callsTrimmed: number; promptBytes: number }
+    }
+  }
   'db:outline-summary-list-before': {
     args: [chapterNumber: number, limit: number, expectedProjectPath: string]
     return: import('../../electron/repositories/outline-summary-repository').OutlineChapterSummary[]
