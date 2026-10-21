@@ -138,7 +138,7 @@ describe('workflow launch language seams', () => {
 
     const outlineBadge = () => container?.querySelector('[data-section="synopsis"] .arch-badge')?.textContent
     await vi.waitFor(() => expect(outlineBadge()).toBe('不完整'))
-    expect(container.querySelector('.arch-progress')?.textContent).toBe(' · 3 / 4 已确认')
+    expect(container.querySelector('.arch-progress')?.textContent).toBe(' · 3 / 5 已确认')
     expect(container.textContent).not.toContain('断点续写大纲')
 
     const confirmedBody = `Chapters 1-20: ${'The crew follows each clue and preserves cause and effect. '.repeat(4)}`.trim()

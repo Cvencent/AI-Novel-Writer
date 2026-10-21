@@ -70,7 +70,7 @@ async function addCharacters({ page, invoke, path, session }, names) {
  * 落在第 4 章时进架构后关掉第 4 章的标签，只剩架构一页，与落在架构的版本截图一致。
  * 会话追踪先挂上，界面重载后打开作品的那次会话就能拿来读库。
  */
-function seedArch({ clear = [], totalChapters, characters = [] } = {}) {
+function seedArch({ clear = [], totalChapters, characters = [], arcs = [] } = {}) {
   return async context => {
     await trackOpenedSession(context.app)
     await seedStageSample(context, { totalChapters, landOnChapter3: clear.length === 0, beforeReload: async ({ page, invoke, path, session }) => {
@@ -79,6 +79,13 @@ function seedArch({ clear = [], totalChapters, characters = [] } = {}) {
         assert.equal(cleared.success, true, cleared.error)
       }
       if (characters.length > 0) await addCharacters({ page, invoke, path, session }, characters)
+      // 粗纲段：写入后再确认，让「粗纲」一节算作已确认。
+      for (const arc of arcs) {
+        const saved = await invoke(page, 'db:arc-outline-save', arc, path, session)
+        assert.equal(saved.success, true, saved.error)
+        const confirmed = await invoke(page, 'db:arc-outline-confirm', saved.record.arcIndex, saved.record.revision, path, session)
+        assert.equal(confirmed.success, true, confirmed.error)
+      }
     } })
     if (clear.length === 0) return
     const { page } = context
@@ -174,7 +181,7 @@ async function archContrastFailures(page) {
 }
 
 export const ARCH_SCENARIOS = {
-  /** lane 1：trunk 与 head 都从架构页用夹具模型生成前提、世界观与大纲（角色名单已预置），记下四份文档。 */
+  /** lane 1：trunk 与 head 都从架构页用夹具模型生成前提、世界观与大纲（角色名单已预置），记下这几份文档。 */
   'arch-regression': { model: true, shell: 'stage', setup: seedArch({ clear: ['premise', 'worldbuilding', 'synopsis'] }), run: async context => {
     const { page } = context
     const head = await page.locator('.arch-page').count() > 0
@@ -208,16 +215,16 @@ export const ARCH_SCENARIOS = {
     assert.equal(await arch.primary(page).count(), 1, '架构页只有一个主按钮')
     assert.equal(await arch.primary(page).innerText(), '继续生成架构')
     assert.equal(await arch.next(page).isDisabled(), true, '下一步置灰')
-    assert.deepEqual(await badges(page), { premise: '已确认', characters: '已确认', worldbuilding: '待生成', synopsis: '待生成' })
-    assert.match(await stage.stageButton(page, '架构').innerText(), /2 \/ 4/, '流程脊与页面同为 2 / 4')
+    assert.deepEqual(await badges(page), { premise: '已确认', characters: '已确认', worldbuilding: '待生成', arc: '待生成', synopsis: '待生成' })
+    assert.match(await stage.stageButton(page, '架构').innerText(), /2 \/ 5/, '流程脊与页面同为 2 / 5')
     assert.equal(await arch.summary(page, 'characters').innerText(), '1 位角色：林岚')
   } },
 
-  /** lane 3：四节都已确认时主按钮是下一步章节蓝图；after 点它进入蓝图。 */
-  'arch-done': { model: false, shell: 'stage', setup: seedArch(), run: async ({ page }) => {
+  /** lane 3：五节都已确认时主按钮是下一步章节蓝图；after 点它进入蓝图。 */
+  'arch-done': { model: false, shell: 'stage', setup: seedArch({ arcs: [{ arcIndex: 1, fromChapter: 1, toChapter: 12, title: '旧港的雾钟', summary: '林岚从停用的灯塔查起，逐步认出失踪者的共同点。', beat: 'setup' }] }), run: async ({ page }) => {
     await openArchitecture(page)
     assert.equal(await arch.primary(page).innerText(), '下一步：章节蓝图')
-    assert.deepEqual(Object.values(await badges(page)), ['已确认', '已确认', '已确认', '已确认'])
+    assert.deepEqual(Object.values(await badges(page)), ['已确认', '已确认', '已确认', '已确认', '已确认'])
   }, after: async ({ page }) => {
     await arch.primary(page).click()
     await stage.tab(page, '蓝图').waitFor({ state: 'visible' })
@@ -230,7 +237,8 @@ export const ARCH_SCENARIOS = {
     await arch.dialog(page).waitFor({ state: 'visible' })
     await arch.stepCheck(page, 'premise').click()
     const marks = {}
-    for (const key of Object.keys(arch.SECTION_NAMES)) marks[key] = await arch.mark(page, key).innerText()
+    // arc（粗纲）不在这个对话框里，只遍历对话框实际覆盖的四节。
+    for (const key of Object.keys(arch.GENERATE_SECTION_NAMES)) marks[key] = await arch.mark(page, key).innerText()
     assert.deepEqual(marks, { premise: '将覆盖', characters: '保留', worldbuilding: '新生成', synopsis: '新生成' })
     assert.equal(await arch.dialog(page).locator('.pi-btn--primary').innerText(), '开始生成 3 项')
   }, after: async ({ page }) => {
@@ -259,8 +267,8 @@ export const ARCH_SCENARIOS = {
     assert.match(await outline.innerText(), /续写只追加缺少的章节/)
     assert.equal(await arch.primary(page).innerText(), '继续生成架构', '部分完成不算已确认')
     assert.equal(await arch.next(page).isDisabled(), true, '下一步置灰')
-    assert.match(await arch.page(page).locator('.arch-eyebrow').innerText(), /3 \/ 4 已确认/)
-    assert.match(await stage.stageButton(page, '架构').innerText(), /3 \/ 4/, '流程脊与页头同为 3 / 4')
+    assert.match(await arch.page(page).locator('.arch-eyebrow').innerText(), /2 \/ 5 已确认/)
+    assert.match(await stage.stageButton(page, '架构').innerText(), /2 \/ 5/, '流程脊与页头同为 2 / 5')
     const drafts = await runSheet.recovery(page).getByRole('article').locator('.run-card-title').allInnerTexts()
     assert.deepEqual(drafts.filter(title => title.startsWith('大纲恢复稿')).sort(), ['大纲恢复稿 · 第 11–16 章', '大纲恢复稿 · 第 1–10 章'], '两批恢复稿按范围区分')
     context.before16 = (await readCore(context)).synopsis
@@ -282,7 +290,7 @@ export const ARCH_SCENARIOS = {
 
   /**
    * 修复第 2 轮补的 lane：真实主进程下大纲分批写到 16 / 24 章后重写第 1–5 章，对话框标「将覆盖第 1–5 章」并能提交；
-   * after 生成并核对第 6 章起的正文逐字不变，大纲仍是部分完成 16 / 24，页头、流程脊同为 3 / 4。
+   * after 生成并核对第 6 章起的正文逐字不变，大纲仍是部分完成 16 / 24，页头、流程脊同为 2 / 5（粗纲在这两条 lane 里没有段）。
    */
   'arch-rewrite': { model: true, shell: 'stage', setup: seedArch({ clear: ['synopsis'], totalChapters: 24 }), run: async context => {
     const { page } = context
@@ -336,8 +344,8 @@ export const ARCH_SCENARIOS = {
     assert.deepEqual(Object.keys(outlineChapters(after)).map(Number), Array.from({ length: 16 }, (_, index) => index + 1), '仍是第 1–16 章各一次')
     await arch.badge(page, 'synopsis').filter({ hasText: '部分完成 · 16 / 24 章' }).waitFor({ timeout: 30_000 })
     await arch.section(page, 'synopsis').getByRole('button', { name: '续写第 17 章起' }).waitFor({ state: 'visible' })
-    await arch.page(page).locator('.arch-eyebrow').filter({ hasText: '3 / 4 已确认' }).waitFor({ timeout: 30_000 })
-    assert.match(await stage.stageButton(page, '架构').innerText(), /3 \/ 4/, '流程脊与页头同为 3 / 4')
+    await arch.page(page).locator('.arch-eyebrow').filter({ hasText: '2 / 5 已确认' }).waitFor({ timeout: 30_000 })
+    assert.match(await stage.stageButton(page, '架构').innerText(), /2 \/ 5/, '流程脊与页头同为 2 / 5')
     assert.equal(await arch.primary(page).innerText(), '继续生成架构')
   } },
 
@@ -363,7 +371,7 @@ export const ARCH_SCENARIOS = {
     return { sidebar: names.slice(0, 8) }
   } },
 
-  /** 英文界面一次：四节名字、名单菜单、名单全文标签与视图头、横幅、名单底栏单复数都与中文同一套说法。 */
+  /** 英文界面一次：四节名字（粗纲的读取另有中文场景）、名单菜单、名单全文标签与视图头、横幅、名单底栏单复数都与中文同一套说法。 */
   'arch-names-en': { model: false, shell: 'stage', setup: seedArch(), run: async ({ page, invoke, reload }) => {
     assert.equal((await invoke(page, 'config:set', { locale: 'en-US' })).success, true)
     await reload()
@@ -521,7 +529,7 @@ export const ARCH_SCENARIOS = {
   } },
 
   /**
-   * perf：从点流程脊「架构」到四节可交互的毫秒数（trunk 是旧故事架构标签，head 是架构阶段）：openMs 按动画帧轮询，openDomMs 是 DOM 达到就绪的时刻，
+   * perf：从点流程脊「架构」到五节可交互的毫秒数（trunk 是旧故事架构标签，head 是架构阶段）：openMs 按动画帧轮询，openDomMs 是 DOM 达到就绪的时刻，
    * 以及 200 位角色时角色列表滚动的帧率（两边都是第 1 页 50 位）。两边都用新外壳跑。
    */
   'arch-timing': { model: false, shell: 'stage', setup: seedArch({ characters: Array.from({ length: 199 }, (_, index) => `角色${String(index + 2).padStart(3, '0')}`) }), run: async ({ page, app }) => {
@@ -532,11 +540,11 @@ export const ARCH_SCENARIOS = {
       let clickedAt = null
       element.addEventListener('click', () => { clickedAt ??= performance.now() }, { capture: true, once: true })
       window.__driveArchReady = new Promise((resolve, reject) => {
-        const deadline = setTimeout(() => reject(new Error('架构四节 20 秒内未就绪')), 20_000)
+        const deadline = setTimeout(() => reject(new Error('架构五节 20 秒内未就绪')), 20_000)
         const ready = () => {
           const content = document.querySelector('.stage-content')
           if (!content) return false
-          if (content.querySelector('.arch-page')) return content.querySelectorAll('.arch-section').length === 4 && !content.querySelector('.arch-page[data-loading]')
+          if (content.querySelector('.arch-page')) return content.querySelectorAll('.arch-section').length === 5 && !content.querySelector('.arch-page[data-loading]')
           return /4\/4\s*已生成/.test(content.textContent ?? '') && !content.querySelector('.animate-spin')
         }
         const mounted = () => Boolean(document.querySelector('.stage-content .arch-page') || /故事架构/.test(document.querySelector('.stage-content')?.textContent ?? ''))
@@ -580,7 +588,7 @@ export const ARCH_SCENARIOS = {
     return { surface: await page.locator('.arch-page, .cast-page').count() > 0 ? 'head' : 'trunk', openMs, scrollFps: Math.round((frames.length - 1) / seconds * 10) / 10, rowsOnPage: rows, openDomMs, mountMs, ipcDuringOpen }
   } },
 
-  /** 评审视频：架构四节与主按钮、生成对话框的覆盖与保留、大纲提示条、清空此节的危险确认、角色名单保存与关系图谱。配 --video。 */
+  /** 评审视频：架构五节与主按钮、生成对话框的覆盖与保留、大纲提示条、清空此节的危险确认、角色名单保存与关系图谱。配 --video。 */
   'arch-tour': { model: false, shell: 'stage', setup: seedArch({ clear: ['worldbuilding'], characters: ['守塔人', '沈砚'] }), run: async ({ page }) => {
     await openArchitecture(page)
     await pause(7000)

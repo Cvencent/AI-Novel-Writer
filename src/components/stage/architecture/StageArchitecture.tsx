@@ -39,8 +39,8 @@ function useCastSummary(projectKey: string): { summary: string; loading: boolean
 const openCast = (text: (zh: string, en: string) => string) => openBuiltinEditor('character-editor', text('角色名单', 'Cast'), 'character')
 
 /**
- * 架构阶段：故事前提、角色名单、世界观、情节大纲四节。编辑一节打开它的文档标签，角色名单打开名单页；
- * 数据与操作来自 useArchitectureOverview。
+ * 架构阶段：故事前提、角色名单、世界观、粗纲、情节大纲五节。编辑一节打开它的文档标签，角色名单打开名单页；
+ * 数据与操作来自 useArchitectureOverview。粗纲有自己的分段生成流程，不在「AI 生成架构」对话框里。
  */
 export default function StageArchitecture({ projectKey }: { projectKey: string }) {
   const text = useLocaleStore(s => s.text)
@@ -55,7 +55,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
   const arcRunnerRef = useRef<((mode: 'next' | 'reverse') => void) | null>(null)
 
   const total = SECTION_ORDER.length
-  const action = mainAction(filled ?? 0, total)
+  const action = mainAction(SECTION_ORDER.map(key => overview.confirmed[key]), SECTION_ORDER)
   /** 情节大纲尚未覆盖到全书末章时，提供「一次生成全部剩余大纲」入口。 */
   const outlineIncomplete = (() => {
     const source = overview.synopsisSource
@@ -116,7 +116,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
           <div className="arch-heading">
             <p className="arch-eyebrow">{text('架构', 'Architecture')}{filled !== null && <span className="arch-progress"> · {text(`${filled} / ${total} 已确认`, `${filled} / ${total} confirmed`)}</span>}</p>
             <h1 className="arch-title">{text('故事的骨架', 'The bones of the story')}</h1>
-            <p className="arch-lede">{text('前提、角色、世界观和情节大纲。四节都确认后，就可以逐章规划蓝图。', 'Premise, cast, world and outline. Once all four are confirmed, plan the chapters in the blueprint.')}</p>
+            <p className="arch-lede">{text('前提、角色、世界观、粗纲和情节大纲。五节都确认后，就可以逐章规划蓝图。', 'Premise, cast, world, arc and outline. Once all five are confirmed, plan the chapters in the blueprint.')}</p>
           </div>
           <div className="arch-header-actions">
             <Menu
@@ -137,12 +137,21 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
               )
               : (
                 <>
-                  <Button variant="secondary" disabled title={text('四节都确认后才能进入蓝图', 'Confirm all four sections first')}>
+                  <Button variant="secondary" disabled title={text('五节都确认后才能进入蓝图', 'Confirm all five sections first')}>
                     {text('下一步：章节蓝图', 'Next: chapter blueprint')}<ArrowRight size={14} aria-hidden />
                   </Button>
-                  <Button variant="primary" disabled={filled === null} onClick={() => overview.openGenerateDialog()}>
+                  <Button
+                    variant="primary"
+                    disabled={filled === null}
+                    onClick={() => { if (action === 'generate-arc') arcRunnerRef.current?.('next'); else overview.openGenerateDialog() }}
+                    title={action === 'generate-arc' ? text('其余四节都已确认，只差粗纲；点这里按段生成', 'All other sections are confirmed; only the arc outline is missing') : undefined}
+                  >
                     <Sparkles size={14} aria-hidden />
-                    {action === 'generate' ? text('AI 生成架构', 'Generate architecture') : text('继续生成架构', 'Continue architecture')}
+                    {action === 'generate'
+                      ? text('AI 生成架构', 'Generate architecture')
+                      : action === 'generate-arc'
+                        ? (overview.arc.list.length === 0 ? text('AI 生成粗纲', 'Generate arc outline') : text('继续生成粗纲', 'Continue arc outline'))
+                        : text('继续生成架构', 'Continue architecture')}
                   </Button>
                 </>
               )}
@@ -168,6 +177,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
               onEdit={() => editSection(key)}
               onGenerate={() => { if (key !== 'arc') overview.openGenerateDialog([key]) }}
               onGenerateArc={() => arcRunnerRef.current?.('next')}
+              onArcChanged={reload}
               arcRunnerRef={arcRunnerRef}
               onClear={() => {
                 const session = captureProjectSession(useProjectStore.getState().currentProject)

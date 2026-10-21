@@ -276,7 +276,7 @@ describe('书房', () => {
       useDraftStore.setState({ draftsByChapter: {}, dataProjectSession: session, loading: false })
     })
     expect(primary()).toEqual(['继续写作 · 架构'])
-    expect([...host!.querySelectorAll<HTMLElement>('[data-stage]')].map(row => row.textContent)).toEqual(['设定', '架构 2 / 4', '蓝图', '正文 0 / 12'])
+    expect([...host!.querySelectorAll<HTMLElement>('[data-stage]')].map(row => row.textContent)).toEqual(['设定', '架构 2 / 5', '蓝图', '正文 0 / 12'])
     expect(host!.textContent).toContain('悬疑 · 12 章 · 每章约 3,000 字')
     expect(host!.textContent).toContain('守塔人把灯又擦了一遍。')
 

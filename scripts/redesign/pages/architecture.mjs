@@ -1,7 +1,9 @@
-// 新外壳的架构阶段与角色名单（RD-6 起）。选择器用角色与可访问名称；分节卡按 data-section 区分四节。
+// 新外壳的架构阶段与角色名单（RD-6 起）。选择器用角色与可访问名称；分节卡按 data-section 区分五节（粗纲也算一节）。
 import { root, spine } from './stage.mjs'
 
-export const SECTION_NAMES = { premise: '故事前提', characters: '角色名单', worldbuilding: '世界观', synopsis: '情节大纲' }
+/** 五节。arc（粗纲）不在「AI 生成架构」对话框里，所以另用 GENERATE_SECTION_NAMES 遍历对话框步骤。 */
+export const SECTION_NAMES = { premise: '故事前提', characters: '角色名单', worldbuilding: '世界观', arc: '粗纲', synopsis: '情节大纲' }
+export const GENERATE_SECTION_NAMES = { premise: '故事前提', characters: '角色名单', worldbuilding: '世界观', synopsis: '情节大纲' }
 
 export const page = page => root(page).locator('.arch-page')
 export const section = (page, key) => root(page).getByRole('region', { name: SECTION_NAMES[key], exact: true })
@@ -26,7 +28,7 @@ export async function open(page) {
 
 export async function waitReady(page) {
   await root(page).locator('.arch-page:not([data-loading]):not([data-cast-loading])').waitFor({ state: 'visible', timeout: 20_000 })
-  await root(page).locator('.arch-section').nth(3).waitFor({ state: 'visible' })
+  await root(page).locator('.arch-section').nth(4).waitFor({ state: 'visible' })
 }
 
 export async function openSectionMenu(page, key) {
@@ -35,7 +37,7 @@ export async function openSectionMenu(page, key) {
 
 /** 在生成架构对话框里把勾选改成只有 keys 这几节。 */
 export async function selectOnly(page, keys) {
-  for (const key of Object.keys(SECTION_NAMES)) {
+  for (const key of Object.keys(GENERATE_SECTION_NAMES)) {
     if (await stepBox(page, key).isChecked() !== keys.includes(key)) await stepCheck(page, key).click()
   }
 }

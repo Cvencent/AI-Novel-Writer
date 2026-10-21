@@ -59,12 +59,33 @@ export function fixturePlotTree(facts) {
   ] }
 }
 
+/** 粗纲一段的格式合同：## 第{from}–{to}章：{标题} + beat 行 + 正文。章号取自提示里的生成范围。 */
+/** 粗纲一段的格式合同：## 第{from}–{to}章：{标题} + beat 行 + 正文；段长取 20 章（下限）或到全书末章。 */
+export function arcSegment(prompt) {
+  const fromMatch = prompt.match(/从第\s*(\d+)\s*章/u) ?? prompt.match(/starting at chapter\s*(\d+)/u) ?? prompt.match(/Chapter\s*(\d+)/u)
+  const totalMatch = prompt.match(/全书共\s*(\d+)\s*章/u) ?? prompt.match(/book has\s*(\d+)\s*chapters/u)
+  const from = fromMatch ? Number(fromMatch[1]) : 1
+  const total = totalMatch ? Number(totalMatch[1]) : from + 19
+  const to = Math.min(total, from + 19)
+  const beats = ['setup', 'rising', 'midpoint', 'crisis', 'climax', 'resolution']
+  const used = (prompt.match(/最近已用过的 beat 是：([^\n]*)/u)?.[1] ?? '').trim()
+  const recent = used === '（无）' || used === '(none)' ? [] : used.split(/\s*,\s*/).filter(Boolean)
+  const beat = beats.find(candidate => candidate !== recent.at(-1)) ?? 'rising'
+  return `## 第 ${from}–${to} 章：第 ${from}–${to} 章的走向
+
+beat: ${beat}
+
+这一段只写方向：港口的雾钟提前响起，失踪者的共同点逐步浮出，主角顺着父亲的地图往北堤外查，每一次接近真相都要付出代价。对手开始抢先一步布置陷阱，师长留下的旧记录揭示出代价的来源。`
+}
+
 function responseFor(prompt, { extraction, plotTree, review }) {
   if (prompt.includes('不可变小说配置 JSON 合同') || prompt.includes('Immutable novel-configuration JSON contract')) {
     return { kind: 'config', content: JSON.stringify(FIXTURE_CONFIG) }
   }
   const outline = prompt.match(/本次只写第 (\d+) 章/)
   if (outline) return { kind: 'outline-chapter', content: outlineChapter(Number(outline[1])) }
+  // 粗纲：按提示里的任务标题判定，回可解析的分段格式（反推粗纲另有契约，这里只覆盖逐段生成）。
+  if (/【本次任务：生成下一段粗纲】|\[Task: generate the next arc segment\]/u.test(prompt)) return { kind: 'arc-segment', content: arcSegment(prompt) }
   if (prompt.includes('【已确认纳入本次修稿的审稿项】')) return { kind: 'revision', content: FIXTURE_REVISED }
   if (prompt.includes('goalReviews')) return { kind: 'review', content: review ?? REVIEW }
   if (prompt.includes('{"updates"')) return { kind: 'character-state', content: '{"updates":[]}' }

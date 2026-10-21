@@ -51,12 +51,12 @@ const IDLE_SAMPLES = 5
 const IDLE_SAMPLE_INTERVAL_MS = 1_000
 export const SHELF_BOOKS = 20
 const ALL_SCENARIOS = [...Object.keys(SCENARIOS), 'baseline-all', ...PREPARED_SESSIONS]
-const USAGE = `用法: node scripts/redesign/drive.mjs --scenario <名称> [--theme light|dark] [--shell writer|stage] [--out <目录>] [--dump-dom] [--console] [--video] [--app-root <目录>]
+const USAGE = `用法: node scripts/redesign/drive.mjs --scenario <名称> [--theme light|dark] [--shell writer|stage] [--out <目录>] [--dump-dom] [--console] [--video] [--app-root <目录>] [--exe <打包好的 exe>]
 场景: ${ALL_SCENARIOS.join(', ')}`
 
 export function parseArgs(argv) {
   const options = { scenario: null, theme: 'light', shell: null, out: path.join(repository, '.runtime', 'redesign-baseline'),
-    dumpDom: false, console: false, video: false, appRoot: repository }
+    dumpDom: false, console: false, video: false, appRoot: repository, exe: null }
   const valueOf = (flag, index) => {
     const value = argv[index + 1]
     if (value === undefined || value.startsWith('--')) throw new Error(`${flag} 缺少取值\n${USAGE}`)
@@ -70,6 +70,7 @@ export function parseArgs(argv) {
     else if (arg === '--shell') options.shell = valueOf(arg, index++)
     else if (arg === '--out') options.out = path.resolve(valueOf(arg, index++))
     else if (arg === '--app-root') options.appRoot = path.resolve(valueOf(arg, index++))
+    else if (arg === '--exe') options.exe = path.resolve(valueOf(arg, index++))
     else if (arg === '--dump-dom') options.dumpDom = true
     else if (arg === '--console') options.console = true
     else if (arg === '--video') options.video = true
@@ -198,10 +199,14 @@ export function sessionIsClean({ failedAt, sessionErrors, residualProcesses, ext
   return failedAt === null && sessionErrors.length === 0 && residualProcesses?.length === 0 && externalWrites?.length === 0
 }
 
-async function launch({ roots, appRoot, fakeModelPort, diagnostics, failureBase, shelfBooks = 0, renderTiming = false }) {
+async function launch({ roots, appRoot, fakeModelPort, diagnostics, failureBase, shelfBooks = 0, renderTiming = false, exe = null }) {
   const launchedAt = Date.now()
   const env = { ...isolatedEnvironment(roots), ...(renderTiming ? { DRIVE_RENDER_TIMING: String(shelfBooks || 1) } : {}) }
-  const app = await electron.launch({ cwd: appRoot, args: launchArgs(roots), env, timeout: TIMEOUT })
+  // --exe 跑打包产物：不能再传工作树的 cwd，也不能用 -r 预加载应用内的辅助脚本（asar 里没有它）；
+  // 其余参数（隔离的 user-data-dir、语言）与工作树一致。
+  const app = exe
+    ? await electron.launch({ executablePath: exe, args: launchArgs(roots).filter(arg => arg !== '-r' && !String(arg).endsWith('offscreen-window.cjs')), env, timeout: TIMEOUT })
+    : await electron.launch({ cwd: appRoot, args: launchArgs(roots), env, timeout: TIMEOUT })
   let page
   try {
     await app.evaluate((_, port) => {
@@ -223,7 +228,8 @@ async function launch({ roots, appRoot, fakeModelPort, diagnostics, failureBase,
     page.on('pageerror', error => diagnostics.push(`[renderer:pageerror] ${error.stack ?? error.message}`))
     await firstInteractiveControl(page).waitFor({ state: 'visible', timeout: TIMEOUT })
     const interactiveAt = Date.now()
-    const { readyToShow } = await app.evaluate(() => globalThis.__driveTiming)
+    // 打包产物没有 -r 的预加载脚本，取不到 readyToShow 就记 null。
+    const { readyToShow } = await app.evaluate(() => globalThis.__driveTiming ?? { readyToShow: null })
     const timeOrigin = await page.evaluate(() => performance.timeOrigin)
     const timing = { launchToInteractiveMs: interactiveAt - launchedAt,
       readyToShowToInteractiveMs: readyToShow === null ? null : interactiveAt - readyToShow,
@@ -326,8 +332,8 @@ async function applyAppearance(page, appearance) {
  * 启动计时量的是同一配置目录里的第二次冷启动：先启动一次写好主题（与外壳偏好）再退出，两侧都这样做。
  * 首次启动还要迁移旧配置、建库，与之后的启动不可比。
  */
-async function prepareProfile({ roots, appRoot, diagnostics, failureBase }, appearance, shelfBooks = 0) {
-  const prepared = await launch({ roots, appRoot, fakeModelPort: null, diagnostics, failureBase })
+async function prepareProfile({ roots, appRoot, diagnostics, failureBase, exe = null }, appearance, shelfBooks = 0) {
+  const prepared = await launch({ roots, appRoot, fakeModelPort: null, diagnostics, failureBase, exe })
   try {
     await applyAppearance(prepared.page, appearance)
     if (shelfBooks > 0) await seedShelf(prepared, roots, shelfBooks)
@@ -424,8 +430,8 @@ async function runSession(sessionName, names, options) {
   try {
     const shelfBooks = sessionName === 'library-timing' ? SHELF_BOOKS : 0
     const failureBase = base(sessionName)
-    if (PREPARED_SESSIONS.has(sessionName)) await prepareProfile({ roots, appRoot: options.appRoot, diagnostics, failureBase }, { theme: options.theme, shell }, shelfBooks)
-    launched = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics, failureBase, shelfBooks, renderTiming: TIMED_SESSIONS.has(sessionName) })
+    if (PREPARED_SESSIONS.has(sessionName)) await prepareProfile({ roots, appRoot: options.appRoot, diagnostics, failureBase, exe: options.exe }, { theme: options.theme, shell }, shelfBooks)
+    launched = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics, failureBase, shelfBooks, renderTiming: TIMED_SESSIONS.has(sessionName), exe: options.exe })
     shared.timing = launched.timing
     const shellShown = page => page.locator('[data-shell-presentation]').first().getAttribute('data-shell-presentation')
     if (PREPARED_SESSIONS.has(sessionName)) {
@@ -445,7 +451,7 @@ async function runSession(sessionName, names, options) {
           await recording?.pause()
           const exited = await quit(launched.app)
           assert.equal(exited.forced, false, '重启前应用没有正常退出')
-          launched = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics, failureBase })
+          launched = await launch({ roots, appRoot: options.appRoot, fakeModelPort: fake?.port, diagnostics, failureBase, exe: options.exe })
           Object.assign(context, launched)
           await recording?.resume(context.page)
         },

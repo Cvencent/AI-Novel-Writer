@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type MutableRefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
 import { Check, Layers, ListTree, PencilLine, SkipForward, Sparkles } from 'lucide-react'
 import ArcReviseDialog, { type ArcReviseScope } from './ArcReviseDialog'
 import { useLocaleStore } from '../../../stores/locale-store'
@@ -19,7 +19,7 @@ export type ArcGenerationMode = 'waitConfirm' | 'skipConfirm'
  * 粗纲面板：列出已生成的粗纲段，控制生成模式，并在存在过期细纲时提示。
  * 粗纲不含人名，只管方向；细纲才落到每章。
  */
-export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, embedded = false, runnerRef }: {
+export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, embedded = false, runnerRef, onChanged }: {
   projectKey: string
   /** 正式细纲来源事实；由架构页复用，避免这里重复读取 project_core。 */
   fineSource?: PlotOutlineRangeSource
@@ -31,6 +31,11 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
    * 交给父级调用，避免在节头重复一份。
    */
   runnerRef?: MutableRefObject<((mode: 'next' | 'reverse') => void) | null>
+  /**
+   * 台账变化（新增一段、确认、改写）后通知上层重读：节徽标与流程脊都读上层那份 overview.arc，
+   * 只刷新面板自己的列表不够。
+   */
+  onChanged?: () => void
 }) {
   const text = useLocaleStore(s => s.text)
   const [arcs, setArcs] = useState<ArcOutlineRecord[]>([])
@@ -64,6 +69,12 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
     }
     setLoading(false)
   }, [projectKey, session, fineSource, fineProgress])
+
+  /** 最新的 onChanged：用 ref 持有，免去给每个写入路径的 useCallback 加依赖。 */
+  const onChangedRef = useRef(onChanged)
+  useEffect(() => { onChangedRef.current = onChanged })
+  /** 台账被写过（新增、确认、改写）之后：重读本面板，并让上层重读节徽标与流程脊。 */
+  const notifyChanged = () => { onChangedRef.current?.() }
 
   // 首次挂载与切换作品时读取粗纲；load 内部只做远端读取后的 setState。
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -111,6 +122,7 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
         const receipt = await launchCreativeWorkflow({ workflow: 'generate_arc_outline', mode: 'reverse' }, projectSession)
         await waitForArcRun(receipt.runId)
         await load()
+        notifyChanged()
         return
       }
       let latest = await readArcs()
@@ -135,6 +147,7 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
         if (mode === 'waitConfirm') break
       }
       await load()
+      notifyChanged()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -154,6 +167,7 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
     const result = await ipc.invoke('db:arc-outline-confirm', arc.arcIndex, arc.revision, projectKey).catch(() => null) as { success?: boolean; error?: string } | null
     if (!result?.success) setError(result?.error || text('确认粗纲失败', 'Could not confirm the arc segment'))
     await load()
+    notifyChanged()
   }
 
   /** 按一个已确认粗纲段生成逐章细纲。 */
@@ -177,6 +191,7 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
         await waitForArcRun(receipt.runId)
       }
       await load()
+      notifyChanged()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -317,6 +332,7 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
                 }
                 setPendingRevise({ direction, chapters: affected })
                 await load()
+      notifyChanged()
               } catch (cause) {
                 setError(cause instanceof Error ? cause.message : String(cause))
               } finally {

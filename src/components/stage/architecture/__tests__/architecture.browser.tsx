@@ -54,7 +54,7 @@ const launchedSteps = () => started.mock.calls.map(([definition]) => definition.
 const writes = () => invoke.mock.calls.filter(([channel]) => channel === 'db:project-core-update')
 
 function filledSpine(filled: readonly string[]) {
-  const architecture = Object.fromEntries(['premise', 'characters', 'worldbuilding', 'synopsis'].map(key => [key, filled.includes(key)]))
+  const architecture = Object.fromEntries(['premise', 'characters', 'worldbuilding', 'arc', 'synopsis'].map(key => [key, filled.includes(key)]))
   useStageStore.setState({ work: { session, architecture, blueprints: [] } })
 }
 
@@ -98,6 +98,8 @@ beforeEach(() => {
     if (channel === 'fs:read-json') return partial ? { success: true, data: partial } : { success: false, error: 'not found' }
     if (channel === 'db:character-roster-read') return { schemaVersion: 1, revision: 1, migrationState: 'ready', status: rosterStatus, entries: [], renderedMarkdown: '林舟、沈砚', projectionHash: 'p', factHash: 'f' }
     if (channel === 'db:arc-outline-list') return arcRows
+    if (channel === 'db:blueprint-get-all') return []
+    if (channel === 'db:draft-list-all') return []
     if (channel === 'generation:list') return []
     if (channel === 'generation:read-context' || channel === 'generation:read-visible-composition') return null
     if (channel === 'config:get') return { outlineTargetUnits: 300 }
@@ -132,6 +134,20 @@ afterEach(async () => {
   setActiveProjectSessionContext(null)
   for (const restore of restores) restore()
   vi.restoreAllMocks()
+})
+
+describe('架构主操作', () => {
+  it('只差粗纲的直接生成粗纲，其余缺口仍走架构对话框', async () => {
+    const { mainAction, SECTION_ORDER } = await import('../architecture-sections')
+    const confirmed = (...yes: string[]) => SECTION_ORDER.map(key => yes.includes(key))
+    const all = SECTION_ORDER as readonly string[]
+    expect(mainAction(confirmed(...all))).toBe('next')
+    expect(mainAction(confirmed())).toBe('generate')
+    // 只有粗纲没确认：对话框里没有粗纲这一步，必须直接生成粗纲。
+    expect(mainAction(confirmed(...all.filter(key => key !== 'arc')))).toBe('generate-arc')
+    // 还有别的节缺着：仍走架构对话框。
+    expect(mainAction(confirmed(...all.filter(key => key !== 'arc' && key !== 'premise')))).toBe('continue')
+  })
 })
 
 describe('架构阶段', () => {
@@ -546,6 +562,73 @@ describe('架构阶段', () => {
     await vi.waitFor(() => {
       const launched = started.mock.calls.some(([definition]) => definition.steps.some(step => step.key === 'arc-next'))
       expect(launched).toBe(true)
+    })
+  })
+
+  it('只差粗纲时，主按钮直接生成粗纲，而不是打开补不了粗纲的对话框', async () => {
+    // 其余四节都已确认（含写完的整本大纲），只有粗纲还没有段。
+    core = {
+      ...core,
+      premise: PREMISE,
+      worldbuilding: '雾钟与潮汐决定港口的作息，航道按潮期编号，港务局的档案也按潮期装订。'.repeat(3),
+      synopsis: renderPlotOutlineSynopsis(outlineBody(1, 24), 24, OUTLINE_SOURCE),
+    }
+    rosterStatus = 'ready'
+    arcRows = []
+    // 流程脊同样是「只差粗纲」：四节已确认，arc 为 false。
+    filledSpine(['premise', 'characters', 'worldbuilding', 'synopsis'])
+    await render()
+    await act(async () => { await Promise.resolve() })
+
+    expect(primary()).toBe('AI 生成粗纲')
+    const dialogOpened = () => document.querySelector('[role="dialog"]') !== null
+    expect(dialogOpened()).toBe(false)
+    await click('AI 生成粗纲')
+    // 点它走的是粗纲自己的分段流程，不是只覆盖四节的架构生成对话框。
+    expect(dialogOpened()).toBe(false)
+    await vi.waitFor(() => {
+      const launched = started.mock.calls.some(([definition]) => definition.steps.some(step => step.key === 'arc-next'))
+      expect(launched).toBe(true)
+    })
+  })
+
+  it('确认一段粗纲后，节徽标与流程脊一起更新', async () => {
+    // 其余四节都已确认（含写完的整本大纲），只差粗纲这一段还没确认。
+    core = {
+      ...core,
+      premise: PREMISE,
+      worldbuilding: '雾钟与潮汐决定港口的作息，航道按潮期编号，港务局的档案也按潮期装订。'.repeat(3),
+      synopsis: renderPlotOutlineSynopsis(outlineBody(1, 24), 24, OUTLINE_SOURCE),
+    }
+    rosterStatus = 'ready'
+    filledSpine(['premise', 'characters', 'worldbuilding', 'synopsis'])
+    arcRows = [
+      { id: 1, arcIndex: 1, fromChapter: 1, toChapter: 20, title: '空白源核觉醒', summary: '方向', beat: 'setup', status: 'draft', revision: 0, createdAt: '', updatedAt: '' },
+    ]
+    await render()
+    expect(host!.querySelector('[data-section="arc"] .arch-badge')?.textContent).toBe('1 段 · 已确认 0 段 · 到第 20 章')
+    // 只差粗纲这一节：主按钮走粗纲自己的入口（已有一段草稿时是「继续生成粗纲」），
+    // 不是那个补不了粗纲的架构对话框。
+    expect(primary()).toBe('继续生成粗纲')
+
+    // 主进程确认后，台账应该变成已确认；上层要跟着重读，否则徽标与流程脊会停在旧状态。
+    const answer = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel, ...args) => {
+      if (channel === 'db:arc-outline-confirm') {
+        arcRows = [{ ...(arcRows[0] as Record<string, unknown>), status: 'confirmed', revision: 1 }]
+        return { success: true, record: arcRows[0] }
+      }
+      return answer(channel, ...args)
+    })
+    await click('确认此段')
+    await vi.waitFor(() => {
+      expect(host!.querySelector('[data-section="arc"] .arch-badge')?.textContent).toBe('已确认')
+    })
+    await vi.waitFor(() => { expect(primary()).toBe('下一步：章节蓝图') })
+    // 左侧流程脊读的是 stage work，不是这份 overview：确认粗纲后它也要跟着到 5 / 5。
+    await vi.waitFor(() => {
+      const architecture = useStageStore.getState().work?.architecture
+      expect(architecture?.arc).toBe(true)
     })
   })
 

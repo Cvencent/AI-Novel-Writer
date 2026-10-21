@@ -31,7 +31,7 @@ const draft = (chapterNumber: number, version: number, status: DraftMeta['status
 })
 
 const READY_CONFIG: WorkFacts['config'] = { coreOutline: '雾钟每晚提前一刻响起。', genre: '悬疑', targetAudience: '成年读者', totalChapters: 12, wordsPerChapter: 3000 }
-const ALL_ARCHITECTURE = { premise: true, characters: true, worldbuilding: true, synopsis: true }
+const ALL_ARCHITECTURE = { premise: true, characters: true, worldbuilding: true, arc: true, synopsis: true }
 const blueprints = (count: number) => Array.from({ length: count }, (_, index) => ({ chapterNumber: index + 1, title: `第${index + 1}章标题` }))
 
 function facts(overrides: Partial<WorkFacts> = {}): WorkFacts {
@@ -71,7 +71,7 @@ describe('四个阶段的状态由项目数据派生', () => {
   it('架构按已有内容的节数计进度；蓝图按 ia.md 至少 1 章即完成', () => {
     const stages = deriveStages(facts({ architecture: { premise: true, characters: true }, blueprints: blueprints(3) }))
     expect(stages[0].progress).toEqual({ state: 'done' })
-    expect(stages[1]).toMatchObject({ filled: 2, total: 4, progress: { state: 'active', ratio: 0.5 } })
+    expect(stages[1]).toMatchObject({ filled: 2, total: 5, progress: { state: 'active', ratio: 0.4 } })
     expect(stages[2]).toMatchObject({ planned: 3, total: 12, progress: { state: 'done' } })
     expect(stages[3].progress).toEqual({ state: 'todo' })
     // 用户决定 B（#394 §6）：已有蓝图时架构没写完不拉回架构，落点跳到下一个未完成的阶段。
@@ -165,7 +165,7 @@ describe('流程脊', () => {
     const rows = stageRows(container)
     expect(rows.map(row => row.querySelector('.stage-row-name')?.textContent)).toEqual(['设定', '架构', '蓝图', '正文'])
     expect(rows.map(row => row.dataset.state)).toEqual(['done', 'done', 'done', 'active'])
-    expect(rows.map(row => row.querySelector('.stage-row-meta')?.textContent)).toEqual(['完成', '4 / 4', '12 章', '2 / 12 定稿'])
+    expect(rows.map(row => row.querySelector('.stage-row-meta')?.textContent)).toEqual(['完成', '5 / 5', '12 章', '2 / 12 定稿'])
     expect(rows.map(row => row.getAttribute('aria-current'))).toEqual([null, null, null, 'page'])
     expect(container.querySelector('nav')?.getAttribute('aria-label')).toBe('创作流程')
     expect(rows[0].closest('ol')).not.toBeNull()

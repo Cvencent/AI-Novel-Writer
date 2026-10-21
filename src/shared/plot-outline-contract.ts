@@ -4,7 +4,7 @@ import type { VisibleCompositionReceipt } from './generation-owner-contract'
 import type { MainGenerationRunHandle } from '../services/generation/generation-runtime'
 import type { WritingLanguage } from './writing-language'
 import type { Locale } from '../i18n/types'
-import { buildOutlineRetrievalContext, DEFAULT_OUTLINE_CONTEXT_BUDGET } from './outline-retrieval-context'
+import { buildOutlineRetrievalContext, DEFAULT_OUTLINE_CONTEXT_BUDGET } from './outline-retrieval-context.ts'
 
 export const DEFAULT_PLANNING_ACTION_CHAPTERS = 5
 export const PLANNING_ACTION_CHAPTER_LIMIT = 10

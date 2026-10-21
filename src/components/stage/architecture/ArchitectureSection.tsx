@@ -19,6 +19,8 @@ interface SectionProps {
   onGenerate: () => void
   /** 粗纲一节专用的分段生成入口；它不走「AI 生成架构」对话框。 */
   onGenerateArc: () => void
+  /** 粗纲台账变化后通知上层重读：节徽标与流程脊都读 overview.arc。 */
+  onArcChanged: () => void
   arcRunnerRef: MutableRefObject<((mode: 'next' | 'reverse') => void) | null>
   onClear: () => void
   onOpenCast: () => void
@@ -132,7 +134,7 @@ function RosterNotice({ overview }: { overview: ArchitectureOverview }) {
   )
 }
 
-export default function ArchitectureSection({ sectionKey, overview, badge, summary, onEdit, onGenerate, onGenerateArc, arcRunnerRef, onClear, onOpenCast, onReload }: SectionProps) {
+export default function ArchitectureSection({ sectionKey, overview, badge, summary, onEdit, onGenerate, onGenerateArc, onArcChanged, arcRunnerRef, onClear, onOpenCast, onReload }: SectionProps) {
   const text = useLocaleStore(s => s.text)
   const filled = Boolean(overview.archStatus[sectionKey])
   const cast = sectionKey === 'characters'
@@ -201,7 +203,7 @@ export default function ArchitectureSection({ sectionKey, overview, badge, summa
       {(sectionKey === 'worldbuilding' || sectionKey === 'synopsis') && (sectionKey === 'synopsis' ? overview.synopsis.candidate : overview.worldBuilding.candidate) && (
         <div className="arch-section-notes"><CandidateNotice sectionKey={sectionKey} overview={overview} /></div>
       )}
-      {sectionKey === 'arc' && <div className="arch-section-notes"><ArcOutlinePanel projectKey={overview.projectKey} fineSource={overview.synopsisSource} fineProgress={overview.synopsis.progress} embedded runnerRef={arcRunnerRef} /></div>}
+      {sectionKey === 'arc' && <div className="arch-section-notes"><ArcOutlinePanel projectKey={overview.projectKey} fineSource={overview.synopsisSource} fineProgress={overview.synopsis.progress} embedded runnerRef={arcRunnerRef} onChanged={onArcChanged} /></div>}
       {sectionKey === 'synopsis' && <div className="arch-section-notes arch-notes-collapsible"><OutlineNotice overview={overview} onGenerate={onGenerate} /></div>}
       {cast && <div className="arch-section-notes arch-notes-collapsible"><RosterNotice overview={overview} /></div>}
     </section>

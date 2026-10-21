@@ -79,12 +79,20 @@ export function badgeTone(badge: SectionBadge): BadgeTone {
   return badge.kind === 'empty' ? 'muted' : 'warn'
 }
 
-/** 架构阶段唯一的主操作：一节都没确认时生成架构，有缺口时继续生成，四节都已确认时进入蓝图。 */
-export type ArchitectureMainAction = 'generate' | 'continue' | 'next'
+/**
+ * 架构阶段唯一的主操作：一节都没确认时生成架构，有缺口时继续生成，五节都已确认时进入蓝图。
+ *
+ * 粗纲不走「AI 生成架构」对话框（它有自己的分段流程），所以当**唯一**缺的就是粗纲时，
+ * 主按钮不能打开那个补不了粗纲的对话框，得直接去生成粗纲。
+ */
+export type ArchitectureMainAction = 'generate' | 'continue' | 'generate-arc' | 'next'
 
-export function mainAction(filled: number, total: number): ArchitectureMainAction {
-  if (filled >= total) return 'next'
-  return filled === 0 ? 'generate' : 'continue'
+export function mainAction(confirmed: readonly boolean[], keyOrder: readonly ArchStepKey[] = SECTION_ORDER): ArchitectureMainAction {
+  const filled = confirmed.filter(Boolean).length
+  if (filled >= keyOrder.length && keyOrder.length > 0) return 'next'
+  if (filled === 0) return 'generate'
+  const missing = keyOrder.filter((_, index) => !confirmed[index])
+  return missing.length === 1 && missing[0] === 'arc' ? 'generate-arc' : 'continue'
 }
 
 /** 卡片上的一句摘要：取正文去掉标题行与 Markdown 标记后的开头；只有标题时退回标题文字。省略号随界面语言（「……」或「…」）。 */

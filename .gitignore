@@ -6,8 +6,8 @@ dist
 dist-electron
 release
 
-# 日志
-logs
+# 日志（只忽略根目录与产物目录的日志，别吞掉 src 下的同名代码目录）
+/logs/
 *.log
 npm-debug.log*
 pnpm-debug.log*
