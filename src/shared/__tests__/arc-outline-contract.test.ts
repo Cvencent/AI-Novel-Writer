@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   ARC_MAX_CHAPTERS, ARC_MIN_CHAPTERS,
-  findCharacterNames, parseArcSegment, validateArcNoProperNames, validateArcSpan, validateBeatDiversity,
+  findCharacterNames, parseArcSegment, sanitizeArcProperNames,
+  validateArcNoProperNames, validateArcSpan, validateBeatDiversity,
 } from '../arc-outline-contract'
 
 describe('validateArcSpan', () => {
@@ -32,6 +33,33 @@ describe('findCharacterNames', () => {
   })
   it('忽略过短的名字并去重', () => {
     expect(findCharacterNames('林越与林越', ['林越', '林越', '越'])).toEqual(['林越'])
+  })
+})
+
+describe('sanitizeArcProperNames', () => {
+  it('把主角名换成「主角」，其余正文原样保留', () => {
+    const input = '林越在学院竞赛中获胜，却失去了对母亲的记忆。'
+    const { text, replaced } = sanitizeArcProperNames(input, ['林越'], new Map([['林越', 'protagonist']]))
+    expect(text).toBe('主角在学院竞赛中获胜，却失去了对母亲的记忆。')
+    expect(replaced).toEqual(['林越'])
+  })
+
+  it('按名单里的角色定位选身份词：反派 → 对手，配角 → 配角，未知 → 某位角色', () => {
+    const roles = new Map([['林越', 'protagonist'], ['沈砚', 'antagonist'], ['苏婉', 'supporting'], ['无名', 'other']])
+    const { text, replaced } = sanitizeArcProperNames('林越、沈砚、苏婉与无名相遇。', ['林越', '沈砚', '苏婉', '无名'], roles)
+    expect(text).toBe('主角、对手、配角与某位角色相遇。')
+    expect(replaced).toEqual(['林越', '沈砚', '苏婉', '无名'])
+  })
+
+  it('英文作品用英文身份词', () => {
+    const { text } = sanitizeArcProperNames('Lin Yue wins the contest.', ['Lin Yue'], new Map([['Lin Yue', 'protagonist']]), 'en-US')
+    expect(text).toBe('the protagonist wins the contest.')
+  })
+
+  it('没有命中时不改动正文', () => {
+    const { text, replaced } = sanitizeArcProperNames('主角在学院竞赛中获胜。', ['林越'], new Map([['林越', 'protagonist']]))
+    expect(text).toBe('主角在学院竞赛中获胜。')
+    expect(replaced).toEqual([])
   })
 })
 

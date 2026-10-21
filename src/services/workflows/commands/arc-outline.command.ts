@@ -1,6 +1,6 @@
 import {
   ARC_MAX_CHAPTERS, ARC_MIN_CHAPTERS, ARC_BEATS,
-  parseArcSegment, validateArcNoProperNames, validateArcSpan, validateBeatDiversity,
+  parseArcSegment, sanitizeArcProperNames, validateArcNoProperNames, validateArcSpan, validateBeatDiversity,
 } from '../../../shared/arc-outline-contract'
 import type { ArcBeat } from '../../../../electron/repositories/arc-outline-repository'
 import {
@@ -73,6 +73,40 @@ export function assertArcSegmentAcceptable(
   return segment
 }
 
+/**
+ * 与 assertArcSegmentAcceptable 同一套闸门，但「出现人名」不再判失败：
+ * 先把命中的名字按角色定位换成身份词，再走同一套解析→段长→人名→形态校验。
+ *
+ * 为什么这么改：粗纲的规则是「只写方向、不写人名」，但模型偶尔会漏写一个名字。
+ * 过去这种情况会让整段生成作废，作者白等一次调用还得重来；而把「林越」换成「主角」
+ * 并不改变方向本身——那正是粗纲本来就该有的写法。替换后仍然走完整校验，不放松任何一条。
+ */
+export function acceptArcSegmentWithNameFallback(
+  raw: string,
+  expectedFrom: number,
+  totalChapters: number,
+  characterNames: readonly string[],
+  recentBeats: readonly ArcBeat[],
+  roleByName: ReadonlyMap<string, string | undefined> = new Map(),
+  language: 'zh-CN' | 'en-US' = 'zh-CN',
+): { segment: { fromChapter: number; toChapter: number; title: string; beat: ArcBeat; summary: string }; replacedNames: string[] } {
+  const parsed = parseArcSegment(raw)
+  if (!parsed.ok) throw new Error(parsed.code)
+  const cleaned = sanitizeArcProperNames(parsed.segment.summary, characterNames, roleByName, language)
+  if (cleaned.replaced.length === 0) {
+    return { segment: assertArcSegmentAcceptable(raw, expectedFrom, totalChapters, characterNames, recentBeats), replacedNames: [] }
+  }
+  const rebuilt = [
+    `## 第${parsed.segment.fromChapter}–${parsed.segment.toChapter}章：${parsed.segment.title}`,
+    `beat: ${parsed.segment.beat}`,
+    cleaned.text,
+  ].join('\n')
+  return {
+    segment: assertArcSegmentAcceptable(rebuilt, expectedFrom, totalChapters, characterNames, recentBeats),
+    replacedNames: cleaned.replaced,
+  }
+}
+
 export class GenerateArcOutlineCommand extends BaseWorkflowCommand<string> {
   constructor(
     private snapshot: ArchitectureProjectSnapshot,
@@ -118,6 +152,9 @@ export class GenerateArcOutlineCommand extends BaseWorkflowCommand<string> {
     const recentBeats = arcs.map(arc => arc.beat).slice(-3)
     const roster = await ipc.invokeWithProjectSession(projectSession, 'db:character-roster-read', expectedProjectPath).catch(() => null)
     const characterNames = roster?.entries?.map((entry: { name: string }) => entry.name).filter(Boolean) ?? []
+    const roleByName = new Map<string, string | undefined>(
+      (roster?.entries ?? []).map((entry: { name: string; role?: string }) => [entry.name, entry.role]),
+    )
 
     callbacks.log(text(`正在生成第 ${from} 章起的粗纲…`, `Generating the arc segment starting at chapter ${from}…`))
 
@@ -143,9 +180,16 @@ export class GenerateArcOutlineCommand extends BaseWorkflowCommand<string> {
       context,
     )
 
-    const segment = assertArcSegmentAcceptable(
-      completion.content, from, totalChapters, characterNames, recentBeats,
+    const accepted = acceptArcSegmentWithNameFallback(
+      completion.content, from, totalChapters, characterNames, recentBeats, roleByName, writingLanguage,
     )
+    const segment = accepted.segment
+    if (accepted.replacedNames.length > 0) {
+      callbacks.log(text(
+        `粗纲里出现了人名（${accepted.replacedNames.join(text('、', ', '))}），已按角色定位换成身份词——粗纲只写方向，人名留到细纲。`,
+        `The arc draft mentioned character names (${accepted.replacedNames.join(', ')}); they were replaced with role words. Arc segments carry direction only; names belong in the chapter outline.`,
+      ))
+    }
 
     const saved = await ipc.invokeWithProjectSession(projectSession, 'db:arc-outline-save', {
       arcIndex: arcs.length + 1,
@@ -210,6 +254,9 @@ export class RegenerateArcOutlineSegmentCommand extends BaseWorkflowCommand<stri
 
     const roster = await ipc.invokeWithProjectSession(projectSession, 'db:character-roster-read', expectedProjectPath).catch(() => null)
     const characterNames = roster?.entries?.map((entry: { name: string }) => entry.name).filter(Boolean) ?? []
+    const roleByName = new Map<string, string | undefined>(
+      (roster?.entries ?? []).map((entry: { name: string; role?: string }) => [entry.name, entry.role]),
+    )
     const neighbours = arcs
       .filter(arc => arc.arcIndex === this.input.arcIndex - 1 || arc.arcIndex === this.input.arcIndex + 1)
       .map(arc => promptLanguageText(writingLanguage,
@@ -284,8 +331,15 @@ beat: {beat}
     if (segment.fromChapter !== target.fromChapter || segment.toChapter !== target.toChapter) {
       throw new Error('ARC_OUTLINE_RANGE_CHANGED')
     }
-    const names = validateArcNoProperNames(segment.summary, characterNames)
-    if (!names.ok) throw new Error('ARC_OUTLINE_PROPER_NAME_FOUND:' + names.found.join(','))
+    // 人名不再判失败：按角色定位换掉，粗纲只写方向。
+    const cleanedNames = sanitizeArcProperNames(segment.summary, characterNames, roleByName, writingLanguage)
+    if (cleanedNames.replaced.length > 0) {
+      callbacks.log(text(
+        `粗纲里出现了人名（${cleanedNames.replaced.join(text('、', ', '))}），已按角色定位换成身份词。`,
+        `The rewritten arc segment mentioned character names (${cleanedNames.replaced.join(', ')}); they were replaced with role words.`,
+      ))
+      segment.summary = cleanedNames.text
+    }
     // 重写后的 beat 必须仍与相邻段形成形态差异，避免连续同一种推进方式。
     const adjacentBeats = arcs
       .filter(arc => arc.arcIndex === target.arcIndex - 1 || arc.arcIndex === target.arcIndex + 1)
@@ -363,6 +417,9 @@ export class ReverseArcOutlineCommand extends BaseWorkflowCommand<string> {
 
     const roster = await ipc.invokeWithProjectSession(projectSession, 'db:character-roster-read', expectedProjectPath).catch(() => null)
     const characterNames = roster?.entries?.map((entry: { name: string }) => entry.name).filter(Boolean) ?? []
+    const roleByName = new Map<string, string | undefined>(
+      (roster?.entries ?? []).map((entry: { name: string; role?: string }) => [entry.name, entry.role]),
+    )
 
     callbacks.log(text('正在把已有细纲归纳为粗纲段…', 'Condensing the existing chapter outline into arc segments…'))
 
@@ -425,8 +482,15 @@ beat: {beat}
       if (segment.fromChapter !== expectedFrom) throw new Error('ARC_OUTLINE_RANGE_GAP')
       const span = validateArcSpan(segment.fromChapter, segment.toChapter, totalChapters)
       if (!span.ok) throw new Error(span.code)
-      const names = validateArcNoProperNames(segment.summary, characterNames)
-      if (!names.ok) throw new Error('ARC_OUTLINE_PROPER_NAME_FOUND:' + names.found.join(','))
+      // 人名不再判失败：反推粗纲时逐段换掉，粗纲只写方向。
+      const cleanedNames = sanitizeArcProperNames(segment.summary, characterNames, roleByName, writingLanguage)
+      if (cleanedNames.replaced.length > 0) {
+        callbacks.log(text(
+          `第 ${segment.fromChapter}–${segment.toChapter} 段的粗纲出现了人名（${cleanedNames.replaced.join(text('、', ', '))}），已换成身份词。`,
+          `The arc segment for chapters ${segment.fromChapter}-${segment.toChapter} mentioned character names (${cleanedNames.replaced.join(', ')}); they were replaced with role words.`,
+        ))
+        segment.summary = cleanedNames.text
+      }
       const diversity = validateBeatDiversity(segment.beat, recentBeats)
       if (!diversity.ok) throw new Error(diversity.code)
       recentBeats.push(segment.beat)

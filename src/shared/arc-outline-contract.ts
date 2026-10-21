@@ -49,6 +49,40 @@ export function validateArcNoProperNames(text: string, characterNames: readonly 
   return found.length === 0 ? { ok: true } : { ok: false, found }
 }
 
+/**
+ * 粗纲里出现具体人名时，把名字换成对应的身份词。
+ *
+ * 粗纲的规则是「只写方向、不写具体人名」——因为粗纲管的是走向，人名要到细纲才落地。
+ * 模型偶尔会漏写名字，与其整段作废让作者白等一次生成，不如按作者名单里的角色定位
+ * 把名字换回身份词：主角 → 主角，反派 → 对手，配角 → 配角。语义不变，规则也满足。
+ *
+ * 只替换长度 ≥ 2 的名字（与 findCharacterNames 同一门槛），避免单字名误伤正文。
+ */
+export function sanitizeArcProperNames(
+  text: string,
+  characterNames: readonly string[],
+  roleByName: ReadonlyMap<string, string | undefined> = new Map(),
+  language: 'zh-CN' | 'en-US' = 'zh-CN',
+): { text: string; replaced: string[] } {
+  let next = text
+  const replaced: string[] = []
+  for (const raw of characterNames) {
+    const name = raw.trim()
+    if (name.length < 2 || !next.includes(name)) continue
+    const role = roleByName.get(name)
+    const word = language === 'en-US'
+      ? (role === 'protagonist' ? 'the protagonist'
+        : role === 'antagonist' ? 'the antagonist'
+          : role === 'supporting' ? 'a supporting character' : 'a character')
+      : (role === 'protagonist' ? '主角'
+        : role === 'antagonist' ? '对手'
+          : role === 'supporting' ? '配角' : '某位角色')
+    next = next.split(name).join(word)
+    replaced.push(name)
+  }
+  return { text: next, replaced }
+}
+
 /** 形态去重：最近 window 段的 beat 与本段全同时判重复。 */
 export function validateBeatDiversity(beat: ArcBeat, recentBeats: readonly ArcBeat[], window = 3):
   ValidationResult<'ARC_BEAT_REPEATED'> {

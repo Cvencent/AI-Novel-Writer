@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { assertArcSegmentAcceptable } from '../arc-outline.command'
+import { acceptArcSegmentWithNameFallback, assertArcSegmentAcceptable } from '../arc-outline.command'
 
 /**
  * 粗纲验证闸门的契约测试。命令本体依赖工作流运行时，这里锁定
@@ -52,6 +52,40 @@ beat: setup
 林越觉醒异常能力，苏婉病重。`,
       1, 3000, ['林越', '苏婉'], [],
     )).toThrow('ARC_OUTLINE_PROPER_NAME_FOUND:林越,苏婉')
+  })
+
+  it('出现人名时不再整段失败，而是按角色定位换成身份词后接受', () => {
+    // 回归：模型偶尔会在「不许写人名」的规则下仍写出「林越」，过去这会让整段作废。
+    const { segment, replacedNames } = acceptArcSegmentWithNameFallback(
+      `## 第1–40章：学院觉醒
+beat: setup
+林越觉醒异常能力，被学院破格录取，却发现代价是记忆。`,
+      1, 3000, ['林越'], [], new Map([['林越', 'protagonist']]),
+    )
+    expect(replacedNames).toEqual(['林越'])
+    expect(segment.summary).toBe('主角觉醒异常能力，被学院破格录取，却发现代价是记忆。')
+    expect(segment.summary).not.toContain('林越')
+    expect(segment).toMatchObject({ fromChapter: 1, toChapter: 40, title: '学院觉醒', beat: 'setup' })
+  })
+
+  it('没有人名时原样接受，不做任何替换', () => {
+    const { segment, replacedNames } = acceptArcSegmentWithNameFallback(
+      `## 第1–40章：学院觉醒
+beat: setup
+主角觉醒异常能力。`,
+      1, 3000, ['林越'], [], new Map([['林越', 'protagonist']]),
+    )
+    expect(replacedNames).toEqual([])
+    expect(segment.summary).toBe('主角觉醒异常能力。')
+  })
+
+  it('换成身份词之后仍要过其余闸门（段长、beat 多样性不被放过）', () => {
+    expect(() => acceptArcSegmentWithNameFallback(
+      `## 第1–5章：太短
+beat: setup
+林越觉醒。`,
+      1, 3000, ['林越'], [], new Map([['林越', 'protagonist']]),
+    )).toThrow('ARC_SPAN_TOO_SMALL')
   })
 
   it('拒绝连续复用同一 beat 的段', () => {
