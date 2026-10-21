@@ -147,7 +147,7 @@ describe('打开作品的落点不等审稿与修稿记录：落到哪个阶段�
   const merge: ChapterFacts = { ...reviewed, mergeable: [21] }
   const work = {
     config: { coreOutline: '旧港', genre: '悬疑', targetAudience: '成年读者', totalChapters: 6, wordsPerChapter: 3000 },
-    architecture: { premise: true, characters: true, worldbuilding: true, synopsis: true },
+    architecture: { premise: true, characters: true, worldbuilding: true, arc: true, synopsis: true },
     blueprints: [1, 2, 3, 4, 5, 6].map(chapterNumber => ({ chapterNumber, title: `第${chapterNumber}章` })),
     drafts: { 1: [draft(11, 1, 'finalized')], 2: [draft(12, 2, 'reviewed')], 3: [draft(13, 3, 'revised')], 4: [draft(14, 4, 'draft')] },
     runningChapters: new Set<number>(),
@@ -162,6 +162,16 @@ describe('打开作品的落点不等审稿与修稿记录：落到哪个阶段�
     const landed = { landing: 'manuscript', focus: 4, manuscript: { stage: 'manuscript', finalized: 1, total: 6, progress: { state: 'active', ratio: 1 / 6 } } }
     expect(open()).toEqual(landed)
     expect(open({ 12: reviewed, 13: reviewed, 14: merge })).toEqual(landed)
+  })
+
+  it('流程脊把粗纲算作架构的一节：五节全确认才是 5 / 5', () => {
+    const all = deriveStages(work, deriveChapters(work))
+    const arch = all.find(stage => stage.stage === 'architecture')!
+    expect(arch).toMatchObject({ filled: 5, total: 5 })
+
+    const withoutArc = { ...work, architecture: { ...work.architecture, arc: false } }
+    const partial = deriveStages(withoutArc, deriveChapters(withoutArc)).find(stage => stage.stage === 'architecture')!
+    expect(partial).toMatchObject({ filled: 4, total: 5 })
   })
 
   it('一章有定稿、之后又新建了一份空草稿：仍算写过；没有蓝图、大纲没写完也落在这一章的正文', () => {

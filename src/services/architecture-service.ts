@@ -55,19 +55,22 @@ export async function checkArchConfirmed(
   projectSession: ProjectSessionContext,
 ): Promise<Record<string, boolean>> {
   const { projectPath } = projectSession
-  const [core, roster, partial] = await Promise.all([
+  const [core, roster, partial, arcs] = await Promise.all([
     ipc.invokeWithProjectSession(projectSession, 'db:project-core-get', projectPath),
     ipc.invokeWithProjectSession(projectSession, 'db:character-roster-read', projectPath),
     ipc.invokeWithProjectSession(projectSession, 'fs:read-json', `${projectPath}/${CANONICAL_PROJECT_DIRECTORY}/partial_arch.json`, projectPath)
       .catch(() => null),
+    ipc.invokeWithProjectSession(projectSession, 'db:arc-outline-list', projectPath).catch(() => []),
   ])
-  if (!core) return { premise: false, characters: false, worldbuilding: false, synopsis: false }
+  if (!core) return { premise: false, characters: false, worldbuilding: false, arc: false, synopsis: false }
+  const arcRows = Array.isArray(arcs) ? arcs as { status: string }[] : []
   const checkpoint = partial?.success === true ? (partial as { data?: unknown }).data : undefined
   const progress = outlineProgress(core.synopsis ?? '', checkpoint, core.writingLanguage === 'en-US' ? 'en-US' : 'zh-CN', Number(core.totalChapters) || 0)
   return {
     premise: (core.premise?.length ?? 0) > 50,
     characters: roster.status === 'ready',
     worldbuilding: (core.worldbuilding?.length ?? 0) > 50,
+    arc: arcRows.length > 0 && arcRows.every(arc => arc.status === 'confirmed'),
     synopsis: progress.kind === 'complete',
   }
 }

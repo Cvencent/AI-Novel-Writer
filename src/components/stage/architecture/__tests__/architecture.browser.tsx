@@ -531,6 +531,24 @@ describe('架构阶段', () => {
     expect(tab.content).toContain('第一次反噬')
   })
 
+  it('粗纲节头的「生成下一段」真的会启动粗纲工作流', async () => {
+    arcRows = [
+      { id: 1, arcIndex: 1, fromChapter: 1, toChapter: 20, title: '空白源核觉醒', summary: '方向', beat: 'setup', status: 'confirmed', revision: 1, createdAt: '', updatedAt: '' },
+    ]
+    await render()
+
+    const arc = host!.querySelector('[data-section="arc"]')!
+    const next = [...arc.querySelectorAll('button')].find(node => (node.textContent || '').trim() === '生成下一段') as HTMLButtonElement
+    expect(next).toBeTruthy()
+    // 回归：这个按钮曾经是个空操作，点了既不启动工作流，也不会出现运行侧页。
+    expect(next.disabled).toBe(false)
+    await act(async () => { next.click() })
+    await vi.waitFor(() => {
+      const launched = started.mock.calls.some(([definition]) => definition.steps.some(step => step.key === 'arc-next'))
+      expect(launched).toBe(true)
+    })
+  })
+
   it('第一次读到五节状态之前不显示各节的动作按钮，读到后按内容显示，之后刷新时不隐藏', async () => {
     filledSpine(['premise'])
     let release!: () => void

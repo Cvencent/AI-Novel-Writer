@@ -15,7 +15,7 @@ export const SETUP_FIELDS: readonly SetupField[] = ['coreOutline', 'genre', 'len
  * ia.md 写的是「4 节均已确认」，但产品里各节没有确认状态（ArchitectureConfirmDialog 只是生成前勾选步骤），
  * 所以取架构页徽标同一个判定：前提、世界观有内容，角色名单已就绪，情节大纲按分批检查点全书写完且没有中断的批次（checkArchConfirmed）。
  */
-export const ARCHITECTURE_SECTIONS = ['premise', 'characters', 'worldbuilding', 'synopsis'] as const
+export const ARCHITECTURE_SECTIONS = ['premise', 'characters', 'worldbuilding', 'arc', 'synopsis'] as const
 
 /** 完成为实心勾选圆，进行中为按比例填充的进度环，未开始为虚线圆。 */
 export type StageProgress =

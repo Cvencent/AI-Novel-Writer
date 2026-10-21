@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type MutableRefObject } from 'react'
 import { Check, Layers, ListTree, PencilLine, SkipForward, Sparkles } from 'lucide-react'
 import ArcReviseDialog, { type ArcReviseScope } from './ArcReviseDialog'
 import { useLocaleStore } from '../../../stores/locale-store'
@@ -19,13 +19,18 @@ export type ArcGenerationMode = 'waitConfirm' | 'skipConfirm'
  * 粗纲面板：列出已生成的粗纲段，控制生成模式，并在存在过期细纲时提示。
  * 粗纲不含人名，只管方向；细纲才落到每章。
  */
-export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, embedded = false }: {
+export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, embedded = false, runnerRef }: {
   projectKey: string
   /** 正式细纲来源事实；由架构页复用，避免这里重复读取 project_core。 */
   fineSource?: PlotOutlineRangeSource
   fineProgress?: OutlineProgress
   /** 嵌在「粗纲」一节里时不再自带头部，避免与节标题重复。 */
   embedded?: boolean
+  /**
+   * 节头按钮的入口。粗纲的生成逻辑（模式、按段推进、等待运行结束）都在这里，
+   * 交给父级调用，避免在节头重复一份。
+   */
+  runnerRef?: MutableRefObject<((mode: 'next' | 'reverse') => void) | null>
 }) {
   const text = useLocaleStore(s => s.text)
   const [arcs, setArcs] = useState<ArcOutlineRecord[]>([])
@@ -64,7 +69,6 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load() }, [load])
 
-  if (loading) return null
 
   const covered = arcs.reduce((max, arc) => Math.max(max, arc.toChapter), 0)
 
@@ -138,6 +142,12 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
     }
   }
 
+  // 节头按钮复用同一份生成逻辑：模式判断、按段推进、等待运行结束都在这里。
+  // 每次渲染后重新登记，保证闭包里的 mode 与 arcs 是最新值。
+  useEffect(() => {
+    if (runnerRef) runnerRef.current = (arcMode) => { void startArc(arcMode) }
+  })
+
   /** 人工确认一段粗纲，之后才允许按“等我确认”继续下一段或生成细纲。 */
   const confirmArc = async (arc: ArcOutlineRecord) => {
     setError('')
@@ -173,6 +183,8 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
       setBusyFineArc(null)
     }
   }
+
+  if (loading) return null
 
   const body = (
     <section className={embedded ? 'arch-arc arch-arc-embedded' : 'arch-arc'} aria-label={text('粗纲', 'Arc outline')}>

@@ -1,5 +1,5 @@
 import { Copy, Ellipsis, Eye, EyeOff, Layers, PenLine, RotateCw, Sparkles, Users } from 'lucide-react'
-import type { ReactNode } from 'react'
+import type { MutableRefObject, ReactNode } from 'react'
 import { ARCH_STEP_NAMES, type ArchStepKey } from '../../../services/architecture-step-selection'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { LegacyRosterRecoveryPanel } from '../../editor/LegacyRosterRecoveryPanel'
@@ -17,6 +17,9 @@ interface SectionProps {
   summary: string
   onEdit: () => void
   onGenerate: () => void
+  /** 粗纲一节专用的分段生成入口；它不走「AI 生成架构」对话框。 */
+  onGenerateArc: () => void
+  arcRunnerRef: MutableRefObject<((mode: 'next' | 'reverse') => void) | null>
   onClear: () => void
   onOpenCast: () => void
   onReload: () => void
@@ -129,7 +132,7 @@ function RosterNotice({ overview }: { overview: ArchitectureOverview }) {
   )
 }
 
-export default function ArchitectureSection({ sectionKey, overview, badge, summary, onEdit, onGenerate, onClear, onOpenCast, onReload }: SectionProps) {
+export default function ArchitectureSection({ sectionKey, overview, badge, summary, onEdit, onGenerate, onGenerateArc, arcRunnerRef, onClear, onOpenCast, onReload }: SectionProps) {
   const text = useLocaleStore(s => s.text)
   const filled = Boolean(overview.archStatus[sectionKey])
   const cast = sectionKey === 'characters'
@@ -142,7 +145,7 @@ export default function ArchitectureSection({ sectionKey, overview, badge, summa
       ...(arc
         ? [
           { id: 'view', label: text('查看粗纲全文', 'View arc outline'), onSelect: onEdit },
-          { id: 'generate-arc', label: text('生成下一段粗纲…', 'Generate next arc segment…'), onSelect: onGenerate },
+          { id: 'generate-arc', label: text('生成下一段粗纲…', 'Generate next arc segment…'), onSelect: onGenerateArc },
         ]
         : [
           { id: 'generate', label: filled ? text('AI 重新生成此节…', 'Regenerate with AI…') : text('AI 生成此节…', 'Generate with AI…'), onSelect: onGenerate },
@@ -163,7 +166,7 @@ export default function ArchitectureSection({ sectionKey, overview, badge, summa
         <Button variant="text" size="sm" onClick={onEdit}>
           <Layers size={14} aria-hidden />{overview.arc.list.length > 0 ? text('查看粗纲', 'View arc outline') : text('查看', 'View')}
         </Button>
-        <Button variant="secondary" size="sm" onClick={onGenerate}>
+        <Button variant="secondary" size="sm" onClick={onGenerateArc}>
           <Sparkles size={14} aria-hidden />{overview.arc.list.length > 0 ? text('生成下一段', 'Next segment') : text('AI 生成粗纲', 'Generate arc outline')}
         </Button>
       </>
@@ -198,7 +201,7 @@ export default function ArchitectureSection({ sectionKey, overview, badge, summa
       {(sectionKey === 'worldbuilding' || sectionKey === 'synopsis') && (sectionKey === 'synopsis' ? overview.synopsis.candidate : overview.worldBuilding.candidate) && (
         <div className="arch-section-notes"><CandidateNotice sectionKey={sectionKey} overview={overview} /></div>
       )}
-      {sectionKey === 'arc' && <div className="arch-section-notes"><ArcOutlinePanel projectKey={overview.projectKey} fineSource={overview.synopsisSource} fineProgress={overview.synopsis.progress} embedded /></div>}
+      {sectionKey === 'arc' && <div className="arch-section-notes"><ArcOutlinePanel projectKey={overview.projectKey} fineSource={overview.synopsisSource} fineProgress={overview.synopsis.progress} embedded runnerRef={arcRunnerRef} /></div>}
       {sectionKey === 'synopsis' && <div className="arch-section-notes arch-notes-collapsible"><OutlineNotice overview={overview} onGenerate={onGenerate} /></div>}
       {cast && <div className="arch-section-notes arch-notes-collapsible"><RosterNotice overview={overview} /></div>}
     </section>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { ArrowRight, Ellipsis, Sparkles } from 'lucide-react'
 import { ARCH_STEP_NAMES, type ArchStepKey } from '../../../services/architecture-step-selection'
 import { useCharacterStore } from '../../../stores/character-store'
@@ -51,6 +51,8 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
   const cast = useCastSummary(projectKey)
   /** 清空确认打开时冻结的会话：确认时作品已换就什么也不写。 */
   const [clearing, setClearing] = useState<{ key: ArchStepKey; session: ProjectSessionContext } | null>(null)
+  /** 粗纲节的生成入口由 ArcOutlinePanel 提供，节头按钮直接复用同一份逻辑。 */
+  const arcRunnerRef = useRef<((mode: 'next' | 'reverse') => void) | null>(null)
 
   const total = SECTION_ORDER.length
   const action = mainAction(filled ?? 0, total)
@@ -165,6 +167,8 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
               summary={summary(key)}
               onEdit={() => editSection(key)}
               onGenerate={() => { if (key !== 'arc') overview.openGenerateDialog([key]) }}
+              onGenerateArc={() => arcRunnerRef.current?.('next')}
+              arcRunnerRef={arcRunnerRef}
               onClear={() => {
                 const session = captureProjectSession(useProjectStore.getState().currentProject)
                 if (session && isProjectSessionPath(session, projectKey)) setClearing({ key, session })
