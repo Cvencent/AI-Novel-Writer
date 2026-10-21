@@ -90,6 +90,99 @@ export function guardArchitectureGeneration(
   return { ok: true }
 }
 
+// ===== Guard 1.5：生成情节大纲前 → 粗纲必须铺满且全部确认 =====
+
+/**
+ * 生成情节大纲（细纲）前的前置校验：粗纲必须先铺满全书、并且每一段都已确认。
+ *
+ * 为什么要有这条：粗纲是细纲的方向来源。粗纲没铺满、或还有没确认的段时直接生成细纲，
+ * 等于在没有方向的情况下往下写——写歪了也没法回头对齐，而作者发现走偏时常常已经写了几十章。
+ * 确认过的粗纲段是作者明确认可的走向，所以「按某段生成细纲」那条路径不会经过这里
+ * （它带着 arcContext，调用方见 guardIntent）。
+ *
+ * 判不出来时不拦：总章数还没设（0）或台账读不到，都不该因为一次读取失败挡住作者。
+ */
+/**
+ * 这次情节大纲生成要不要走粗纲闸门。
+ *
+ * 不走闸门的两种情况：
+ * - 不是只生成情节大纲（比如整套架构生成，粗纲本来就不在那条链上）；
+ * - 带着 arcContext：这是「按某个已确认的粗纲段生成细纲」，那一段就是作者认可的走向，
+ *   不需要全书粗纲先铺满。
+ *
+ * 抽成纯函数是为了让这个例外本身可测，而不是埋在启动流程里。
+ */
+export function needsConfirmedArcGate(intent: {
+  selectedSteps?: readonly string[]
+  arcContext?: unknown
+}): boolean {
+  return (intent.selectedSteps ?? []).includes('synopsis') && !intent.arcContext
+}
+
+export async function guardSynopsisNeedsConfirmedArc(
+  expectedProjectPath?: string,
+  expectedProjectSession?: ProjectSessionContext,
+  uiLocale: Locale = useLocaleStore.getState().locale,
+): Promise<GuardResult> {
+  const captured = captureGuardProject(expectedProjectPath, expectedProjectSession)
+  if (!captured) {
+    return {
+      ok: false,
+      message: localize(uiLocale, '请先打开或新建一个项目。', 'Open or create a project first.'),
+    }
+  }
+  const { projectPath, projectSession } = captured
+  const [arcs, core] = await Promise.all([
+    ipc.invokeWithProjectSession(projectSession, 'db:arc-outline-list', projectPath).catch(() => null),
+    ipc.invokeWithProjectSession(projectSession, 'db:project-core-get', projectPath).catch(() => null),
+  ])
+  // 读不到就当判不了：不能因为一次读取失败挡住作者。
+  if (!Array.isArray(arcs) || !core) return { ok: true }
+  const totalChapters = Number(core.totalChapters) || 0
+  if (totalChapters <= 0) return { ok: true }
+
+  const list = arcs as { fromChapter: number; toChapter: number; status: string }[]
+  if (list.length === 0) {
+    return {
+      ok: false,
+      message: localize(
+        uiLocale,
+        '还没有粗纲。粗纲决定整本书的方向，细纲要按它来写。\n\n请先在「故事架构 → 粗纲」里生成粗纲（可以点「一键生成全部粗纲」一次铺满全书），确认后再生成细纲。',
+        'There is no arc outline yet. The arc outline sets the direction for the whole book, and chapter outlines follow it.\n\nGenerate the arc outline first in Story Architecture, then Arc outline (the "Generate all arc segments" button fills the whole book in one go), and confirm it before creating chapter outlines.',
+      ),
+      action: 'open-world-building',
+    }
+  }
+
+  const coveredTo = list.reduce((max, arc) => Math.max(max, arc.toChapter), 0)
+  if (coveredTo < totalChapters) {
+    return {
+      ok: false,
+      message: localize(
+        uiLocale,
+        `粗纲还没有铺满全书：目前覆盖到第 ${coveredTo} 章，全书共 ${totalChapters} 章。\n\n请先把粗纲补到全书末章并确认，再生成细纲——否则后面的章节会在没有方向的情况下往下写。`,
+        `The arc outline does not cover the whole book yet: it reaches chapter ${coveredTo} of ${totalChapters}.\n\nExtend the arc outline to the final chapter and confirm it before creating chapter outlines, otherwise later chapters are written without a direction.`,
+      ),
+      action: 'open-world-building',
+    }
+  }
+
+  const unconfirmed = list.filter(arc => arc.status !== 'confirmed')
+  if (unconfirmed.length > 0) {
+    return {
+      ok: false,
+      message: localize(
+        uiLocale,
+        `粗纲还有 ${unconfirmed.length} 段没有确认（第 ${unconfirmed[0]!.fromChapter}–${unconfirmed[0]!.toChapter} 章起）。\n\n请先在「故事架构 → 粗纲」里确认这些段，再生成细纲。`,
+        `The arc outline still has ${unconfirmed.length} segment(s) awaiting confirmation (starting at chapters ${unconfirmed[0]!.fromChapter}-${unconfirmed[0]!.toChapter}).\n\nConfirm them in Story Architecture, then Arc outline, before creating chapter outlines.`,
+      ),
+      action: 'open-world-building',
+    }
+  }
+
+  return { ok: true }
+}
+
 // ===== Guard 2：生成章节蓝图前 → 校验故事架构完成度 =====
 
 /**

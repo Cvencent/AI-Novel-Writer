@@ -79,12 +79,18 @@ function seedArch({ clear = [], totalChapters, characters = [], arcs = [] } = {}
         assert.equal(cleared.success, true, cleared.error)
       }
       if (characters.length > 0) await addCharacters({ page, invoke, path, session }, characters)
-      // 粗纲段：写入后再确认，让「粗纲」一节算作已确认。
+      // 粗纲段：默认写入后确认（让「粗纲」一节算作已确认）；
+      // arc.confirm === false 时保留为草稿，用来验证「确认此段」与粗纲闸门。
       for (const arc of arcs) {
-        const saved = await invoke(page, 'db:arc-outline-save', arc, path, session)
+        const shouldConfirm = arc.confirm !== false
+        const { confirm: _confirm, ...input } = arc
+        void _confirm
+        const saved = await invoke(page, 'db:arc-outline-save', input, path, session)
         assert.equal(saved.success, true, saved.error)
-        const confirmed = await invoke(page, 'db:arc-outline-confirm', saved.record.arcIndex, saved.record.revision, path, session)
-        assert.equal(confirmed.success, true, confirmed.error)
+        if (shouldConfirm) {
+          const confirmed = await invoke(page, 'db:arc-outline-confirm', saved.record.arcIndex, saved.record.revision, path, session)
+          assert.equal(confirmed.success, true, confirmed.error)
+        }
       }
     } })
     if (clear.length === 0) return
@@ -218,6 +224,34 @@ export const ARCH_SCENARIOS = {
     assert.deepEqual(await badges(page), { premise: '已确认', characters: '已确认', worldbuilding: '待生成', arc: '待生成', synopsis: '待生成' })
     assert.match(await stage.stageButton(page, '架构').innerText(), /2 \/ 5/, '流程脊与页面同为 2 / 5')
     assert.equal(await arch.summary(page, 'characters').innerText(), '1 位角色：林岚')
+  } },
+
+  /** lane 2.5：粗纲没铺满时给出模式切换与一键入口；生成细纲被闸门拦下并说明原因。 */
+  'arch-arc-gate': { model: false, shell: 'stage', setup: seedArch({ totalChapters: 120, arcs: [
+    { arcIndex: 1, fromChapter: 1, toChapter: 40, title: '第一段', summary: '方向一。', beat: 'setup', confirm: false },
+  ] }), run: async ({ page }) => {
+    await openArchitecture(page)
+    const arc = arch.section(page, 'arc')
+    // 嵌入架构页时也要能选模式、也要有一键铺满的入口
+    assert.equal(await arc.getByRole('button', { name: '等我确认' }).count(), 1, '嵌入模式要能看到「等我确认」')
+    assert.equal(await arc.getByRole('button', { name: '跳过确认' }).count(), 1, '嵌入模式要能看到「跳过确认」')
+    assert.equal(await arc.getByRole('button', { name: '一键生成全部粗纲' }).count(), 1, '粗纲没铺满时要有一键生成全部')
+    assert.equal(await arc.getByRole('button', { name: '确认此段' }).count(), 1, '草稿段要能确认')
+
+    // 粗纲没铺满时生成细纲要被拦下并说明原因（粗纲是细纲的方向来源）。
+    await arch.page(page).getByRole('button', { name: '架构的更多操作' }).click()
+    const generate = page.getByRole('menuitem', { name: /AI 生成架构|AI 重新生成/ }).first()
+    if (await generate.count() > 0) {
+      await generate.click()
+      const dialog = page.getByRole('dialog')
+      await dialog.waitFor({ state: 'visible' })
+      // 只勾情节大纲
+      await arch.selectOnly(page, ['synopsis'])
+      await dialog.getByRole('button', { name: /^开始生成/ }).click()
+      // 闸门在启动处拦下：出现说明，且没有运行被启动
+      await page.getByText(/还没有铺满全书|还没有粗纲|粗纲还没有/).first().waitFor({ state: 'visible', timeout: 20_000 })
+      assert.equal((await runSheet.tab(page, '进行中').count()) > 0, false, '被拦时不该有运行启动')
+    }
   } },
 
   /** lane 3：五节都已确认时主按钮是下一步章节蓝图；after 点它进入蓝图。 */

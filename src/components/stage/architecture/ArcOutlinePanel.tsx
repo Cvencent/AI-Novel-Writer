@@ -107,9 +107,14 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
 
   /**
    * 粗纲生成：mode=next 续生成下一段，mode=reverse 从现有细纲反推。
-   * “跳过确认”会一段接一段生成到全书铺满；“等我确认”每段停下。
+   * “等我确认”每段停下等你确认；“跳过确认”一段接一段生成到全书铺满。
+   *
+   * generateAll=true 是「一键生成全部粗纲」：不管当前模式，都按跳过确认一路铺到全书末章。
+   * 单独给这个参数而不是直接改 mode，是为了不悄悄改掉作者选好的模式——
+   * 那个选择在按钮松开后应该还是他原来选的那个。
    */
-  const startArc = async (arcMode: 'next' | 'reverse') => {
+  const startArc = async (arcMode: 'next' | 'reverse', generateAll = false) => {
+    const effectiveMode: ArcGenerationMode = generateAll ? 'skipConfirm' : mode
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession || !isProjectSessionCurrent(projectSession)) {
       setError(text('项目会话已切换，请重新打开作品。', 'The project session changed. Reopen the book and try again.'))
@@ -128,7 +133,7 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
       let latest = await readArcs()
       let coveredNow = latest.reduce((max, arc) => Math.max(max, arc.toChapter), 0)
       while (coveredNow < totalChapters) {
-        if (mode === 'waitConfirm' && latest.some(arc => arc.status !== 'confirmed')) {
+        if (effectiveMode === 'waitConfirm' && latest.some(arc => arc.status !== 'confirmed')) {
           setError(text('请先确认当前粗纲段，再生成下一段。', 'Confirm the current arc segment before generating the next one.'))
           break
         }
@@ -138,13 +143,13 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
         const nextCovered = latest.reduce((max, arc) => Math.max(max, arc.toChapter), 0)
         if (nextCovered <= coveredNow) break
         coveredNow = nextCovered
-        if (mode === 'skipConfirm') {
+        if (effectiveMode === 'skipConfirm') {
           for (const arc of latest.filter(item => item.status === 'draft')) {
             await ipc.invoke('db:arc-outline-confirm', arc.arcIndex, arc.revision, projectKey).catch(() => null)
           }
           latest = await readArcs()
         }
-        if (mode === 'waitConfirm') break
+        if (effectiveMode === 'waitConfirm') break
       }
       await load()
       notifyChanged()
@@ -203,6 +208,54 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
 
   const body = (
     <section className={embedded ? 'arch-arc arch-arc-embedded' : 'arch-arc'} aria-label={text('粗纲', 'Arc outline')}>
+      {/*
+        嵌入到架构页时也要能选模式、也要有一键铺满的入口。
+        以前这些控件全在 header 里，而嵌入模式整个 header 都不渲染，
+        结果架构页上既看不到「等我确认/跳过确认」，也没有一键生成全部粗纲。
+      */}
+      {embedded && (
+        <div className="arch-arc-toolbar" role="group" aria-label={text('粗纲生成方式', 'Arc generation mode')}>
+          <div className="arch-arc-toolbar-modes">
+            <Button
+              variant={mode === 'waitConfirm' ? 'primary' : 'secondary'}
+              size="sm"
+              aria-pressed={mode === 'waitConfirm'}
+              disabled={busyArc}
+              onClick={() => setMode('waitConfirm')}
+            >
+              <Check size={14} aria-hidden />{text('等我确认', 'Wait for me')}
+            </Button>
+            <Button
+              variant={mode === 'skipConfirm' ? 'primary' : 'secondary'}
+              size="sm"
+              aria-pressed={mode === 'skipConfirm'}
+              disabled={busyArc}
+              onClick={() => setMode('skipConfirm')}
+            >
+              <SkipForward size={14} aria-hidden />{text('跳过确认', 'Skip confirmation')}
+            </Button>
+          </div>
+          <div className="arch-arc-toolbar-actions">
+            {covered < totalChapters && (
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={busyArc || totalChapters <= 0}
+                title={text('从下一段开始，一段接一段生成到全书末章', 'Generate segment after segment through the final chapter')}
+                onClick={() => { void startArc('next', true) }}
+              >
+                <Sparkles size={14} aria-hidden />
+                {busyArc ? text('生成中…', 'Generating…') : text('一键生成全部粗纲', 'Generate all arc segments')}
+              </Button>
+            )}
+            {arcs.length === 0 && (
+              <Button variant="text" size="sm" disabled={busyArc} onClick={() => { void startArc('reverse') }}>
+                {text('从现有细纲反推粗纲', 'Derive from existing outline')}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
       {!embedded && <header className="arch-arc-head">
         <span className="arch-arc-title">
           <Layers size={15} aria-hidden />

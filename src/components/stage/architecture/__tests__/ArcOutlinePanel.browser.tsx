@@ -56,8 +56,8 @@ afterEach(() => {
   useProjectStore.setState({ currentProject: null } as never)
 })
 
-async function render() {
-  await act(async () => { root!.render(<ArcOutlinePanel projectKey={session.projectPath} />) })
+async function render(embedded = false) {
+  await act(async () => { root!.render(<ArcOutlinePanel projectKey={session.projectPath} embedded={embedded} />) })
   await act(async () => { await Promise.resolve() })
 }
 
@@ -88,6 +88,34 @@ describe('ArcOutlinePanel', () => {
     await act(async () => { button('跳过确认')!.click() })
     expect(button('跳过确认')!.getAttribute('aria-pressed')).toBe('true')
     expect(button('等我确认')!.getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('嵌入架构页时也给出模式切换与一键生成全部粗纲', async () => {
+    // 回归：这些控件过去只在独立面板的 header 里，而嵌入模式整个 header 都不渲染，
+    // 结果架构页上既选不了模式，也没有「一键生成全部粗纲」。
+    await render(true)
+    expect(button('等我确认')).toBeTruthy()
+    expect(button('跳过确认')).toBeTruthy()
+    expect(button('一键生成全部粗纲')).toBeTruthy()
+  })
+
+  it('嵌入架构页时点「跳过确认」能切换模式', async () => {
+    await render(true)
+    expect(button('等我确认')!.getAttribute('aria-pressed')).toBe('true')
+    await act(async () => { button('跳过确认')!.click() })
+    expect(button('跳过确认')!.getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('粗纲已铺满全书时不再显示一键生成全部', async () => {
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === 'db:arc-outline-list') {
+        return [{ id: 1, arcIndex: 1, fromChapter: 1, toChapter: 300, title: '全书', summary: '方向', beat: 'setup', status: 'confirmed', revision: 1, createdAt: '', updatedAt: '' }]
+      }
+      if (channel === 'db:arc-outline-stale-list') return []
+      return null
+    })
+    await render(true)
+    expect(button('一键生成全部粗纲')).toBeUndefined()
   })
 
   it('存在过期细纲时列出需要重生成的章号', async () => {

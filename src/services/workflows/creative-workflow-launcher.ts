@@ -14,6 +14,8 @@ import {
   guardArchitectureGeneration,
   guardChapterWriting,
   guardDirectoryGeneration,
+  guardSynopsisNeedsConfirmedArc,
+  needsConfirmedArcGate,
   type GuardResult,
 } from '../workflow-guards'
 import { createArchitectureWorkflow, type ArchitectureWorkflowParams } from './architecture-workflow'
@@ -94,6 +96,15 @@ async function guardIntent(
       guardArchitectureGeneration(projectSession.projectPath, projectSession, uiLocale),
       uiLocale,
     )
+    // 只生成情节大纲（细纲）时，粗纲必须先铺满并确认：粗纲是细纲的方向来源。
+    // 例外：带着 arcContext 的调用是「按某个已确认的粗纲段生成细纲」，
+    // 那一段本身就是作者认可的走向，不适用「全书粗纲必须铺满」这条。
+    if (needsConfirmedArcGate(intent)) {
+      requireGuardAccepted(
+        await guardSynopsisNeedsConfirmedArc(projectSession.projectPath, projectSession, uiLocale),
+        uiLocale,
+      )
+    }
     return
   }
   // 粗纲只依赖前提与世界观；命令自身会校验，不借用架构生成的前置闸门。

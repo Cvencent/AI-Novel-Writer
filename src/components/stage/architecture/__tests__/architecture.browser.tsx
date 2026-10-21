@@ -59,6 +59,16 @@ function filledSpine(filled: readonly string[]) {
 }
 
 /** 按章写好的大纲正文，与主进程逐章生成的格式相同。 */
+/**
+ * 把粗纲铺满全书并全部确认。
+ *
+ * 生成情节大纲（细纲）现在要求粗纲先铺满且已确认——粗纲是细纲的方向来源。
+ * 只测续写/续批的用例要先满足这个前置，否则会被闸门正确地拦下。
+ */
+function seedConfirmedArc(totalChapters: number) {
+  arcRows = [{ id: 1, arcIndex: 1, fromChapter: 1, toChapter: totalChapters, title: '全书走向', summary: '方向', beat: 'setup', status: 'confirmed', revision: 1, createdAt: '', updatedAt: '' }]
+}
+
 const outlineBody = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, index) => from + index)
   .map(n => `## 第${n}章：第${n}盏灯\n林舟在第${n}站认出一位失踪者的座位。`).join('\n\n')
 const OUTLINE_SOURCE = { totalChapters: 24, writingLanguage: 'zh-CN' as const }
@@ -273,6 +283,7 @@ describe('架构阶段', () => {
   })
 
   it('续写入口只预选情节大纲：先在别的节打开「AI 重新生成此节」再取消，不会把那一节带进续写', async () => {
+    seedConfirmedArc(24)
     seedPartialOutline()
     await render()
     await click('「故事前提」的更多操作')
@@ -306,6 +317,7 @@ describe('架构阶段', () => {
   }
 
   it('大纲范围按主进程开跑时的同一判定：起始章不超过已有章节是覆盖该范围、其余保留，紧接已有章节是续写，只有跳章无效', async () => {
+    seedConfirmedArc(24)
     seedPartialOutline()
     await render()
     await openOutlineRegenerate()
@@ -417,6 +429,7 @@ describe('架构阶段', () => {
   const PROLOGUE = '## 第0章：序章\n守塔人听见第十三声钟。'
 
   it('只有序章的作品生成第 1–2 章后：徽标部分完成 2 / 24，续写从第 3 章起、序章不算缺章', async () => {
+    seedConfirmedArc(24)
     const body = outlineBody(1, 2)
     core = { ...core, synopsis: renderPlotOutlineSynopsis(`${PROLOGUE}\n\n${body}`, 2, OUTLINE_SOURCE) }
     partial = {
@@ -475,11 +488,13 @@ describe('架构阶段', () => {
   })
 
   it('只差分批没写完的大纲时，主按钮直接打开续批并能提交', async () => {
+    seedConfirmedArc(24)
     seedPartialOutline()
     core = { ...core, worldbuilding: '世界观。'.repeat(30) }
     rosterStatus = 'ready'
     await render()
-    expect(host!.querySelector('.arch-eyebrow')?.textContent).toContain('3 / 5 已确认')
+    // 粗纲已铺满并确认，所以是 4 / 5（只差情节大纲没写完）
+    expect(host!.querySelector('.arch-eyebrow')?.textContent).toContain('4 / 5 已确认')
     await click('继续生成架构')
     expect(['premise', 'characters', 'worldbuilding', 'synopsis'].map(stepChecked)).toEqual([false, false, false, true])
     expect(inputValue('本次生成范围的起始章')).toBe('17')
@@ -488,6 +503,20 @@ describe('架构阶段', () => {
     expect(mark('synopsis')).toBe('续写')
     await act(async () => submit().click())
     await vi.waitFor(() => expect(launchedSteps()).toEqual([['synopsis']]))
+  })
+
+  it('粗纲没铺满时，生成细纲会被拦下并说明原因', async () => {
+    // 粗纲是细纲的方向来源：没铺满就写细纲，后面章节会在没有方向的情况下往下写。
+    seedPartialOutline()
+    core = { ...core, worldbuilding: '世界观。'.repeat(30) }
+    rosterStatus = 'ready'
+    arcRows = []   // 一段粗纲都没有
+    await render()
+    await click('继续生成架构')
+    await act(async () => submit().click())
+    // 工作流没有被启动
+    await vi.waitFor(() => expect(document.body.textContent).toContain('还没有粗纲'))
+    expect(launchedSteps()).toEqual([])
   })
 
   it('生成架构对话框按新样式标出已确认的节是覆盖还是保留', async () => {
