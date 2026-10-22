@@ -2,8 +2,12 @@ import type { MainGenerationRunHandle, MainGenerationRunView, MainGenerationExec
 import type { PromptTemplate } from '../services/builtin-prompt-templates'
 import type { WritingLanguage } from './writing-language'
 
+export type EditorInlineAction = 'refine' | 'expand' | 'continue' | 'dialogue' | 'custom'
+
 export interface EditorInlineInput {
-  action: 'refine' | 'expand' | 'continue' | 'dialogue'
+  action: EditorInlineAction
+  /** Only custom rewrites carry an author-written instruction. */
+  instruction?: string
   documentText: string
   from: number
   to: number

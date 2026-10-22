@@ -97,7 +97,8 @@ describe('SelectionAITextarea', () => {
     await expect.element(page.getByRole('button', { name: '润色' })).toBeVisible()
     await expect.element(page.getByRole('button', { name: '扩写' })).toBeVisible()
     await expect.element(page.getByRole('button', { name: '续写' })).toBeVisible()
-    await expect.element(page.getByRole('button', { name: '改成对话' })).toBeVisible()
+    await expect.element(page.getByRole('textbox', { name: '告诉 AI 怎么改' })).toBeVisible()
+    await expect.element(page.getByRole('button', { name: '改成对话' })).not.toBeInTheDocument()
 
     await act(async () => page.getByRole('button', { name: '润色' }).click())
     await expect.element(page.getByText('改写后的段落')).toBeVisible()
@@ -107,6 +108,32 @@ describe('SelectionAITextarea', () => {
     expect(area.value).toBe('改写后的段落')
     expect(invoke).toHaveBeenCalledWith('editor-inline:begin', expect.objectContaining({
       input: expect.objectContaining({ action: 'refine', from: 0, to: 4, selectedText: '原文段落', documentText: '原文段落' }),
+    }), expect.any(Object))
+  })
+
+  it('rewrites the frozen selection from a free-form author instruction', async () => {
+    await act(async () => root.render(<Harness />))
+    const area = container.querySelector('textarea')!
+    await act(async () => {
+      area.focus()
+      area.setSelectionRange(0, 4)
+      area.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    })
+
+    const instruction = page.getByRole('textbox', { name: '告诉 AI 怎么改' })
+    await expect.element(instruction).toBeVisible()
+    await act(async () => instruction.fill('写得更紧张，删掉解释性旁白'))
+    await act(async () => page.getByRole('button', { name: '改写', exact: true }).click())
+    await expect.element(page.getByText('改写后的段落')).toBeVisible()
+    await act(async () => page.getByRole('button', { name: '替换' }).click())
+
+    expect(area.value).toBe('改写后的段落')
+    expect(invoke).toHaveBeenCalledWith('editor-inline:begin', expect.objectContaining({
+      input: expect.objectContaining({
+        action: 'custom',
+        instruction: '写得更紧张，删掉解释性旁白',
+        selectedText: '原文段落',
+      }),
     }), expect.any(Object))
   })
 

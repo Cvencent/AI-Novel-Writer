@@ -16,7 +16,46 @@ import { countDraftUnits } from '../../shared/draft-units'
 import { useLocaleStore } from '../../stores/locale-store'
 import { getActiveProjectSessionContext } from '../../shared/project-session-context'
 import { livePreview, paperHeadFacet, type PaperHead } from './live-preview'
-import { INLINE_AI_ACTIONS as AI_ACTIONS, type InlineAIAction as EditorAIAction } from './inline-ai-actions'
+import { INLINE_AI_ACTIONS as AI_ACTIONS, INLINE_AI_CUSTOM } from './inline-ai-actions'
+import type { EditorInlineInput } from '../../shared/editor-inline-generation'
+
+type EditorAIActionRequest = {
+  key: EditorInlineInput['action']
+  label: readonly [string, string]
+  instruction?: string
+}
+
+function searchPanelBottom(view: EditorView | undefined): number {
+  if (!view) return 0
+  for (const panel of view.dom.querySelectorAll<HTMLElement>('.cm-search')) {
+    const rect = panel.getBoundingClientRect()
+    if (rect.height > 0) return rect.bottom
+  }
+  return 0
+}
+
+function positionBubble(anchorTop: number, anchorBottom: number, left: number, obstructionBottom = 0): { top: number; left: number; placement: 'above' | 'below' } {
+  // The instruction row makes the toolbar taller. Prefer above, but flip below
+  // when a top-of-page selection or the search panel would cover it.
+  const inset = 8
+  const estimatedHeight = 92
+  const topFloor = obstructionBottom > anchorTop - estimatedHeight ? obstructionBottom + inset : inset
+  const placement = anchorTop - estimatedHeight >= topFloor ? 'above' : 'below'
+  const halfWidth = Math.max(96, Math.min(180, window.innerWidth / 2 - inset))
+  return {
+    top: placement === 'below' ? Math.max(anchorBottom + inset, topFloor) : anchorTop - 5,
+    left: Math.min(Math.max(left, halfWidth), Math.max(halfWidth, window.innerWidth - halfWidth)),
+    placement,
+  }
+}
+
+function editorInlineActionLabel(action: EditorInlineInput['action'], text: (zh: string, en: string) => string): string {
+  const quick = AI_ACTIONS.find(item => item.key === action)
+  if (quick) return text(...quick.label)
+  if (action === 'custom') return text(...INLINE_AI_CUSTOM.label)
+  if (action === 'dialogue') return text('改成对话', 'To dialogue')
+  return text('AI 修改', 'AI edit')
+}
 
 export type CodeMirrorEditorProps = {
   content: string
@@ -118,12 +157,13 @@ export default function CodeMirrorEditor({
 
   // ===== Bubble Menu 逻辑 =====
   const [bubbleOpen, setBubbleOpen] = useState(false)
-  const [bubblePos, setBubblePos] = useState({ top: 0, left: 0 })
+  const [bubblePos, setBubblePos] = useState<{ top: number; left: number; placement: 'above' | 'below' }>({ top: 0, left: 0, placement: 'above' })
   const [aiResult, setAiResult] = useState<string | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
   const [activeAIAction, setActiveAIAction] = useState<string | null>(null)
   const [loadingDots, setLoadingDots] = useState('.')
   const [selectionRange, setSelectionRange] = useState<{ from: number, to: number } | null>(null)
+  const [customInstruction, setCustomInstruction] = useState('')
   const aiRequestSequenceRef = useRef(0)
   const aiTargetRef = useRef<{
     requestSequence: number
@@ -162,12 +202,12 @@ export default function CodeMirrorEditor({
       const applicable = latest?.status === 'completed' && latest.compositionEligible === true && recovery.view.status !== 'cancelled' && recovery.sourceStatus === 'current'
       setAiError(applicable ? null : uiText('恢复的候选尚不可应用，可复制或继续原运行', 'The recovered candidate cannot be applied yet; copy it or continue the original run.'))
       setCanResumeAI(recovery.sourceStatus === 'current' && recovery.view.status !== 'cancelled' && recovery.view.ledger?.physicalRequests === 0 && candidates.length === 0)
-      setActiveAIAction(uiText(...AI_ACTIONS.find(action => action.key === target.action)!.label))
+      setActiveAIAction(editorInlineActionLabel(target.action, uiText))
       const view = editorRef.current?.view
       const from = Math.min(target.from, view?.state.doc.length ?? 0)
       setSelectionRange({ from, to: Math.min(target.to, view?.state.doc.length ?? 0) })
       const coords = view?.coordsAtPos(from)
-      setBubblePos({ top: coords?.top ?? 150, left: coords?.left ?? 200 })
+      setBubblePos(positionBubble(coords?.top ?? 150, coords?.bottom ?? 170, coords?.left ?? 200, searchPanelBottom(view)))
       setBubbleOpen(true)
     }).catch(() => { if (sequence === aiRequestSequenceRef.current) { setAiResult(''); setAiError(uiText('无法恢复原运行', 'The original run could not be restored.')); setBubbleOpen(true) } })
     return () => { client.detach(); aiRequestSequenceRef.current += 1 }
@@ -198,6 +238,8 @@ export default function CodeMirrorEditor({
       onCharCountChange?.(cnt)
     }
 
+    if (v.selectionSet) setCustomInstruction('')
+
     if (v.selectionSet || v.docChanged || v.geometryChanged) {
       const sel = v.state.selection.main
       if (sel.empty || sel.to - sel.from < 1) {
@@ -227,7 +269,7 @@ export default function CodeMirrorEditor({
       if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
         const coords = view.coordsAtPos(selectionRange.from)
         if (coords) {
-          setBubblePos({ top: coords.top, left: coords.left })
+          setBubblePos(positionBubble(coords.top, coords.bottom, coords.left, searchPanelBottom(view)))
         } else {
           setBubbleOpen(false)
         }
@@ -244,16 +286,13 @@ export default function CodeMirrorEditor({
         return
       }
 
-      let top = rect.top - 5 // 与选区顶部有些许间距
       const left = rect.left + rect.width / 2
-
-      // 当用户圈选了一大段并向下滚动时，如果选区顶部滚出了视区，
-      // 我们让气泡悬浮在视区顶部边缘，直到选区底部也完全滚出视区。
-      if (top < viewRect.top + 45) {
-        top = Math.min(viewRect.top + 45, rect.bottom - 10)
-      }
-
-      setBubblePos({ top, left })
+      setBubblePos(positionBubble(
+        Math.max(rect.top, viewRect.top + 8),
+        Math.min(rect.bottom, viewRect.bottom - 8),
+        left,
+        searchPanelBottom(view),
+      ))
     }
 
     const onScrollOrResize = () => {
@@ -405,7 +444,7 @@ export default function CodeMirrorEditor({
     view.focus()
   }, [revealRequest])
   // AI 菜单处理（流式调用，实时显示生成内容）
-  const handleAIAction = async (action: EditorAIAction) => {
+  const handleAIAction = async (action: EditorAIActionRequest) => {
     let requestSequence: number | null = null
     try {
       if (!selectionRange || !editorRef.current?.view || !editable) return
@@ -413,8 +452,14 @@ export default function CodeMirrorEditor({
       if (!session) throw new Error('EDITOR_INLINE_PROJECT_REQUIRED')
       const view = editorRef.current.view
       requestSequence = ++aiRequestSequenceRef.current
-      const input = { action: action.key, from: selectionRange.from, to: selectionRange.to,
-        selectedText: view.state.sliceDoc(selectionRange.from, selectionRange.to), documentText: view.state.doc.toString() }
+      const input: EditorInlineInput = {
+        action: action.key,
+        ...(action.instruction ? { instruction: action.instruction } : {}),
+        from: selectionRange.from,
+        to: selectionRange.to,
+        selectedText: view.state.sliceDoc(selectionRange.from, selectionRange.to),
+        documentText: view.state.doc.toString(),
+      }
       aiTargetRef.current = { ...input, requestSequence, filePath, sessionKey: JSON.stringify(session) }
       inlineRef.current?.detach()
       const client = createEditorInlineGeneration(session)
@@ -497,6 +542,7 @@ export default function CodeMirrorEditor({
     }
     aiTargetRef.current = null
     setAiResult(null)
+    setCustomInstruction('')
     setBubbleOpen(false)
   }
 
@@ -507,6 +553,7 @@ export default function CodeMirrorEditor({
     aiTargetRef.current = null
     setAiResult(null)
     setAiError(null)
+    setCustomInstruction('')
     setBubbleOpen(false)
   }
 
@@ -580,7 +627,9 @@ export default function CodeMirrorEditor({
           data-theme={inkThemeName}
           data-preview={aiResult !== null || undefined}
           style={{ top: bubblePos.top, left: bubblePos.left }}
-          onMouseDown={(e) => e.preventDefault()} // 防止编辑器失焦
+          onMouseDown={(e) => {
+            if (!(e.target instanceof HTMLInputElement)) e.preventDefault()
+          }} // 防止编辑器失焦；输入框需要正常获得焦点
         >
           {aiResult !== null ? (
             <div className="cm-selbar-preview">
@@ -639,6 +688,30 @@ export default function CodeMirrorEditor({
                   {uiText(...action.label)}
                 </Button>
               ))}
+              <div className="cm-selbar-custom">
+                <input
+                  className="cm-selbar-instruction"
+                  aria-label={uiText(...INLINE_AI_CUSTOM.ariaLabel)}
+                  placeholder={uiText(...INLINE_AI_CUSTOM.placeholder)}
+                  maxLength={4000}
+                  enterKeyHint="send"
+                  value={customInstruction}
+                  onChange={event => setCustomInstruction(event.target.value)}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter' && customInstruction.trim()) {
+                      event.preventDefault()
+                      void handleAIAction({ ...INLINE_AI_CUSTOM, instruction: customInstruction.trim() })
+                    }
+                    if (event.key === 'Escape') setCustomInstruction('')
+                  }}
+                />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={!customInstruction.trim()}
+                  onClick={() => { void handleAIAction({ ...INLINE_AI_CUSTOM, instruction: customInstruction.trim() }) }}
+                >{uiText(...INLINE_AI_CUSTOM.label)}</Button>
+              </div>
             </>
           )}
         </div>

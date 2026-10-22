@@ -8,7 +8,7 @@ import { useLLMStore } from '../../stores/llm-store'
 import { useThemeStore } from '../../stores/theme-store'
 import { getActiveProjectSessionContext } from '../../shared/project-session-context'
 import { createEditorInlineGeneration } from '../../services/editor-inline-generation'
-import { INLINE_AI_ACTIONS, type InlineAIAction } from './inline-ai-actions'
+import { INLINE_AI_ACTIONS, INLINE_AI_CUSTOM, type InlineAIAction } from './inline-ai-actions'
 
 type SelectionAITextareaProps = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'value' | 'onChange'> & {
   value: string
@@ -25,12 +25,18 @@ type Target = {
 
 type BubblePosition = { top: number; right: number; above: boolean }
 
+type ActionRequest = {
+  key: InlineAIAction['key'] | 'custom'
+  label: readonly [string, string]
+  instruction?: string
+}
+
 /**
  * 带「框选后请 AI 改写」的文本框。
  *
  * 外观与普通的文本域完全一致（沿用调用方给的 className），只是多一层浮层：
- * 选中一段文字后出现与架构编辑器相同的四个动作（润色 / 扩写 / 续写 / 改成对话），
- * 点一个就请 AI 改写这段，先给你看预览，确认后才替换回原文。
+ * 选中一段文字后可以点润色 / 扩写 / 续写，也可以直接输入修改要求让 AI 改写。
+ * 结果先进入预览，确认后才替换回原文。
  *
  * 为什么单独做一个组件而不是直接上 CodeMirror：设定页的这些字段本来就是普通文本域，
  * 换成富文本编辑器会改变字号、行高、自动增高与焦点样式。这里只加能力，不动样式。
@@ -48,6 +54,7 @@ export default function SelectionAITextarea({ value, onValueChange, ...rest }: S
   const [aiResult, setAiResult] = useState<string | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
   const [activeAction, setActiveAction] = useState<string | null>(null)
+  const [customInstruction, setCustomInstruction] = useState('')
 
   const resetResult = useCallback(() => {
     targetRef.current = null
@@ -67,14 +74,15 @@ export default function SelectionAITextarea({ value, onValueChange, ...rest }: S
     if (aiResult !== null) return
     const from = node.selectionStart ?? 0
     const to = node.selectionEnd ?? 0
-    if (to <= from) { setSelection(null); setBubble(null); return }
+    if (to <= from) { setSelection(null); setBubble(null); setCustomInstruction(''); return }
+    if (selection?.from !== from || selection?.to !== to) setCustomInstruction('')
     setSelection({ from, to, text: node.value.slice(from, to) })
     const rect = node.getBoundingClientRect()
     const above = rect.top > 80
     setBubble({ top: above ? rect.top - 8 : rect.bottom + 8, right: Math.max(8, window.innerWidth - rect.right), above })
-  }, [aiResult])
+  }, [aiResult, selection])
 
-  const runAction = async (action: InlineAIAction) => {
+  const runAction = async (action: ActionRequest) => {
     const node = textareaRef.current
     if (!node || !selection) return
     const session = getActiveProjectSessionContext()
@@ -93,7 +101,14 @@ export default function SelectionAITextarea({ value, onValueChange, ...rest }: S
     inlineRef.current = client
     try {
       await client.open({
-        input: { action: action.key, from: frozen.from, to: frozen.to, selectedText: frozen.selectedText, documentText: frozen.documentText },
+        input: {
+          action: action.key,
+          ...(action.instruction ? { instruction: action.instruction } : {}),
+          from: frozen.from,
+          to: frozen.to,
+          selectedText: frozen.selectedText,
+          documentText: frozen.documentText,
+        },
         modelId: useLLMStore.getState().defaultModelId ?? '',
         uiActionNonce: crypto.randomUUID(),
       })
@@ -158,7 +173,9 @@ export default function SelectionAITextarea({ value, onValueChange, ...rest }: S
           data-theme={theme}
           data-preview={aiResult !== null || undefined}
           style={{ position: 'fixed', top: bubble.top, right: bubble.right, transform: bubble.above ? 'translateY(-100%)' : 'none', zIndex: 80 }}
-          onMouseDown={event => event.preventDefault()}
+          onMouseDown={event => {
+            if (!(event.target instanceof HTMLInputElement)) event.preventDefault()
+          }}
         >
           {aiResult !== null ? (
             <div className="cm-selbar-preview">
@@ -191,6 +208,30 @@ export default function SelectionAITextarea({ value, onValueChange, ...rest }: S
                   {text(...action.label)}
                 </Button>
               ))}
+              <div className="cm-selbar-custom">
+                <input
+                  className="cm-selbar-instruction"
+                  aria-label={text(...INLINE_AI_CUSTOM.ariaLabel)}
+                  placeholder={text(...INLINE_AI_CUSTOM.placeholder)}
+                  maxLength={4000}
+                  enterKeyHint="send"
+                  value={customInstruction}
+                  onChange={event => setCustomInstruction(event.target.value)}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter' && customInstruction.trim()) {
+                      event.preventDefault()
+                      void runAction({ ...INLINE_AI_CUSTOM, instruction: customInstruction.trim() })
+                    }
+                    if (event.key === 'Escape') setCustomInstruction('')
+                  }}
+                />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={!customInstruction.trim()}
+                  onClick={() => { void runAction({ ...INLINE_AI_CUSTOM, instruction: customInstruction.trim() }) }}
+                >{text(...INLINE_AI_CUSTOM.label)}</Button>
+              </div>
             </>
           )}
         </div>,

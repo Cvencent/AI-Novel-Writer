@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StoreApi } from 'zustand'
 import { act } from 'react'
-import { userEvent } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { createRoot, type Root } from 'react-dom/client'
 
 import type { NovelConfig, ProjectData } from '../../../../shared/ipc-channels'
@@ -374,9 +374,11 @@ describe('设定页', () => {
         area.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
       })
       await expect.poll(() => document.querySelectorAll('[role="toolbar"]').length).toBe(1)
-      const labels = [...document.querySelectorAll<HTMLButtonElement>('[role="toolbar"] button')]
+      const labels = [...document.querySelectorAll<HTMLButtonElement>('[role="toolbar"] .cm-selbar-tool')]
         .map(button => button.textContent?.trim())
-      expect(labels).toEqual(['润色', '扩写', '续写', '改成对话'])
+      expect(labels).toEqual(['润色', '扩写', '续写'])
+      await expect.element(page.getByRole('textbox', { name: '告诉 AI 怎么改' })).toBeVisible()
+      await expect.element(page.getByRole('button', { name: '改成对话' })).not.toBeInTheDocument()
 
       await act(async () => {
         area.setSelectionRange(0, 0)

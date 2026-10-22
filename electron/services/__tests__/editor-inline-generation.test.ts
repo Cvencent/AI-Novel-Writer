@@ -51,6 +51,25 @@ it('main实际模板与UTF16原文hash冻结，不把草稿声称为canonical',(
  expect(f.spy).not.toHaveBeenCalled()
  expect(()=>f.owner.beginEditorInline({...request,input:{...input,from:2}})).toThrow()
 })
+it('custom rewrite freezes the author instruction and sends it to the model',async()=>{
+ const f=fixture()
+ const customInput={...input,action:'custom' as const,instruction:'把这段写得更紧张，删掉解释性旁白。'}
+ const recovery=f.owner.beginEditorInline({...request,input:customInput})
+ expect(recovery.context).toMatchObject({action:'custom',instruction:'把这段写得更紧张，删掉解释性旁白。'})
+ await f.owner.executeEditorInline(recovery.view.handle)
+ expect(JSON.stringify(f.spy.mock.calls[0]![0])).toContain('把这段写得更紧张，删掉解释性旁白。')
+ const next=f.reopenStorage()
+ expect(next.readEditorInlineRecovery(recovery.view.handle).context).toMatchObject({action:'custom',instruction:'把这段写得更紧张，删掉解释性旁白。'})
+ expect(()=>f.owner.beginEditorInline({...request,uiActionNonce:'空指令',input:{...customInput,instruction:'   '}})).toThrow()
+})
+it('keeps historical dialogue runs readable without exposing the old action again',()=>{
+ const f=fixture()
+ const recovery=f.owner.beginEditorInline({...request,input:{...input,action:'dialogue'},uiActionNonce:'旧对话运行'})
+ const next=f.reopenStorage()
+ const read=next.readEditorInlineRecovery(recovery.view.handle)
+ expect(read.context.action).toBe('dialogue')
+ expect(read.context.instruction).toBeUndefined()
+})
 it('同nonce不同作者输入拒绝，generic begin/execute不能绕过editor owner',async()=>{
  const f=fixture(),recovery=f.owner.beginEditorInline(request)
  expect(()=>f.owner.beginEditorInline({...request,input:{...input,action:'expand'}})).toThrow()

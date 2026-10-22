@@ -750,14 +750,52 @@
   position: fixed;
   z-index: 50;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 2px;
+  max-width: calc(100vw - 16px);
   padding: var(--s-1);
   border-radius: 11px;
   background: var(--surface);
   box-shadow: var(--shadow-pop);
   transform: translate(-50%, -100%);
   user-select: none;
+}
+
+.cm-selbar-custom {
+  display: flex;
+  flex: 1 1 100%;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  padding-top: var(--s-1);
+  border-top: 1px solid var(--rule);
+}
+
+.cm-selbar-instruction {
+  flex: 1;
+  min-width: 190px;
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  outline: none;
+  background: var(--paper);
+  color: var(--ink);
+  font: var(--fs-13)/1.4 var(--font-sans);
+}
+
+.cm-selbar-instruction::placeholder {
+  color: var(--ink-3);
+}
+
+.cm-selbar-instruction:focus {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.paper-ink.cm-selbar[data-placement="below"] {
+  transform: translate(-50%, 0);
 }
 
 .paper-ink.cm-selbar[data-preview] {

@@ -121,6 +121,26 @@ describe('CodeMirror editor AI generation boundary', () => {
     await expect.element(page.getByRole('button', { name: 'Replace', exact: true })).toBeDisabled()
   })
 
+  it('sends a free-form author rewrite instruction from the selection toolbar', async () => {
+    await act(async () => root.render(
+      <CodeMirrorEditor content="原文段落" mode="prose" />,
+    ))
+
+    await act(async () => page.getByText('原文段落').click({ clickCount: 3 }))
+    await expect.element(page.getByRole('textbox', { name: '告诉 AI 怎么改' })).toBeVisible()
+    await expect.element(page.getByRole('button', { name: '改成对话' })).not.toBeInTheDocument()
+    await act(async () => page.getByRole('textbox', { name: '告诉 AI 怎么改' }).fill('改成更克制的叙述，不要新增事实'))
+    await act(async () => page.getByRole('button', { name: '改写', exact: true }).click())
+
+    expect(invoke).toHaveBeenCalledWith('editor-inline:begin', expect.objectContaining({
+      input: expect.objectContaining({
+        action: 'custom',
+        instruction: '改成更克制的叙述，不要新增事实',
+        selectedText: '原文段落',
+      }),
+    }), expect.any(Object))
+  })
+
   it('keeps a length-limited main result non-applicable without a renderer model lease', async () => {
     await act(async () => root.render(
       <CodeMirrorEditor content="原文段落" mode="prose" />,

@@ -17,7 +17,7 @@ export function createEditorInlineGeneration(sessionInput: ProjectSessionContext
   async function validate(value: EditorInlineRecovery, expected?: MainGenerationRunHandle) {
     if (value.view.handle.projectId !== session.projectId || !hasEpoch(value.view.handle) || expected && identity(expected) !== identity(value.view.handle)) throw new Error('EDITOR_INLINE_IDENTITY_MISMATCH')
     const input = value.context
-    if (!['refine', 'expand', 'continue', 'dialogue'].includes(input.action) || input.kind !== 'author-draft' || !Number.isSafeInteger(input.from) || !Number.isSafeInteger(input.to)
+    if (!['refine', 'expand', 'continue', 'dialogue', 'custom'].includes(input.action) || input.kind !== 'author-draft' || !Number.isSafeInteger(input.from) || !Number.isSafeInteger(input.to)
       || input.from < 0 || input.to <= input.from || input.to > input.documentText.length
       || input.documentText.slice(input.from, input.to) !== input.selectedText) throw new Error('EDITOR_INLINE_CONTEXT_INVALID')
     const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input.documentText))
