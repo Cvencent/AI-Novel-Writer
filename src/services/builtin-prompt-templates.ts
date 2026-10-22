@@ -220,9 +220,10 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
       context_before: '选中文字前面紧邻的少量原文（可选）',
       context_after: '选中文字后面紧邻的少量原文（可选）',
       project_facts: '项目里其它已经确立的权威设定（与本次修改相关的部分）',
+      same_field_context: '同一字段里其它已经写定的内容（其它粗纲段、其它章大纲等既成事实）',
       scope_constraint: '该字段在项目里的定位与改动后必须守住的一致性约束',
     },
-    requiredContextVariables: ['edit_instruction', 'edit_scope', 'selected_text', 'scope_constraint', 'project_facts', 'context_before', 'context_after'],
+    requiredContextVariables: ['edit_instruction', 'edit_scope', 'selected_text', 'scope_constraint', 'project_facts', 'same_field_context', 'context_before', 'context_after'],
     content: `【正在修改什么】
 {{edit_scope}}
 
@@ -240,6 +241,8 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 
 【紧邻的下文（如有）】
 {{context_after}}
+
+{{same_field_context}}
 
 {{project_facts}}`,
     systemSuffix: `【输出合同】

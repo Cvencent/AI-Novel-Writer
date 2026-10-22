@@ -172,6 +172,30 @@ export function editorInlineProjectFacts(core: Record<string, unknown>, scope: E
   return `${heading}\n${note}\n${lines.join("\n")}`
 }
 
+/** 同一字段其它内容的长度上限，避免把整本大纲塞进一次改写请求。 */
+const MAX_SAME_FIELD_CHARS = 6000
+
+/**
+ * 把「同一个字段/文档里，除本次选中之外的其它内容」整理成既成事实。
+ *
+ * 例如改粗纲第 3 段时，第 1、2、4 段都在这里；改情节大纲某一章时，其它章也在这里。
+ * 这些内容与本次改写同源，是模型最该遵守的上下文。超长时保留首尾，中间省略。
+ */
+export function editorInlineSameFieldContext(documentText: string, from: number, to: number, english: boolean): string {
+  const marker = english ? "[the selected text being revised]" : "〔本次改写的选中文字〕"
+  const others = (documentText.slice(0, from) + marker + documentText.slice(to)).trim()
+  if (!others) return ""
+  const heading = english ? "[Other content in the same field - established facts]" : "【同一字段里的其它内容（既成事实）】"
+  const note = english
+    ? "These are the other segments of the very field you are editing. Do not contradict them: keep names, numbers, chapter ranges and causal order consistent."
+    : "以下是同一个字段里其它已经写定的内容。不得与之矛盾：人名、数字、章节区间与因果顺序都要对得上。"
+  const bounded = others.length <= MAX_SAME_FIELD_CHARS
+    ? others
+    : others.slice(0, MAX_SAME_FIELD_CHARS / 2) + String.fromCharCode(10) + "..." + String.fromCharCode(10) + others.slice(others.length - MAX_SAME_FIELD_CHARS / 2)
+  return heading + String.fromCharCode(10) + note + String.fromCharCode(10) + bounded
+}
+
+
 export function editorInlineTask(context: EditorInlineContext, projectFacts?: Record<string, unknown>): GenerationTask {
   const { template, writingLanguage } = context
   const english = writingLanguage === 'en-US'
@@ -189,6 +213,7 @@ export function editorInlineTask(context: EditorInlineContext, projectFacts?: Re
       context_before: context.contextBefore ?? '',
       context_after: context.contextAfter ?? '',
       project_facts: projectFacts ? editorInlineProjectFacts(projectFacts, context.scope, english) : '',
+      same_field_context: editorInlineSameFieldContext(context.documentText, context.from, context.to, english),
     }, writingLanguage) },
   ] }
 }

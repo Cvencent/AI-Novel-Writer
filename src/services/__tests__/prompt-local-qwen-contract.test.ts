@@ -7,7 +7,7 @@ import { BUILTIN_PROMPTS, EDITABLE_PROMPT_KEYS, getBuiltinPromptTemplate, getPro
 const expectedPromptVariables: Record<string, string[]> = {
   planning_material_character_extraction: ['requested_ids', 'sources'],
   assistant_writing_identity: ['mode_instruction'],
-  edit_selected_text: ['edit_instruction', 'selected_text', 'edit_scope', 'scope_constraint', 'context_before', 'context_after', 'project_facts'],
+  edit_selected_text: ['edit_instruction', 'selected_text', 'edit_scope', 'scope_constraint', 'context_before', 'context_after', 'project_facts', 'same_field_context'],
   generate_novel_config_field: ['existing_config', 'field_label', 'field_requirements'],
   generate_global_config: ['user_idea', 'number_of_chapters', 'word_number'],
   premise: [

@@ -87,6 +87,21 @@ it('prompt carries the editing scope, surrounding context and authoritative proj
  expect(sent).toContain('合成审稿')
  expect(sent).toContain('写得更冷一些')
 })
+it('carries the other segments of the same field as established facts',async()=>{
+ const f=fixture()
+ const documentText = ['【第1-30章】主角被逐出学院。', '', '【第31-80章】主角进入地下竞技场。', '', '【第81-130章】主角重返学院。'].join(String.fromCharCode(10))
+ const from=documentText.indexOf('【第31-80章】')
+ const to=from+'【第31-80章】主角进入地下竞技场。'.length
+ const recovery=f.owner.beginEditorInline({...request,uiActionNonce:'粗纲同字段上下文',input:{...input,
+   action:'custom' as const,instruction:'写得更紧张',scope:'arc-outline' as const,
+   documentText,from,to,selectedText:documentText.slice(from,to)}})
+ await f.owner.executeEditorInline(recovery.view.handle)
+ const sent=JSON.stringify(f.spy.mock.calls[0]![0])
+ expect(sent).toContain('同一字段里的其它内容')
+ expect(sent).toContain('主角被逐出学院')
+ expect(sent).toContain('主角重返学院')
+ expect(sent).toContain('主角进入地下竞技场')
+})
 it('refuses an unknown editing scope before any run is created',()=>{
  const f=fixture()
  expect(()=>f.owner.beginEditorInline({...request,uiActionNonce:'非法范围',input:{...input,scope:'not-a-scope'} as never})).toThrow()

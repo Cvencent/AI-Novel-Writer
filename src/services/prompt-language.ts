@@ -159,6 +159,8 @@ export const EN_US_BUILTIN_PROMPTS = Object.freeze({
 [Immediately following context, if any]
 {{context_after}}
 
+{{same_field_context}}
+
 {{project_facts}}`,
     systemSuffix: `[Output contract]
 - Output only the revised "selected text". Do not output the surrounding context, explanation, heading, quotation wrapper, analysis, or meta commentary.
