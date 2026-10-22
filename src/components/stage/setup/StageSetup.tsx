@@ -20,6 +20,7 @@ import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
 import { configFieldsToExpand, startConfigGeneration } from '../../dialogs/config-generation'
 import { AUDIENCE_EN, GENRE_EN } from '../../editor/novel-config-labels'
+import SelectionAITextarea from '../../editor/SelectionAITextarea'
 import { NOVEL_GENRES, novelConfigSessionKey, useNovelConfigForm } from '../../editor/use-novel-config-form'
 import { captureProjectSession } from '../../project-session-gate'
 import { Button } from '../../ui/Button'
@@ -186,8 +187,8 @@ function MorePanel({ field, config, form, aiReason, onCollapse }: {
     )
   } else {
     control = (
-      <textarea id={controlId} className="stage-setup-textarea" value={config[field.id] ?? ''} placeholder={text(...field.placeholder)}
-        onChange={event => form.update(field.id, event.target.value)} />
+      <SelectionAITextarea id={controlId} className="stage-setup-textarea" value={String(config[field.id] ?? '')} placeholder={text(...field.placeholder)}
+        onValueChange={next => form.update(field.id, next)} />
     )
   }
   return (
@@ -340,12 +341,12 @@ function SetupSession({ projectKey }: { projectKey: string }) {
               <RequiredLabel htmlFor={outlineId} name={text('核心大纲', 'Core outline')} missing={isMissing('coreOutline')} alert={alert('coreOutline')} />
               <AiButton field="coreOutline" label={text('核心大纲', 'Core outline')} form={form} disabledReason={aiReason} />
             </div>
-            <textarea
+            <SelectionAITextarea
               id={outlineId}
               className="stage-setup-outline-input"
               value={config.coreOutline}
               placeholder={text('谁，在哪里，想要什么，又被什么挡住了路。', 'Who, where, what they want, and what stands in the way.')}
-              onChange={event => form.update('coreOutline', event.target.value)}
+              onValueChange={next => form.update('coreOutline', next)}
               onBlur={() => leave('coreOutline')}
             />
             <div className="stage-setup-outline-foot">

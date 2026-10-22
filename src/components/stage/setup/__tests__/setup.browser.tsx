@@ -15,6 +15,7 @@ import { useWorkflowStore } from '../../../../stores/workflow-store'
 import { IS_MAC } from '../../shortcut-keys'
 import { useStageShortcuts } from '../../use-stage-shortcuts'
 import StageSetup from '../StageSetup'
+import { MORE_FIELDS } from '../setup-fields'
 
 const COMMAND = IS_MAC ? { metaKey: true } : { ctrlKey: true }
 
@@ -357,6 +358,41 @@ describe('设定页', () => {
     expect(host!.querySelector<HTMLInputElement>('[aria-label="细分类型"] input')?.value).toBe('海港悬疑')
     await click(byName('收起「细分类型」'))
     expect(host!.querySelector('[aria-label="细分类型"]')).toBeNull()
+  })
+
+  it('核心大纲与每个更多设定的文本框都能框选调用同一组 AI 操作', async () => {
+    const textFields = MORE_FIELDS.filter(field => field.kind === 'text')
+    const values: Partial<NovelConfig> = {}
+    for (const field of textFields) values[field.id] = `${field.name[0]}原文`
+    project({ coreOutline: '核心大纲原文', ...values })
+    await mount()
+
+    const expectActions = async (area: HTMLTextAreaElement) => {
+      await act(async () => {
+        area.focus()
+        area.setSelectionRange(0, area.value.length)
+        area.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+      })
+      await expect.poll(() => document.querySelectorAll('[role="toolbar"]').length).toBe(1)
+      const labels = [...document.querySelectorAll<HTMLButtonElement>('[role="toolbar"] button')]
+        .map(button => button.textContent?.trim())
+      expect(labels).toEqual(['润色', '扩写', '续写', '改成对话'])
+
+      await act(async () => {
+        area.setSelectionRange(0, 0)
+        area.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+      })
+      await expect.poll(() => document.querySelectorAll('[role="toolbar"]').length).toBe(0)
+    }
+
+    await expectActions(field(/^核心大纲/) as HTMLTextAreaElement)
+    for (const item of textFields) {
+      await click(byName(new RegExp(`^${item.name[0]}`)))
+      const area = host!.querySelector<HTMLTextAreaElement>(`[aria-label="${item.name[0]}"] textarea`)
+      expect(area, `${item.name[0]}文本框存在`).toBeTruthy()
+      await expectActions(area!)
+      await click(byName(`收起「${item.name[0]}」`))
+    }
   })
 
   it('伏笔沉寂提醒清空后重新输入：退格删掉 5 再输 7 得 7，不是 17；空着离开回到默认的 3 章', async () => {

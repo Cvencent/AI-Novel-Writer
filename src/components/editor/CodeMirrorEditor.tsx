@@ -12,11 +12,11 @@ import { useThemeStore } from '../../stores/theme-store'
 import type { MainGenerationRunHandle } from '../../services/generation/generation-runtime'
 import { createEditorInlineGeneration } from '../../services/editor-inline-generation'
 import { useLLMStore } from '../../stores/llm-store'
-import type { GenerationReasoningStage } from '../../shared/reasoning-types'
 import { countDraftUnits } from '../../shared/draft-units'
 import { useLocaleStore } from '../../stores/locale-store'
 import { getActiveProjectSessionContext } from '../../shared/project-session-context'
 import { livePreview, paperHeadFacet, type PaperHead } from './live-preview'
+import { INLINE_AI_ACTIONS as AI_ACTIONS, type InlineAIAction as EditorAIAction } from './inline-ai-actions'
 
 export type CodeMirrorEditorProps = {
   content: string
@@ -44,19 +44,6 @@ export type CodeMirrorEditorProps = {
   revealRequest?: { text: string; requestId: number } | null
 }
 
-type EditorAIAction = {
-  key: 'refine' | 'expand' | 'continue' | 'dialogue'
-  label: readonly [string, string]
-  prompt: readonly [string, string]
-  reasoningStage: GenerationReasoningStage
-}
-
-const AI_ACTIONS = [
-  { key: 'refine', label: ['润色', 'Refine'], prompt: ['润色这部分，使语言自然、具体并增强场景表现力。', 'Refine this passage for natural, specific language and stronger scene craft.'], reasoningStage: 'review' },
-  { key: 'expand', label: ['扩写', 'Expand'], prompt: ['扩写这部分，补充与情节有关的动作、感官和环境细节。', 'Expand this passage with plot-relevant action, sensory detail, and setting.'], reasoningStage: 'drafting' },
-  { key: 'continue', label: ['续写', 'Continue'], prompt: ['根据现有因果和人物动机，自然续写接下来的情节。', 'Continue naturally from the established causality and character motivation.'], reasoningStage: 'drafting' },
-  { key: 'dialogue', label: ['改成对话', 'To dialogue'], prompt: ['将这部分改写为有区分度、能推动冲突的自然对话。', 'Rewrite this passage as distinct, natural dialogue that advances the conflict.'], reasoningStage: 'drafting' },
-] satisfies readonly EditorAIAction[]
 
 export default function CodeMirrorEditor({
   content,
