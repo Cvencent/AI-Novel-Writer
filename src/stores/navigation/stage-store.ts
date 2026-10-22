@@ -18,7 +18,7 @@ export type StagePalette = 'commands' | 'chapters'
 export interface StageWork {
   /** 这份数据属于哪次打开；同一路径重新打开是新的会话，旧数据不能当新的用。 */
   session: ProjectSessionContext
-  /** 故事前提、角色名单、世界观、情节大纲是否已有内容。 */
+  /** 故事前提、角色名单、世界观、细纲是否已有内容。 */
   architecture: Readonly<Record<string, boolean>>
   blueprints: readonly { chapterNumber: number; title: string }[]
 }

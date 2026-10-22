@@ -80,9 +80,9 @@ describe('大纲目录', () => {
     ))
   }
 
-  it('情节大纲右侧列出每一章，点某一章就把编辑器定位过去', async () => {
+  it('细纲右侧列出每一章，点某一章就把编辑器定位过去', async () => {
     const synopsis = [
-      '# 情节大纲',
+      '# 细纲',
       '',
       '## 第1章：雾钟',
       '林越在旧港听见第一声钟。',
@@ -145,7 +145,7 @@ describe('ArchFileViewer locale', () => {
     ['premise', '故事前提'],
     ['characters', '角色名单'],
     ['worldbuilding', '世界观'],
-    ['synopsis', '情节大纲'],
+    ['synopsis', '细纲'],
   ])('recognizes the actual core protocol %s and restores generation controls', async (key, label) => {
     useLocaleStore.setState({ locale: 'zh-CN' })
     await act(async () => root.render(
@@ -220,7 +220,7 @@ describe('ArchFileViewer locale', () => {
     await act(async () => root.render(
       <ArchFileViewer tabId="arch-synopsis" filePath="ai-novel://core/synopsis" projectKey={PROJECT_PATH} content={unsaved} savedContent={saved} />,
     ))
-    await act(async () => (container.querySelector('[title="AI 重新生成「情节大纲」"]') as HTMLButtonElement).click())
+    await act(async () => (container.querySelector('[title="AI 重新生成「细纲」"]') as HTMLButtonElement).click())
     const from = () => document.querySelector<HTMLInputElement>('input[aria-label="本次生成范围的起始章"]')
     await vi.waitFor(() => expect(from()?.value).toBe('17'))
     const setRange = async (start: number, end: number) => {

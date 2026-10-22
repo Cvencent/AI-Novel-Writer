@@ -13,7 +13,7 @@ export interface RunFailure {
   title: string
   errorCode?: string
   presentation: WorkflowFailurePresentation
-  /** 情节大纲生成被截断且已完成部分已保存：可以从断点续写。 */
+  /** 细纲生成被截断且已完成部分已保存：可以从断点续写。 */
   canResumeOutline: boolean
 }
 
@@ -46,7 +46,7 @@ export function openNovelConfigurationFor(run: WorkflowRun): void {
   if (isCurrentSessionRun(run)) navigate({ kind: 'stage', stage: 'setup' })
 }
 
-/** 从断点续写情节大纲：已完成部分已存为不完整大纲，这次让模型接着末尾写。 */
+/** 从断点续写细纲：已完成部分已存为不完整大纲，这次让模型接着末尾写。 */
 export function useResumePlotOutline(run: WorkflowRun) {
   const [resuming, setResuming] = useState(false)
   const resume = async () => {

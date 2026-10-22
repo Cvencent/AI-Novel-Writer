@@ -97,11 +97,11 @@ beat: setup
     )).toThrow('ARC_BEAT_REPEATED')
   })
 
-  it('拒绝缺少 beat 的段', () => {
-    expect(() => assertArcSegmentAcceptable(
+  it('缺少 beat 时用中性形态兜底，不再整段作废', () => {
+    expect(assertArcSegmentAcceptable(
       `## 第1–40章：无 beat
 主角觉醒。`,
       1, 3000, [], [],
-    )).toThrow('ARC_PARSE_MISSING_BEAT')
+    )).toMatchObject({ beat: 'escalation' })
   })
 })

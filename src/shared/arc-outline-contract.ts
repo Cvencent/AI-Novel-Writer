@@ -111,20 +111,53 @@ export type ArcParseResult =
   | { ok: true; segment: ParsedArcSegment }
   | { ok: false; code: ArcParseIssue }
 
-const ARC_HEADING = /^#{1,4}\s*第\s*(\d+)\s*[–—~-]\s*(\d+)\s*章\s*[:：]\s*(.*)$/u
-const ARC_SINGLE_HEADING = /^#{1,4}\s*第\s*(\d+)\s*章\s*[:：]\s*(.*)$/u
+/** 把全角数字归一，避免模型换了键盘就解析不了。 */
+function normalizeArcText(text: string): string {
+  return text.replace(/[\uFF10-\uFF19]/gu, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)).replace(/\uFF1A/gu, ":")
+}
 
 /**
- * 解析模型返回的单个粗纲段。要求：
- *   ## 第{from}–{to}章：{标题}
- *   beat: {beat}
- *   {正文}
+ * 粗纲段标题。容忍模型常见写法：
+ *   ## 第1–30章：标题   /  ## 第 1 - 30 章 标题
+ *   ## 第1章至第30章：标题 / **第1-30章：标题** / 第1-30章：标题
+ */
+const ARC_HEADING = /^[#*\s]*第\s*(\d+)\s*(?:[–—~\-至到]\s*(?:第\s*)?(\d+)\s*)?章\s*[：:\-–—]?\s*(.*?)[*\s]*$/u
+
+/** beat 行：beat: setup / **beat**：setup / 形态: setup / Beat - setup */
+const ARC_BEAT_LINE = /^\**\s*(?:beat|形态)\s*\**\s*[：:\-–—]\s*\**\s*([^\s:：]+)\s*\**\s*$/iu
+
+export function tryParseArcHeading(line: string): { fromChapter: number; toChapter: number; title: string } | null {
+  const match = ARC_HEADING.exec(normalizeArcText(line.trim()))
+  if (!match) return null
+  const fromChapter = Number(match[1])
+  const toChapter = Number(match[2] ?? match[1])
+  if (!Number.isSafeInteger(fromChapter) || !Number.isSafeInteger(toChapter)) return null
+  return { fromChapter, toChapter, title: (match[3] ?? "").trim() }
+}
+
+/**
+ * 只保留「当前这一节」的正文。
+ * 模型有时会把后面几段一起吐出来，从第二段标题处截断，避免后续内容并进本段造成重复。
+ */
+export function normalizeArcSummary(summary: string): string {
+  const lines = summary.replace(/\r\n?/gu, "\n").split("\n")
+  const kept: string[] = []
+  for (const line of lines) {
+    if (kept.some(item => item.trim()) && tryParseArcHeading(line)) break
+    kept.push(line)
+  }
+  return kept.join("\n").trim()
+}
+
+/**
+ * 解析模型返回的单个粗纲段。
+ * 标题前允许有模型的寒暄或说明；标题格式见 ARC_HEADING。
  */
 export function parseArcSegment(text: string): ArcParseResult {
-  const lines = text.replace(/\r\n?/gu, '\n').split('\n')
+  const lines = normalizeArcText(text).replace(/\r\n?/gu, "\n").split("\n")
   let fromChapter = -1
   let toChapter = -1
-  let title = ''
+  let title = ""
   let beat: ArcBeat | null = null
   const body: string[] = []
   let sawHeading = false
@@ -133,34 +166,32 @@ export function parseArcSegment(text: string): ArcParseResult {
     const line = rawLine.trim()
     if (!sawHeading) {
       if (!line) continue
-      const range = ARC_HEADING.exec(line)
-      if (range) {
-        fromChapter = Number(range[1]); toChapter = Number(range[2]); title = (range[3] ?? '').trim()
+      const heading = tryParseArcHeading(line)
+      if (heading) {
+        fromChapter = heading.fromChapter
+        toChapter = heading.toChapter
+        title = heading.title
         sawHeading = true
-        continue
       }
-      const single = ARC_SINGLE_HEADING.exec(line)
-      if (single) {
-        fromChapter = Number(single[1]); toChapter = Number(single[1]); title = (single[2] ?? '').trim()
-        sawHeading = true
-        continue
-      }
-      return { ok: false, code: 'ARC_PARSE_BAD_HEADING' }
+      continue
     }
-    if (!line) { body.push(''); continue }
-    const beatMatch = /^beat\s*[:：]\s*(\S+)\s*$/iu.exec(line)
+    if (!line) { body.push(""); continue }
+    // 后面又出现一段标题：一次调用只应产出当前这一段，直接截断。
+    if (tryParseArcHeading(line)) break
+    const beatMatch = ARC_BEAT_LINE.exec(line)
     if (beatMatch && beat === null) {
       const candidate = beatMatch[1]!.toLowerCase()
-      if (!(ARC_BEATS as readonly string[]).includes(candidate)) return { ok: false, code: 'ARC_PARSE_ILLEGAL_BEAT' }
+      if (!(ARC_BEATS as readonly string[]).includes(candidate)) return { ok: false, code: "ARC_PARSE_ILLEGAL_BEAT" }
       beat = candidate as ArcBeat
       continue
     }
     body.push(rawLine)
   }
 
-  if (!sawHeading) return { ok: false, code: 'ARC_PARSE_NO_SEGMENT' }
-  if (beat === null) return { ok: false, code: 'ARC_PARSE_MISSING_BEAT' }
-  const summary = body.join('\n').trim()
-  if (!summary) return { ok: false, code: 'ARC_PARSE_EMPTY_SUMMARY' }
+  if (!sawHeading) return { ok: false, code: "ARC_PARSE_NO_SEGMENT" }
+  // 缺 beat 时不作废：粗纲的关键是方向，用中性形态兜底。
+  if (beat === null) beat = "escalation"
+  const summary = normalizeArcSummary(body.join("\n"))
+  if (!summary) return { ok: false, code: "ARC_PARSE_EMPTY_SUMMARY" }
   return { ok: true, segment: { fromChapter, toChapter, title, beat, summary } }
 }

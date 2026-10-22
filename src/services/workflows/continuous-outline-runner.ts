@@ -86,7 +86,7 @@ interface ProjectSnapshotInfo {
 }
 
 const OUTLINE_INDEX_BATCH_CHAPTERS = 20
-const OUTLINE_INDEX_SUFFIX = '情节大纲.md'
+const OUTLINE_INDEX_SUFFIX = '细纲.md'
 
 function outlineIndexFileName(from: number, to: number): string {
   return `第${from}–${to}章 ${OUTLINE_INDEX_SUFFIX}`
@@ -230,7 +230,7 @@ async function runLoop(session: ProjectSessionContext, token: number, targetUnit
     percent: initial.totalChapters > 0 ? Math.floor((initial.coveredChapters / initial.totalChapters) * 100) : 0,
     remainingChapters: Math.max(0, initial.totalChapters - initial.coveredChapters),
     batchesCompleted: 0, consecutiveFailures: 0, batchPercent: 0,
-    message: text('开始连续生成情节大纲…', 'Starting continuous plot-outline generation…'),
+    message: text('开始连续生成细纲…', 'Starting continuous plot-outline generation…'),
   })
   await ensureOutlineIndexed(initial.session, initial.outlineText, message => emit({ message })).catch(() => {
     emit({ message: text('已有大纲补建检索索引失败；会继续生成，稍后可在知识库页重试。', 'Existing outlines could not be indexed; generation will continue and indexing can be retried later.') })

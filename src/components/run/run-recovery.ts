@@ -38,7 +38,7 @@ export interface CandidateEntry {
   candidate: RecoveryCandidate
 }
 
-/** 情节大纲或章节蓝图自动生成中断后保留的恢复稿。 */
+/** 细纲或章节蓝图自动生成中断后保留的恢复稿。 */
 export interface PlanningEntry {
   kind: 'planning'
   key: string

@@ -34,7 +34,7 @@ export default function ContinuousOutlinePanel({ targetUnits }: { targetUnits?: 
     <section className="arch-continuous" aria-label={text('连续生成进度', 'Continuous generation progress')}>
       <header className="arch-continuous-head">
         <span className="arch-continuous-title">
-          {text('连续生成情节大纲', 'Continuous plot-outline generation')}
+          {text('连续生成细纲', 'Continuous plot-outline generation')}
           <span className="arch-continuous-count">{progress.coveredChapters} / {progress.totalChapters} {text('章', 'ch.')}</span>
         </span>
         <span className="arch-continuous-actions">

@@ -39,7 +39,7 @@ function useCastSummary(projectKey: string): { summary: string; loading: boolean
 const openCast = (text: (zh: string, en: string) => string) => openBuiltinEditor('character-editor', text('角色名单', 'Cast'), 'character')
 
 /**
- * 架构阶段：故事前提、角色名单、世界观、粗纲、情节大纲五节。编辑一节打开它的文档标签，角色名单打开名单页；
+ * 架构阶段：故事前提、角色名单、世界观、粗纲、细纲五节。编辑一节打开它的文档标签，角色名单打开名单页；
  * 数据与操作来自 useArchitectureOverview。粗纲有自己的分段生成流程，不在「AI 生成架构」对话框里。
  */
 export default function StageArchitecture({ projectKey }: { projectKey: string }) {
@@ -56,7 +56,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
 
   const total = SECTION_ORDER.length
   const action = mainAction(SECTION_ORDER.map(key => overview.confirmed[key]), SECTION_ORDER)
-  /** 情节大纲尚未覆盖到全书末章时，提供「一次生成全部剩余大纲」入口。 */
+  /** 细纲尚未覆盖到全书末章时，提供「一次生成全部剩余大纲」入口。 */
   const outlineIncomplete = (() => {
     const source = overview.synopsisSource
     if (!source || source.totalChapters <= 0) return false
@@ -116,7 +116,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
           <div className="arch-heading">
             <p className="arch-eyebrow">{text('架构', 'Architecture')}{filled !== null && <span className="arch-progress"> · {text(`${filled} / ${total} 已确认`, `${filled} / ${total} confirmed`)}</span>}</p>
             <h1 className="arch-title">{text('故事的骨架', 'The bones of the story')}</h1>
-            <p className="arch-lede">{text('前提、角色、世界观、粗纲和情节大纲。五节都确认后，就可以逐章规划蓝图。', 'Premise, cast, world, arc and outline. Once all five are confirmed, plan the chapters in the blueprint.')}</p>
+            <p className="arch-lede">{text('前提、角色、世界观、粗纲和细纲。五节都确认后，就可以逐章规划蓝图。', 'Premise, cast, world, arc and outline. Once all five are confirmed, plan the chapters in the blueprint.')}</p>
           </div>
           <div className="arch-header-actions">
             <Menu

@@ -90,7 +90,7 @@ describe('流程脊的架构四节是否已确认：与架构页徽标同一判�
   })
 
   it('作者手写、只列了部分章的大纲不算分批没写完', () => {
-    const sparse = `# 情节大纲\n\n${[1, 5, 12].map(n => `## 第${n}章：转折${n}\n这一章发生的大事。`).join('\n\n')}`
+    const sparse = `# 细纲\n\n${[1, 5, 12].map(n => `## 第${n}章：转折${n}\n这一章发生的大事。`).join('\n\n')}`
     expect(outlineProgress(sparse, null, 'zh-CN', 24)).toEqual({ kind: 'complete' })
   })
 

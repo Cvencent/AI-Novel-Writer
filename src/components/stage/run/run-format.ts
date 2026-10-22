@@ -34,7 +34,7 @@ const PURPOSES: Record<string, [string, string]> = {
   'chapter-blueprint-directory': ['生成蓝图', 'Blueprints'],
   'generate-core-seed': ['填充设定', 'Setup fill'],
   'generate-world-building': ['世界观', 'World-building'],
-  'generate-plot-outline': ['情节大纲', 'Plot outline'],
+  'generate-plot-outline': ['细纲', 'Plot outline'],
   'planning-material-character-extraction': ['提取角色卡', 'Character extraction'],
   'plot-tree-snapshot': ['剧情树', 'Plot tree'],
 }

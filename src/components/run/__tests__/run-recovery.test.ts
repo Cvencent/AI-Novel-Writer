@@ -148,7 +148,7 @@ describe('规划恢复稿', () => {
     ['1、2、3、2', [1, 2, 3, 2], '这次生成开跑时，大纲里第 2 章出现了不止一次，不能接着生成，恢复稿也不能保存。可以复制已生成的章节，改好大纲后重新生成。',
       'When this run started, chapter 2 appeared more than once in the outline, so it cannot continue and the recovery draft cannot be saved. Copy the generated chapters, fix the outline, then generate again.'],
   ])('升级前以 %s 的大纲开跑的恢复稿：入口说明不能继续的原因，中英文各一句', (_case, order, zh, en) => {
-    const synopsis = `# 情节大纲\n\n${order.map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}`
+    const synopsis = `# 细纲\n\n${order.map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}`
     const recovery = { handle, plotOutline: { range: { from: 3, to: 5 }, sourceExpected: { synopsis } },
       plotOutlineRecovery: { writeState: { kind: 'blocked', reason: 'source-invalid' } } } as never
     expect(buildRecoveryEntries({ ...EMPTY_RECOVERY_SOURCES, planning: [recovery] }, 'zh-CN')[0]).toMatchObject({ kind: 'planning', note: zh })
@@ -156,7 +156,7 @@ describe('规划恢复稿', () => {
   })
 
   it.each([
-    ['大纲按序但缺第 2 章', { range: { from: 3, to: 5 }, sourceExpected: { synopsis: '# 情节大纲\n\n## 第1章：第1夜\n这一夜的事。\n\n## 第3章：第3夜\n这一夜的事。' } }],
+    ['大纲按序但缺第 2 章', { range: { from: 3, to: 5 }, sourceExpected: { synopsis: '# 细纲\n\n## 第1章：第1夜\n这一夜的事。\n\n## 第3章：第3夜\n这一夜的事。' } }],
     ['没有冻结的大纲', undefined],
   ])('来源无效但不是乱序或重复（%s）：入口说明不能继续、不能保存，不提本地保存或继续缺少的章节', (_case, plotOutline) => {
     const recovery = { handle, plotOutline, plotOutlineRecovery: { writeState: { kind: 'blocked', reason: 'source-invalid' } } } as never

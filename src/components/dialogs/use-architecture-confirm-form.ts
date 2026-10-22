@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useProjectStore } from '../../stores/project-store'
-import { guardArchitectureGeneration, guardCharacterRegeneration } from '../../services/workflow-guards'
+import { guardArchitectureGeneration, guardCharacterRegeneration, guardSynopsisNeedsConfirmedArc } from '../../services/workflow-guards'
 import { ARCH_STEP_NAMES, createDefaultArchitectureSelection, type ArchGenerateStepKey } from '../../services/architecture-step-selection'
 import { toast } from '../ui/Toast'
 import { useLocaleStore } from '../../stores/locale-store'
@@ -9,7 +9,7 @@ import { assertPlanningActionRange, DEFAULT_PLANNING_ACTION_CHAPTERS, DEFAULT_PL
 
 /**
  * 每节在本次生成里的结果：已有内容且勾选为覆盖，未勾选为保留，还没有内容为新生成。
- * 情节大纲按主进程的判定（plotOutlineRangeEffect）：替换已有的章为覆盖，紧接已有章节往后写为续写，后台会拒绝的范围为无效。
+ * 细纲按主进程的判定（plotOutlineRangeEffect）：替换已有的章为覆盖，紧接已有章节往后写为续写，后台会拒绝的范围为无效。
  */
 export type ArchStepMark = 'overwrite' | 'keep' | 'new' | 'continue' | 'invalid'
 
@@ -74,7 +74,7 @@ export function useArchitectureConfirmForm({
     return () => { disposed = true; setPreferenceLoading(true) }
   }, [isOpen])
 
-  // 每次弹窗打开时重置选中状态；续批入口只勾情节大纲并预填起止章：同批再生成别的节会改变大纲的源事实，续批会被后台拒绝。
+  // 每次弹窗打开时重置选中状态；续批入口只勾细纲并预填起止章：同批再生成别的节会改变大纲的源事实，续批会被后台拒绝。
   // 其余入口的大纲范围默认接着已有大纲往后写，接不上时从第 1 章起
   const resetChecked = useCallback(() => {
     const defaults = initialSynopsisRange
@@ -115,7 +115,7 @@ export function useArchitectureConfirmForm({
   // 超过单批上限或全书章数的范围，主进程开跑前就会拒绝，对话框里直接判无效。
   const outOfBounds = rangeFilled && (to - from + 1 > PLANNING_ACTION_CHAPTER_LIMIT || (totalChapters > 0 && to > totalChapters))
   const boundsIssue = text(
-    `情节大纲范围无效。请选择第 1–${totalChapters} 章内连续的 1–${PLANNING_ACTION_CHAPTER_LIMIT} 章。`,
+    `细纲范围无效。请选择第 1–${totalChapters} 章内连续的 1–${PLANNING_ACTION_CHAPTER_LIMIT} 章。`,
     `Invalid plot-outline range. Select 1-${PLANNING_ACTION_CHAPTER_LIMIT} consecutive chapters within chapters 1-${totalChapters}.`,
   )
 
@@ -128,7 +128,7 @@ export function useArchitectureConfirmForm({
   const synopsisRangeIssueText = (): string | null => {
     if (outOfBounds) return boundsIssue
     if (synopsisEffect?.kind !== 'invalid') return null
-    if (!synopsisSource.synopsis.trim()) return text('还没有情节大纲，请从第 1 章起生成。', 'There is no plot outline yet. Start from chapter 1.')
+    if (!synopsisSource.synopsis.trim()) return text('还没有细纲，请从第 1 章起生成。', 'There is no plot outline yet. Start from chapter 1.')
     if (!synopsisEffect.hasEntries) return text('已有大纲没有按章的标题，只能从第 1 章起整份重写。', 'The existing outline has no chapter headings, so it can only be rewritten whole from chapter 1.')
     const { orderIssue, lastChapter } = synopsisEffect
     if (orderIssue?.kind === 'duplicate') return text(`已有大纲里第 ${orderIssue.chapter} 章出现了不止一次，按范围重写会打乱或丢掉其他章，后台会拒绝。请先删掉或改正重复的那一章。`,
@@ -163,7 +163,7 @@ export function useArchitectureConfirmForm({
     return synopsisEffect.kind
   }
 
-  /** 标记文字；情节大纲覆盖的是部分章节时写明是哪几章。 */
+  /** 标记文字；细纲覆盖的是部分章节时写明是哪几章。 */
   const markLabel = (key: ArchGenerateStepKey): string => {
     const mark = stepMark(key)
     if (key === 'synopsis' && mark === 'overwrite' && synopsisEffect?.kind === 'overwrite' && !synopsisEffect.whole) {
@@ -201,6 +201,15 @@ export function useArchitectureConfirmForm({
       if (!resolution.ok) {
         setGuardError(resolution.message ?? boundsIssue)
         return
+      }
+
+      // 前置校验 1.5：细纲必须基于已完整确认的粗纲。
+      if (selectedSteps.includes('synopsis')) {
+        const arcGuard = await guardSynopsisNeedsConfirmedArc(undefined, undefined, locale)
+        if (!arcGuard.ok) {
+          setGuardError(arcGuard.message || text('请先生成并确认完整粗纲，再生成细纲。', 'Finish and confirm the full arc outline before generating chapter outlines.'))
+          return
+        }
       }
 
       // 前置校验 2：如果勾选了角色名单（意味着将重新生成角色卡），则必须确保蓝图为空

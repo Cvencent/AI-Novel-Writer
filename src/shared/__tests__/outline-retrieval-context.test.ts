@@ -8,7 +8,7 @@ import {
 } from '../outline-retrieval-context'
 
 function makeOutline(count: number, bodyChars = 240): string {
-  const parts = ['# 情节大纲', '']
+  const parts = ['# 细纲', '']
   for (let i = 1; i <= count; i += 1) {
     parts.push('## 第' + i + '章：第' + i + '章标题')
     parts.push('')

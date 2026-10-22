@@ -176,7 +176,7 @@ function ArchFileViewerSession({
   const [refreshBlockedMessage, setRefreshBlockedMessage] = useState<string | null>(null)
   const reloadGateRef = useRef(new ArchReloadGate())
   /**
-   * 右侧目录的条目。只对粗纲与情节大纲这两节生成：它们是「一整篇长文本」，
+   * 右侧目录的条目。只对粗纲与细纲这两节生成：它们是「一整篇长文本」，
    * 作品写到几百章后必须能按段/按章跳转。其余节（前提、世界观、角色名单）本身不长，不需要目录。
    */
   const outlineNavigation = useMemo(
@@ -784,7 +784,7 @@ function ArchFileViewerSession({
         </div>
       )}
 
-      {/* 编辑区：粗纲与情节大纲在右侧多一列目录，可以按段/按章跳转 */}
+      {/* 编辑区：粗纲与细纲在右侧多一列目录，可以按段/按章跳转 */}
       <div className="flex-1 overflow-hidden flex min-h-0">
         <div className="flex-1 overflow-hidden min-w-0">
         <CodeMirrorEditor

@@ -615,7 +615,7 @@ describe('GenerateCharactersCommand structured roster seam', () => {
     for (const update of persistedUpdates) {
       expect(JSON.stringify(update)).not.toContain('# 故事前提')
       expect(JSON.stringify(update)).not.toContain('# 世界观')
-      expect(JSON.stringify(update)).not.toContain('# 情节大纲')
+      expect(JSON.stringify(update)).not.toContain('# 细纲')
       expect(JSON.stringify(update)).toContain(modelOutput)
     }
     expect(englishCallbacks.log).toHaveBeenCalledWith('Generating story premise...')

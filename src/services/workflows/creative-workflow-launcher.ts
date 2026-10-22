@@ -41,9 +41,9 @@ export type CreativeIntent =
       targetUnits?: number
       selectedSteps?: ArchitectureWorkflowParams['selectedSteps']
       stepGuidance?: Record<string, string>
-      /** 情节大纲本次生成范围 [from..to]（缺省 = 第 1 章到全书）。 */
+      /** 细纲本次生成范围 [from..to]（缺省 = 第 1 章到全书）。 */
       synopsisRange?: ArchitectureWorkflowParams['synopsisRange']
-      /** 从输出长度中断的检查点续写情节大纲。 */
+      /** 从输出长度中断的检查点续写细纲。 */
       resumeSynopsis?: ArchitectureWorkflowParams['resumeSynopsis']
       /** 从输出长度中断的候选续写世界观。 */
       resumeWorldBuilding?: ArchitectureWorkflowParams['resumeWorldBuilding']
@@ -96,7 +96,7 @@ async function guardIntent(
       guardArchitectureGeneration(projectSession.projectPath, projectSession, uiLocale),
       uiLocale,
     )
-    // 只生成情节大纲（细纲）时，粗纲必须先铺满并确认：粗纲是细纲的方向来源。
+    // 只生成细纲（细纲）时，粗纲必须先铺满并确认：粗纲是细纲的方向来源。
     // 例外：带着 arcContext 的调用是「按某个已确认的粗纲段生成细纲」，
     // 那一段本身就是作者认可的走向，不适用「全书粗纲必须铺满」这条。
     if (needsConfirmedArcGate(intent)) {

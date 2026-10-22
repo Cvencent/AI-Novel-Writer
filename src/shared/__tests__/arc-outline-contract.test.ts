@@ -101,9 +101,10 @@ beat: 铺垫
 正文。`)).toEqual({ ok: false, code: 'ARC_PARSE_ILLEGAL_BEAT' })
   })
 
-  it('缺少 beat 判不合格', () => {
-    expect(parseArcSegment(`## 第1–40章：标题
-正文。`)).toEqual({ ok: false, code: 'ARC_PARSE_MISSING_BEAT' })
+  it('缺少 beat 时用中性形态兜底，不再整段作废', () => {
+    const result = parseArcSegment(`## 第1–40章：标题
+正文。`)
+    expect(result).toMatchObject({ ok: true, segment: { beat: 'escalation', summary: '正文。' } })
   })
 
   it('正文为空判不合格', () => {
@@ -111,8 +112,27 @@ beat: 铺垫
 beat: setup`)).toEqual({ ok: false, code: 'ARC_PARSE_EMPTY_SUMMARY' })
   })
 
-  it('缺少标题行判不合格', () => {
-    expect(parseArcSegment('随便一段文字')).toEqual({ ok: false, code: 'ARC_PARSE_BAD_HEADING' })
+  it('完全没有标题行时判无段', () => {
+    expect(parseArcSegment('随便一段文字')).toEqual({ ok: false, code: 'ARC_PARSE_NO_SEGMENT' })
+  })
+
+  it('容忍标题前有说明，也容忍没有井号、没有冒号、第二段带「第」', () => {
+    const result = parseArcSegment(`好的，下面是这一段：
+第 1 - 40 章 学院觉醒
+beat: setup
+主角觉醒异常能力。`)
+    expect(result).toMatchObject({ ok: true, segment: { fromChapter: 1, toChapter: 40, title: '学院觉醒', beat: 'setup' } })
+  })
+
+  it('模型多吐后续段时，只保留当前这一段', () => {
+    const result = parseArcSegment(`## 第1–40章：第一段
+beat: setup
+第一段正文。
+
+## 第41–90章：第二段
+beat: escalation
+第二段正文。`)
+    expect(result).toMatchObject({ ok: true, segment: { toChapter: 40, summary: '第一段正文。' } })
   })
 
   it('段落为空判不合格', () => {

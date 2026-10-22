@@ -79,7 +79,7 @@ export type CodeMirrorEditorProps = {
   /**
    * 把视图滚动到含有这段文字的那一行，并把它选中。
    *
-   * 用途：粗纲/情节大纲的右侧目录点击某一段或某一章时，让编辑器跳到对应位置。
+   * 用途：粗纲/细纲的右侧目录点击某一段或某一章时，让编辑器跳到对应位置。
    * 传的是原文里逐字出现的标题行；配一个递增的 requestId，点同一项两次也能重新定位。
    */
   revealRequest?: { text: string; requestId: number } | null

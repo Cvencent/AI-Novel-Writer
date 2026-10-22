@@ -234,7 +234,7 @@ export function useArchitectureOverview(projectKey: string) {
   }), [coreStatus, rosterSnapshot])
   /**
    * 每节是否已确认：架构页徽标、页头计数、主按钮与生成对话框的默认勾选共用，流程脊用同一判定（checkArchConfirmed）。
-   * 情节大纲还要分批写完、没有中断的批次；角色名单要名单就绪且不需要修复。
+   * 细纲还要分批写完、没有中断的批次；角色名单要名单就绪且不需要修复。
    */
   const rosterPresentation = getCharacterRosterRepairPresentation(
     rosterSnapshot,
@@ -367,7 +367,7 @@ export function useArchitectureOverview(projectKey: string) {
     }, projectSession)
   }
 
-  /** 从上次输出长度中断的检查点继续生成情节大纲（断点续写当前批） */
+  /** 从上次输出长度中断的检查点继续生成细纲（断点续写当前批） */
   const handleResumeSynopsis = async () => {
     const projectSession = captureProjectSession(currentProject)
     if (!projectMatches || !projectSession || !isProjectSessionPath(projectSession, projectKey)) return
@@ -448,7 +448,7 @@ export function useArchitectureOverview(projectKey: string) {
   /** 普通生成入口；steps 是「AI 生成此节」那一节，不携带续批预填。 */
   const openGenerateDialog = (steps?: ArchGenerateStepKey[]) => setGenerateIntent({ steps })
 
-  /** 情节大纲有可编辑的恢复稿时打开它。 */
+  /** 细纲有可编辑的恢复稿时打开它。 */
   const openRecoveryDraft = () => {
     if (!planningRecovery) return
     const session = captureProjectSession(currentProject)
@@ -466,7 +466,7 @@ export function useArchitectureOverview(projectKey: string) {
     archStatus,
     confirmed,
     wordCounts,
-    /** 故事前提、世界观、情节大纲的正式内容；角色名单以角色卡为准，不在这里。 */
+    /** 故事前提、世界观、细纲的正式内容；角色名单以角色卡为准，不在这里。 */
     contents,
     /** 正式大纲的来源事实（正文、总章数、写作语言）；供「一次生成全部剩余大纲」等入口判断进度。 */
     synopsisSource,

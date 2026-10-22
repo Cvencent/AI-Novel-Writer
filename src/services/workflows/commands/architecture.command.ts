@@ -126,8 +126,8 @@ export interface PlotOutlineChapterRange {
 }
 
 /**
- * 情节大纲生成被输出长度中断、且已完成部分已自动保存时抛出的错误。
- * errorCode 供前端识别并展示「继续生成情节大纲」断点续写按钮。
+ * 细纲生成被输出长度中断、且已完成部分已自动保存时抛出的错误。
+ * errorCode 供前端识别并展示「继续生成细纲」断点续写按钮。
  */
 export const PLOT_OUTLINE_RESUME_ERROR_CODE = 'architecture-synopsis-resume-available'
 
@@ -424,7 +424,7 @@ function synopsisBatchInstruction(
     leading,
     promptLanguageText(
       writingLanguage,
-      `【本次生成范围（重要）】\n本次必须对第 ${from}–${to} 章输出完整详细的情节大纲（全书共 ${totalChapters} 章）。每章或连续章组必须以独立行标题开头，严格使用“第N章：标题”或“第N–M章：标题”格式，并在标题下一行起写非空正文。`,
+      `【本次生成范围（重要）】\n本次必须对第 ${from}–${to} 章输出完整详细的细纲（全书共 ${totalChapters} 章）。每章或连续章组必须以独立行标题开头，严格使用“第N章：标题”或“第N–M章：标题”格式，并在标题下一行起写非空正文。`,
       `[Generation scope for this batch (important)]\nDetail complete plot outline entries for chapters ${from}-${to} of ${totalChapters}. Start every chapter or consecutive chapter group with its own heading, strictly formatted as “Chapter N: Title” or “Chapters N-M: Title”, then write a non-empty body beginning on the next line.`,
     ),
     trailing,
@@ -1649,7 +1649,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
 
     const totalChapters = Number(config.totalChapters) > 0 ? Number(config.totalChapters) : 0
     if (totalChapters <= 0) throw new Error(text(
-      '小说配置的总章数无效，无法生成情节大纲',
+      '小说配置的总章数无效，无法生成细纲',
       'The total chapter count in the novel configuration is invalid; the plot outline cannot be generated.',
     ))
 
@@ -1671,8 +1671,8 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     const resumeRequested = this.options.resumeSynopsis === true
     callbacks.log(text(
       resumeRequested
-        ? '正在读取情节大纲中断检查点...'
-        : '生成情节大纲...',
+        ? '正在读取细纲中断检查点...'
+        : '生成细纲...',
       resumeRequested
         ? 'Reading the interrupted plot-outline checkpoint...'
         : 'Generating plot outline...',
@@ -1710,7 +1710,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       // ---- 断点续写：无有效检查点必须 fail-closed，绝不退化为覆盖生成 ----
       if (!interrupted) {
         throw new Error(text(
-          '未找到中断的情节大纲检查点（当前大纲没有未完成的批次）。请从「AI 生成故事架构」重新生成。',
+          '未找到中断的细纲检查点（当前大纲没有未完成的批次）。请从「AI 生成故事架构」重新生成。',
           'No interrupted plot-outline checkpoint was found (no batch is incomplete). Regenerate from “Generate story architecture” instead.',
         ))
       }
@@ -1724,7 +1724,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       to = partial.synopsis_range.to
       if (partial.synopsis_step_guidance === undefined) {
         throw new Error(text(
-          '旧情节大纲检查点缺少完整输入绑定，无法证明其来源事实与当前一致，不能自动续写。检查点与数据库正文均已保留；请从第 1 章重新生成。',
+          '旧细纲检查点缺少完整输入绑定，无法证明其来源事实与当前一致，不能自动续写。检查点与数据库正文均已保留；请从第 1 章重新生成。',
           'This legacy plot-outline checkpoint lacks complete input binding, so its source facts cannot be proven to match the current project and it cannot be continued automatically. The checkpoint and database prose remain preserved; regenerate from chapter 1.',
         ))
       }
@@ -1739,7 +1739,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       )
       if (checkpointFingerprint !== expectedCheckpointFingerprint) {
         throw new Error(text(
-          '项目源事实（故事前提/角色/世界观/总章数等）自上次中断后已变化，旧检查点不能续到新上下文。请从「AI 生成故事架构」重新生成情节大纲。',
+          '项目源事实（故事前提/角色/世界观/总章数等）自上次中断后已变化，旧检查点不能续到新上下文。请从「AI 生成故事架构」重新生成细纲。',
           'The source facts (premise / characters / worldbuilding / chapter count, etc.) changed after the interruption, so the old checkpoint cannot be continued into the new context. Regenerate the plot outline from “Generate story architecture”.',
         ))
       }
@@ -1747,7 +1747,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         if (partial.synopsis_db_hash !== synopsisFactsFingerprint([sourceExpected.synopsis])) throw new Error(text('正式大纲已变化，不能采用旧候选。', 'The formal outline changed; the old candidate cannot be adopted.'))
         seedText = (await this.readMainVisibleComposition())?.text ?? ''
         if (from > 1) {
-          const heading = `# ${promptLanguageText(writingLanguage, '情节大纲', 'Plot Outline')}\n\n`
+          const heading = `# ${promptLanguageText(writingLanguage, '细纲', 'Plot Outline')}\n\n`
           const completeCheckpoint = { synopsis_incomplete: false, synopsis_covered_to: from - 1 }
           const suffix = renderSynopsisDbText('', writingLanguage, totalChapters, completeCheckpoint).slice(heading.length)
           if (!sourceExpected.synopsis.startsWith(heading) || !sourceExpected.synopsis.endsWith(suffix)) {
@@ -1852,7 +1852,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         }
         if (partial.synopsis_step_guidance === undefined) {
           throw new Error(text(
-            '旧情节大纲检查点缺少完整输入绑定，无法证明其来源事实与当前一致，不能自动续批。检查点与数据库正文均已保留；请从第 1 章重新生成。',
+            '旧细纲检查点缺少完整输入绑定，无法证明其来源事实与当前一致，不能自动续批。检查点与数据库正文均已保留；请从第 1 章重新生成。',
             'This legacy plot-outline checkpoint lacks complete input binding, so its source facts cannot be proven to match the current project and it cannot be extended automatically. The checkpoint and database prose remain preserved; regenerate from chapter 1.',
           ))
         }
@@ -1908,7 +1908,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       callbacks.log(text(
         to < totalChapters
           ? `正在生成第 ${from}–${to} 章大纲（全书 ${totalChapters} 章；本批后可从第 ${to + 1} 章继续分块补齐）...`
-          : `正在生成全书 ${totalChapters} 章情节大纲...`,
+          : `正在生成全书 ${totalChapters} 章细纲...`,
         to < totalChapters
           ? `Generating the outline for chapters ${from}-${to} of ${totalChapters} (later batches may continue from chapter ${to + 1})...`
           : `Generating the ${totalChapters}-chapter plot outline...`,
@@ -2032,7 +2032,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         ? composedWithSeed(toolCompletion.content)
         : toolCompletion.content
       interruptedContent = composeVisibleContinuation(confirmedPrefix, generated)
-      if (confirmedPrefix && !generated.trim()) throw new Error(text('情节大纲生成失败，AI 返回空内容', 'Plot outline generation failed because the AI returned empty content.'))
+      if (confirmedPrefix && !generated.trim()) throw new Error(text('细纲生成失败，AI 返回空内容', 'Plot outline generation failed because the AI returned empty content.'))
       merged = composeVisibleContinuation(confirmedPrefix, generated)
       return merged
     }
@@ -2069,11 +2069,11 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         sourceExpected,
       )
       callbacks.log(text(
-        `已完成部分（约 ${partialBody.length} 字）已保存，可点击「继续生成情节大纲」从断点续写`,
+        `已完成部分（约 ${partialBody.length} 字）已保存，可点击「继续生成细纲」从断点续写`,
         `The completed part (about ${partialBody.length} characters) was saved. Click “Continue plot outline” to resume from the break point.`,
       ))
       throw new PlotOutlineResumeAvailableError(text(
-        `情节大纲生成在完成前中断：${cause instanceof Error ? cause.message : String(cause)}。已完成部分（约 ${partialBody.length} 字）已自动保存为不完整状态，没有白费。\n点击「继续生成情节大纲」可续写本批（第 ${from}–${to} 章）；如本批范围仍偏大，可先在「AI 生成架构」缩小每批章节数后重试。`,
+        `细纲生成在完成前中断：${cause instanceof Error ? cause.message : String(cause)}。已完成部分（约 ${partialBody.length} 字）已自动保存为不完整状态，没有白费。\n点击「继续生成细纲」可续写本批（第 ${from}–${to} 章）；如本批范围仍偏大，可先在「AI 生成架构」缩小每批章节数后重试。`,
         `Plot-outline generation stopped before completing this batch: ${cause instanceof Error ? cause.message : String(cause)}. The finished part (about ${partialBody.length} characters) was saved automatically.\nClick “Continue plot outline” to finish batch chapters ${from}-${to}; if the batch is still too large, choose a smaller per-batch range in “Generate story architecture” and retry.`,
       ))
     }
@@ -2105,13 +2105,13 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     }
 
     if (!merged.trim()) throw new Error(text(
-      '情节大纲生成失败，AI 返回空内容',
+      '细纲生成失败，AI 返回空内容',
       'Plot outline generation failed because the AI returned empty content.',
     ))
     if (previousBatchPartial && stagedBatchPartial
       && stripPlotOutlineProgressLine(merged).trim() === confirmedPrefix.trim()) {
       await this.rollbackSynopsisCheckpoint(expectedProjectPath, projectSession, context, previousBatchPartial, stagedBatchPartial)
-      throw new Error(text('本批没有新增情节大纲内容，已保留上一批检查点。', 'This batch added no plot-outline content; the previous checkpoint was preserved.'))
+      throw new Error(text('本批没有新增细纲内容，已保留上一批检查点。', 'This batch added no plot-outline content; the previous checkpoint was preserved.'))
     }
 
     // ===== 完成校验：正文必须完整覆盖本批；附带进度行时也必须与范围一致 =====
@@ -2131,7 +2131,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     }
     if (!confirmedBody) {
       // persistAndRaiseResume 已以中断错误终结；此处仅为类型安全的兜底。
-      throw new Error(text('情节大纲未完成且无法保存', 'The plot outline is incomplete and could not be saved.'))
+      throw new Error(text('细纲未完成且无法保存', 'The plot outline is incomplete and could not be saved.'))
     }
 
     this.assertNotCancelled(context)
@@ -2159,8 +2159,8 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       expectedProjectPath,
       partial,
       projectSession,
-      text('保存情节大纲批次检查点', 'Save the plot-outline batch checkpoint'),
-      text('保存情节大纲批次检查点失败', 'Failed to save the plot-outline batch checkpoint.'),
+      text('保存细纲批次检查点', 'Save the plot-outline batch checkpoint'),
+      text('保存细纲批次检查点失败', 'Failed to save the plot-outline batch checkpoint.'),
     )
     if (context.cancelled) {
       await this.rollbackSynopsisCheckpoint(
@@ -2245,7 +2245,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     // 也不阻断后续批次；知识库页可显式重建缺失索引。
     const batchBody = outlineBatchSlice(confirmedBody, from, to)
     if (batchBody.trim()) {
-      const outlineIndexName = `第${from}–${to}章 情节大纲.md`
+      const outlineIndexName = `第${from}–${to}章 细纲.md`
       const indexed = await ipc.invokeWithProjectSession(
         projectSession,
         'kb:import-text',
@@ -2287,7 +2287,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
 
     callbacks.log(text(
       to >= totalChapters
-        ? (mode === 'resume' ? '情节大纲续写完成，全书大纲已就绪' : '情节大纲已生成，全书大纲已就绪')
+        ? (mode === 'resume' ? '细纲续写完成，全书大纲已就绪' : '细纲已生成，全书大纲已就绪')
         : (mode === 'resume'
             ? `第 ${from}–${to} 章续写完成；全书还剩第 ${to + 1} 章起待生成`
             : `第 ${from}–${to} 章已生成；全书还剩第 ${to + 1} 章起待生成`),
@@ -2347,7 +2347,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       if (complete) partial.synopsis_result = body
       else delete partial.synopsis_result
       context.data.partial = partial
-      await savePartialData(expectedProjectPath, partial, session, text('保存情节大纲检查点', 'Save plot-outline navigation'))
+      await savePartialData(expectedProjectPath, partial, session, text('保存细纲检查点', 'Save plot-outline navigation'))
     }
     const stopped = (cursor: Extract<PlotOutlineProgress['cursor'], { kind: 'stopped' }>) => cursor.reason === 'source-invalid'
       ? new Error(plotOutlineSourceInvalidText(sourceExpected.synopsis, workflowUiLocale(context)))
@@ -2383,13 +2383,13 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     assertArchitectureProjectSessionCurrent(session, context)
     const synopsis = renderPlotOutlineRange(outline.composition?.text ?? '', outline.range, sourceExpected)
     const committed = await ipc.invokeWithProjectSession(session, 'db:project-core-synopsis-commit', { synopsis, expected: sourceExpected, generationRunHandle: handle }, expectedProjectPath)
-    requireIpcSuccess(committed, text('保存完整情节大纲', 'Save the complete plot outline'))
+    requireIpcSuccess(committed, text('保存完整细纲', 'Save the complete plot outline'))
     await saveNavigation(outline, true)
 
     // 逐章大纲的最终提交路径也自动索引本批，确保自动生成与手动续写行为一致。
     const indexedBatch = outlineBatchSlice(outline.composition?.text ?? '', outline.range.from, outline.range.to)
     if (indexedBatch.trim()) {
-      const indexName = `第${outline.range.from}–${outline.range.to}章 情节大纲.md`
+      const indexName = `第${outline.range.from}–${outline.range.to}章 细纲.md`
       const indexed = await ipc.invokeWithProjectSession(
         session,
         'kb:import-text',
@@ -2476,8 +2476,8 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       expectedProjectPath,
       restored,
       projectSession,
-      text('恢复旧情节大纲检查点', 'Restore the previous plot-outline checkpoint'),
-      text('恢复旧情节大纲检查点失败', 'Failed to restore the previous plot-outline checkpoint.'),
+      text('恢复旧细纲检查点', 'Restore the previous plot-outline checkpoint'),
+      text('恢复旧细纲检查点失败', 'Failed to restore the previous plot-outline checkpoint.'),
     )
     context.data.partial = restored
   }
@@ -2501,9 +2501,9 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       expectedProjectPath,
     )
     if (!result.success) {
-      const commitError = result.error === '项目数据已变化，已拒绝覆盖情节大纲'
+      const commitError = result.error === '项目数据已变化，已拒绝覆盖细纲'
         ? text(
-            '项目数据已变化，已拒绝覆盖情节大纲。',
+            '项目数据已变化，已拒绝覆盖细纲。',
             'Project data changed while the outline was being generated, so overwriting it was refused.',
           )
         : result.error || fallbackError
@@ -2573,8 +2573,8 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       expectedProjectPath,
       partial,
       projectSession,
-      text('保存中断的情节大纲检查点', 'Save the interrupted plot-outline checkpoint'),
-      text('保存中断的情节大纲检查点失败', 'Failed to save the interrupted plot-outline checkpoint.'),
+      text('保存中断的细纲检查点', 'Save the interrupted plot-outline checkpoint'),
+      text('保存中断的细纲检查点失败', 'Failed to save the interrupted plot-outline checkpoint.'),
     )
     // Main owns interrupted candidate text; formal synopsis remains unchanged.
     if (this.requireGenerationExecution().mainOwned) return

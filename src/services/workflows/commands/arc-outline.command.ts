@@ -1,6 +1,6 @@
 import {
   ARC_MAX_CHAPTERS, ARC_MIN_CHAPTERS, ARC_BEATS,
-  parseArcSegment, sanitizeArcProperNames, validateArcNoProperNames, validateArcSpan, validateBeatDiversity,
+  parseArcSegment, sanitizeArcProperNames, tryParseArcHeading, validateArcNoProperNames, validateArcSpan, validateBeatDiversity,
 } from '../../../shared/arc-outline-contract'
 import type { ArcBeat } from '../../../../electron/repositories/arc-outline-repository'
 import {
@@ -425,7 +425,7 @@ export class ReverseArcOutlineCommand extends BaseWorkflowCommand<string> {
 
     const task = [
       promptLanguageText(writingLanguage,
-        `【已有情节大纲（逐章）】\n${synopsis}`,
+        `【已有细纲（逐章）】\n${synopsis}`,
         `[Existing chapter outline]\n${synopsis}`),
       promptLanguageText(writingLanguage, `【本次任务：反推粗纲】
 
@@ -519,7 +519,18 @@ beat: {beat}
 
 /** 解析模型返回的多段粗纲。 */
 export function parseArcSegments(raw: string): { fromChapter: number; toChapter: number; title: string; beat: ArcBeat; summary: string }[] {
-  const blocks = raw.replace(/\r\n?/gu, '\n').split(/^(?=#{1,4}\s*第\s*\d+)/mu).filter(part => part.trim())
+  const lines = raw.replace(/\r\n?/gu, String.fromCharCode(10)).split(String.fromCharCode(10))
+  const blocks: string[] = []
+  let current: string[] = []
+  for (const line of lines) {
+    if (tryParseArcHeading(line)) {
+      if (current.length > 0) blocks.push(current.join(String.fromCharCode(10)))
+      current = [line]
+    } else if (current.length > 0) {
+      current.push(line)
+    }
+  }
+  if (current.length > 0) blocks.push(current.join(String.fromCharCode(10)))
   const segments: { fromChapter: number; toChapter: number; title: string; beat: ArcBeat; summary: string }[] = []
   for (const block of blocks) {
     const parsed = parseArcSegment(block)

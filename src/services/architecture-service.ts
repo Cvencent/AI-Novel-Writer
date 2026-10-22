@@ -49,7 +49,7 @@ export async function checkArchStatus(
 
 /**
  * 流程脊的架构四节是否已确认：与架构页徽标同一判定。前提、世界观有内容即确认，角色名单要结构化名单就绪，
- * 情节大纲还要分批检查点表明全书写完、没有中断的批次（outlineProgress）。
+ * 细纲还要分批检查点表明全书写完、没有中断的批次（outlineProgress）。
  */
 export async function checkArchConfirmed(
   projectSession: ProjectSessionContext,

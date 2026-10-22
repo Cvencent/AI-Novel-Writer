@@ -568,8 +568,8 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 
   {
     key: 'synopsis',
-    name: '情节大纲',
-    description: '故事架构第四步：整合所有碎片，按用户选择的故事结构模式生成情节大纲',
+    name: '细纲',
+    description: '故事架构第四步：整合所有碎片，按用户选择的故事结构模式生成细纲',
     systemRole: '你是一位经验丰富的故事架构师。尊重作者事实，以角色选择、阻力、代价与因果升级组织完整情节。',
     variables: {
       premise: '故事前提',
@@ -594,7 +594,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
       'narrative_pov',
       'global_guidance',
     ],
-    content: `请将前序生成的所有碎片整合为全书的情节大纲。
+    content: `请将前序生成的所有碎片整合为全书的细纲。
 
 【核心资产】
 - 小说类型：{{genre}}
@@ -613,7 +613,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 {{plot_structure_guide}}
 
 【生成任务】
-严密推演涵盖全书的情节大纲。写"结构拐点"而非细纲。请根据「{{genre}}」类型的核心看点调整节奏策略。
+严密推演涵盖全书的细纲。写"结构拐点"而非细纲。请根据「{{genre}}」类型的核心看点调整节奏策略。
 
 【要求】
 1. 结构节点的章节区间必须基于【{{number_of_chapters}}章】的实际规模标注具体范围，禁止使用与实际章数不符的数字。
@@ -622,7 +622,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 4. 叙事视角为「{{narrative_pov}}」，大纲设计时需考虑视角限制对信息揭露、悬念制造的影响。
 5. 故事前提、角色图谱、世界观中的作者明确设定必须作为后续情节的因果约束，不得遗漏、弱化或反转。
 6. 落实全局写作要求，避开其中列出的写作问题。
-7. 仅返回情节大纲纯文本，禁止一切废话或旁白。
+7. 仅返回细纲纯文本，禁止一切废话或旁白。
 
 `,
     systemSuffix: `★【作者对本步骤的额外指导（如有，最高优先级）】★：
@@ -641,7 +641,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
     description: '基于全书架构一次性生成所有章节的详细蓝图',
     systemRole: '你是一位经验丰富的章节架构师。将作者事实转化为具体场景、角色行动、阻力、转折和章节钩子，不输出思考过程。',
     variables: {
-      novel_architecture: '完整故事架构（故事前提+角色图谱+世界观+情节大纲）',
+      novel_architecture: '完整故事架构（故事前提+角色图谱+世界观+细纲）',
       number_of_chapters: '总章数',
       global_guidance: '全局写作要求',
       genre: '小说类型',
@@ -706,7 +706,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
     description: '在已有目录基础上续写后续章节蓝图，支持分块生成',
     systemRole: '你是一位经验丰富的章节架构师。将作者事实转化为连续的具体事件，保持角色动机、因果链和长篇节奏一致，不输出思考过程。',
     variables: {
-      novel_architecture: '完整故事架构（故事前提+角色图谱+世界观+情节大纲）',
+      novel_architecture: '完整故事架构（故事前提+角色图谱+世界观+细纲）',
       chapter_list: '已生成的章节列表（最近100章）',
       number_of_chapters: '总章数',
       n: '起始章节号',
@@ -783,7 +783,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
     description: '生成小说第一章的完整正文',
     systemRole: '你是一位经验丰富的小说作者。尊重作者事实，通过具体场景、动作、感官细节和有区分度的对话推进因果，不输出思考过程或元话术。',
     variables: {
-      architecture: '故事架构（故事前提+角色图谱+世界观+情节大纲）',
+      architecture: '故事架构（故事前提+角色图谱+世界观+细纲）',
       novel_config: '作者确认的小说配置（权威约束）',
       chapter_info: '本章信息（JSON）',
       future_blueprints: '后续章节蓝图（防止剧情提前）',
@@ -846,7 +846,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
     description: '基于上下文和章节蓝图生成后续章节',
     systemRole: '你是一位经验丰富的小说作者。保持长篇连续性，通过角色主动选择、阻力和代价推进本章，不输出思考过程或元话术。',
     variables: {
-      architecture: '故事架构（故事前提+角色图谱+世界观+情节大纲）',
+      architecture: '故事架构（故事前提+角色图谱+世界观+细纲）',
       novel_config: '作者确认的小说配置（权威约束）',
       global_summary: '章节要点时间线（从蓝图按序拼装）',
       character_states: '角色状态',

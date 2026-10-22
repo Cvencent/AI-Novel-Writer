@@ -90,10 +90,10 @@ export function guardArchitectureGeneration(
   return { ok: true }
 }
 
-// ===== Guard 1.5：生成情节大纲前 → 粗纲必须铺满且全部确认 =====
+// ===== Guard 1.5：生成细纲前 → 粗纲必须铺满且全部确认 =====
 
 /**
- * 生成情节大纲（细纲）前的前置校验：粗纲必须先铺满全书、并且每一段都已确认。
+ * 生成细纲（细纲）前的前置校验：粗纲必须先铺满全书、并且每一段都已确认。
  *
  * 为什么要有这条：粗纲是细纲的方向来源。粗纲没铺满、或还有没确认的段时直接生成细纲，
  * 等于在没有方向的情况下往下写——写歪了也没法回头对齐，而作者发现走偏时常常已经写了几十章。
@@ -103,10 +103,10 @@ export function guardArchitectureGeneration(
  * 判不出来时不拦：总章数还没设（0）或台账读不到，都不该因为一次读取失败挡住作者。
  */
 /**
- * 这次情节大纲生成要不要走粗纲闸门。
+ * 这次细纲生成要不要走粗纲闸门。
  *
  * 不走闸门的两种情况：
- * - 不是只生成情节大纲（比如整套架构生成，粗纲本来就不在那条链上）；
+ * - 不是只生成细纲（比如整套架构生成，粗纲本来就不在那条链上）；
  * - 带着 arcContext：这是「按某个已确认的粗纲段生成细纲」，那一段就是作者认可的走向，
  *   不需要全书粗纲先铺满。
  *
@@ -218,7 +218,7 @@ export async function guardDirectoryGeneration(
     missing.push(localize(uiLocale, '世界观', 'Worldbuilding'))
   }
   if (!core || !checkHasContent(core.synopsis)) {
-    missing.push(localize(uiLocale, '情节大纲', 'Plot outline'))
+    missing.push(localize(uiLocale, '细纲', 'Plot outline'))
   }
 
   // 故事前提是必须的（第一个大块）

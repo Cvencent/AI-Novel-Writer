@@ -148,7 +148,7 @@ export default function ArchitectureConfirmDialog(props: ArchitectureConfirmForm
             >
               <div className="flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--color-warning-text)' }}>
                 <AlertTriangle size={13} />
-                {text('情节大纲 · 本次生成范围', 'Plot outline · batch scope')}
+                {text('细纲 · 本次生成范围', 'Plot outline · batch scope')}
               </div>
               <p
                 role="note"

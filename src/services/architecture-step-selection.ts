@@ -15,7 +15,7 @@ export const ARCH_STEP_NAMES: Record<ArchStepKey, readonly [string, string]> = {
   characters: ['角色名单', 'Cast'],
   worldbuilding: ['世界观', 'World'],
   arc: ['粗纲', 'Arc outline'],
-  synopsis: ['情节大纲', 'Outline'],
+  synopsis: ['细纲', 'Chapter outline'],
 }
 
 export function createDefaultArchitectureSelection(

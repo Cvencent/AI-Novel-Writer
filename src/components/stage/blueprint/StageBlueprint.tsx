@@ -191,7 +191,7 @@ export default function StageBlueprint({ projectKey, initialChapterNumber, selec
           <EmptyState
             icon={<BookOpen aria-hidden />}
             heading={text('还没有章节蓝图', 'No chapter blueprints yet')}
-            description={text('按情节大纲让 AI 逐章规划；也可以在「更多蓝图操作」里自己新建第一章。',
+            description={text('按细纲让 AI 逐章规划；也可以在「更多蓝图操作」里自己新建第一章。',
               'Let AI plan each chapter from the plot outline, or add the first chapter yourself from “More blueprint actions”.')}
             action={generateButton}
           />

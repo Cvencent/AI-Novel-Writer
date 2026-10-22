@@ -2,11 +2,11 @@ import type { MainGenerationRunHandle } from '../services/generation/generation-
 import { PLOT_OUTLINE_PROTOCOL, plotOutlineNextChapter } from './plot-outline-contract'
 import type { WritingLanguage } from './writing-language'
 
-/** partial_arch.json 里情节大纲的分批检查点字段。 */
+/** partial_arch.json 里细纲的分批检查点字段。 */
 export interface SynopsisCheckpoint {
   synopsis_protocol?: typeof PLOT_OUTLINE_PROTOCOL
   synopsis_generation_handle?: MainGenerationRunHandle
-  /** 情节大纲：已确认覆盖至 synopsis_covered_to 的纯正文（不含批次进度行）。 */
+  /** 细纲：已确认覆盖至 synopsis_covered_to 的纯正文（不含批次进度行）。 */
   synopsis_result?: string
   /** 上一次生成在本批范围内被中断；synopsis_result 为已完成部分。 */
   synopsis_incomplete?: boolean
@@ -27,7 +27,7 @@ export const MIN_SYNOPSIS_PARTIAL_PERSIST_CHARS = 120
 const SYNOPSIS_INCOMPLETE_MARKER_ZH = [
   '',
   '> ⚠️ **本大纲未完成**：生成被输出长度中断，以上为已自动保存的已完成部分。',
-  '> 可在「AI 输出」提示处点击「继续生成情节大纲」，从断点续写补齐本批章节。',
+  '> 可在「AI 输出」提示处点击「继续生成细纲」，从断点续写补齐本批章节。',
   '',
 ].join('\n')
 
@@ -55,7 +55,7 @@ export function renderSynopsisDbText(
   checkpoint: Pick<SynopsisCheckpoint, 'synopsis_incomplete' | 'synopsis_covered_to'>,
 ): string {
   const english = writingLanguage === 'en-US'
-  const heading = english ? 'Plot Outline' : '情节大纲'
+  const heading = english ? 'Plot Outline' : '细纲'
   if (checkpoint.synopsis_incomplete === true) {
     return `# ${heading}\n\n${body}\n${english ? SYNOPSIS_INCOMPLETE_MARKER_EN : SYNOPSIS_INCOMPLETE_MARKER_ZH}`.trim()
   }
@@ -90,7 +90,7 @@ export function assertCheckpointDbMirrorCurrent(
     || (partial.synopsis_incomplete === true && coveredTo >= range.to)
   ) {
     throw new Error(uiText(
-      '情节大纲检查点的章节范围或进度已损坏，无法安全续写。请从第 1 章重新生成。',
+      '细纲检查点的章节范围或进度已损坏，无法安全续写。请从第 1 章重新生成。',
       'The plot-outline checkpoint has a damaged range or progress value and cannot be continued safely. Regenerate from chapter 1.',
     ))
   }
@@ -99,7 +99,7 @@ export function assertCheckpointDbMirrorCurrent(
     : ''
   if (!checkpointBody) {
     throw new Error(uiText(
-      '情节大纲检查点缺少正文，无法安全续写。请从第 1 章重新生成。',
+      '细纲检查点缺少正文，无法安全续写。请从第 1 章重新生成。',
       'The plot-outline checkpoint has no body and cannot be continued safely. Regenerate from chapter 1.',
     ))
   }
@@ -113,7 +113,7 @@ export function assertCheckpointDbMirrorCurrent(
   }
   if (recordedHash !== dbOutlineHash) {
     throw new Error(uiText(
-      '情节大纲正文在上次生成后已被手动修改，续批会覆盖这些修改，已拒绝。'
+      '细纲正文在上次生成后已被手动修改，续批会覆盖这些修改，已拒绝。'
         + '如需保留修改，请基于修改后的正文从第 1 章重新生成；若该修改有误，请先撤销后再续批。',
       'The outline body was manually edited after the last generation; continuing would overwrite those edits, so it was rejected. '
         + 'To keep the edits, regenerate from chapter 1 on top of them; if the edit was a mistake, revert it before continuing.',
@@ -124,7 +124,7 @@ export function assertCheckpointDbMirrorCurrent(
       && partial.synopsis_body_hash !== synopsisFactsFingerprint([checkpointBody]))
   ) {
     throw new Error(uiText(
-      '情节大纲检查点正文与数据库原文不一致，无法安全续写。数据库正文未被覆盖。',
+      '细纲检查点正文与数据库原文不一致，无法安全续写。数据库正文未被覆盖。',
       'The plot-outline checkpoint body does not exactly match the database source. The database outline was not overwritten.',
     ))
   }
@@ -175,7 +175,7 @@ export function isRecoverableSynopsisCheckpoint(
 }
 
 /**
- * 情节大纲写到了哪里：流程脊、架构页的徽标、页头计数与主按钮、生成对话框的默认勾选共用这一个判定。
+ * 细纲写到了哪里：流程脊、架构页的徽标、页头计数与主按钮、生成对话框的默认勾选共用这一个判定。
  * 写到第几章按主进程开跑时的同一判定（plotOutlineNextChapter 内部即 plotOutlineConfirmedPrefix）：正式大纲能紧接第 k 章续写才算只写到第 k 章。
  * 不用检查点的 synopsis_covered_to：重写中间几章后它记的是本批终章，与正式大纲对不上。检查点只用来认出被打断或正在生成的一批。
  */

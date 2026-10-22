@@ -78,7 +78,7 @@ describe('guardSynopsisNeedsConfirmedArc', () => {
     expect((await guardSynopsisNeedsConfirmedArc(session.projectPath, session, 'zh-CN')).ok).toBe(true)
   })
 
-  it('只生成情节大纲时才走闸门；按段生成细纲（带 arcContext）不走', () => {
+  it('只生成细纲时才走闸门；按段生成细纲（带 arcContext）不走', () => {
     // 例外本身是纯函数，单独钉住：按某个已确认的粗纲段生成细纲时，
     // 那一段就是作者认可的走向，不需要全书粗纲先铺满。
     expect(needsConfirmedArcGate({ selectedSteps: ['synopsis'] })).toBe(true)

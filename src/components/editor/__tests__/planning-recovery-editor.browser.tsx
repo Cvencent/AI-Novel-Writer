@@ -41,7 +41,7 @@ function fixture(kind: 'outline' | 'blueprint'): GenerationRecoveryContext {
   return { ...common, plotOutline: { protocol: 'chapter-outline-v3', range: { from: 1, to: 3 }, content: { maxAttemptsPerChapter: 2 },
     targetUnits: 600, cursor: { kind: 'stopped', chapterNumber: 1, reason: 'attempts-exhausted' }, sourceExpected: { ...sourceExpected },
     confirmedPrefix: '', composition: null },
-  plotOutlineRecovery: { sourceHandle: handle, leaseEpoch: session.leaseId, draft: '# 情节大纲\n\n## 第1章：未完成\n', completeChapters: [], writeState: { kind: 'ready' }, saved: null } }
+  plotOutlineRecovery: { sourceHandle: handle, leaseEpoch: session.leaseId, draft: '# 细纲\n\n## 第1章：未完成\n', completeChapters: [], writeState: { kind: 'ready' }, saved: null } }
 }
 const blueprintText = JSON.stringify([{ chapterNumber: 1, title: '雨夜', role: '建置', purpose: '寻找证据', keyEvents: '找到信件',
   characters: ['沈砺'], relationships: [], suspenseHook: '信封有新线索', userGuidance: '保留作者指示', notes: '作者笔记', notesUpdatedAt: '2026-10-04T00:00:00Z' }])
@@ -200,7 +200,7 @@ describe('planning recovery editors', () => {
     for (const keepTail of [true, false]) {
       it(`outline author tail ${language} saves a completed prefix with ${keepTail ? 'old' : 'deleted'} machine progress`, async () => {
         const english = language === 'en-US'
-        const title = english ? '# Plot Outline' : '# 情节大纲'
+        const title = english ? '# Plot Outline' : '# 细纲'
         const body = english ? '## Chapter 1: Rain\nThe author keeps every clue.\n\n> Author note: preserve this quotation.' : '## 第1章：雨夜\n作者保留每一条线索。\n\n> 作者笔记：保留这段引文。'
         const oldTail = english ? '> This outline covers chapters 1-2 of 3; the remaining chapters will be generated in later batches.' : '> 本大纲已覆盖至第 2 章（全书 3 章），其余章节将在后续批次继续生成。'
         const newTail = english ? '> This outline covers chapters 1-1 of 3; the remaining chapters will be generated in later batches.' : '> 本大纲已覆盖至第 1 章（全书 3 章），其余章节将在后续批次继续生成。'
@@ -228,7 +228,7 @@ describe('planning recovery editors', () => {
   }
   it('outline author tail preserves an edited quotation instead of treating it as machine progress', async () => {
     context = fixture('outline')
-    const authored = '# 情节大纲\n\n## 第1章：雨夜\n作者正文。\n\n> 本大纲已覆盖至第 2 章（全书 3 章），其余章节将在后续批次继续生成。作者要求保留。'
+    const authored = '# 细纲\n\n## 第1章：雨夜\n作者正文。\n\n> 本大纲已覆盖至第 2 章（全书 3 章），其余章节将在后续批次继续生成。作者要求保留。'
     await render('outline'); await edit(authored)
     await act(async () => button('保存').click())
     const expected = authored + '\n\n> 本大纲已覆盖至第 1 章（全书 3 章），其余章节将在后续批次继续生成。'
@@ -239,13 +239,13 @@ describe('planning recovery editors', () => {
   it.each([false, true])('outline author tail retains the existing outside prefix and rejects changes=%s', async changed => {
     context = fixture('outline')
     if (!context.plotOutline || !context.plotOutlineRecovery) throw new Error('Missing outline fixture')
-    const existing = '# 情节大纲\n\n## 第1章：原章\n不可改写的原文。\n\n> 本大纲已覆盖至第 1 章（全书 3 章），其余章节将在后续批次继续生成。'
+    const existing = '# 细纲\n\n## 第1章：原章\n不可改写的原文。\n\n> 本大纲已覆盖至第 1 章（全书 3 章），其余章节将在后续批次继续生成。'
     context.plotOutline.sourceExpected.synopsis = existing
     context.plotOutline.range = { from: 2, to: 3 }
     context.plotOutline.confirmedPrefix = '## 第1章：原章\n不可改写的原文。'
-    context.plotOutlineRecovery.draft = '# 情节大纲\n\n## 第1章：原章\n不可改写的原文。\n\n## 第2章：恢复\n截断\n\n> 本大纲已覆盖至第 2 章（全书 3 章），其余章节将在后续批次继续生成。'
+    context.plotOutlineRecovery.draft = '# 细纲\n\n## 第1章：原章\n不可改写的原文。\n\n## 第2章：恢复\n截断\n\n> 本大纲已覆盖至第 2 章（全书 3 章），其余章节将在后续批次继续生成。'
     await render('outline')
-    const authored = '# 情节大纲\n\n## 第1章：原章\n' + (changed ? '被篡改的原文。' : '不可改写的原文。') + '\n\n## 第2章：恢复\n作者补齐的正文。'
+    const authored = '# 细纲\n\n## 第1章：原章\n' + (changed ? '被篡改的原文。' : '不可改写的原文。') + '\n\n## 第2章：恢复\n作者补齐的正文。'
     await edit(authored)
     await act(async () => button('保存').click())
     if (changed) {
@@ -261,7 +261,7 @@ describe('planning recovery editors', () => {
   it.each([false, true])('outline author tail freezes canonical payload across lost ACK and later edits=%s', async laterEdit => {
     context = fixture('outline')
     await render('outline')
-    const authored = '# 情节大纲\n\n## 第1章：雨夜\n作者补齐的正文。'
+    const authored = '# 细纲\n\n## 第1章：雨夜\n作者补齐的正文。'
     const canonical = authored + '\n\n> 本大纲已覆盖至第 1 章（全书 3 章），其余章节将在后续批次继续生成。'
     await edit(authored)
     pendingSave = async () => { throw new Error('IPC_ACK_LOST_AFTER_COMMIT') }
@@ -616,7 +616,7 @@ describe('planning recovery editors', () => {
     ['按序但缺第 2 章', [1, 3], '这次生成开跑时，大纲的章节编号与所选范围对不上或缺少章节，不能接着生成，恢复稿也不能保存。可以复制已生成的章节，改好大纲后重新生成。'],
   ])('升级前开跑、来源无效（%s）的大纲恢复稿写明原因，不能继续生成', async (_case, order, note) => {
     context = fixture('outline')
-    context.plotOutline!.sourceExpected.synopsis = `# 情节大纲\n\n${order.map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}`
+    context.plotOutline!.sourceExpected.synopsis = `# 细纲\n\n${order.map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}`
     context.plotOutline!.cursor = { kind: 'stopped', chapterNumber: 1, reason: 'source-invalid' }
     context.plotOutline!.confirmedPrefix = null
     context.plotOutlineRecovery!.writeState = { kind: 'blocked', reason: 'source-invalid' }

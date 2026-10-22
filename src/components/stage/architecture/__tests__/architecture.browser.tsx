@@ -62,7 +62,7 @@ function filledSpine(filled: readonly string[]) {
 /**
  * 把粗纲铺满全书并全部确认。
  *
- * 生成情节大纲（细纲）现在要求粗纲先铺满且已确认——粗纲是细纲的方向来源。
+ * 生成细纲（细纲）现在要求粗纲先铺满且已确认——粗纲是细纲的方向来源。
  * 只测续写/续批的用例要先满足这个前置，否则会被闸门正确地拦下。
  */
 function seedConfirmedArc(totalChapters: number) {
@@ -165,7 +165,7 @@ describe('架构阶段', () => {
   it.each([
     { state: '一节都没有', premise: '', cast: false, world: '', outline: 'none', arc: false, count: 0, action: 'AI 生成架构' },
     { state: '前提与角色名单', premise: PREMISE, cast: true, world: '', outline: 'none', arc: false, count: 2, action: '继续生成架构' },
-    { state: '缺情节大纲', premise: PREMISE, cast: true, world: LONG, outline: 'none', arc: true, count: 4, action: '继续生成架构' },
+    { state: '缺细纲', premise: PREMISE, cast: true, world: LONG, outline: 'none', arc: true, count: 4, action: '继续生成架构' },
     { state: '大纲只到第 16 章', premise: PREMISE, cast: true, world: LONG, outline: 'partial', arc: true, count: 4, action: '继续生成架构' },
     { state: '五节齐全', premise: PREMISE, cast: true, world: LONG, outline: 'full', arc: true, count: 5, action: '下一步：章节蓝图' },
   ])('主按钮与页头计数读五节徽标：$state', async ({ premise, cast, world, outline, arc, count, action }) => {
@@ -282,7 +282,7 @@ describe('架构阶段', () => {
     expect(primary()).toBe('继续生成架构')
   })
 
-  it('续写入口只预选情节大纲：先在别的节打开「AI 重新生成此节」再取消，不会把那一节带进续写', async () => {
+  it('续写入口只预选细纲：先在别的节打开「AI 重新生成此节」再取消，不会把那一节带进续写', async () => {
     seedConfirmedArc(24)
     seedPartialOutline()
     await render()
@@ -312,7 +312,7 @@ describe('架构阶段', () => {
     await typeInto('本次生成范围的结束章', String(to))
   }
   async function openOutlineRegenerate() {
-    await click('「情节大纲」的更多操作')
+    await click('「细纲」的更多操作')
     await click('AI 重新生成此节…')
   }
 
@@ -359,7 +359,7 @@ describe('架构阶段', () => {
     seedPartialOutline()
     await render()
     await openOutlineRegenerate()
-    const limitIssue = '情节大纲范围无效。请选择第 1–24 章内连续的 1–10 章。'
+    const limitIssue = '细纲范围无效。请选择第 1–24 章内连续的 1–10 章。'
 
     await range(1, 16)
     expect(mark('synopsis')).toBe('范围无效')
@@ -382,7 +382,7 @@ describe('架构阶段', () => {
     await render()
     await click('继续生成架构')
     await range(2, 4)
-    expect(issue()).toBe('还没有情节大纲，请从第 1 章起生成。')
+    expect(issue()).toBe('还没有细纲，请从第 1 章起生成。')
     expect(submit().disabled).toBe(true)
   })
 
@@ -493,7 +493,7 @@ describe('架构阶段', () => {
     core = { ...core, worldbuilding: '世界观。'.repeat(30) }
     rosterStatus = 'ready'
     await render()
-    // 粗纲已铺满并确认，所以是 4 / 5（只差情节大纲没写完）
+    // 粗纲已铺满并确认，所以是 4 / 5（只差细纲没写完）
     expect(host!.querySelector('.arch-eyebrow')?.textContent).toContain('4 / 5 已确认')
     await click('继续生成架构')
     expect(['premise', 'characters', 'worldbuilding', 'synopsis'].map(stepChecked)).toEqual([false, false, false, true])
@@ -544,16 +544,16 @@ describe('架构阶段', () => {
     expect((button(/开始生成 0 项/) as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('粗纲是独立一节，排在情节大纲前面，并能在标签里查看分段内容', async () => {
+  it('粗纲是独立一节，排在细纲前面，并能在标签里查看分段内容', async () => {
     arcRows = [
       { id: 1, arcIndex: 1, fromChapter: 1, toChapter: 20, title: '空白源核觉醒', summary: '主角觉醒异常源核，代价是记忆开始缺损。', beat: 'setup', status: 'confirmed', revision: 1, createdAt: '', updatedAt: '' },
       { id: 2, arcIndex: 2, fromChapter: 21, toChapter: 50, title: '第一次反噬', summary: '滥用能力的代价浮出水面。', beat: 'escalation', status: 'draft', revision: 0, createdAt: '', updatedAt: '' },
     ]
     await render()
 
-    // 顺序：世界观 → 粗纲 → 情节大纲
+    // 顺序：世界观 → 粗纲 → 细纲
     const titles = [...host!.querySelectorAll('.arch-section-title')].map(node => node.textContent)
-    expect(titles).toEqual(['故事前提', '角色名单', '世界观', '粗纲', '情节大纲'])
+    expect(titles).toEqual(['故事前提', '角色名单', '世界观', '粗纲', '细纲'])
 
     const arc = host!.querySelector('[data-section="arc"]')!
     expect(arc.querySelector('.arch-badge')?.textContent).toBe('2 段 · 已确认 1 段 · 到第 50 章')

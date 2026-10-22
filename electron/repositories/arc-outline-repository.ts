@@ -1,6 +1,7 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import { getProjectDb } from '../database'
 import { ensureArcOutlineTables } from './arc-outline-schema'
+import { normalizeArcSummary } from '../../src/shared/arc-outline-contract'
 
 export type ArcBeat = 'setup' | 'escalation' | 'reversal' | 'low' | 'climax' | 'aftermath' | 'transition'
 export const ARC_BEATS: readonly ArcBeat[] = ['setup', 'escalation', 'reversal', 'low', 'climax', 'aftermath', 'transition']
@@ -73,6 +74,12 @@ export class ArcOutlineRepository {
     const rows = database.prepare(
       'SELECT * FROM arc_outlines ORDER BY arc_index ASC',
     ).all() as ArcOutlineRow[]
+    // 自愈：旧版本会把模型多吐的后续段并进本段，这里按段标题截断并写回。
+    const update = database.prepare('UPDATE arc_outlines SET summary = ? WHERE id = ?')
+    for (const row of rows) {
+      const clean = normalizeArcSummary(row.summary)
+      if (clean !== row.summary) { row.summary = clean; update.run(clean, row.id) }
+    }
     return rows.map(toRecord)
   }
 

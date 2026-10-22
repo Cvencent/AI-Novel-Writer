@@ -577,7 +577,7 @@ describe('explicit planning recovery with real SQLite', () => {
     expect(f.db.prepare('SELECT COUNT(*) FROM generation_roots').pluck().get()).toBe(1)
   })
   it('preserves the source tail byte for byte when an author repairs an earlier outline chapter', () => {
-    const f = fixture(), original = '# 情节大纲\n\n## 第1章：原一\n原文一。\n\n## 第2章：原二\n原文二。\n\n## 第3章：保留\n尾部事实与空格。  \n'
+    const f = fixture(), original = '# 细纲\n\n## 第1章：原一\n原文一。\n\n## 第2章：原二\n原文二。\n\n## 第3章：保留\n尾部事实与空格。  \n'
     f.db.prepare('UPDATE project_core SET synopsis=?,total_chapters=3').run(original)
     const run = f.owner.begin(outlineSelection(f, 2)), context = f.owner.readContext(run.handle), range = { from: 1, to: 1 }
     const synopsis = renderPlotOutlineRange(outlineEntry(1), range, context.plotOutline!.sourceExpected)

@@ -43,7 +43,7 @@ export interface PartialArchData {
   world_building_db_hash?: string
   world_building_step_guidance?: string
   synopsis_result?: string
-  /** 情节大纲在上一次生成中被输出长度中断；synopsis_result 为已完成部分。 */
+  /** 细纲在上一次生成中被输出长度中断；synopsis_result 为已完成部分。 */
   synopsis_incomplete?: boolean
 }
 
@@ -57,9 +57,9 @@ export interface ArchitectureWorkflowParams {
   selectedSteps?: Array<'premise' | 'characters' | 'worldbuilding' | 'synopsis'>
   /** 每步的补充指导（如 { premise: "多强调金手指的限制" }） */
   stepGuidance?: Record<string, string>
-  /** 情节大纲本次生成范围 [from..to]（缺省 = 第 1 章到全书）。 */
+  /** 细纲本次生成范围 [from..to]（缺省 = 第 1 章到全书）。 */
   synopsisRange?: { from: number; to: number } | null
-  /** 从上次输出长度中断的检查点续写情节大纲（工作流只包含 synopsis 一步）。 */
+  /** 从上次输出长度中断的检查点续写细纲（工作流只包含 synopsis 一步）。 */
   resumeSynopsis?: boolean
   /** 从上次输出长度中断的候选续写世界观（工作流只包含 worldbuilding 一步）。 */
   resumeWorldBuilding?: boolean
@@ -185,11 +185,11 @@ export function createArchitectureWorkflow(
       },
     },
     {
-      name: text('情节大纲', 'Plot outline'),
+      name: text('细纲', 'Plot outline'),
       key: 'synopsis',
       description: resumingSynopsis
-        ? text('从上次中断点继续生成情节大纲', 'Resume the plot outline from the interrupted point')
-        : stepDesc('synopsis', '整合所有碎片，按选定结构模式生成情节大纲', 'Integrate all inputs into a plot outline using the selected structure'),
+        ? text('从上次中断点继续生成细纲', 'Resume the plot outline from the interrupted point')
+        : stepDesc('synopsis', '整合所有碎片，按选定结构模式生成细纲', 'Integrate all inputs into a plot outline using the selected structure'),
       executor: async (step: unknown, context: WorkflowContext, callbacks: StepCallbacks) => {
         context.data.stepGuidance = guidance
         const { GeneratePlotArchitectureCommand } = await import('./commands/architecture.command')
@@ -218,7 +218,7 @@ export function createArchitectureWorkflow(
   return {
     type: 'architecture_generation',
     title: resumingSynopsis
-      ? text('继续生成情节大纲（断点续写）', 'Continue plot outline (resume)')
+      ? text('继续生成细纲（断点续写）', 'Continue plot outline (resume)')
       : resumingWorldBuilding
         ? text('继续生成世界观（断点续写）', 'Continue worldbuilding (resume)')
         : text('生成故事架构', 'Generate story architecture'),

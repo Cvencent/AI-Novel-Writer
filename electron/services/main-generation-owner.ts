@@ -935,7 +935,7 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
       } } : manifest.operation === 'chapter-blueprint-directory' && continuation ? { blueprintRecovery: {
         sourceHandle: handleOf(run), leaseEpoch: deps.epoch, draft: lastCandidateText(run),
         editRange: continuation.remainingRange, saved: blueprintSaved,
-        // source-invalid 只出现在情节大纲任务上
+        // source-invalid 只出现在细纲任务上
         writeState: blueprintSaved ? 'author-saved' as const : continuation.state === 'save-prefix' ? 'ready' as const : continuation.state as Exclude<PlanningContinuation['state'], 'save-prefix' | 'source-invalid'>,
       } } : {}),
       authorInputs: structuredClone(manifest.authorInputs as GenerationAuthorInput[] ?? []),

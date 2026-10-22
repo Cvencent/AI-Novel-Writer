@@ -187,7 +187,7 @@ export function renderPlotOutlineSynopsis(body: string, coveredTo: number, expec
   const tail = coveredTo < expected.totalChapters ? english
     ? `> This outline covers chapters 1-${coveredTo} of ${expected.totalChapters}; the remaining chapters will be generated in later batches.`
     : `> 本大纲已覆盖至第 ${coveredTo} 章（全书 ${expected.totalChapters} 章），其余章节将在后续批次继续生成。` : ''
-  return `# ${english ? 'Plot Outline' : '情节大纲'}\n\n${joinPlotOutlineEntries(body, tail)}`.trim()
+  return `# ${english ? 'Plot Outline' : '细纲'}\n\n${joinPlotOutlineEntries(body, tail)}`.trim()
 }
 
 /** 正式大纲里决定一批范围能否开跑、会替换哪几章的三项事实；主进程 begin 时取自 project_core。 */
@@ -237,7 +237,7 @@ export function plotOutlineConfirmedPrefix(expected: PlotOutlineRangeSource, ran
   if (next !== range.from || !before.length) throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
   const following = entries.find(entry => entry.from >= range.from)
   if (following) return expected.synopsis.slice(before[0].index, following.index).trim()
-  const title = `# ${expected.writingLanguage === 'en-US' ? 'Plot Outline' : '情节大纲'}\n\n`
+  const title = `# ${expected.writingLanguage === 'en-US' ? 'Plot Outline' : '细纲'}\n\n`
   const suffix = renderPlotOutlineSynopsis('', range.from - 1, expected).slice(title.length)
   if (!expected.synopsis.startsWith(title) || !suffix || !expected.synopsis.endsWith(suffix)) throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
   const prefix = expected.synopsis.slice(title.length, -suffix.length).trim()
@@ -282,7 +282,7 @@ export function renderPlotOutlineRange(body: string, range: PlotOutlineRange, ex
   if (!entries.length) return renderPlotOutlineSynopsis(body, range.to, expected)
   const start = entries.find(entry => entry.from >= range.from)
   const after = entries.find(entry => entry.from > range.to)
-  const title = `# ${expected.writingLanguage === 'en-US' ? 'Plot Outline' : '情节大纲'}\n\n`
+  const title = `# ${expected.writingLanguage === 'en-US' ? 'Plot Outline' : '细纲'}\n\n`
   const suffix = renderPlotOutlineSynopsis('', range.to, expected).slice(title.length)
   if (start) {
     const before = expected.synopsis.slice(0, start.index)
@@ -304,7 +304,7 @@ export function validPlotOutlineAuthorPrefix(synopsis: string, progress: Pick<Pl
   const all = headings(synopsis), entries = all.filter(entry => entry.from >= range.from && entry.from <= range.to)
   if (entries.length !== range.to - range.from + 1) return false
   const after = all.find(entry => entry.from > range.to)
-  const title = `# ${expected.writingLanguage === 'en-US' ? 'Plot Outline' : '情节大纲'}\n\n`
+  const title = `# ${expected.writingLanguage === 'en-US' ? 'Plot Outline' : '细纲'}\n\n`
   const suffix = renderPlotOutlineSynopsis('', range.to, expected).slice(title.length)
   const end = after?.index ?? (suffix && synopsis.endsWith(suffix) ? synopsis.length - suffix.length : synopsis.length)
   const authored = synopsis.slice(entries[0].index, end).trim()

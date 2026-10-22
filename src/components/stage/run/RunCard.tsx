@@ -266,7 +266,7 @@ function RunFailureNotice({ run, primary }: { run: WorkflowRun; primary: boolean
         <div className="run-notice-actions">
           {canResumeOutline && (
             <Button variant={primary ? 'primary' : 'secondary'} size="sm" disabled={!current || outline.resuming} onClick={() => void outline.resume()}>
-              {outline.resuming ? text('正在从断点续写…', 'Resuming…') : text('继续生成情节大纲', 'Continue the plot outline')}
+              {outline.resuming ? text('正在从断点续写…', 'Resuming…') : text('继续生成细纲', 'Continue the plot outline')}
             </Button>
           )}
           {openConfig && (

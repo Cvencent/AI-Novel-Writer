@@ -29,7 +29,7 @@ const scopeLabels: Record<EditorInlineScope, readonly [string, string]> = {
   worldbuilding: ['世界观架构', 'worldbuilding architecture'],
   characters: ['角色名单', 'character roster'],
   'arc-outline': ['粗纲', 'arc outline'],
-  synopsis: ['情节大纲', 'plot synopsis'],
+  synopsis: ['细纲', 'plot synopsis'],
 }
 /** 每个作用域改完后必须守住的东西。 */
 const scopeConstraints: Record<EditorInlineScope, readonly [string, string]> = {
@@ -45,7 +45,7 @@ const scopeConstraints: Record<EditorInlineScope, readonly [string, string]> = {
   worldbuilding: ['这是世界观架构文档。保持内部规则自洽，并与核心大纲一致。', 'This is the worldbuilding document. Keep internal rules self-consistent and aligned with the core outline.'],
   characters: ['这是角色名单全文。保持角色身份、关系与动机一致，不要凭空新增或删除角色。', 'This is the character roster. Keep identities, relationships and motivations consistent; do not invent or remove characters.'],
   'arc-outline': ['这是粗纲，只写走向不写具体人名。保持章节区间覆盖连续，不要在这里落地角色姓名。', 'This is the arc outline: direction only, no proper names. Keep chapter coverage contiguous and do not land character names here.'],
-  synopsis: ['这是情节大纲。保持与粗纲的方向一致，不要改写已确认的粗纲走向。', 'This is the plot synopsis. Stay aligned with the arc outline and do not rewrite confirmed arc direction.'],
+  synopsis: ['这是细纲。保持与粗纲的方向一致，不要改写已确认的粗纲走向。', 'This is the plot synopsis. Stay aligned with the arc outline and do not rewrite confirmed arc direction.'],
 }
 
 const MAX_INSTRUCTION_BYTES = 16 * 1024
@@ -146,7 +146,7 @@ const factLabels: Record<string, readonly [string, string]> = {
   premise: ['故事前提', 'Premise'],
   worldbuilding: ['世界观架构', 'Worldbuilding'],
   characters_arch: ['角色名单', 'Character roster'],
-  synopsis: ['情节大纲', 'Plot synopsis'],
+  synopsis: ['细纲', 'Plot synopsis'],
 }
 
 /** 单个事实的上限，避免把整本项目书塞进一次改写请求。 */
@@ -178,7 +178,7 @@ const MAX_SAME_FIELD_CHARS = 6000
 /**
  * 把「同一个字段/文档里，除本次选中之外的其它内容」整理成既成事实。
  *
- * 例如改粗纲第 3 段时，第 1、2、4 段都在这里；改情节大纲某一章时，其它章也在这里。
+ * 例如改粗纲第 3 段时，第 1、2、4 段都在这里；改细纲某一章时，其它章也在这里。
  * 这些内容与本次改写同源，是模型最该遵守的上下文。超长时保留首尾，中间省略。
  */
 export function editorInlineSameFieldContext(documentText: string, from: number, to: number, english: boolean): string {

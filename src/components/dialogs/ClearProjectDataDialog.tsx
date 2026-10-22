@@ -37,7 +37,7 @@ const OPTIONS: Array<{
     key: 'creativeFields',
     labelZh: '故事架构与大纲',
     labelEn: 'Story architecture and outline',
-    descZh: '清空前提、世界观、角色卡与角色架构、情节大纲、文风分析与全局创作指导。',
+    descZh: '清空前提、世界观、角色卡与角色架构、细纲、文风分析与全局创作指导。',
     descEn: 'Clear premise, world building, character cards and architecture, plot outline, style analysis, and global guidance.',
   },
   {

@@ -6,9 +6,9 @@ import { parseOutlineNavigation } from '../outline-navigation'
  * 而不是只能从第 1 章往下滚。
  */
 describe('parseOutlineNavigation', () => {
-  it('情节大纲按章切，章号与标题都取出来', () => {
+  it('细纲按章切，章号与标题都取出来', () => {
     const text = [
-      '# 情节大纲',
+      '# 细纲',
       '',
       '## 第1章：雾钟',
       '林越在旧港听见第一声钟。',
@@ -57,7 +57,7 @@ describe('parseOutlineNavigation', () => {
 
   it('空文本与没有章标题时返回空列表，不抛错', () => {
     expect(parseOutlineNavigation('')).toEqual([])
-    expect(parseOutlineNavigation('# 情节大纲\n\n还没有内容。')).toEqual([])
+    expect(parseOutlineNavigation('# 细纲\n\n还没有内容。')).toEqual([])
     expect(parseOutlineNavigation('')).toEqual([])
   })
 

@@ -354,7 +354,7 @@ describe('workflow launch dialogs', () => {
     await act(async () => page.getByRole('spinbutton', { name: '本次生成范围的起始章' }).fill(invalidFrom))
     await act(async () => page.getByRole('button', { name: /确认生成/ }).click())
 
-    await expect.element(page.getByText(/情节大纲范围无效/)).toBeVisible()
+    await expect.element(page.getByText(/细纲范围无效/)).toBeVisible()
     expect(onConfirm).not.toHaveBeenCalled()
   })
 

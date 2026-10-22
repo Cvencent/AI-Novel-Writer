@@ -7,14 +7,14 @@ import { synopsisForDraftChapter } from '../../services/workflows/commands/gener
 
 describe('plotOutlineRecoveryDraft', () => {
   const expected = {
-    synopsis: '# 情节大纲\n\n' + [1, 2].map(n => `## 第${n}章：前置${n}\n前置正文${n}。`).join('\n\n') + '\n\n> 本大纲已覆盖至第 2 章（全书 10 章），其余章节将在后续批次继续生成。', premise: '', charactersArch: '', worldbuilding: '', genre: '', totalChapters: 10,
+    synopsis: '# 细纲\n\n' + [1, 2].map(n => `## 第${n}章：前置${n}\n前置正文${n}。`).join('\n\n') + '\n\n> 本大纲已覆盖至第 2 章（全书 10 章），其余章节将在后续批次继续生成。', premise: '', charactersArch: '', worldbuilding: '', genre: '', totalChapters: 10,
     wordsPerChapter: 3000, writingLanguage: 'zh-CN' as const, plotStructure: '', narrativePov: '', globalGuidance: '',
   } satisfies ProjectCoreSynopsisExpected
   it('没有候选正文时不补空章标题，保证恢复稿可保存', () => {
     const progress = {
       protocol: PLOT_OUTLINE_PROTOCOL, range: { from: 3, to: 5 }, content: PLOT_OUTLINE_CONTENT, targetUnits: 600,
       cursor: { kind: 'request' as const, chapterNumber: 3, attempt: 'normal' as const },
-      confirmedPrefix: '# 情节大纲\n\n' + [1, 2].map(n => `## 第${n}章：前置${n}\n前置正文${n}。`).join('\n\n'), composition: null, sourceExpected: expected,
+      confirmedPrefix: '# 细纲\n\n' + [1, 2].map(n => `## 第${n}章：前置${n}\n前置正文${n}。`).join('\n\n'), composition: null, sourceExpected: expected,
     }
     const draft = plotOutlineRecoveryDraft(progress as never, undefined)
     expect(draft).not.toMatch(/##\s*第3章：\s*\n\s*$/u)
@@ -35,7 +35,7 @@ describe('plotOutlineRecoveryDraft', () => {
 
 describe('chapter Markdown outline contract', () => {
   it('作者手动调过章节顺序（1、5、2、3、4）时按范围重写会丢掉第 2 章：判无效，开跑与写回都拒绝', () => {
-    const source = { synopsis: `# 情节大纲\n\n${[1, 5, 2, 3, 4].map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}`, totalChapters: 12, writingLanguage: 'zh-CN' as const }
+    const source = { synopsis: `# 细纲\n\n${[1, 5, 2, 3, 4].map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}`, totalChapters: 12, writingLanguage: 'zh-CN' as const }
     expect(plotOutlineRangeEffect(source, { from: 3, to: 5 })).toEqual({ kind: 'invalid', lastChapter: 5, hasEntries: true, orderIssue: { kind: 'unordered' } })
     expect(() => plotOutlineConfirmedPrefix(source, { from: 3, to: 5 })).toThrow('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
     expect(() => renderPlotOutlineRange('## 第3章：新\n新事。\n\n## 第4章：新\n新事。\n\n## 第5章：新\n新事。', { from: 3, to: 5 }, source))
@@ -43,32 +43,32 @@ describe('chapter Markdown outline contract', () => {
   })
 
   it('同一章号出现两次（1、2、3、2）时判无效并指出重复的是第 2 章', () => {
-    const source = { synopsis: `# 情节大纲\n\n${[1, 2, 3, 2].map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}`, totalChapters: 12, writingLanguage: 'zh-CN' as const }
+    const source = { synopsis: `# 细纲\n\n${[1, 2, 3, 2].map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}`, totalChapters: 12, writingLanguage: 'zh-CN' as const }
     expect(plotOutlineRangeEffect(source, { from: 4, to: 5 })).toEqual({ kind: 'invalid', lastChapter: 3, hasEntries: true, orderIssue: { kind: 'duplicate', chapter: 2 } })
   })
 
   it.each(['第0章', '第零章', '第〇章', 'Chapter 0'])('带「%s」序章的大纲从第 1 章起重写：有效并保留序章；序章真重复时仍拒绝', prologue => {
-    const synopsis = `# 情节大纲\n\n## ${prologue}：序章\n灯塔熄灭前夜。\n\n${[1, 2].map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}`
+    const synopsis = `# 细纲\n\n## ${prologue}：序章\n灯塔熄灭前夜。\n\n${[1, 2].map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}`
     const source = { synopsis, totalChapters: 2, writingLanguage: 'zh-CN' as const }
     expect(plotOutlineRangeEffect(source, { from: 1, to: 2 })).toEqual({ kind: 'overwrite', whole: false, from: 1, to: 2, lastChapter: 2 })
     expect(plotOutlineRangeEffect(source, { from: 3, to: 4 }).kind).toBe('invalid')
     expect(renderPlotOutlineRange('## 第1章：新\n新事。\n\n## 第2章：新\n新事。', { from: 1, to: 2 }, source))
-      .toBe(`# 情节大纲\n\n## ${prologue}：序章\n灯塔熄灭前夜。\n\n## 第1章：新\n新事。\n\n## 第2章：新\n新事。`)
+      .toBe(`# 细纲\n\n## ${prologue}：序章\n灯塔熄灭前夜。\n\n## 第1章：新\n新事。\n\n## 第2章：新\n新事。`)
     const repeated = { ...source, synopsis: synopsis.replace('## 第1章', `## ${prologue}：又一个序章\n重复。\n\n## 第1章`) }
     expect(plotOutlineRangeEffect(repeated, { from: 1, to: 2 })).toEqual({ kind: 'invalid', lastChapter: 2, hasEntries: true, orderIssue: { kind: 'duplicate', chapter: 0 } })
   })
 
   it.each([
-    ['只有序章', 'zh-CN', '# 情节大纲\n\n## 第0章：序章\n灯塔熄灭前夜。', '## 第1章：新\n新事。\n\n## 第2章：新\n新事。',
-      '# 情节大纲\n\n## 第0章：序章\n灯塔熄灭前夜。\n\n## 第1章：新\n新事。\n\n## 第2章：新\n新事。\n\n> 本大纲已覆盖至第 2 章（全书 5 章），其余章节将在后续批次继续生成。'],
+    ['只有序章', 'zh-CN', '# 细纲\n\n## 第0章：序章\n灯塔熄灭前夜。', '## 第1章：新\n新事。\n\n## 第2章：新\n新事。',
+      '# 细纲\n\n## 第0章：序章\n灯塔熄灭前夜。\n\n## 第1章：新\n新事。\n\n## 第2章：新\n新事。\n\n> 本大纲已覆盖至第 2 章（全书 5 章），其余章节将在后续批次继续生成。'],
     ['only a prologue', 'en-US', '# Plot Outline\n\n## Chapter 0: Prologue\nThe night before the lighthouse went dark.', '## Chapter 1: New\nNew event.\n\n## Chapter 2: New\nNew event.',
       '# Plot Outline\n\n## Chapter 0: Prologue\nThe night before the lighthouse went dark.\n\n## Chapter 1: New\nNew event.\n\n## Chapter 2: New\nNew event.\n\n> This outline covers chapters 1-2 of 5; the remaining chapters will be generated in later batches.'],
-    ['序章加非章节说明文字', 'zh-CN', '# 情节大纲\n\n全书基调：冷。\n\n## 第0章：序章\n灯塔熄灭前夜。\n\n> 作者备注：序章不改。', '## 第1章：新\n新事。\n\n## 第2章：新\n新事。',
-      '# 情节大纲\n\n全书基调：冷。\n\n## 第0章：序章\n灯塔熄灭前夜。\n\n> 作者备注：序章不改。\n\n## 第1章：新\n新事。\n\n## 第2章：新\n新事。\n\n> 本大纲已覆盖至第 2 章（全书 5 章），其余章节将在后续批次继续生成。'],
+    ['序章加非章节说明文字', 'zh-CN', '# 细纲\n\n全书基调：冷。\n\n## 第0章：序章\n灯塔熄灭前夜。\n\n> 作者备注：序章不改。', '## 第1章：新\n新事。\n\n## 第2章：新\n新事。',
+      '# 细纲\n\n全书基调：冷。\n\n## 第0章：序章\n灯塔熄灭前夜。\n\n> 作者备注：序章不改。\n\n## 第1章：新\n新事。\n\n## 第2章：新\n新事。\n\n> 本大纲已覆盖至第 2 章（全书 5 章），其余章节将在后续批次继续生成。'],
     ['a prologue with notes', 'en-US', '# Plot Outline\n\nTone: cold.\n\n## Chapter 0: Prologue\nThe night before.\n\nNote: keep the prologue.', '## Chapter 1: New\nNew event.\n\n## Chapter 2: New\nNew event.',
       '# Plot Outline\n\nTone: cold.\n\n## Chapter 0: Prologue\nThe night before.\n\nNote: keep the prologue.\n\n## Chapter 1: New\nNew event.\n\n## Chapter 2: New\nNew event.\n\n> This outline covers chapters 1-2 of 5; the remaining chapters will be generated in later batches.'],
-    ['序章后有第 3 章', 'zh-CN', '# 情节大纲\n\n## 第0章：序章\n灯塔熄灭前夜。\n\n## 第3章：旧\n旧事。', '## 第1章：新\n新事。\n\n## 第2章：新\n新事。',
-      '# 情节大纲\n\n## 第0章：序章\n灯塔熄灭前夜。\n\n## 第1章：新\n新事。\n\n## 第2章：新\n新事。\n\n## 第3章：旧\n旧事。'],
+    ['序章后有第 3 章', 'zh-CN', '# 细纲\n\n## 第0章：序章\n灯塔熄灭前夜。\n\n## 第3章：旧\n旧事。', '## 第1章：新\n新事。\n\n## 第2章：新\n新事。',
+      '# 细纲\n\n## 第0章：序章\n灯塔熄灭前夜。\n\n## 第1章：新\n新事。\n\n## 第2章：新\n新事。\n\n## 第3章：旧\n旧事。'],
     ['a prologue followed by chapter 3', 'en-US', '# Plot Outline\n\n## Chapter 0: Prologue\nThe night before.\n\n## Chapter 3: Old\nOld event.', '## Chapter 1: New\nNew event.\n\n## Chapter 2: New\nNew event.',
       '# Plot Outline\n\n## Chapter 0: Prologue\nThe night before.\n\n## Chapter 1: New\nNew event.\n\n## Chapter 2: New\nNew event.\n\n## Chapter 3: Old\nOld event.'],
   ] as const)('生成第 1–2 章时序章原样保留在最前面（%s）', (_, writingLanguage, synopsis, body, saved) => {
@@ -86,7 +86,7 @@ describe('chapter Markdown outline contract', () => {
       ? { 1: chapter(1, '雨夜', '找到信件。'), 2: chapter(2, '码头', '追到码头。'), 3: chapter(3, '灯塔', '登上灯塔。'), 4: chapter(4, '钟声', '听见钟声。'), 5: chapter(5, '天亮', '守塔人离开。') }
       : { 1: chapter(1, 'Rain', 'A letter.'), 2: chapter(2, 'Dock', 'The chase.'), 3: chapter(3, 'Lighthouse', 'The climb.'), 4: chapter(4, 'Bell', 'The bell.'), 5: chapter(5, 'Dawn', 'The keeper leaves.') }
     const tail = (n: number) => zh ? `> 本大纲已覆盖至第 ${n} 章（全书 24 章），其余章节将在后续批次继续生成。` : `> This outline covers chapters 1-${n} of 24; the remaining chapters will be generated in later batches.`
-    const title = zh ? '# 情节大纲' : '# Plot Outline'
+    const title = zh ? '# 细纲' : '# Plot Outline'
     const head = zh ? `${title}\n\n## ${prologue}：序章\n灯塔熄灭前夜。` : `${title}\n\n## ${prologue}: Prologue\nThe night before.`
     const expected = (synopsis: string): ProjectCoreSynopsisExpected => ({ synopsis, premise: '前提', charactersArch: '角色', worldbuilding: '世界',
       genre: '悬疑', totalChapters: 24, wordsPerChapter: 2000, writingLanguage: language, plotStructure: 'three_act', narrativePov: 'third_limited', globalGuidance: '' })
@@ -128,7 +128,7 @@ describe('chapter Markdown outline contract', () => {
     ['a custom top-level title', 'en-US', '# The Lighthouse\n\n## Chapter 0: Prologue\nThe night before.'],
   ] as const)('只有序章、%s的作品生成第 1–2 章后补上标准标题，能从第 3 章续写，序章与第 1–2 章逐字不变', (_, language, authored) => {
     const { tail, expected, join } = prologueBook(language, '')
-    const title = language === 'zh-CN' ? '# 情节大纲' : '# Plot Outline'
+    const title = language === 'zh-CN' ? '# 细纲' : '# Plot Outline'
     const afterFirst = `${title}\n\n${authored}\n\n${join(1, 2)}\n\n${tail(2)}`
     expect(renderPlotOutlineRange(join(1, 2), { from: 1, to: 2 }, expected(authored))).toBe(afterFirst)
     expect(validPlotOutlineAuthorPrefix(afterFirst, { range: { from: 1, to: 2 }, sourceExpected: expected(authored), confirmedPrefix: '' }, { from: 1, to: 2 })).toBe(true)
@@ -141,12 +141,12 @@ describe('chapter Markdown outline contract', () => {
   })
 
   it.each([
-    ['zh-CN', '# 情节大纲\n\n## 第0章：序章\n灯塔熄灭前夜。', '> 本大纲已覆盖至第 2 章（全书 30 章），其余章节将在后续批次继续生成。'],
+    ['zh-CN', '# 细纲\n\n## 第0章：序章\n灯塔熄灭前夜。', '> 本大纲已覆盖至第 2 章（全书 30 章），其余章节将在后续批次继续生成。'],
     ['zh-CN', '## 第0章：序章\n灯塔熄灭前夜。', '> 本大纲已覆盖至第 5 章（全书 24 章），其余章节将在后续批次继续生成。'],
     ['en-US', '# Plot Outline\n\n## Chapter 0: Prologue\nThe night before.', '> This outline covers chapters 1-2 of 30; the remaining chapters will be generated in later batches.'],
   ] as const)('只有序章、末尾还留着旧覆盖说明（%s）：生成第 1–2 章后旧说明去掉，新说明只在最后一行', (language, prologueText, staleTail) => {
     const { tail, expected, join } = prologueBook(language, '')
-    const title = language === 'zh-CN' ? '# 情节大纲' : '# Plot Outline'
+    const title = language === 'zh-CN' ? '# 细纲' : '# Plot Outline'
     const saved = renderPlotOutlineRange(join(1, 2), { from: 1, to: 2 }, expected(`${prologueText}\n\n${staleTail}`))
     expect(saved).toBe(`${title}\n\n${prologueText.replace(`${title}\n\n`, '')}\n\n${join(1, 2)}\n\n${tail(2)}`)
     expect(saved.split('\n').filter(line => line.startsWith('> ')).length).toBe(1)
@@ -165,7 +165,7 @@ describe('chapter Markdown outline contract', () => {
     ['第 0 章出现两次（0、1、2、0）', [0, 1, 2, 0], { kind: 'duplicate', chapter: 0 }],
     ['第 0 章不在最前（1、0、2）', [1, 0, 2], { kind: 'unordered' }],
   ] as const)('%s：续写第 3–4 章仍判无效并给出对应原因', (_, order, orderIssue) => {
-    const synopsis = `# 情节大纲\n\n${order.map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}\n\n> 本大纲已覆盖至第 2 章（全书 24 章），其余章节将在后续批次继续生成。`
+    const synopsis = `# 细纲\n\n${order.map(n => `## 第${n}章：第${n}夜\n这一夜的事。`).join('\n\n')}\n\n> 本大纲已覆盖至第 2 章（全书 24 章），其余章节将在后续批次继续生成。`
     const source = { synopsis, totalChapters: 24, writingLanguage: 'zh-CN' as const }
     expect(plotOutlineRangeEffect(source, { from: 3, to: 4 })).toEqual({ kind: 'invalid', lastChapter: 2, hasEntries: true, orderIssue })
     expect(() => plotOutlineConfirmedPrefix(source, { from: 3, to: 4 })).toThrow('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')

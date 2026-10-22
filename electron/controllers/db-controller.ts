@@ -349,7 +349,7 @@ export function registerDatabaseController() {
     const database = getProjectDb()
     if (request.generationRunHandle && !database) throw new Error('GENERATION_DATABASE_NOT_READY')
     if (!(request.generationRunHandle ? database!.transaction(() => withGenerationAgentChildEffect(request.generationRunHandle!, commit)).immediate() : commit())) {
-      return { success: false, error: '项目数据已变化，已拒绝覆盖情节大纲' }
+      return { success: false, error: '项目数据已变化，已拒绝覆盖细纲' }
     }
     return { success: true }
   })
