@@ -123,7 +123,7 @@ describe('CodeMirror editor AI generation boundary', () => {
 
   it('sends a free-form author rewrite instruction from the selection toolbar', async () => {
     await act(async () => root.render(
-      <CodeMirrorEditor content="原文段落" mode="prose" />,
+      <CodeMirrorEditor content="原文段落" mode="prose" aiScope="world-setting" />,
     ))
 
     await act(async () => page.getByText('原文段落').click({ clickCount: 3 }))
@@ -137,6 +137,7 @@ describe('CodeMirror editor AI generation boundary', () => {
         action: 'custom',
         instruction: '改成更克制的叙述，不要新增事实',
         selectedText: '原文段落',
+        scope: 'world-setting',
       }),
     }), expect.any(Object))
   })

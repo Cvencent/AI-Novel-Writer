@@ -584,7 +584,7 @@ export function buildGenerationSourceBinding(deps: GenerationSourceBindingDepend
     if (agentContext) Object.assign(sourceManifest, { agentInput, agentContext, agentContextHash: hash(JSON.stringify(agentContext)), ...(input.agentSession ? { agentSession: structuredClone(input.agentSession) } : {}) });
     if (input.agentWorkflowRegistrationId) Object.assign(sourceManifest, { agentWorkflowRegistrationId: input.agentWorkflowRegistrationId });
     if (editorInlineContext) {
-        const task = editorInlineTask(editorInlineContext);
+        const task = editorInlineTask(editorInlineContext, facts.core);
         Object.assign(sourceManifest, { editorInlineInput, editorInlineOriginEpoch: input.editorInlineOriginEpoch ?? input.epoch, editorInlineContext, editorInlineContextHash: hash(JSON.stringify(editorInlineContext)), editorInlineTask: task, editorInlineTaskHash: hash(JSON.stringify(task)) });
     }
     if (importContext) Object.assign(sourceManifest, { importSlot: importContext.slot, importSlotKey: importGenerationSlotKey(importContext.slot), importContext });

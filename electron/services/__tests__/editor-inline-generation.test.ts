@@ -70,6 +70,28 @@ it('keeps historical dialogue runs readable without exposing the old action agai
  expect(read.context.action).toBe('dialogue')
  expect(read.context.instruction).toBeUndefined()
 })
+it('prompt carries the editing scope, surrounding context and authoritative project facts',async()=>{
+ const f=fixture()
+ const recovery=f.owner.beginEditorInline({...request,uiActionNonce:'带上下文的世界观改写',input:{...input,
+   action:'custom' as const,instruction:'写得更冷一些',
+   scope:'world-setting' as const,
+   contextBefore:'旧城终年下雨。',
+   contextAfter:'灯火能照见被遗忘的人。'}})
+ expect(recovery.context.scope).toBe('world-setting')
+ await f.owner.executeEditorInline(recovery.view.handle)
+ const sent=JSON.stringify(f.spy.mock.calls[0]![0])
+ expect(sent).toContain('世界观')
+ expect(sent).toContain('旧城终年下雨。')
+ expect(sent).toContain('灯火能照见被遗忘的人。')
+ expect(sent).toContain('项目里的其它权威设定')
+ expect(sent).toContain('合成审稿')
+ expect(sent).toContain('写得更冷一些')
+})
+it('refuses an unknown editing scope before any run is created',()=>{
+ const f=fixture()
+ expect(()=>f.owner.beginEditorInline({...request,uiActionNonce:'非法范围',input:{...input,scope:'not-a-scope'} as never})).toThrow()
+ expect(f.spy).not.toHaveBeenCalled()
+})
 it('同nonce不同作者输入拒绝，generic begin/execute不能绕过editor owner',async()=>{
  const f=fixture(),recovery=f.owner.beginEditorInline(request)
  expect(()=>f.owner.beginEditorInline({...request,input:{...input,action:'expand'}})).toThrow()

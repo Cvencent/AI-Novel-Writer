@@ -9,10 +9,13 @@ import { useThemeStore } from '../../stores/theme-store'
 import { getActiveProjectSessionContext } from '../../shared/project-session-context'
 import { createEditorInlineGeneration } from '../../services/editor-inline-generation'
 import { INLINE_AI_ACTIONS, INLINE_AI_CUSTOM, type InlineAIAction } from './inline-ai-actions'
+import type { EditorInlineScope } from '../../shared/editor-inline-generation'
 
 type SelectionAITextareaProps = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'value' | 'onChange'> & {
   value: string
   onValueChange: (next: string) => void
+  /** 这块文字在项目里的位置；会连同上下文一起告诉模型。 */
+  scope?: EditorInlineScope
 }
 
 type Target = {
@@ -34,6 +37,8 @@ type BubblePosition = Anchor & { placement: 'above' | 'below' }
 
 /** 浮层与视口边缘至少留出的距离。 */
 const BUBBLE_INSET = 8
+/** 带给模型的前后文长度；足够判断衔接，又不会淹没选中文字。 */
+const CONTEXT_WINDOW = 240
 /** 底部对齐的浮层向上展开，估算自身高度来决定放在选区上方还是下方。 */
 const estimateBubbleHeight = (preview: boolean) => preview ? 320 : 100
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
@@ -60,7 +65,7 @@ function positionBubble(anchor: Anchor, preview: boolean): BubblePosition {
  * 为什么单独做一个组件而不是直接上 CodeMirror：设定页的这些字段本来就是普通文本域，
  * 换成富文本编辑器会改变字号、行高、自动增高与焦点样式。这里只加能力，不动样式。
  */
-export default function SelectionAITextarea({ value, onValueChange, ...rest }: SelectionAITextareaProps) {
+export default function SelectionAITextarea({ value, onValueChange, scope, ...rest }: SelectionAITextareaProps) {
   const text = useLocaleStore(s => s.text)
   const theme = useThemeStore(s => s.resolvedTheme)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
@@ -177,6 +182,8 @@ export default function SelectionAITextarea({ value, onValueChange, ...rest }: S
     }
     const requestSequence = ++sequenceRef.current
     const frozen = { requestSequence, from: selection.from, to: selection.to, selectedText: selection.text, documentText: node.value }
+    const contextBefore = node.value.slice(Math.max(0, selection.from - CONTEXT_WINDOW), selection.from)
+    const contextAfter = node.value.slice(selection.to, selection.to + CONTEXT_WINDOW)
     targetRef.current = frozen
     inlineRef.current?.detach()
     const client = createEditorInlineGeneration(session)
@@ -186,6 +193,9 @@ export default function SelectionAITextarea({ value, onValueChange, ...rest }: S
         input: {
           action: action.key,
           ...(action.instruction ? { instruction: action.instruction } : {}),
+          ...(scope ? { scope } : {}),
+          ...(contextBefore ? { contextBefore } : {}),
+          ...(contextAfter ? { contextAfter } : {}),
           from: frozen.from,
           to: frozen.to,
           selectedText: frozen.selectedText,

@@ -17,7 +17,7 @@ import { useLocaleStore } from '../../stores/locale-store'
 import { getActiveProjectSessionContext } from '../../shared/project-session-context'
 import { livePreview, paperHeadFacet, type PaperHead } from './live-preview'
 import { INLINE_AI_ACTIONS as AI_ACTIONS, INLINE_AI_CUSTOM } from './inline-ai-actions'
-import type { EditorInlineInput } from '../../shared/editor-inline-generation'
+import type { EditorInlineInput, EditorInlineScope } from '../../shared/editor-inline-generation'
 
 type EditorAIActionRequest = {
   key: EditorInlineInput['action']
@@ -74,6 +74,8 @@ export type CodeMirrorEditorProps = {
   fitContent?: boolean
   /** 段落首行缩进两字（只是显示，见 paragraph-indent）。 */
   paragraphIndent?: boolean
+  /** 这块文字在项目里的位置；会连同前后文一起告诉模型。 */
+  aiScope?: EditorInlineScope
   /**
    * 把视图滚动到含有这段文字的那一行，并把它选中。
    *
@@ -99,6 +101,7 @@ export default function CodeMirrorEditor({
   fitContent = false,
   paragraphIndent: indentParagraphs = false,
   revealRequest = null,
+  aiScope,
 }: CodeMirrorEditorProps) {
   const inkThemeName = useThemeStore(s => s.resolvedTheme)
   const uiText = useLocaleStore(s => s.text)
@@ -459,6 +462,9 @@ export default function CodeMirrorEditor({
         to: selectionRange.to,
         selectedText: view.state.sliceDoc(selectionRange.from, selectionRange.to),
         documentText: view.state.doc.toString(),
+        ...(aiScope ? { scope: aiScope } : {}),
+        contextBefore: view.state.sliceDoc(Math.max(0, selectionRange.from - 240), selectionRange.from),
+        contextAfter: view.state.sliceDoc(selectionRange.to, Math.min(view.state.doc.length, selectionRange.to + 240)),
       }
       aiTargetRef.current = { ...input, requestSequence, filePath, sessionKey: JSON.stringify(session) }
       inlineRef.current?.detach()

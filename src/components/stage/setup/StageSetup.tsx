@@ -28,7 +28,7 @@ import { InkDialog } from '../InkDialog'
 import ModelMissingNotice from '../ModelMissingNotice'
 import { commandLabel } from '../shortcut-keys'
 import { useModelMissing } from '../use-model-missing'
-import { MORE_FIELDS, ONE_MISSING_HINT, POV_OPTIONS, REQUIRED_NAMES, STRUCTURE_OPTIONS, type MoreField } from './setup-fields'
+import { MORE_FIELD_SCOPE, MORE_FIELDS, ONE_MISSING_HINT, POV_OPTIONS, REQUIRED_NAMES, STRUCTURE_OPTIONS, type MoreField } from './setup-fields'
 import { pluralEn } from '../../../shared/plural-en'
 
 type Form = ReturnType<typeof useNovelConfigForm>
@@ -187,7 +187,7 @@ function MorePanel({ field, config, form, aiReason, onCollapse }: {
     )
   } else {
     control = (
-      <SelectionAITextarea id={controlId} className="stage-setup-textarea" value={String(config[field.id] ?? '')} placeholder={text(...field.placeholder)}
+      <SelectionAITextarea id={controlId} className="stage-setup-textarea" scope={MORE_FIELD_SCOPE[field.id]} value={String(config[field.id] ?? '')} placeholder={text(...field.placeholder)}
         onValueChange={next => form.update(field.id, next)} />
     )
   }
@@ -343,6 +343,7 @@ function SetupSession({ projectKey }: { projectKey: string }) {
             </div>
             <SelectionAITextarea
               id={outlineId}
+              scope="core-outline"
               className="stage-setup-outline-input"
               value={config.coreOutline}
               placeholder={text('谁，在哪里，想要什么，又被什么挡住了路。', 'Who, where, what they want, and what stands in the way.')}

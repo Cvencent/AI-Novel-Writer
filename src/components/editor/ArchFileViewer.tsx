@@ -15,6 +15,7 @@ import { appErrorMessage } from '../../i18n/app-errors'
 import { toast } from '../ui/Toast'
 import { CharacterCardImportButton } from '../characters/CharacterCardImportButton'
 import CodeMirrorEditor from './CodeMirrorEditor'
+import type { EditorInlineScope } from '../../shared/editor-inline-generation'
 import { SaveFeedback, type SaveOutcome } from './save-feedback'
 import { useProjectStore } from '../../stores/project-store'
 import { useLocaleStore } from '../../stores/locale-store'
@@ -66,6 +67,16 @@ const ARCH_META: Record<ArchStepKey, { iconName: string; view: readonly [string,
  */
 function castTextForView(markdown: string): string {
   return markdown.replace(/^# (?:角色图谱|Character graph)\n+/u, '')
+}
+
+/** 架构文档的步骤 → 改写作用域：模型要能知道自己改的是粗纲还是世界观。 */
+function archScopeOf(step: ArchStepKey | null): EditorInlineScope | undefined {
+  if (step === 'premise') return 'premise'
+  if (step === 'characters') return 'characters'
+  if (step === 'worldbuilding') return 'worldbuilding'
+  if (step === 'arc') return 'arc-outline'
+  if (step === 'synopsis') return 'synopsis'
+  return undefined
 }
 
 /** 从文件路径推断出 ArchStepKey */
@@ -778,6 +789,7 @@ function ArchFileViewerSession({
         <div className="flex-1 overflow-hidden min-w-0">
         <CodeMirrorEditor
           mode="document"
+          aiScope={archScopeOf(detectStepKey(filePath))}
           content={isCharacterProjection && rosterSnapshot?.status === 'ready' ? castTextForView(editorContent) : editorContent}
           filePath={filePath}
           editable={!isCharacterProjection}

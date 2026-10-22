@@ -1,4 +1,5 @@
 import type { NovelConfig } from '../../../shared/ipc-channels'
+import type { EditorInlineScope } from '../../../shared/editor-inline-generation'
 import type { SetupField } from '../../../stores/navigation/stage-progress'
 import type { GeneratableField } from '../../../services/workflows/commands/generate-field.command'
 
@@ -42,6 +43,15 @@ export type MoreField =
   | { id: 'narrativePOV'; kind: 'pov'; name: Pair }
   | { id: 'plotStructure'; kind: 'structure'; name: Pair }
   | { id: 'worldSetting' | 'goldenFinger' | 'protagonistProfile' | 'writingStyle' | 'globalGuidance' | 'referenceWorks'; kind: 'text'; name: Pair; desc: Pair; placeholder: Pair; aiField?: GeneratableField }
+
+export const MORE_FIELD_SCOPE: Partial<Record<string, EditorInlineScope>> = {
+  worldSetting: 'world-setting',
+  goldenFinger: 'golden-finger',
+  protagonistProfile: 'protagonist-profile',
+  globalGuidance: 'global-guidance',
+  writingStyle: 'writing-style',
+  referenceWorks: 'reference-works',
+}
 
 export const MORE_FIELDS: readonly MoreField[] = [
   { id: 'narrativePOV', kind: 'pov', name: ['叙事视角', 'Point of view'] },
