@@ -16,6 +16,20 @@ let container: HTMLDivElement
 let invoke: ReturnType<typeof vi.fn>
 let recoveries: Map<string, { view: unknown; sourceStatus: string; context: unknown; modelId: string }>
 
+function TallHarness() {
+  const [value, setValue] = useState(`${'这是一段很长的核心大纲。'.repeat(120)}`)
+  return (
+    <div style={{ paddingTop: 520 }}>
+      <SelectionAITextarea
+        aria-label="长文本测试设定"
+        style={{ width: 520, height: 900 }}
+        value={value}
+        onValueChange={setValue}
+      />
+    </div>
+  )
+}
+
 function Harness() {
   const [value, setValue] = useState('原文段落')
   return (
@@ -93,7 +107,9 @@ describe('SelectionAITextarea', () => {
       area.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
     })
 
-    expect(document.querySelector<HTMLElement>('[role="toolbar"]')?.style.transform).toBe('none')
+    const toolbarRect = document.querySelector<HTMLElement>('[role="toolbar"]')!.getBoundingClientRect()
+    expect(toolbarRect.top).toBeGreaterThanOrEqual(8)
+    expect(toolbarRect.bottom).toBeLessThanOrEqual(window.innerHeight - 8)
     await expect.element(page.getByRole('button', { name: '润色' })).toBeVisible()
     await expect.element(page.getByRole('button', { name: '扩写' })).toBeVisible()
     await expect.element(page.getByRole('button', { name: '续写' })).toBeVisible()
@@ -135,6 +151,26 @@ describe('SelectionAITextarea', () => {
         selectedText: '原文段落',
       }),
     }), expect.any(Object))
+  })
+
+  it('keeps a tall scrolled textarea preview and its replace action inside the viewport', async () => {
+    await page.viewport(900, 600)
+    await act(async () => root.render(<TallHarness />))
+    window.scrollTo(0, 480)
+    const area = container.querySelector('textarea')!
+    await act(async () => {
+      area.focus()
+      area.setSelectionRange(0, 4)
+      area.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 420, clientY: 500 }))
+    })
+
+    await act(async () => page.getByRole('button', { name: '润色' }).click())
+    await expect.element(page.getByText('改写后的段落')).toBeVisible()
+    const toolbar = document.querySelector<HTMLElement>('[role="toolbar"]')!
+    const rect = toolbar.getBoundingClientRect()
+    expect(rect.top).toBeGreaterThanOrEqual(8)
+    expect(rect.bottom).toBeLessThanOrEqual(window.innerHeight - 8)
+    expect(document.elementFromPoint(rect.right - 12, rect.bottom - 12)).toBeTruthy()
   })
 
   it('does not replace when the textarea changed after generation started', async () => {

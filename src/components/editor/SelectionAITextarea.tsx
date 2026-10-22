@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type TextareaHTMLAttributes } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type TextareaHTMLAttributes } from 'react'
 import { createPortal } from 'react-dom'
 import { Check, Sparkles } from 'lucide-react'
 
@@ -23,12 +23,31 @@ type Target = {
   documentText: string
 }
 
-type BubblePosition = { top: number; right: number; above: boolean }
-
 type ActionRequest = {
   key: InlineAIAction['key'] | 'custom'
   label: readonly [string, string]
   instruction?: string
+}
+
+type Anchor = { top: number; bottom: number; left: number }
+type BubblePosition = Anchor & { placement: 'above' | 'below' }
+
+/** 浮层与视口边缘至少留出的距离。 */
+const BUBBLE_INSET = 8
+/** 底部对齐的浮层向上展开，估算自身高度来决定放在选区上方还是下方。 */
+const estimateBubbleHeight = (preview: boolean) => preview ? 320 : 100
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
+
+function positionBubble(anchor: Anchor, preview: boolean): BubblePosition {
+  const height = estimateBubbleHeight(preview)
+  const placement = anchor.top - height >= BUBBLE_INSET ? 'above' : 'below'
+  const halfWidth = Math.min(180, Math.max(96, window.innerWidth / 2 - BUBBLE_INSET))
+  return {
+    top: placement === 'above' ? anchor.top - 4 : anchor.bottom + 4,
+    left: clamp(anchor.left, halfWidth, Math.max(halfWidth, window.innerWidth - halfWidth)),
+    bottom: anchor.bottom,
+    placement,
+  }
 }
 
 /**
@@ -45,12 +64,15 @@ export default function SelectionAITextarea({ value, onValueChange, ...rest }: S
   const text = useLocaleStore(s => s.text)
   const theme = useThemeStore(s => s.resolvedTheme)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const bubbleRef = useRef<HTMLDivElement | null>(null)
   const inlineRef = useRef<ReturnType<typeof createEditorInlineGeneration> | null>(null)
   const targetRef = useRef<Target | null>(null)
+  const anchorRef = useRef<Anchor | null>(null)
   const sequenceRef = useRef(0)
 
   const [selection, setSelection] = useState<{ from: number; to: number; text: string } | null>(null)
   const [bubble, setBubble] = useState<BubblePosition | null>(null)
+  const [bubbleShift, setBubbleShift] = useState({ x: 0, y: 0 })
   const [aiResult, setAiResult] = useState<string | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
   const [activeAction, setActiveAction] = useState<string | null>(null)
@@ -58,28 +80,86 @@ export default function SelectionAITextarea({ value, onValueChange, ...rest }: S
 
   const resetResult = useCallback(() => {
     targetRef.current = null
+    anchorRef.current = null
     setAiResult(null)
     setAiError(null)
     setActiveAction(null)
+    setCustomInstruction('')
     setSelection(null)
     setBubble(null)
+    setBubbleShift({ x: 0, y: 0 })
   }, [])
 
   useEffect(() => () => { inlineRef.current?.detach() }, [])
 
-  const syncSelection = useCallback(() => {
+  /**
+   * 预览比快捷操作高得多，出现后可能超出视口。
+   * 每次浮层尺寸变化都量一次实际矩形，把它挪回可视范围内；
+   * 偏差是累加式的，所以收敛后不会再触发更新。
+   */
+  useLayoutEffect(() => {
+    const node = bubbleRef.current
+    if (!node || !bubble) return
+    const rect = node.getBoundingClientRect()
+    let dx = 0
+    let dy = 0
+    if (rect.left < BUBBLE_INSET) dx = BUBBLE_INSET - rect.left
+    else if (rect.right > window.innerWidth - BUBBLE_INSET) dx = window.innerWidth - BUBBLE_INSET - rect.right
+    if (rect.top < BUBBLE_INSET) dy = BUBBLE_INSET - rect.top
+    else if (rect.bottom > window.innerHeight - BUBBLE_INSET) dy = window.innerHeight - BUBBLE_INSET - rect.bottom
+    if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) setBubbleShift(prev => ({ x: prev.x + dx, y: prev.y + dy }))
+  }, [bubble, aiResult, aiError])
+
+  const syncSelection = useCallback((event?: ReactMouseEvent<HTMLTextAreaElement>) => {
     const node = textareaRef.current
     if (!node) return
     // 预览还开着时不跟着新选区跑：AI 结果对应的是发起时的那一段。
     if (aiResult !== null) return
     const from = node.selectionStart ?? 0
     const to = node.selectionEnd ?? 0
-    if (to <= from) { setSelection(null); setBubble(null); setCustomInstruction(''); return }
+    if (to <= from) {
+      setSelection(null)
+      setBubble(null)
+      anchorRef.current = null
+      setBubbleShift({ x: 0, y: 0 })
+      setCustomInstruction('')
+      return
+    }
     if (selection?.from !== from || selection?.to !== to) setCustomInstruction('')
     setSelection({ from, to, text: node.value.slice(from, to) })
-    const rect = node.getBoundingClientRect()
-    const above = rect.top > 80
-    setBubble({ top: above ? rect.top - 8 : rect.bottom + 8, right: Math.max(8, window.innerWidth - rect.right), above })
+
+    let anchor: Anchor | null = event && event.clientY > 0 && event.clientX > 0
+      ? { top: event.clientY, bottom: event.clientY + 18, left: event.clientX }
+      : null
+    if (!anchor) {
+      const domSelection = window.getSelection()
+      const range = domSelection && domSelection.rangeCount > 0 && !domSelection.isCollapsed
+        ? domSelection.getRangeAt(0).getBoundingClientRect()
+        : null
+      if (range && range.height > 0 && range.width > 0) {
+        anchor = { top: range.top, bottom: range.bottom, left: range.left + range.width / 2 }
+      }
+    }
+    if (!anchor) {
+      // 键盘选区没有指针坐标：用文本框落在视口内的那一段做锚点，
+      // 否则很长的文本框会把浮层顶到页面外面去。
+      const rect = node.getBoundingClientRect()
+      const visibleTop = Math.max(rect.top, BUBBLE_INSET)
+      const visibleBottom = Math.min(rect.bottom, window.innerHeight - BUBBLE_INSET)
+      const center = visibleBottom > visibleTop
+        ? (visibleTop + visibleBottom) / 2
+        : window.innerHeight / 2
+      const top = clamp(center, BUBBLE_INSET, window.innerHeight - BUBBLE_INSET)
+      anchor = {
+        top,
+        bottom: top + 18,
+        left: clamp(rect.left + rect.width / 2, BUBBLE_INSET, window.innerWidth - BUBBLE_INSET),
+      }
+    }
+
+    anchorRef.current = anchor
+    setBubbleShift({ x: 0, y: 0 })
+    setBubble(positionBubble(anchor, false))
   }, [aiResult, selection])
 
   const runAction = async (action: ActionRequest) => {
@@ -89,6 +169,8 @@ export default function SelectionAITextarea({ value, onValueChange, ...rest }: S
     setActiveAction(text(...action.label))
     setAiResult('')
     setAiError(null)
+    setBubbleShift({ x: 0, y: 0 })
+    if (anchorRef.current) setBubble(positionBubble(anchorRef.current, true))
     if (!session) {
       setAiError(text('请先打开作品并选择模型。', 'Open a book and choose a model first.'))
       return
@@ -154,6 +236,10 @@ export default function SelectionAITextarea({ value, onValueChange, ...rest }: S
     resetResult()
   }
 
+  const bubbleTransform = bubble
+    ? `translate(${bubbleShift.x}px, ${bubbleShift.y}px) translate(-50%, ${bubble.placement === 'above' ? '-100%' : '0'})`
+    : undefined
+
   return (
     <>
       <textarea
@@ -161,18 +247,21 @@ export default function SelectionAITextarea({ value, onValueChange, ...rest }: S
         ref={textareaRef}
         value={value}
         onChange={event => onValueChange(event.target.value)}
-        onSelect={syncSelection}
-        onMouseUp={syncSelection}
-        onKeyUp={syncSelection}
+        onSelect={() => syncSelection()}
+        onMouseUp={event => syncSelection(event)}
+        onKeyUp={() => syncSelection()}
+        onScroll={() => syncSelection()}
       />
       {bubble && createPortal(
         <div
+          ref={bubbleRef}
           role="toolbar"
           aria-label={text('选中文字的操作', 'Actions for the selected text')}
           className="paper-ink cm-selbar"
           data-theme={theme}
           data-preview={aiResult !== null || undefined}
-          style={{ position: 'fixed', top: bubble.top, right: bubble.right, transform: bubble.above ? 'translateY(-100%)' : 'none', zIndex: 80 }}
+          data-placement={bubble.placement}
+          style={{ position: 'fixed', top: bubble.top, left: bubble.left, transform: bubbleTransform, zIndex: 80 }}
           onMouseDown={event => {
             if (!(event.target instanceof HTMLInputElement)) event.preventDefault()
           }}
