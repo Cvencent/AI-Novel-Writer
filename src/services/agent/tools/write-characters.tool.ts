@@ -18,7 +18,7 @@ import { CHARACTER_ROLES, type CharacterRole } from '../../../shared/character-r
 
 const CHARACTER_FIELDS = [
   'gender', 'age', 'appearance', 'personality', 'background',
-  'abilities', 'motivation', 'arc', 'notes',
+  'abilities', 'motivation', 'relationships', 'arc', 'notes',
 ] as const
 
 function isRole(value: unknown): value is CharacterRole {
@@ -65,7 +65,7 @@ export const createCharacterTool = buildAgentTool({
       gender: { type: 'string', description: '性别' }, age: { type: 'string', description: '年龄' },
       appearance: { type: 'string', description: '外貌' }, personality: { type: 'string', description: '性格' },
       background: { type: 'string', description: '背景' }, abilities: { type: 'string', description: '能力' },
-      motivation: { type: 'string', description: '动机' }, arc: { type: 'string', description: '成长弧光' }, notes: { type: 'string', description: '备注' },
+      motivation: { type: 'string', description: '动机' }, relationships: { type: 'string', description: '人际关系（自由文本，如：与甲是同门）' }, arc: { type: 'string', description: '成长弧光' }, notes: { type: 'string', description: '备注' },
     },
   },
   execute: async (args, context) => {
@@ -114,7 +114,7 @@ export const updateCharacterTool = buildAgentTool({
       gender: { type: 'string', description: '性别' }, age: { type: 'string', description: '年龄' },
       appearance: { type: 'string', description: '外貌' }, personality: { type: 'string', description: '性格' },
       background: { type: 'string', description: '背景' }, abilities: { type: 'string', description: '能力' },
-      motivation: { type: 'string', description: '动机' }, arc: { type: 'string', description: '成长弧光' }, notes: { type: 'string', description: '备注' },
+      motivation: { type: 'string', description: '动机' }, relationships: { type: 'string', description: '人际关系（自由文本，如：与甲是同门）' }, arc: { type: 'string', description: '成长弧光' }, notes: { type: 'string', description: '备注' },
     },
   },
   execute: async (args, context) => {
