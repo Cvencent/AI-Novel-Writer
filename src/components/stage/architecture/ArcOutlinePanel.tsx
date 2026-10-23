@@ -169,10 +169,27 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
     if (runnerRef) runnerRef.current = (arcMode) => { void startArc(arcMode) }
   })
 
+
+  /** 操作前重读一次：面板里的 revision 可能已经过期。 */
+  const readLatestArc = async (arcIndex: number): Promise<ArcOutlineRecord | null> => {
+    const list = await ipc.invoke('db:arc-outline-list', projectKey).catch(() => [])
+    const fresh = Array.isArray(list) ? list as ArcOutlineRecord[] : []
+    setArcs(fresh)
+    return fresh.find(arc => arc.arcIndex === arcIndex) ?? null
+  }
+
+  const isStale = (result: { error?: string } | null) => String(result?.error ?? '').includes('ARC_OUTLINE_REVISION_STALE')
+
   /** 人工确认一段粗纲，之后才允许按“等我确认”继续下一段或生成细纲。 */
   const confirmArc = async (arc: ArcOutlineRecord) => {
     setError('')
-    const result = await ipc.invoke('db:arc-outline-confirm', arc.arcIndex, arc.revision, projectKey).catch(() => null) as { success?: boolean; error?: string } | null
+    let latest = await readLatestArc(arc.arcIndex)
+    if (!latest) { setError(text('这一段已经不存在，请刷新后重试', 'This segment no longer exists; refresh and try again')); return }
+    let result = await ipc.invoke('db:arc-outline-confirm', latest.arcIndex, latest.revision, projectKey).catch(() => null) as { success?: boolean; error?: string } | null
+    if (!result?.success && isStale(result)) {
+      latest = await readLatestArc(arc.arcIndex)
+      if (latest) result = await ipc.invoke('db:arc-outline-confirm', latest.arcIndex, latest.revision, projectKey).catch(() => null) as { success?: boolean; error?: string } | null
+    }
     if (!result?.success) setError(result?.error || text('确认粗纲失败', 'Could not confirm the arc segment'))
     await load()
     notifyChanged()
@@ -185,16 +202,18 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
       setError(text('项目会话已切换，请重新打开作品。', 'The project session changed. Reopen the book and try again.'))
       return
     }
-    setBusyFineArc(arc.arcIndex)
+    const latest = await readLatestArc(arc.arcIndex)
+    if (!latest) { setError(text('这一段已经不存在，请刷新后重试', 'This segment no longer exists; refresh and try again')); return }
+    setBusyFineArc(latest.arcIndex)
     setError('')
     try {
-      for (let from = arc.fromChapter; from <= arc.toChapter; from += 10) {
-        const to = Math.min(arc.toChapter, from + 9)
+      for (let from = latest.fromChapter; from <= latest.toChapter; from += 10) {
+        const to = Math.min(latest.toChapter, from + 9)
         const receipt = await launchCreativeWorkflow({
           workflow: 'generate_architecture',
           selectedSteps: ['synopsis'],
           synopsisRange: { from, to },
-          arcContext: { arcId: arc.id, rev: arc.revision, from: arc.fromChapter, to: arc.toChapter, summary: arc.summary, beat: arc.beat },
+          arcContext: { arcId: latest.id, rev: latest.revision, from: latest.fromChapter, to: latest.toChapter, summary: latest.summary, beat: latest.beat },
         }, projectSession)
         await waitForArcRun(receipt.runId)
       }
@@ -395,10 +414,12 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
               try {
                 // 重写只改目标段自己的 revision，后续段 revision 不变，因此可依次提交。
                 for (const targetArc of targets) {
+                  const latestTarget = await readLatestArc(targetArc.arcIndex)
+                  if (!latestTarget) continue
                   const receipt = await launchCreativeWorkflow({
                     workflow: 'generate_arc_outline',
                     mode: 'revise',
-                    revise: { arcIndex: targetArc.arcIndex, expectedRevision: targetArc.revision, direction },
+                    revise: { arcIndex: latestTarget.arcIndex, expectedRevision: latestTarget.revision, direction },
                   }, projectSession)
                   await waitForArcRun(receipt.runId)
                 }
