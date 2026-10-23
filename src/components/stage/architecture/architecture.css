@@ -24,8 +24,9 @@
 }
 
 .arch-heading {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 auto;
+  /* 这里刻意不用 min-width: 0：动作区变宽时标题区会被压到逐字换行，标题就变成竖排。 */
+  min-width: 22rem;
 }
 
 .arch-eyebrow {
@@ -33,6 +34,8 @@
   color: var(--ink-3);
   font: 500 var(--fs-12)/1 var(--font-ui);
   letter-spacing: 0.08em;
+  /* 顶部动作变多时标题区会被压缩，这行短标签绝不允许逐字换行变成竖排。 */
+  white-space: nowrap;
 }
 
 .arch-title {
@@ -52,6 +55,18 @@
   display: flex;
   align-items: center;
   gap: var(--s-2);
+}
+
+/* 顶部一键连续生成：字数输入与按钮并排，窄屏时换行而不是被压成竖排。 */
+.arch-continuous-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  flex: none;
+}
+.arch-header-actions .pi-btn {
+  white-space: nowrap;
 }
 
 .arch-sections {

@@ -5,6 +5,7 @@ import { useLocaleStore } from '../../../stores/locale-store'
 import { LegacyRosterRecoveryPanel } from '../../editor/LegacyRosterRecoveryPanel'
 import type { ArchitectureOverview } from '../../editor/use-architecture-overview'
 import { Button } from '../../ui/Button'
+import { Trash2 } from 'lucide-react'
 import { Menu, type MenuGroupSpec } from '../../ui/Menu'
 import { Notice } from '../../ui/Notice'
 import { badgeText, badgeTone, SECTION_NUMERALS, type SectionBadge } from './architecture-sections'
@@ -53,6 +54,9 @@ function CandidateNotice({ sectionKey, overview }: { sectionKey: 'worldbuilding'
             </Button>
             <Button variant="text" size="sm" onClick={() => { void overview.copyCandidate(state.candidate) }}>
               <Copy size={14} aria-hidden />{text('复制', 'Copy')}
+            </Button>
+            <Button variant="text" size="sm" onClick={() => { void state.discard() }}>
+              <Trash2 size={14} aria-hidden />{text('丢弃候选', 'Discard candidate')}
             </Button>
             <Button variant="secondary" size="sm" disabled={state.busy || !state.handle || overview.loading} onClick={resume}>
               <RotateCw size={14} aria-hidden />

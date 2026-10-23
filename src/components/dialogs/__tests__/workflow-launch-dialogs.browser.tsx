@@ -240,7 +240,7 @@ describe('workflow launch dialogs', () => {
     await expect.element(page.getByRole('dialog')).toBeVisible()
   })
 
-  it('defaults a large-book synopsis batch to chapters 1-5 and a 600-character target', async () => {
+  it('defaults a large-book synopsis batch to chapters 1-5 and a 300-character target', async () => {
     useProjectStore.setState({
       currentProject: {
         ...project,
@@ -261,14 +261,14 @@ describe('workflow launch dialogs', () => {
 
     await expect.element(page.getByRole('spinbutton', { name: '本次生成范围的起始章' })).toHaveValue(1)
     await expect.element(page.getByRole('spinbutton', { name: '本次生成范围的结束章' })).toHaveValue(5)
-    await expect.element(page.getByRole('spinbutton', { name: '每章大纲目标字数' })).toHaveValue(600)
+    await expect.element(page.getByRole('spinbutton', { name: '每章大纲目标字数' })).toHaveValue(300)
     await act(async () => page.getByRole('button', { name: /确认生成/ }).click())
 
     await vi.waitFor(() => expect(onConfirm).toHaveBeenCalledWith(
       ['synopsis'],
       {},
       { from: 1, to: 5 },
-      600,
+      300,
     ))
   })
 
@@ -300,7 +300,7 @@ describe('workflow launch dialogs', () => {
       ['synopsis'],
       {},
       { from: 21, to: 30 },
-      600,
+      300,
     ))
   })
 
@@ -335,7 +335,7 @@ describe('workflow launch dialogs', () => {
     await expect.element(page.getByText('将覆盖第 1–5 章')).toBeVisible()
     await expect.element(page.getByText('第 1–5 章按本次结果替换，第 6–16 章原样保留。')).toBeVisible()
     await act(async () => submit.click())
-    await vi.waitFor(() => expect(onConfirm).toHaveBeenCalledWith(['synopsis'], {}, { from: 1, to: 5 }, 600))
+    await vi.waitFor(() => expect(onConfirm).toHaveBeenCalledWith(['synopsis'], {}, { from: 1, to: 5 }, 300))
   })
 
   it.each(['', '0', '-1', '1.5'])('rejects invalid synopsis range value %s without falling back to the whole book', async invalidFrom => {
@@ -509,7 +509,7 @@ it('shows blueprint recovery diagnostics without blocking independent generation
   await expect.element(page.getByRole('button', { name: '开始生成' })).toBeEnabled()
   await act(async () => page.getByRole('button', { name: '开始生成' }).click())
   expect(onConfirm).toHaveBeenCalledOnce()
-  expect(onConfirm).toHaveBeenCalledWith({ mode: 'full', startChapter: 1, count: 5, targetUnits: 600, pacingGuidance: undefined })
+  expect(onConfirm).toHaveBeenCalledWith({ mode: 'full', startChapter: 1, count: 5, targetUnits: 300, pacingGuidance: undefined })
 })
 
 

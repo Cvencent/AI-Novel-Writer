@@ -50,6 +50,7 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
   const [busyFineArc, setBusyFineArc] = useState<number | null>(null)
   const [selectedArcs, setSelectedArcs] = useState<Set<number>>(new Set())
   const [pendingDeleteArc, setPendingDeleteArc] = useState<number | null>(null)
+  const [listCollapsed, setListCollapsed] = useState(false)
   const [error, setError] = useState('')
   const totalChapters = useProjectStore(s => s.currentProject?.novelConfig?.totalChapters ?? 0)
 
@@ -320,6 +321,10 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
       {arcs.length === 0
         ? <p className="arch-arc-empty">{text('还没有粗纲。粗纲负责定方向，不含人名；确认后再生成逐章细纲。', 'No arc outline yet. The arc outline sets direction without character names; chapter outlines come after you confirm it.')}</p>
         : (<>
+          <Button variant="text" size="sm" aria-expanded={!listCollapsed} onClick={() => setListCollapsed(value => !value)}>
+            {listCollapsed ? text(`展开粗纲（${arcs.length} 段）`, `Show arc segments (${arcs.length})`) : text('收起粗纲', 'Collapse arc segments')}
+          </Button>
+          {!listCollapsed && <>
           <div className="arch-arc-bulk">
             <label className="arch-arc-bulk-all">
               <input type="checkbox" checked={arcs.length > 0 && arcs.every(arc => selectedArcs.has(arc.arcIndex))}
@@ -366,6 +371,7 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
               </li>
             ))}
           </ol>
+          </>}
         </>)}
 
       {pendingRevise && (

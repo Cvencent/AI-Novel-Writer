@@ -469,6 +469,10 @@ export abstract class BaseWorkflowCommand<TResult = string> {
     let lastReceipt: GenerationAttemptReceipt | null = null
     let lastFinish: LLMFinishReason = 'stop'
     const outcomeRef = { value: null } as { value: { content: string; finishReason: LLMFinishReason; receipt: GenerationAttemptReceipt } | null }
+    if (options.allowedTools?.length) {
+      // 让作者在日志里能看到这次到底给了模型哪些工具（工具清单原本只进 system prompt）。
+      callbacks.log(`本次可用工具：${options.allowedTools.join(String.fromCharCode(44) + String.fromCharCode(32))}`)
+    }
     const loop = await runWorkflowToolLoop({
       systemPrompt,
       userPrompt: prompt,

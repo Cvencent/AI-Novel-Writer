@@ -430,6 +430,36 @@ export function useArchitectureOverview(projectKey: string) {
     }
   }
 
+  /**
+   * 丢弃未完成候选：清掉 partial_arch.json 里对应节的候选与检查点，
+   * 让提示条消失，正式内容不受影响。
+   */
+  const discardCandidate = async (kind: 'synopsis' | 'worldbuilding') => {
+    const projectSession = captureProjectSession(currentProject)
+    if (!projectMatches || !projectSession || !isProjectSessionPath(projectSession, projectKey)) return
+    if (!isProjectSessionCurrent(projectSession)) return
+    const filePath = `${projectSession.projectPath}/${CANONICAL_PROJECT_DIRECTORY}/partial_arch.json`
+    const read = await ipc.invokeWithProjectSession(projectSession, 'fs:read-json', filePath, projectSession.projectPath).catch(() => null)
+    const data = read?.success === true ? { ...((read as { data?: Record<string, unknown> }).data ?? {}) } : {}
+    if (kind === 'synopsis') {
+      delete data.synopsis_incomplete
+      delete data.synopsis_result
+      delete data.synopsis_covered_to
+      delete data.synopsis_range
+      delete data.synopsis_db_hash
+      delete data.synopsis_body_hash
+      delete data.synopsis_generation_handle
+    } else {
+      delete data.world_building_incomplete
+      delete data.world_building_partial_result
+      delete data.world_building_generation_handle
+    }
+    await ipc.invokeWithProjectSession(projectSession, 'fs:write-json', filePath, data, projectSession.projectPath)
+    if (kind === 'synopsis') { setSynopsisCandidate(''); setSynopsisHandle(null); setShowSynopsisCandidate(false); setPlanningRecovery(null) }
+    else { setWorldBuildingCandidate(''); setWorldHandle(null); setShowWorldBuildingCandidate(false) }
+    await loadStatus()
+  }
+
   /** 续批入口：打开生成弹窗并预填下一批范围（从 coveredTo+1 起，默认带本批上限，
    * 上限可在弹窗内调整）。避免一次请求剩余全部章节再次触发超长输出。 */
   const handleContinueOutlineBatch = async () => {
@@ -482,6 +512,7 @@ export function useArchitectureOverview(projectKey: string) {
       candidateShown: showSynopsisCandidate,
       setCandidateShown: setShowSynopsisCandidate,
       handle: synopsisHandle,
+      discard: () => discardCandidate('synopsis'),
     },
     worldBuilding: {
       busy: worldBuildingBusy,
@@ -489,6 +520,7 @@ export function useArchitectureOverview(projectKey: string) {
       candidateShown: showWorldBuildingCandidate,
       setCandidateShown: setShowWorldBuildingCandidate,
       handle: worldHandle,
+      discard: () => discardCandidate('worldbuilding'),
     },
     roster: {
       presentation: rosterPresentation,

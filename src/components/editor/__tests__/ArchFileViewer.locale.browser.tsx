@@ -94,7 +94,7 @@ describe('大纲目录', () => {
 
     const nav = container.querySelector('[aria-label="大纲目录"]')
     expect(nav).not.toBeNull()
-    const items = [...nav!.querySelectorAll('button')]
+    const items = [...nav!.querySelectorAll<HTMLButtonElement>('button.arch-outline-nav-item')]
     expect(items.map(i => i.textContent)).toEqual(['第1章：雾钟', '第42章：北堤'])
 
     // 点第 42 章：编辑器应该把视图定位到那一行（选区落在该标题上）
@@ -197,7 +197,7 @@ describe('ArchFileViewer locale', () => {
   })
 
   it('uses the same section names as the architecture page in English', async () => {
-    for (const [key, name] of [['worldbuilding', 'World'], ['synopsis', 'Outline']] as const) {
+    for (const [key, name] of [['worldbuilding', 'World'], ['synopsis', 'Chapter outline']] as const) {
       await act(async () => root.render(
         <ArchFileViewer tabId={`arch-en-${key}`} filePath={`ai-novel://core/${key}`} projectKey={PROJECT_PATH} content="" savedContent="" />,
       ))

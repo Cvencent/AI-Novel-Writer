@@ -29,19 +29,20 @@ export function RunRecoveryList({ recovery, liveRuns }: { recovery: RunRecovery;
 }
 
 function RecoveryCard({ entry, recovery, text }: { entry: RecoveryEntry; recovery: RunRecovery; text: Text }) {
+  const onDismiss = () => recovery.dismiss(entry)
   const locale = useLocaleStore(s => s.locale)
   const { busy } = recovery
   switch (entry.kind) {
     case 'candidate':
-      return <CandidateCard entry={entry} recovery={recovery} text={text} />
+      return <CandidateCard entry={entry} recovery={recovery} text={text} onDismiss={onDismiss} />
     case 'planning':
       return (
-        <RecoveryShell title={entry.title} text={text} notes={[entry.note]}
+        <RecoveryShell onDismiss={onDismiss} title={entry.title} text={text} notes={[entry.note]}
           actions={<Button variant="secondary" size="sm" disabled={busy} onClick={() => recovery.openPlanning(entry)}>{entry.actionLabel}</Button>} />
       )
     case 'editor':
       return (
-        <RecoveryShell title={entry.title} text={text} notes={[entry.usage, entry.conflictNote]}
+        <RecoveryShell onDismiss={onDismiss} title={entry.title} text={text} notes={[entry.usage, entry.conflictNote]}
           budget={<GenerationBudgetDiagnostics diagnostics={entry.budget} locale={locale} />}
           actions={<>
             <Button variant="secondary" size="sm" disabled={busy || !entry.canContinue} onClick={() => recovery.continueEditor(entry)}>{entry.labels.continue}</Button>
@@ -56,7 +57,7 @@ function RecoveryCard({ entry, recovery, text }: { entry: RecoveryEntry; recover
       )
     case 'review':
       return (
-        <RecoveryShell title={entry.title} text={text} notes={[entry.usage, ...entry.notes]}
+        <RecoveryShell onDismiss={onDismiss} title={entry.title} text={text} notes={[entry.usage, ...entry.notes]}
           budget={<GenerationBudgetDiagnostics diagnostics={entry.budget} locale={locale} />}
           actions={<Button variant="secondary" size="sm" disabled={busy || !entry.canAct} onClick={() => recovery.resumeReview(entry)}>{entry.actionLabel}</Button>}>
           {entry.artifacts.map(item => <Excerpt key={item.id} text={item.text} copyLabel={entry.labels.copy} onCopy={() => recovery.copy(item.text)} />)}
@@ -65,20 +66,21 @@ function RecoveryCard({ entry, recovery, text }: { entry: RecoveryEntry; recover
       )
     case 'batch':
       return (
-        <RecoveryShell title={entry.title} text={text} notes={[entry.staleNote]}
+        <RecoveryShell onDismiss={onDismiss} title={entry.title} text={text} notes={[entry.staleNote]}
           actions={<Button variant="secondary" size="sm" disabled={busy || !entry.canContinue} onClick={() => recovery.resumeBatch(entry)}>{entry.actionLabel}</Button>} />
       )
     case 'draft':
-      return <DraftCard entry={entry} recovery={recovery} text={text} />
+      return <DraftCard entry={entry} recovery={recovery} text={text} onDismiss={onDismiss} />
   }
 }
 
-function RecoveryShell({ title, text, notes = [], budget, actions, children }: {
+function RecoveryShell({ title, text, notes = [], budget, actions, onDismiss, children }: {
   title: string
   text: Text
   notes?: (string | undefined)[]
   budget?: ReactNode
   actions?: ReactNode
+  onDismiss?: () => void
   children?: ReactNode
 }) {
   const titleId = useId()
@@ -91,7 +93,10 @@ function RecoveryShell({ title, text, notes = [], budget, actions, children }: {
       {notes.filter(Boolean).map(note => <p key={note} className="run-note">{note}</p>)}
       {children}
       {budget}
-      {actions && <div className="run-card-buttons">{actions}</div>}
+      <div className="run-card-buttons">
+        {actions}
+        {onDismiss && <Button variant="text" size="sm" onClick={onDismiss}>{text('移除卡片', 'Dismiss card')}</Button>}
+      </div>
     </article>
   )
 }
@@ -106,11 +111,11 @@ function Excerpt({ text, note, copyLabel, onCopy }: { text: string; note?: strin
   )
 }
 
-function DraftCard({ entry, recovery, text }: { entry: DraftEntry; recovery: RunRecovery; text: Text }) {
+function DraftCard({ entry, recovery, text, onDismiss }: { entry: DraftEntry; recovery: RunRecovery; text: Text; onDismiss: () => void }) {
   const locale = useLocaleStore(s => s.locale)
   const picked = recovery.picked(entry)
   return (
-    <RecoveryShell title={entry.title} text={text} notes={[entry.usage, entry.note]}
+    <RecoveryShell onDismiss={onDismiss} title={entry.title} text={text} notes={[entry.usage, entry.note]}
       budget={<GenerationBudgetDiagnostics diagnostics={entry.budget} locale={locale} />}
       actions={<Button variant="secondary" size="sm" disabled={recovery.busy || !canResumeDraft(entry, picked)} onClick={() => recovery.resumeDraft(entry)}>{entry.actionLabel}</Button>}>
       {entry.artifacts.map(item => (
@@ -131,12 +136,12 @@ function DraftCard({ entry, recovery, text }: { entry: DraftEntry; recovery: Run
 }
 
 /** 旧恢复候选：放弃前就地确认，写明放弃的字数无法找回。 */
-function CandidateCard({ entry, recovery, text }: { entry: CandidateEntry; recovery: RunRecovery; text: Text }) {
+function CandidateCard({ entry, recovery, text, onDismiss }: { entry: CandidateEntry; recovery: RunRecovery; text: Text; onDismiss: () => void }) {
   const [confirming, setConfirming] = useState(false)
   const discardButton = useRef<HTMLButtonElement>(null)
   const units = countDraftUnits(entry.text)
   return (
-    <RecoveryShell title={entry.title} text={text} notes={[entry.staleNote]}
+    <RecoveryShell onDismiss={onDismiss} title={entry.title} text={text} notes={[entry.staleNote]}
       actions={confirming
         ? (
           <InlineConfirm

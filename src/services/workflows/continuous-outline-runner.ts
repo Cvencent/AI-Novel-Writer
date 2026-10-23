@@ -216,6 +216,8 @@ async function runLoop(session: ProjectSessionContext, token: number, targetUnit
   const text = useLocaleStore.getState().text
   let consecutiveFailures = 0
   let batchesCompleted = 0
+  let lastRange = ''
+  let sameRangeAttempts = 0
   const startedAt = new Date().toISOString()
 
   const initial = await readProjectProgress(session)
@@ -266,6 +268,12 @@ async function runLoop(session: ProjectSessionContext, token: number, targetUnit
 
     const from = Math.max(1, covered + 1)
     const to = Math.min(total, from + PLANNING_ACTION_CHAPTER_LIMIT - 1)
+    const rangeKey = from + '-' + to + '@' + covered
+    if (rangeKey === lastRange) { sameRangeAttempts += 1 } else { lastRange = rangeKey; sameRangeAttempts = 1 }
+    if (sameRangeAttempts > 3) {
+      emit({ status: 'failed', currentBatch: null, batchPercent: 0, message: text('第 ' + from + '–' + to + ' 章连续多次未能完整保存（停在第 ' + covered + ' 章），已停止以避免无限循环；可调小每章字数或范围后重试。', 'Chapters ' + from + '-' + to + ' repeatedly failed to save completely (stalled at chapter ' + covered + '). Stopped to avoid an endless loop; try a smaller per-chapter length or range.') })
+      return
+    }
     emit({
       status: 'running', totalChapters: total, coveredChapters: covered,
       percent: Math.floor((covered / total) * 100),
@@ -305,6 +313,8 @@ async function runLoop(session: ProjectSessionContext, token: number, targetUnit
 
     if (result.ok && afterCovered > covered) {
       consecutiveFailures = 0
+      lastRange = ''
+      sameRangeAttempts = 0
       batchesCompleted += 1
       emit({
         coveredChapters: afterCovered,

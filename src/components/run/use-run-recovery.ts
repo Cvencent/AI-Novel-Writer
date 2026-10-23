@@ -93,6 +93,8 @@ export interface RunRecovery {
   resumeReview: (entry: ReviewEntry) => void
   resumeBatch: (entry: BatchEntry) => void
   resumeDraft: (entry: DraftEntry) => void
+  /** 从右侧列表移除一张恢复卡片；不改动已经保存的正式内容。 */
+  dismiss: (entry: RecoveryEntry) => void
 }
 
 /**
@@ -111,6 +113,7 @@ export function useRunRecovery(): RunRecovery {
   const [snapshotTick, setSnapshotTick] = useState(0)
   const [selection, setSelection] = useState<Record<string, string[]>>({})
   const [busy, setBusy] = useState(false)
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set())
 
   useEffect(() => {
     if (!session) {
@@ -160,6 +163,12 @@ export function useRunRecovery(): RunRecovery {
 
   const stillCurrent = useCallback(() => session !== null && sameProjectSessionContext(session, currentSession()), [session])
 
+  /** 关掉卡片只影响这一份侧页视图：正式内容、检查点与运行记录都保留。 */
+  const dismiss = useCallback((entry: RecoveryEntry) => {
+    setDismissed(previous => new Set(previous).add(`${entry.kind}:${entry.key}`))
+  }, [])
+
+
   const act = useCallback(async (operation: (session: ProjectSessionContext) => Promise<void>) => {
     if (busy || !session || !stillCurrent()) return
     setBusy(true)
@@ -190,7 +199,8 @@ export function useRunRecovery(): RunRecovery {
   }, [locale, stillCurrent])
 
   return {
-    entries,
+    entries: entries.filter(entry => !dismissed.has(`${entry.kind}:${entry.key}`)),
+    dismiss,
     candidateError,
     generationError,
     busy,
