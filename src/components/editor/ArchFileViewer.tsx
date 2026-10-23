@@ -18,6 +18,22 @@ import CodeMirrorEditor from './CodeMirrorEditor'
 import type { EditorInlineScope } from '../../shared/editor-inline-generation'
 import { SaveFeedback, type SaveOutcome } from './save-feedback'
 import { useProjectStore } from '../../stores/project-store'
+/** 从细纲正文里删掉选中的章节块：从该章标题起，删到下一个章节标题之前。 */
+function removeOutlineChapters(content: string, headings: Set<string>): string {
+  if (headings.size === 0) return content
+  const lines = content.replace(/\r\n?/g, String.fromCharCode(10)).split(String.fromCharCode(10))
+  const out: string[] = []
+  let skipping = false
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (/^#{1,4}\s*第\s*\d+/.test(trimmed)) {
+      skipping = [...headings].some(heading => trimmed === heading.trim() || trimmed.startsWith(heading.trim()))
+    }
+    if (!skipping) out.push(line)
+  }
+  return out.join(String.fromCharCode(10)).replace(/\n{3,}/g, String.fromCharCode(10) + String.fromCharCode(10)).trim()
+}
+
 import { useLocaleStore } from '../../stores/locale-store'
 import { launchCreativeWorkflow } from '../../services/workflows/creative-workflow-launcher'
 import { createArchitectureWorkflow } from '../../services/workflows/architecture-workflow'
@@ -187,6 +203,7 @@ function ArchFileViewerSession({
   /** 右侧大纲目录：点某一段/某一章后，给编辑器一个递增的定位请求。 */
   const [revealRequest, setRevealRequest] = useState<{ text: string; requestId: number } | null>(null)
   const revealSequenceRef = useRef(0)
+  const [selectedOutline, setSelectedOutline] = useState<Set<string>>(new Set())
 
   const isArchRunning = useWorkflowStore(s => s.isTypeRunning('architecture_generation'))
   const {
@@ -813,9 +830,27 @@ function ArchFileViewerSession({
               {stepKey === 'arc' ? text('粗纲分段', 'Arc segments') : text('大纲章节', 'Outline chapters')}
               <span className="arch-outline-nav-count">{outlineNavigation.length}</span>
             </p>
+            {stepKey === 'synopsis' && (
+              <div className="arch-outline-nav-bulk">
+                <label>
+                  <input type="checkbox" checked={outlineNavigation.length > 0 && outlineNavigation.every(item => selectedOutline.has(item.heading))}
+                    onChange={event => setSelectedOutline(event.target.checked ? new Set(outlineNavigation.map(item => item.heading)) : new Set())} />
+                  {text('全选', 'Select all')}
+                </label>
+                <button type="button" disabled={selectedOutline.size === 0}
+                  onClick={() => { const next = removeOutlineChapters(editorContent, selectedOutline); setSelectedOutline(new Set()); handleChange(next); void handleSave(next) }}>
+                  {text(`删除所选 ${selectedOutline.size} 章`, `Delete ${selectedOutline.size} selected`)}
+                </button>
+              </div>
+            )}
             <ol className="arch-outline-nav-list">
               {outlineNavigation.map(item => (
-                <li key={item.heading}>
+                <li key={item.heading} className="arch-outline-nav-row">
+                  {stepKey === 'synopsis' && (
+                    <input type="checkbox" aria-label={text(`选择${item.label}`, `Select ${item.label}`)}
+                      checked={selectedOutline.has(item.heading)}
+                      onChange={event => setSelectedOutline(prev => { const next = new Set(prev); if (event.target.checked) next.add(item.heading); else next.delete(item.heading); return next })} />
+                  )}
                   <button
                     type="button"
                     className="arch-outline-nav-item"

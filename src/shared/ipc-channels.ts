@@ -882,6 +882,10 @@ export interface DatabaseChannels {
     args: [arcIndex: number, expectedRevision: number, input: { title: string; summary: string; beat: ArcOutlineRecord['beat'] }, expectedProjectPath: string]
     return: { success: boolean; record?: ArcOutlineRecord; error?: string }
   }
+  'db:arc-outline-remove-from': {
+    args: [arcIndex: number, expectedProjectPath: string]
+    return: { success: boolean; count?: number; error?: string }
+  }
   'db:arc-outline-mark-needs-regen': {
     args: [arcIndex: number, expectedProjectPath: string]
     return: { success: boolean; count?: number; error?: string }

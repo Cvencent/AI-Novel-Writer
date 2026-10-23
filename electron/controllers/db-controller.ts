@@ -134,6 +134,7 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:arc-outline-revise',
   'db:arc-outline-replace-segment',
   'db:arc-outline-mark-needs-regen',
+  'db:arc-outline-remove-from',
   'db:arc-binding-mark-stale',
   'db:arc-binding-bind-range',
   'db:outline-summary-save',
@@ -215,6 +216,13 @@ export function registerDatabaseController() {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
       return { success: true, count: ArcOutlineRepository.markNeedsRegenFrom(arcIndex) }
+    } catch (error) { return { success: false, error: String(error) } }
+  })
+
+  ipcMain.handle('db:arc-outline-remove-from', async (_event, arcIndex: number, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, count: ArcOutlineRepository.removeFrom(arcIndex) }
     } catch (error) { return { success: false, error: String(error) } }
   })
 

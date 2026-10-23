@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
-import { Check, Layers, ListTree, PencilLine, SkipForward, Sparkles } from 'lucide-react'
+import { Check, Layers, ListTree, PencilLine, SkipForward, Sparkles, Trash2 } from 'lucide-react'
 import ArcReviseDialog, { type ArcReviseScope } from './ArcReviseDialog'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
@@ -10,6 +10,7 @@ import { launchCreativeWorkflow } from '../../../services/workflows/creative-wor
 import { plotOutlineNextChapter, type PlotOutlineRangeSource } from '../../../shared/plot-outline-contract'
 import type { OutlineProgress } from '../../../shared/plot-outline-checkpoint'
 import { Button } from '../../ui/Button'
+import { DangerConfirm } from '../../ui/DangerConfirm'
 import type { ArcOutlineRecord } from '../../../../electron/repositories/arc-outline-repository'
 
 /** 生成模式：逐段等作者确认，或连续铺完。 */
@@ -47,6 +48,8 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
   const [pendingRevise, setPendingRevise] = useState<{ direction: string; chapters: number[] } | null>(null)
   const [busyArc, setBusyArc] = useState(false)
   const [busyFineArc, setBusyFineArc] = useState<number | null>(null)
+  const [selectedArcs, setSelectedArcs] = useState<Set<number>>(new Set())
+  const [pendingDeleteArc, setPendingDeleteArc] = useState<number | null>(null)
   const [error, setError] = useState('')
   const totalChapters = useProjectStore(s => s.currentProject?.novelConfig?.totalChapters ?? 0)
 
@@ -297,10 +300,26 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
 
       {arcs.length === 0
         ? <p className="arch-arc-empty">{text('还没有粗纲。粗纲负责定方向，不含人名；确认后再生成逐章细纲。', 'No arc outline yet. The arc outline sets direction without character names; chapter outlines come after you confirm it.')}</p>
-        : (
+        : (<>
+          <div className="arch-arc-bulk">
+            <label className="arch-arc-bulk-all">
+              <input type="checkbox" checked={arcs.length > 0 && arcs.every(arc => selectedArcs.has(arc.arcIndex))}
+                onChange={event => setSelectedArcs(event.target.checked ? new Set(arcs.map(arc => arc.arcIndex)) : new Set())} />
+              {text('全选', 'Select all')}
+            </label>
+            <span>{text(`已选 ${selectedArcs.size} 段`, `${selectedArcs.size} selected`)}</span>
+            <Button variant="secondary" size="sm" disabled={selectedArcs.size === 0}
+              onClick={() => setPendingDeleteArc(Math.min(...selectedArcs))}>
+              <Trash2 size={13} aria-hidden />{text('删除所选段及之后的全部段', 'Delete selected and all later segments')}
+            </Button>
+          </div>
           <ol className="arch-arc-list">
             {arcs.map(arc => (
               <li key={arc.id} className="arch-arc-item" data-status={arc.status}>
+                <input type="checkbox" className="arch-arc-check"
+                  aria-label={text(`选择第 ${arc.fromChapter}–${arc.toChapter} 章粗纲`, `Select arc ch. ${arc.fromChapter}-${arc.toChapter}`)}
+                  checked={selectedArcs.has(arc.arcIndex)}
+                  onChange={event => setSelectedArcs(prev => { const next = new Set(prev); if (event.target.checked) next.add(arc.arcIndex); else next.delete(arc.arcIndex); return next })} />
                 <span className="arch-arc-range">{text('第 ' + arc.fromChapter + '–' + arc.toChapter + ' 章', 'Ch. ' + arc.fromChapter + '-' + arc.toChapter)}</span>
                 <span className="arch-arc-name">{arc.title}</span>
                 <span className="arch-arc-beat">{arc.beat}</span>
@@ -328,7 +347,7 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
               </li>
             ))}
           </ol>
-        )}
+        </>)}
 
       {pendingRevise && (
         <p className="arch-arc-pending" role="status">
@@ -394,6 +413,25 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
             })()
           }}
           onClose={() => setReviseScope(null)}
+        />
+      )}
+      {pendingDeleteArc !== null && (
+        <DangerConfirm
+          open
+          onOpenChange={open => { if (!open) setPendingDeleteArc(null) }}
+          title={text('删除所选粗纲段？', 'Delete the selected arc segments?')}
+          consequence={text(`将从第 ${pendingDeleteArc} 段起，删除该段及之后的全部粗纲段。`, `Segments from #${pendingDeleteArc} onward will be deleted.`)}
+          recoverability={text('删除后无法撤销。可以重新生成这些段。', 'This cannot be undone. You can regenerate these segments.')}
+          confirmLabel={text('删除', 'Delete')}
+          cancelLabel={text('取消', 'Cancel')}
+          onConfirm={() => { void (async () => {
+            const result = await ipc.invoke('db:arc-outline-remove-from', pendingDeleteArc, projectKey).catch(() => null) as { success?: boolean; error?: string } | null
+            if (!result?.success) { setError(result?.error ?? text('删除失败', 'Delete failed')); setPendingDeleteArc(null); return }
+            setSelectedArcs(new Set())
+            setPendingDeleteArc(null)
+            await load()
+            notifyChanged()
+          })() }}
         />
       )}
     </section>
