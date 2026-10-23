@@ -1974,6 +1974,9 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       : ''
 
     const taskPrompt = [
+      promptLanguageText(writingLanguage,
+        `【核心大纲（全书方向，必须遵守）】\n${config.coreOutline || `（未填写）`}`,
+        `[Core outline (book-level direction, must follow)]\n${config.coreOutline || `(not provided)`}`),
       promptBuilder.build(),
       ...(arcDirective ? [arcDirective] : []),
       ...(summaryDirective ? [summaryDirective] : []),

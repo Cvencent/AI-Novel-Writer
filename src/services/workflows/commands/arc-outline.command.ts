@@ -15,6 +15,8 @@ import { promptLanguageText } from '../../prompt-language'
 import { localizeNovelConfigFacts } from '../../../shared/novel-config-localization'
 import type { ArchitectureProjectSnapshot } from './architecture.command'
 
+const nl = String.fromCharCode(10)
+
 /** 粗纲阶段的人名禁区与段长约束，写进提示词。 */
 function arcInstruction(writingLanguage: 'zh-CN' | 'en-US', fromChapter: number, totalChapters: number, recentBeats: readonly ArcBeat[]): string {
   const beats = ARC_BEATS.join(' | ')
@@ -166,6 +168,9 @@ export class GenerateArcOutlineCommand extends BaseWorkflowCommand<string> {
       promptLanguageText(writingLanguage,
         `【故事前提】\n${premise}\n\n【世界观】\n${worldbuilding}\n\n【题材与受众】\n${modelFacts.genre} / ${modelFacts.targetAudience}`,
         `[Story premise]\n${premise}\n\n[Worldbuilding]\n${worldbuilding}\n\n[Genre and audience]\n${modelFacts.genre} / ${modelFacts.targetAudience}`),
+      promptLanguageText(writingLanguage,
+        `【核心大纲（全书方向，必须遵守）】` + nl + (this.snapshot.novelConfig.coreOutline || `（未填写）`),
+        `[Core outline (book-level direction, must follow)]` + nl + (this.snapshot.novelConfig.coreOutline || `(not provided)`)),
       priorArcSummary ? promptLanguageText(writingLanguage,
         `【已确认的前序段（不要重复其内容）】\n${priorArcSummary}`,
         `[Confirmed preceding segments (do not repeat)]\n${priorArcSummary}`) : '',
@@ -273,6 +278,9 @@ export class RegenerateArcOutlineSegmentCommand extends BaseWorkflowCommand<stri
       promptLanguageText(writingLanguage,
         `【故事前提】\n${premise}\n\n【世界观】\n${worldbuilding}`,
         `[Story premise]\n${premise}\n\n[Worldbuilding]\n${worldbuilding}`),
+      promptLanguageText(writingLanguage,
+        `【核心大纲（全书方向，必须遵守）】` + nl + (this.snapshot.novelConfig.coreOutline || `（未填写）`),
+        `[Core outline (book-level direction, must follow)]` + nl + (this.snapshot.novelConfig.coreOutline || `(not provided)`)),
       promptLanguageText(writingLanguage,
         `【需要重写的粗纲段】第 ${target.fromChapter}–${target.toChapter} 章
 当前标题：${target.title}
