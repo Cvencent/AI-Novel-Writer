@@ -1947,11 +1947,23 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         `  Outline context: ${outlineContext.stats.totalChapters} chapters, ${outlineContext.stats.usedChars} chars injected (budget ${outlineContext.stats.budgetChars})${outlineContext.stats.compacted ? ', earlier chapters compacted' : ''}`,
       ))
     }
+    const nl = String.fromCharCode(10)
+    // 细纲必须基于粗纲：按段生成时用该段，一键生成时注入覆盖本批的粗纲段与全书粗纲索引。
     const arcDirective = this.options.arcContext
       ? promptLanguageText(writingLanguage,
-          `【所属粗纲段（第 ${this.options.arcContext.from}–${this.options.arcContext.to} 章，形态 ${this.options.arcContext.beat}）】\n本批细纲必须服从这一段的方向与转折，不要改变它的走向：\n${this.options.arcContext.summary}`,
-          `[Owning arc segment (chapters ${this.options.arcContext.from}-${this.options.arcContext.to}, beat ${this.options.arcContext.beat})]\nThis batch must follow the segment's direction and turning points without changing them:\n${this.options.arcContext.summary}`)
-      : ''
+          `【所属粗纲段（第 ${this.options.arcContext.from}–${this.options.arcContext.to} 章，形态 ${this.options.arcContext.beat}）】` + nl + `本批细纲必须服从这一段的方向与转折，不要改变它的走向：` + nl + this.options.arcContext.summary,
+          `[Owning arc segment (chapters ${this.options.arcContext.from}-${this.options.arcContext.to}, beat ${this.options.arcContext.beat})]` + nl + `This batch must follow the segment direction and turning points without changing them:` + nl + this.options.arcContext.summary)
+      : await (async () => {
+          const arcs = await ipc.invokeWithProjectSession(projectSession, 'db:arc-outline-list', expectedProjectPath).catch(() => [])
+          if (!Array.isArray(arcs) || arcs.length === 0) return ''
+          const covering = arcs.filter((arc: { fromChapter: number; toChapter: number }) => arc.toChapter >= from && arc.fromChapter <= to)
+          const index = arcs.map((arc: { fromChapter: number; toChapter: number; beat: string; title: string; status?: string }) => `- 第${arc.fromChapter}–${arc.toChapter}章（${arc.beat}）${arc.title}${arc.status === 'confirmed' ? '' : '［未确认］'}`).join(nl)
+          const coveringText = covering.map((arc: { fromChapter: number; toChapter: number; beat: string; title: string; summary: string }) => `第${arc.fromChapter}–${arc.toChapter}章（${arc.beat}）${arc.title}：` + nl + arc.summary).join(nl + nl)
+          return promptLanguageText(writingLanguage,
+            `【全书粗纲索引（方向总览，供判断前后文）】` + nl + index + nl + nl + `【本批覆盖的粗纲段（细纲必须服从其方向，不得改写走向）】` + nl + (coveringText || '（本批范围没有对应粗纲段）'),
+            `[Full arc outline index (direction overview)]` + nl + index + nl + nl + `[Arc segments covering this batch (the chapter outline must follow their direction)]` + nl + (coveringText || '(no arc segment covers this batch)'))
+        })()
+
     const recentSummaries = await ipc.invokeWithProjectSession(
       projectSession, 'db:outline-summary-list-before', from - 1, 5, expectedProjectPath,
     ).catch(() => [])
