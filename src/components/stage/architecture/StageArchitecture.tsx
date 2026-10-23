@@ -17,7 +17,6 @@ import { toast } from '../../ui/Toast'
 import { refreshStageWork } from '../use-stage-work'
 import ArchitectureGenerateDialog from './ArchitectureGenerateDialog'
 import ContinuousOutlinePanel from './ContinuousOutlinePanel'
-import { startContinuousOutline } from '../../../services/workflows/continuous-outline-runner'
 import { plotOutlineNextChapter } from '../../../shared/plot-outline-contract'
 import ArchitectureSection from './ArchitectureSection'
 import { excerpt, mainAction, sectionBadge, SECTION_ORDER } from './architecture-sections'
@@ -126,7 +125,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
               groups={[{ id: 'page', items: [
                 { id: 'refresh', label: text('刷新状态', 'Refresh status'), onSelect: reload },
                 ...(action === 'next' ? [{ id: 'generate', label: text('AI 生成架构…', 'Generate with AI…'), onSelect: () => overview.openGenerateDialog() }] : []),
-                ...(outlineIncomplete ? [{ id: 'generate-all', label: text('一次生成全部剩余大纲…', 'Generate all remaining outline…'), onSelect: () => startContinuousOutline() }] : []),
+                ...(outlineIncomplete ? [{ id: 'generate-all', label: text('一次生成全部剩余大纲…', 'Generate all remaining outline…'), onSelect: () => overview.openGenerateDialog(['synopsis']) }] : []),
               ] }]}
             />
             {action === 'next'
@@ -156,7 +155,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
                 </>
               )}
             {outlineIncomplete && (
-              <Button variant="secondary" onClick={() => startContinuousOutline()} title={text('从已确认的下一章开始，逐批生成到全书结束', 'Generate every remaining batch through the end of the book')}>
+              <Button variant="secondary" onClick={() => overview.openGenerateDialog(['synopsis'])} title={text('打开生成弹框，可调整每章细纲字数与章节范围', 'Open the dialog to adjust per-chapter outline length and chapter range')}>
                 <Sparkles size={14} aria-hidden />
                 {text('一键生成全部剩余大纲', 'Generate all remaining outline')}
               </Button>
@@ -176,6 +175,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
               summary={summary(key)}
               onEdit={() => editSection(key)}
               onGenerate={() => { if (key !== 'arc') overview.openGenerateDialog([key]) }}
+              onGenerateAllSynopsis={() => overview.openGenerateDialog(['synopsis'])}
               onGenerateArc={() => arcRunnerRef.current?.('next')}
               onArcChanged={reload}
               arcRunnerRef={arcRunnerRef}

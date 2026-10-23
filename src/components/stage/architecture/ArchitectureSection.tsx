@@ -17,6 +17,8 @@ interface SectionProps {
   summary: string
   onEdit: () => void
   onGenerate: () => void
+  /** 细纲一节的一键生成入口：打开可调字数与章节范围的生成弹框。 */
+  onGenerateAllSynopsis: () => void
   /** 粗纲一节专用的分段生成入口；它不走「AI 生成架构」对话框。 */
   onGenerateArc: () => void
   /** 粗纲台账变化后通知上层重读：节徽标与流程脊都读 overview.arc。 */
@@ -134,7 +136,7 @@ function RosterNotice({ overview }: { overview: ArchitectureOverview }) {
   )
 }
 
-export default function ArchitectureSection({ sectionKey, overview, badge, summary, onEdit, onGenerate, onGenerateArc, onArcChanged, arcRunnerRef, onClear, onOpenCast, onReload }: SectionProps) {
+export default function ArchitectureSection({ sectionKey, overview, badge, summary, onEdit, onGenerate, onGenerateAllSynopsis, onGenerateArc, onArcChanged, arcRunnerRef, onClear, onOpenCast, onReload }: SectionProps) {
   const text = useLocaleStore(s => s.text)
   const filled = Boolean(overview.archStatus[sectionKey])
   const cast = sectionKey === 'characters'
@@ -171,6 +173,13 @@ export default function ArchitectureSection({ sectionKey, overview, badge, summa
         <Button variant="secondary" size="sm" onClick={onGenerateArc}>
           <Sparkles size={14} aria-hidden />{overview.arc.list.length > 0 ? text('生成下一段', 'Next segment') : text('AI 生成粗纲', 'Generate arc outline')}
         </Button>
+      </>
+    )
+  } else if (sectionKey === 'synopsis') {
+    actions = (
+      <>
+        <Button variant="text" size="sm" onClick={onEdit}><PenLine size={14} aria-hidden />{filled ? text('编辑', 'Edit') : text('自己写', 'Write it')}</Button>
+        <Button variant="secondary" size="sm" onClick={onGenerateAllSynopsis}><Sparkles size={14} aria-hidden />{text('一键生成全部细纲', 'Generate all chapter outlines')}</Button>
       </>
     )
   } else if (filled) {

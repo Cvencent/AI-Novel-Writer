@@ -8,7 +8,7 @@ import { buildOutlineRetrievalContext, DEFAULT_OUTLINE_CONTEXT_BUDGET } from './
 
 export const DEFAULT_PLANNING_ACTION_CHAPTERS = 5
 export const PLANNING_ACTION_CHAPTER_LIMIT = 10
-export const DEFAULT_PLANNING_TARGET_UNITS = 600
+export const DEFAULT_PLANNING_TARGET_UNITS = 300
 export const PLANNING_TARGET_UNITS_LIMIT = 1000
 
 export function parsePlanningTargetUnits(value: unknown): number {
