@@ -17,6 +17,7 @@ import { toast } from '../../ui/Toast'
 import { refreshStageWork } from '../use-stage-work'
 import ArchitectureGenerateDialog from './ArchitectureGenerateDialog'
 import ContinuousOutlinePanel from './ContinuousOutlinePanel'
+import { startContinuousOutline } from '../../../services/workflows/continuous-outline-runner'
 import { plotOutlineNextChapter } from '../../../shared/plot-outline-contract'
 import ArchitectureSection from './ArchitectureSection'
 import { excerpt, mainAction, sectionBadge, SECTION_ORDER } from './architecture-sections'
@@ -50,6 +51,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
   const cast = useCastSummary(projectKey)
   /** 清空确认打开时冻结的会话：确认时作品已换就什么也不写。 */
   const [clearing, setClearing] = useState<{ key: ArchStepKey; session: ProjectSessionContext } | null>(null)
+  const [continuousTargetUnits, setContinuousTargetUnits] = useState(300)
   /** 粗纲节的生成入口由 ArcOutlinePanel 提供，节头按钮直接复用同一份逻辑。 */
   const arcRunnerRef = useRef<((mode: 'next' | 'reverse') => void) | null>(null)
 
@@ -125,7 +127,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
               groups={[{ id: 'page', items: [
                 { id: 'refresh', label: text('刷新状态', 'Refresh status'), onSelect: reload },
                 ...(action === 'next' ? [{ id: 'generate', label: text('AI 生成架构…', 'Generate with AI…'), onSelect: () => overview.openGenerateDialog() }] : []),
-                ...(outlineIncomplete ? [{ id: 'generate-all', label: text('一次生成全部剩余大纲…', 'Generate all remaining outline…'), onSelect: () => overview.openGenerateDialog(['synopsis']) }] : []),
+                ...(outlineIncomplete ? [{ id: 'generate-all', label: text('一次生成全部剩余大纲…', 'Generate all remaining chapter outlines…'), onSelect: () => overview.openGenerateDialog(['synopsis']) }] : []),
               ] }]}
             />
             {action === 'next'
@@ -155,15 +157,15 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
                 </>
               )}
             {outlineIncomplete && (
-              <Button variant="secondary" onClick={() => overview.openGenerateDialog(['synopsis'])} title={text('打开生成弹框，可调整每章细纲字数与章节范围', 'Open the dialog to adjust per-chapter outline length and chapter range')}>
+              <><label className="arch-continuous-target">{text('每章约', 'About')}<input type="number" min={1} max={1000} value={continuousTargetUnits} aria-label={text('每章细纲目标字数', 'Outline target per chapter')} onChange={event => setContinuousTargetUnits(Math.max(1, Math.min(1000, Number(event.target.value) || 1)))} />{text('字', 'chars')}</label><Button variant="secondary" onClick={() => startContinuousOutline(continuousTargetUnits)} title={text('自动按 10 章一批，一直生成到全书结束，可随时暂停', 'Runs 10-chapter batches automatically to the end of the book; you can pause any time')}>
                 <Sparkles size={14} aria-hidden />
-                {text('一键生成全部剩余大纲', 'Generate all remaining outline')}
-              </Button>
+                {text('一键生成全部剩余细纲', 'Generate all remaining chapter outlines')}
+              </Button></>
             )}
           </div>
         </header>
 
-        <ContinuousOutlinePanel />
+        <ContinuousOutlinePanel targetUnits={continuousTargetUnits} />
 
         <div className="arch-sections">
           {SECTION_ORDER.map(key => (
@@ -175,7 +177,7 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
               summary={summary(key)}
               onEdit={() => editSection(key)}
               onGenerate={() => { if (key !== 'arc') overview.openGenerateDialog([key]) }}
-              onGenerateAllSynopsis={() => overview.openGenerateDialog(['synopsis'])}
+              onGenerateAllSynopsis={() => startContinuousOutline(continuousTargetUnits)}
               onGenerateArc={() => arcRunnerRef.current?.('next')}
               onArcChanged={reload}
               arcRunnerRef={arcRunnerRef}

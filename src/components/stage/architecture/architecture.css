@@ -603,3 +603,21 @@
   align-items: center;
   gap: 6px;
 }
+/* 连续生成：每章目标字数 */
+.arch-continuous-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-12);
+  color: var(--ink-3);
+  margin-right: var(--s-2);
+}
+.arch-continuous-target input {
+  width: 68px;
+  padding: 4px 6px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--fs-12);
+}
