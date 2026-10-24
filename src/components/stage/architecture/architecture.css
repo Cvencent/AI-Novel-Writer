@@ -554,7 +554,7 @@
   font-size: 12px; line-height: 1.45;
   color: var(--color-text-secondary);
 }
-.arch-outline-nav-item:hover { background: var(--color-surface-hover, rgba(127, 127, 127, 0.1)); }
+.arch-outline-nav-item:hover { background: var(--color-surface-hover, var(--sunken)); }
 .arch-outline-nav-item:focus-visible {
   outline: 2px solid var(--color-accent); outline-offset: -1px;
 }

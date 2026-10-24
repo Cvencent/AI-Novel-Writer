@@ -798,8 +798,12 @@ export function registerDatabaseController() {
 
   ipcMain.handle('db:character-roster-read', async (_event, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
-    const roster = CharacterRosterRepository.read()
     const database = getProjectDb()
+    // 旧版细纲状态推进可能只改了 cs_* 而没有刷新事实哈希。读取时仅在
+    // characters_arch 投影完全一致的前提下做一次安全校准；真正的静态事实
+    // 冲突仍保持 inconsistent，交给显式修复流程处理。
+    const repairedRoster = database ? CharacterRosterRepository.repairFactHashIfSafe(database) : null
+    const roster = repairedRoster ?? CharacterRosterRepository.read(database ?? undefined)
     const session = projectAccess.captureCurrentSession()
     let currentDerivedFields = {}
     if (database && session) {

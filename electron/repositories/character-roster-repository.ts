@@ -978,6 +978,47 @@ export class CharacterRosterRepository {
     return readSnapshot(db)
   }
 
+  /**
+   * 只修复“静态投影完全匹配、仅动态事实哈希过期”的已知安全场景。
+   *
+   * 细纲推进 cs_* 状态不会改变 characters_arch 投影。旧版本漏刷新事实哈希，
+   * 会让完好的角色卡被误判为 inconsistent。这里绝不修改角色卡或投影，只在
+   * projection_hash 与当前 characters_arch 同时匹配时重算事实哈希。
+   */
+  static repairFactHashIfSafe(db = requiredDb()): CharacterRosterSnapshot | null {
+    ensureCharacterRosterSchema(db)
+    return db.transaction(() => {
+      const snapshot = readSnapshot(db)
+      if (snapshot.migrationState !== 'ready' || snapshot.status !== 'inconsistent') return null
+      const meta = readMeta(db)
+      const currentProjection = readCurrentProjection(db)
+      if (
+        meta.projection_hash !== hashText(snapshot.renderedMarkdown)
+        || currentProjection !== snapshot.renderedMarkdown
+      ) return null
+
+      const entries = hasCharacterIdentitySchema(db)
+        ? identityProjectionEntries(db)
+        : sortedEntries(CharacterRepository.getAll(db).map(entryFromCharacter))
+      const factHash = fullFactHash(entries)
+      if (meta.fact_hash === factHash) return null
+
+      const updated = db.prepare(`
+        UPDATE character_roster_meta
+        SET revision = revision + 1, fact_hash = ?, updated_at = datetime('now')
+        WHERE id = 'main'
+      `).run(factHash)
+      if (updated.changes !== 1) throw new Error('CHARACTER_ROSTER_SAFE_REPAIR_FAILED')
+      const repaired = readSnapshot(db)
+      if (
+        repaired.migrationState !== 'ready'
+        || (repaired.status !== 'ready' && repaired.status !== 'empty')
+        || repaired.nameOnlyFactHash !== factHash
+      ) throw new Error('CHARACTER_ROSTER_SAFE_REPAIR_FAILED')
+      return repaired
+    }).immediate()
+  }
+
   static commit(candidate: CharacterRosterCommitRequest, assertGenerationSources?: () => void): CharacterRosterCommitReceipt {
     const db = requiredDb()
     ensureCharacterRosterSchema(db)

@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   characterGetAll: vi.fn(() => []),
   characterSaveAll: vi.fn(),
   characterDelete: vi.fn(),
+  characterRosterRepairFactHashIfSafe: vi.fn(),
   characterRosterRead: vi.fn(() => ({
     schemaVersion: 1,
     revision: 0,
@@ -124,6 +125,7 @@ vi.mock('../../services/character-roster-author', () => ({ commitAuthorCharacter
 vi.mock('../../repositories/character-roster-repository', () => ({
   CharacterRosterRepository: {
     read: mocks.characterRosterRead,
+    repairFactHashIfSafe: mocks.characterRosterRepairFactHashIfSafe,
     commit: mocks.characterRosterCommit,
   },
 }))
@@ -308,6 +310,7 @@ describe('database controller project context guard', () => {
     expect(await handler('db:character-roster-read')({}, 'C:/projects/A')).toEqual({
       ...roster, currentDerivedFields: { characterA: ['recentEvents'] },
     })
+    expect(mocks.characterRosterRepairFactHashIfSafe).toHaveBeenCalledWith(database)
     expect(mocks.readPortableCurrentAuthority).toHaveBeenCalledWith({
       database, projectStorageRoot: 'C:/projects/A/.ai-novel', projectId: 'project-A',
     })

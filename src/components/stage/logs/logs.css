@@ -61,7 +61,7 @@
   margin: 8px 0 0; padding: 7px 9px;
   font-size: 12px; line-height: 1.55;
   color: var(--color-text-secondary);
-  background: var(--color-surface-muted, rgba(127, 127, 127, 0.08));
+  background: var(--color-surface-muted, var(--sunken));
   border-left: 2px solid var(--color-border);
   border-radius: var(--radius-sm);
 }

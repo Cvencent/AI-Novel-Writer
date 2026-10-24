@@ -1,5 +1,7 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import { getProjectDb } from '../database'
+import { hasCharacterIdentitySchema } from './character-repository'
+import { refreshCharacterStateProjection } from './character-roster-repository'
 
 export interface CharacterStatePatch {
   characterName: string
@@ -29,14 +31,20 @@ export class OutlineCharacterStateRepository {
     if (!Number.isSafeInteger(patch.chapterNumber) || patch.chapterNumber < 1) {
       throw new Error('OUTLINE_CHARACTER_CHAPTER_INVALID')
     }
-    const info = database.prepare(`
-      UPDATE characters
-      SET cs_recent_events = ?, cs_location = COALESCE(NULLIF(?, ''), cs_location),
-          cs_key_items = COALESCE(NULLIF(?, ''), cs_key_items),
-          cs_updated_at_chapter = ?, updated_at = datetime('now')
-      WHERE name = ? AND retired = 0
-    `).run(patch.recentEvents, patch.location ?? '', patch.keyItems ?? '', patch.chapterNumber, name)
-    return info.changes > 0
+    return database.transaction(() => {
+      const info = database.prepare(`
+        UPDATE characters
+        SET cs_recent_events = ?, cs_location = COALESCE(NULLIF(?, ''), cs_location),
+            cs_key_items = COALESCE(NULLIF(?, ''), cs_key_items),
+            cs_updated_at_chapter = ?, updated_at = datetime('now')
+        WHERE name = ? AND retired = 0
+      `).run(patch.recentEvents, patch.location ?? '', patch.keyItems ?? '', patch.chapterNumber, name)
+      if (info.changes === 0) return false
+      // cs_* 是完整角色事实的一部分。细纲推进后若不刷新 roster 事实哈希，
+      // 下一次读取会把完全正常的角色卡误判为 inconsistent。
+      if (hasCharacterIdentitySchema(database)) refreshCharacterStateProjection(database)
+      return true
+    }).immediate()
   }
 
   static read(characterName: string, db?: BetterSqlite3.Database): { recentEvents: string; location: string; keyItems: string; updatedAtChapter: number | null } | null {

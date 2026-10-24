@@ -106,3 +106,29 @@ it('同一操作 ACK 重试返回相同 factHash，且不重复推进事实', ()
   expect(retried.snapshot.factHash).toBe(first.snapshot.factHash)
   expect(retried.snapshot.revision).toBe(first.snapshot.revision)
 })
+it('安全修复只校准动态状态造成的过期事实哈希', () => {
+  const f = fixture()
+  const before = CharacterRosterRepository.read(f.db)
+  expect(before.status).toBe('ready')
+
+  f.db.prepare('UPDATE characters SET cs_recent_events=?,cs_updated_at_chapter=? WHERE character_id=?')
+    .run('刚抵达港口', 7, '观察者')
+  const stale = CharacterRosterRepository.read(f.db)
+  expect(stale).toMatchObject({ status: 'inconsistent', revision: before.revision })
+  expect(stale.entries.find(entry => entry.characterId === '观察者')?.currentState?.recentEvents).toBe('刚抵达港口')
+
+  const repaired = CharacterRosterRepository.repairFactHashIfSafe(f.db)
+  expect(repaired).toMatchObject({ status: 'ready', revision: before.revision + 1 })
+  expect(repaired?.entries.find(entry => entry.characterId === '观察者')?.currentState?.recentEvents).toBe('刚抵达港口')
+  expect(repaired?.nameOnlyFactHash).not.toBe(stale.nameOnlyFactHash)
+})
+
+it('静态角色事实不一致时拒绝自动修复', () => {
+  const f = fixture()
+  const before = CharacterRosterRepository.read(f.db)
+  f.db.prepare('UPDATE characters SET notes=? WHERE character_id=?').run('旁路改写', '观察者')
+
+  expect(CharacterRosterRepository.read(f.db).status).toBe('inconsistent')
+  expect(CharacterRosterRepository.repairFactHashIfSafe(f.db)).toBeNull()
+  expect(CharacterRosterRepository.read(f.db)).toMatchObject({ status: 'inconsistent', revision: before.revision })
+})

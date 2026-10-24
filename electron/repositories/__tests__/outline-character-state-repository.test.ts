@@ -7,6 +7,7 @@ import { closeProjectDatabase } from '../../database'
 import { openCanonicalProjectFixture } from '../../../test/helpers/canonical-project-fixture'
 import { getProjectDb } from '../../database'
 import { OutlineCharacterStateRepository } from '../outline-character-state-repository'
+import { CharacterRosterRepository, refreshCharacterIdentityProjection } from '../character-roster-repository'
 
 let projectRoot = ''
 
@@ -46,5 +47,20 @@ describe('OutlineCharacterStateRepository', () => {
     expect(state.location).toBe('学院')
     expect(state.keyItems).toBe('账册')
     expect(state.recentEvents).toBe('b')
+  })
+
+  it('推进动态状态后同步刷新角色名单事实哈希', () => {
+    const db = getProjectDb()!
+    db.prepare("INSERT INTO project_core(id,project_name,writing_language) VALUES('main','角色状态测试','zh-CN')").run()
+    db.transaction(() => refreshCharacterIdentityProjection(db))()
+    const before = CharacterRosterRepository.read(db)
+    expect(before.status).toBe('ready')
+
+    expect(OutlineCharacterStateRepository.apply({ characterName: '主角', chapterNumber: 12, recentEvents: '找回账册' }, db)).toBe(true)
+
+    const after = CharacterRosterRepository.read(db)
+    expect(after.status).toBe('ready')
+    expect(after.revision).toBe(before.revision + 1)
+    expect(after.factHash).not.toBe(before.factHash)
   })
 })
