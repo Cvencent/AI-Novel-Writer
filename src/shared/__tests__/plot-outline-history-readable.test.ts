@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { validPlotOutlineEntry, isLedgerStyleOutline, derivePlotOutlineCursor, plotOutlinePurpose } from '../plot-outline-contract'
 
 const diary = ['## 第196章：样品账', '', '七点，宿舍。账页最上面一行：停发第三日。', '七点半，地下二层。许照问：换不换。', '八点，界桩四号。断行一千一百八十米。', '九点，主路中段波动。', '十点签到后，公示区。', '**结算**：断供第一百五十七天。'].join(String.fromCharCode(10))
-const prose = ['## 第196章：样品账', '', '许照把三份稳定剂推过桌面，问林澈换不换。林澈没有立刻答，先把下月预扣和门牌期限并排算了一遍，最终签了字。', '回到界桩四号时，断行已经涨到一千一百八十米。他把差值抄在账页背面，忽然意识到这不是误差。'].join(String.fromCharCode(10))
+const prose = '## 第196章：样品账\n\n**场景与出场人物**：许照推来三份稳定剂，问换不换。\n\n**本章目标**：弄清换与不换哪个先塌。\n\n**阻力与升级**：下月预扣与门牌期限同时逼近。\n\n**转折与代价**：他签了字，代价落在下月配额。\n\n**结尾钩子**：断行涨到一千一百八十米。\n\n**伏笔**：界桩被人天天往外挪十米。\n'.split(String.fromCharCode(10)).join(String.fromCharCode(10))
 const range = { from: 196, to: 200 }
 const attempt = (text: string) => ({ purpose: plotOutlinePurpose(196, 'normal'), status: 'settled', finishReason: 'stop', artifact: { artifactId: 'a', text, revision: 1, textHash: 'h' } })
 

@@ -151,6 +151,16 @@ function headings(text: string): { from: number; to: number; index: number; end:
     end: match.index + match[0].length, grouped: !!(match[2] ?? match[4]) || /Chapters\s/iu.test(match[0]) }))
 }
 
+/** 细纲每章必须携带的固定小节，派生蓝图依赖这些小节。 */
+export const OUTLINE_SECTIONS = [
+  '场景与出场人物', '本章目标', '阻力与升级', '转折与代价', '结尾钩子', '伏笔',
+] as const
+export type OutlineSection = typeof OUTLINE_SECTIONS[number]
+export function hasRequiredOutlineSections(text: string): boolean {
+  const body = text.replace(/^##[^\r\n]*\r?\n/u, '')
+  return OUTLINE_SECTIONS.every(section => body.includes(section))
+}
+
 export function validPlotOutlineEntry(text: string, chapter: number): boolean {
   if (/```|~~~|大纲批次进度|后续概览|Outline batch progress|Later overview/iu.test(text)) return false
   if (!new RegExp(`^## (?:第${chapter}章|Chapter ${chapter})[:：][\\t ]*\\S[^\\r\\n]*\\r?\\n`, 'iu').test(text.trim())) return false
@@ -183,6 +193,7 @@ export function derivePlotOutlineCursor(range: PlotOutlineRange, acceptedCount: 
     // 日记体/账本体只在这里拒绝：这是「新产出能否被接受」的闸门。
     // 已接受的章节不再回溯校验，否则升级会污染历史运行的可读性。
     if (attempt.finishReason === 'stop' && attempt.artifact && validPlotOutlineEntry(attempt.artifact.text, chapter)
+        && hasRequiredOutlineSections(attempt.artifact.text)
         && !isLedgerStyleOutline(attempt.artifact.text))
       return { kind: 'accept', chapterNumber: chapter, artifactIds: [attempt.artifact.artifactId], text: attempt.artifact.text }
   }
@@ -432,10 +443,12 @@ export function plotOutlineRequestContract(
   return english
     ? `[Accepted outline context]\n${contextText}\n[/Accepted outline context]\n\n`
       + `Write only Chapter ${chapter}, inside the selected range ${progress.range.from}-${progress.range.to}. Use exactly one level-two Markdown heading "## Chapter ${chapter}: Title" with Arabic chapter digits, followed by a non-empty body. No chapter groups, list headings, other chapters, preface, progress line or later overview. ${planningTargetInstruction('outline', progress.targetUnits, progress.sourceExpected.writingLanguage)} Preserve all author facts, required events and ending requirements. Do not rewrite the accepted context.`
+      + '\n\n[Required sections (all six, in this order)]\n**Scene and cast** / **Chapter goal** / **Resistance and escalation** / **Turn and cost** / **Closing hook** / **Foreshadowing**. One paragraph each, section name in bold.'
       + '\n\n[How to write this chapter outline]\n- State what happens, why, and with what consequence; do not list a timetable.\n- Use dramatic units: scene and cast -> goal -> resistance and escalation -> turn or cost -> closing hook.\n- Prose style rules (pressure-response-settlement, number echoes) govern the novel prose, not the outline layout.\n- Forbidden: timestamped segments, per-item settlement lists, ledger excerpts, or a closing **Settlement** block.\n- Use the accepted context only for continuity; do not imitate its layout.'
       + (attempt === 'compact' ? '\nRebuild this chapter once from the original frozen facts and accepted context. The failed candidate is not a source. Produce a complete concise replacement, not a continuation or a cut-off excerpt.' : '')
     : `【已接受大纲上下文】\n${contextText}\n【已接受大纲上下文结束】\n\n`
       + `本次只写第 ${chapter} 章，所选范围为第 ${progress.range.from}–${progress.range.to} 章。只用一个二级 Markdown 章标题“## 第${chapter}章：标题”，章号使用阿拉伯数字，标题下一行写非空正文。不得输出章组、列表标题、其他章、开场说明、进度行或后续概览。${planningTargetInstruction('outline', progress.targetUnits, progress.sourceExpected.writingLanguage)}保留作者硬事实、明确事件和尾部要求，不改写已接受上下文。`
+      + `\n\n【必须使用的固定小节（缺一不可，按此顺序）】\n**场景与出场人物** / **本章目标** / **阻力与升级** / **转折与代价** / **结尾钩子** / **伏笔**。每个小节写一段，小节名用粗体开头。`
       + `\n\n【这一章的大纲怎么写】\n- 写「这一章要发生什么、为什么发生、结果如何」，不是按时间罗列日程。\n- 用戏剧单元组织：场景与出场人物 → 本章目标 → 阻力与升级 → 转折或代价 → 结尾钩子。\n- 正文里的人物文风（如压力—应对—结算、数字对照）只约束将来的正文，不要套用到细纲的排版上。\n- 禁止：以「七点／八点／上午／下午／傍晚」等时间戳分段；禁止逐条结算、账目清单、日程表式罗列；禁止「他写：…」式的日记摘抄；禁止在章末写「**结算**：…」。\n- 已接受上下文只用于承接剧情、人物状态与伏笔，不要模仿它的排版或句式。`
       + (attempt === 'compact' ? '\n本次从原始冻结事实和已接受上下文重新构建此章。失败候选不是来源。输出一份完整简洁的替代大纲，不得续接失败候选或截取其片段。' : '')
 }
