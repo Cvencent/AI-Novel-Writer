@@ -1,13 +1,22 @@
 import type BetterSqlite3 from 'better-sqlite3'
 
-/** The legacy lazy tables are installed once by M00 in canonical projects. */
-export function ensureBaselineBlueprintTables(db: BetterSqlite3.Database): void {
-  // WP2: extended blueprint fields (turn/cost and foreshadowing).
-  const blueprintColumns = db.prepare('PRAGMA table_info(blueprints)').all() as Array<{ name: string }>
-  if (!blueprintColumns.some(column => column.name === 'costs_and_turns'))
-    db.exec("ALTER TABLE blueprints ADD COLUMN costs_and_turns TEXT NOT NULL DEFAULT ''")
-  if (!blueprintColumns.some(column => column.name === 'foreshadowing'))
-    db.exec("ALTER TABLE blueprints ADD COLUMN foreshadowing TEXT NOT NULL DEFAULT ''")
+/** Columns added by WP2 (M07). Kept separate so the registry can build a
+ *  pre-M07 reference schema and so M07 can add them explicitly. */
+export const BLUEPRINT_EXTENDED_COLUMNS = Object.freeze([
+  { name: 'costs_and_turns', ddl: "ALTER TABLE blueprints ADD COLUMN costs_and_turns TEXT NOT NULL DEFAULT ''" },
+  { name: 'foreshadowing', ddl: "ALTER TABLE blueprints ADD COLUMN foreshadowing TEXT NOT NULL DEFAULT ''" },
+] as const)
+
+/** Idempotently add the WP2 columns. Safe to call on any canonical project. */
+export function addBlueprintExtendedColumns(db: BetterSqlite3.Database): void {
+  const columns = db.prepare('PRAGMA table_info(blueprints)').all() as Array<{ name: string }>
+  for (const column of BLUEPRINT_EXTENDED_COLUMNS) {
+    if (!columns.some(existing => existing.name === column.name)) db.exec(column.ddl)
+  }
+}
+
+/** The legacy lazy tables installed once by M00. These predate M07. */
+export function ensureBaselineBlueprintOperationTables(db: BetterSqlite3.Database): void {
   db.exec(`
       CREATE TABLE IF NOT EXISTS blueprint_commit_operations (
         operation_id TEXT PRIMARY KEY,
@@ -37,4 +46,21 @@ export function ensureBaselineBlueprintTables(db: BetterSqlite3.Database): void 
       CREATE INDEX IF NOT EXISTS idx_blueprint_character_sync_status
         ON blueprint_character_sync_operations(status, created_at);
     `)
+}
+
+/**
+ * The legacy lazy tables are installed once by M00 in canonical projects.
+ *
+ * M00's domain is frozen: this deliberately does NOT add the WP2 columns, so
+ * every previously shipped schema keeps the fingerprint it was created with.
+ * The columns are added by migration M07 and lazily by runtime callers.
+ */
+export function ensureBaselineBlueprintTables(db: BetterSqlite3.Database): void {
+  ensureBaselineBlueprintOperationTables(db)
+}
+
+/** Runtime guard: legacy lazy tables plus the WP2 columns. */
+export function ensureExtendedBlueprintSchema(db: BetterSqlite3.Database): void {
+  ensureBaselineBlueprintOperationTables(db)
+  addBlueprintExtendedColumns(db)
 }

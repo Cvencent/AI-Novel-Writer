@@ -8,12 +8,12 @@ import { applyM04ImportEffectLedger, createM04Migration } from './m04-import-eff
 import { applyM05CharacterAssets, createM05Migration } from './m05-character-assets'
 import { createM00Migration } from './m00-baseline'
 import { initializeLegacyBaselineSchema, applyBaselineTables } from './baseline-schema'
-import { ensureBaselineBlueprintTables } from './baseline-blueprint-schema'
+import { addBlueprintExtendedColumns, ensureBaselineBlueprintTables } from './baseline-blueprint-schema'
 import { SqliteSchemaAdapter, sqliteSchemaFingerprint } from './sqlite-schema-adapter'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3') as typeof import('better-sqlite3')
-export const CURRENT_DESKTOP_SCHEMA_VERSION = 7
+export const CURRENT_DESKTOP_SCHEMA_VERSION = 8
 let installed: MigrationRegistry | undefined
 
 function installKnownDonorAvatarColumn(db: import('better-sqlite3').Database): void {
@@ -38,7 +38,19 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
     const references = [reference, donor]
     for (const db of references) { db.pragma('foreign_keys = ON'); initializeLegacyBaselineSchema(db) }
     installKnownDonorAvatarColumn(donor)
-    const schemas = (version: number) => references.map(db => ({ version, fingerprint: sqliteSchemaFingerprint(db) }))
+    // Deduplicate: at some versions two references legitimately converge on
+    // the same shape (e.g. legacy after M07 equals the extended reference).
+    const schemas = (version: number) => {
+      const seen = new Set<string>()
+      const out: { version: number; fingerprint: string }[] = []
+      for (const db of references) {
+        const fingerprint = sqliteSchemaFingerprint(db)
+        if (seen.has(fingerprint)) continue
+        seen.add(fingerprint)
+        out.push({ version, fingerprint })
+      }
+      return out
+    }
     const sourceSchemas = schemas(0)
     for (const db of references) ensureBaselineBlueprintTables(db)
     const baselineSchemas = schemas(1), baselineFingerprints = new Set(baselineSchemas.map(item => item.fingerprint))
@@ -78,10 +90,21 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
     const m06 = createM06Migration({ database: native,
       verifyKnownSchema: db => mergeSnapshotFingerprints.has(sqliteSchemaFingerprint(native(db)))
         && verifyM02CharacterIdentity(native(db)) })
-    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06], [
+    // M07: add the WP2 blueprint columns. The legacy reference converges onto
+    // the extended shape here, so both v7 states migrate to one v8 schema.
+    for (const db of references) db.transaction(() => addBlueprintExtendedColumns(db))()
+    const extendedBlueprintSchemas = schemas(8)
+    const extendedBlueprintFingerprints = new Set(extendedBlueprintSchemas.map(item => item.fingerprint))
+    const m07 = {
+      id: 'M07' as const, from: 7, to: 8, owner: 'WP2',
+      migrate: (db: SchemaReader) => addBlueprintExtendedColumns(native(db)),
+      verify: (db: SchemaReader) => extendedBlueprintFingerprints.has(sqliteSchemaFingerprint(native(db))),
+    }
+    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07], [
       ...sourceSchemas, ...baselineSchemas.map(schema => ({ ...schema, version: 0 })),
       ...baselineSchemas, ...generationSchemas, ...identitySchemas,
       ...reviewCycleSchemas, ...importEffectSchemas, ...characterAssetSchemas, ...mergeSnapshotSchemas,
+      ...extendedBlueprintSchemas,
     ])
     return installed
   } finally { reference.close(); donor.close() }

@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto'
 
 import { getProjectDb, getCurrentProjectPath } from '../database'
 import { readPortableRuntimeFreeze } from '../services/portable-runtime-freeze'
-import { ensureBaselineBlueprintTables } from '../migrations/baseline-blueprint-schema'
+import { ensureExtendedBlueprintSchema } from '../migrations/baseline-blueprint-schema'
 import { CharacterRosterRepository } from './character-roster-repository'
 import { hasCharacterIdentitySchema } from './character-repository'
 import { findCharacterProposalEvidence } from '../services/character-proposal-service'
@@ -177,7 +177,7 @@ function requireProjectDb(): NonNullable<ReturnType<typeof getProjectDb>> {
 }
 
 function ensureBlueprintCommitSchema(db: NonNullable<ReturnType<typeof getProjectDb>>): void {
-    ensureBaselineBlueprintTables(db)
+    ensureExtendedBlueprintSchema(db)
     db.exec(`
       INSERT OR IGNORE INTO blueprint_character_sync_operations (
         operation_id,
