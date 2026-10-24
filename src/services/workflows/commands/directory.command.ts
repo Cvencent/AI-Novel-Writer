@@ -27,6 +27,7 @@ import {
   validateBlueprintSemanticItem,
 } from '../../../shared/blueprint-semantic-contract'
 import { requireWorkflowProjectSession, workflowUiText, workflowWritingLanguage } from '../workflow-project-session'
+import { blueprintBoundedInput, outlineBatchSliceForBlueprint } from '../../../shared/blueprint-input'
 import { promptLanguageText } from '../../prompt-language'
 import { retryDirectoryCharacterSync } from '../directory-character-sync-recovery'
 export {
@@ -341,7 +342,11 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
           ))
           .join('\n')
         const prompt = new DirectoryPromptBuilder(template, writingLanguage)
-          .withNovelArchitecture(architecture)
+          .withNovelArchitecture(blueprintBoundedInput({ coreOutline: (context.data.coreOutline as string) || '', 
+            premise: (context.data.premise as string) || '', charactersArch: (context.data.charactersArch as string) || '', 
+            worldbuilding: (context.data.worldbuilding as string) || '', 
+            batchOutline: outlineBatchSliceForBlueprint((context.data.synopsisFull as string) || '', batchStart, batchEnd), 
+            arcDirective: (context.data.arcDirective as string) || '', language: writingLanguage }))
           .withChapterList(chapterList || promptLanguageText(writingLanguage, '（首批生成，尚无前置章节）', '(first batch; no preceding chapters)'))
           .withNumberOfChapters(totalChapters)
           .withN(batchStart)

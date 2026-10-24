@@ -370,6 +370,21 @@ export function createDirectoryWorkflow(
           ))
 
           context.data.architecture = parts.join('\n\n---\n\n')
+          // WP2b: 蓝图派生的有界输入。整本细纲按批切片注入，绝不整份塞进 Prompt。
+          context.data.coreOutline = core.coreOutline || ''
+          context.data.premise = core.premise || ''
+          context.data.charactersArch = core.charactersArch || ''
+          context.data.worldbuilding = core.worldbuilding || ''
+          context.data.synopsisFull = core.synopsis || ''
+          // 注入所属粗纲段：蓝图派生必须服从本段方向。
+          try {
+            const arcs = await ipc.invokeWithProjectSession(projectSession, 'db:arc-outline-list', expectedProjectPath) as Array<{ fromChapter: number; toChapter: number; title: string; summary: string; beat: string; status?: string }>
+            const requestStart = params.startChapter || 1
+            const covering = (arcs || []).filter(arc => arc.fromChapter <= requestStart && arc.toChapter >= requestStart)
+            if (covering.length > 0) {
+              context.data.arcDirective = covering.map(arc => '【当前章所属粗纲段（第 ' + arc.fromChapter + '-' + arc.toChapter + ' 章，' + arc.beat + '）】' + String.fromCharCode(10) + '蓝图必须服从这一段的方向与转折：' + String.fromCharCode(10) + arc.summary).join(String.fromCharCode(10) + String.fromCharCode(10))
+            }
+          } catch { /* 无粗纲时照常派生 */ }
           // 注入节奏指导到 context，供 Command 读取
           if (params.pacingGuidance) context.data.pacingGuidance = params.pacingGuidance
           if (params.mode === 'append' || params.continueDirectoryOperationId) {
