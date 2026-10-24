@@ -117,7 +117,20 @@ function acceptOutline(owner: ReturnType<typeof fixture>['owner'], handle: Param
   const text = joinPlotOutlineEntries(progress.composition?.text ?? '', progress.cursor.text)
   return owner.composeVisible(handle, [...(progress.composition?.artifactIds ?? []), ...progress.cursor.artifactIds], textHash(text), PLOT_OUTLINE_PROTOCOL)
 }
-const outlineEntry = (chapter: number) => `## 第${chapter}章：线索${chapter}\n林岚确认第${chapter}份证词，与同伴商议下一步。`
+const outlineEntry = (chapter: number) => [`## 第${chapter}章：线索${chapter}`,
+  ``,
+  `**场景与出场人物**：林岚与同伴。`,
+  ``,
+  `**本章目标**：确认第${chapter}份证词。`,
+  ``,
+  `**阻力与升级**：证词与现场记录冲突。`,
+  ``,
+  `**转折与代价**：证词成立，代价是暴露了同伴。`,
+  ``,
+  `**结尾钩子**：现场记录多出一页。`,
+  ``,
+  `**伏笔**：多出的一页接后文编号线。`,
+].join(String.fromCharCode(10))
 /**
  * 旧版本开跑时不查章号顺序：冻结来源与正式大纲都换成 legacy，整份绑定（指纹、上下文快照、来源引用）按它重算，
  * 已生成章节的指纹随之改写，等同升级前在这份大纲上开跑并落库的任务。
@@ -257,7 +270,7 @@ describe('chapter outline main authority', () => {
   })
 
   it.each(['normal', 'compact'] as const)('accepts a complete long %s STOP without losing its final fact', async accepted => {
-    const text = `## 第1章：完整长章\n${'原事实。'.repeat(400)}尾部硬事实：归还钥匙。`
+    const text = [`## 第1章：完整长章`, ``, `**场景与出场人物**：众人。`, ``, `**本章目标**：查清事实。`, ``, `**阻力与升级**：`, `原事实。`.repeat(400) + ``, `**转折与代价**：`, `原事实。`.repeat(200) + ``, `**结尾钩子**：归还钥匙。`, ``, `**伏笔**：钥匙的来历。`, `尾部硬事实：归还钥匙。`].join(String.fromCharCode(10))
     const dispatch = vi.fn<GenerationRunServiceDependencies['dispatch']>(async (_request, options) => {
       if (accepted === 'compact' && dispatch.mock.calls.length === 1) return { finishReason: 'length', usage: null }
       options.onVisible({ kind: 'delta', text })
@@ -442,7 +455,7 @@ describe('chapter outline main authority', () => {
 
 describe('explicit planning recovery with real SQLite', () => {
   const blueprint = (chapterNumber: number, keyEvents = '作者补齐了完整行动、冲突与结果。') => ({ chapterNumber, title: `完整第${chapterNumber}章`, role: '转折',
-    purpose: '确认线索', keyEvents, characters: ['林岚'], relationshipHints: [], newCharacterCandidates: [], suspenseHook: '下一步核验证据。', userGuidance: '', notes: '', notesUpdatedAt: '' })
+    purpose: '确认线索', keyEvents, characters: ['林岚'], relationshipHints: [], newCharacterCandidates: [], suspenseHook: '下一步核验证据。', costsAndTurns: '代价：暴露了同伴。', foreshadowing: '证据链后续。', userGuidance: '', notes: '', notesUpdatedAt: '' })
   const directorySelection = (f: ReturnType<typeof fixture>, from = 1, to = 3): BeginGenerationRequest => ({
     operation: 'chapter-blueprint-directory', uiActionNonce: 'blueprint-action', modelId: f.model.id,
     selectedDraftIds: [], selectedFinalizedDraftIds: [], selectedBlueprintChapterNumbers: [1, 2, 3],
@@ -600,6 +613,7 @@ describe('explicit planning recovery with real SQLite', () => {
       keyEvents: '完整叙述。'.repeat(280) + '尾部必须保留。', suspenseHook: '悬念'.repeat(200), characters,
       relationshipHints: characters.slice(1, 10).map(to => ({ from: characters[0], to, relation: '同行' })),
       newCharacterCandidates: characters.map(name => ({ name, role: 'supporting' as const })),
+      costsAndTurns: '代价：全部筹码。', foreshadowing: '伏笔：后续编号线。',
       userGuidance: '  作者指导保留原字节。\r\n', notes: '<think>作者备注中的原文标签</think>\n第二行。', notesUpdatedAt: '2026-10-04T13:00:00.000Z' }
     const request: BlueprintRangeCommitRequest = { mode: 'replace-range', operationId: 'author-blueprint', startChapter: 1, endChapter: 1,
       blueprints: parseTextBlueprintsStrict(JSON.stringify([repaired]), 1, 1, 'author'), authorRecovery: { sourceHandle: run.handle, leaseEpoch: context.blueprintRecovery!.leaseEpoch } }
@@ -1233,7 +1247,7 @@ describe('durable directory commit and remaining stage', () => {
     const request = (operationId: string, startChapter: number, endChapter: number): BlueprintRangeCommitRequest => ({
       operationId, mode: 'replace-range', startChapter, endChapter,
       blueprints: Array.from({ length: endChapter - startChapter + 1 }, (_, index) => ({ chapterNumber: startChapter + index,
-        title: '已生成章节', role: '推进', purpose: '寻找线索', keyEvents: '角色发现关键线索', characters: [], suspenseHook: '', userGuidance: '', notes: '', notesUpdatedAt: '' })),
+        title: '已生成章节', role: '推进', purpose: '寻找线索', keyEvents: '角色发现关键线索', characters: [], suspenseHook: '', costsAndTurns: '', foreshadowing: '', userGuidance: '', notes: '', notesUpdatedAt: '' })),
     })
     const commit = (owner: typeof f.owner, handle: typeof run.handle, input: BlueprintRangeCommitRequest, requestedRange: { startChapter: number; endChapter: number }) => f.db.transaction(() => {
       const receipt = BlueprintRepository.commitRange(input, () => owner.assertSourcesCurrent(handle, requestedRange))

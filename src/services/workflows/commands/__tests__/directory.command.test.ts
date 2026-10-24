@@ -27,6 +27,8 @@ type Blueprint = {
   characters: string[]
   newCharacterCandidates?: Array<{ name: string; role: 'protagonist' | 'antagonist' | 'supporting' | 'minor' }>
   suspenseHook: string
+  costsAndTurns: string
+  foreshadowing: string
   userGuidance: string
   notes: string
   notesUpdatedAt: string
@@ -84,6 +86,8 @@ function blueprint(chapterNumber: number, overrides: Partial<Blueprint> = {}): B
     characters: [],
     relationshipHints: [],
     suspenseHook: `第${chapterNumber}章留下新的悬念`,
+    costsAndTurns: `第${chapterNumber}章付出代价`,
+    foreshadowing: `第${chapterNumber}章埋下伏笔`,
     userGuidance: '',
     notes: '',
     notesUpdatedAt: '',
@@ -106,6 +110,8 @@ function modelBlueprint(chapterNumber: number, overrides: Partial<Blueprint> = {
     newCharacterCandidates: candidate.newCharacterCandidates,
     relationships: candidate.relationshipHints,
     suspenseHook: candidate.suspenseHook,
+    costsAndTurns: candidate.costsAndTurns,
+    foreshadowing: candidate.foreshadowing,
   }
 }
 

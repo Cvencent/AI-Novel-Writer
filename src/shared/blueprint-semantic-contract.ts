@@ -26,6 +26,8 @@ export const BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST = Object.freeze({
     'characters',
     'relationships',
     'suspenseHook',
+    'costsAndTurns',
+    'foreshadowing',
   ] as const),
   characters: Object.freeze({ minimumItems: 1, unique: true } as const),
   relationships: Object.freeze({
@@ -46,6 +48,8 @@ suspenseHook is always required; even without a mystery, state one concrete unre
 characters must be an array containing at least one unique, non-empty full character name.
 newCharacterCandidates is optional. When present, include only important named characters first introduced by this blueprint and expected to recur. Every item must contain name and role, name must exactly copy one entry from characters, and role must be protagonist, antagonist, supporting, or minor. Omit it or use [] when there are no candidates; never include incidental figures.
 relationships is required and may be []; every item must contain non-empty from, to, and relation fields. from and to must exactly copy full names from the same item's characters array and may not self-reference.
+costsAndTurns is required: state the concrete cost or irreversible consequence paid in this chapter (bounded, traceable). When nothing is paid, say so in one short clause.
+foreshadowing is required: state what this chapter plants or pays off. Write none when the chapter carries none.
 Preserve complete narrative content.
 Do not omit required fields, combine chapters, rename fields, explain, or output Markdown or code fences.`
   }
@@ -56,6 +60,8 @@ suspenseHook 始终必填；即使本章没有谜团，也要写明一个制造�
 characters 必须是至少含一个唯一非空角色名的字符串数组。
 newCharacterCandidates 可选；提供时只声明由本章首次引入且预计后续复用的重要具名角色，每项必须包含 name、role，name 必须逐字复制 characters 中的一个完整姓名，role 只能是 protagonist、antagonist、supporting、minor。无候选时可省略或传 []，一次性路人不得声明为候选。
 relationships 必须是数组，无关系时传 []；每项必须含非空 from、to、relation，from/to 必须精确出现在同项 characters 中且不能自指。
+costsAndTurns 必填：写明本章当场付出的具体代价或不可逆后果（有限、可追溯）。确实没有付出时，用一句短话说明。
+foreshadowing 必填：写明本章埋下或回收的伏笔；本章没有时写 none。
 from/to 必须逐字复制同一项 characters 中的完整字符串；任一端点不在 characters 时，删除该关系或使用 []，不得发明别名、简称或补写角色。
 叙述内容须保持完整。
 不得省略必填字段、合并章节、输出近义字段、解释、Markdown 或代码围栏。`
@@ -75,6 +81,10 @@ export interface BlueprintSemanticItem {
   newCharacterCandidates: BlueprintNewCharacterCandidate[]
   relationshipHints: BlueprintRelationshipFact[]
   suspenseHook: string
+  /** Turn and cost paid in this chapter. */
+  costsAndTurns: string
+  /** Foreshadowing planted or paid off here. */
+  foreshadowing: string
 }
 
 export interface BlueprintAuthorItem extends BlueprintSemanticItem {
@@ -224,6 +234,14 @@ export function normalizeBlueprintSemanticItem(value: unknown, path = 'blueprint
     suspenseHook: requiredText(
       fieldValue(value, 'suspenseHook', ['suspense_hook']),
       `${path}.suspenseHook`,
+    ),
+    costsAndTurns: requiredText(
+      fieldValue(value, 'costsAndTurns', ['costs_and_turns']),
+      `${path}.costsAndTurns`,
+    ),
+    foreshadowing: requiredText(
+      fieldValue(value, 'foreshadowing'),
+      `${path}.foreshadowing`,
     ),
   }
 }
