@@ -322,3 +322,43 @@ WP5 完全不依赖 A，**建议先做 WP5 练手**，把"检查→建议卡片�
 - `electron/repositories/__tests__/blueprint-repository.test.ts` 里的 `blueprint` 基对象已补 `costsAndTurns` / `foreshadowing`；改字段时记得同步。
 - 测试自建 `blueprints` 表的 fixture **必须包含新列**，否则 `upsert` 报 `NOT NULL constraint failed`。
 
+
+---
+
+## 11. 会话进度更新（第二轮）
+
+已完成并推送：
+
+| WP | 状态 | commit | 说明 |
+|---|---|---|---|
+| WP1 | ✅ | 38b6bef8 | 细纲六小节锁死（准入闸门） |
+| WP2a | ✅ | e4f4a39d | 蓝图加列 costs_and_turns / foreshadowing |
+| WP2b(契约) | ✅ | 745de892 + bfdf1de4 | 蓝图语义契约要求两个新字段 + 夹具更新 |
+| WP2b(派生输入) | ✅ | dd151a4e | 蓝图派生改为有界输入：核心大纲+前提+角色+世界观+**本批细纲切片**+**所属粗纲段**（不再整本塞入）。新增 `src/shared/blueprint-input.ts` |
+| WP3 | ✅ | (见 log) | 守卫只要求本批范围细纲覆盖，不要求全书。新增 `outlineCoversRange`，`guardDirectoryGeneration` 加 `requestedRange` 参数 |
+
+### 关键实现位置（供后续）
+
+- `src/shared/blueprint-input.ts` — `outlineBatchSliceForBlueprint(synopsis, from, to)` / `blueprintBoundedInput({...})`
+- `src/services/workflows/directory.command.ts:345` — 用 `blueprintBoundedInput(...)` 替换原 `.withNovelArchitecture(architecture)`
+- `src/services/workflows/directory-workflow.ts:374-386` — 填充 `coreOutline` / `premise` / `charactersArch` / `worldbuilding` / `synopsisFull` / `arcDirective`
+- `src/services/workflow-guards.ts` — `guardDirectoryGeneration(..., requestedRange?)` + `outlineCoversRange`
+
+### 尚未完成
+
+- **WP2b(工具循环)**：蓝图的模型调用还没接 `callLLMWithTools`（角色/知识库工具）。当前 `StructuredBatchContract` 走 `session.complete`，需要改成工具循环或在其内嵌工具轮。
+- **WP4/5/6 AI 检查**：
+  - 复用目标已确认：右侧卡片 = `src/components/panels/agent/ConfirmCard.tsx` / `DomainProposalDiff.tsx` / `ArtifactCard.tsx`
+  - 审稿 findings 表形状：`review_findings`（problem_text / expected_text / span_start / span_end / status / category）
+  - 粗纲仓储：`electron/repositories/arc-outline-repository.ts`（`summary` 字段待替换）
+  - 粗纲命令：`src/services/workflows/commands/arc-outline.command.ts`（3 个 Command 类，用 `callLLMResult`）
+
+### 环境坑（务必遵守）
+
+- 写文件**必须**用 `python` 读改写（`io.open(..., newline=)`）或 Node 脚本用 `String.fromCharCode(39)` 生成引号；**PowerShell here-string 会破坏代码**（写出过 `db.exec(\x27\x27ALTER...`、字符串被逐字符插入换行等坏文件）。
+- 写测试文件时避免多字符拼接，否则可能被逐字符插入换行（踩过一次）。
+- 跑 vitest 前 `node scripts/prepare-native-for-node.mjs`；打包前 `node scripts/prepare-native-for-electron.mjs`。
+- `spawn_agent` 在本会话不可用 → 只能串行。
+
+- 既有失败（与本次改动无关，别误判）：`electron/services/__tests__/main-generation-owner.test.ts` 有 5 个长期失败（targetUnits 600 vs 300、incomplete 状态对象比较等）。
+
