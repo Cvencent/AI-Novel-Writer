@@ -874,6 +874,26 @@ export interface DatabaseChannels {
     args: [arcIndex: number, expectedRevision: number, expectedProjectPath: string]
     return: { success: boolean; record?: ArcOutlineRecord; error?: string }
   }
+  'db:arc-review-save': {
+    args: [input: { operationId: string; runId: string; selected: number[]; sourceHash: string; findings: Array<{ arcIndex: number; category: string; severity: string; problemText: string; expectedText: string }> }, expectedProjectPath: string]
+    return: { success: boolean; runId?: string; findings?: unknown[]; error?: string }
+  }
+  'db:arc-review-list': {
+    args: [runId: string, expectedProjectPath: string]
+    return: unknown[]
+  }
+  'db:arc-review-latest': {
+    args: [expectedProjectPath: string]
+    return: { runId: string; findings: unknown[] } | null
+  }
+  'db:arc-review-resolve': {
+    args: [runId: string, findingId: string, status: 'accepted' | 'ignored', expectedProjectPath: string]
+    return: { success: boolean; error?: string }
+  }
+  'db:arc-review-accept-all': {
+    args: [runId: string, expectedProjectPath: string]
+    return: { success: boolean; accepted?: number; error?: string }
+  }
   'db:arc-outline-revise': {
     args: [arcIndex: number, expectedRevision: number, summary: string, expectedProjectPath: string]
     return: { success: boolean; record?: ArcOutlineRecord; error?: string }

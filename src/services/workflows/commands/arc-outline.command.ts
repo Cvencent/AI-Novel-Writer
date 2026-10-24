@@ -3,6 +3,8 @@ import {
   parseArcSegment, sanitizeArcProperNames, tryParseArcHeading, validateArcNoProperNames, validateArcSpan, validateBeatDiversity,
 } from '../../../shared/arc-outline-contract'
 import type { ArcBeat } from '../../../../electron/repositories/arc-outline-repository'
+import { buildArcReviewPrompt, normalizeArcReviewFindings } from '../../../shared/arc-review-contract'
+import { hashAuthorText } from '../../../shared/source-ref'
 import {
   BaseWorkflowCommand,
   type CommandExecuteParams,
@@ -553,4 +555,52 @@ function lastChapterNumber(synopsis: string): number {
     last = Math.max(last, Number(match[1]))
   }
   return last || 1
+}
+
+
+/**
+ * Arc-outline AI review (WP5): hand the selected segments to the model and persist actionable findings.
+ */
+export class ReviewArcOutlineCommand extends BaseWorkflowCommand<string> {
+  constructor(private readonly selectedArcIndexes: readonly number[], private readonly snapshot: ArchitectureProjectSnapshot, generationDependencies?: WorkflowGenerationRuntimeDependencies) { super(generationDependencies) }
+
+  async execute(params: CommandExecuteParams): Promise<string> {
+    return this.executeWithGenerationRuntime('text', params, () => this.executeWithinGeneration(params), {
+      authorInputs: [{ id: 'arc:review-selection', text: JSON.stringify(this.selectedArcIndexes) }],
+      operation: 'review-arc-outline', promptKeys: ['arc_outline'], skillStages: ['planning'], output: 'visible-text',
+    })
+  }
+
+  private async executeWithinGeneration({ context, callbacks }: CommandExecuteParams): Promise<string> {
+    const projectSession = requireWorkflowProjectSession(context)
+    const writingLanguage = workflowWritingLanguage(context)
+    const { expectedProjectPath } = this.snapshot
+    const listed = await ipc.invokeWithProjectSession(projectSession, 'db:arc-outline-list', expectedProjectPath)
+    const arcs = Array.isArray(listed) ? listed : []
+    if (arcs.length === 0) throw new Error('There is no arc outline to review.')
+    const selected = this.selectedArcIndexes.length > 0 ? this.selectedArcIndexes.filter(i => arcs.some(a => a.arcIndex === i)) : arcs.map(a => a.arcIndex)
+    if (selected.length === 0) throw new Error('No valid arc segment was selected.')
+    const core = await ipc.invokeWithProjectSession(projectSession, 'db:project-core-get', expectedProjectPath)
+    callbacks.log('Reviewing the arc outline...')
+    const prompt = buildArcReviewPrompt({ arcs, selected, coreOutline: core?.coreOutline || '', worldbuilding: core?.worldbuilding || '', language: writingLanguage })
+    const completion = await this.callLLMResult(prompt, 'You are a rigorous fiction editor. Report only real, actionable problems.', callbacks, { purpose: 'arc-outline-review', reasoningStage: 'planning', writingSkillStage: 'planning' }, context)
+    const payload = extractReviewJson(completion.content)
+    const rawFindings = payload && typeof payload === 'object' && !Array.isArray(payload) ? (payload as { findings?: unknown }).findings : payload
+    const findings = normalizeArcReviewFindings(rawFindings, selected)
+    const runId = 'arc-review:' + context.runId
+    const sourceHash = await hashAuthorText(arcs.filter(a => selected.includes(a.arcIndex)).map(a => a.summary).join(String.fromCharCode(10)))
+    const saved = await ipc.invokeWithProjectSession(projectSession, 'db:arc-review-save', { operationId: runId, runId, selected: [...selected], sourceHash, findings }, expectedProjectPath)
+    requireIpcSuccess(saved, 'Failed to save the arc review.')
+    callbacks.log('Arc review finished with ' + findings.length + ' suggestion(s).')
+    return runId
+  }
+}
+
+function extractReviewJson(raw: string): unknown {
+  const text = raw.trim().replace(/^`json`?/iu, '').replace(/``?/gu, '')
+  try { return JSON.parse(text) } catch { void 0 }
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start >= 0 && end > start) { try { return JSON.parse(text.slice(start, end + 1)) } catch { void 0 } }
+  return null
 }

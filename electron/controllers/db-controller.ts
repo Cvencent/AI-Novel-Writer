@@ -1,6 +1,7 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { isProjectSessionContext } from '../../src/shared/project-session-context'
 import { closeProjectDatabase, getCurrentProjectPath, getProjectDb } from '../database'
+import { ArcReviewRepository } from '../repositories/arc-review-repository'
 import { ArcOutlineRepository } from '../repositories/arc-outline-repository'
 import { OutlineSegmentBindingRepository } from '../repositories/outline-segment-binding-repository'
 import { OutlineSummaryRepository } from '../repositories/outline-summary-repository'
@@ -195,6 +196,43 @@ export function registerDatabaseController() {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
       return { success: true, record: ArcOutlineRepository.confirm(arcIndex, expectedRevision) }
+    } catch (error) { return { success: false, error: String(error) } }
+  })
+
+  ipcMain.handle('db:arc-review-save', async (_event, input, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const database = getProjectDb()
+      if (!database) throw new Error('项目数据库未打开')
+      return { success: true, ...ArcReviewRepository.save(input, database) }
+    } catch (error) { return { success: false, error: String(error) } }
+  })
+  ipcMain.handle('db:arc-review-list', async (_event, runId: string, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    const database = getProjectDb()
+    if (!database) throw new Error('项目数据库未打开')
+    return ArcReviewRepository.listByRun(runId, database)
+  })
+  ipcMain.handle('db:arc-review-latest', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    const database = getProjectDb()
+    if (!database) throw new Error('项目数据库未打开')
+    return ArcReviewRepository.latestRun(database)
+  })
+  ipcMain.handle('db:arc-review-resolve', async (_event, runId: string, findingId: string, status: 'accepted' | 'ignored', expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const database = getProjectDb()
+      if (!database) throw new Error('项目数据库未打开')
+      return { success: ArcReviewRepository.resolve(runId, findingId, status, database) }
+    } catch (error) { return { success: false, error: String(error) } }
+  })
+  ipcMain.handle('db:arc-review-accept-all', async (_event, runId: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const database = getProjectDb()
+      if (!database) throw new Error('项目数据库未打开')
+      return { success: true, accepted: ArcReviewRepository.acceptAll(runId, database) }
     } catch (error) { return { success: false, error: String(error) } }
   })
 
