@@ -25,6 +25,8 @@ export interface BlueprintRow {
     key_events: string
     characters: string
     suspense_hook: string
+    costs_and_turns: string
+    foreshadowing: string
     user_guidance: string
     notes: string
     notes_updated_at: string
@@ -49,6 +51,10 @@ export interface BlueprintData {
      */
     relationshipHints?: unknown
     suspenseHook: string
+    /** Turn and cost paid in this chapter; optional for legacy rows. */
+    costsAndTurns?: string
+    /** Foreshadowing planted/paid off; optional for legacy rows. */
+    foreshadowing?: string
     userGuidance: string
     notes: string
     notesUpdatedAt: string
@@ -156,6 +162,8 @@ function rowToData(row: BlueprintRow): BlueprintData {
         keyEvents: row.key_events,
         characters: chars,
         suspenseHook: row.suspense_hook,
+        costsAndTurns: row.costs_and_turns || '',
+        foreshadowing: row.foreshadowing || '',
         userGuidance: row.user_guidance,
         notes: row.notes,
         notesUpdatedAt: row.notes_updated_at,
@@ -500,8 +508,8 @@ export class BlueprintRepository {
         db.prepare(`
       INSERT INTO blueprints (
         chapter_number, title, role, purpose, key_events, characters,
-        suspense_hook, user_guidance, notes, notes_updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        suspense_hook, costs_and_turns, foreshadowing, user_guidance, notes, notes_updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(chapter_number) DO UPDATE SET
         title = excluded.title,
         role = excluded.role,
@@ -509,6 +517,8 @@ export class BlueprintRepository {
         key_events = excluded.key_events,
         characters = excluded.characters,
         suspense_hook = excluded.suspense_hook,
+        costs_and_turns = excluded.costs_and_turns,
+        foreshadowing = excluded.foreshadowing,
         user_guidance = excluded.user_guidance,
         notes = excluded.notes,
         notes_updated_at = excluded.notes_updated_at,
@@ -521,6 +531,8 @@ export class BlueprintRepository {
             data.keyEvents,
             JSON.stringify(data.characters),
             data.suspenseHook,
+            data.costsAndTurns ?? '',
+            data.foreshadowing ?? '',
             data.userGuidance,
             data.notes,
             data.notesUpdatedAt,

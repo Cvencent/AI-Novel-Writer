@@ -2,7 +2,13 @@ import type BetterSqlite3 from 'better-sqlite3'
 
 /** The legacy lazy tables are installed once by M00 in canonical projects. */
 export function ensureBaselineBlueprintTables(db: BetterSqlite3.Database): void {
-    db.exec(`
+  // WP2: extended blueprint fields (turn/cost and foreshadowing).
+  const blueprintColumns = db.prepare('PRAGMA table_info(blueprints)').all() as Array<{ name: string }>
+  if (!blueprintColumns.some(column => column.name === 'costs_and_turns'))
+    db.exec("ALTER TABLE blueprints ADD COLUMN costs_and_turns TEXT NOT NULL DEFAULT ''")
+  if (!blueprintColumns.some(column => column.name === 'foreshadowing'))
+    db.exec("ALTER TABLE blueprints ADD COLUMN foreshadowing TEXT NOT NULL DEFAULT ''")
+  db.exec(`
       CREATE TABLE IF NOT EXISTS blueprint_commit_operations (
         operation_id TEXT PRIMARY KEY,
         payload_hash TEXT NOT NULL,
