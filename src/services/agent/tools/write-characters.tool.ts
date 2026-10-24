@@ -11,7 +11,8 @@ import { buildAgentTool } from '../tool-registry'
 import { ipc } from '../../ipc-client'
 import { requireIpcSuccess } from '../../ipc-result'
 import { agentToolText, assertAgentProjectCurrent, requireAgentProject } from './project-context'
-import { characterCardFromRosterEntry, characterRosterEntryFromCard } from '../../character-roster-client'
+import { assignCharacterIdForNewCard, characterCardFromRosterEntry, characterRosterEntryFromCard } from '../../character-roster-client'
+import { randomUUID } from '../../../utils/id'
 import type { CharacterRosterSnapshot } from '../../../shared/character-roster'
 import type { CharacterData } from '../../../../electron/repositories/character-repository'
 import { CHARACTER_ROLES, type CharacterRole } from '../../../shared/character-role'
@@ -90,7 +91,9 @@ export const createCharacterTool = buildAgentTool({
       const value = args[field]
       if (typeof value === 'string' && value.trim()) card[field] = value.trim()
     }
-    await commitRoster(project.path, projectSession, snapshot, `agent-create-character:${name}:${Date.now()}`, [...cards, card])
+    // 身份 schema 项目要求稳定 ID；模型只给名字，这里补一个 draft:<uuid>。
+    const withId = assignCharacterIdForNewCard(card, () => randomUUID())
+    await commitRoster(project.path, projectSession, snapshot, `agent-create-character:${name}:${Date.now()}`, [...cards, withId])
     assertAgentProjectCurrent(context)
     return { success: true, content: text(`已新增角色「${name}」。`, `Character "${name}" was added.`) }
   },

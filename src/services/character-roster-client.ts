@@ -38,6 +38,18 @@ function parseStructuredRelationships(value: string): CharacterRosterRelationshi
  * Renderer/workflow 侧只负责把现有角色卡形状送入唯一 roster seam；最终
  * schema、闭包与事务校验都留在主进程 CharacterRosterRepository。
  */
+/**
+ * 身份 schema 项目要求每个角色都有稳定 ID。模型新增角色时只能给出名字，
+ * 这里为它分配一个 draft:<uuid> ID（与 UI「新建角色」同一形式），
+ * 提交后由主进程把它登记为稳定身份。已有角色必须原样保留 ID。
+ */
+export function assignCharacterIdForNewCard(
+  card: CharacterData,
+  mintId: () => string,
+): CharacterData {
+  return card.characterId?.trim() ? card : { ...card, characterId: `draft:${mintId()}` }
+}
+
 export function characterRosterEntryFromCard(card: CharacterData): CharacterRosterEntry {
   const relationships = parseStructuredRelationships(card.relationships)
   return {
