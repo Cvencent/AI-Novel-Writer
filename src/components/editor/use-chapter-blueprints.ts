@@ -601,7 +601,10 @@ export function useChapterBlueprints({
     const expectedProjectPath = projectKey
 
     // 前置校验：故事架构是否就绪
-    const guard = await guardDirectoryGeneration(expectedProjectPath, projectSession)
+    // WP3: 传本批范围给守卫，只要求这一段细纲可用。
+    const requestedStart = params.startChapter || 1
+    const requestedEnd = params.count && params.count > 0 ? requestedStart + params.count - 1 : requestedStart
+    const guard = await guardDirectoryGeneration(expectedProjectPath, projectSession, undefined, { from: requestedStart, to: requestedEnd })
     if (!isCurrentProjectSession(projectSession)) return false
     if (!guard.ok) {
       // 校验失败：阻断并提示

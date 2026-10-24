@@ -190,10 +190,20 @@ export async function guardSynopsisNeedsConfirmedArc(
  * 要求至少有 1 个架构信息（故事前提）已生成，
  * 建议 4 个都完成，但允许继续（仅提示警告）。
  */
+
+/** 细纲是否覆盖请求范围（按章标题判断）。 */
+function outlineCoversRange(synopsis: string, range: { from: number; to: number }): boolean {
+  const covered = new Set<number>()
+  for (const match of synopsis.matchAll(/^##\s*第\s*(\d+)\s*章/gmu)) covered.add(Number(match[1]))
+  for (let chapter = range.from; chapter <= range.to; chapter += 1) if (!covered.has(chapter)) return false
+  return true
+}
 export async function guardDirectoryGeneration(
   expectedProjectPath?: string,
   expectedProjectSession?: ProjectSessionContext,
   uiLocale: Locale = useLocaleStore.getState().locale,
+  /** WP3: 只要求这一段细纲可用，不要求全书齐全。 */
+  requestedRange?: { from: number; to: number },
 ): Promise<GuardResult> {
   const captured = captureGuardProject(expectedProjectPath, expectedProjectSession)
   if (!captured) {
@@ -217,8 +227,10 @@ export async function guardDirectoryGeneration(
   if (!core || !checkHasContent(core.worldbuilding)) {
     missing.push(localize(uiLocale, '世界观', 'Worldbuilding'))
   }
-  if (!core || !checkHasContent(core.synopsis)) {
-    missing.push(localize(uiLocale, '细纲', 'Plot outline'))
+  // WP3: 细纲只要求覆盖本次要生成的章节范围，不要求全书齐全。
+  const synopsisCovered = Boolean(core && checkHasContent(core.synopsis) && (!requestedRange || outlineCoversRange(core.synopsis, requestedRange)))
+  if (!synopsisCovered) {
+    missing.push(localize(uiLocale, '细纲（本批范围）', 'Plot outline (this batch)'))
   }
 
   // 故事前提是必须的（第一个大块）

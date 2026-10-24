@@ -161,3 +161,32 @@ describe('character regeneration guard locale', () => {
     expect(blocked.message).not.toMatch(/[\u4e00-\u9fff]/u)
   })
 })
+
+  it('accepts a blueprint batch when only this batch is covered by the outline (WP3)', async () => {
+    vi.mocked(ipc.invokeWithProjectSession).mockImplementation((async (_session: unknown, channel: string) => {
+      if (channel === 'db:project-core-get') return {
+        premise: 'p'.repeat(60), charactersArch: 'c'.repeat(60),
+        worldbuilding: 'w'.repeat(60),
+        synopsis: ['## 第1章：标题1', '', '正文一。', '', '## 第2章：标题2', '', '正文二。'].join(String.fromCharCode(10)),
+      }
+      if (channel === 'db:character-get-all') return [{ name: '主角' }]
+      throw new Error('Unexpected channel: ' + channel)
+    }) as never)
+    await expect(guardDirectoryGeneration(projectPath, projectSession, undefined, { from: 1, to: 2 })).resolves.toMatchObject({ ok: true })
+  })
+
+  it('still warns when the requested batch is not covered (WP3)', async () => {
+    vi.mocked(ipc.invokeWithProjectSession).mockImplementation((async (_session: unknown, channel: string) => {
+      if (channel === 'db:project-core-get') return {
+        premise: 'p'.repeat(60), charactersArch: 'c'.repeat(60),
+        worldbuilding: 'w'.repeat(60),
+        synopsis: ['## 第1章：标题1', '', '正文一。'].join(String.fromCharCode(10)),
+      }
+      if (channel === 'db:character-get-all') return [{ name: '主角' }]
+      throw new Error('Unexpected channel: ' + channel)
+    }) as never)
+    const result = await guardDirectoryGeneration(projectPath, projectSession, undefined, { from: 1, to: 5 })
+    expect(result.ok).toBe(true)
+    expect(result.message).toContain('细纲')
+  })
+
