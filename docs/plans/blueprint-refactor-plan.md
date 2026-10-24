@@ -362,3 +362,42 @@ WP5 完全不依赖 A，**建议先做 WP5 练手**，把"检查→建议卡片�
 
 - 既有失败（与本次改动无关，别误判）：`electron/services/__tests__/main-generation-owner.test.ts` 有 5 个长期失败（targetUnits 600 vs 300、incomplete 状态对象比较等）。
 
+
+
+---
+
+## 12. 会话进度更新（第三轮 · 收尾）
+
+### 状态：全部完成并发布
+
+| WP | 状态 | 说明 |
+|---|---|---|
+| WP1 | ✅ | 细纲六小节锁死（准入闸门，历史数据仍可读） |
+| WP2a | ✅ | 蓝图加列 costs_and_turns / foreshadowing |
+| WP2b | ✅ | 蓝图改为**有界输入派生**（核心大纲 + 前提 + 角色 + 世界观 + 本批细纲切片 + 所属粗纲段） |
+| WP3 | ✅ | 滚动守卫：只要求本批范围的细纲覆盖 |
+| WP4 | ✅ | 细纲 AI 检查（含章节范围选择、逐条/全部接受、按章写回、持久化） |
+| WP5 | ✅ | 粗纲 AI 检查（按段选择、写回 arc_outlines.summary） |
+| WP6 | ✅ | 蓝图 AI 检查（对照细纲切片、字段合并写回）；正文检查沿用既有 ReviewSheet |
+| — | ✅ | 蓝图 `costsAndTurns` / `foreshadowing` 接入正文提示词 |
+
+### 实现要点
+
+- **统一检查层**：`stage_review_runs` / `stage_review_findings`（`target` 区分 arc/outline/blueprint），
+  取代只服务粗纲的 `arc_review_*`。契约在 `src/shared/stage-review-types.ts` +
+  `src/shared/stage-review-contract.ts`（细纲/蓝图）与 `src/shared/arc-review-contract.ts`（粗纲）。
+- **统一 UI**：`src/components/stage/review/StageReviewPanel.tsx` + `ReviewRangeDialog.tsx`，
+  粗纲按段、细纲/蓝图按章范围。
+- **写回通道**：`db:stage-review-apply-outline`（按章替换，新增
+  `plotOutlineChapterSpans/Text/replacePlotOutlineChapter`）、`db:stage-review-apply-arc`、
+  `db:stage-review-apply-blueprint`。
+- **蓝图不接工具**（用户确认）：角色关系在细纲阶段已定，蓝图只做结构化录入。
+- 检查工作流：`outline-review-workflow.ts` / `blueprint-review-workflow.ts`，命令在
+  `commands/outline-review.command.ts` / `commands/blueprint-review.command.ts`。
+
+### 测试与发布
+
+- `tsc` / `lint` / `check:i18n` 全绿。
+- 全量单测：136 失败（基线 151，全部为环境相关既有失败，如 f05 需要 python3、原生 ABI 等；无一新增）。
+- 全量浏览器回归：**81 文件 / 962 项全部通过**。
+- 发布 **v1.5.29**，已部署到 `F:\aiNovel\ai-novel-writer`（app.asar 与 exe SHA-256 与构建产物一致，原生绑定齐全）。
