@@ -17,7 +17,7 @@ function validBlueprint(overrides: Record<string, unknown> = {}): Record<string,
     keyEvents: '主角收到失踪多年的兄长寄来的密信，并在信封夹层发现追踪器。',
     characters: ['林岚', '周砚'],
     relationships: [{ from: '林岚', to: '周砚', relation: '临时盟友' }],
-    suspenseHook: '追踪器忽然亮起，显示信件刚从屋内发出。',
+    suspenseHook: '追踪器忽然亮起，显示信件刚从屋内发出。', costsAndTurns: '代价：暴露了追踪器。', foreshadowing: '信件来源线。',
     ...overrides,
   }
 }
@@ -36,7 +36,7 @@ describe('blueprint semantic contract', () => {
       characters: ['林岚', '周砚'],
       newCharacterCandidates: [],
       relationshipHints: [{ from: '林岚', to: '周砚', relation: '临时盟友' }],
-      suspenseHook: '追踪器忽然亮起，显示信件刚从屋内发出。',
+      suspenseHook: '追踪器忽然亮起，显示信件刚从屋内发出。', costsAndTurns: '代价：暴露了追踪器。', foreshadowing: '信件来源线。',
     }])
   })
 
@@ -104,13 +104,13 @@ describe('blueprint semantic contract', () => {
     const longName = '亚历山德拉'.repeat(7) + '完整姓名尾部'
     const characters = [longName, ...Array.from({ length: 12 }, (_, index) => `角色${index}`)]
     const candidate = validBlueprint({ title: '题'.repeat(500), role: 'r'.repeat(500), purpose: 'p'.repeat(1000),
-      keyEvents: '事'.repeat(2000), suspenseHook: '悬'.repeat(1000), characters,
+      keyEvents: '事'.repeat(2000), suspenseHook: '悬'.repeat(1000), costsAndTurns: '代价。', foreshadowing: '伏笔。', characters,
       newCharacterCandidates: characters.map(name => ({ name, role: 'supporting' })),
       relationships: characters.slice(1, 10).map(to => ({ from: characters[0], to, relation: '同行' })),
     })
     expect(decodeBlueprintSemanticPayload([candidate], [1])[0]).toMatchObject({
       title: candidate.title, role: candidate.role, purpose: candidate.purpose, keyEvents: candidate.keyEvents,
-      suspenseHook: candidate.suspenseHook, characters, newCharacterCandidates: candidate.newCharacterCandidates,
+      suspenseHook: candidate.suspenseHook, costsAndTurns: candidate.costsAndTurns, foreshadowing: candidate.foreshadowing, characters, newCharacterCandidates: candidate.newCharacterCandidates,
       relationshipHints: candidate.relationships,
     })
     const duplicate = { from: '林岚', to: '周砚', relation: '同行' }
