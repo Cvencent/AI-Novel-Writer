@@ -262,3 +262,29 @@ WP5 完全不依赖 A，**建议先做 WP5 练手**，把"检查→建议卡片�
 
 **测试建议**：不要直接在《源起》上做大范围实验。可以新建一个小测试项目（如 30–50 章），验证通过再回到《源起》。
 
+
+---
+
+## 9. 用户已确认的决策（取代 §6 的开放问题）
+
+1. **架构页是否保留细纲入口** → **保留**（细纲作为创作层保留，架构页仍显示入口）。
+2. **蓝图是否允许作者手工编辑** → **可以**（蓝图页保持可编辑）。
+3. **AI 检查的接受方式** → **逐条接受 + 全部接受都支持**。
+4. **检查结果是否持久化** → **持久化**（复用 review_findings 形状，可复检）。
+
+### 9.1 本次并行分工（已在执行）
+
+| 工作包 | 执行者 | 理由 |
+|---|---|---|
+| WP1 → WP2 → WP3 | 主会话（串行） | 改同一批文件（plot-outline-contract / directory.command / blueprint-repository / workflow-guards），并行必冲突 |
+| WP5 粗纲检查 | 子进程 1 | 零依赖；文件与主链不重叠 |
+| 正文检查增强 | 子进程 2 | 检查机制已存在；只改 ReviewSheet 与正文审稿命令 |
+| WP4 细纲检查 | 待 WP1 落地后再派 | 需要锁死后的细纲格式 |
+| WP6 蓝图检查 | 待 WP2 落地后再派 | 需要 costsAndTurns / foreshadowing 字段 |
+
+### 9.2 子进程文件边界（防冲突）
+
+- 子进程 1（WP5）：可动 arc 相关文件 + 新建建议机制模块；**禁动** ReviewSheet.tsx / directory.command.ts / plot-outline-contract.ts / blueprint-repository.ts / workflow-guards.ts
+- 子进程 2（正文检查）：可动 ReviewSheet.tsx 与正文审稿命令；**禁动** arc 相关 / directory.command.ts / plot-outline-contract.ts / blueprint-repository.ts / workflow-guards.ts
+- 子进程不 bump 版本、不 commit / tag / release（由主会话统一发布）
+
