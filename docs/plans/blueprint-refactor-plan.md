@@ -288,3 +288,37 @@ WP5 完全不依赖 A，**建议先做 WP5 练手**，把"检查→建议卡片�
 - 子进程 2（正文检查）：可动 ReviewSheet.tsx 与正文审稿命令；**禁动** arc 相关 / directory.command.ts / plot-outline-contract.ts / blueprint-repository.ts / workflow-guards.ts
 - 子进程不 bump 版本、不 commit / tag / release（由主会话统一发布）
 
+
+---
+
+## 10. 本次会话进度（供接手）
+
+已完成并推送：
+
+| WP | 状态 | commit | 说明 |
+|---|---|---|---|
+| WP1 | ✅ 完成 | 38b6bef8 | 细纲六小节锁死。新增 `OUTLINE_SECTIONS` / `hasRequiredOutlineSections`，接入 `derivePlotOutlineCursor` 准入闸门（**不在** `validPlotOutlineEntry`，历史仍可读）；`plotOutlineRequestContract` 加硬性小节格式（中英）。测试 `src/shared/__tests__/plot-outline-locked-sections.test.ts` 6 项通过；shared 全量 41 文件 569 项通过 |
+| WP2a | ✅ 完成 | e4f4a39d | 蓝图扩展字段。`baseline-blueprint-schema.ts` 幂等加列 `costs_and_turns` / `foreshadowing`；`BlueprintRow` / `BlueprintData`（**驼峰字段设为可选**，避免破坏既有调用方）/ `rowToData` / `upsert` 全部接通（写入用 `?? \x27\x27` 兜底）。测试 `electron/migrations/__tests__/blueprint-extended-columns.test.ts` 2 项 + 蓝图仓储 23 项通过 |
+
+### 尚未开始（下一步）
+
+- **WP2b**：蓝图派生引擎 —— 把 `GenerateDirectoryCommand` 改为逐章派生，输入改为「本章细纲原文 + 粗纲段 + 核心大纲」，接工具循环，输出 8 字段结构化蓝图
+- **WP3**：滚动流程与守卫
+- **WP4 / WP5 / WP6**：AI 检查（细纲 / 粗纲 / 蓝图+正文）
+
+### 重要环境提示（下个会话务必先读）
+
+本机有两个工具坑，会严重拖慢开发，建议直接用 PowerShell `exec_command`（`shell: "powershell"`）配合 Node 脚本改文件：
+
+1. **本环境实例中 `spawn_agent` 不可用**（返回 unsupported call），无法开子进程并行，只能串行做。
+2. **PowerShell here-string / bash 多层引号会互相破坏代码**（`@\x27...\x27@` 与嵌套 `\x27`/`"` 反复出错，甚至写出 `db.exec(\x27\x27ALTER...` 这种坏行）。
+   - 可靠做法：用 `Node` 写小脚本改文件，引号用 `String.fromCharCode(39)` 生成；或直接用 `python` 读改写。
+   - 改完**务必** `pnpm exec tsc --noEmit` 立刻验证，别攒着。
+3. **better-sqlite3 ABI 会来回切换**：跑 vitest（Node ABI 127）前要 `node scripts/prepare-native-for-node.mjs`；打包前要 `node scripts/prepare-native-for-electron.mjs`。忘了会在测试里报 `NODE_MODULE_VERSION` 错误。
+4. vitest 输出很长，建议重定向到 `.runtime/xxx.out` 再 `grep`，避免污染上下文。
+
+### 已知测试夹具注意点
+
+- `electron/repositories/__tests__/blueprint-repository.test.ts` 里的 `blueprint` 基对象已补 `costsAndTurns` / `foreshadowing`；改字段时记得同步。
+- 测试自建 `blueprints` 表的 fixture **必须包含新列**，否则 `upsert` 报 `NOT NULL constraint failed`。
+
