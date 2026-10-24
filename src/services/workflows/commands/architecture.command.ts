@@ -2347,10 +2347,12 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       worldbuilding: sourceExpected.worldbuilding,
       globalGuidance,
     }, language);
+    // writingStyle 是正文级文风约束（节拍、结算数字、用词腔调），不能进细纲：
+    // 一旦注入，模型会把「压力—应对—结算」当细纲排版，逐章退化成流水账。
     const representedConfig: Record<string, unknown> = { coreOutline: config.coreOutline, genre: config.genre,
       totalChapters: sourceExpected.totalChapters, wordsPerChapter: sourceExpected.wordsPerChapter,
       plotStructure: config.plotStructure, narrativePOV: config.narrativePOV, globalGuidance: sourceExpected.globalGuidance,
-      writingLanguage: language }
+      writingStyle: config.writingStyle, writingLanguage: language }
     const additionalConfig = Object.fromEntries(Object.entries(config).filter(([key, value]) => representedConfig[key] !== value))
     const additionalContext = Object.keys(additionalConfig).length
       ? promptLanguageText(language, '【其余冻结作者配置，须保留全部硬要求】\n' + JSON.stringify(additionalConfig),
