@@ -13,6 +13,9 @@ export type ChapterWritePrefill = {
   purpose: string
   keyEvents: string
   characters: string
+  suspenseHook?: string
+  costsAndTurns?: string
+  foreshadowing?: string
   userGuidance: string
 }
 

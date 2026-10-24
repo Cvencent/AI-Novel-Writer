@@ -1,7 +1,9 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { isProjectSessionContext } from '../../src/shared/project-session-context'
 import { closeProjectDatabase, getCurrentProjectPath, getProjectDb } from '../database'
-import { ArcReviewRepository } from '../repositories/arc-review-repository'
+import { StageReviewRepository } from '../repositories/stage-review-repository'
+import { isStageReviewTarget } from '../../src/shared/stage-review-types'
+import { replacePlotOutlineChapter } from '../../src/shared/plot-outline-contract'
 import { ArcOutlineRepository } from '../repositories/arc-outline-repository'
 import { OutlineSegmentBindingRepository } from '../repositories/outline-segment-binding-repository'
 import { OutlineSummaryRepository } from '../repositories/outline-summary-repository'
@@ -199,40 +201,90 @@ export function registerDatabaseController() {
     } catch (error) { return { success: false, error: String(error) } }
   })
 
-  ipcMain.handle('db:arc-review-save', async (_event, input, expectedProjectPath: string) => {
+  ipcMain.handle('db:stage-review-save', async (_event, input, expectedProjectPath: string) => {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
       const database = getProjectDb()
       if (!database) throw new Error('项目数据库未打开')
-      return { success: true, ...ArcReviewRepository.save(input, database) }
+      return { success: true, ...StageReviewRepository.save(input, database) }
     } catch (error) { return { success: false, error: String(error) } }
   })
-  ipcMain.handle('db:arc-review-list', async (_event, runId: string, expectedProjectPath: string) => {
+
+  ipcMain.handle('db:stage-review-list', async (_event, runId: string, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     const database = getProjectDb()
     if (!database) throw new Error('项目数据库未打开')
-    return ArcReviewRepository.listByRun(runId, database)
+    return StageReviewRepository.listByRun(runId, database)
   })
-  ipcMain.handle('db:arc-review-latest', async (_event, expectedProjectPath: string) => {
+
+  ipcMain.handle('db:stage-review-latest', async (_event, target: string, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     const database = getProjectDb()
     if (!database) throw new Error('项目数据库未打开')
-    return ArcReviewRepository.latestRun(database)
+    return isStageReviewTarget(target) ? StageReviewRepository.latestRun(target, database) : null
   })
-  ipcMain.handle('db:arc-review-resolve', async (_event, runId: string, findingId: string, status: 'accepted' | 'ignored', expectedProjectPath: string) => {
+
+  ipcMain.handle('db:stage-review-resolve', async (_event, runId: string, findingId: string, status: 'accepted' | 'ignored', expectedProjectPath: string) => {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
       const database = getProjectDb()
       if (!database) throw new Error('项目数据库未打开')
-      return { success: ArcReviewRepository.resolve(runId, findingId, status, database) }
+      return { success: StageReviewRepository.resolve(runId, findingId, status, database) }
     } catch (error) { return { success: false, error: String(error) } }
   })
-  ipcMain.handle('db:arc-review-accept-all', async (_event, runId: string, expectedProjectPath: string) => {
+
+  ipcMain.handle('db:stage-review-accept-all', async (_event, runId: string, expectedProjectPath: string) => {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
       const database = getProjectDb()
       if (!database) throw new Error('项目数据库未打开')
-      return { success: true, accepted: ArcReviewRepository.acceptAll(runId, database) }
+      return { success: true, accepted: StageReviewRepository.acceptAll(runId, database) }
+    } catch (error) { return { success: false, error: String(error) } }
+  })
+
+  ipcMain.handle('db:stage-review-apply-outline', async (_event, chapter: number, nextEntry: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const database = getProjectDb()
+      if (!database) throw new Error('项目数据库未打开')
+      const core = ProjectCoreRepository.get(database)
+      if (!core) throw new Error('项目记录不存在')
+      const next = replacePlotOutlineChapter(core.synopsis || '', chapter, nextEntry)
+      const ok = ProjectCoreRepository.commitSynopsis({
+        synopsis: next,
+        expected: {
+          synopsis: core.synopsis, premise: core.premise, charactersArch: core.charactersArch, worldbuilding: core.worldbuilding,
+          genre: core.genre, totalChapters: core.totalChapters, wordsPerChapter: core.wordsPerChapter,
+          writingLanguage: core.writingLanguage, plotStructure: core.plotStructure, narrativePov: core.narrativePov,
+          globalGuidance: core.globalGuidance,
+        },
+      }, database)
+      return ok ? { success: true, synopsis: next } : { success: false, error: '项目数据已变化，已拒绝覆盖细纲' }
+    } catch (error) { return { success: false, error: String(error) } }
+  })
+
+  ipcMain.handle('db:stage-review-apply-arc', async (_event, arcIndex: number, summary: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const database = getProjectDb()
+      if (!database) throw new Error('项目数据库未打开')
+      const current = ArcOutlineRepository.list(database).find(arc => arc.arcIndex === arcIndex)
+      if (!current) throw new Error('ARC_OUTLINE_NOT_FOUND')
+      ArcOutlineRepository.revise(arcIndex, current.revision, summary, database)
+      return { success: true }
+    } catch (error) { return { success: false, error: String(error) } }
+  })
+
+  ipcMain.handle('db:stage-review-apply-blueprint', async (_event, chapter: number, patch: Record<string, unknown>, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const database = getProjectDb()
+      if (!database) throw new Error('项目数据库未打开')
+      const current = BlueprintRepository.getByChapter(chapter)
+      if (!current) throw new Error('BLUEPRINT_NOT_FOUND')
+      const merged = { ...current, ...patch, chapterNumber: chapter }
+      BlueprintRepository.upsert(merged as typeof current, database)
+      return { success: true }
     } catch (error) { return { success: false, error: String(error) } }
   })
 

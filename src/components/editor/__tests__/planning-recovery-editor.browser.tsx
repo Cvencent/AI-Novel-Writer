@@ -44,7 +44,7 @@ function fixture(kind: 'outline' | 'blueprint'): GenerationRecoveryContext {
   plotOutlineRecovery: { sourceHandle: handle, leaseEpoch: session.leaseId, draft: '# 细纲\n\n## 第1章：未完成\n', completeChapters: [], writeState: { kind: 'ready' }, saved: null } }
 }
 const blueprintText = JSON.stringify([{ chapterNumber: 1, title: '雨夜', role: '建置', purpose: '寻找证据', keyEvents: '找到信件',
-  characters: ['沈砺'], relationships: [], suspenseHook: '信封有新线索', userGuidance: '保留作者指示', notes: '作者笔记', notesUpdatedAt: '2026-10-04T00:00:00Z' }])
+  characters: ['沈砺'], relationships: [], suspenseHook: '信封有新线索', costsAndTurns: '暴露了行踪', foreshadowing: '埋下信件线索', userGuidance: '保留作者指示', notes: '作者笔记', notesUpdatedAt: '2026-10-04T00:00:00Z' }])
 let root: Root
 let container: HTMLDivElement
 let context: GenerationRecoveryContext

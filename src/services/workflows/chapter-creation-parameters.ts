@@ -12,6 +12,9 @@ export interface ChapterCreationDialogInput {
   purpose: string
   keyEvents: string
   characters: string
+  suspenseHook?: string
+  costsAndTurns?: string
+  foreshadowing?: string
   userGuidance: string
   knowledgeQueryHint: string
   wordsTarget: number | ''
@@ -52,6 +55,9 @@ export function createChapterInfoFromDialogInput(input: ChapterCreationDialogInp
     purpose: input.purpose,
     characters: input.characters.split(/[、,，]/).map(s => s.trim()).filter(Boolean),
     keyEvents: input.keyEvents,
+    suspenseHook: input.suspenseHook,
+    costsAndTurns: input.costsAndTurns,
+    foreshadowing: input.foreshadowing,
     userGuidance: input.userGuidance,
     wordsTarget: normalizeChapterWordsTarget(input.wordsTarget, input.defaultWordsTarget),
     knowledgeQueryHint: input.knowledgeQueryHint.trim() || undefined,

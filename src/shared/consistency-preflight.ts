@@ -29,6 +29,8 @@ export interface BlueprintForPreflight {
   keyEvents: string
   characters: string[]
   suspenseHook: string
+  costsAndTurns?: string
+  foreshadowing?: string
   userGuidance: string
   notes: string
 }

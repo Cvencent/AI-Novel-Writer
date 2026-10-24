@@ -874,25 +874,44 @@ export interface DatabaseChannels {
     args: [arcIndex: number, expectedRevision: number, expectedProjectPath: string]
     return: { success: boolean; record?: ArcOutlineRecord; error?: string }
   }
-  'db:arc-review-save': {
-    args: [input: { operationId: string; runId: string; selected: number[]; sourceHash: string; findings: Array<{ arcIndex: number; category: string; severity: string; problemText: string; expectedText: string }> }, expectedProjectPath: string]
-    return: { success: boolean; runId?: string; findings?: unknown[]; error?: string }
+  'db:stage-review-save': {
+    args: [input: { operationId: string; runId: string; target: import('./stage-review-types').StageReviewTarget; selected: number[]; sourceHash: string; findings: import('./stage-review-types').StageReviewFinding[] }, expectedProjectPath: string]
+    return: { success: boolean; runId?: string; findings?: import('./stage-review-types').StageReviewFindingRecord[]; error?: string }
   }
-  'db:arc-review-list': {
+  'db:stage-review-list': {
     args: [runId: string, expectedProjectPath: string]
-    return: unknown[]
+    return: import('./stage-review-types').StageReviewFindingRecord[]
   }
-  'db:arc-review-latest': {
-    args: [expectedProjectPath: string]
-    return: { runId: string; findings: unknown[] } | null
+  'db:stage-review-latest': {
+    args: [target: import('./stage-review-types').StageReviewTarget, expectedProjectPath: string]
+    return: import('./stage-review-types').StageReviewRunRecord | null
   }
-  'db:arc-review-resolve': {
+  'db:stage-review-resolve': {
     args: [runId: string, findingId: string, status: 'accepted' | 'ignored', expectedProjectPath: string]
     return: { success: boolean; error?: string }
   }
-  'db:arc-review-accept-all': {
+  'db:stage-review-accept-all': {
     args: [runId: string, expectedProjectPath: string]
     return: { success: boolean; accepted?: number; error?: string }
+  }
+  'db:stage-review-remove': {
+    args: [runId: string, expectedProjectPath: string]
+    return: { success: boolean; removed?: boolean; error?: string }
+  }
+  /** 接受一条细纲检查建议：按章替换 project_core.synopsis。 */
+  'db:stage-review-apply-outline': {
+    args: [chapter: number, nextEntry: string, expectedProjectPath: string]
+    return: { success: boolean; synopsis?: string; error?: string }
+  }
+  /** 接受一条粗纲检查建议：替换该段粗纲正文（summary）。 */
+  'db:stage-review-apply-arc': {
+    args: [arcIndex: number, summary: string, expectedProjectPath: string]
+    return: { success: boolean; error?: string }
+  }
+  /** 接受一条蓝图检查建议：合并到该章蓝图字段。 */
+  'db:stage-review-apply-blueprint': {
+    args: [chapter: number, patch: Partial<import('../../electron/repositories/blueprint-repository').BlueprintData>, expectedProjectPath: string]
+    return: { success: boolean; error?: string }
   }
   'db:arc-outline-revise': {
     args: [arcIndex: number, expectedRevision: number, summary: string, expectedProjectPath: string]

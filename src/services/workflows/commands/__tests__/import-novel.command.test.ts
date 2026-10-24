@@ -212,6 +212,8 @@ describe('InferBlueprintsPerChapterCommand', () => {
         characters: ['Mara'],
         relationships: [],
         suspenseHook: 'The clock resets to midnight.',
+        costsAndTurns: 'Mara loses the earlier timeline.',
+        foreshadowing: 'The sign repeats.',
       }],
     })
     const malformed = `${valid.slice(0, -1)},}`
@@ -293,6 +295,8 @@ describe('InferBlueprintsPerChapterCommand', () => {
             characters: ['主角'],
             relationshipHints: [],
             suspenseHook: '门外有人',
+            costsAndTurns: '暴露身份',
+            foreshadowing: '门外的人',
           }],
         }), undefined, 'stop')
         return 'import-blueprint-request'
@@ -320,6 +324,8 @@ describe('InferBlueprintsPerChapterCommand', () => {
             characters: ['主角', '故人'],
             relationships: [{ from: '主角', to: '故人' }],
             suspenseHook: '门外有人',
+            costsAndTurns: '暴露身份',
+            foreshadowing: '门外的人',
           }],
         }), undefined, 'stop')
         return 'import-blueprint-request'
@@ -350,6 +356,8 @@ describe('InferBlueprintsPerChapterCommand', () => {
       characters: ['主角'],
       relationshipHints: [],
       suspenseHook: '门外有人',
+      costsAndTurns: '暴露身份',
+      foreshadowing: '门外的人',
       userGuidance: '',
       notes: '',
       notesUpdatedAt: '',
@@ -430,6 +438,8 @@ describe('InferBlueprintsPerChapterCommand', () => {
             characters: ['主角'],
             relationships: [],
             suspenseHook: '门外有人',
+            costsAndTurns: '暴露身份',
+            foreshadowing: '门外的人',
           }],
         }), undefined, 'stop')
         return 'import-blueprint-request'

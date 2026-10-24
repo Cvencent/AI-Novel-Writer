@@ -33,6 +33,9 @@ export type CreativeWorkflowName =
   | 'generate_blueprint'
   | 'generate_architecture'
   | 'generate_arc_outline'
+  | 'review_arc_outline'
+  | 'review_outline'
+  | 'review_blueprints'
 
 export type CreativeIntent =
   | { workflow: 'generate_draft'; chapterNumber: number }
@@ -52,6 +55,9 @@ export type CreativeIntent =
       arcContext?: ArchitectureWorkflowParams['arcContext']
     }
   | { workflow: 'generate_arc_outline'; mode: 'next' | 'reverse' | 'revise'; targetUnits?: number; revise?: { arcIndex: number; expectedRevision: number; direction: string } }
+  | { workflow: 'review_arc_outline'; selectedArcIndexes?: readonly number[] }
+  | { workflow: 'review_outline'; range: { from: number; to: number } }
+  | { workflow: 'review_blueprints'; range: { from: number; to: number } }
   | { workflow: 'generate_blueprint'; params?: DirectoryWorkflowParams }
   | { workflow: 'review' | 'refine' | 'finalize'; chapterNumber: number }
 
@@ -109,6 +115,9 @@ async function guardIntent(
   }
   // 粗纲只依赖前提与世界观；命令自身会校验，不借用架构生成的前置闸门。
   if (intent.workflow === 'generate_arc_outline') return
+  // 审核是只读检查：只写审核建议表，不占用创作资源，也不依赖架构闸门。
+  if (intent.workflow === 'review_arc_outline') return
+  if (intent.workflow === 'review_outline' || intent.workflow === 'review_blueprints') return
   if (intent.workflow === 'generate_blueprint') {
     requireGuardAccepted(
       await guardDirectoryGeneration(projectSession.projectPath, projectSession, uiLocale),
@@ -164,6 +173,23 @@ async function definitionFor(
       ...(intent.revise ? { revise: intent.revise } : {}),
     }, uiLocale)
   }
+  if (intent.workflow === 'review_outline') {
+    const { createOutlineReviewWorkflow } = await import('./outline-review-workflow')
+    return createOutlineReviewWorkflow({ projectPath: project.path, projectSession, range: intent.range }, uiLocale)
+  }
+  if (intent.workflow === 'review_blueprints') {
+    const { createBlueprintReviewWorkflow } = await import('./blueprint-review-workflow')
+    return createBlueprintReviewWorkflow({ projectPath: project.path, projectSession, range: intent.range }, uiLocale)
+  }
+  if (intent.workflow === 'review_arc_outline') {
+    const { createArcOutlineWorkflow } = await import('./arc-outline-workflow')
+    return createArcOutlineWorkflow({
+      projectPath: project.path,
+      projectSession,
+      mode: 'review',
+      selectedArcIndexes: intent.selectedArcIndexes ?? [],
+    }, uiLocale)
+  }
   if (intent.workflow === 'generate_blueprint') {
     return createDirectoryWorkflow(intent.params ?? { mode: 'full' }, project.path, projectSession, uiLocale)
   }
@@ -190,6 +216,8 @@ async function definitionFor(
       characters: blueprint.characters,
       keyEvents: blueprint.keyEvents,
       suspenseHook: blueprint.suspenseHook,
+      costsAndTurns: blueprint.costsAndTurns,
+      foreshadowing: blueprint.foreshadowing,
       userGuidance: blueprint.userGuidance,
       wordsTarget: normalizeChapterWordsTarget(project.novelConfig.wordsPerChapter),
     }, projectSession, { generationModelId, uiLocale })

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { ArrowRight, Ellipsis, Sparkles } from 'lucide-react'
 import { ARCH_STEP_NAMES, type ArchStepKey } from '../../../services/architecture-step-selection'
 import { useCharacterStore } from '../../../stores/character-store'
@@ -7,7 +7,7 @@ import { navigate } from '../../../stores/navigation/navigation-intents'
 import { openBuiltinEditor } from '../../../stores/open-builtin-editor'
 import { useProjectStore } from '../../../stores/project-store'
 import { clearArchSection } from '../../editor/clear-arch-section'
-import { ARCH_FILES, useArchitectureOverview } from '../../editor/use-architecture-overview'
+import { ARCH_FILES, useArchitectureOverview, type ArchitectureOverview } from '../../editor/use-architecture-overview'
 import type { ProjectSessionContext } from '../../../shared/ipc-channels'
 import { captureProjectSession, isProjectSessionCurrent, isProjectSessionPath } from '../../project-session-gate'
 import { Button } from '../../ui/Button'
@@ -16,7 +16,11 @@ import { Menu } from '../../ui/Menu'
 import { toast } from '../../ui/Toast'
 import { refreshStageWork } from '../use-stage-work'
 import ArchitectureGenerateDialog from './ArchitectureGenerateDialog'
+import { ipc } from '../../../services/ipc-client'
+import type { StageReviewFindingRecord } from '../../../shared/stage-review-types'
 import ContinuousOutlinePanel from './ContinuousOutlinePanel'
+import StageReviewPanel from '../review/StageReviewPanel'
+import ReviewRangeDialog from '../review/ReviewRangeDialog'
 import { startContinuousOutline } from '../../../services/workflows/continuous-outline-runner'
 import { plotOutlineNextChapter } from '../../../shared/plot-outline-contract'
 import ArchitectureSection from './ArchitectureSection'
@@ -39,6 +43,15 @@ function useCastSummary(projectKey: string): { summary: string; loading: boolean
 const openCast = (text: (zh: string, en: string) => string) => openBuiltinEditor('character-editor', text('角色名单', 'Cast'), 'character')
 
 /**
+ * 细纲检查入口只在「已经写出至少一章细纲」时显示：没有内容可检查时不该出现空面板。
+ */
+function outlineReviewAvailableForPage(overview: ArchitectureOverview): boolean {
+  const source = overview.synopsisSource
+  if (!source || source.totalChapters <= 0) return false
+  return plotOutlineNextChapter(source) - 1 >= 1
+}
+
+/**
  * 架构阶段：故事前提、角色名单、世界观、粗纲、细纲五节。编辑一节打开它的文档标签，角色名单打开名单页；
  * 数据与操作来自 useArchitectureOverview。粗纲有自己的分段生成流程，不在「AI 生成架构」对话框里。
  */
@@ -52,6 +65,10 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
   /** 清空确认打开时冻结的会话：确认时作品已换就什么也不写。 */
   const [clearing, setClearing] = useState<{ key: ArchStepKey; session: ProjectSessionContext } | null>(null)
   const [continuousTargetUnits, setContinuousTargetUnits] = useState(300)
+  /** AI 检查细纲：待检查范围与进行中标记。空范围表示按已生成章节全检。 */
+  const [outlineReviewRange, setOutlineReviewRange] = useState<{ from: number; to: number } | null>(null)
+  const [outlineReviewBusy, setOutlineReviewBusy] = useState(false)
+  const [outlineReviewOpen, setOutlineReviewOpen] = useState(false)
   /** 粗纲节的生成入口由 ArcOutlinePanel 提供，节头按钮直接复用同一份逻辑。 */
   const arcRunnerRef = useRef<((mode: 'next' | 'reverse') => void) | null>(null)
 
@@ -64,11 +81,29 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
     return plotOutlineNextChapter(source) <= source.totalChapters
   })()
 
-  const reload = () => {
+  /** 细纲至少有一章时才谈得上检查；范围上限取全书章数与已生成到的章号。 */
+  const outlineReviewVisible = !overview.loading && outlineReviewAvailableForPage(overview)
+  const outlineReviewMax = (() => {
+    const source = overview.synopsisSource
+    if (!source) return 0
+    return Math.max(1, Math.min(source.totalChapters, plotOutlineNextChapter(source) - 1))
+  })()
+
+  const reload = useCallback(() => {
     void overview.loadStatus()
     void overview.roster.refresh()
     void refreshStageWork(text)
-  }
+  }, [overview, text])
+  /** 接受一条细纲检查建议：按章替换 project_core.synopsis，然后重读整页状态。 */
+  const applyOutlineFinding = useCallback(async (finding: StageReviewFindingRecord) => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || !isProjectSessionPath(session, projectKey)) return false
+    const result = await ipc.invokeWithProjectSession(session, 'db:stage-review-apply-outline', finding.targetIndex, finding.expectedText, projectKey).catch(() => null) as { success?: boolean } | null
+    if (!result?.success) return false
+    reload()
+    return true
+  }, [projectKey, reload])
+
   const editSection = (key: ArchStepKey) => {
     const file = ARCH_FILES.find(candidate => candidate.key === key)
     if (file) void overview.openArchFile(file)
@@ -167,6 +202,32 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
 
         <ContinuousOutlinePanel targetUnits={continuousTargetUnits} />
 
+        {outlineReviewVisible && (
+          <section className='arch-review-section' aria-label={text('AI 检查细纲', 'AI review of the outline')}>
+            <StageReviewPanel
+              projectKey={projectKey}
+              target='outline'
+              launchIntent={{ workflow: 'review_outline', range: outlineReviewRange ?? { from: 1, to: 1 } }}
+              canReview={Boolean(outlineReviewRange)}
+              reviewBusy={outlineReviewBusy}
+              onReviewBusyChange={setOutlineReviewBusy}
+              applyFinding={applyOutlineFinding}
+              footer={(
+                <>
+                  <span className='arch-arc-review-hint'>
+                    {outlineReviewRange
+                      ? text(`范围：第 ${outlineReviewRange.from}–${outlineReviewRange.to} 章`, `Range: chapters ${outlineReviewRange.from}-${outlineReviewRange.to}`)
+                      : text('还没有选定检查范围', 'No review range chosen yet')}
+                  </span>
+                  <Button variant='secondary' size='sm' disabled={outlineReviewBusy} onClick={() => setOutlineReviewOpen(true)}>
+                    {text('选择范围…', 'Choose range…')}
+                  </Button>
+                </>
+              )}
+            />
+          </section>
+        )}
+
         <div className="arch-sections">
           {SECTION_ORDER.map(key => (
             <ArchitectureSection
@@ -193,6 +254,18 @@ export default function StageArchitecture({ projectKey }: { projectKey: string }
       </div>
 
       <ArchitectureGenerateDialog {...overview.generateDialog} />
+      <ReviewRangeDialog
+        key={'outline-review:' + outlineReviewMax}
+        open={outlineReviewOpen}
+        title={text('检查细纲', 'Review the outline')}
+        description={text('选择要交给 AI 检查的章节范围。检查只读，不会自动改写原文；建议要你逐条接受。',
+          'Choose which chapters to send to the AI. Reviewing is read-only; nothing is rewritten until you accept a suggestion.')}
+        defaultFrom={1}
+        defaultTo={outlineReviewMax}
+        maxTo={outlineReviewMax}
+        onClose={() => setOutlineReviewOpen(false)}
+        onConfirm={range => { setOutlineReviewRange(range); setOutlineReviewOpen(false) }}
+      />
       <DangerConfirm
         open={clearing !== null}
         onOpenChange={open => { if (!open) setClearing(null) }}

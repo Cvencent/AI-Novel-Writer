@@ -57,6 +57,8 @@ const BLUEPRINT: ChapterBlueprint = {
   keyEvents: '阅读灯熄灭三次；老周查票时叫出林舟母亲的名字。',
   characters: ['林舟', '老周', '阿满'],
   suspenseHook: '座位上放着一张 1998 年的车票。',
+  costsAndTurns: '林舟错过了下车的时机。',
+  foreshadowing: '埋下车票与母亲名字的关联。',
   userGuidance: '母亲的声音只出现一次，不要解释来源。',
   notes: '列车驶出站台后，窗外停在 1998 年。',
   notesUpdatedAt: '',
@@ -188,6 +190,8 @@ function expectedLaunch(changes: { generationModelId: string; userGuidance: stri
     chapterInfo: {
       projectPath: PROJECT_PATH, chapterNumber: 5, title: '不要回头', role: '转折', purpose: '让林舟第一次违背信上的警告。',
       characters: ['林舟', '老周', '阿满'], keyEvents: '阅读灯熄灭三次；老周查票时叫出林舟母亲的名字。',
+      suspenseHook: '座位上放着一张 1998 年的车票。', costsAndTurns: '林舟错过了下车的时机。',
+      foreshadowing: '埋下车票与母亲名字的关联。',
       userGuidance, wordsTarget: 2600, knowledgeQueryHint,
     },
     session: SESSION,

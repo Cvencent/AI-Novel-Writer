@@ -29,7 +29,7 @@ describe('WP5 arc review contract', () => {
       { arcIndex: 9, category: 'duplication', severity: 'warning', problemText: '越界。', expectedText: 'x' },
     ], [1, 2])
     expect(findings).toHaveLength(1)
-    expect(findings[0]!.arcIndex).toBe(2)
+    expect(findings[0]!.targetIndex).toBe(2)
     expect(findings[0]!.category).toBe('duplication')
   })
   it('rejects an unknown category and an empty problem text', () => {

@@ -11,6 +11,8 @@ import { plotOutlineNextChapter, type PlotOutlineRangeSource } from '../../../sh
 import type { OutlineProgress } from '../../../shared/plot-outline-checkpoint'
 import { Button } from '../../ui/Button'
 import { DangerConfirm } from '../../ui/DangerConfirm'
+import StageReviewPanel from '../review/StageReviewPanel'
+import type { StageReviewFindingRecord } from '../../../shared/stage-review-types'
 import type { ArcOutlineRecord } from '../../../../electron/repositories/arc-outline-repository'
 
 /** 生成模式：逐段等作者确认，或连续铺完。 */
@@ -52,6 +54,9 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
   const [pendingDeleteArc, setPendingDeleteArc] = useState<number | null>(null)
   const [listCollapsed, setListCollapsed] = useState(false)
   const [error, setError] = useState('')
+  // AI 检查（粗纲）：状态由共享面板自己持有，面板只回传「写回这一段」的动作。
+  const [reviewBusy, setReviewBusy] = useState(false)
+
   const totalChapters = useProjectStore(s => s.currentProject?.novelConfig?.totalChapters ?? 0)
 
   const session = useProjectStore(s => s.currentProject?.sessionLease)
@@ -459,6 +464,28 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
             await load()
             notifyChanged()
           })() }}
+        />
+      )}
+      {embedded && (
+        <StageReviewPanel
+          projectKey={projectKey}
+          target='arc'
+          launchIntent={{ workflow: 'review_arc_outline', selectedArcIndexes: [...selectedArcs] }}
+          canReview={arcs.length > 0}
+          reviewBusy={reviewBusy}
+          onReviewBusyChange={setReviewBusy}
+          applyFinding={async (finding: StageReviewFindingRecord) => {
+            const session = captureProjectSession(useProjectStore.getState().currentProject)
+            if (!session || !isProjectSessionCurrent(session)) return false
+            const result = await ipc.invokeWithProjectSession(session, 'db:stage-review-apply-arc', finding.targetIndex, finding.expectedText, projectKey).catch(() => null) as { success?: boolean } | null
+            if (!result?.success) return false
+            await load()
+            notifyChanged()
+            return true
+          }}
+          footer={<span className='arch-arc-review-hint'>{selectedArcs.size > 0
+            ? text(`只检查选中的 ${selectedArcs.size} 段`, `Review the ${selectedArcs.size} selected segment(s)`)
+            : text('未选择时检查全部粗纲', 'Reviews every arc segment when nothing is selected')}</span>}
         />
       )}
     </section>

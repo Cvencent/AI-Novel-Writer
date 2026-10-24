@@ -589,7 +589,7 @@ export class ReviewArcOutlineCommand extends BaseWorkflowCommand<string> {
     const findings = normalizeArcReviewFindings(rawFindings, selected)
     const runId = 'arc-review:' + context.runId
     const sourceHash = await hashAuthorText(arcs.filter(a => selected.includes(a.arcIndex)).map(a => a.summary).join(String.fromCharCode(10)))
-    const saved = await ipc.invokeWithProjectSession(projectSession, 'db:arc-review-save', { operationId: runId, runId, selected: [...selected], sourceHash, findings }, expectedProjectPath)
+    const saved = await ipc.invokeWithProjectSession(projectSession, 'db:stage-review-save', { operationId: runId, runId, target: 'arc', selected: [...selected], sourceHash, findings }, expectedProjectPath)
     requireIpcSuccess(saved, 'Failed to save the arc review.')
     callbacks.log('Arc review finished with ' + findings.length + ' suggestion(s).')
     return runId

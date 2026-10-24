@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BookOpen, ListChecks, MoreHorizontal, Sparkles } from 'lucide-react'
 import { blueprintWritePrefill } from '../../../services/workflows/chapter-write-launch'
 import type { DirectoryWorkflowParams } from '../../../services/workflows/directory-workflow'
@@ -6,7 +6,13 @@ import { openPlanningRecoveryDraft } from '../../../stores/editor-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useStageStore } from '../../../stores/navigation/stage-store'
 import { isCurrentProjectSession, currentProjectSessionForPath, useChapterBlueprints } from '../../editor/use-chapter-blueprints'
+import { ipc } from '../../../services/ipc-client'
+import { useProjectStore } from '../../../stores/project-store'
+import { captureProjectSession, isProjectSessionPath } from '../../project-session-gate'
+import type { StageReviewFindingRecord } from '../../../shared/stage-review-types'
 import { Button } from '../../ui/Button'
+import StageReviewPanel from '../review/StageReviewPanel'
+import ReviewRangeDialog from '../review/ReviewRangeDialog'
 import { DangerConfirm } from '../../ui/DangerConfirm'
 import { EmptyState } from '../../ui/EmptyState'
 import { Menu } from '../../ui/Menu'
@@ -43,6 +49,9 @@ export default function StageBlueprint({ projectKey, initialChapterNumber, selec
   const [generateOpen, setGenerateOpen] = useState(false)
   const [batchOpen, setBatchOpen] = useState(false)
   const [ask, setAsk] = useState<Ask | null>(null)
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const [reviewRange, setReviewRange] = useState<{ from: number; to: number } | null>(null)
+  const [reviewBusy, setReviewBusy] = useState(false)
 
   const next = plan.nextWritableBlueprint
   const count = plan.blueprints.length
@@ -57,6 +66,21 @@ export default function StageBlueprint({ projectKey, initialChapterNumber, selec
 
   const confirmWith = (kind: 'overwrite' | 'warning', message?: string) =>
     new Promise<boolean>(resolve => setAsk({ kind, message, resolve }))
+
+  /** 接受一条蓝图建议：把模型给出的字段 JSON 合并到该章蓝图。 */
+  const applyBlueprintFinding = useCallback(async (finding: StageReviewFindingRecord) => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || !isProjectSessionPath(session, projectKey)) return false
+    let patch: Record<string, unknown> = {}
+    try {
+      const parsed = JSON.parse(finding.expectedText)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) patch = parsed as Record<string, unknown>
+    } catch { return false }
+    const result = await ipc.invokeWithProjectSession(session, 'db:stage-review-apply-blueprint', finding.targetIndex, patch, projectKey).catch(() => null) as { success?: boolean } | null
+    if (!result?.success) return false
+    await plan.reload()
+    return true
+  }, [plan, projectKey])
 
   const settle = (ok: boolean) => {
     if (ask && 'resolve' in ask) ask.resolve(ok)
@@ -283,6 +307,43 @@ export default function StageBlueprint({ projectKey, initialChapterNumber, selec
         confirmLabel={text('清除误导入正文', 'Clear imported text')}
         cancelLabel={text('取消', 'Cancel')}
         onConfirm={() => void plan.clearLegacyImportedText()}
+      />
+      {count > 0 && (
+        <section className='arch-review-section' aria-label={text('AI 检查蓝图', 'AI review of blueprints')}>
+          <StageReviewPanel
+            projectKey={projectKey}
+            target='blueprint'
+            launchIntent={{ workflow: 'review_blueprints', range: reviewRange ?? { from: 1, to: 1 } }}
+            canReview={Boolean(reviewRange)}
+            reviewBusy={reviewBusy}
+            onReviewBusyChange={setReviewBusy}
+            applyFinding={applyBlueprintFinding}
+            footer={(
+              <>
+                <span className='arch-arc-review-hint'>
+                  {reviewRange
+                    ? text(`范围：第 ${reviewRange.from}–${reviewRange.to} 章`, `Range: chapters ${reviewRange.from}-${reviewRange.to}`)
+                    : text('还没有选定检查范围', 'No review range chosen yet')}
+                </span>
+                <Button variant='secondary' size='sm' disabled={reviewBusy} onClick={() => setReviewOpen(true)}>
+                  {text('选择范围…', 'Choose range…')}
+                </Button>
+              </>
+            )}
+          />
+        </section>
+      )}
+      <ReviewRangeDialog
+        key={'blueprint-review:' + (plan.blueprints[plan.blueprints.length - 1]?.chapterNumber ?? 1)}
+        open={reviewOpen}
+        title={text('检查蓝图', 'Review blueprints')}
+        description={text('选择要检查的章节范围。检查只读，不会自动改写蓝图；建议要你逐条接受。',
+          'Choose which chapters to review. Reviewing is read-only; nothing is rewritten until you accept a suggestion.')}
+        defaultFrom={plan.blueprints[0]?.chapterNumber ?? 1}
+        defaultTo={plan.blueprints[plan.blueprints.length - 1]?.chapterNumber ?? 1}
+        maxTo={Math.max(1, plan.blueprints[plan.blueprints.length - 1]?.chapterNumber ?? 1)}
+        onClose={() => setReviewOpen(false)}
+        onConfirm={range => { setReviewRange(range); setReviewOpen(false) }}
       />
     </div>
   )

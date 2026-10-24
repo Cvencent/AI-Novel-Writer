@@ -28,6 +28,10 @@ export interface ChapterInfo {
   characters: string[]
   keyEvents: string
   suspenseHook?: string
+  /** 本章当场付出的代价或不可逆后果（来自蓝图）。 */
+  costsAndTurns?: string
+  /** 本章埋下或回收的伏笔（来自蓝图）。 */
+  foreshadowing?: string
   userGuidance?: string
   /** 本次单章创作的用户目标字数；未提供时沿用项目默认值。 */
   wordsTarget?: number

@@ -30,6 +30,9 @@ export interface ChapterWriteForm {
   purpose: string
   keyEvents: string
   characters: string
+  suspenseHook: string
+  costsAndTurns: string
+  foreshadowing: string
   userGuidance: string
   knowledgeHint: string
   wordsTarget: number | ''
@@ -66,6 +69,9 @@ export function blueprintWritePrefill(blueprint: ChapterBlueprint): ChapterWrite
     purpose: blueprint.purpose,
     keyEvents: blueprint.keyEvents,
     characters: blueprint.characters.join('、'),
+    suspenseHook: blueprint.suspenseHook || '',
+    costsAndTurns: blueprint.costsAndTurns || '',
+    foreshadowing: blueprint.foreshadowing || '',
     userGuidance: blueprint.userGuidance || '',
   }
 }
@@ -79,6 +85,9 @@ export function chapterWriteFormFromPrefill(prefill: Record<string, unknown>, de
     purpose: String(prefill.purpose || ''),
     keyEvents: String(prefill.keyEvents || ''),
     characters: String(prefill.characters || ''),
+    suspenseHook: String(prefill.suspenseHook || ''),
+    costsAndTurns: String(prefill.costsAndTurns || ''),
+    foreshadowing: String(prefill.foreshadowing || ''),
     userGuidance: String(prefill.userGuidance || ''),
     knowledgeHint: '',
     wordsTarget: defaultWordsTarget,
@@ -217,7 +226,9 @@ export async function launchChapterWrite({
         purpose: form.purpose,
         keyEvents: form.keyEvents,
         characters: form.characters.split(/[、,，]/u).map(value => value.trim()).filter(Boolean),
-        suspenseHook: '',
+        suspenseHook: form.suspenseHook,
+        costsAndTurns: form.costsAndTurns,
+        foreshadowing: form.foreshadowing,
         userGuidance: form.userGuidance,
         notes: '',
       }])
@@ -246,6 +257,9 @@ export async function launchChapterWrite({
     purpose: form.purpose,
     keyEvents: form.keyEvents,
     characters: form.characters,
+    suspenseHook: form.suspenseHook,
+    costsAndTurns: form.costsAndTurns,
+    foreshadowing: form.foreshadowing,
     userGuidance: form.userGuidance,
     knowledgeQueryHint: form.knowledgeHint,
     wordsTarget,

@@ -161,6 +161,48 @@ export function hasRequiredOutlineSections(text: string): boolean {
   return OUTLINE_SECTIONS.every(section => body.includes(section))
 }
 
+/** 一章的起止位置：index 为该章标题行起点，end 为下一章标题行起点（或文末）。 */
+export interface PlotOutlineChapterSpan {
+  chapter: number
+  index: number
+  end: number
+}
+
+/**
+ * 按章切出细纲条目。用于 AI 检查按章引用原文、接受建议后逐章替换文本。
+ * 只认应用写入的标准标题形式（`## 第 N 章：标题` / `## Chapter N: title`）。
+ */
+export function plotOutlineChapterSpans(synopsis: string): PlotOutlineChapterSpan[] {
+  const entries = headings(synopsis)
+  return entries.map((entry, position) => ({
+    chapter: entry.from,
+    index: entry.index,
+    end: entries[position + 1]?.index ?? synopsis.length,
+  }))
+}
+
+/** 取某一章条目的原文（含标题行），不存在时返回 null。 */
+export function plotOutlineChapterText(synopsis: string, chapter: number): string | null {
+  const span = plotOutlineChapterSpans(synopsis).find(entry => entry.chapter === chapter)
+  return span ? synopsis.slice(span.index, span.end).trim() : null
+}
+
+/**
+ * 用一段新文本替换指定章节条目，其余章节逐字保留。
+ * 新文本必须通过 validPlotOutlineEntry，否则抛错——避免把模型返回的脏结构写进正式细纲。
+ */
+export function replacePlotOutlineChapter(synopsis: string, chapter: number, nextEntry: string): string {
+  const spans = plotOutlineChapterSpans(synopsis)
+  const span = spans.find(entry => entry.chapter === chapter)
+  if (!span) throw new Error('PLOT_OUTLINE_CHAPTER_NOT_FOUND')
+  const replacement = nextEntry.trim()
+  if (!validPlotOutlineEntry(replacement, chapter)) throw new Error('PLOT_OUTLINE_REPLACEMENT_INVALID')
+  const before = synopsis.slice(0, span.index)
+  const after = synopsis.slice(span.end)
+  const joiner = before && !before.endsWith(String.fromCharCode(10) + String.fromCharCode(10)) ? String.fromCharCode(10) + String.fromCharCode(10) : ''
+  return (before + joiner + replacement + (after.trimStart() ? String.fromCharCode(10) + String.fromCharCode(10) + after.trimStart() : '')).trimEnd() + String.fromCharCode(10)
+}
+
 export function validPlotOutlineEntry(text: string, chapter: number): boolean {
   if (/```|~~~|大纲批次进度|后续概览|Outline batch progress|Later overview/iu.test(text)) return false
   if (!new RegExp(`^## (?:第${chapter}章|Chapter ${chapter})[:：][\\t ]*\\S[^\\r\\n]*\\r?\\n`, 'iu').test(text.trim())) return false

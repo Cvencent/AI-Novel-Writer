@@ -253,6 +253,8 @@ type WriterChapterInfo = Pick<ChapterInfo,
   | 'characters'
   | 'keyEvents'
   | 'suspenseHook'
+  | 'costsAndTurns'
+  | 'foreshadowing'
   | 'userGuidance'
 >
 
@@ -266,6 +268,8 @@ function toWriterChapterInfo(chapterInfo: ChapterInfo): WriterChapterInfo {
     characters: chapterInfo.characters,
     keyEvents: chapterInfo.keyEvents,
     suspenseHook: chapterInfo.suspenseHook,
+    costsAndTurns: chapterInfo.costsAndTurns,
+    foreshadowing: chapterInfo.foreshadowing,
     userGuidance: chapterInfo.userGuidance,
   }
 }
@@ -398,6 +402,8 @@ function chapterExecutionContractText(writingLanguage: WritingLanguage, chapterI
   const executionItems = [
     { zhCN: '必需事件', enUS: 'Required events', value: chapterInfo.keyEvents },
     { zhCN: '章节钩子', enUS: 'Chapter hook', value: chapterInfo.suspenseHook },
+    { zhCN: '必须付出的代价/不可逆后果', enUS: 'Required cost / irreversible consequence', value: chapterInfo.costsAndTurns },
+    { zhCN: '必须埋下或回收的伏笔', enUS: 'Foreshadowing to plant or pay off', value: chapterInfo.foreshadowing },
     { zhCN: '作者本章指导', enUS: 'Author guidance for this chapter', value: chapterInfo.userGuidance },
   ]
   const zhItems = executionItems.flatMap(item => item.value?.trim() ? [`- ${item.zhCN}: ${item.value}`] : []).join('\n')

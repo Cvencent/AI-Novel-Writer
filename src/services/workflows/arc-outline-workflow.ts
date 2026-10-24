@@ -12,7 +12,9 @@ export interface ArcOutlineWorkflowParams {
   projectSession: ProjectSessionContext
   targetUnits?: number
   /** 'next' = 生成下一段；'reverse' = 从现有细纲反推全部粗纲；'revise' = 按作者方向重写某段。 */
-  mode: 'next' | 'reverse' | 'revise'
+  mode: 'next' | 'reverse' | 'revise' | 'review'
+  /** mode='review' 时要检查的粗纲段（空 = 全部）。 */
+  selectedArcIndexes?: readonly number[]
   /** mode='revise' 时目标段与作者方向。 */
   revise?: { arcIndex: number; expectedRevision: number; direction: string }
 }
@@ -49,7 +51,17 @@ export function createArcOutlineWorkflow(
     novelConfig: Object.freeze({ ...project.novelConfig }),
   })
 
-  const step = params.mode === 'revise'
+  const step = params.mode === 'review'
+    ? {
+      name: text('AI 检查粗纲', 'AI review arc outline'),
+      key: 'arc-review',
+      description: text('把选定粗纲段交给模型检查，返回可执行的修改建议', 'Hand the selected arc segments to the model for actionable suggestions'),
+      executor: async (_step: unknown, context: WorkflowContext, callbacks: StepCallbacks) => {
+        const { ReviewArcOutlineCommand } = await import('./commands/arc-outline.command')
+        return new ReviewArcOutlineCommand(params.selectedArcIndexes ?? [], snapshot).execute({ step: _step, context, callbacks })
+      },
+    }
+    : params.mode === 'revise'
     ? {
       name: text('按新方向重写粗纲段', 'Rewrite arc segment'),
       key: 'arc-revise',
@@ -82,7 +94,9 @@ export function createArcOutlineWorkflow(
 
   return {
     type: 'architecture_generation',
-    title: params.mode === 'reverse'
+    title: params.mode === 'review'
+      ? text('AI 检查粗纲', 'AI review arc outline')
+      : params.mode === 'reverse'
       ? text('反推粗纲', 'Derive arc outline')
       : params.mode === 'revise'
         ? text('重写粗纲段', 'Rewrite arc segment')
@@ -95,7 +109,9 @@ export function createArcOutlineWorkflow(
     steps: [step],
     onComplete: {
       mode: 'silent',
-      message: params.mode === 'reverse'
+      message: params.mode === 'review'
+        ? text('粗纲检查已完成，请查看建议', 'Arc review finished. Review the suggestions.')
+        : params.mode === 'reverse'
         ? text('粗纲已反推完成，请逐段检查修改', 'Arc outline derived. Review and adjust each segment.')
         : params.mode === 'revise'
           ? text('粗纲段已按新方向重写，请确认', 'Arc segment rewritten along the new direction; review and confirm.')
