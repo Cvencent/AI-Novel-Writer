@@ -159,8 +159,6 @@ export function validPlotOutlineEntry(text: string, chapter: number): boolean {
   if (entries.length !== 1 || !heading || heading.grouped || heading.from !== chapter || heading.to !== chapter
     || text.slice(0, heading.index).trim() || !text.slice(heading.end).trim()) return false
   const body = text.slice(heading.end)
-  // 日记体/账本体不是章节规划，必须重写。
-  if (isLedgerStyleOutline(body)) return false
   return !/^[\t ]*(?:#{1,6}[\t ]+|(?:[-*+][\t ]+)?(?:第[^\r\n]*章|Chapters?\b))/imu.test(body)
 }
 
@@ -182,7 +180,10 @@ export function derivePlotOutlineCursor(range: PlotOutlineRange, acceptedCount: 
     const attempt = matching[0]!
     if (attempt.status === 'reserved' || attempt.status === 'dispatch-marked') return { kind: 'stopped', chapterNumber: chapter, reason: 'in-flight' }
     if (attempt.finishReason !== 'stop' && attempt.finishReason !== 'length') return { kind: 'stopped', chapterNumber: chapter, reason: 'unknown-completion' }
-    if (attempt.finishReason === 'stop' && attempt.artifact && validPlotOutlineEntry(attempt.artifact.text, chapter))
+    // 日记体/账本体只在这里拒绝：这是「新产出能否被接受」的闸门。
+    // 已接受的章节不再回溯校验，否则升级会污染历史运行的可读性。
+    if (attempt.finishReason === 'stop' && attempt.artifact && validPlotOutlineEntry(attempt.artifact.text, chapter)
+        && !isLedgerStyleOutline(attempt.artifact.text))
       return { kind: 'accept', chapterNumber: chapter, artifactIds: [attempt.artifact.artifactId], text: attempt.artifact.text }
   }
   return { kind: 'stopped', chapterNumber: chapter, reason: 'attempts-exhausted' }

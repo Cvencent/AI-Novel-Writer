@@ -8,8 +8,9 @@ describe('chapter outline must be a plan, not a diary', () => {
   it('detects timestamped ledger-style outlines', () => {
     expect(isLedgerStyleOutline(diary)).toBe(true)
   })
-  it('rejects diary-style chapters at the contract boundary', () => {
-    expect(validPlotOutlineEntry(diary, 196)).toBe(false)
+  it('keeps structure validation independent from style so history stays readable', () => {
+    // 日记体拒绝发生在「新产出准入」闸门，不在读取历史数据的结构校验里。
+    expect(validPlotOutlineEntry(diary, 196)).toBe(true)
   })
   it('accepts a normal scene-based chapter outline', () => {
     expect(validPlotOutlineEntry(prose, 196)).toBe(true)
