@@ -477,8 +477,8 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
           applyFinding={async (finding: StageReviewFindingRecord) => {
             const session = captureProjectSession(useProjectStore.getState().currentProject)
             if (!session || !isProjectSessionCurrent(session)) return false
-            const result = await ipc.invokeWithProjectSession(session, 'db:stage-review-apply-arc', finding.targetIndex, finding.expectedText, projectKey).catch(() => null) as { success?: boolean } | null
-            if (!result?.success) return false
+            const result = await ipc.invokeWithProjectSession(session, 'db:stage-review-apply-arc', finding.targetIndex, finding.expectedText, projectKey).catch(() => null) as { success?: boolean; error?: string } | null
+            if (!result?.success) throw new Error(result?.error || text('写回失败', 'Could not write the change back.'))
             await load()
             notifyChanged()
             return true

@@ -12,6 +12,7 @@ import {
   buildBlueprintReviewPrompt,
   BLUEPRINT_REVIEW_CATEGORIES,
 } from '../../../shared/stage-review-contract'
+import { STAGE_REVIEW_MAX_TARGETS } from '../../../shared/stage-review-types'
 import { outlineBatchSliceForBlueprint } from '../../../shared/blueprint-input'
 import { extractReviewJson } from './outline-review.command'
 import type { ArchitectureProjectSnapshot } from './architecture.command'
@@ -34,7 +35,7 @@ export class ReviewBlueprintsCommand extends BaseWorkflowCommand<string> {
   async execute(params: CommandExecuteParams): Promise<string> {
     return this.executeWithGenerationRuntime('text', params, () => this.executeWithinGeneration(params), {
       authorInputs: [{ id: 'blueprint:review-selection', text: JSON.stringify(this.range) }],
-      operation: 'review-blueprints', promptKeys: ['blueprint'], skillStages: ['planning'], output: 'visible-text',
+      operation: 'review-blueprints', promptKeys: ['chapter_blueprint'], skillStages: ['planning'], output: 'visible-text',
     })
   }
 
@@ -47,6 +48,7 @@ export class ReviewBlueprintsCommand extends BaseWorkflowCommand<string> {
       .filter(blueprint => blueprint.chapterNumber >= this.range.from && blueprint.chapterNumber <= this.range.to)
       .map(blueprint => blueprint.chapterNumber)
     if (selected.length === 0) throw new Error('The selected range contains no blueprint to review.')
+    if (selected.length > STAGE_REVIEW_MAX_TARGETS) throw new Error('单次检查最多 ' + STAGE_REVIEW_MAX_TARGETS + ' 章，请缩小范围后重试。')
     const chapters = (Array.isArray(all) ? all : [])
       .filter(blueprint => selected.includes(blueprint.chapterNumber))
       .map(blueprint => ({

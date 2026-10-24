@@ -52,3 +52,6 @@ export interface StageReviewSaveInput {
   sourceHash: string
   findings: readonly StageReviewFinding[]
 }
+
+/** 单次 AI 检查最多覆盖的目标数；超出的范围分多次检查，避免一次性把整本书塞进模型。 */
+export const STAGE_REVIEW_MAX_TARGETS = 50

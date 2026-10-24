@@ -11,7 +11,9 @@ import {
   normalizeStageReviewFindings,
   buildOutlineReviewPrompt,
   OUTLINE_REVIEW_CATEGORIES,
+  normalizeOutlineEntryFormat,
 } from '../../../shared/stage-review-contract'
+import { STAGE_REVIEW_MAX_TARGETS } from '../../../shared/stage-review-types'
 import {
   plotOutlineChapterSpans,
   chapterOutlineArcDirective,
@@ -48,7 +50,7 @@ export class ReviewOutlineCommand extends BaseWorkflowCommand<string> {
   async execute(params: CommandExecuteParams): Promise<string> {
     return this.executeWithGenerationRuntime('text', params, () => this.executeWithinGeneration(params), {
       authorInputs: [{ id: 'outline:review-selection', text: JSON.stringify(this.range) }],
-      operation: 'review-outline', promptKeys: ['plot_outline'], skillStages: ['planning'], output: 'visible-text',
+      operation: 'review-outline', promptKeys: ['synopsis'], skillStages: ['planning'], output: 'visible-text',
     })
   }
 
@@ -64,6 +66,7 @@ export class ReviewOutlineCommand extends BaseWorkflowCommand<string> {
       .filter(span => span.chapter >= this.range.from && span.chapter <= this.range.to)
       .map(span => span.chapter)
     if (selected.length === 0) throw new Error('The selected range contains no chapter outline to review.')
+    if (selected.length > STAGE_REVIEW_MAX_TARGETS) throw new Error('单次检查最多 ' + STAGE_REVIEW_MAX_TARGETS + ' 章，请缩小范围后重试。')
     const chapters = selected.map(chapter => {
       const span = spans.find(entry => entry.chapter === chapter)!
       const raw = synopsis.slice(span.index, span.end).trim()
@@ -100,6 +103,7 @@ export class ReviewOutlineCommand extends BaseWorkflowCommand<string> {
     const payload = extractReviewJson(completion.content)
     const rawFindings = payload && typeof payload === 'object' && !Array.isArray(payload) ? (payload as { findings?: unknown }).findings : payload
     const findings = normalizeStageReviewFindings(rawFindings, selected, OUTLINE_REVIEW_CATEGORIES)
+      .map(finding => ({ ...finding, expectedText: finding.expectedText ? normalizeOutlineEntryFormat(finding.expectedText) : finding.expectedText }))
     const runId = 'outline-review:' + context.runId
     const sourceHash = await hashAuthorText(chapters.map(chapter => chapter.body).join(NL))
     const saved = await ipc.invokeWithProjectSession(projectSession, 'db:stage-review-save', {

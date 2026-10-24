@@ -420,6 +420,15 @@ it('upgrades a qualified schema 6 file to schema 7 without changing author conte
  expect(upgraded.domain).toEqual(before.domain)
  expect(verifyProjectSqlite({databasePath:f.target})).toEqual(upgraded)
 })
+it('upgrades a qualified schema 7 file to the current schema without changing author content', async () => {
+ const f=fixture()
+ const before=await backupProjectSqlite({sourceDatabasePath:f.source,targetDatabasePath:f.target,targetVersion:7})
+ expect(before.schemaVersion).toBe(7)
+ const upgraded=upgradeProjectSqlite({databasePath:f.target})
+ expect(upgraded.schemaVersion).toBe(CURRENT_DESKTOP_SCHEMA_VERSION)
+ expect(upgraded.domain).toEqual(before.domain)
+ expect(verifyProjectSqlite({databasePath:f.target})).toEqual(upgraded)
+})
 it('resolves a trusted system scratch junction before validating its private snapshot', () => {
  const f=fixture(), physical=path.join(f.root,'scratch'), link=path.join(f.root,'scratch-link')
  fs.mkdirSync(physical);fs.symlinkSync(physical,link,'junction')

@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import StageReviewPanel from '../StageReviewPanel'
 import { setActiveProjectSessionContext } from '../../../../shared/project-session-context'
+import { useWorkflowStore } from '../../../../stores/workflow-store'
 import { useLocaleStore } from '../../../../stores/locale-store'
 import { useProjectStore } from '../../../../stores/project-store'
 import type { StageReviewFindingRecord } from '../../../../shared/stage-review-types'
@@ -88,7 +89,7 @@ describe('StageReviewPanel', () => {
     await render()
     await vi.waitFor(() => expect(host!.textContent).toContain('第 3 章是流水账。'))
     expect(host!.textContent).toContain('节奏')
-    expect(host!.textContent).toContain('第 3 章/段')
+    expect(host!.textContent).toContain('第 3 章')
   })
 
   it('accepting a finding writes it back and then marks it accepted', async () => {
@@ -108,6 +109,35 @@ describe('StageReviewPanel', () => {
     await vi.waitFor(() => expect(invoke.mock.calls.some(([name]) => name === 'db:stage-review-resolve')).toBe(true))
     expect(applyFinding).not.toHaveBeenCalled()
     expect(invoke.mock.calls.some(([name]) => name === 'db:stage-review-apply-outline')).toBe(false)
+  })
+
+  it('waits for the review run and then shows the new findings', async () => {
+    // A run that finishes after a short delay: the panel must not read results early.
+    const before = await render()
+    expect(before).toBeTruthy()
+    const state = useWorkflowStore.getState()
+    const original = state.activeRuns
+    useWorkflowStore.setState({
+      activeRuns: [{
+        id: 'run-live', projectPath: PROJECT_PATH, status: 'running', title: 'AI 检查细纲',
+        type: 'architecture_generation', currentStepIndex: 0, createdAt: new Date().toISOString(),
+        steps: [],
+      } as never],
+    })
+    try {
+      await act(async () => { button('开始检查')!.click() })
+      await vi.waitFor(() => expect(invoke.mock.calls.some(([name]) => name === 'db:stage-review-latest')).toBe(true))
+      // While running, the panel must say it is reviewing rather than claim there are no results.
+      expect(host!.textContent).toContain('正在检查')
+      useWorkflowStore.setState({ activeRuns: [], history: [{
+        id: 'run-live', projectPath: PROJECT_PATH, status: 'completed', title: 'AI 检查细纲',
+        type: 'architecture_generation', currentStepIndex: 0, createdAt: new Date().toISOString(),
+        steps: [],
+      } as never] })
+      await vi.waitFor(() => expect(host!.textContent).toContain('第 3 章是流水账。'), { timeout: 5000 })
+    } finally {
+      useWorkflowStore.setState({ activeRuns: original, history: [] })
+    }
   })
 
   it('removing a run clears the cards', async () => {

@@ -47,8 +47,8 @@ export function createOutlineReviewWorkflow(
     projectPath: params.projectPath,
     projectSession,
     uiLocale,
-    resourceKeys: [workflowResourceKey('architecture')],
-    readResourceKeys: [workflowResourceKey('novel-config')],
+    resourceKeys: [],
+    readResourceKeys: [workflowResourceKey('architecture'), workflowResourceKey('novel-config')],
     steps: [{
       name: text('检查细纲', 'Review outline'),
       description: text('把选定章节的细纲交给模型检查，返回可执行的修改建议', 'Hand the selected chapters to the model for actionable suggestions'),

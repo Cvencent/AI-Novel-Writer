@@ -5,6 +5,7 @@ import { useLocaleStore } from '../../../stores/locale-store'
 import { Button } from '../../ui/Button'
 import { InkDialog } from '../../stage/InkDialog'
 import { pluralEn } from '../../../shared/plural-en'
+import { STAGE_REVIEW_MAX_TARGETS } from '../../../shared/stage-review-types'
 
 /**
  * 选择 AI 检查的章节范围。
@@ -41,6 +42,7 @@ export default function ReviewRangeDialog({
   const fromValue = Number(from) || 0
   const toValue = Number(to) || 0
   const invalid = !Number.isSafeInteger(fromValue) || !Number.isSafeInteger(toValue) || fromValue < 1 || toValue < fromValue || toValue > maxTo
+    || toValue - fromValue + 1 > STAGE_REVIEW_MAX_TARGETS
   const count = invalid ? 0 : toValue - fromValue + 1
 
   return (
@@ -53,7 +55,7 @@ export default function ReviewRangeDialog({
         <>
           <Button variant='secondary' onClick={onClose}>{text('取消', 'Cancel')}</Button>
           <Button variant='primary' disabled={invalid} onClick={() => onConfirm({ from: fromValue, to: toValue })}>
-            <Sparkles size={15} aria-hidden />{text('开始检查', 'Review')}
+            <Sparkles size={15} aria-hidden />{text('确定范围', 'Use range')}
           </Button>
         </>
       )}
@@ -65,8 +67,8 @@ export default function ReviewRangeDialog({
         <input id={ids.to} type='number' min={1} max={maxTo} value={to} onChange={event => setTo(event.target.value)} />
         <p className='stage-review-range-hint'>
           {invalid
-            ? text('请输入有效范围：起始章不小于 1，结束章不小于起始章，且不超过 ' + maxTo + ' 章。',
-                   'Enter a valid range: from 1, to >= from, and at most ' + maxTo + '.')
+            ? text('请输入有效范围：起始章不小于 1，结束章不小于起始章，不超过 ' + maxTo + ' 章，且单次最多 ' + STAGE_REVIEW_MAX_TARGETS + ' 章。',
+                   'Enter a valid range: from 1, to >= from, at most ' + maxTo + ', and no more than ' + STAGE_REVIEW_MAX_TARGETS + ' chapters per run.')
             : text(`将检查 ${count} 章，全书共 ${maxTo} 章。`, `${count} of ${maxTo} ${pluralEn(maxTo, 'chapter')} will be reviewed.`)}
         </p>
       </div>

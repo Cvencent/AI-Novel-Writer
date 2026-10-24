@@ -28,6 +28,8 @@ interface SectionProps {
   onClear: () => void
   onOpenCast: () => void
   onReload: () => void
+  /** 细纲节的 AI 检查面板；只在该节渲染，与粗纲的检查面板保持一致的位置。 */
+  outlineReview?: ReactNode
 }
 
 /** 候选与续写的提示条：世界观或大纲生成到一半停下时，未完成的候选不写入正式内容，作者可以看、复制或接着写。 */
@@ -140,7 +142,7 @@ function RosterNotice({ overview }: { overview: ArchitectureOverview }) {
   )
 }
 
-export default function ArchitectureSection({ sectionKey, overview, badge, summary, onEdit, onGenerate, onGenerateAllSynopsis, onGenerateArc, onArcChanged, arcRunnerRef, onClear, onOpenCast, onReload }: SectionProps) {
+export default function ArchitectureSection({ sectionKey, overview, badge, summary, onEdit, onGenerate, onGenerateAllSynopsis, onGenerateArc, onArcChanged, arcRunnerRef, onClear, onOpenCast, onReload, outlineReview }: SectionProps) {
   const text = useLocaleStore(s => s.text)
   const filled = Boolean(overview.archStatus[sectionKey])
   const cast = sectionKey === 'characters'
@@ -218,6 +220,7 @@ export default function ArchitectureSection({ sectionKey, overview, badge, summa
       )}
       {sectionKey === 'arc' && <div className="arch-section-notes"><ArcOutlinePanel projectKey={overview.projectKey} fineSource={overview.synopsisSource} fineProgress={overview.synopsis.progress} embedded runnerRef={arcRunnerRef} onChanged={onArcChanged} /></div>}
       {sectionKey === 'synopsis' && <div className="arch-section-notes arch-notes-collapsible"><OutlineNotice overview={overview} onGenerate={onGenerate} /></div>}
+      {sectionKey === 'synopsis' && outlineReview && <div className="arch-section-notes">{outlineReview}</div>}
       {cast && <div className="arch-section-notes arch-notes-collapsible"><RosterNotice overview={overview} /></div>}
     </section>
   )

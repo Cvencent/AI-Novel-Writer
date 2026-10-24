@@ -80,6 +80,7 @@ export function buildOutlineReviewPrompt(input: {
       'Every finding must carry: chapter (the integer chapter number it targets), category, severity (error|warning),',
       'problemText (what is wrong and why) and expectedText (the exact replacement text for that chapter, in full).',
       'An expectedText must be a complete replacement for the whole chapter entry including its "## Chapter N: title" heading and every required section: ' + OUTLINE_SECTIONS.join(', ') + '.',
+      'Write each section as a plain "Section: content" line. Do not use # / ## / ### sub-headings, and never include another chapter heading inside the entry.',
       'Judge continuity across the selected chapters and against the arc direction, core outline and worldbuilding supplied below.',
       'Flag ledger-style or diary-style writing (a flat summary of events) as a pacing/prose_quality problem.',
       'Only report real problems. Return an empty list when the chapters are sound.',
@@ -90,6 +91,7 @@ export function buildOutlineReviewPrompt(input: {
       '每条必须给出：chapter（目标章号，整数）、category、severity（error|warning）、',
       'problemText（哪里不对、为什么）与 expectedText（该章的完整替换文本）。',
       'expectedText 必须是整章条目的完整替换内容，包含 "## 第N章：标题" 标题行与全部必备小节：' + OUTLINE_SECTIONS.join('、') + '。',
+      '小节写成"小节名：内容"的普通行，不要用 # / ## / ### 之类的小标题，也不要在章内再出现任何"第N章"标题。',
       '要跨所选章节判断连贯性，并对照下面的粗纲方向、核心大纲与世界观。',
       '把流水账 / 日记体（平铺直叙地罗列事件）报成 pacing 或 prose_quality 问题。',
       '只报告真实问题。没有问题时返回空数组。',
@@ -205,6 +207,15 @@ export function normalizeStageReviewFindings(
   return out
 }
 
+/** 蓝图检查的 expectedText 是字段补丁对象；粗纲 / 细纲是整段文本。两种都要接受。 */
 function text(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : ''
+  if (typeof value === 'string') return value.trim()
+  if (value && typeof value === 'object' && !Array.isArray(value)) return JSON.stringify(value)
+  return ''
+}
+
+/** 小节名 → 允许模型用 ### 写小节，但正式细纲是扁平格式，因此降级成「小节名：」。 */
+export function normalizeOutlineEntryFormat(text: string): string {
+  const sectionPattern = new RegExp('^#{2,6}\\s*(' + OUTLINE_SECTIONS.join('|') + ')\\s*$', 'gmu')
+  return text.replace(/\r\n/gu, String.fromCharCode(10)).replace(sectionPattern, '$1：').trim()
 }

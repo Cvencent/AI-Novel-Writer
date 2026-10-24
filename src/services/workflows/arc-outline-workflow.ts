@@ -104,8 +104,9 @@ export function createArcOutlineWorkflow(
     projectPath: params.projectPath,
     projectSession,
     uiLocale,
-    resourceKeys: [workflowResourceKey('architecture')],
-    readResourceKeys: [workflowResourceKey('novel-config')],
+    // 检查只读：写成 resourceKeys 会和生成互相阻塞（还会被自己的并发误判成冲突）。
+    resourceKeys: [],
+    readResourceKeys: [workflowResourceKey('architecture'), workflowResourceKey('novel-config')],
     steps: [step],
     onComplete: {
       mode: 'silent',

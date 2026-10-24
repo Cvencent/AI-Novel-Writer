@@ -9,7 +9,7 @@ import { isCurrentProjectSession, currentProjectSessionForPath, useChapterBluepr
 import { ipc } from '../../../services/ipc-client'
 import { useProjectStore } from '../../../stores/project-store'
 import { captureProjectSession, isProjectSessionPath } from '../../project-session-gate'
-import type { StageReviewFindingRecord } from '../../../shared/stage-review-types'
+import { STAGE_REVIEW_MAX_TARGETS, type StageReviewFindingRecord } from '../../../shared/stage-review-types'
 import { Button } from '../../ui/Button'
 import StageReviewPanel from '../review/StageReviewPanel'
 import ReviewRangeDialog from '../review/ReviewRangeDialog'
@@ -76,11 +76,11 @@ export default function StageBlueprint({ projectKey, initialChapterNumber, selec
       const parsed = JSON.parse(finding.expectedText)
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) patch = parsed as Record<string, unknown>
     } catch { return false }
-    const result = await ipc.invokeWithProjectSession(session, 'db:stage-review-apply-blueprint', finding.targetIndex, patch, projectKey).catch(() => null) as { success?: boolean } | null
-    if (!result?.success) return false
+    const result = await ipc.invokeWithProjectSession(session, 'db:stage-review-apply-blueprint', finding.targetIndex, patch, projectKey).catch(() => null) as { success?: boolean; error?: string } | null
+    if (!result?.success) throw new Error(result?.error || text('写回失败', 'Could not write the change back.'))
     await plan.reload()
     return true
-  }, [plan, projectKey])
+  }, [plan, projectKey, text])
 
   const settle = (ok: boolean) => {
     if (ask && 'resolve' in ask) ask.resolve(ok)
@@ -340,7 +340,7 @@ export default function StageBlueprint({ projectKey, initialChapterNumber, selec
         description={text('选择要检查的章节范围。检查只读，不会自动改写蓝图；建议要你逐条接受。',
           'Choose which chapters to review. Reviewing is read-only; nothing is rewritten until you accept a suggestion.')}
         defaultFrom={plan.blueprints[0]?.chapterNumber ?? 1}
-        defaultTo={plan.blueprints[plan.blueprints.length - 1]?.chapterNumber ?? 1}
+        defaultTo={Math.min(plan.blueprints[plan.blueprints.length - 1]?.chapterNumber ?? 1, (plan.blueprints[0]?.chapterNumber ?? 1) + STAGE_REVIEW_MAX_TARGETS - 1)}
         maxTo={Math.max(1, plan.blueprints[plan.blueprints.length - 1]?.chapterNumber ?? 1)}
         onClose={() => setReviewOpen(false)}
         onConfirm={range => { setReviewRange(range); setReviewOpen(false) }}

@@ -3,6 +3,7 @@ import {
   buildOutlineReviewPrompt,
   buildBlueprintReviewPrompt,
   normalizeStageReviewFindings,
+  normalizeOutlineEntryFormat,
   OUTLINE_REVIEW_CATEGORIES,
   BLUEPRINT_REVIEW_CATEGORIES,
 } from '../stage-review-contract'
@@ -82,5 +83,51 @@ describe('blueprint review contract', () => {
     expect(BLUEPRINT_REVIEW_CATEGORIES).toContain('outline_consistency')
     expect(BLUEPRINT_REVIEW_CATEGORIES).toContain('cost_and_foreshadowing_continuity')
     expect(BLUEPRINT_REVIEW_CATEGORIES).toContain('hook_repetition')
+  })
+})
+
+describe('outline entry formatting', () => {
+  it('demotes model-written section headings to the flat canonical form', () => {
+    const raw = [
+      '## 第1章：入学',
+      '### 场景与出场人物',
+      '林澈在校门口。',
+      '### 本章目标',
+      '进入校园。',
+      '### 阻力与升级',
+      '门禁阻拦。',
+      '### 转折与代价',
+      '暴露身份。',
+      '### 结尾钩子',
+      '有人认出他。',
+      '### 伏笔',
+      '零号档案。',
+    ].join(String.fromCharCode(10))
+    const text = normalizeOutlineEntryFormat(raw)
+    expect(text).toContain('场景与出场人物：')
+    expect(text).not.toContain('###')
+    for (const section of OUTLINE_SECTIONS) expect(text).toContain(section + '：')
+  })
+
+  it('leaves an already-flat entry unchanged', () => {
+    const flat = '## 第1章：入学' + String.fromCharCode(10) + OUTLINE_SECTIONS.map(s => s + '：内容').join(String.fromCharCode(10))
+    expect(normalizeOutlineEntryFormat(flat)).toBe(flat)
+  })
+})
+
+describe('blueprint finding payloads', () => {
+  it('keeps a JSON-object expectedText instead of dropping it', () => {
+    const findings = normalizeStageReviewFindings([
+      { chapter: 1, category: 'character_consistency', severity: 'warning', problemText: '多了一个角色。', expectedText: { characters: '林澈' } },
+    ], [1], BLUEPRINT_REVIEW_CATEGORIES)
+    expect(findings).toHaveLength(1)
+    expect(JSON.parse(findings[0]!.expectedText)).toEqual({ characters: '林澈' })
+  })
+
+  it('still accepts a plain string expectedText', () => {
+    const findings = normalizeStageReviewFindings([
+      { chapter: 2, category: 'pacing', severity: 'warning', problemText: '太赶。', expectedText: '  放慢  ' },
+    ], [2], BLUEPRINT_REVIEW_CATEGORIES)
+    expect(findings[0]!.expectedText).toBe('放慢')
   })
 })

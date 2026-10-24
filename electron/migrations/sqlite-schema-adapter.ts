@@ -12,6 +12,10 @@ import type { SchemaWriter } from './registry'
 export const SCHEMA_EXTENSION_TABLES: ReadonlySet<string> = new Set([
   'arc_outlines',
   'outline_segment_bindings',
+  // AI review results (arc / outline / blueprint) are feature-owned: they are
+  // created lazily the first time an author runs a review.
+  'stage_review_runs',
+  'stage_review_findings',
 ])
 
 export function sqliteSchemaFingerprint(db: BetterSqlite3.Database): string {

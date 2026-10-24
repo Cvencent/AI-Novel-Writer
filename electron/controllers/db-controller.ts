@@ -4,6 +4,7 @@ import { closeProjectDatabase, getCurrentProjectPath, getProjectDb } from '../da
 import { StageReviewRepository } from '../repositories/stage-review-repository'
 import { isStageReviewTarget } from '../../src/shared/stage-review-types'
 import { replacePlotOutlineChapter } from '../../src/shared/plot-outline-contract'
+import { normalizeOutlineEntryFormat } from '../../src/shared/stage-review-contract'
 import { ArcOutlineRepository } from '../repositories/arc-outline-repository'
 import { OutlineSegmentBindingRepository } from '../repositories/outline-segment-binding-repository'
 import { OutlineSummaryRepository } from '../repositories/outline-summary-repository'
@@ -249,7 +250,7 @@ export function registerDatabaseController() {
       if (!database) throw new Error('项目数据库未打开')
       const core = ProjectCoreRepository.get(database)
       if (!core) throw new Error('项目记录不存在')
-      const next = replacePlotOutlineChapter(core.synopsis || '', chapter, nextEntry)
+      const next = replacePlotOutlineChapter(core.synopsis || '', chapter, normalizeOutlineEntryFormat(nextEntry))
       const ok = ProjectCoreRepository.commitSynopsis({
         synopsis: next,
         expected: {
@@ -282,7 +283,11 @@ export function registerDatabaseController() {
       if (!database) throw new Error('项目数据库未打开')
       const current = BlueprintRepository.getByChapter(chapter)
       if (!current) throw new Error('BLUEPRINT_NOT_FOUND')
-      const merged = { ...current, ...patch, chapterNumber: chapter }
+      const normalized: Record<string, unknown> = { ...patch }
+      if (typeof normalized.characters === 'string') {
+        normalized.characters = normalized.characters.split(/[、,，]/u).map(name => name.trim()).filter(Boolean)
+      }
+      const merged = { ...current, ...normalized, chapterNumber: chapter }
       BlueprintRepository.upsert(merged as typeof current, database)
       return { success: true }
     } catch (error) { return { success: false, error: String(error) } }

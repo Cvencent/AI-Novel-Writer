@@ -299,7 +299,10 @@ export function upgradeProjectSqlite(options: { databasePath: string; registry?:
     } finally { db.close() }
   } finally { snapshot.close() }
   if (alreadyCurrent) return before!
-  if (![1, 2, 3, 4, 5, 6].includes(before!.schemaVersion)) throw new Error('CANONICAL_SCHEMA_UPGRADE_UNSUPPORTED')
+  // Every version the registry recognizes below the current one can be upgraded:
+  // the probe above already proved the source schema is a known canonical shape.
+  if (!Number.isInteger(before!.schemaVersion) || before!.schemaVersion < 1
+    || before!.schemaVersion >= CURRENT_DESKTOP_SCHEMA_VERSION) throw new Error('CANONICAL_SCHEMA_UPGRADE_UNSUPPORTED')
   sourceFile(options.databasePath)
   const database = new Database(options.databasePath, { fileMustExist: true })
   try {

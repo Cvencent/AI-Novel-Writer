@@ -47,8 +47,8 @@ export function createBlueprintReviewWorkflow(
     projectPath: params.projectPath,
     projectSession,
     uiLocale,
-    resourceKeys: [workflowResourceKey('blueprints')],
-    readResourceKeys: [workflowResourceKey('novel-config')],
+    resourceKeys: [],
+    readResourceKeys: [workflowResourceKey('blueprints'), workflowResourceKey('architecture'), workflowResourceKey('novel-config')],
     steps: [{
       name: text('检查蓝图', 'Review blueprints'),
       description: text('对照细纲检查蓝图字段是否齐全、是否与细纲一致', 'Check blueprint fields against the outline they were derived from'),

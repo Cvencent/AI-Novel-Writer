@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Sparkles, Trash2 } from 'lucide-react'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
+import { useWorkflowStore } from '../../../stores/workflow-store'
 import { ipc } from '../../../services/ipc-client'
 import { captureProjectSession, isProjectSessionCurrent } from '../../project-session-gate'
 import { launchCreativeWorkflow, type CreativeIntent } from '../../../services/workflows/creative-workflow-launcher'
@@ -65,6 +66,9 @@ export default function StageReviewPanel({
   const [run, setRun] = useState<StageReviewRunRecord | null>(null)
   const [error, setError] = useState('')
   const [applying, setApplying] = useState<string | null>(null)
+  // 面板自己跟踪运行中状态：宿主忘了回传也不会让按钮看起来没反应。
+  const [busyInternal, setBusyInternal] = useState(false)
+  const busy = reviewBusy || busyInternal
 
   const loadLatest = useCallback(async () => {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
@@ -75,20 +79,62 @@ export default function StageReviewPanel({
 
   useEffect(() => { void Promise.resolve().then(loadLatest).catch(() => {}) }, [loadLatest])
 
+  /**
+   * 检查是异步工作流：launch 只代表登记成功，结果要等运行结束才落库。
+   * 不等待就立刻重读，作者会看到「还没有检查结果」，以为按钮没反应。
+   */
+  const waitForReviewRun = useCallback(async (runId: string) => {
+    for (let attempt = 0; attempt < 1800; attempt += 1) {
+      const state = useWorkflowStore.getState()
+      const run = state.activeRuns.find(item => item.id === runId) ?? state.history.find(item => item.id === runId)
+      if (run?.status === 'completed') return
+      if (run?.status === 'failed') {
+        throw new Error(run.error || text('检查失败', 'The review failed.'))
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+    throw new Error(text('检查超时，请到任务中心查看。', 'Timed out waiting for the review. Check the task center.'))
+  }, [text])
+
   const start = useCallback(async () => {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
     if (!session || !isProjectSessionCurrent(session)) { setError(text('项目已切换，请重新打开这本书。', 'The project changed. Reopen the book.')); return }
+    setBusyInternal(true)
     onReviewBusyChange(true)
     setError('')
     try {
-      await launchCreativeWorkflow(launchIntent, session)
+      const receipt = await launchCreativeWorkflow(launchIntent, session)
+      await waitForReviewRun(receipt.runId)
       await loadLatest()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
+      setBusyInternal(false)
       onReviewBusyChange(false)
     }
-  }, [launchIntent, loadLatest, onReviewBusyChange, text])
+  }, [launchIntent, loadLatest, onReviewBusyChange, text, waitForReviewRun])
+
+  /**
+   * 同一条建议的「整段替换文本」只该写一次。接受一条后，把同一目标、同样
+   * 替换文本的其他未处理建议一并标记为已接受，否则界面会继续显示一堆
+   * 其实已经被这次替换覆盖掉的建议。
+   */
+  const resolveSiblings = useCallback(async (finding: StageReviewFindingRecord) => {
+    if (!run) return
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || !isProjectSessionCurrent(session)) return
+    const siblings = run.findings.filter(other => other.findingId !== finding.findingId
+      && other.status === 'open'
+      && other.targetIndex === finding.targetIndex
+      && other.expectedText === finding.expectedText)
+    for (const sibling of siblings) {
+      await ipc.invokeWithProjectSession(session, 'db:stage-review-resolve', run.runId, sibling.findingId, 'accepted', projectKey).catch(() => null)
+    }
+    if (siblings.length > 0) {
+      const ids = new Set(siblings.map(sibling => sibling.findingId))
+      setRun(previous => previous && { ...previous, findings: previous.findings.map(f => ids.has(f.findingId) ? { ...f, status: 'accepted' } : f) })
+    }
+  }, [projectKey, run])
 
   const resolve = useCallback(async (findingId: string, status: 'accepted' | 'ignored') => {
     if (!run) return
@@ -99,19 +145,21 @@ export default function StageReviewPanel({
   }, [projectKey, run])
 
   const accept = useCallback(async (finding: StageReviewFindingRecord) => {
-    if (!finding.expectedText.trim()) { await resolve(finding.findingId, 'ignored'); return }
     setApplying(finding.findingId)
     setError('')
     try {
       const ok = await applyFinding(finding)
-      if (ok) await resolve(finding.findingId, 'accepted')
+      if (ok) {
+        await resolveSiblings(finding)
+        await resolve(finding.findingId, 'accepted')
+      }
       else setError(text('写回原文失败，建议保持不变。', 'Could not write the change back; the suggestion is unchanged.'))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
       setApplying(null)
     }
-  }, [applyFinding, resolve, text])
+  }, [applyFinding, resolve, resolveSiblings, text])
 
   const acceptAll = useCallback(async () => {
     if (!run) return
@@ -153,7 +201,7 @@ export default function StageReviewPanel({
           </span>}
         </strong>
         <span className="arch-arc-review-head-actions">
-          <Button variant="secondary" size="sm" disabled={reviewBusy || !canReview} onClick={() => { void start() }} title={text('把所选内容交给 AI 检查', 'Send the selection to AI for review')}>
+          <Button variant="secondary" size="sm" disabled={busy || !canReview} onClick={() => { void start() }} title={text('把所选内容交给 AI 检查', 'Send the selection to AI for review')}>
             <Sparkles size={14} aria-hidden />{reviewBusy ? text('检查中…', 'Reviewing…') : text('开始检查', 'Review')}
           </Button>
           {findings.length > 0 && (
@@ -170,14 +218,21 @@ export default function StageReviewPanel({
       </div>
       {footer && <div className="arch-arc-review-scope">{footer}</div>}
       {error && <p className="arch-arc-review-error" role="alert">{error}</p>}
-      {findings.length === 0
-        ? <p className="arch-arc-review-empty">{reviewBusy ? text('正在检查…', 'Reviewing…') : text('还没有检查结果。选好范围后点「开始检查」。', 'No review results yet. Pick a range and run the review.')}</p>
+      {busy && (
+        <p className="arch-arc-review-empty" role="status">
+          {text('正在检查，结果会在完成后自动出现…', 'Reviewing; results appear automatically when it finishes…')}
+        </p>
+      )}
+      {findings.length === 0 && !busy
+        ? <p className="arch-arc-review-empty">{text('还没有检查结果。选好范围后点「开始检查」。', 'No review results yet. Pick a range and run the review.')}</p>
         : (
           <ul className="arch-arc-review-list">
             {findings.map(finding => (
               <li key={finding.findingId} className="arch-arc-review-item" data-severity={finding.severity} data-status={finding.status}>
                 <div className="arch-arc-review-meta">
-                  <span className="arch-arc-review-seg">{text('第 ' + finding.targetIndex + ' 章/段', 'Target ' + finding.targetIndex)}</span>
+                  <span className="arch-arc-review-seg">{target === 'arc'
+                    ? text('第 ' + finding.targetIndex + ' 段', 'Segment ' + finding.targetIndex)
+                    : text('第 ' + finding.targetIndex + ' 章', 'Chapter ' + finding.targetIndex)}</span>
                   <span className="arch-arc-review-cat">{categoryLabel(text, finding.category)}</span>
                   {finding.severity === 'error' && <span className="arch-arc-review-sev">{text('严重', 'Error')}</span>}
                 </div>
@@ -186,7 +241,7 @@ export default function StageReviewPanel({
                 <div className="arch-arc-review-actions">
                   {finding.status === 'open' ? (
                     <>
-                      <Button variant="primary" size="sm" disabled={applying !== null} onClick={() => { void accept(finding) }}>
+                      <Button variant="primary" size="sm" disabled={applying !== null || !finding.expectedText.trim()} onClick={() => { void accept(finding) }} title={finding.expectedText.trim() ? undefined : text('这条建议没有给出可写回的文本', 'This suggestion contains no text to write back')}>
                         {applying === finding.findingId ? text('应用中…', 'Applying…') : text('接受', 'Accept')}
                       </Button>
                       <Button variant="text" size="sm" disabled={applying !== null} onClick={() => { void resolve(finding.findingId, 'ignored') }}>
