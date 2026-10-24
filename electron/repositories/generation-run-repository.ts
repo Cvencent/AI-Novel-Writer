@@ -459,8 +459,12 @@ export class GenerationRunRepository {
         if (!outline) return;
         if (plotOutlineSourceInvalid(outline)) fail('GENERATION_PLOT_OUTLINE_PREFIX_INVALID');
         const cursor = outline.cursor;
-        if (cursor.kind !== 'request' || purpose !== plotOutlinePurpose(cursor.chapterNumber, cursor.attempt)
-            || !task?.messages.some(message => message.role === 'user' && message.content.endsWith(plotOutlineRequestContract(outline, cursor.chapterNumber, cursor.attempt))))
+        if (cursor.kind !== 'request') fail('GENERATION_DISPATCH_PLOT_OUTLINE_CURSOR');
+        const contract = plotOutlineRequestContract(outline, cursor.chapterNumber, cursor.attempt);
+        // 工具循环会对同一章发多轮请求：除首轮外，最后一轮 user 消息是 <tool_result>，
+        // 只要消息历史中出现过该章的完整合同，就仍属于合法的同一章派发。
+        const hasContract = task?.messages.some(message => message.role === 'user' && message.content.includes(contract));
+        if (purpose !== plotOutlinePurpose(cursor.chapterNumber, cursor.attempt) || !hasContract)
             fail('GENERATION_DISPATCH_PLOT_OUTLINE_CURSOR');
     }
     private visibleComposition(read: GenerationRead, artifactIds: string[], algorithm: VisibleCompositionAlgorithm = VISIBLE_CONTINUATION_VERSION): VisibleCompositionReceipt {

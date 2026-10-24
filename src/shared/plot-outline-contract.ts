@@ -162,11 +162,19 @@ export function validPlotOutlineEntry(text: string, chapter: number): boolean {
   return !/^[\t ]*(?:#{1,6}[\t ]+|(?:[-*+][\t ]+)?(?:第[^\r\n]*章|Chapters?\b))/imu.test(body)
 }
 
+function isToolCallRound(text: string | null | undefined): boolean {
+  return typeof text === 'string' && /<tool_call>/u.test(text)
+}
+
 export function derivePlotOutlineCursor(range: PlotOutlineRange, acceptedCount: number, attempts: readonly PlotOutlineAttempt[]): PlotOutlineCursor {
   const chapter = range.from + acceptedCount
   if (chapter > range.to) return { kind: 'complete' }
   for (const kind of ['normal', 'compact'] as const) {
-    const matching = attempts.filter(attempt => attempt.purpose === plotOutlinePurpose(chapter, kind) && attempt.status !== 'cancelled-before-dispatch')
+    // 细纲生成会走工具循环：同一章会有多轮物理请求，中间轮次只发出 <tool_call>，
+    // 不构成章节尝试。若不排除，游标会误判该章已消耗并错跳到 compact。
+    const matching = attempts.filter(attempt => attempt.purpose === plotOutlinePurpose(chapter, kind)
+      && attempt.status !== 'cancelled-before-dispatch'
+      && !isToolCallRound(attempt.artifact?.text))
     if (!matching.length) return { kind: 'request', chapterNumber: chapter, attempt: kind }
     if (matching.length !== 1) throw new Error('GENERATION_PLOT_OUTLINE_ATTEMPT_CONFLICT')
     const attempt = matching[0]!
@@ -362,6 +370,42 @@ export function plotOutlineContextForPrompt(
     characterNames: options.characterNames,
   })
   return { text: built.text, stats: built.stats }
+}
+
+export interface ChapterOutlineArcSegment {
+  fromChapter: number
+  toChapter: number
+  title: string
+  summary: string
+  beat: string
+  status?: string
+}
+
+/**
+ * 每章都必须看到完整粗纲索引，以及本段实际覆盖的粗纲段全文。
+ */
+export function chapterOutlineArcDirective(
+  arcs: readonly ChapterOutlineArcSegment[],
+  chapter: number,
+  language: WritingLanguage,
+): string {
+  const covering = arcs.filter(arc => arc.fromChapter <= chapter && arc.toChapter >= chapter)
+  const index = arcs.map(arc => `- 第${arc.fromChapter}–${arc.toChapter}章（${arc.beat}）${arc.title}${arc.status === 'confirmed' ? '' : '［未确认］'}`).join('\n')
+  const coveringText = covering.map(arc => `第${arc.fromChapter}–${arc.toChapter}章（${arc.beat}）${arc.title}：\n${arc.summary}`).join('\n\n')
+  return language === 'en-US'
+    ? `[Full arc outline index (direction overview)]\n${index}\n\n[Owning arc segment for Chapter ${chapter} (the chapter must follow this direction)]\n${coveringText || '(no confirmed arc segment covers this chapter)'}`
+    : `【全书粗纲索引（方向总览，供判断前后文）】\n${index}\n\n【当前章所属粗纲段（第 ${chapter} 章必须服从其方向与转折，不得改写走向）】\n${coveringText || '（当前章没有对应的已确认粗纲段）'}`
+}
+
+/** 章级细纲的固定事实合同。 */
+export function chapterOutlineCoreContract(
+  facts: { coreOutline: string; premise: string; charactersArch: string; worldbuilding: string; globalGuidance: string },
+  language: WritingLanguage,
+): string {
+  const none = language === 'en-US' ? '(not provided)' : '（未填写）'
+  return language === 'en-US'
+    ? `[Core outline (book-level direction, must follow)]\n${facts.coreOutline || none}\n\n[Premise]\n${facts.premise}\n\n[Character graph (author facts; do not rewrite character settings)]\n${facts.charactersArch}\n\n[Worldbuilding]\n${facts.worldbuilding}\n\n[Global writing guidance]\n${facts.globalGuidance || none}`
+    : `【核心大纲（全书方向，必须遵守）】\n${facts.coreOutline || none}\n\n【故事前提】\n${facts.premise}\n\n【角色图谱（作者事实，不得改写人物设定）】\n${facts.charactersArch}\n\n【世界观】\n${facts.worldbuilding}\n\n【全局写作要求】\n${facts.globalGuidance || none}`
 }
 
 export function plotOutlineRequestContract(

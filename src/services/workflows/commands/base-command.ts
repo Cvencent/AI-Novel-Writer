@@ -435,10 +435,14 @@ export abstract class BaseWorkflowCommand<TResult = string> {
       allowedTools?: readonly string[]
       onToolCall?: (record: WorkflowToolCallRecord) => void
       maxToolRounds?: number
+      /** 工具结果回填上限；架构类工具可返回上万字符，必须截断。 */
+      maxToolResultChars?: number
       /** Expected prior visible composition for a main-owned run. */
       seedText?: string
       /** Recoverable visible text before a length/continuation failure. */
       onPartialAvailable?: (content: string) => void
+      /** 前置资料/工具轮：允许模型调用工具，但不产出、不写入可见章节正文。 */
+      suppressVisibleComposition?: boolean
     },
     context?: WorkflowContext,
   ): Promise<LLMCompletion & { toolCalls: WorkflowToolCallRecord[] }> {
@@ -480,6 +484,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
       executionContext: frozenExecution as never,
       ...(options.allowedTools ? { allowedTools: options.allowedTools } : {}),
       ...(options.maxToolRounds !== undefined ? { maxRounds: options.maxToolRounds } : {}),
+      ...(options.maxToolResultChars !== undefined ? { maxResultChars: options.maxToolResultChars } : {}),
       onToolCall: record => {
         options.onToolCall?.(record)
         // 工具调用过程可见：写入工作流日志，运行面板与日志页都能看到。
@@ -512,7 +517,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
       options.onPartialAvailable?.(recovered)
       throw createBoundedCompletionError(lastFinish, context?.uiLocale ?? 'zh-CN')
     }
-    if (mainOwned && loop.text.trim()) {
+    if (mainOwned && !options.suppressVisibleComposition && loop.text.trim()) {
       const artifact = artifactRef.value
       const handle = context?.mainGenerationRunHandle
       if (!artifact || !handle) throw new Error('GENERATION_COMPOSITION_ARTIFACT_REQUIRED')
@@ -527,6 +532,8 @@ export abstract class BaseWorkflowCommand<TResult = string> {
         handle,
         [...(priorComposition?.artifactIds ?? []), artifact.artifactId],
         hash,
+        // 细纲主运行必须声明章节级合成算法，否则主进程拒绝写回。
+        options.purpose?.startsWith('plot-outline:') ? 'chapter-outline-v3' : undefined,
       )
       if (receipt.text !== next || receipt.textHash !== hash) throw new Error('GENERATION_COMPOSITION_RECEIPT_MISMATCH')
     }

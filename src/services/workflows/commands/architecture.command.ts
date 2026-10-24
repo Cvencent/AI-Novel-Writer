@@ -8,7 +8,7 @@ import type { CharacterProposalBatch } from '../../../shared/character-proposal'
 import { defaultCharacterProposalRelationships, defaultCharacterProposalSelections, formatCharacterProposalPreview } from '../character-proposal-preview'
 import type { MainGenerationRunHandle } from '../../generation/generation-runtime'
 import type { ArchitecturePlanningIntent, GenerationRecoveryContext } from '../../../shared/generation-owner-contract'
-import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, plotOutlineSourceInvalidText, joinPlotOutlineEntries, renderPlotOutlineRange, plotOutlineConfirmedPrefix, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
+import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, plotOutlineSourceInvalidText, joinPlotOutlineEntries, renderPlotOutlineRange, plotOutlineConfirmedPrefix, chapterOutlineArcDirective, chapterOutlineCoreContract, type PlotOutlineProgress, type ChapterOutlineArcSegment } from '../../../shared/plot-outline-contract'
 import { CANONICAL_PROJECT_DIRECTORY } from '../../../shared/project-format'
 import { assertCheckpointDbMirrorCurrent, MIN_SYNOPSIS_PARTIAL_PERSIST_CHARS, renderSynopsisDbText, synopsisFactsFingerprint, type SynopsisCheckpoint } from '../../../shared/plot-outline-checkpoint'
 import {
@@ -2338,13 +2338,31 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       .withPlotStructureGuide(getPlotStructureGuide(config.plotStructure || 'three_act', sourceExpected.totalChapters, language))
       .withNarrativePov(getNarrativePOVLabel(config.narrativePOV || 'third_limited', language))
       .withGlobalGuidance(sourceExpected.globalGuidance).withStepGuidance(guidance)
-    const representedConfig: Record<string, unknown> = { genre: config.genre, totalChapters: sourceExpected.totalChapters,
-      wordsPerChapter: sourceExpected.wordsPerChapter, plotStructure: config.plotStructure, narrativePOV: config.narrativePOV,
-      globalGuidance: sourceExpected.globalGuidance, writingLanguage: language }
+    const globalGuidance = sourceExpected.globalGuidance?.trim() || promptLanguageText(language, "（未填写）", "(not provided)")
+    // 逐章细纲的完整事实合同：核心大纲、前提、角色、世界观与全局写作要求。
+    const originalPrompt = chapterOutlineCoreContract({
+      coreOutline: config.coreOutline || "",
+      premise: sourceExpected.premise,
+      charactersArch: sourceExpected.charactersArch,
+      worldbuilding: sourceExpected.worldbuilding,
+      globalGuidance,
+    }, language);
+    const representedConfig: Record<string, unknown> = { coreOutline: config.coreOutline, genre: config.genre,
+      totalChapters: sourceExpected.totalChapters, wordsPerChapter: sourceExpected.wordsPerChapter,
+      plotStructure: config.plotStructure, narrativePOV: config.narrativePOV, globalGuidance: sourceExpected.globalGuidance,
+      writingLanguage: language }
     const additionalConfig = Object.fromEntries(Object.entries(config).filter(([key, value]) => representedConfig[key] !== value))
-    const originalPrompt = [promptBuilder.build(), ...(Object.keys(additionalConfig).length ? [promptLanguageText(language,
-      `【其余冻结作者配置，须保留全部硬要求】\n${JSON.stringify(additionalConfig)}`,
-      `[Additional frozen author configuration; preserve all hard requirements]\n${JSON.stringify(additionalConfig)}`)] : [])].join('\n\n')
+    const additionalContext = Object.keys(additionalConfig).length
+      ? promptLanguageText(language, '【其余冻结作者配置，须保留全部硬要求】\n' + JSON.stringify(additionalConfig),
+          '[Additional frozen author configuration; preserve all hard requirements]\n' + JSON.stringify(additionalConfig))
+      : ''
+    const narrativeContext = promptLanguageText(language,
+      `【全书叙事约束】\n- 小说类型：${config.genre || '（未填写）'}${config.subGenre ? `（${config.subGenre}）` : ''}\n- 叙事视角：${getNarrativePOVLabel(config.narrativePOV || 'third_limited', language)}\n- 故事结构：${config.plotStructure || 'three_act'}\n- 计划总章数：${sourceExpected.totalChapters} 章；每章约 ${sourceExpected.wordsPerChapter} 字`
+      ,
+      `[Narrative constraints]\n- Genre: ${config.genre || '(not provided)'}\n- POV: ${getNarrativePOVLabel(config.narrativePOV || 'third_limited', language)}\n- Structure: ${config.plotStructure || 'three_act'}\n- Length: ${sourceExpected.totalChapters} chapters of ~${sourceExpected.wordsPerChapter} words`)
+    const chapterPrompt = [originalPrompt, narrativeContext, additionalContext].filter(Boolean).join('\n\n')
+
+
     const partial = (context.data.partial as PartialArchData) || await loadPartialData(expectedProjectPath, session)
     const factsFingerprint = synopsisInputsFingerprint(sourceExpected, guidance, initial.range, template)
     const saveNavigation = async (outline: PlotOutlineProgress, complete = false) => {
@@ -2369,6 +2387,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       : new Error(text(
         `第 ${cursor.chapterNumber} 章已停止自动生成，原因 ${cursor.reason}。已接受前缀和全部候选已保留，正式大纲未被覆盖。`,
         `Automatic generation stopped at chapter ${cursor.chapterNumber}: ${cursor.reason}. The accepted prefix and all candidates remain saved; the formal outline was not overwritten.`))
+    const arcSegments = await ipc.invokeWithProjectSession(session, "db:arc-outline-list", expectedProjectPath).catch(() => []) as ChapterOutlineArcSegment[]
     let outline = initial
     // 来源无效时没有可写进检查点的前缀，先给与恢复入口相同的说明；其余停止原因照常先写检查点。
     if (outline.cursor.kind === 'stopped' && outline.cursor.reason === 'source-invalid') throw stopped(outline.cursor)
@@ -2386,8 +2405,26 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       } else {
         callbacks.log(text(`正在生成第 ${cursor.chapterNumber} 章大纲${cursor.attempt === 'compact' ? '，进行唯一一次原事实重建' : ''}。`,
           `Generating the outline for chapter ${cursor.chapterNumber}${cursor.attempt === 'compact' ? ' with its single rebuild from original facts' : ''}.`))
-        await this.callLLMResult(`${originalPrompt}\n\n${plotOutlineRequestContract(outline, cursor.chapterNumber, cursor.attempt)}`,
-          `${promptBuilder.getSystemRole()}\n\n${planningTargetInstruction('outline', outline.targetUnits, language)}`, callbacks, { purpose: plotOutlinePurpose(cursor.chapterNumber, cursor.attempt), reasoningStage: 'planning', writingSkillStage: 'planning' }, context)
+        const arcDirective = chapterOutlineArcDirective(arcSegments, cursor.chapterNumber, language)
+        await this.callLLMWithTools(
+          chapterPrompt + '\n\n' + arcDirective + '\n\n' + plotOutlineRequestContract(outline, cursor.chapterNumber, cursor.attempt),
+          promptBuilder.getSystemRole() + '\n\n' + planningTargetInstruction('outline', outline.targetUnits, language),
+          callbacks,
+          {
+            purpose: plotOutlinePurpose(cursor.chapterNumber, cursor.attempt),
+            reasoningStage: 'planning',
+            writingSkillStage: 'planning',
+            allowedTools: [
+              'read_characters', 'create_character', 'update_character', 'delete_character',
+              'search_knowledge', 'read_architecture',
+            ],
+            maxToolRounds: 3,
+            // read_architecture 等工具可返回上万字符；细纲单章输入预算有限，
+            // 必须截断回填，否则第二轮会撞 GENERATION_INPUT_CAPACITY_EXCEEDED。
+            maxToolResultChars: 1800,
+          },
+          context,
+        )
       }
       const current = await ipc.invokeWithProjectSession(session, 'generation:read', handle)
       if (!current.plotOutline) throw new Error('GENERATION_PLOT_OUTLINE_SOURCE_INVALID')

@@ -73,8 +73,10 @@ export async function runWorkflowToolLoop(options: WorkflowToolLoopOptions): Pro
     maxRounds = DEFAULT_MAX_ROUNDS,
     maxResultChars = DEFAULT_MAX_RESULT_CHARS,
   } = options
-  // 工作流可能在用户从未打开过 Agent 面板时启动；这里保证内置工具已注册。
-  if (toolRegistry.size === 0) registerBuiltinTools()
+  // 工作流可能在用户从未打开过 Agent 面板时启动；注册表可能已有 MCP/Skill 工具，
+  // 因此这里不能以“注册表为空”为条件，否则内置工具会永远缺失，允许清单筛选为空。
+  // registerAll 覆盖注册，重复调用安全。
+  registerBuiltinTools()
   const allowed = options.allowedTools ?? toolRegistry.listAll().map(tool => tool.name)
   const registered = new Set(allowed)
   const toolPrompt = toolPromptFor(allowed, writingLanguage)

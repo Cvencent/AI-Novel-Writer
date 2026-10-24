@@ -56,6 +56,10 @@ export const builtinTools = [
  * 在 Agent 模块初始化时调用
  */
 export function registerBuiltinTools(): void {
-  toolRegistry.registerAll(builtinTools)
-  console.log(`[Agent] 已注册 ${builtinTools.length} 个内置 Tool`)
+  // 幂等：已经注册过的内置工具不重复写入，也不重复打日志。
+  // 工作流可在任意时刻调用本函数，注册表里可能已有 MCP/Skill 工具。
+  const missing = builtinTools.filter(tool => !toolRegistry.get(tool.name))
+  if (missing.length === 0) return
+  toolRegistry.registerAll(missing)
+  console.log(`[Agent] 已注册 ${missing.length} 个内置 Tool`)
 }
