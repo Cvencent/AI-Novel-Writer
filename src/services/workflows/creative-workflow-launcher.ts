@@ -24,6 +24,8 @@ import { createDirectoryWorkflow, type DirectoryWorkflowParams } from './directo
 import { normalizeChapterWordsTarget } from './chapter-creation-parameters'
 import type { Locale } from '../../i18n/types'
 import type { AgentToolActionRef } from '../../shared/agent-generation'
+import type { FunctionModelKey } from '../../shared/function-models'
+import { useLLMStore } from '../../stores/llm-store'
 
 export type CreativeWorkflowName =
   | 'generate_draft'
@@ -226,13 +228,43 @@ async function definitionFor(
   throw new Error(`${intent.workflow} 需要明确的草稿 ID 和不可变正文快照；请先打开目标草稿后从编辑器启动`)
 }
 
+/** 每个创作工作流归属的功能模型 key；refine/finalize 跟随正文生成。 */
+const WORKFLOW_FUNCTION_MODEL_KEYS: Record<CreativeWorkflowName, FunctionModelKey> = {
+  generate_arc_outline: 'outline_generation',
+  generate_architecture: 'synopsis_generation',
+  generate_blueprint: 'blueprint_generation',
+  generate_draft: 'draft_generation',
+  review_arc_outline: 'outline_review',
+  review_outline: 'synopsis_review',
+  review_blueprints: 'blueprint_review',
+  review: 'draft_review',
+  refine: 'draft_generation',
+  finalize: 'draft_generation',
+}
+
+export function functionModelKeyForWorkflow(workflow: CreativeWorkflowName): FunctionModelKey {
+  return WORKFLOW_FUNCTION_MODEL_KEYS[workflow]
+}
+
+/** 启动模型取舍：显式指定 > 功能配置；agent 发起的运行沿用 registration.modelId，不注入。 */
+export function resolveLaunchGenerationModelId(
+  intent: CreativeIntent,
+  options: Pick<CreativeWorkflowLaunchOptions, 'generationModelId' | 'agentToolAction'>,
+  resolveFunctionModel: (key: FunctionModelKey) => string | null,
+): string | undefined {
+  const explicit = options.generationModelId?.trim()
+  if (explicit) return explicit
+  if (options.agentToolAction) return undefined
+  return resolveFunctionModel(functionModelKeyForWorkflow(intent.workflow)) || undefined
+}
+
 /** The sole seam for turning a creative intent into an observable workflow run. */
 export async function launchCreativeWorkflow(
   intent: CreativeIntent,
   projectSession: ProjectSessionContext,
   options: CreativeWorkflowLaunchOptions = {},
 ): Promise<CreativeWorkflowLaunchReceipt> {
-  let generationModelId = options.generationModelId?.trim() || undefined
+  let generationModelId = resolveLaunchGenerationModelId(intent, options, key => useLLMStore.getState().modelIdForFunction(key))
   const uiLocale = useLocaleStore.getState().locale
   currentProjectFor(projectSession)
   const registration = options.agentToolAction ? await ipc.invokeWithProjectSession(projectSession, 'agent-generation:register-workflow', { ref: options.agentToolAction }) : undefined
@@ -312,3 +344,4 @@ export async function launchCreativeWorkflow(
 }
 
 export const CreativeWorkflowLauncher = Object.freeze({ launch: launchCreativeWorkflow })
+
