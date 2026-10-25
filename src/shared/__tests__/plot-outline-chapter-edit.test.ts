@@ -62,3 +62,26 @@ describe('plot outline chapter spans', () => {
     expect(() => replacePlotOutlineChapter(synopsis, 99, '## 第99章：x')).toThrow('PLOT_OUTLINE_CHAPTER_NOT_FOUND')
   })
 })
+
+describe('outline prompt character naming', () => {
+  it('requires every speaking character to carry a personal name', async () => {
+    const { plotOutlineRequestContract } = await import('../plot-outline-contract')
+    const progress = {
+        protocol: 'chapter-outline-v3',
+        range: { from: 1, to: 1 },
+        content: { maxAttemptsPerChapter: 2 },
+        targetUnits: 300,
+        cursor: { kind: 'request', chapterNumber: 1, attempt: 'normal' },
+        sourceExpected: {
+          synopsis: '', premise: '', charactersArch: '', worldbuilding: '', genre: '', totalChapters: 10,
+          wordsPerChapter: 3000, writingLanguage: 'zh-CN', plotStructure: '', narrativePov: '', globalGuidance: '',
+        },
+        confirmedPrefix: '',
+        composition: null,
+    } as never
+    const prompt = plotOutlineRequestContract(progress as never, 1, 'normal')
+    expect(prompt).toContain('人物命名规则')
+    expect(prompt).toContain('身份·姓名')
+    expect(prompt).toContain('create_character')
+  })
+})

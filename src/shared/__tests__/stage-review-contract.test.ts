@@ -131,3 +131,26 @@ describe('blueprint finding payloads', () => {
     expect(findings[0]!.expectedText).toBe('放慢')
   })
 })
+
+describe('character naming rules', () => {
+  it('asks the outline reviewer to flag role-only cast entries', () => {
+    const prompt = buildOutlineReviewPrompt({
+      chapters: [{ chapter: 1, title: '入学', body: '## 第1章：入学' }],
+      selected: [1], coreOutline: '', premise: '', worldbuilding: '', arcDirective: '', language: 'zh-CN',
+    })
+    expect(prompt).toContain('只有身份、没有姓名')
+    expect(prompt).toContain('检测教员')
+  })
+
+  it('asks the blueprint reviewer to drop role-only entries from characters', () => {
+    const prompt = buildBlueprintReviewPrompt({
+      chapters: [{
+        chapter: 1, title: '入学', role: 'setup', purpose: 'p', keyEvents: 'k',
+        characters: ['林澈', '检测教员'], suspenseHook: 'h', costsAndTurns: 'c', foreshadowing: 'f',
+      }],
+      selected: [1], outlineSlices: 'x', charactersArch: '林澈', worldbuilding: '', language: 'zh-CN',
+    })
+    expect(prompt).toContain('只有身份没有姓名')
+    expect(prompt).toContain('keyEvents')
+  })
+})

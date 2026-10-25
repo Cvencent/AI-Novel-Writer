@@ -45,7 +45,7 @@ export function blueprintSemanticGenerationContract(writingLanguage: WritingLang
 Output {"blueprints":[...]} only. Every item must contain all of these fields: ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.requiredFields.join(', ')}.
 chapterNumber must cover every target chapter exactly once, without duplicates or out-of-range values. title, role, purpose, keyEvents, and suspenseHook must be non-empty strings.
 suspenseHook is always required; even without a mystery, state one concrete unresolved decision, threat, revelation, or consequence that creates forward pressure.
-characters must be an array containing at least one unique, non-empty full character name.
+characters must list named people only (already in the character facts, or declared in this item's newCharacterCandidates), with at least one unique non-empty full name. Role-only labels such as "the examiner", "the guard" or "the clerk" must never appear in characters; describe them in keyEvents instead.
 newCharacterCandidates is optional. When present, include only important named characters first introduced by this blueprint and expected to recur. Every item must contain name and role, name must exactly copy one entry from characters, and role must be protagonist, antagonist, supporting, or minor. Omit it or use [] when there are no candidates; never include incidental figures.
 relationships is required and may be []; every item must contain non-empty from, to, and relation fields. from and to must exactly copy full names from the same item's characters array and may not self-reference.
 costsAndTurns is required: state the concrete cost or irreversible consequence paid in this chapter (bounded, traceable). When nothing is paid, say so in one short clause.
@@ -57,7 +57,7 @@ Do not omit required fields, combine chapters, rename fields, explain, or output
 只输出 {"blueprints":[...]}，每项必须完整包含：${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.requiredFields.join('、')}。
 chapterNumber 必须覆盖本批每个目标章节且不得重复或越界；title、role、purpose、keyEvents、suspenseHook 必须是非空字符串。
 suspenseHook 始终必填；即使本章没有谜团，也要写明一个制造推进压力的具体未决决定、威胁、揭示或后果。
-characters 必须是至少含一个唯一非空角色名的字符串数组。
+characters 必须只写具名角色（角色名单里已建档的，或本章 newCharacterCandidates 声明的），至少含一个唯一非空姓名。「检测教员」「门卫」「店员」这类只有身份没有姓名的角色不得写进 characters，只能写进 keyEvents 的场景描述。
 newCharacterCandidates 可选；提供时只声明由本章首次引入且预计后续复用的重要具名角色，每项必须包含 name、role，name 必须逐字复制 characters 中的一个完整姓名，role 只能是 protagonist、antagonist、supporting、minor。无候选时可省略或传 []，一次性路人不得声明为候选。
 relationships 必须是数组，无关系时传 []；每项必须含非空 from、to、relation，from/to 必须精确出现在同项 characters 中且不能自指。
 costsAndTurns 必填：写明本章当场付出的具体代价或不可逆后果（有限、可追溯）。确实没有付出时，用一句短话说明。
