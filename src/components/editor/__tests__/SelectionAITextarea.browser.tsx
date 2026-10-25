@@ -48,7 +48,7 @@ beforeEach(() => {
   root = createRoot(container)
   recoveries = new Map()
   useProjectStore.setState({ currentProject: { id: 'setup-project', sessionLease: 'setup-epoch', path: 'C:/合成设定', novelConfig: {} } as never })
-  useLLMStore.setState({ defaultModelId: 'setup-model', loaded: true, activeRequests: new Map() })
+  useLLMStore.setState({ defaultModelId: 'setup-model', models: [{ id: 'setup-model', purposes: ['generation'] }] as never, loaded: true, activeRequests: new Map() })
   useLocaleStore.setState({ locale: 'zh-CN' })
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
     if (channel === 'editor-inline:begin') {
@@ -93,7 +93,7 @@ afterEach(async () => {
   await act(async () => root.unmount())
   container.remove()
   useProjectStore.setState({ currentProject: null })
-  useLLMStore.setState({ defaultModelId: null, activeRequests: new Map() })
+  useLLMStore.setState({ defaultModelId: null, functionModels: {}, activeRequests: new Map() })
   Reflect.deleteProperty(window, 'aiNovelAPI')
 })
 
@@ -125,6 +125,24 @@ describe('SelectionAITextarea', () => {
     expect(invoke).toHaveBeenCalledWith('editor-inline:begin', expect.objectContaining({
       input: expect.objectContaining({ action: 'refine', from: 0, to: 4, selectedText: '原文段落', documentText: '原文段落' }),
     }), expect.any(Object))
+  })
+
+  it('uses the editor_ai function model for inline generation', async () => {
+    useLLMStore.setState({ defaultModelId: 'setup-model', models: [{ id: 'setup-model', purposes: ['generation'] }, { id: 'editor-fn-model', purposes: ['generation'] }] as never, functionModels: { editor_ai: 'editor-fn-model' }, loaded: true, activeRequests: new Map() })
+    await act(async () => root.render(<Harness />))
+    const area = container.querySelector('textarea')!
+    await act(async () => {
+      area.focus()
+      area.setSelectionRange(0, 4)
+      area.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    })
+
+    await act(async () => page.getByRole('button', { name: '润色' }).click())
+    await expect.element(page.getByText('改写后的段落')).toBeVisible()
+
+    const beginCall = invoke.mock.calls.find(([channel]) => channel === 'editor-inline:begin')
+    expect(beginCall).toBeTruthy()
+    expect((beginCall![1] as { modelId?: string }).modelId).toBe('editor-fn-model')
   })
 
   it('rewrites the frozen selection from a free-form author instruction', async () => {
@@ -192,3 +210,5 @@ describe('SelectionAITextarea', () => {
     await expect.element(page.getByText('正文或原目标已变化，结果未应用；你仍可复制预览内容。')).toBeVisible()
   })
 })
+
+

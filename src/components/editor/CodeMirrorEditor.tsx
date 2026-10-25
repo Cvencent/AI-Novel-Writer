@@ -472,7 +472,7 @@ export default function CodeMirrorEditor({
       inlineRef.current = client
       aiCandidateRef.current = null
       setActiveAIAction(uiText(...action.label)); setAiResult(''); setAiError(null); setCanResumeAI(false)
-      const recovery = await client.open({ input, modelId: useLLMStore.getState().defaultModelId ?? '', uiActionNonce: crypto.randomUUID() })
+      const recovery = await client.open({ input, modelId: useLLMStore.getState().modelIdForFunction('editor_ai') ?? '', uiActionNonce: crypto.randomUUID() })
       if (requestSequence !== aiRequestSequenceRef.current) return
       onGenerationHandle?.(recovery.view.handle)
       const receipt = await client.execute()
@@ -734,3 +734,4 @@ function scrollParentOf(element: HTMLElement): HTMLElement | null {
   }
   return null
 }
+

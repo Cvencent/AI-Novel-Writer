@@ -346,7 +346,7 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
       conv = get().createConversation()
     }
     const convId = conv.id
-    const modelId = conv.modelId ?? useLLMStore.getState().defaultModelId ?? undefined
+    const modelId = conv.modelId ?? useLLMStore.getState().modelIdForFunction('agent_chat') ?? undefined
     const executionContext = createAgentExecutionContext(modelId, requestLocale)
     const editor = useEditorStore.getState()
     const activeTab = editor.tabs.find(tab => tab.id === editor.activeTabId && tab.projectKey === executionContext.projectSession?.projectPath)
@@ -657,3 +657,4 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
     }
   },
 }))
+

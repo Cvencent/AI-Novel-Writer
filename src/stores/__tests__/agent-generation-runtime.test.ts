@@ -24,7 +24,7 @@ describe('Agent GenerationRuntime boundary', () => {
   beforeEach(() => {
     useAgentStore.setState({ conversations: [], activeConversationId: null, generating: false, activeRequestId: null, toolsInitialized: true })
     useLocaleStore.setState({ locale: 'zh-CN', initialized: true })
-    useLLMStore.setState({ defaultModelId: 'model-a' })
+    useLLMStore.setState({ defaultModelId: 'model-a', models: [{ id: 'model-a', purposes: ['generation'] }, { id: 'model-b', purposes: ['generation'] }] as never })
     useProjectStore.setState({ currentProject: structuredClone(project) })
     useEditorStore.setState({ tabs: [], activeTabId: null })
     fixture = new AgentHostFixture(session).install()
@@ -38,7 +38,7 @@ describe('Agent GenerationRuntime boundary', () => {
 
   it('freezes the selected conversation model and reuses one session across tool-loop turns', async () => {
     fixture.response = vi.fn(async index => {
-      useLLMStore.setState({ defaultModelId: 'model-b' })
+      useLLMStore.setState({ defaultModelId: 'model-b', models: [{ id: 'model-a', purposes: ['generation'] }, { id: 'model-b', purposes: ['generation'] }] as never })
       return index === 0 ? '<tool_call>{"name":"missing_probe","arguments":{}}</tool_call>' : '最终回复'
     })
     useAgentStore.getState().createConversation()
@@ -215,3 +215,4 @@ describe('Agent GenerationRuntime boundary', () => {
     expect(calls('agent-generation:resume')).toHaveLength(0)
   })
 })
+

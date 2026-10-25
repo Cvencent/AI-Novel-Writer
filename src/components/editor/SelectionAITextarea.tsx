@@ -201,7 +201,7 @@ export default function SelectionAITextarea({ value, onValueChange, scope, ...re
           selectedText: frozen.selectedText,
           documentText: frozen.documentText,
         },
-        modelId: useLLMStore.getState().defaultModelId ?? '',
+        modelId: useLLMStore.getState().modelIdForFunction('editor_ai') ?? '',
         uiActionNonce: crypto.randomUUID(),
       })
       if (requestSequence !== sequenceRef.current) return
