@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react'
 import {
   FUNCTION_MODEL_KEYS,
   FUNCTION_MODEL_LABELS,
@@ -61,3 +60,4 @@ export default function FunctionModelSection() {
     </div>
   )
 }
+

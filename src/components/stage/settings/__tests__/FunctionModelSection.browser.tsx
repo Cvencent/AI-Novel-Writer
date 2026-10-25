@@ -19,8 +19,8 @@ function Harness() {
 }
 
 const model = (id: string) => ({
-  id, name: id, provider: 'custom', protocol: 'openai', modelName: id, apiKey: '', baseUrl: '',
-  temperature: 0.7, maxTokens: 1024, purposes: ['generation'],
+  id, name: id, provider: 'custom' as const, protocol: 'openai' as const, modelName: id, apiKey: '', baseUrl: '',
+  temperature: 0.7, maxTokens: 1024, purposes: ['generation' as const],
 })
 
 beforeEach(() => {
@@ -95,3 +95,4 @@ describe('FunctionModelSection', () => {
     expect(useLLMStore.getState().functionModels.editor_ai).toBeNull()
   })
 })
+
