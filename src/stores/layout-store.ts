@@ -4,7 +4,7 @@ import { create } from 'zustand'
 export type SidebarView = 'home' | 'project'
 
 /** 设置页的分区。 */
-export type SettingsSection = 'appearance' | 'llm' | 'embedding' | 'proxy' | 'prompts' | 'skills' | 'backup' | 'maintenance' | 'about'
+export type SettingsSection = 'appearance' | 'llm' | 'function-models' | 'embedding' | 'proxy' | 'prompts' | 'skills' | 'backup' | 'maintenance' | 'about'
 
 /** 写作此章的参数（取自蓝图），章号由 chapter 意图给出。 */
 export type ChapterWritePrefill = {
@@ -62,3 +62,4 @@ export const useLayoutStore = create<LayoutState>()((set) => ({
   openImportNovel: () => set({ importNovelOpen: true }),
   closeImportNovel: () => set({ importNovelOpen: false }),
 }))
+

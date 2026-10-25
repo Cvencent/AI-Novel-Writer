@@ -12,6 +12,7 @@ export interface SettingsPageSpec {
 export const SETTINGS_GROUPS: readonly { id: string; name: Pair; pages: readonly SettingsPageSpec[] }[] = [
   { id: 'common', name: ['常用', 'Common'], pages: [
     { id: 'llm', name: ['AI 模型', 'AI models'], lede: ['写作、审稿、修稿都用这里的模型。标为默认的会预先选好，每次运行前仍可临时换。', 'Writing, reviews and revisions use these models. The default is preselected and can be changed before each run.'] },
+    { id: 'function-models', name: ['功能模型分配', 'Function models'], lede: ['给每个功能单独指定用哪个模型；没指定的跟随默认模型。', 'Assign a model to each function; anything unassigned follows the default model.'] },
     { id: 'appearance', name: ['外观', 'Appearance'], lede: ['改动立即生效，不需要保存。', 'Changes apply right away. No need to save.'] },
   ] },
   { id: 'advanced', name: ['高级', 'Advanced'], pages: [
@@ -28,3 +29,4 @@ export const SETTINGS_GROUPS: readonly { id: string; name: Pair; pages: readonly
 ]
 
 export const SETTINGS_PAGES: readonly SettingsPageSpec[] = SETTINGS_GROUPS.flatMap(group => group.pages)
+

@@ -13,6 +13,7 @@ import KnowledgeIndexSection from '../knowledge/KnowledgeIndexSection'
 import { isComposing, isModalOpen } from '../shortcut-keys'
 import AboutSection from './AboutSection'
 import AppearanceSection from './AppearanceSection'
+import FunctionModelSection from './FunctionModelSection'
 import MaintenanceSection from './MaintenanceSection'
 import ModelsSection from './ModelsSection'
 import ProxySection from './ProxySection'
@@ -48,6 +49,8 @@ function PageBody({ page }: { page: SettingsSection }) {
           <KnowledgeIndexSection />
         </>
       )
+    case 'function-models':
+      return <><PageHeader page={page} /><FunctionModelSection /></>
     case 'appearance':
       return <><PageHeader page={page} /><AppearanceSection /></>
     case 'proxy':
@@ -144,3 +147,4 @@ export default function StageSettings({ library }: { library: boolean }) {
     </div>
   )
 }
+
