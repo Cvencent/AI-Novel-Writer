@@ -13,32 +13,18 @@ import { requireIpcSuccess } from '../../services/ipc-result'
 import { ARC_RESOURCE_KEY, CORE_FIELD_MAP, parseCoreField } from '../../services/resource-protocol'
 import { appErrorMessage } from '../../i18n/app-errors'
 import { toast } from '../ui/Toast'
+import { DangerConfirm } from '../ui/DangerConfirm'
 import { CharacterCardImportButton } from '../characters/CharacterCardImportButton'
 import CodeMirrorEditor from './CodeMirrorEditor'
 import type { EditorInlineScope } from '../../shared/editor-inline-generation'
 import { SaveFeedback, type SaveOutcome } from './save-feedback'
 import { useProjectStore } from '../../stores/project-store'
-/** 从细纲正文里删掉选中的章节块：从该章标题起，删到下一个章节标题之前。 */
-function removeOutlineChapters(content: string, headings: Set<string>): string {
-  if (headings.size === 0) return content
-  const lines = content.replace(/\r\n?/g, String.fromCharCode(10)).split(String.fromCharCode(10))
-  const out: string[] = []
-  let skipping = false
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (/^#{1,4}\s*第\s*\d+/.test(trimmed)) {
-      skipping = [...headings].some(heading => trimmed === heading.trim() || trimmed.startsWith(heading.trim()))
-    }
-    if (!skipping) out.push(line)
-  }
-  return out.join(String.fromCharCode(10)).replace(/\n{3,}/g, String.fromCharCode(10) + String.fromCharCode(10)).trim()
-}
-
 import { useLocaleStore } from '../../stores/locale-store'
 import { launchCreativeWorkflow } from '../../services/workflows/creative-workflow-launcher'
 import { createArchitectureWorkflow } from '../../services/workflows/architecture-workflow'
 import { renderPlotOutlineSynopsis, validPlotOutlineAuthorPrefix, type PlotOutlineRangeSource } from '../../shared/plot-outline-contract'
 import { parseOutlineNavigation } from '../../shared/outline-navigation'
+import { removeOutlineChapters } from '../../shared/outline-bulk-delete'
 import { useWorkflowStore } from '../../stores/workflow-store'
 import { outlineSourceInvalidNote } from '../run/run-recovery'
 import { globalEventBus } from '../../shared/event-bus'
@@ -390,6 +376,42 @@ function ArchFileViewerSession({
       if (isProjectSessionCurrent(projectSession)) setSaving(false)
     }
   }, [filePath, isCharacterProjection, projectKey, tabId, refreshRecovery, text])
+
+  const [busyOutline, setBusyOutline] = useState(false)
+  const [confirmDeleteOutline, setConfirmDeleteOutline] = useState(false)
+
+  /**
+   * 删除右侧目录里选中的细纲章节。
+   *
+   * 必须在**当前正文**上做替换（编辑器里可能已经有未保存的输入），
+   * 并且明确报告结果——之前直接用 editorContent 又静默吞掉保存失败，
+   * 看起来就是「点了没反应」。
+   */
+  const deleteSelectedOutlineChapters = useCallback(async () => {
+    if (selectedOutline.size === 0 || busyOutline) return
+    const source = currentContentRef.current
+    const next = removeOutlineChapters(source, selectedOutline)
+    if (next === source) {
+      toast.error(text('没有匹配到要删除的章节标题。', 'No chapter headings matched the selection.'))
+      return
+    }
+    const removed = selectedOutline.size
+    setBusyOutline(true)
+    try {
+      setSelectedOutline(new Set())
+      handleChange(next)
+      await handleSave(next, true)
+      // 编辑器显示的是内部 state，不随 handleChange 更新；不显式刷新会让人以为没删掉。
+      setEditorContent(next)
+      currentContentRef.current = next
+      toast.success(text(`已删除 ${removed} 章细纲`, `Removed ${removed} selected chapter outlines`))
+    } catch (error) {
+      toast.error(appErrorMessage(useLocaleStore.getState().locale, error))
+    } finally {
+      setBusyOutline(false)
+    }
+  }, [busyOutline, handleChange, handleSave, selectedOutline, text])
+
 
   useEffect(() => {
     if (isCharacterProjection) return
@@ -837,8 +859,8 @@ function ArchFileViewerSession({
                     onChange={event => setSelectedOutline(event.target.checked ? new Set(outlineNavigation.map(item => item.heading)) : new Set())} />
                   {text('全选', 'Select all')}
                 </label>
-                <button type="button" disabled={selectedOutline.size === 0}
-                  onClick={() => { const next = removeOutlineChapters(editorContent, selectedOutline); setSelectedOutline(new Set()); handleChange(next); void handleSave(next) }}>
+                <button type="button" disabled={selectedOutline.size === 0 || saving || busyOutline}
+                  onClick={() => setConfirmDeleteOutline(true)}>
                   {text(`删除所选 ${selectedOutline.size} 章`, `Delete ${selectedOutline.size} selected`)}
                 </button>
               </div>
@@ -870,6 +892,18 @@ function ArchFileViewerSession({
         )}
       </div>
 
+      <DangerConfirm
+        open={confirmDeleteOutline}
+        onOpenChange={open => { if (!open) setConfirmDeleteOutline(false) }}
+        title={text(`删除所选 ${selectedOutline.size} 章细纲？`, `Delete ${selectedOutline.size} selected chapter outlines?`)}
+        consequence={text('这些章节的细纲会从正式细纲里移除，并立即保存。蓝图与正文不受影响。',
+          'These chapter outlines are removed from the saved plot outline immediately. Blueprints and manuscript text are not affected.')}
+        recoverability={text('删除后无法撤销。想留底请先在设置的「项目备份」里导出存档。',
+          'This cannot be undone. Export an archive from Project backup in Settings first if you may need it.')}
+        confirmLabel={text('删除所选', 'Delete selected')}
+        cancelLabel={text('取消', 'Cancel')}
+        onConfirm={() => { setConfirmDeleteOutline(false); void deleteSelectedOutlineChapters() }}
+      />
       {/* AI 生成确认弹窗 */}
       {stepKey && (
         <ArchitectureConfirmDialog

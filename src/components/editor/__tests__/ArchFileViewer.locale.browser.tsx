@@ -106,6 +106,76 @@ describe('大纲目录', () => {
     expect(selected).toContain('第42章：北堤')
   })
 
+  it('全选后删除所选细纲：编辑器立刻刷新，只删掉选中的章', async () => {
+    const synopsis = [
+      '# 细纲',
+      '',
+      '## 第1章：雾钟',
+      '正文一。',
+      '',
+      '## 第2章：北堤',
+      '正文二。',
+      '',
+      '## 第3章：潮位',
+      '正文三。',
+    ].join('\n')
+    await renderViewer('ai-novel://core/synopsis', synopsis)
+
+    const boxes = [...container.querySelectorAll<HTMLInputElement>('input[type=checkbox]')]
+    // 第一个复选框是「全选」
+    await act(async () => {
+      boxes[0]!.click()
+    })
+    await act(async () => { await Promise.resolve() })
+
+    const selectAll = [...container.querySelectorAll('button')].find(b => b.textContent?.includes('删除所选'))
+    expect(selectAll?.textContent).toContain('3')
+    await act(async () => selectAll!.click())
+    await act(async () => { await Promise.resolve() })
+
+    // 确认框出现，只有点「删除所选」才真正删除
+    const confirm = [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === '删除所选' && b !== selectAll)
+    expect(confirm).toBeTruthy()
+    await act(async () => confirm!.click())
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { await new Promise(r => setTimeout(r, 50)) })
+
+    const view = EditorView.findFromDOM(container.querySelector('.cm-editor') as HTMLElement)
+    const text = view!.state.doc.toString()
+    expect(text).not.toContain('第1章：雾钟')
+    expect(text).not.toContain('第2章：北堤')
+    expect(text).not.toContain('第3章：潮位')
+  })
+
+  it('只删选中一章时其余章保留', async () => {
+    const synopsis = [
+      '# 细纲',
+      '',
+      '## 第1章：雾钟',
+      '正文一。',
+      '',
+      '## 第2章：北堤',
+      '正文二。',
+    ].join('\n')
+    await renderViewer('ai-novel://core/synopsis', synopsis)
+
+    const rows = [...container.querySelectorAll<HTMLInputElement>('input[aria-label^="选择第"]')]
+    await act(async () => rows[0]!.click())
+    await act(async () => { await Promise.resolve() })
+    const del = [...container.querySelectorAll('button')].find(b => b.textContent?.includes('删除所选'))
+    await act(async () => del!.click())
+    await act(async () => { await Promise.resolve() })
+    const confirm = [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === '删除所选' && b !== del)
+    await act(async () => confirm!.click())
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { await new Promise(r => setTimeout(r, 50)) })
+
+    const view = EditorView.findFromDOM(container.querySelector('.cm-editor') as HTMLElement)
+    const text = view!.state.doc.toString()
+    expect(text).not.toContain('第1章：雾钟')
+    expect(text).toContain('第2章：北堤')
+  })
+
   it('粗纲右侧按段列出区间，而不是只显示从第 1 章开始', async () => {
     const arc = [
       '## 第 1–20 章：废核与第一块残片',

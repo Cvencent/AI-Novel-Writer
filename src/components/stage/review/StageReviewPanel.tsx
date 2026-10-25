@@ -189,15 +189,21 @@ export default function StageReviewPanel({
   }, [projectKey, run])
 
   const findings = run?.findings ?? []
-  const openCount = findings.filter(f => f.status === 'open').length
+  // 只展示还没处理的建议：接受或忽略之后它就该从页面上消失。
+  const openFindings = findings.filter(finding => finding.status === 'open')
+  const openCount = openFindings.length
+  const handledCount = findings.length - openCount
 
   return (
     <div className="arch-arc-review-panel" data-target={target}>
       <div className="arch-arc-review-head">
         <strong>
           {text('AI 检查', 'AI review')}
-          {findings.length > 0 && <span className="arch-arc-review-count">
-            {text(`${findings.length} 条建议 · 待处理 ${openCount}`, `${findings.length} ${pluralEn(findings.length, 'suggestion')} · ${openCount} open`)}
+          {openCount > 0 && <span className="arch-arc-review-count">
+            {text(`${openCount} 条待处理`, `${openCount} open ${pluralEn(openCount, 'suggestion')}`)}
+          </span>}
+          {openCount === 0 && handledCount > 0 && <span className="arch-arc-review-count">
+            {text(`${handledCount} 条已处理`, `${handledCount} handled`)}
           </span>}
         </strong>
         <span className="arch-arc-review-head-actions">
@@ -206,9 +212,11 @@ export default function StageReviewPanel({
           </Button>
           {findings.length > 0 && (
             <>
-              <Button variant="secondary" size="sm" disabled={openCount === 0 || applying !== null} onClick={() => { void acceptAll() }}>
-                {applying === 'all' ? text('应用中…', 'Applying…') : text('全部接受', 'Accept all')}
-              </Button>
+              {openCount > 0 && (
+                <Button variant="secondary" size="sm" disabled={applying !== null} onClick={() => { void acceptAll() }}>
+                  {applying === 'all' ? text('应用中…', 'Applying…') : text('全部接受', 'Accept all')}
+                </Button>
+              )}
               <Button variant="text" size="sm" disabled={applying !== null} onClick={() => { void remove() }} title={text('删除这次检查结果', 'Delete this review')}>
                 <Trash2 size={14} aria-hidden />{text('删除', 'Delete')}
               </Button>
@@ -225,9 +233,11 @@ export default function StageReviewPanel({
       )}
       {findings.length === 0 && !busy
         ? <p className="arch-arc-review-empty">{text('还没有检查结果。选好范围后点「开始检查」。', 'No review results yet. Pick a range and run the review.')}</p>
-        : (
+        : openFindings.length === 0 && !busy
+          ? <p className="arch-arc-review-empty">{text('这次检查的建议都处理完了。', 'Every suggestion from this review has been handled.')}</p>
+          : (
           <ul className="arch-arc-review-list">
-            {findings.map(finding => (
+            {openFindings.map(finding => (
               <li key={finding.findingId} className="arch-arc-review-item" data-severity={finding.severity} data-status={finding.status}>
                 <div className="arch-arc-review-meta">
                   <span className="arch-arc-review-seg">{target === 'arc'
@@ -239,20 +249,12 @@ export default function StageReviewPanel({
                 <p className="arch-arc-review-problem">{finding.problemText}</p>
                 {finding.expectedText && <pre className="arch-arc-review-expected">{finding.expectedText}</pre>}
                 <div className="arch-arc-review-actions">
-                  {finding.status === 'open' ? (
-                    <>
-                      <Button variant="primary" size="sm" disabled={applying !== null || !finding.expectedText.trim()} onClick={() => { void accept(finding) }} title={finding.expectedText.trim() ? undefined : text('这条建议没有给出可写回的文本', 'This suggestion contains no text to write back')}>
-                        {applying === finding.findingId ? text('应用中…', 'Applying…') : text('接受', 'Accept')}
-                      </Button>
-                      <Button variant="text" size="sm" disabled={applying !== null} onClick={() => { void resolve(finding.findingId, 'ignored') }}>
-                        {text('忽略', 'Ignore')}
-                      </Button>
-                    </>
-                  ) : (
-                    <span className="arch-arc-review-status">
-                      {finding.status === 'accepted' ? text('已接受', 'Accepted') : text('已忽略', 'Ignored')}
-                    </span>
-                  )}
+                  <Button variant="primary" size="sm" disabled={applying !== null || !finding.expectedText.trim()} onClick={() => { void accept(finding) }} title={finding.expectedText.trim() ? undefined : text('这条建议没有给出可写回的文本', 'This suggestion contains no text to write back')}>
+                    {applying === finding.findingId ? text('应用中…', 'Applying…') : text('接受', 'Accept')}
+                  </Button>
+                  <Button variant="text" size="sm" disabled={applying !== null} onClick={() => { void resolve(finding.findingId, 'ignored') }}>
+                    {text('忽略', 'Ignore')}
+                  </Button>
                 </div>
               </li>
             ))}
