@@ -10,6 +10,7 @@ import {
 import type { GlobalConfig, LLMFinishReason, LLMRequest, ModelDiscoveryRequest, ModelProfile, TokenUsage } from '../../src/shared/ipc-channels'
 import { isProjectSessionContext } from '../../src/shared/project-session-context'
 import { isReasoningMapping } from '../../src/shared/reasoning-types'
+import { FUNCTION_MODEL_KEYS, normalizeFunctionModelIds, type FunctionModelKey } from '../../src/shared/function-models'
 import { LLMFactory } from '../llm/llm-factory'
 import { resolveGenerationParameters } from '../llm/generation-parameter-policy'
 import { getCurrentProjectPath } from '../database'
@@ -316,6 +317,14 @@ export function registerLLMController() {
         nextConfig.defaultEmbeddingModelId = null
         configChanged = true
       }
+      if (nextConfig.functionModelIds) {
+        const nextIds = normalizeFunctionModelIds(nextConfig.functionModelIds)
+        let functionIdsChanged = false
+        for (const key of FUNCTION_MODEL_KEYS) {
+          if (nextIds[key] === modelId) { nextIds[key] = null; functionIdsChanged = true }
+        }
+        if (functionIdsChanged) { nextConfig.functionModelIds = nextIds; configChanged = true }
+      }
 
       // 先清除引用，再删除被引用对象。若第二个文件写入失败，回滚配置；
       // 即使回滚也失败，配置中只会缺少默认值，不会悬空指向已删除模型。
@@ -374,6 +383,25 @@ export function registerLLMController() {
     return config.defaultEmbeddingModelId ?? null
   })
 
+  ipcMain.handle('llm:get-function-models', async () => {
+    const config = readJsonFile<GlobalConfig>(GLOBAL_CONFIG_PATH, DEFAULT_GLOBAL_CONFIG)
+    return normalizeFunctionModelIds(config.functionModelIds)
+  })
+
+  ipcMain.handle('llm:set-function-model', async (_event, key: FunctionModelKey, modelId: string | null) => {
+    try {
+      if (!(FUNCTION_MODEL_KEYS as readonly string[]).includes(key)) return { success: false, error: 'INVALID_FUNCTION_MODEL_KEY' }
+      const config = loadGlobalConfigForUpdate()
+      const nextIds = normalizeFunctionModelIds(config.functionModelIds)
+      nextIds[key] = modelId === null ? null : String(modelId).trim() === '' ? null : modelId
+      config.functionModelIds = nextIds
+      writeJsonFile(GLOBAL_CONFIG_PATH, config)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
   ipcMain.handle('llm:test-connection', async (
     _event,
     model: ModelProfile,
@@ -411,3 +439,4 @@ export function registerLLMController() {
 
   return { modelExecutionLeases, loadModel: getModelConfig, applyProxyConfig }
 }
+

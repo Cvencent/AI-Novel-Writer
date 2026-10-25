@@ -11,6 +11,7 @@ import type { LegacyRosterGenerationChannels } from './legacy-roster-generation'
 import type { CharacterAvatarChannels } from './character-avatar'
 import type { CloudBackupChannels } from './cloud-backup'
 import type { ProjectOverview } from './project-overview'
+import type { FunctionModelIds } from './function-models'
 /**
  * IPC 频道定义 — 渲染进程与主进程的类型安全通信契约
  * 所有 IPC 调用都通过此文件定义频道名和参数/返回值类型
@@ -173,6 +174,8 @@ export interface GlobalConfig {
   locale?: Locale
   defaultModelId: string | null
   defaultEmbeddingModelId?: string | null
+  /** 按功能分配的生成模型；缺 key 表示跟随 defaultModelId。 */
+  functionModelIds?: FunctionModelIds
   /** 定稿与后处理成功后，打开下一章的创作窗口（默认关闭）。 */
   autoOpenNextChapterAfterFinalize?: boolean
   editorFontSize: number
@@ -581,6 +584,14 @@ export interface LLMChannels {
   'llm:get-default-embedding-model': {
     args: []
     return: string | null
+  }
+  'llm:get-function-models': {
+    args: []
+    return: FunctionModelIds
+  }
+  'llm:set-function-model': {
+    args: [key: import('./function-models').FunctionModelKey, modelId: string | null]
+    return: { success: boolean; error?: string }
   }
   'llm:test-connection': {
     args: [model: ModelProfile, creativeStrategy?: CreativeStrategy]
@@ -1422,3 +1433,4 @@ export type InvokeChannel = keyof AllInvokeChannels
 
 /** 提取 event 频道名 */
 export type EventChannel = keyof AllEventChannels
+

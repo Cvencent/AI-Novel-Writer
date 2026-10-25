@@ -124,6 +124,7 @@ export function writeJsonFile(filePath: string, data: unknown) {
 export const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
   theme: 'dark',
   defaultModelId: null,
+  functionModelIds: {},
   autoOpenNextChapterAfterFinalize: false,
   editorFontSize: 16,
   editorFontFamily: 'Noto Serif SC',
@@ -135,3 +136,4 @@ export const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
     port: 7890,
   },
 }
+
