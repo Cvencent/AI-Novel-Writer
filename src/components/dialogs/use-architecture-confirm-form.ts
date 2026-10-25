@@ -32,17 +32,23 @@ export interface ArchitectureConfirmFormOptions {
   initialSynopsisRange?: { from: number; to: number } | null
   /** 数据库里的正式大纲，主进程开跑时拿它判定范围；未保存的编辑不算。 */
   synopsisSource: PlotOutlineRangeSource
+  /** 这次对话框是否把粗纲也列成可选项（粗纲按段生成，与其它四节的整篇生成不是同一流程）。 */
+  allowArc?: boolean
+  /** 打开对话框时是否直接勾上粗纲（从粗纲编辑器点「AI 重新生成」时用）。 */
+  initialArcSelected?: boolean
   onConfirm: (
     selectedSteps: ArchGenerateStepKey[],
     stepGuidance: Record<string, string>,
     synopsisRange?: { from: number; to: number },
     targetUnits?: number,
+    arcRequested?: boolean,
   ) => Promise<void>
 }
 
 /** 架构确认对话框的表单：步骤勾选、大纲范围、每章目标字数、作者指导与提交前校验。架构阶段与架构文档页的生成对话框共用。 */
 export function useArchitectureConfirmForm({
-  isOpen, onClose, archStatus, confirmed = archStatus, initialSelectedSteps, initialSynopsisRange = null, synopsisSource, onConfirm,
+  isOpen, onClose, archStatus, confirmed = archStatus, initialSelectedSteps, initialSynopsisRange = null, synopsisSource,
+  allowArc = false, initialArcSelected = false, onConfirm,
 }: ArchitectureConfirmFormOptions) {
   const currentProject = useProjectStore(s => s.currentProject)
   const text = useLocaleStore(s => s.text)
@@ -52,6 +58,11 @@ export function useArchitectureConfirmForm({
   const [checked, setChecked] = useState<Record<ArchGenerateStepKey, boolean>>(() => {
     return createDefaultArchitectureSelection(confirmed, initialSelectedSteps)
   })
+  /**
+   * 粗纲按段生成，和另外四节的整篇生成不是一条流程，所以单独一个开关：
+   * 勾上粗纲时其余四节强制取消并置灰，避免一次提交里混两种工作流。
+   */
+  const [arcSelected, setArcSelected] = useState(false)
   const wasOpen = useRef(false)
 
   const [stepGuidance, setStepGuidance] = useState<Record<string, string>>({})
@@ -90,7 +101,8 @@ export function useArchitectureConfirmForm({
       setSynopsisTo(String(Math.min(total, next + DEFAULT_PLANNING_ACTION_CHAPTERS - 1)))
     }
     setChecked(defaults)
-  }, [confirmed, currentProject?.novelConfig.totalChapters, initialSelectedSteps, initialSynopsisRange, synopsisSource])
+    setArcSelected(allowArc && initialArcSelected)
+  }, [allowArc, confirmed, currentProject?.novelConfig.totalChapters, initialSelectedSteps, initialArcSelected, initialSynopsisRange, synopsisSource])
 
   useEffect(() => {
     if (isOpen && !wasOpen.current) {
@@ -99,12 +111,23 @@ export function useArchitectureConfirmForm({
     wasOpen.current = isOpen
   }, [isOpen, resetChecked])
 
-  const toggleStep = (key: ArchGenerateStepKey) =>
-    setChecked(prev => ({ ...prev, [key]: !prev[key] }))
-  const setAll = (value: boolean) => setChecked({ premise: value, characters: value, worldbuilding: value, synopsis: value })
+  /** 勾粗纲前先把四节清掉；粗纲与整篇生成互斥。 */
+  const toggleArc = () => setArcSelected(prev => {
+    const next = !prev
+    if (next) setChecked({ premise: false, characters: false, worldbuilding: false, synopsis: false })
+    return next
+  })
+  const toggleStep = (key: ArchGenerateStepKey) => setChecked(prev => {
+    if (arcSelected) setArcSelected(false)
+    return { ...prev, [key]: !prev[key] }
+  })
+  const setAll = (value: boolean) => {
+    if (value) setArcSelected(false)
+    setChecked({ premise: value, characters: value, worldbuilding: value, synopsis: value })
+  }
 
   const selectedSteps = (Object.keys(checked) as ArchGenerateStepKey[]).filter(k => checked[k])
-  const noneSelected = selectedSteps.length === 0
+  const noneSelected = selectedSteps.length === 0 && !arcSelected
   const config = currentProject?.novelConfig
   const totalChapters = Number(config?.totalChapters) > 0 ? Number(config?.totalChapters) : 0
   const from = Number(synopsisFrom)
@@ -203,8 +226,8 @@ export function useArchitectureConfirmForm({
         return
       }
 
-      // 前置校验 1.5：细纲必须基于已完整确认的粗纲。
-      if (selectedSteps.includes('synopsis')) {
+      // 前置校验 1.5：细纲必须基于已完整确认的粗纲（本次勾粗纲时另走粗纲流程，不适用）。
+      if (!arcSelected && selectedSteps.includes('synopsis')) {
         const arcGuard = await guardSynopsisNeedsConfirmedArc(undefined, undefined, locale)
         if (!arcGuard.ok) {
           setGuardError(arcGuard.message || text('请先生成并确认完整粗纲，再生成细纲。', 'Finish and confirm the full arc outline before generating chapter outlines.'))
@@ -213,7 +236,7 @@ export function useArchitectureConfirmForm({
       }
 
       // 前置校验 2：如果勾选了角色名单（意味着将重新生成角色卡），则必须确保蓝图为空
-      if (selectedSteps.includes('characters') && archStatus.characters) {
+      if (!arcSelected && selectedSteps.includes('characters') && archStatus.characters) {
         const charGuard = await guardCharacterRegeneration(undefined, locale)
         if (!charGuard.ok) {
           setGuardError(charGuard.message || text('角色卡不可重新生成', 'Character cards cannot be regenerated.'))
@@ -223,7 +246,7 @@ export function useArchitectureConfirmForm({
 
       setGuardError(null)
       let target: number | undefined
-      if (checked.synopsis) {
+      if (!arcSelected && checked.synopsis) {
         try { target = parsePlanningTargetUnits(Number(targetUnits)) } catch {
           setGuardError(text(`每章大纲目标须为 1–${PLANNING_TARGET_UNITS_LIMIT} 的整数。`, `The outline target must be an integer from 1 to ${PLANNING_TARGET_UNITS_LIMIT}.`))
           return
@@ -236,9 +259,13 @@ export function useArchitectureConfirmForm({
           return
         }
       }
-      await onConfirm(selectedSteps, stepGuidance, resolution.range, target)
+      // 只在真的勾了粗纲时多传一个标志，保持其它调用点的四参签名不变。
+      if (arcSelected) await onConfirm([], stepGuidance, undefined, undefined, true)
+      else await onConfirm(selectedSteps, stepGuidance, resolution.range, target)
       onClose()
-      const stepNames = selectedSteps.map(k => text(...ARCH_STEP_NAMES[k])).join(text('、', ', '))
+      const stepNames = arcSelected
+        ? text(...ARCH_STEP_NAMES.arc)
+        : selectedSteps.map(k => text(...ARCH_STEP_NAMES[k])).join(text('、', ', '))
       toast.info(text(`已提交：正在生成${stepNames}...`, `Submitted: generating ${stepNames}...`))
     } catch (error) {
       setGuardError(error instanceof Error ? error.message : String(error))
@@ -260,6 +287,9 @@ export function useArchitectureConfirmForm({
     checked,
     toggleStep,
     setAll,
+    arcAvailable: allowArc,
+    arcSelected,
+    toggleArc,
     selectedSteps,
     noneSelected,
     stepMark,

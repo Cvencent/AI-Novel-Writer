@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   ARC_MAX_CHAPTERS, ARC_MIN_CHAPTERS,
-  findCharacterNames, parseArcSegment, sanitizeArcProperNames,
+  findCharacterNames, parseArcOutlineDocument, parseArcSegment, sanitizeArcProperNames,
   validateArcNoProperNames, validateArcSpan, validateBeatDiversity,
 } from '../arc-outline-contract'
 
@@ -137,5 +137,36 @@ beat: escalation
 
   it('段落为空判不合格', () => {
     expect(parseArcSegment('')).toEqual({ ok: false, code: 'ARC_PARSE_NO_SEGMENT' })
+  })
+})
+
+describe('parseArcOutlineDocument', () => {
+  it('parses a rendered arc document back into segments without losing text', () => {
+    const markdown = [
+      '## 第 1–120 章：零号档案',
+      'beat: setup · 状态: confirmed',
+      '',
+      '第一段的正文，讲主角怎么被读成零。',
+      '',
+      '## 第 121–300 章：低一格',
+      'beat: escalation · 状态: draft',
+      '',
+      '第二段的正文。',
+    ].join(String.fromCharCode(10))
+    const segments = parseArcOutlineDocument(markdown)
+    expect(segments).toHaveLength(2)
+    expect(segments[0]).toMatchObject({ fromChapter: 1, toChapter: 120, title: '零号档案', beat: 'setup', status: 'confirmed' })
+    expect(segments[0]!.summary).toContain('读成零')
+    expect(segments[1]).toMatchObject({ fromChapter: 121, toChapter: 300, title: '低一格', beat: 'escalation', status: 'draft' })
+    expect(segments[1]!.summary).toBe('第二段的正文。')
+  })
+
+  it('keeps edited titles and missing beat lines usable', () => {
+    const segments = parseArcOutlineDocument(['## 第 1–30 章：改过的标题', '', '正文。'].join(String.fromCharCode(10)))
+    expect(segments).toHaveLength(1)
+    expect(segments[0]!.title).toBe('改过的标题')
+    // 缺 beat 时用中性形态兜底，不丢这一段。
+    expect(segments[0]!.beat).toBe('escalation')
+    expect(segments[0]!.status).toBeNull()
   })
 })

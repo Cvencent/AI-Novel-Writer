@@ -86,6 +86,7 @@ export default function ArchitectureConfirmDialog(props: ArchitectureConfirmForm
               </p>
               <button
                 onClick={() => setAll(true)}
+                disabled={form.arcSelected}
                 className="text-xs underline"
                 style={{ color: 'var(--color-text-muted)' }}
               >
@@ -96,11 +97,13 @@ export default function ArchitectureConfirmDialog(props: ArchitectureConfirmForm
             {ARCH_FILES.map(f => {
               const mark = form.stepMark(f.key)
               const isChecked = checked[f.key]
+              const lockedByArc = form.arcSelected
               return (
                 <label
                   key={f.key}
-                  className="flex items-center gap-2.5 cursor-pointer select-none"
-                  onClick={() => toggleStep(f.key)}
+                  className="flex items-center gap-2.5 select-none"
+                  style={{ cursor: lockedByArc ? 'not-allowed' : 'pointer', opacity: lockedByArc ? 0.45 : 1 }}
+                  onClick={() => { if (!lockedByArc) toggleStep(f.key) }}
                 >
                   {/* 复选框 */}
                   <div
@@ -139,6 +142,41 @@ export default function ArchitectureConfirmDialog(props: ArchitectureConfirmForm
                 </label>
               )
             })}
+
+            {form.arcAvailable && (
+              <label
+                className="flex items-center gap-2.5 cursor-pointer select-none"
+                onClick={form.toggleArc}
+              >
+                <div
+                  className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-all"
+                  style={{
+                    backgroundColor: form.arcSelected ? 'var(--color-accent)' : 'transparent',
+                    border: `1.5px solid ${form.arcSelected ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                  }}
+                >
+                  {form.arcSelected && <Check size={10} strokeWidth={2} />}
+                </div>
+                <span className="text-xs flex-1" style={{ color: form.arcSelected ? 'var(--color-text)' : 'var(--color-text-muted)' }}>
+                  {text(...ARCH_STEP_NAMES.arc)}
+                  <span className="ml-1 text-[0.7rem]" style={{ color: 'var(--color-text-muted)' }}>
+                    — {text('按段生成：接着已有粗纲写下一段，段长由模型判断', 'Segment by segment after the existing ones; the model chooses the span')}
+                  </span>
+                </span>
+                <span
+                  className="text-[0.7rem] px-1.5 py-0.5 rounded flex-shrink-0"
+                  style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)' }}
+                >
+                  {form.arcSelected ? text('本次生成', 'This run') : text('保留', 'Keep')}
+                </span>
+              </label>
+            )}
+            {form.arcSelected && (
+              <p className="text-[0.7rem] m-0" style={{ color: 'var(--color-text-muted)' }}>
+                {text('粗纲按段生成，不能与其余四节同批提交；要重写某一段，请到粗纲面板用「改这一段」。',
+                  'Arc outlines are generated segment by segment and cannot be submitted with the other four sections. To rewrite a segment, use “Revise” on the arc panel.')}
+              </p>
+            )}
           </div>
 
           {checked.synopsis && totalChapters > 0 && (
@@ -263,9 +301,13 @@ export default function ArchitectureConfirmDialog(props: ArchitectureConfirmForm
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isConfirming}>{text('取消', 'Cancel')}</Button>
-          <Button variant="default" onClick={handleConfirm} disabled={noneSelected || isConfirming || form.synopsisRangeIssue !== null || (checked.synopsis && preferenceLoading)}>
+          <Button variant="default" onClick={handleConfirm} disabled={noneSelected || isConfirming || (!form.arcSelected && form.synopsisRangeIssue !== null) || (!form.arcSelected && checked.synopsis && preferenceLoading)}>
             <Wand2 size={13} />
-            {isConfirming ? text('校验中...', 'Validating...') : text(`确认生成（${selectedSteps.length}/4）`, `Generate (${selectedSteps.length}/4)`)}
+            {isConfirming
+              ? text('校验中...', 'Validating...')
+              : form.arcSelected
+                ? text('确认生成粗纲', 'Generate arc outline')
+                : text(`确认生成（${selectedSteps.length}/4）`, `Generate (${selectedSteps.length}/4)`)}
           </Button>
         </DialogFooter>
       </DialogContent>

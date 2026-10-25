@@ -913,6 +913,10 @@ export interface DatabaseChannels {
     args: [chapter: number, patch: Partial<import('../../electron/repositories/blueprint-repository').BlueprintData>, expectedProjectPath: string]
     return: { success: boolean; error?: string }
   }
+  'db:arc-outline-save-document': {
+    args: [markdown: string, expectedProjectPath: string]
+    return: { success: boolean; records?: ArcOutlineRecord[]; error?: string }
+  }
   'db:arc-outline-revise': {
     args: [arcIndex: number, expectedRevision: number, summary: string, expectedProjectPath: string]
     return: { success: boolean; record?: ArcOutlineRecord; error?: string }

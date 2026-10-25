@@ -111,6 +111,54 @@ export type ArcParseResult =
   | { ok: true; segment: ParsedArcSegment }
   | { ok: false; code: ArcParseIssue }
 
+/**
+ * 把编辑器里整篇粗纲 Markdown 解析回分段。
+ *
+ * 格式与 renderArcOutlineMarkdown 一致：
+ *   ## 第 1–120 章：标题
+ *   beat: setup · 状态: confirmed
+ *
+ *   <正文>
+ * 作者可能改动标题、beat、正文；区间由段结构决定，解析结果必须能对回既有段。
+ */
+export interface ParsedArcDocumentSegment extends ParsedArcSegment {
+  status: string | null
+}
+
+export function parseArcOutlineDocument(markdown: string): ParsedArcDocumentSegment[] {
+  const lines = markdown.replace(/\r\n?/gu, "\n").split("\n")
+  const segments: ParsedArcDocumentSegment[] = []
+  let current: { fromChapter: number; toChapter: number; title: string; beat: ArcBeat | null; status: string | null; body: string[] } | null = null
+  const push = () => {
+    if (!current) return
+    const summary = normalizeArcSummary(current.body.join("\n"))
+    if (!summary) { current = null; return }
+    segments.push({ fromChapter: current.fromChapter, toChapter: current.toChapter, title: current.title,
+      beat: current.beat ?? "escalation", status: current.status, summary })
+    current = null
+  }
+  for (const rawLine of lines) {
+    const heading = tryParseArcHeading(rawLine.trim())
+    if (heading) {
+      push()
+      current = { ...heading, beat: null, status: null, body: [] }
+      continue
+    }
+    if (!current) continue
+    const line = normalizeArcText(rawLine).trim()
+    const meta = /^\**\s*(?:beat|形态)\s*\**\s*[：:\-–—]\s*([^·|\n]+?)\s*(?:[·|]\s*(?:状态|status)\s*[：:\-–—]\s*([^\n]+?)\s*)?$/iu.exec(line)
+    if (meta && current.beat === null) {
+      const candidate = normalizeArcText(meta[1]!).toLowerCase() as ArcBeat
+      if ((ARC_BEATS as readonly string[]).includes(candidate)) current.beat = candidate
+      current.status = (meta[2] ?? "").trim() || null
+      continue
+    }
+    current.body.push(rawLine)
+  }
+  push()
+  return segments
+}
+
 /** 把全角数字归一，避免模型换了键盘就解析不了。 */
 function normalizeArcText(text: string): string {
   return text.replace(/[\uFF10-\uFF19]/gu, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)).replace(/\uFF1A/gu, ":")

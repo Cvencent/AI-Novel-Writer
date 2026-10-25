@@ -17,7 +17,7 @@ export default function ArchitectureGenerateDialog(props: ArchitectureConfirmFor
   const form = useArchitectureConfirmForm(props)
   const { config, checked, selectedSteps, totalChapters } = form
   if (!config) return null
-  const allChecked = selectedSteps.length === GENERATE_SECTION_ORDER.length
+  const allChecked = !form.arcSelected && selectedSteps.length === GENERATE_SECTION_ORDER.length
   const unit = resolveWritingLanguage(config.writingLanguage) === 'zh-CN' ? text('字', 'characters') : text('词', 'words')
   const overwritingCast = form.stepMark('characters') === 'overwrite'
 
@@ -45,7 +45,7 @@ export default function ArchitectureGenerateDialog(props: ArchitectureConfirmFor
       <div className="arch-dialog">
         <div className="arch-steps" role="group" aria-label={text('要生成的节', 'Sections to generate')}>
           <div className="arch-step arch-step-all">
-            <Check checked={allChecked} onChange={form.setAll} label={text('全选', 'Select all')} />
+            <Check checked={allChecked} onChange={form.setAll} label={text('全选', 'Select all')} disabled={form.arcSelected} />
             <span className="arch-step-count">{text(`已选 ${selectedSteps.length} / ${GENERATE_SECTION_ORDER.length}`, `${selectedSteps.length} / ${GENERATE_SECTION_ORDER.length} selected`)}</span>
           </div>
           {GENERATE_SECTION_ORDER.map(key => {
@@ -56,6 +56,7 @@ export default function ArchitectureGenerateDialog(props: ArchitectureConfirmFor
                   <Check
                     checked={checked[key]}
                     onChange={() => form.toggleStep(key)}
+                    disabled={form.arcSelected}
                     label={<>{text(...ARCH_STEP_NAMES[key])}<span className="arch-step-status">{form.statusLabel(key)}</span></>}
                   />
                   <span className="arch-mark" data-mark={mark}>{form.markLabel(key)}</span>
@@ -91,6 +92,28 @@ export default function ArchitectureGenerateDialog(props: ArchitectureConfirmFor
               </div>
             )
           })}
+          {form.arcAvailable && (
+            <div className="arch-step" data-step="arc">
+              <div className="arch-step-row">
+                <Check
+                  checked={form.arcSelected}
+                  onChange={form.toggleArc}
+                  label={<>{text(...ARCH_STEP_NAMES.arc)}<span className="arch-step-status">{form.arcSelected ? text('本次生成', 'This run') : text('按段生成', 'Segment by segment')}</span></>}
+                />
+                <span className="arch-mark" data-mark={form.arcSelected ? 'new' : 'keep'}>
+                  {form.arcSelected ? text('新生成', 'New') : text('保留', 'Keep')}
+                </span>
+              </div>
+              {form.arcSelected && (
+                <div className="arch-range">
+                  <p className="arch-range-note">
+                    {text('粗纲按段生成：从已有粗纲之后接着写下一段，段长由模型按方向自行判断。要重写某一段，请到粗纲面板用「改这一段」。勾选粗纲时其余四节不可同批生成。',
+                      'Arc outlines are generated segment by segment: this appends the next segment after the existing ones, with the model choosing the span. To rewrite a segment, use “Revise” on the arc panel. Arc cannot be generated in the same run as the other four sections.')}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {selectedSteps.length > 0 && (

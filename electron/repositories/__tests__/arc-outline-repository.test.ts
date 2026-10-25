@@ -65,3 +65,33 @@ describe('ArcOutlineRepository', () => {
     expect(ArcOutlineRepository.list().map(item => item.arcIndex)).toEqual([1])
   })
 })
+
+describe('ArcOutlineRepository.saveDocument', () => {
+  it('round-trips an edited arc document without changing ranges', () => {
+    ArcOutlineRepository.save(arc(1, 1, 30))
+    ArcOutlineRepository.save(arc(2, 31, 60, 'escalation'))
+    const markdown = [
+      '## 第 1–30 章：改过的标题',
+      'beat: setup · 状态: confirmed',
+      '',
+      '第一段改过的走向。',
+      '',
+      '## 第 31–60 章：第2段',
+      'beat: escalation · 状态: draft',
+      '',
+      '第2段走向',
+    ].join(String.fromCharCode(10))
+    const records = ArcOutlineRepository.saveDocument(markdown)
+    expect(records).toHaveLength(2)
+    expect(records[0]).toMatchObject({ arcIndex: 1, fromChapter: 1, toChapter: 30, title: '改过的标题', revision: 1, status: 'draft' })
+    expect(records[0]!.summary).toBe('第一段改过的走向。')
+    // 第二段内容没变：不应被动过 revision
+    expect(records[1]).toMatchObject({ arcIndex: 2, title: '第2段', revision: 0 })
+  })
+
+  it('refuses a document that adds, removes or re-ranges segments', () => {
+    ArcOutlineRepository.save(arc(1, 1, 30))
+    expect(() => ArcOutlineRepository.saveDocument('## 第 1–40 章：改区间' + String.fromCharCode(10) + String.fromCharCode(10) + '正文'))
+      .toThrow('ARC_OUTLINE_STRUCTURE_CHANGED')
+  })
+})

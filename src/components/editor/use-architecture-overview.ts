@@ -354,17 +354,15 @@ export function useArchitectureOverview(projectKey: string) {
     stepGuidance: Record<string, string>,
     synopsisRange?: { from: number; to: number },
     targetUnits?: number,
+    arcRequested?: boolean,
   ) => {
     const projectSession = captureProjectSession(currentProject)
     if (!projectMatches || !projectSession || !isProjectSessionPath(projectSession, projectKey)) throw new Error(text('项目会话已切换，未启动架构生成', 'The project session changed, so architecture generation was not started.'))
     if (!isProjectSessionCurrent(projectSession)) throw new Error(text('项目会话已切换，未启动架构生成', 'The project session changed, so architecture generation was not started.'))
-    await launchCreativeWorkflow({
-      workflow: 'generate_architecture',
-      selectedSteps,
-      stepGuidance,
-      synopsisRange,
-      targetUnits,
-    }, projectSession)
+    // 粗纲走自己的分段流程：不能塞进 generate_architecture 的 selectedSteps。
+    await launchCreativeWorkflow(arcRequested
+      ? { workflow: 'generate_arc_outline', mode: 'next' }
+      : { workflow: 'generate_architecture', selectedSteps, stepGuidance, synopsisRange, targetUnits }, projectSession)
   }
 
   /** 从上次输出长度中断的检查点继续生成细纲（断点续写当前批） */
@@ -535,6 +533,7 @@ export function useArchitectureOverview(projectKey: string) {
       onClose: () => setGenerateIntent(null),
       archStatus,
       confirmed,
+      allowArc: true,
       initialSelectedSteps: generateIntent?.steps,
       initialSynopsisRange: generateIntent?.synopsisRange ?? null,
       synopsisSource,

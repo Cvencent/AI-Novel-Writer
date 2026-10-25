@@ -1,7 +1,7 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import { getProjectDb } from '../database'
 import { ensureArcOutlineTables } from './arc-outline-schema'
-import { normalizeArcSummary } from '../../src/shared/arc-outline-contract'
+import { normalizeArcSummary, parseArcOutlineDocument } from '../../src/shared/arc-outline-contract'
 
 export type ArcBeat = 'setup' | 'escalation' | 'reversal' | 'low' | 'climax' | 'aftermath' | 'transition'
 export const ARC_BEATS: readonly ArcBeat[] = ['setup', 'escalation', 'reversal', 'low', 'climax', 'aftermath', 'transition']
@@ -165,6 +165,42 @@ export class ArcOutlineRepository {
       `).run(input.title.trim(), input.summary.trim(), input.beat, arcIndex)
       const updated = database.prepare('SELECT * FROM arc_outlines WHERE arc_index = ?').get(arcIndex) as ArcOutlineRow
       return toRecord(updated)
+    }).immediate()
+  }
+
+  /**
+   * 整篇 Markdown 保存：作者在编辑器里改了标题/beat/正文。
+   *
+   * 粗纲按段存在 arc_outlines 里，整篇覆盖会丢分段结构，所以这里把 Markdown 解析回分段，
+   * 逐段按 arcIndex 对回既有记录：区间必须完全一致（增删段、改区间请用面板的生成/删除流程），
+   * 只把内容真正变了的段 revision+1、状态回到 draft，等作者再确认。
+   */
+  static saveDocument(markdown: string, db?: BetterSqlite3.Database): ArcOutlineRecord[] {
+    const database = requireDb(db)
+    const parsed = parseArcOutlineDocument(markdown)
+    return database.transaction(() => {
+      const existing = ArcOutlineRepository.list(database)
+      if (existing.length === 0) throw new Error('ARC_OUTLINE_NOT_FOUND')
+      if (parsed.length !== existing.length) throw new Error('ARC_OUTLINE_STRUCTURE_CHANGED')
+      for (let index = 0; index < existing.length; index += 1) {
+        const before = existing[index]!
+        const after = parsed[index]!
+        if (after.fromChapter !== before.fromChapter || after.toChapter !== before.toChapter) {
+          throw new Error('ARC_OUTLINE_STRUCTURE_CHANGED')
+        }
+      }
+      const update = database.prepare(`
+        UPDATE arc_outlines
+        SET title = ?, summary = ?, beat = ?, status = 'draft', revision = revision + 1, updated_at = datetime('now')
+        WHERE arc_index = ?
+      `)
+      for (let index = 0; index < existing.length; index += 1) {
+        const before = existing[index]!
+        const after = parsed[index]!
+        if (after.title.trim() === before.title && after.summary.trim() === before.summary && after.beat === before.beat) continue
+        update.run(after.title.trim(), after.summary.trim(), after.beat, before.arcIndex)
+      }
+      return ArcOutlineRepository.list(database)
     }).immediate()
   }
 

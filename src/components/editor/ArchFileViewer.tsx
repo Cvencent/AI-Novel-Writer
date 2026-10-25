@@ -171,6 +171,7 @@ function ArchFileViewerSession({
   const [saveOutcome, setSaveOutcome] = useState<SaveOutcome>('idle')
   const [loading, setLoading] = useState(false)
   const [showDialog, setShowDialog] = useState(false)
+  const [arcDialogSelected, setArcDialogSelected] = useState(false)
   const [checkingArch, setCheckingArch] = useState(false)
   const [fullArchStatus, setFullArchStatus] = useState<Record<string, boolean>>({})
   const [synopsisSource, setSynopsisSource] = useState<PlotOutlineRangeSource>({ synopsis: '', totalChapters: 0, writingLanguage: 'zh-CN' })
@@ -268,7 +269,19 @@ function ArchFileViewerSession({
     const savedSnapshot = useEditorStore.getState().tabs.find(tab => tab.id === tabId)
     let submittedSnapshot = { content: md, contentRevision: savedSnapshot?.contentRevision ?? 0 }
     try {
-      if (!resourceWriteAllowed(filePath)) throw new Error('资源只读或无效')
+      // 粗纲按段存在 arc_outlines 里：整篇覆盖会丢分段结构，但作者在编辑器里改的
+      // 标题/beat/正文仍要能保存——走专用通道把 Markdown 解析回分段，逐段比对后回写。
+      // 注意：这条分支必须与下面的 core 写入互斥，否则会落到 core 分支里因 getCoreField
+      // 拿不到 arc 字段而 return，跳过「已保存」结算，编辑器会一直显示未保存。
+      if (stepKey === 'arc') {
+        requireIpcSuccess(await ipc.invokeWithProjectSession(
+          projectSession,
+          'db:arc-outline-save-document',
+          md,
+          projectSession.projectPath,
+        ), text('保存粗纲', 'Save arc outline'))
+      } else if (!resourceWriteAllowed(filePath)) throw new Error(text('资源只读或无效', 'This resource is read-only or invalid'))
+
       if (recoveryRef.current) {
         const original = recoveryRef.current
         const session = recoverySession.current
@@ -320,7 +333,7 @@ function ArchFileViewerSession({
         }
         useEditorStore.getState().setPlanningSaveSnapshot(tabId, { ...submission, status: 'saved' })
         setRecoveryError('')
-      } else if (filePath.startsWith('ai-novel://core/')) {
+      } else if (stepKey !== 'arc' && filePath.startsWith('ai-novel://core/')) {
         const dbField = parseCoreField(filePath)
         if (!dbField) return
         requireIpcSuccess(await ipc.invokeWithProjectSession(
@@ -329,7 +342,8 @@ function ArchFileViewerSession({
           { [dbField]: md },
           projectSession.projectPath,
         ), '保存架构文件')
-      } else {
+      } else if (!filePath.startsWith('ai-novel://core/')) {
+        // 粗纲已在上面走专用通道写完；core 路径都不应再落到这里。
         // DB 化后架构文件不应有物理路径；如果意外触发，尝试 FS 写入兜底
         console.warn('[ArchFileViewer] 非预期的物理路径保存:', filePath)
         requireIpcSuccess(
@@ -375,7 +389,7 @@ function ArchFileViewerSession({
     } finally {
       if (isProjectSessionCurrent(projectSession)) setSaving(false)
     }
-  }, [filePath, isCharacterProjection, projectKey, tabId, refreshRecovery, text])
+  }, [filePath, isCharacterProjection, projectKey, stepKey, tabId, refreshRecovery, text])
 
   const [busyOutline, setBusyOutline] = useState(false)
   const [confirmDeleteOutline, setConfirmDeleteOutline] = useState(false)
@@ -551,19 +565,17 @@ function ArchFileViewerSession({
     stepGuidance: Record<string, string>,
     synopsisRange?: { from: number; to: number },
     targetUnits?: number,
+    arcRequested?: boolean,
   ) => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) {
       throw new Error('项目会话已切换，未启动架构生成')
     }
     if (!isProjectSessionCurrent(projectSession)) throw new Error('项目会话已切换，未启动架构生成')
-    await launchCreativeWorkflow({
-      workflow: 'generate_architecture',
-      selectedSteps,
-      stepGuidance,
-      synopsisRange,
-      targetUnits,
-    }, projectSession)
+    // 粗纲走它自己的分段生成流程，不能塞进 generate_architecture。
+    await launchCreativeWorkflow(arcRequested
+      ? { workflow: 'generate_arc_outline', mode: 'next' }
+      : { workflow: 'generate_architecture', selectedSteps, stepGuidance, synopsisRange, targetUnits }, projectSession)
   }
 
   const handleOpenDialog = async () => {
@@ -597,6 +609,7 @@ function ArchFileViewerSession({
         totalChapters: Number(core?.totalChapters ?? currentProject?.novelConfig?.totalChapters) || 0,
         writingLanguage: (core?.writingLanguage ?? currentProject?.novelConfig?.writingLanguage) === 'en-US' ? 'en-US' : 'zh-CN',
       })
+      setArcDialogSelected(stepKey === 'arc')
       setShowDialog(true)
     } catch (error) {
       if (isProjectSessionCurrent(projectSession)) {
@@ -911,6 +924,8 @@ function ArchFileViewerSession({
           onClose={() => setShowDialog(false)}
           archStatus={fullArchStatus}
           synopsisSource={synopsisSource}
+          allowArc
+          initialArcSelected={arcDialogSelected}
           initialSelectedSteps={stepKey === 'arc' ? undefined : [stepKey]}
           onConfirm={handleConfirm}
         />

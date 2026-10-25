@@ -7,6 +7,7 @@ import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
 import ArchitectureConfirmDialog from '../ArchitectureConfirmDialog'
+import type { ArchitectureConfirmFormOptions } from '../use-architecture-confirm-form'
 import GenerateBlueprintsDialog from '../../stage/blueprint/GenerateBlueprintsDialog'
 import { renderPlotOutlineSynopsis } from '../../../shared/plot-outline-contract'
 
@@ -591,6 +592,18 @@ it.each(['outline', 'blueprint'] as const)('retains %s input and does not start 
   await expect.element(target).toHaveValue(900)
   expect(onConfirm).not.toHaveBeenCalled()
   expect(onClose).not.toHaveBeenCalled()
+})
+
+it('offers arc-outline generation and keeps it exclusive from the other four sections', async () => {
+  const onConfirm = vi.fn<ArchitectureConfirmFormOptions['onConfirm']>(async () => {})
+  await act(async () => root.render(
+    <ArchitectureConfirmDialog isOpen onClose={() => {}} synopsisSource={NO_OUTLINE} archStatus={{}} allowArc onConfirm={onConfirm} />,
+  ))
+  // 粗纲出现在可选项里：这正是之前缺的那一项。
+  await page.getByText('粗纲').click()
+  await act(async () => { await page.getByRole('button', { name: '确认生成粗纲' }).click() })
+  // 勾粗纲时走它自己的分段流程：四节的 selectedSteps 必须为空，第 5 个参数是 true。
+  expect(onConfirm).toHaveBeenCalledWith([], {}, undefined, undefined, true)
 })
 
 it('rejects full-book generation above ten chapters and does not normalize an empty quantity', async () => {

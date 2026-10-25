@@ -135,6 +135,7 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:plot-tree-clear',
   'db:arc-outline-save',
   'db:arc-outline-confirm',
+  'db:arc-outline-save-document',
   'db:arc-outline-revise',
   'db:arc-outline-replace-segment',
   'db:arc-outline-mark-needs-regen',
@@ -290,6 +291,13 @@ export function registerDatabaseController() {
       const merged = { ...current, ...normalized, chapterNumber: chapter }
       BlueprintRepository.upsert(merged as typeof current, database)
       return { success: true }
+    } catch (error) { return { success: false, error: String(error) } }
+  })
+
+  ipcMain.handle('db:arc-outline-save-document', async (_event, markdown: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, records: ArcOutlineRepository.saveDocument(markdown) }
     } catch (error) { return { success: false, error: String(error) } }
   })
 
