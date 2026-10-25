@@ -247,6 +247,24 @@ export abstract class BaseWorkflowCommand<TResult = string> {
     return ipc.invokeWithProjectSession(execution.context.projectSession, 'generation:read-visible-composition', handle)
   }
 
+  /**
+   * 本次工具循环还能花掉的模型物理请求数。
+   *
+   * 主进程持账时以根预算的剩余量为准：细纲这类任务允许模型自己查角色、建档、改人，
+   * 它需要几轮工具就给它几轮。这里不再在业务侧拍一个更小的硬上限——上限太低会让模型
+   * 把轮次全花在工具上、正文永远出不来。非主进程持账时退回会话预算（由 harness 自己兜底）。
+   */
+  protected async remainingGenerationRequests(execution: Readonly<ActiveGenerationExecution> = this.requireGenerationExecution()): Promise<number> {
+    const handle = execution.context.mainGenerationRunHandle
+    if (execution.mainOwned && handle) {
+      const view = await ipc.invokeWithProjectSession(execution.context.projectSession, 'generation:read', handle)
+      const cap = view.ledger?.policy.maxPhysicalRequests ?? view.budget.maxAttempts
+      const used = view.ledger?.physicalRequests ?? 0
+      return Math.max(1, cap - used)
+    }
+    return Math.max(1, execution.session.budget.maxAttempts)
+  }
+
   /** 获取 LLM 大模型连接代理（支持取消） */
   protected async callLLM(
     prompt: string, 
@@ -477,13 +495,17 @@ export abstract class BaseWorkflowCommand<TResult = string> {
       // 让作者在日志里能看到这次到底给了模型哪些工具（工具清单原本只进 system prompt）。
       callbacks.log(`本次可用工具：${options.allowedTools.join(String.fromCharCode(44) + String.fromCharCode(32))}`)
     }
+    // 工具轮上限取真实生成预算的剩余量，不再用业务侧拍出来的 3/6 轮硬上限。
+    // 预算含最后一次收尾请求：工具轮用光时，模型仍有一次机会只输出正文。
+    const maxRounds = options.maxToolRounds ?? await this.remainingGenerationRequests(execution)
+    callbacks.log(`本次工具循环最多可用 ${maxRounds} 次模型请求（含最后一次收尾）`)
     const loop = await runWorkflowToolLoop({
       systemPrompt,
       userPrompt: prompt,
       writingLanguage: toolExecution.writingLanguage,
       executionContext: frozenExecution as never,
       ...(options.allowedTools ? { allowedTools: options.allowedTools } : {}),
-      ...(options.maxToolRounds !== undefined ? { maxRounds: options.maxToolRounds } : {}),
+      maxRounds,
       ...(options.maxToolResultChars !== undefined ? { maxResultChars: options.maxToolResultChars } : {}),
       onToolCall: record => {
         options.onToolCall?.(record)

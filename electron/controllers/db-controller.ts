@@ -447,7 +447,13 @@ export function registerDatabaseController() {
     }
     const commit = () => {
       if (request.generationRunHandle && assertGenerationSynopsisCommit(request.generationRunHandle, request.synopsis, request.expected)) return true
-      return ProjectCoreRepository.commitSynopsis(request)
+      // 生成任务的来源已在上面按绑定完整校验过（细纲任务允许模型自建角色，角色投影可能比冻结值新）。
+      // 这里的 CAS 是拦截作者侧并发覆盖的第二道闸：角色投影按当前库取值，
+      // 不因本任务自己建档而拒绝写回；其余字段仍按作者期望值严格比对。
+      const expected = request.generationRunHandle && database
+        ? { ...request.expected, charactersArch: String(database.prepare("SELECT characters_arch FROM project_core WHERE id='main'").pluck().get() ?? '') }
+        : request.expected
+      return ProjectCoreRepository.commitSynopsis({ ...request, expected })
     }
     const database = getProjectDb()
     if (request.generationRunHandle && !database) throw new Error('GENERATION_DATABASE_NOT_READY')

@@ -29,7 +29,7 @@ export interface WorkflowToolLoopOptions {
   writingLanguage: WritingLanguage
   /** 允许模型使用的工具名；不传时使用全部内置工具。 */
   allowedTools?: readonly string[]
-  /** 最大轮数，防止无限循环。 */
+  /** 本循环最多允许的模型物理请求数（含最后一次收尾）；工作流按真实生成预算传入。 */
   maxRounds?: number
   /** 工具执行上下文（含冻结项目会话）。 */
   executionContext: AgentExecutionContext
@@ -56,6 +56,10 @@ export interface WorkflowToolLoopResult {
   lastVisibleText: string
 }
 
+/** 最后一轮之后强制的收尾指令：停止调工具，直接产出正文。 */
+const FINAL_ROUND_INSTRUCTION =
+  '工具调用到此为止，不要再调用任何工具。请立刻用已经掌握的全部事实，直接输出最终结果正文；只输出正文本身，不要解释。'
+
 const DEFAULT_MAX_ROUNDS = 8
 const DEFAULT_MAX_RESULT_CHARS = 6000
 
@@ -66,6 +70,10 @@ function toolPromptFor(names: readonly string[], language: WritingLanguage): str
 /**
  * 运行「生成 → 工具调用 → 回填 → 继续生成」循环。
  * 模型不再发出 tool_call 时，循环结束并返回正文。
+ *
+ * maxRounds 是本次循环允许花掉的**模型物理请求总数**（含最后一次收尾请求）。
+ * 调用方按生成根预算的剩余量传入；业务侧不要再拍一个更小的硬上限——
+ * 轮次太少会让模型把预算全花在工具上、正文永远写不出来。
  */
 export async function runWorkflowToolLoop(options: WorkflowToolLoopOptions): Promise<WorkflowToolLoopResult> {
   const {
@@ -77,9 +85,14 @@ export async function runWorkflowToolLoop(options: WorkflowToolLoopOptions): Pro
   // 因此这里不能以“注册表为空”为条件，否则内置工具会永远缺失，允许清单筛选为空。
   // registerAll 覆盖注册，重复调用安全。
   registerBuiltinTools()
-  const allowed = options.allowedTools ?? toolRegistry.listAll().map(tool => tool.name)
+  const totalRounds = Math.max(1, Math.floor(maxRounds))
+  // 最后一轮固定留给收尾请求：工具轮全部用完时，还得有一次机会把正文写出来。
+  const toolRounds = totalRounds - 1
+  const allowed = toolRounds > 0
+    ? options.allowedTools ?? toolRegistry.listAll().map(tool => tool.name)
+    : []
   const registered = new Set(allowed)
-  const toolPrompt = toolPromptFor(allowed, writingLanguage)
+  const toolPrompt = toolRounds > 0 ? toolPromptFor(allowed, writingLanguage) : ''
   const records: WorkflowToolCallRecord[] = []
   let lastRawResponse = ''
   let lastVisibleText = ''
@@ -88,7 +101,7 @@ export async function runWorkflowToolLoop(options: WorkflowToolLoopOptions): Pro
     { role: 'user', content: userPrompt },
   ]
 
-  for (let round = 0; round < maxRounds; round += 1) {
+  for (let round = 0; round < toolRounds; round += 1) {
     const raw = await generate(messages)
     lastRawResponse = raw
     const parsed = parseAgentResponseProtocol(raw, [...registered])
@@ -141,8 +154,23 @@ export async function runWorkflowToolLoop(options: WorkflowToolLoopOptions): Pro
     }
     options.onRound?.({ index: round, rawResponse: raw, toolResults: roundRecords })
     messages.push({ role: 'user', content: observations.join('\n') })
-    // 模型可能只发工具调用、没有正文；继续下一轮让它给出正文。
-    if (round === maxRounds - 1) return { text: visible, toolCalls: records, lastRawResponse, lastVisibleText }
   }
-  return { text: '', toolCalls: records, lastRawResponse, lastVisibleText }
+
+  // 工具轮预算用完：最后再要一次正文，并在这次请求里明确禁止继续调工具。
+  // totalRounds === 1 时连工具清单都不给，避免模型刚看到工具就又想调、白白多花一次请求。
+  const finalMessages = toolRounds > 0
+    ? [...messages, { role: 'user' as const, content: FINAL_ROUND_INSTRUCTION }]
+    : [{ role: 'system' as const, content: systemPrompt }, { role: 'user' as const, content: userPrompt + '\n\n' + FINAL_ROUND_INSTRUCTION }]
+  const finalRaw = await generate(finalMessages)
+  lastRawResponse = finalRaw
+  const finalParsed = parseAgentResponseProtocol(finalRaw, [...registered])
+  const finalVisible = cleanAgentProtocolVisibleText(finalParsed.textParts.join(''), [...registered]).trim()
+  if (finalVisible) {
+    lastVisibleText = finalVisible
+    return { text: finalVisible, toolCalls: records, lastRawResponse, lastVisibleText }
+  }
+  // 仍然只发工具调用或空正文：明确告诉调用方是轮次耗尽，而不是「模型没写」。
+  throw new Error(
+    `TOOL_ROUNDS_EXHAUSTED: 模型在 ${totalRounds} 次请求里只调用了工具（${records.map(record => record.name).join(', ') || '无'}），没有输出正文。`,
+  )
 }

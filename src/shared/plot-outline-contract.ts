@@ -63,6 +63,15 @@ export interface PlotOutlineRecovery {
 export interface PlotOutlineSource {
   version: 1
   core: Omit<ProjectCoreRow, 'created_at' | 'updated_at' | 'character_states'>
+  /**
+   * 冻结时 project_core.characters_arch 的内容。
+   *
+   * 细纲生成允许模型用 create_character 建档新角色，而建档会重写这份「角色图谱投影」。
+   * 那是**本任务自己的合法产出**，不是外部篡改；因此比对来源时要把它排除在外，
+   * 否则每加一个人物都会把自己的任务判成来源变更。
+   * 省略表示「冻结时没有记录」，此时按旧行为参与比对（历史 run 保持原语义）。
+   */
+  charactersArchAtFreeze?: string
 }
 export type PlotOutlineCursor =
   | { kind: 'request'; chapterNumber: number; attempt: PlotOutlineAttemptKind }
@@ -486,13 +495,13 @@ export function plotOutlineRequestContract(
     ? `[Accepted outline context]\n${contextText}\n[/Accepted outline context]\n\n`
       + `Write only Chapter ${chapter}, inside the selected range ${progress.range.from}-${progress.range.to}. Use exactly one level-two Markdown heading "## Chapter ${chapter}: Title" with Arabic chapter digits, followed by a non-empty body. No chapter groups, list headings, other chapters, preface, progress line or later overview. ${planningTargetInstruction('outline', progress.targetUnits, progress.sourceExpected.writingLanguage)} Preserve all author facts, required events and ending requirements. Do not rewrite the accepted context.`
       + '\n\n[Required sections (all six, in this order)]\n**Scene and cast** / **Chapter goal** / **Resistance and escalation** / **Turn and cost** / **Closing hook** / **Foreshadowing**. One paragraph each, section name in bold.'
-      + '\n\n[Character naming rule] Everyone in "Scene and cast" who speaks, acts, or moves the plot must have a personal name, written as "role · name" (for example "Examiner · Zhou Ming"). Never list a bare role such as "the examiner", "the guard" or "the clerk". Pure background passers-by (no lines, no effect on the plot) must not be listed at all; mention them in the scene sentence instead. For a new named character, check the roster with read_characters first, then create a card with create_character; for an existing one, use the exact roster name.'
+      + '\n\n[Character naming rule] Everyone in "Scene and cast" who speaks, acts, or moves the plot must have a personal name, written as "role · name" (for example "Examiner · Zhou Ming"). Never list a bare role such as "the examiner", "the guard" or "the clerk". Pure background passers-by (no lines, no effect on the plot) must not be listed at all; mention them in the scene sentence instead. The roster is already provided in the context below; for an existing character use the exact roster name. Only for a named character that is genuinely new to this chapter and expected to recur, create a card with create_character, then write the chapter outline normally. Do not call read_characters just to look up the roster.'
       + '\n\n[How to write this chapter outline]\n- State what happens, why, and with what consequence; do not list a timetable.\n- Use dramatic units: scene and cast -> goal -> resistance and escalation -> turn or cost -> closing hook.\n- Prose style rules (pressure-response-settlement, number echoes) govern the novel prose, not the outline layout.\n- Forbidden: timestamped segments, per-item settlement lists, ledger excerpts, or a closing **Settlement** block.\n- Use the accepted context only for continuity; do not imitate its layout.'
       + (attempt === 'compact' ? '\nRebuild this chapter once from the original frozen facts and accepted context. The failed candidate is not a source. Produce a complete concise replacement, not a continuation or a cut-off excerpt.' : '')
     : `【已接受大纲上下文】\n${contextText}\n【已接受大纲上下文结束】\n\n`
       + `本次只写第 ${chapter} 章，所选范围为第 ${progress.range.from}–${progress.range.to} 章。只用一个二级 Markdown 章标题“## 第${chapter}章：标题”，章号使用阿拉伯数字，标题下一行写非空正文。不得输出章组、列表标题、其他章、开场说明、进度行或后续概览。${planningTargetInstruction('outline', progress.targetUnits, progress.sourceExpected.writingLanguage)}保留作者硬事实、明确事件和尾部要求，不改写已接受上下文。`
       + `\n\n【必须使用的固定小节（缺一不可，按此顺序）】\n**场景与出场人物** / **本章目标** / **阻力与升级** / **转折与代价** / **结尾钩子** / **伏笔**。每个小节写一段，小节名用粗体开头。`
-      + `\n\n【人物命名规则】「场景与出场人物」里每个有台词、有动作或推动剧情的人都必须有名字，写成「身份·姓名」（如「检测教员·周明」），不能只写「检测教员」「门卫」「店员」这类泛称。纯背景路人（无台词、不影响剧情）不要列进人物清单，只在场景里带一句。新出现的具名角色先用 read_characters 查重，再用 create_character 建档；已存在的直接使用角色名单里的姓名。`
+      + `\n\n【人物命名规则】「场景与出场人物」里每个有台词、有动作或推动剧情的人都必须有名字，写成「身份·姓名」（如「检测教员·周明」），不能只写「检测教员」「门卫」「店员」这类泛称。纯背景路人（无台词、不影响剧情）不要列进人物清单，只在场景里带一句。角色名单已经在下文上下文里，已存在的角色**直接照用名单里的姓名**；确属本章新出现、且后续还会复用的具名角色，才用 create_character 建档，建档后照常写出本章大纲。**不要为了查名单去调用 read_characters**。`
       + `\n\n【这一章的大纲怎么写】\n- 写「这一章要发生什么、为什么发生、结果如何」，不是按时间罗列日程。\n- 用戏剧单元组织：场景与出场人物 → 本章目标 → 阻力与升级 → 转折或代价 → 结尾钩子。\n- 正文里的人物文风（如压力—应对—结算、数字对照）只约束将来的正文，不要套用到细纲的排版上。\n- 禁止：以「七点／八点／上午／下午／傍晚」等时间戳分段；禁止逐条结算、账目清单、日程表式罗列；禁止「他写：…」式的日记摘抄；禁止在章末写「**结算**：…」。\n- 已接受上下文只用于承接剧情、人物状态与伏笔，不要模仿它的排版或句式。`
       + (attempt === 'compact' ? '\n本次从原始冻结事实和已接受上下文重新构建此章。失败候选不是来源。输出一份完整简洁的替代大纲，不得续接失败候选或截取其片段。' : '')
 }

@@ -82,15 +82,56 @@ describe('runWorkflowToolLoop', () => {
     expect(result.toolCalls).toEqual([])
   })
 
-  it('达到最大轮数时停止，不无限循环', async () => {
+  it('工具轮用完后强制收尾，轮次耗尽时明确报错', async () => {
     registerTool('test_loop', vi.fn(async () => ({ success: true, content: 'ok' })))
+    let call = 0
+    const seen: string[] = []
+    await expect(runWorkflowToolLoop({
+      systemPrompt: 's', userPrompt: 'u', writingLanguage: 'zh-CN', executionContext: context,
+      allowedTools: ['test_loop'], maxRounds: 3,
+      generate: async messages => {
+        call += 1
+        seen.push(messages[messages.length - 1]!.content)
+        return '<tool_call>\n{"name": "test_loop", "arguments": {}}\n</tool_call>'
+      },
+    })).rejects.toThrow('TOOL_ROUNDS_EXHAUSTED')
+    // maxRounds 是物理请求总数：2 轮工具 + 1 次收尾，绝不超发。
+    expect(call).toBe(3)
+    expect(seen[2]).toContain('不要再调用任何工具')
+  })
+
+  it('最后一次收尾只输出正文时正常返回', async () => {
+    registerTool('test_loop_final', vi.fn(async () => ({ success: true, content: 'ok' })))
     let call = 0
     const result = await runWorkflowToolLoop({
       systemPrompt: 's', userPrompt: 'u', writingLanguage: 'zh-CN', executionContext: context,
-      allowedTools: ['test_loop'], maxRounds: 3,
-      generate: async () => { call += 1; return '<tool_call>\n{"name": "test_loop", "arguments": {}}\n</tool_call>' },
+      allowedTools: ['test_loop_final'], maxRounds: 2,
+      generate: async () => {
+        call += 1
+        return call === 1
+          ? '<tool_call>\n{"name": "test_loop_final", "arguments": {}}\n</tool_call>'
+          : '## 第1章：开局\n正文。'
+      },
     })
-    expect(call).toBe(3)
-    expect(result.toolCalls).toHaveLength(3)
+    expect(call).toBe(2)
+    expect(result.toolCalls).toHaveLength(1)
+    expect(result.text).toContain('正文')
+  })
+
+  it('预算只剩一次请求时不再向模型暴露工具', async () => {
+    let call = 0
+    let systemContents: string[] = []
+    const result = await runWorkflowToolLoop({
+      systemPrompt: 'system-only', userPrompt: 'user', writingLanguage: 'zh-CN', executionContext: context,
+      allowedTools: ['test_loop_single'], maxRounds: 1,
+      generate: async messages => {
+        call += 1
+        systemContents = messages.filter(message => message.role === 'system').map(message => message.content)
+        return '## 第1章：开局\n正文。'
+      },
+    })
+    expect(call).toBe(1)
+    expect(systemContents).toEqual(['system-only'])
+    expect(result.text).toContain('正文')
   })
 })

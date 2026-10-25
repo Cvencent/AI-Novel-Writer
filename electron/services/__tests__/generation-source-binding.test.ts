@@ -81,6 +81,56 @@ function fixture() {
     const deps = { db, projectStorageRoot, globalDataRoot, readBuiltinPrompt: () => JSON.stringify({ key: 'draft', content: 'builtin original', systemRole: 'immutable contract' }) };
     return { root, db, input, deps, build: () => buildGenerationSourceBinding(deps, input) };
 }
+describe('plot outline run adding a character', () => {
+    /** 细纲任务：开跑时冻结来源，模型再用 create_character 建档新角色。 */
+    function outlineFixture() {
+        const f = fixture();
+        f.input.operation = 'generate-plot-outline';
+        f.input.chapterNumber = undefined;
+        f.input.selectedDraftIds = [];
+        f.input.selectedFinalizedDraftIds = [];
+        f.input.promptKeys = ['synopsis'];
+        f.input.skillStages = ['planning'];
+        f.db.exec("UPDATE project_core SET total_chapters=50, plot_structure='three_act', narrative_pov='third_limited', characters_arch='初始角色名单'");
+        const core = f.db.prepare("SELECT * FROM project_core WHERE id='main'").get() as Record<string, unknown>;
+        const strip = Object.fromEntries(Object.entries(core)
+            .filter(([key]) => !['created_at', 'updated_at', 'character_states', 'plot_tree_snapshot'].includes(key)));
+        const build = () => buildGenerationSourceBinding(f.deps, { ...f.input,
+            plotOutlineSource: { version: 1 as const, core: strip as never, charactersArchAtFreeze: '初始角色名单' },
+            policy: { version: 's07-capacity-v2', budget: { maxPhysicalRequests: 32 },
+                planning: { kind: 'architecture', outlineProtocol: 'chapter-outline-v3',
+                    intent: { priorSteps: [], synopsisRange: { from: 1, to: 10 } },
+                    outlineContent: { maxAttemptsPerChapter: 2 } } } });
+        return { ...f, build };
+    }
+
+    it('does not report a source change when the run\'s own tool adds a character', () => {
+        const f = outlineFixture();
+        const original = f.build().binding;
+        // 模型调用 create_character：角色图谱投影被重写。
+        f.db.prepare("UPDATE project_core SET characters_arch=? WHERE id='main'").run('初始角色名单\n\n## 龙套：谭亦');
+        const rebuilt = rebuildGenerationSourceBinding(f.deps, original, 'next-epoch').binding;
+        expect(compareGenerationSourceBindings(original, rebuilt)).toBe(true);
+    });
+
+    it('still reports a source change when something else edits the outline facts', () => {
+        const f = outlineFixture();
+        const original = f.build().binding;
+        // 作者改了故事前提：这是真正的外部改动，必须继续拦截。
+        f.db.prepare("UPDATE project_core SET premise='被改过的前提' WHERE id='main'").run();
+        const rebuilt = rebuildGenerationSourceBinding(f.deps, original, 'next-epoch').binding;
+        expect(compareGenerationSourceBindings(original, rebuilt)).toBe(false);
+    });
+
+    it('keeps reporting roster edits for non-outline runs', () => {
+        const f = fixture();
+        const original = f.build().binding;
+        f.db.prepare("UPDATE project_core SET characters_arch='外部改写的名单' WHERE id='main'").run();
+        const rebuilt = rebuildGenerationSourceBinding(f.deps, original, 'next-epoch').binding;
+        expect(compareGenerationSourceBindings(original, rebuilt)).toBe(false);
+    });
+});
+
 describe('main rebuilt generation sources', () => {
     it.each([
         ['empty provenance', ''],

@@ -36,6 +36,12 @@ import { plotOutlinePolicy, plotOutlineExpected, plotOutlineConfirmedPrefix, typ
 export type SafeGenerationModelReceipt = Omit<ModelExecutionLeaseReceipt, 'leaseId' | 'createdAt' | 'expiresAt'>;
 export interface GenerationSourceBindingInput {
     plotOutlineSource?: PlotOutlineSource;
+    /**
+     * 比对来源时用来替换 project_core.characters_arch 的冻结值。
+     * 只由 rebuildGenerationSourceBinding 为细纲任务设置：模型在该任务里建档新角色会重写这一列，
+     * 那是本任务的合法产出，不该被判成来源变更。
+     */
+    projectCoreCharactersArchOverride?: string;
     projectId: string;
     epoch: string;
     operation: string;
@@ -357,6 +363,8 @@ export function buildGenerationSourceBinding(deps: GenerationSourceBindingDepend
         if (!raw)
             fail('GENERATION_PROJECT_CORE_MISSING');
         const core = without(raw, ['created_at', 'updated_at', 'character_states', 'plot_tree_snapshot']);
+        if (input.projectCoreCharactersArchOverride !== undefined)
+            core.characters_arch = input.projectCoreCharactersArchOverride;
         const language: WritingLanguage = core.writing_language === 'en-US' ? 'en-US' : 'zh-CN';
         add('project-core:main', 0, stable(core), 'author-constraint', 'current project settings');
         if (input.legacyRosterKey) {
@@ -540,7 +548,9 @@ export function buildGenerationSourceBinding(deps: GenerationSourceBindingDepend
         for (const item of input.knowledgeSnapshot.items) add(`kb:${item.documentId}:${item.chunkId}`, item.revision, item.text, 'unconfirmed-continuity', 'verified original knowledge passage');
     }
     const outlinePolicy = plotOutlinePolicy({ operation: input.operation, policy: input.policy });
-    const plotOutlineSource = outlinePolicy ? input.plotOutlineSource ?? { version: 1 as const, core: facts.core as PlotOutlineSource['core'] } : undefined;
+    const plotOutlineSource = outlinePolicy ? input.plotOutlineSource ?? { version: 1 as const, core: facts.core as PlotOutlineSource['core'],
+        // 细纲生成允许模型自己建档新角色，那会重写这份投影；记下冻结值以便比对时排除。
+        charactersArchAtFreeze: String(facts.core.characters_arch ?? '') } : undefined;
     if (plotOutlineSource && outlinePolicy) {
         const expected = plotOutlineExpected(plotOutlineSource);
         // 冻结的来源开跑时已按当时的规则判过；重建时再按现行规则判，升级前的任务就连「来源是否未变」都比不了。续写与写回各自按现行规则拒绝。
@@ -602,14 +612,33 @@ export function buildGenerationSourceBinding(deps: GenerationSourceBindingDepend
     const fingerprint = { chapterBriefHash: hash(stable(facts.brief)), authorGuidanceHash: hash(stable(authorInputs.length ? [facts.core, authorInputs] : facts.core)), dependencyHash: hash(stable(materials.filter(item => /^(draft|finalized):/.test(item.ref.sourceId)).map(item => ({ ...item.ref, epoch: undefined })))), contextSnapshotHash: contextHash, templateHash: hash(stable(assets)), skillSnapshotHash: hash(stable(skills)), modelLeaseRevision: hash(stable(modelReceipt)), policyHash: hash(stable(input.policy)), outputContractHash: hash(stable(input.outputContract)) };
     return { binding: { projectId: input.projectId, epoch: input.epoch, fingerprint, contextSnapshotId: context.id, sourceRefs: materials.map(item => item.ref), sourceManifest }, context, materials };
 }
+/** 细纲任务冻结时的 characters_arch；不是细纲任务或没有记录时返回 undefined。 */
+function outlineRunFrozenCharactersArch(manifest: GenerationSourceBindingInput & { version: number }): string | undefined {
+    if (manifest.operation !== 'generate-plot-outline') return undefined;
+    const source = manifest.plotOutlineSource as PlotOutlineSource | undefined;
+    return typeof source?.charactersArchAtFreeze === 'string' ? source.charactersArchAtFreeze : undefined;
+}
+/**
+ * 重建来源绑定：把「由本任务自己合法改写」的字段按冻结值计算。
+ *
+ * 细纲生成会调用 create_character / update_character，这两个工具会重写
+ * project_core.characters_arch（角色图谱投影）。那是本任务的产出，不是外部篡改；
+ * 用冻结值覆盖后再重建，指纹 / 来源引用 / 上下文哈希就只回答「外部有没有改过」，
+ * 因此模型每加一个人物都不会把自己的任务判成 GENERATION_SOURCE_CHANGED。
+ */
 export function rebuildGenerationSourceBinding(deps: GenerationSourceBindingDependencies, previous: RunBinding, nextEpoch: string, modelReceipt?: SafeGenerationModelReceipt, policy?: Readonly<Record<string, unknown>>, outputContract?: GenerationSourceBindingInput['outputContract']): GenerationSourceBindingResult {
     const manifest = previous.sourceManifest as unknown as GenerationSourceBindingInput & {
         version: number;
     };
     if (manifest.version !== 1)
         fail('GENERATION_SOURCE_MANIFEST_INVALID');
-    return buildGenerationSourceBinding(deps, { ...manifest, projectId: previous.projectId, epoch: nextEpoch, modelReceipt: modelReceipt ?? manifest.modelReceipt, policy: policy ?? manifest.policy, outputContract: outputContract ?? manifest.outputContract });
+    const override = outlineRunFrozenCharactersArch(manifest);
+    return buildGenerationSourceBinding(deps, { ...manifest, projectId: previous.projectId, epoch: nextEpoch,
+        modelReceipt: modelReceipt ?? manifest.modelReceipt, policy: policy ?? manifest.policy,
+        outputContract: outputContract ?? manifest.outputContract,
+        ...(override !== undefined ? { projectCoreCharactersArchOverride: override } : {}) });
 }
+
 export function compareGenerationSourceBindings(previous: RunBinding, next: RunBinding): boolean {
     return previous.projectId === next.projectId && isDeepStrictEqual(previous.fingerprint, next.fingerprint) && previous.contextSnapshotId === next.contextSnapshotId && isDeepStrictEqual(previous.sourceManifest, next.sourceManifest)
         && isDeepStrictEqual(previous.sourceRefs.map(ref => { const copy: Partial<SourceRef> = { ...ref }; delete copy.epoch; return copy; }), next.sourceRefs.map(ref => { const copy: Partial<SourceRef> = { ...ref }; delete copy.epoch; return copy; }));

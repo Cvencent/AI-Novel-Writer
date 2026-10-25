@@ -2033,7 +2033,6 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
             'read_characters', 'create_character', 'update_character', 'delete_character',
             'search_knowledge', 'read_architecture',
           ],
-          maxToolRounds: 6,
           seedText: generationSeedText,
           onPartialAvailable: content => {
             interruptedContent = mode === 'resume' && seedText
@@ -2420,7 +2419,8 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
               'read_characters', 'create_character', 'update_character', 'delete_character',
               'search_knowledge', 'read_architecture',
             ],
-            maxToolRounds: 3,
+            // 工具轮上限由生成根预算的剩余量决定（见 callLLMWithTools），
+            // 不再按「查人/建档/改人各一轮」拍一个更小的硬上限。
             // read_architecture 等工具可返回上万字符；细纲单章输入预算有限，
             // 必须截断回填，否则第二轮会撞 GENERATION_INPUT_CAPACITY_EXCEEDED。
             maxToolResultChars: 1800,

@@ -742,6 +742,9 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     if (!raw || raw.synopsis !== target) return false
     const core = Object.fromEntries(Object.entries(raw).filter(([key]) => !['created_at', 'updated_at', 'character_states', 'plot_tree_snapshot'].includes(key)))
     const origin = run.binding.sourceManifest.plotOutlineSource as PlotOutlineSource
+    // 细纲任务允许模型自己建档新角色，建卡会重写 characters_arch（角色图谱投影）。
+    // 那是本任务自己的合法产出，不是外部篡改：比对前按冻结值还原，避免任务把自己判成来源变更。
+    if (typeof origin.charactersArchAtFreeze === 'string') core.characters_arch = origin.charactersArchAtFreeze
     if (!isDeepStrictEqual({ ...core, synopsis: outline.sourceExpected.synopsis }, origin.core)) throw new Error('GENERATION_SOURCE_CHANGED')
     const current = deps.rebuildBinding(run.binding, currentModelReceipt(run.binding))
     const refs = (binding: RunBinding) => binding.sourceRefs.filter(ref => ref.sourceId !== 'project-core:main').map(ref => ({ ...ref, epoch: undefined }))
