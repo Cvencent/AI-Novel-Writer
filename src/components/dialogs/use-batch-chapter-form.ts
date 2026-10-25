@@ -20,12 +20,8 @@ import { readAuthoritativeNextChapter } from '../../services/authoritative-chapt
 import { readConsistencyPreflight, type ConsistencyPreflightResult } from '../../services/consistency-preflight'
 import { requireIpcSuccess } from '../../services/ipc-result'
 import { normalizeChapterWordsTarget } from '../../services/workflows/chapter-creation-parameters'
-import {
-  availableGenerationModelId,
-  generationModelError,
-  isGenerationModel,
-  preferredGenerationModelId,
-} from '../../services/workflows/chapter-write-launch'
+import { availableGenerationModelId, generationModelError, isGenerationModel } from '../../services/workflows/chapter-write-launch'
+import { preferredFunctionModelId } from '../../shared/function-models'
 
 export interface BatchChapterProps {
   isOpen: boolean
@@ -43,6 +39,7 @@ export function useBatchChapterForm({ isOpen, startChapterNumber, onClose }: Bat
   const currentProject = useProjectStore(s => s.currentProject)
   const models = useLLMStore(s => s.models)
   const defaultModelId = useLLMStore(s => s.defaultModelId)
+  const functionModels = useLLMStore(s => s.functionModels)
   const startWorkflow = useWorkflowStore.getState().startWorkflow
   const addLog = useWorkflowStore.getState().addLog
   // 允许暂时为空：清空后重新输入时不被立刻填回 1；失焦时与开始写时再规整。
@@ -59,14 +56,14 @@ export function useBatchChapterForm({ isOpen, startChapterNumber, onClose }: Bat
   const [authorityLoading, setAuthorityLoading] = useState(false)
   const [consistencyPreflight, setConsistencyPreflight] = useState<ConsistencyPreflightResult | null>(null)
   const [generationModelId, setGenerationModelId] = useState<string | null>(() => (
-    preferredGenerationModelId(models, defaultModelId)
+    preferredFunctionModelId(models, functionModels, 'draft_generation', defaultModelId)
   ))
 
   const normalizedCount = normalizeBatchChapterCount(chapterCount)
   const start = authoritativeStart ?? startChapterNumber ?? 1
   const end = start + normalizedCount - 1
   const generationModels = models.filter(isGenerationModel)
-  const fallbackGenerationModelId = preferredGenerationModelId(models, defaultModelId)
+  const fallbackGenerationModelId = preferredFunctionModelId(models, functionModels, 'draft_generation', defaultModelId)
   const selectedGenerationModelId = generationModelId ?? fallbackGenerationModelId
   const selectedGenerationModel = generationModels.find(model => model.id === selectedGenerationModelId)
   const modelSelectionError = generationModelError(models, selectedGenerationModelId, text)
@@ -276,3 +273,4 @@ export function useBatchChapterForm({ isOpen, startChapterNumber, onClose }: Bat
     normalizedCount, start, end, handleStart, saveArrangement, revokeArrangement,
   }
 }
+

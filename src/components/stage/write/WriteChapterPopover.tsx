@@ -8,8 +8,8 @@ import {
   generationModelError,
   isGenerationModel,
   launchChapterWrite,
-  preferredGenerationModelId,
 } from '../../../services/workflows/chapter-write-launch'
+import { preferredFunctionModelId } from '../../../shared/function-models'
 import type { ProjectSessionContext } from '../../../shared/ipc-channels'
 import type { ChapterWritePrefill } from '../../../stores/layout-store'
 import { useLLMStore } from '../../../stores/llm-store'
@@ -40,6 +40,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
   const locale = useLocaleStore(s => s.locale)
   const models = useLLMStore(s => s.models)
   const defaultModelId = useLLMStore(s => s.defaultModelId)
+  const functionModels = useLLMStore(s => s.functionModels)
   const writeRequest = useStageStore(s => s.writeRequest)
   const layer = useAnchoredLayer(align)
   const { open, show, close } = layer
@@ -55,7 +56,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
   const hintFieldId = useId()
 
   const generationModels = models.filter(isGenerationModel)
-  const selectedModelId = modelId ?? preferredGenerationModelId(models, defaultModelId)
+  const selectedModelId = modelId ?? preferredFunctionModelId(models, functionModels, 'draft_generation', defaultModelId)
   const modelError = generationModelError(models, selectedModelId, text)
   const userGuidance = guidance ?? blueprint.userGuidance
 
@@ -230,3 +231,4 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     </SplitAction>
   )
 }
+
