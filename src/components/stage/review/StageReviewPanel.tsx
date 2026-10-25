@@ -210,17 +210,15 @@ export default function StageReviewPanel({
           <Button variant="secondary" size="sm" disabled={busy || !canReview} onClick={() => { void start() }} title={text('把所选内容交给 AI 检查', 'Send the selection to AI for review')}>
             <Sparkles size={14} aria-hidden />{reviewBusy ? text('检查中…', 'Reviewing…') : text('开始检查', 'Review')}
           </Button>
+          {openCount > 0 && (
+            <Button variant="secondary" size="sm" disabled={applying !== null} onClick={() => { void acceptAll() }}>
+              {applying === 'all' ? text('应用中…', 'Applying…') : text('全部接受', 'Accept all')}
+            </Button>
+          )}
           {findings.length > 0 && (
-            <>
-              {openCount > 0 && (
-                <Button variant="secondary" size="sm" disabled={applying !== null} onClick={() => { void acceptAll() }}>
-                  {applying === 'all' ? text('应用中…', 'Applying…') : text('全部接受', 'Accept all')}
-                </Button>
-              )}
-              <Button variant="text" size="sm" disabled={applying !== null} onClick={() => { void remove() }} title={text('删除这次检查结果', 'Delete this review')}>
-                <Trash2 size={14} aria-hidden />{text('删除', 'Delete')}
-              </Button>
-            </>
+            <Button variant="text" size="sm" disabled={applying !== null} onClick={() => { void remove() }} title={text('清掉这次检查的记录', 'Clear this review record')}>
+              <Trash2 size={14} aria-hidden />{text('清掉记录', 'Clear')}
+            </Button>
           )}
         </span>
       </div>

@@ -140,10 +140,45 @@ describe('StageReviewPanel', () => {
     }
   })
 
+  it('hides suggestions once they are handled, keeping only a summary', async () => {
+    // A persisted run whose findings were already accepted/ignored.
+    invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'db:stage-review-latest') {
+        return { runId: 'r1', target: 'outline', selected: [3], sourceHash: 'h', createdAt: '', findings: [
+          finding({ findingId: 'f1', status: 'accepted' }),
+          finding({ findingId: 'f2', status: 'ignored', problemText: '第二条建议。' }),
+        ] }
+      }
+      return (args as unknown[]), null
+    })
+    Object.defineProperty(window, 'aiNovelAPI', {
+      configurable: true,
+      writable: true,
+      value: { invoke, on: vi.fn(() => () => {}), once: vi.fn(), send: vi.fn(), setZoomLevel: vi.fn(), setZoomFactor: vi.fn(), getZoomLevel: vi.fn() },
+    })
+    await render()
+    await vi.waitFor(() => expect(host!.textContent).toContain('2 条已处理'))
+    // No suggestion cards remain on the page.
+    expect(host!.querySelectorAll('.arch-arc-review-item')).toHaveLength(0)
+    expect(host!.textContent).not.toContain('第 3 章是流水账。')
+    expect(host!.textContent).not.toContain('第二条建议。')
+    expect(host!.textContent).toContain('都处理完了')
+    // With nothing pending there is no "Accept all" affordance.
+    expect(button('全部接受')).toBeUndefined()
+  })
+
+  it('drops a card from the page as soon as it is ignored', async () => {
+    await render()
+    await vi.waitFor(() => expect(host!.querySelectorAll('.arch-arc-review-item')).toHaveLength(1))
+    await act(async () => { button('忽略')!.click() })
+    await vi.waitFor(() => expect(host!.querySelectorAll('.arch-arc-review-item')).toHaveLength(0))
+    expect(host!.textContent).not.toContain('第 3 章是流水账。')
+  })
+
   it('removing a run clears the cards', async () => {
     await render()
     await vi.waitFor(() => expect(host!.textContent).toContain('第 3 章是流水账。'))
-    await act(async () => { button('删除')!.click() })
+    await act(async () => { button('清掉记录')!.click() })
     await vi.waitFor(() => expect(host!.textContent).not.toContain('第 3 章是流水账。'))
   })
 })
