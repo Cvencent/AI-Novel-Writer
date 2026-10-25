@@ -393,7 +393,7 @@ export function registerLLMController() {
       if (!(FUNCTION_MODEL_KEYS as readonly string[]).includes(key)) return { success: false, error: 'INVALID_FUNCTION_MODEL_KEY' }
       const config = loadGlobalConfigForUpdate()
       const nextIds = normalizeFunctionModelIds(config.functionModelIds)
-      nextIds[key] = modelId === null ? null : String(modelId).trim() === '' ? null : modelId
+      nextIds[key] = typeof modelId === 'string' && modelId.trim() !== '' ? modelId : null
       config.functionModelIds = nextIds
       writeJsonFile(GLOBAL_CONFIG_PATH, config)
       return { success: true }
@@ -439,4 +439,5 @@ export function registerLLMController() {
 
   return { modelExecutionLeases, loadModel: getModelConfig, applyProxyConfig }
 }
+
 

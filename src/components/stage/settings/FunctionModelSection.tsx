@@ -25,8 +25,9 @@ export default function FunctionModelSection() {
           const [zhLabel, enLabel] = FUNCTION_MODEL_LABELS[key]
           const configured = functionModels[key] ?? null
           const effective = preferredFunctionModelId(models, functionModels, key, defaultModelId)
-          const effectiveName = effective
-            ? models.find(model => model.id === effective)?.name || models.find(model => model.id === effective)?.modelName || effective
+          const effectiveModel = effective ? models.find(model => model.id === effective) : undefined
+          const effectiveName = effectiveModel
+            ? effectiveModel.name || effectiveModel.modelName || effective
             : null
           return (
             <div key={key} className="stage-set-row">
@@ -60,4 +61,5 @@ export default function FunctionModelSection() {
     </div>
   )
 }
+
 

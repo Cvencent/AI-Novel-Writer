@@ -51,12 +51,6 @@ export function availableGenerationModelId(
     : null
 }
 
-export function preferredGenerationModelId(models: ModelProfile[], defaultModelId: string | null): string | null {
-  return availableGenerationModelId(models, defaultModelId)
-    ?? models.find(isGenerationModel)?.id
-    ?? null
-}
-
 export function chapterDefaultWordsTarget(wordsPerChapter: number | undefined): number {
   return normalizeChapterWordsTarget(wordsPerChapter, DEFAULT_CHAPTER_WORDS_TARGET)
 }
@@ -274,3 +268,4 @@ export async function launchChapterWrite({
   void useWorkflowStore.getState().startWorkflow(workflow, false)
   return { kind: 'started' }
 }
+

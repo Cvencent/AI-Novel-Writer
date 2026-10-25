@@ -68,6 +68,17 @@ describe('function model resolution', () => {
     expect(useLLMStore.getState().modelIdForFunction('outline_review')).toBe('gen-b')
   })
 
+  it('refreshes function assignments after deleting a model', async () => {
+    useLLMStore.setState({ models: [genModel('gen-a'), genModel('gen-b')], defaultModelId: 'gen-a', functionModels: { draft_generation: 'gen-b' } })
+    mocks.invoke.mockImplementation((channel: string) => {
+      if (channel === 'llm:delete-model') return Promise.resolve({ success: true, defaultModelId: 'gen-a' })
+      if (channel === 'llm:list-models') return Promise.resolve([genModel('gen-a')])
+      if (channel === 'llm:get-function-models') return Promise.resolve({ draft_generation: null })
+      throw new Error(`unexpected IPC ${channel}`)
+    })
+    await expect(useLLMStore.getState().deleteModel('gen-b')).resolves.toBe(true)
+    expect(useLLMStore.getState().functionModels).toEqual({ draft_generation: null })
+  })
   it('persists setFunctionModel and mirrors it into state', async () => {
     useLLMStore.setState({ models: [genModel('gen-a')], defaultModelId: 'gen-a', functionModels: {} })
     mocks.invoke.mockResolvedValue({ success: true })
@@ -76,3 +87,4 @@ describe('function model resolution', () => {
     expect(useLLMStore.getState().functionModels.editor_ai).toBe('gen-a')
   })
 })
+

@@ -135,10 +135,11 @@ export const useLLMStore = create<LLMState>()((set, get) => ({
       alertError(result.error || '删除模型失败', { title: '模型删除失败' })
       return false
     }
-    await get().loadModels()
+    const [functionModels] = await Promise.all([ipc.invoke('llm:get-function-models'), get().loadModels()])
     set({
       defaultModelId: result.defaultModelId ?? null,
       defaultEmbeddingModelId: result.defaultEmbeddingModelId ?? null,
+      functionModels: normalizeFunctionModelIds(functionModels),
     })
     return true
   },
@@ -300,4 +301,5 @@ export const useLLMStore = create<LLMState>()((set, get) => ({
 
   discoverModels: async (request) => ipc.invoke('llm:discover-models', request),
 }))
+
 
