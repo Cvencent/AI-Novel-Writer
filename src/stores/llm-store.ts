@@ -11,6 +11,7 @@ import type {
   TokenUsage,
 } from '../shared/ipc-channels'
 import type { CreativeStrategy, GenerationReasoningStage } from '../shared/reasoning-types'
+import { normalizeFunctionModelIds, preferredFunctionModelId, type FunctionModelIds, type FunctionModelKey } from '../shared/function-models'
 import { projectSessionContextFromProject } from '../shared/project-session-context'
 import { useProjectStore } from './project-store'
 
@@ -28,6 +29,8 @@ interface LLMState {
   defaultModelId: string | null
   /** 当前默认向量模型 ID */
   defaultEmbeddingModelId: string | null
+  /** 按功能分配的生成模型；缺 key 表示跟随 defaultModelId */
+  functionModels: FunctionModelIds
   /** 正在进行的活跃请求 */
   activeRequests: Map<string, { status: 'running' | 'done' | 'error'; text: string }>
   /** 是否已加载模型配置 */
@@ -46,6 +49,10 @@ interface LLMState {
   setDefaultModel: (modelId: string) => Promise<boolean>
   /** 设置默认向量模型（持久化到 ~/.vela/config.json） */
   setDefaultEmbeddingModel: (modelId: string) => Promise<boolean>
+  /** 设置某个功能使用的模型（null = 跟随默认） */
+  setFunctionModel: (key: FunctionModelKey, modelId: string | null) => Promise<boolean>
+  /** 功能模型解析：功能配置 → 全局默认 → 任一生成模型 */
+  modelIdForFunction: (key: FunctionModelKey) => string | null
   /** 非流式生成 */
   generate: (
     messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
@@ -73,6 +80,7 @@ export const useLLMStore = create<LLMState>()((set, get) => ({
   models: [],
   defaultModelId: null,
   defaultEmbeddingModelId: null,
+  functionModels: {},
   activeRequests: new Map(),
   loaded: false,
 
@@ -85,15 +93,17 @@ export const useLLMStore = create<LLMState>()((set, get) => ({
         set({ loaded: true })
         return
       }
-      const [models, defaultModelId, defaultEmbeddingModelId] = await Promise.all([
+      const [models, defaultModelId, defaultEmbeddingModelId, functionModels] = await Promise.all([
         ipc.invoke('llm:list-models'),
         ipc.invoke('llm:get-default-model'),
         ipc.invoke('llm:get-default-embedding-model'),
+        ipc.invoke('llm:get-function-models'),
       ])
       set({
         models,
         defaultModelId,
         defaultEmbeddingModelId,
+        functionModels: normalizeFunctionModelIds(functionModels),
         loaded: true,
       })
     })().finally(() => {
@@ -157,6 +167,19 @@ export const useLLMStore = create<LLMState>()((set, get) => ({
       return false
     }
   },
+
+  setFunctionModel: async (key, modelId) => {
+    try {
+      requireIpcSuccess(await ipc.invoke('llm:set-function-model', key, modelId), '保存功能模型')
+      set({ functionModels: normalizeFunctionModelIds({ ...get().functionModels, [key]: modelId }) })
+      return true
+    } catch (error) {
+      alertError(String(error), { title: '模型设置保存失败' })
+      return false
+    }
+  },
+
+  modelIdForFunction: key => preferredFunctionModelId(get().models, get().functionModels, key, get().defaultModelId),
 
   generate: async (messages, modelId, options) => {
     const mid = modelId ?? get().defaultModelId
@@ -277,3 +300,4 @@ export const useLLMStore = create<LLMState>()((set, get) => ({
 
   discoverModels: async (request) => ipc.invoke('llm:discover-models', request),
 }))
+
