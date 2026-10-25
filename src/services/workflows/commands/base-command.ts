@@ -254,15 +254,20 @@ export abstract class BaseWorkflowCommand<TResult = string> {
    * 它需要几轮工具就给它几轮。这里不再在业务侧拍一个更小的硬上限——上限太低会让模型
    * 把轮次全花在工具上、正文永远出不来。非主进程持账时退回会话预算（由 harness 自己兜底）。
    */
-  protected async remainingGenerationRequests(execution: Readonly<ActiveGenerationExecution> = this.requireGenerationExecution()): Promise<number> {
+  protected async remainingGenerationRequests(
+    reserveRounds = 0,
+    execution: Readonly<ActiveGenerationExecution> = this.requireGenerationExecution(),
+  ): Promise<number> {
     const handle = execution.context.mainGenerationRunHandle
     if (execution.mainOwned && handle) {
       const view = await ipc.invokeWithProjectSession(execution.context.projectSession, 'generation:read', handle)
       const cap = view.ledger?.policy.maxPhysicalRequests ?? view.budget.maxAttempts
       const used = view.ledger?.physicalRequests ?? 0
-      return Math.max(1, cap - used)
+      // reserveRounds 是「后续步骤至少各留一次请求」的下限，不是业务硬上限；
+      // 例如细纲一次跑 10 章，本轮的余量要先扣掉后面 9 章各一次的请求。
+      return Math.max(1, cap - used - Math.max(0, Math.floor(reserveRounds)))
     }
-    return Math.max(1, execution.session.budget.maxAttempts)
+    return Math.max(1, execution.session.budget.maxAttempts - Math.max(0, Math.floor(reserveRounds)))
   }
 
   /** 获取 LLM 大模型连接代理（支持取消） */
@@ -453,6 +458,11 @@ export abstract class BaseWorkflowCommand<TResult = string> {
       allowedTools?: readonly string[]
       onToolCall?: (record: WorkflowToolCallRecord) => void
       maxToolRounds?: number
+      /**
+       * 先给后续步骤各留一次请求，再从剩余根预算里取本轮工具轮上限。
+       * 细纲逐章生成时传「本章之后还剩几章」，保证后面的章不会被本章的工具轮吃光。
+       */
+      reserveToolRounds?: number
       /** 工具结果回填上限；架构类工具可返回上万字符，必须截断。 */
       maxToolResultChars?: number
       /** Expected prior visible composition for a main-owned run. */
@@ -497,7 +507,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
     }
     // 工具轮上限取真实生成预算的剩余量，不再用业务侧拍出来的 3/6 轮硬上限。
     // 预算含最后一次收尾请求：工具轮用光时，模型仍有一次机会只输出正文。
-    const maxRounds = options.maxToolRounds ?? await this.remainingGenerationRequests(execution)
+    const maxRounds = options.maxToolRounds ?? await this.remainingGenerationRequests(options.reserveToolRounds ?? 0, execution)
     callbacks.log(`本次工具循环最多可用 ${maxRounds} 次模型请求（含最后一次收尾）`)
     const loop = await runWorkflowToolLoop({
       systemPrompt,
