@@ -1,4 +1,4 @@
-import { parsePlanningTargetUnits, DEFAULT_PLANNING_TARGET_UNITS } from '../../src/shared/plot-outline-contract';
+import { parsePlanningTargetUnits, DEFAULT_PLANNING_TARGET_UNITS, validPlotOutlineEntry } from '../../src/shared/plot-outline-contract';
 import { isDeepStrictEqual } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
@@ -14,7 +14,7 @@ import { GENERATION_PROMPT_RETENTION } from '../../src/shared/generation-log-ret
 import type { PortableRuntimeFreezeTable } from '../services/portable-runtime-freeze';
 import { assertReservation, assertAttemptTransition, rootActionIdempotencyKey, type RootAction, type RootBudget, type PhysicalAttempt, type VisibleArtifact, type ProviderUsagePolicy } from '../../src/shared/generation-contract';
 import { isContentHash, sameProjectEpoch, type FrozenInputFingerprint, type SourceRef, type ProjectEpoch } from '../../src/shared/source-ref';
-import { PLOT_OUTLINE_PROTOCOL, plotOutlinePolicy, plotOutlineExpected, plotOutlineConfirmedPrefix, plotOutlineSourceInvalid, derivePlotOutlineCursor, parsePlotOutlinePurpose, plotOutlinePurpose, validPlotOutlineEntry, joinPlotOutlineEntries, plotOutlineRequestContract, type PlotOutlineProgress, type PlotOutlineAuthorEditReceipt, type PlotOutlineRange } from '../../src/shared/plot-outline-contract';
+import { PLOT_OUTLINE_PROTOCOL, plotOutlinePolicy, plotOutlineExpected, plotOutlineConfirmedPrefix, plotOutlineSourceInvalid, derivePlotOutlineCursor, parsePlotOutlinePurpose, plotOutlinePurpose, joinPlotOutlineEntries, plotOutlineRequestContract, type PlotOutlineProgress, type PlotOutlineAuthorEditReceipt, type PlotOutlineRange } from '../../src/shared/plot-outline-contract';
 export interface RunBinding extends ProjectEpoch {
     fingerprint: FrozenInputFingerprint;
     contextSnapshotId: string;
@@ -446,6 +446,7 @@ export class GenerationRunRepository {
             const { receipt } = read.receipt(row.attempt_id);
             return { purpose: row.purpose, status: receipt.attempt.status,
                 finishReason: receipt.result?.finishReason ?? null,
+                failureCode: receipt.failureCode ?? null,
                 artifact: receipt.artifact && read.artifacts.get(receipt.artifact.artifactId)?.artifact_status !== 'discarded'
                     && !this.isFrozen('generation_attempts', row.attempt_id) ? receipt.artifact : null };
         });

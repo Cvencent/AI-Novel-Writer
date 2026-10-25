@@ -94,7 +94,18 @@ export interface PlotOutlineAttempt {
   purpose: string
   status: PhysicalAttempt['status']
   finishReason: string | null
+  /** Transport failure code; only such failures with no output must not consume a chapter attempt. */
+  failureCode?: string | null
   artifact: { artifactId: string; text: string; revision: number; textHash: string } | null
+}
+
+/** A request that never produced model output (network drop / upstream 5xx) must not consume the chapter attempt. */
+export const PLOT_OUTLINE_TRANSPORT_RETRY_LIMIT = 3
+
+export function isRetryableTransportFailure(attempt: Pick<PlotOutlineAttempt, 'finishReason' | 'failureCode' | 'artifact'>): boolean {
+  if (attempt.finishReason !== null) return false
+  if (attempt.artifact && attempt.artifact.text.trim()) return false
+  return attempt.failureCode === 'NETWORK_ERROR' || attempt.failureCode === 'GENERATION_PROVIDER_FAILED'
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -233,9 +244,18 @@ export function derivePlotOutlineCursor(range: PlotOutlineRange, acceptedCount: 
   for (const kind of ['normal', 'compact'] as const) {
     // 细纲生成会走工具循环：同一章会有多轮物理请求，中间轮次只发出 <tool_call>，
     // 不构成章节尝试。若不排除，游标会误判该章已消耗并错跳到 compact。
+    const transportRetries = attempts.filter(attempt => attempt.purpose === plotOutlinePurpose(chapter, kind)
+      && attempt.status !== 'cancelled-before-dispatch'
+      && !isToolCallRound(attempt.artifact?.text)
+      && isRetryableTransportFailure(attempt)).length
+    // 上游一直不可用时，重试到上限就停下来交出恢复入口，而不是把整根预算耗尽。
+    if (transportRetries >= PLOT_OUTLINE_TRANSPORT_RETRY_LIMIT)
+      return { kind: 'stopped', chapterNumber: chapter, reason: 'unknown-completion' }
     const matching = attempts.filter(attempt => attempt.purpose === plotOutlinePurpose(chapter, kind)
       && attempt.status !== 'cancelled-before-dispatch'
-      && !isToolCallRound(attempt.artifact?.text))
+      && !isToolCallRound(attempt.artifact?.text)
+      // Transport failure produced no output; retrying the chapter is not a duplicate attempt.
+      && !isRetryableTransportFailure(attempt))
     if (!matching.length) return { kind: 'request', chapterNumber: chapter, attempt: kind }
     if (matching.length !== 1) throw new Error('GENERATION_PLOT_OUTLINE_ATTEMPT_CONFLICT')
     const attempt = matching[0]!
@@ -243,9 +263,8 @@ export function derivePlotOutlineCursor(range: PlotOutlineRange, acceptedCount: 
     if (attempt.finishReason !== 'stop' && attempt.finishReason !== 'length') return { kind: 'stopped', chapterNumber: chapter, reason: 'unknown-completion' }
     // 日记体/账本体只在这里拒绝：这是「新产出能否被接受」的闸门。
     // 已接受的章节不再回溯校验，否则升级会污染历史运行的可读性。
-    if (attempt.finishReason === 'stop' && attempt.artifact && validPlotOutlineEntry(attempt.artifact.text, chapter)
-        && hasRequiredOutlineSections(attempt.artifact.text)
-        && !isLedgerStyleOutline(attempt.artifact.text))
+    if (attempt.finishReason === 'stop' && attempt.artifact
+        && isAcceptablePlotOutlineEntry(attempt.artifact.text, chapter))
       return { kind: 'accept', chapterNumber: chapter, artifactIds: [attempt.artifact.artifactId], text: attempt.artifact.text }
   }
   return { kind: 'stopped', chapterNumber: chapter, reason: 'attempts-exhausted' }
@@ -477,6 +496,19 @@ export function chapterOutlineCoreContract(
  * 细纲必须是章节规划，不是按时间罗列的日记/账本。
  * 识别模型把正文文风（压力—应对—结算）误套到细纲排版上的典型形态。
  */
+/**
+ * 一次模型产出能否作为「本章大纲」被接受。
+ *
+ * 三件事必须同时成立：只有一个本章标题、六个固定小节齐全、且不是日记/账本式排版。
+ * 判定只在「新产出能否被接受」这一处定义一次；游标推进与合成前校验共用它，
+ * 避免两处规则不一致——那样会在合成阶段撞 ACCEPT_CONFLICT 而不是按设计重建。
+ */
+export function isAcceptablePlotOutlineEntry(text: string, chapter: number): boolean {
+  return validPlotOutlineEntry(text, chapter)
+    && hasRequiredOutlineSections(text)
+    && !isLedgerStyleOutline(text)
+}
+
 export function isLedgerStyleOutline(text: string): boolean {
   const timeMarks = text.match(/^[\t ]*(?:[上下]午)?[零一二三四五六七八九十百\d]{1,3}点(?:半|整|多)?[，,。]/gmu)?.length ?? 0
   return timeMarks >= 4 || /\*\*结算\*\*/u.test(text) || /账页最上面一行/u.test(text)

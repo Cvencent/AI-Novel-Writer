@@ -28,6 +28,7 @@ import type { VisibleCompositionReceipt } from '../../../shared/generation-owner
 import { composeVisibleContinuation } from '../../../shared/visible-continuation'
 import { createWorkflowMainGenerationRuntime, type WorkflowMainGenerationSelection, type WorkflowMainGenerationRequest, type WorkflowMainGenerationRuntime } from '../workflow-main-generation'
 import { runWorkflowToolLoop, type WorkflowToolCallRecord } from '../tool-loop'
+import { isAcceptablePlotOutlineEntry, parsePlotOutlinePurpose } from '../../../shared/plot-outline-contract'
 import { cleanAgentProtocolVisibleText } from '../../../shared/agent-response-protocol'
 import { createAgentExecutionContext } from '../../agent/tools/project-context'
 export type { WorkflowMainGenerationSelection } from '../workflow-main-generation'
@@ -137,6 +138,17 @@ export interface WorkflowGenerationRuntimeDependencies {
 
 const DEFAULT_GENERATION_DEPENDENCIES: WorkflowGenerationRuntimeDependencies = {
   createRuntime: (options, main) => main ? createWorkflowMainGenerationRuntime(main) : createGenerationRuntime(options),
+}
+
+/** 纯传输失败（无任何模型输出）的有限重试次数；内容类失败不在此列。 */
+const TRANSPORT_RETRY_LIMIT = 2
+/** 上游 5xx 多为瞬时抖动，重试前线性退避，避免立刻再撞同一个故障。 */
+const TRANSPORT_RETRY_BACKOFF_MS = 1500
+
+function isRetryableTransportOutcome(outcome: { finishReason: LLMFinishReason; content: string; receipt: { failureCode?: string } }): boolean {
+  if (outcome.finishReason !== 'error') return false
+  if (outcome.content.trim()) return false
+  return outcome.receipt.failureCode === 'NETWORK_ERROR' || outcome.receipt.failureCode === 'GENERATION_PROVIDER_FAILED'
 }
 
 interface ActiveGenerationExecution {
@@ -532,13 +544,25 @@ export abstract class BaseWorkflowCommand<TResult = string> {
           messages: messages.map(message => ({ role: message.role, content: message.content })),
           ...(skill ? { promptBudget: { limitUtf8Bytes: new TextEncoder().encode(messages.map(m => m.content).join('')).byteLength, sections: [] } } : {}),
         }
-        const outcome = await execution.session.complete(task, { signal: execution.signal })
-        lastReceipt = outcome.receipt
-        artifactRef.value = outcome.receipt.visibleArtifact ?? null
-        lastFinish = outcome.finishReason
-        outcomeRef.value ??= outcome
-        this.reportGenerationPromptBudget(callbacks, outcome.receipt)
-        return outcome.content
+        for (let attempt = 0; ; attempt += 1) {
+          const outcome = await execution.session.complete(task, { signal: execution.signal })
+          lastReceipt = outcome.receipt
+          artifactRef.value = outcome.receipt.visibleArtifact ?? null
+          lastFinish = outcome.finishReason
+          outcomeRef.value ??= outcome
+          this.reportGenerationPromptBudget(callbacks, outcome.receipt)
+          // 传输层抖动（断开 / 上游 5xx）没拿到任何输出，不是内容问题：
+          // 直接重试同一次请求，别让一次网络抖动把整批细纲打断。
+          // 这只限「完全没输出」的传输失败，且每次重试仍要真实消耗根预算，不是业务轮次上限。
+          if (!isRetryableTransportOutcome(outcome) || attempt >= TRANSPORT_RETRY_LIMIT) return outcome.content
+          callbacks.log(workflowUiText(
+            execution.context,
+            `与模型的连接中断，正在重试（第 ${attempt + 1} 次，最多 ${TRANSPORT_RETRY_LIMIT} 次）…`,
+            `Connection to the model dropped; retrying (${attempt + 1} of at most ${TRANSPORT_RETRY_LIMIT})…`,
+          ))
+          // 上游 5xx 常常是瞬时抖动，立刻重发大概率再撞一次；退避后再试。
+          await new Promise(resolve => setTimeout(resolve, TRANSPORT_RETRY_BACKOFF_MS * (attempt + 1)))
+        }
       },
     })
     this.assertNotCancelled(context)
@@ -547,9 +571,31 @@ export abstract class BaseWorkflowCommand<TResult = string> {
       // 从最后一轮原文提取可见部分，避免把已经写出的章节丢掉。
       const recovered = loop.lastVisibleText || cleanAgentProtocolVisibleText(loop.lastRawResponse, (options.allowedTools ?? []))
       options.onPartialAvailable?.(recovered)
+      // 传输层彻底失败要说清是「连不上模型」，而不是含糊的「AI 未正常完成」：
+      // 作者据此知道是网络/上游问题，重试即可，不必怀疑自己的设定。
+      if (isRetryableTransportOutcome({ finishReason: lastFinish, content: '', receipt: lastReceipt ?? {} })) {
+        throw new Error(workflowUiText(
+          context ?? execution.context,
+          '与模型的连接失败（网络中断或上游服务不可用），本章未生成。稍后重试即可，已完成的章节不受影响。',
+          'Connection to the model failed (network drop or upstream outage), so this chapter was not generated. Retry later; finished chapters are unaffected.',
+        ))
+      }
       throw createBoundedCompletionError(lastFinish, context?.uiLocale ?? 'zh-CN')
     }
-    if (mainOwned && !options.suppressVisibleComposition && loop.text.trim()) {
+    // 细纲轮次：这次产出必须真的是一章合规大纲（单章标题 + 六个固定小节 + 非账本体）。
+    // 不合格时不要在这里撞合成闸门，而是让上层重新读游标——它会按设计发起一次 compact 重建；
+    // 直接丢给合成层会得到 GENERATION_PLOT_OUTLINE_ACCEPT_CONFLICT，整批因此中断。
+    const outlinePurpose = options.purpose ? parsePlotOutlinePurpose(options.purpose) : null
+    const outlineEntryUnacceptable = !!outlinePurpose && !!loop.text.trim()
+      && !isAcceptablePlotOutlineEntry(loop.text, outlinePurpose.chapterNumber)
+    if (outlineEntryUnacceptable) {
+      callbacks.log(workflowUiText(
+        execution.context,
+        `第 ${outlinePurpose!.chapterNumber} 章大纲缺少必需小节或排版不合规，将按设计重建一次。`,
+        `Chapter ${outlinePurpose!.chapterNumber} outline is missing required sections; rebuilding it once as designed.`,
+      ))
+    }
+    if (mainOwned && !options.suppressVisibleComposition && loop.text.trim() && !outlineEntryUnacceptable) {
       const artifact = artifactRef.value
       const handle = context?.mainGenerationRunHandle
       if (!artifact || !handle) throw new Error('GENERATION_COMPOSITION_ARTIFACT_REQUIRED')
