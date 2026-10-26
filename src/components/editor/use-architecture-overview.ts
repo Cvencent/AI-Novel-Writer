@@ -31,6 +31,7 @@ import { DEFAULT_PLANNING_ACTION_CHAPTERS } from '../../shared/plot-outline-cont
 import type { GenerationRecoveryContext } from '../../shared/generation-owner-contract'
 import type { ArchitectureConfirmFormOptions } from '../dialogs/use-architecture-confirm-form'
 import { openPlanningRecoveryDraft } from '../../stores/editor-store'
+import { removeRecoveryFields, type RecoveryKind } from './recovery-cleanup'
 import { planningTitle } from '../run/run-recovery'
 import { outlineProgress, type OutlineProgress } from '../../shared/plot-outline-checkpoint'
 import type { PlotOutlineRangeSource } from '../../shared/plot-outline-contract'
@@ -439,24 +440,41 @@ export function useArchitectureOverview(projectKey: string) {
     const filePath = `${projectSession.projectPath}/${CANONICAL_PROJECT_DIRECTORY}/partial_arch.json`
     const read = await ipc.invokeWithProjectSession(projectSession, 'fs:read-json', filePath, projectSession.projectPath).catch(() => null)
     const data = read?.success === true ? { ...((read as { data?: Record<string, unknown> }).data ?? {}) } : {}
-    if (kind === 'synopsis') {
-      delete data.synopsis_incomplete
-      delete data.synopsis_result
-      delete data.synopsis_covered_to
-      delete data.synopsis_range
-      delete data.synopsis_db_hash
-      delete data.synopsis_body_hash
-      delete data.synopsis_generation_handle
-    } else {
-      delete data.world_building_incomplete
-      delete data.world_building_partial_result
-      delete data.world_building_generation_handle
+    const next = removeRecoveryFields(data, [kind])
+    const write = await ipc.invokeWithProjectSession(projectSession, 'fs:write-json', filePath, next, projectSession.projectPath).catch((cause: unknown) => ({ success: false, error: cause instanceof Error ? cause.message : String(cause) }))
+    if (write?.success !== true) {
+      // 静默失败会让人以为清掉了，下次进来卡片又回来；必须把失败亮出来。
+      const { toast } = await import('../ui/Toast')
+      toast.error(text('丢弃失败，恢复稿还在：', 'Discard failed, the draft is still there: ') + String((write as { error?: string }).error ?? ''))
+      return
     }
-    await ipc.invokeWithProjectSession(projectSession, 'fs:write-json', filePath, data, projectSession.projectPath)
     if (kind === 'synopsis') { setSynopsisCandidate(''); setSynopsisHandle(null); setShowSynopsisCandidate(false); setPlanningRecovery(null) }
     else { setWorldBuildingCandidate(''); setWorldHandle(null); setShowWorldBuildingCandidate(false) }
     await loadStatus()
   }
+
+  /** 一键清除：细纲与世界观两份恢复稿（连同检查点）一次清掉。 */
+  const discardAllRecoveries = async () => {
+    const projectSession = captureProjectSession(currentProject)
+    if (!projectMatches || !projectSession || !isProjectSessionPath(projectSession, projectKey)) return
+    if (!isProjectSessionCurrent(projectSession)) return
+    const filePath = `${projectSession.projectPath}/${CANONICAL_PROJECT_DIRECTORY}/partial_arch.json`
+    const read = await ipc.invokeWithProjectSession(projectSession, 'fs:read-json', filePath, projectSession.projectPath).catch(() => null)
+    const data = read?.success === true ? { ...((read as { data?: Record<string, unknown> }).data ?? {}) } : {}
+    const next = removeRecoveryFields(data, ['synopsis', 'worldbuilding'] as const satisfies readonly RecoveryKind[])
+    const write = await ipc.invokeWithProjectSession(projectSession, 'fs:write-json', filePath, next, projectSession.projectPath).catch((cause: unknown) => ({ success: false, error: cause instanceof Error ? cause.message : String(cause) }))
+    if (write?.success !== true) {
+      const { toast } = await import('../ui/Toast')
+      toast.error(text('一键清除失败，恢复稿还在：', 'Clear-all failed, drafts are still there: ') + String((write as { error?: string }).error ?? ''))
+      return
+    }
+    setSynopsisCandidate(''); setSynopsisHandle(null); setShowSynopsisCandidate(false); setPlanningRecovery(null)
+    setWorldBuildingCandidate(''); setWorldHandle(null); setShowWorldBuildingCandidate(false)
+    await loadStatus()
+    const { toast } = await import('../ui/Toast')
+    toast.success(text('已清除全部恢复稿与检查点。', 'Cleared all recovery drafts and checkpoints.'))
+  }
+
 
   /** 续批入口：打开生成弹窗并预填下一批范围（从 coveredTo+1 起，默认带本批上限，
    * 上限可在弹窗内调整）。避免一次请求剩余全部章节再次触发超长输出。 */
@@ -548,7 +566,11 @@ export function useArchitectureOverview(projectKey: string) {
     handleContinueOutlineBatch,
     openGenerateDialog,
     openRecoveryDraft,
+    discardAllRecoveries,
   }
 }
 
 export type ArchitectureOverview = ReturnType<typeof useArchitectureOverview>
+
+
+

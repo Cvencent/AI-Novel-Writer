@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Copy, Ellipsis, Eye, EyeOff, Layers, PenLine, RotateCw, Sparkles, Users } from 'lucide-react'
+import { Copy, Ellipsis, Eraser, Eye, EyeOff, Layers, PenLine, RotateCw, Sparkles, Users } from 'lucide-react'
 import type { MutableRefObject, ReactNode } from 'react'
 import { ARCH_STEP_NAMES, type ArchStepKey } from '../../../services/architecture-step-selection'
 import { useLocaleStore } from '../../../stores/locale-store'
@@ -35,8 +35,9 @@ interface SectionProps {
 }
 
 /** 候选与续写的提示条：世界观或大纲生成到一半停下时，未完成的候选不写入正式内容，作者可以看、复制或接着写。 */
-function CandidateNotice({ sectionKey, overview }: { sectionKey: 'worldbuilding' | 'synopsis'; overview: ArchitectureOverview }) {
+export function CandidateNotice({ sectionKey, overview }: { sectionKey: 'worldbuilding' | 'synopsis'; overview: ArchitectureOverview }) {
   const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const [confirmClearAll, setConfirmClearAll] = useState(false)
   const text = useLocaleStore(s => s.text)
   const state = sectionKey === 'synopsis' ? overview.synopsis : overview.worldBuilding
   const editDraft = sectionKey === 'synopsis' && overview.planningRecovery !== null
@@ -63,6 +64,9 @@ function CandidateNotice({ sectionKey, overview }: { sectionKey: 'worldbuilding'
             <Button variant="text" size="sm" onClick={() => setConfirmDiscard(true)}>
               <Trash2 size={14} aria-hidden />{text('丢弃候选', 'Discard candidate')}
             </Button>
+            <Button variant="text" size="sm" onClick={() => setConfirmClearAll(true)}>
+              <Eraser size={14} aria-hidden />{text('一键清除全部恢复稿', 'Clear all recovery drafts')}
+            </Button>
             <Button variant="secondary" size="sm" disabled={state.busy || !state.handle || overview.loading} onClick={resume}>
               <RotateCw size={14} aria-hidden />
               {editDraft ? text('编辑恢复稿', 'Edit recovery draft') : state.busy ? text('续写中…', 'Resuming…') : text('断点续写', 'Resume')}
@@ -74,7 +78,16 @@ function CandidateNotice({ sectionKey, overview }: { sectionKey: 'worldbuilding'
           ? text('候选只是这次没写完的草稿；「丢弃候选」只清掉这份草稿，已保存的正式内容一个字都不会动。',
               'The candidate is only this run\u2019s unfinished draft. “Discard candidate” clears that draft and leaves the saved content untouched.')
           : text('无法确认这份候选的来源，只能查看或复制，然后重新生成。', 'The source of this candidate cannot be confirmed. View or copy it, then generate again.')}
-      </Notice>
+      </Notice>      <DangerConfirm
+        open={confirmClearAll}
+        onOpenChange={open => { if (!open) setConfirmClearAll(false) }}
+        title={text('清除全部恢复稿与检查点？', 'Clear all recovery drafts and checkpoints?')}
+        consequence={text('细纲与世界观的未完成草稿、断点检查点会一起清掉，已保存的正式内容不会改动。', 'Unfinished drafts and checkpoints for both the chapter outline and worldbuilding are cleared; saved content is not changed.')}
+        recoverability={text('清除后无法找回这些草稿，但可以重新生成。', 'Drafts cannot be recovered afterwards, but you can generate again.')}
+        confirmLabel={text('一键清除', 'Clear all')}
+        cancelLabel={text('取消', 'Cancel')}
+        onConfirm={() => { setConfirmClearAll(false); void overview.discardAllRecoveries() }}
+      />
       <DangerConfirm
         open={confirmDiscard}
         onOpenChange={open => { if (!open) setConfirmDiscard(false) }}
@@ -240,3 +253,7 @@ export default function ArchitectureSection({ sectionKey, overview, badge, summa
     </section>
   )
 }
+
+
+
+
