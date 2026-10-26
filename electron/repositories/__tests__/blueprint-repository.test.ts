@@ -57,6 +57,8 @@ function blueprintFor(chapterNumber: number): BlueprintData {
     title: `第${chapterNumber}章`,
     purpose: `推进第${chapterNumber}章`,
     keyEvents: `第${chapterNumber}章发生关键事件`,
+    costsAndTurns: `第${chapterNumber}章付出代价并出现转折`,
+    foreshadowing: `第${chapterNumber}章埋下伏笔`,
   }
 }
 
