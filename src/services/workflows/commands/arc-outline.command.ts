@@ -15,6 +15,7 @@ import { requireIpcSuccess } from '../../ipc-result'
 import { requireWorkflowProjectSession, workflowUiText, workflowWritingLanguage } from '../workflow-project-session'
 import { promptLanguageText } from '../../prompt-language'
 import { localizeNovelConfigFacts } from '../../../shared/novel-config-localization'
+import { buildArcPriorContext } from './arc-prior-context'
 import type { ArchitectureProjectSnapshot } from './architecture.command'
 
 const nl = String.fromCharCode(10)
@@ -166,12 +167,8 @@ export class GenerateArcOutlineCommand extends BaseWorkflowCommand<string> {
 
     callbacks.log(text(`正在生成第 ${from} 章起的粗纲…`, `Generating the arc segment starting at chapter ${from}…`))
 
-    // 全书至今脉络：所有已生成段的标题行（轻量索引）。
-    const arcIndex = arcs.length > 0
-      ? promptLanguageText(writingLanguage,
-          `【粗纲至今（已有段落索引）】` + nl + arcs.map(arc => `第 ${arc.fromChapter}–${arc.toChapter} 章（${arc.beat}）：${arc.title}`).join(nl),
-          `[Arc outline so far]` + nl + arcs.map(arc => `Ch. ${arc.fromChapter}-${arc.toChapter} (${arc.beat}): ${arc.title}`).join(nl))
-      : ''
+    // 前情上下文：全量索引 + 锚点摘要 + 最近段——每一段都看得见前面所有发生的事。
+    const arcIndex = buildArcPriorContext(arcs as never, writingLanguage)
     // 最近 3 段给完整 summary：这是「前面发生了什么」的主体。
     const priorArcSummary = arcs.slice(-3).map(arc => promptLanguageText(writingLanguage,
       `第 ${arc.fromChapter}–${arc.toChapter} 章（${arc.beat}）：${arc.title}` + nl + (arc.summary || '').slice(0, 800),
