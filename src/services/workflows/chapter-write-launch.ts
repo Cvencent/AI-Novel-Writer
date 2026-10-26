@@ -11,7 +11,8 @@ import { ipc } from '../ipc-client'
 import { requireIpcSuccess } from '../ipc-result'
 import { guardChapterWriting } from '../workflow-guards'
 import type { ChapterWritePrefill } from '../../stores/layout-store'
-import { createChapterWorkflow } from './chapter-workflow'
+import { createChapterWorkflow, type ChapterInfo } from './chapter-workflow'
+import type { BlueprintData } from '../../../electron/repositories/blueprint-repository'
 import type { ChapterBlueprint } from './directory-workflow'
 import {
   createChapterInfoFromDialogInput,
@@ -260,6 +261,105 @@ export async function launchChapterWrite({
     defaultWordsTarget: wordsPerChapter ?? DEFAULT_CHAPTER_WORDS_TARGET,
   }), session, { generationModelId: frozenGenerationModelId })
 
+  if (!isProjectSessionCurrent(session)) return { kind: 'stale' }
+  const resourceConflict = useWorkflowStore.getState().getResourceConflict(workflow)
+  if (resourceConflict) {
+    return { kind: 'blocked', message: workflowResourceConflictMessage(locale, resourceConflict.title) }
+  }
+  void useWorkflowStore.getState().startWorkflow(workflow, false)
+  return { kind: 'started' }
+}
+
+
+/**
+ * 对已定稿章节启动「生成新版本」工作流：以本章权威定稿全文为基准、结合作者的修改想法
+ * 生成一份新草稿；生成后从该草稿继续常规的审稿、修稿、定稿流程。
+ * 与 launchChapterWrite 不同，这里不要求章号等于权威下一章，也不做一致性预检——
+ * 重写的连续性基准就是被重写的那一版定稿本身。
+ */
+export async function launchChapterRewrite({
+  session, chapterNumber, guidance, generationModelId, wordsPerChapter, locale,
+}: {
+  session: ProjectSessionContext
+  chapterNumber: number
+  /** 作者对这一版的修改想法；可为空。 */
+  guidance: string
+  generationModelId: string | null
+  wordsPerChapter: number | undefined
+  locale: Locale
+}): Promise<ChapterWriteOutcome> {
+  const text = useLocaleStore.getState().text
+  const addLog = useWorkflowStore.getState().addLog
+  const projectPath = session.projectPath
+  const modelError = generationModelError(useLLMStore.getState().models, generationModelId, text)
+  if (modelError) {
+    addLog('error', modelError, locale)
+    return { kind: 'blocked', message: modelError }
+  }
+  const frozenGenerationModelId = availableGenerationModelId(useLLMStore.getState().models, generationModelId)
+  if (!frozenGenerationModelId) return { kind: 'blocked', message: text(
+    '所选创作模型已不可用。请选择一项可用于文本生成的模型后再试。',
+    'The selected writing model is no longer available. Select a compatible generation model and try again.',
+  ) }
+
+  // 冻结重写基准：本章权威定稿（最高版本）的正文快照，生成过程中不回读数据库。
+  const finalized = await ipc.invokeWithProjectSession(session, 'db:draft-get-finalized', chapterNumber, projectPath)
+  if (!isProjectSessionCurrent(session)) return { kind: 'stale' }
+  if (!finalized || finalized.status !== 'finalized') {
+    return { kind: 'blocked', message: text(
+      `第 ${chapterNumber} 章还没有定稿，无法生成新版本。`,
+      `Chapter ${chapterNumber} has no finalized version to rewrite.`,
+    ) }
+  }
+  const finalizedFull = await ipc.invokeWithProjectSession(session, 'db:draft-get-full', finalized.id, projectPath)
+  if (!isProjectSessionCurrent(session)) return { kind: 'stale' }
+  if (!finalizedFull || !finalizedFull.content.trim()) {
+    return { kind: 'blocked', message: text(
+      `第 ${chapterNumber} 章定稿正文读取失败，已停止生成。`,
+      `Could not read the finalized prose of chapter ${chapterNumber}; generation stopped.`,
+    ) }
+  }
+
+  // 蓝图仍在：重写提示里保留本章的功能定位、要点与出场人物，仅以定稿全文为叙事基准。
+  let blueprint: BlueprintData | null = null
+  try {
+    blueprint = await ipc.invokeWithProjectSession(session, 'db:blueprint-get', chapterNumber, projectPath)
+    if (!isProjectSessionCurrent(session)) return { kind: 'stale' }
+  } catch { /* 蓝图缺失时按空预填重写 */ }
+
+  const trimmedGuidance = guidance.trim()
+  if (trimmedGuidance) {
+    addLog('info', text(
+      `开始基于第 ${chapterNumber} 章定稿 v${finalized.version} 生成新版本（含作者修改想法）`,
+      `Generating a new version of chapter ${chapterNumber} from finalized v${finalized.version} with author revision notes`,
+    ), locale)
+  } else {
+    addLog('info', text(
+      `开始基于第 ${chapterNumber} 章定稿 v${finalized.version} 生成新版本`,
+      `Generating a new version of chapter ${chapterNumber} from finalized v${finalized.version}`,
+    ), locale)
+  }
+
+  const chapterInfo: ChapterInfo = {
+    projectPath,
+    chapterNumber,
+    title: finalized.chapterTitle || blueprint?.title || `第${chapterNumber}章`,
+    role: blueprint?.role ?? '发展',
+    purpose: blueprint?.purpose ?? '',
+    characters: blueprint?.characters ?? [],
+    keyEvents: blueprint?.keyEvents ?? '',
+    suspenseHook: blueprint?.suspenseHook || undefined,
+    costsAndTurns: blueprint?.costsAndTurns || undefined,
+    foreshadowing: blueprint?.foreshadowing || undefined,
+    userGuidance: '',
+    wordsTarget: normalizeChapterWordsTarget(undefined, wordsPerChapter),
+    rewriteBase: { draftId: finalized.id, version: finalized.version, content: finalizedFull.content },
+    ...(trimmedGuidance ? { rewriteGuidance: trimmedGuidance } : {}),
+  }
+  const workflow = createChapterWorkflow(chapterInfo, session, {
+    generationModelId: frozenGenerationModelId,
+    uiLocale: locale,
+  })
   if (!isProjectSessionCurrent(session)) return { kind: 'stale' }
   const resourceConflict = useWorkflowStore.getState().getResourceConflict(workflow)
   if (resourceConflict) {

@@ -115,6 +115,7 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:recovery-candidate-update',
   'db:recovery-candidate-resolve',
   'db:finalization-link-knowledge-document',
+  'db:finalization-clear-knowledge-document',
   'db:revision-create',
   'db:revision-replace-pending',
   'db:revision-mark-merged',
@@ -1284,6 +1285,36 @@ export function registerDatabaseController() {
     }
   })
 
+  ipcMain.handle('db:finalization-clear-knowledge-document', async (
+    _event,
+    finalizationId: string,
+    expectedProjectPath: string,
+  ) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      FinalizationRepository.clearKnowledgeDocument(finalizationId)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:finalization-superseded-knowledge', async (
+    _event,
+    chapterNumber: number,
+    keepDraftId: number,
+    expectedProjectPath: string,
+  ) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return {
+        success: true,
+        documents: FinalizationRepository.listSupersededKnowledgeDocuments(chapterNumber, keepDraftId),
+      }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
   // ============================================================
   // 5. revisions — 修稿
   // ============================================================

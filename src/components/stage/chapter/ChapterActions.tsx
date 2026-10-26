@@ -6,7 +6,7 @@ import type { RevisionEntry } from '../../../services/draft-index'
 import type { HumanConfirmedReviewSnapshot } from '../../../shared/human-confirmed-review'
 import { chapterLabel } from '../../../shared/chapter-label'
 import { countDraftUnits } from '../../../shared/draft-units'
-import { isGenerationModel } from '../../../services/workflows/chapter-write-launch'
+import { availableGenerationModelId, isGenerationModel, launchChapterRewrite } from '../../../services/workflows/chapter-write-launch'
 import { createFinalizeSyncWorkflow } from '../../../services/workflows/finalize-sync-workflow'
 import { preferredFunctionModelId } from '../../../shared/function-models'
 import { useEditorStore, type EditorTab } from '../../../stores/editor-store'
@@ -52,7 +52,7 @@ interface LatestReview {
   reloadCycle: () => Promise<ReviewCycleProjection | null>
 }
 
-type Ask = 'refine' | 'finalize' | 'delete' | 'discard' | null
+type Ask = 'refine' | 'finalize' | 'rewrite' | 'delete' | 'discard' | null
 
 /**
  * 章节动作条与它带出的侧页、对话框。主按钮随这一章所处的一步变化：AI 审稿（拆分按钮含检查维度）、按 N 项意见修稿、
@@ -96,6 +96,7 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
   const [reviseModelId, setReviseModelId] = useState<string | null>(null)
   const [ask, setAsk] = useState<Ask>(null)
   const [refinePrompt, setRefinePrompt] = useState('')
+  const [rewritePrompt, setRewritePrompt] = useState('')
   const [mergeLater, setMergeLater] = useState(false)
   const reviewOptions = useAnchoredLayer('start')
   const reviseOptions = useAnchoredLayer('start')
@@ -213,6 +214,23 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
       surface: 'manuscript',
     })
     if (!useEditorStore.getState().tabs.some(candidate => candidate.id === tab.id)) navigate({ kind: 'chapter', chapterNumber })
+  }
+
+  /** 已定稿章节的「生成新版本」：以当前定稿为基准、按作者修改想法生成新草稿，之后照常审稿/修稿/定稿。 */
+  const startRewrite = async () => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || !isProjectSessionCurrent(session)) return
+    setAsk(null)
+    const outcome = await launchChapterRewrite({
+      session,
+      chapterNumber,
+      guidance: rewritePrompt,
+      generationModelId: availableGenerationModelId(models, defaultModelId),
+      wordsPerChapter: useProjectStore.getState().currentProject?.novelConfig?.wordsPerChapter,
+      locale,
+    })
+    if (!isProjectSessionCurrent(session)) return
+    if (outcome.kind === 'blocked' || outcome.kind === 'authority-error') toast.error(outcome.message)
   }
 
   const editable = stage === 'draft' || stage === 'reviewed' || stage === 'merge' || stage === 'revised'
@@ -334,6 +352,9 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
       case 'final':
         return (
           <>
+            <Button variant="secondary" disabled={busy} onClick={() => { setRewritePrompt(''); setAsk('rewrite') }}>
+              <Sparkles size={15} aria-hidden />{text('生成新版本…', 'New version…')}
+            </Button>
             {nextRow && (
               <Button variant="primary" onClick={() => navigate({ kind: 'chapter', chapterNumber: nextRow.number })}>
                 {nextRow.phase === 'todo' ? text(`写第 ${nextRow.number} 章`, `Write chapter ${nextRow.number}`) : text(`打开第 ${nextRow.number} 章`, `Open chapter ${nextRow.number}`)}
@@ -454,6 +475,29 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
           <li><b>{text('之后不能直接修改。', 'No direct edits afterwards.')}</b>{text('要再改，从版本历史回退为新草稿。', 'To change it again, roll back to a new draft from version history.')}</li>
         </ul>
         {tab.dirty && <Notice tone="info" title={text('还没保存的修改会一并定稿', 'Unsaved edits are included')}>{text('定稿以你现在看到的正文为准。', 'Finalization uses the text exactly as you see it now.')}</Notice>}
+      </InkDialog>
+      <InkDialog
+        open={ask === 'rewrite'}
+        onOpenChange={open => { if (!open) setAsk(null) }}
+        title={text(`生成第 ${chapterNumber} 章的新版本？`, `Generate a new version of chapter ${chapterNumber}?`)}
+        description={text('AI 会以本章定稿的全文为基础，结合你写的修改想法重写本章，保存为一份新草稿；现有定稿保持不变。生成后照常审稿、修稿、定稿，重新定稿的版本会自动取代旧版成为本章权威。', 'AI rewrites this chapter from the full finalized prose plus your revision notes and saves it as a new draft; the existing final stays untouched. Continue with review, revision, and finalize — the re-finalized version automatically supersedes the old one.')}
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setAsk(null)}>{text('取消', 'Cancel')}</Button>
+            <Button variant="primary" onClick={() => void startRewrite()}>{text('开始重写', 'Start rewrite')}</Button>
+          </>
+        )}
+      >
+        <label className="pi-field">
+          <span>{text('修改想法', 'Revision notes')} <em>{text('可选', 'Optional')}</em></span>
+          <textarea
+            className="pi-input stage-ch-textarea"
+            rows={5}
+            value={rewritePrompt}
+            placeholder={text('例如：视角换成女主；删掉雨夜追逐，改成天台对峙；结尾多埋一个伏笔。', 'For example: switch to the heroine\u2019s POV; replace the rainy-night chase with a rooftop confrontation; plant one more hook at the end.')}
+            onChange={event => setRewritePrompt(event.target.value)}
+          />
+        </label>
       </InkDialog>
       <DangerConfirm
         open={ask === 'discard'}

@@ -149,6 +149,8 @@ describe('FinalizeChapterCommand blueprint character fallback', () => {
           return { success: true }
         case 'kb:import-text':
           return { success: true, docId: 'knowledge-3', chunkCount: 1 }
+        case 'db:finalization-superseded-knowledge':
+          return { success: true, documents: [] }
         case 'db:finalization-link-knowledge-document':
           return { success: true }
         case 'db:continuity-save-finalized':

@@ -116,6 +116,48 @@ export function buildFinalizePostProcessSteps(
       if (context.cancelled) throw new Error(workflowUiText(context, '工作流已取消', 'Workflow was cancelled.'))
       const projectSession = requireWorkflowProjectSession(context)
       const writingLanguage = workflowWritingLanguage(context)
+      // 重定稿取代旧版定稿时，先把旧版导入的知识库文档移除并清掉登记，
+      // 再导入新版正文：知识库里的本章内容始终只对应权威定稿这一版。
+      if (finalizedDraftId !== undefined) {
+        const superseded = await ipc.invokeWithProjectSession(
+          projectSession,
+          'db:finalization-superseded-knowledge',
+          chapterNumber,
+          finalizedDraftId,
+          _project.path,
+        )
+        requireIpcSuccess(superseded, text(
+          '读取被取代定稿的知识文档',
+          'Read superseded finalization knowledge documents',
+        ))
+        for (const document of superseded.documents ?? []) {
+          const removed = await ipc.invokeWithProjectSession(
+            projectSession,
+            'kb:remove-document',
+            document.knowledgeDocumentId,
+            _project.path,
+          )
+          requireIpcSuccess(removed, text(
+            '移除被取代定稿的知识文档',
+            'Remove the superseded finalization knowledge document',
+          ))
+          const cleared = await ipc.invokeWithProjectSession(
+            projectSession,
+            'db:finalization-clear-knowledge-document',
+            document.finalizationId,
+            _project.path,
+          )
+          requireIpcSuccess(cleared, text(
+            '登记被取代定稿的知识文档已移除',
+            'Record the superseded knowledge document removal',
+          ))
+          callbacks.log(workflowUiText(
+            context,
+            `已移除被取代定稿的知识库文档（第${chapterNumber}章）`,
+            `Removed the superseded finalization knowledge document (chapter ${chapterNumber})`,
+          ))
+        }
+      }
       const contentFileName = chapterTitle
         ? writingLanguageText(
             writingLanguage,

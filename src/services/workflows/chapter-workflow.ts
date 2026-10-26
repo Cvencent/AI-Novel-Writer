@@ -37,6 +37,10 @@ export interface ChapterInfo {
   wordsTarget?: number
   /** 用户自定义知识库检索关键词（追加到向量搜索 query） */
   knowledgeQueryHint?: string
+  /** 重写基准：本章权威定稿；提供时本次写作变成「基于定稿重写」 */
+  rewriteBase?: import('../../shared/chapter-rewrite-contract').ChapterRewriteBase
+  /** 作者对这一版的修改想法 */
+  rewriteGuidance?: string
 }
 
 export interface ChapterWorkflowOptions {

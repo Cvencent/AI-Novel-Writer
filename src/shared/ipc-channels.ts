@@ -1215,6 +1215,14 @@ export interface DatabaseChannels {
     args: [draftId: number, documentId: string, expectedProjectPath: string]
     return: { success: boolean; finalization?: { knowledgeDocumentId: string }; error?: string }
   }
+  'db:finalization-clear-knowledge-document': {
+    args: [finalizationId: string, expectedProjectPath: string]
+    return: { success: boolean; error?: string }
+  }
+  'db:finalization-superseded-knowledge': {
+    args: [chapterNumber: number, keepDraftId: number, expectedProjectPath: string]
+    return: { success: boolean; documents?: { finalizationId: string; draftId: number; knowledgeDocumentId: string }[]; error?: string }
+  }
 
   // 5. revisions
   'db:revision-create': { args: [params: { baseDraftId: number; revisionType: 'refine' | 'review-fix'; userPrompt?: string; reviewSourceId?: number; content: string; wordCount: number; expectedSource?: ExpectedDraftSource }, expectedProjectPath: string]; return: { success: boolean; id?: number; revisionIndex?: number; errorCode?: SourceDraftGuardErrorCode; error?: string } }

@@ -331,6 +331,43 @@ export class FinalizationRepository {
     return new Map(rows.map(row => [row.knowledge_document_id, row.chapter_number]))
   }
 
+  /** 本章除 keepDraftId 之外仍挂着知识文档的定稿记录；重写定稿后用它清掉被取代的旧版导入。 */
+  static listSupersededKnowledgeDocuments(
+    chapterNumber: number,
+    keepDraftId: number,
+  ): Array<{ finalizationId: string; draftId: number; knowledgeDocumentId: string }> {
+    if (!Number.isSafeInteger(chapterNumber) || chapterNumber < 1) throw new Error('定稿章节号无效')
+    if (!Number.isSafeInteger(keepDraftId) || keepDraftId < 1) throw new Error('保留定稿的草稿身份无效')
+    const rows = requireDatabase().prepare(`
+      SELECT finalization_id, draft_id, knowledge_document_id
+      FROM finalization_outbox
+      WHERE chapter_number = ? AND draft_id != ? AND knowledge_document_id != ''
+    `).all(chapterNumber, keepDraftId) as Array<{ finalization_id: string; draft_id: number; knowledge_document_id: string }>
+    return rows.map(row => ({
+      finalizationId: row.finalization_id,
+      draftId: row.draft_id,
+      knowledgeDocumentId: row.knowledge_document_id,
+    }))
+  }
+
+  /** 被取代的定稿知识文档已从知识库移除后，清掉登记，避免重复删除或残留悬挂引用。 */
+  static clearKnowledgeDocument(finalizationId: string): void {
+    const normalizedId = finalizationId.trim()
+    if (!normalizedId) throw new Error('定稿身份不能为空')
+    const db = requireDatabase()
+    const existing = db.prepare(`
+      SELECT finalization_id FROM finalization_outbox WHERE finalization_id = ?
+    `).get(normalizedId) as { finalization_id: string } | undefined
+    if (!existing) throw new Error(`定稿提交不存在：${normalizedId}`)
+    readPortableRuntimeFreeze(getCurrentProjectPath()).assertMutable('finalization_outbox', normalizedId)
+    const result = db.prepare(`
+      UPDATE finalization_outbox
+      SET knowledge_document_id = '', updated_at = datetime('now')
+      WHERE finalization_id = ? AND knowledge_document_id != ''
+    `).run(normalizedId)
+    if (result.changes !== 1) throw new Error(`定稿提交未登记知识文档：${normalizedId}`)
+  }
+
   static getByDraftId(draftId: number): FinalizationRecord | null {
     const db = requireDatabase()
     const row = db.prepare(`

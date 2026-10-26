@@ -292,3 +292,72 @@ describe('FinalizationRepository transaction seam', () => {
       .toThrow('第 1 章定稿正文为空')
   })
 })
+describe('FinalizationRepository superseded knowledge documents', () => {
+  function seedSecondFinal(params: { id: number; chapterNumber: number; version: number; contentId: number; content: string; finalizationId: string }): void {
+    // 取代既有定稿的 commit 会推进连续性投影水位；最小化建出该表。
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS continuity_projection_meta (
+        id TEXT PRIMARY KEY,
+        generation INTEGER NOT NULL DEFAULT 0,
+        stale_from_chapter INTEGER
+      )
+    `)
+    db.prepare('INSERT INTO contents (id, body) VALUES (?, ?)').run(params.contentId, params.content)
+    db.prepare(`
+      INSERT INTO drafts (id, chapter_number, version, status, content_id, word_count)
+      VALUES (?, ?, ?, 'draft', ?, 10)
+    `).run(params.id, params.chapterNumber, params.version, params.contentId)
+    FinalizationRepository.commit({
+      finalizationId: params.finalizationId,
+      draftId: params.id,
+      chapterNumber: params.chapterNumber,
+      chapterTitle: `第${params.chapterNumber}章`,
+      content: params.content,
+      contentHash: hash(params.content),
+      contentRevision: 1,
+      targetFileName: `第${params.chapterNumber}章.txt`,
+    })
+  }
+
+  it('lists only other finalized drafts of the same chapter with linked knowledge documents', () => {
+    commitSnapshot()
+    seedSecondFinal({ id: 18, chapterNumber: 1, version: 2, contentId: 12, content: '第一章第二版', finalizationId: 'finalization-2' })
+    seedSecondFinal({ id: 19, chapterNumber: 2, version: 1, contentId: 13, content: '第二章定稿', finalizationId: 'finalization-3' })
+    FinalizationRepository.linkKnowledgeDocument(17, 'doc-v1')
+    FinalizationRepository.linkKnowledgeDocument(18, 'doc-v2')
+    FinalizationRepository.linkKnowledgeDocument(19, 'doc-ch2')
+
+    expect(FinalizationRepository.listSupersededKnowledgeDocuments(1, 18)).toEqual([
+      { finalizationId: 'finalization-1', draftId: 17, knowledgeDocumentId: 'doc-v1' },
+    ])
+    expect(FinalizationRepository.listSupersededKnowledgeDocuments(1, 17)).toEqual([
+      { finalizationId: 'finalization-2', draftId: 18, knowledgeDocumentId: 'doc-v2' },
+    ])
+    expect(FinalizationRepository.listSupersededKnowledgeDocuments(2, 19)).toEqual([])
+  })
+
+  it('clears the superseded knowledge document registration exactly once', () => {
+    commitSnapshot()
+    FinalizationRepository.linkKnowledgeDocument(17, 'doc-v1')
+    expect(FinalizationRepository.listSupersededKnowledgeDocuments(1, 18)).toHaveLength(1)
+
+    FinalizationRepository.clearKnowledgeDocument('finalization-1')
+    expect(db.prepare('SELECT knowledge_document_id FROM finalization_outbox WHERE finalization_id=\'finalization-1\'').get())
+      .toEqual({ knowledge_document_id: '' })
+    expect(FinalizationRepository.listSupersededKnowledgeDocuments(1, 18)).toEqual([])
+
+    expect(() => FinalizationRepository.clearKnowledgeDocument('finalization-1'))
+      .toThrow('定稿提交未登记知识文档')
+    expect(() => FinalizationRepository.clearKnowledgeDocument('missing-finalization'))
+      .toThrow('定稿提交不存在')
+  })
+
+  it('does not clear a frozen imported outbox registration', () => {
+    commitSnapshot()
+    FinalizationRepository.linkKnowledgeDocument(17, 'doc-v1')
+    const root = freezeFinalization('finalization-1')
+    vi.mocked(getCurrentProjectPath).mockReturnValue(root)
+    expect(() => FinalizationRepository.clearKnowledgeDocument('finalization-1')).toThrow('PORTABLE_RUNTIME_FROZEN')
+  })
+})
+

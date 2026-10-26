@@ -206,6 +206,8 @@ function installRealRepositoryIpc(): void {
             return null
           case 'kb:import-text':
             return { success: true, chunkCount: 1, docId: 'doc-1' }
+          case 'db:finalization-superseded-knowledge':
+            return { success: true, documents: [] }
           case 'db:finalization-link-knowledge-document':
             return { success: true }
           case 'db:continuity-save-finalized':

@@ -46,6 +46,7 @@ import type { WritingLanguage } from '../../../shared/writing-language'
 import type { FinalizedContinuityProjection } from '../../../shared/finalized-continuity'
 import type { NarrativeThreadView } from '../../../shared/narrative-thread'
 import { promptLanguageText } from '../../prompt-language'
+import { buildChapterRewriteBlock } from '../../../shared/chapter-rewrite-contract'
 import { countDraftUnits, draftTargetUnitRange } from '../../../shared/draft-units'
 import type { RecoveryChapterSource } from '../../../shared/recovery-candidate'
 import { CHARACTER_STATE_TEXT_FIELDS } from '../../../shared/character-roster'
@@ -829,9 +830,22 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       ))
     }
     // 仅历史恢复沿用已记录的对账块；新 run 直接使用作者材料与定稿事实。
+    // 「生成新版本」：本章权威定稿全文 + 作者修改想法注入 Prompt 顶部（哈希随之覆盖，主进程校验不受影响）。
+    const rewriteBlock = this.chapterInfo.rewriteBase
+      ? buildChapterRewriteBlock({
+          language: writingLanguage,
+          chapterNumber: this.chapterInfo.chapterNumber,
+          base: this.chapterInfo.rewriteBase,
+          guidance: this.chapterInfo.rewriteGuidance,
+        })
+      : ''
+    if (rewriteBlock) callbacks.log(uiText(
+      `  重写基准：本章定稿 v${this.chapterInfo.rewriteBase!.version}（${countDraftUnits(this.chapterInfo.rewriteBase!.content)} 字）${this.chapterInfo.rewriteGuidance?.trim() ? '，含作者修改想法' : ''}`,
+      `  Rewrite base: finalized v${this.chapterInfo.rewriteBase!.version} (${countDraftUnits(this.chapterInfo.rewriteBase!.content)} units)${this.chapterInfo.rewriteGuidance?.trim() ? ' with author revision notes' : ''}`,
+    ))
     const chapterExecutionContract = chapterExecutionContractText(writingLanguage, writerChapterInfo)
     const systemRole = `${promptBuilder.getSystemRole()}\n\n${chapterExecutionContract.rules}`
-    const composeInitialPrompt = (reconciliationBlock: string) => [chapterMaterials.text, promptBuilder.build(),
+    const composeInitialPrompt = (reconciliationBlock: string) => [rewriteBlock, chapterMaterials.text, promptBuilder.build(),
       reconciliationBlock, chapterExecutionContract.authorItems, chapterLengthContract]
       .filter(Boolean)
       .join('\n\n')
