@@ -1,0 +1,5 @@
+const Database = require('F:/aiNovelWriter/repo/node_modules/better-sqlite3')
+const db = new Database('F:/yuanqi/源起/.ai-novel/project.db', { readonly: true })
+const rows = db.prepare('SELECT id, model_name, purpose, success, error_message, duration_ms, total_tokens, created_at FROM llm_calls ORDER BY rowid DESC LIMIT 12').all()
+for (const r of rows) console.log(JSON.stringify(r))
+db.close()

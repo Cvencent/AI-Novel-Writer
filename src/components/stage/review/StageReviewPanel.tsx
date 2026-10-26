@@ -242,7 +242,9 @@ export default function StageReviewPanel({
         </p>
       )}
       {findings.length === 0 && !busy
-        ? <p className="arch-arc-review-empty">{text('还没有检查结果。选好范围后点「开始检查」。', 'No review results yet. Pick a range and run the review.')}</p>
+        ? run
+          ? <p className="arch-arc-review-empty">{text('检查完成：这次没有提出任何修改建议。', 'Review finished: no suggestions this time.')}</p>
+          : <p className="arch-arc-review-empty">{text('还没有检查结果。选好范围后点「开始检查」。', 'No review results yet. Pick a range and run the review.')}</p>
         : openFindings.length === 0 && !busy
           ? <p className="arch-arc-review-empty">{text('这次检查的建议都处理完了。', 'Every suggestion from this review has been handled.')}</p>
           : (
@@ -273,6 +275,7 @@ export default function StageReviewPanel({
     </div>
   )
 }
+
 
 
 

@@ -19,6 +19,24 @@ export const OUTLINE_REVIEW_CATEGORIES = [
 ] as const
 export type OutlineReviewCategory = typeof OUTLINE_REVIEW_CATEGORIES[number]
 
+/** 各类别的中文名；模型偶尔会用中文回类别，这里做一次别名解析。 */
+export const STAGE_REVIEW_CATEGORY_LABELS: Record<string, readonly [string, string]> = {
+  plot_logic: ['情节逻辑', 'Plot logic'],
+  arc_consistency: ['粗纲方向一致性', 'Arc consistency'],
+  core_outline_consistency: ['核心大纲一致性', 'Core-outline consistency'],
+  worldbuilding_consistency: ['世界观一致性', 'Worldbuilding consistency'],
+  character_consistency: ['人物一致性', 'Character consistency'],
+  foreshadowing_and_cost: ['伏笔与代价', 'Foreshadowing & cost'],
+  pacing: ['节奏', 'Pacing'],
+  prose_quality: ['写法', 'Prose quality'],
+  duplication: ['前后重复', 'Duplication'],
+  foreshadowing: ['伏笔', 'Foreshadowing'],
+  field_completeness: ['字段完整', 'Field completeness'],
+  outline_consistency: ['与细纲一致', 'Outline consistency'],
+  cost_and_foreshadowing_continuity: ['代价与伏笔连贯', 'Cost & foreshadowing continuity'],
+  hook_repetition: ['钩子雷同', 'Hook repetition'],
+}
+
 export const BLUEPRINT_REVIEW_CATEGORIES = [
   'field_completeness',
   'outline_consistency',
@@ -169,8 +187,16 @@ export function buildBlueprintReviewPrompt(input: {
   return [header, rules.join(NL), facts, body].filter(Boolean).join(NL + NL)
 }
 
-function allowed(value: unknown, list: readonly string[]): value is string {
-  return typeof value === 'string' && list.includes(value)
+/** 类别归一：直接命中，或者用中文名反查（模型有时用中文回类别）。 */
+export function normalizeStageReviewCategory(value: unknown, categories: readonly string[]): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (categories.includes(trimmed)) return trimmed
+  for (const key of categories) {
+    const labels = STAGE_REVIEW_CATEGORY_LABELS[key]
+    if (labels && labels[0] === trimmed) return key
+  }
+  return null
 }
 
 function normalizeSeverity(value: unknown): string {
@@ -184,31 +210,48 @@ import type { StageReviewFinding } from './stage-review-types'
  * 与粗纲检查同一套规则，保证三个环节的卡片行为一致。
  * targetIndex 的语义由调用方决定（细纲 / 蓝图都是章号）。
  */
-export function normalizeStageReviewFindings(
+export interface StageReviewNormalizationReport {
+  findings: StageReviewFinding[]
+  /** 模型返回的条目总数（解析出 JSON 数组的长度）。 */
+  rawCount: number
+  dropped: { unmatchedChapter: number; unknownCategory: number; emptyProblem: number }
+}
+
+/** 带丢弃原因的归一化：命令层用它把「为什么 0 条」写进运行日志，而不是让结果神秘消失。 */
+export function normalizeStageReviewFindingsDetailed(
   raw: unknown,
   selected: readonly number[],
   categories: readonly string[],
-): StageReviewFinding[] {
+): StageReviewNormalizationReport {
   const list = Array.isArray(raw) ? raw : []
   const allowedTargets = new Set(selected)
-  const out: StageReviewFinding[] = []
+  const report: StageReviewNormalizationReport = { findings: [], rawCount: list.length, dropped: { unmatchedChapter: 0, unknownCategory: 0, emptyProblem: 0 } }
   for (const item of list) {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+    if (!item || typeof item !== 'object' || Array.isArray(item)) { report.dropped.emptyProblem += 1; continue }
     const record = item as Record<string, unknown>
     const targetIndex = Number(record.chapter ?? record.targetIndex ?? record.target_index)
-    if (!Number.isSafeInteger(targetIndex) || !allowedTargets.has(targetIndex)) continue
-    if (!allowed(record.category, categories)) continue
+    if (!Number.isSafeInteger(targetIndex) || !allowedTargets.has(targetIndex)) { report.dropped.unmatchedChapter += 1; continue }
+    const category = normalizeStageReviewCategory(record.category, categories)
+    if (!category) { report.dropped.unknownCategory += 1; continue }
     const problemText = text(record.problemText ?? record.problem_text)
-    if (!problemText) continue
-    out.push({
+    if (!problemText) { report.dropped.emptyProblem += 1; continue }
+    report.findings.push({
       targetIndex,
-      category: record.category,
+      category,
       severity: normalizeSeverity(record.severity),
       problemText,
       expectedText: text(record.expectedText ?? record.expected_text),
     })
   }
-  return out
+  return report
+}
+
+export function normalizeStageReviewFindings(
+  raw: unknown,
+  selected: readonly number[],
+  categories: readonly string[],
+): StageReviewFinding[] {
+  return normalizeStageReviewFindingsDetailed(raw, selected, categories).findings
 }
 
 /** 蓝图检查的 expectedText 是字段补丁对象；粗纲 / 细纲是整段文本。两种都要接受。 */
@@ -223,3 +266,5 @@ export function normalizeOutlineEntryFormat(text: string): string {
   const sectionPattern = new RegExp('^#{2,6}\\s*(' + OUTLINE_SECTIONS.join('|') + ')\\s*$', 'gmu')
   return text.replace(/\r\n/gu, String.fromCharCode(10)).replace(sectionPattern, '$1：').trim()
 }
+
+

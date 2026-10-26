@@ -8,7 +8,7 @@ import { requireIpcSuccess } from '../../ipc-result'
 import { requireWorkflowProjectSession, workflowWritingLanguage } from '../workflow-project-session'
 import { hashAuthorText } from '../../../shared/source-ref'
 import {
-  normalizeStageReviewFindings,
+  normalizeStageReviewFindingsDetailed,
   buildOutlineReviewPrompt,
   OUTLINE_REVIEW_CATEGORIES,
   normalizeOutlineEntryFormat,
@@ -102,7 +102,8 @@ export class ReviewOutlineCommand extends BaseWorkflowCommand<string> {
     )
     const payload = extractReviewJson(completion.content)
     const rawFindings = payload && typeof payload === 'object' && !Array.isArray(payload) ? (payload as { findings?: unknown }).findings : payload
-    const findings = normalizeStageReviewFindings(rawFindings, selected, OUTLINE_REVIEW_CATEGORIES)
+    const report = normalizeStageReviewFindingsDetailed(rawFindings, selected, OUTLINE_REVIEW_CATEGORIES)
+    const findings = report.findings
       .map(finding => ({ ...finding, expectedText: finding.expectedText ? normalizeOutlineEntryFormat(finding.expectedText) : finding.expectedText }))
     const runId = 'outline-review:' + context.runId
     const sourceHash = await hashAuthorText(chapters.map(chapter => chapter.body).join(NL))
@@ -110,7 +111,15 @@ export class ReviewOutlineCommand extends BaseWorkflowCommand<string> {
       operationId: runId, runId, target: 'outline', selected, sourceHash, findings,
     }, expectedProjectPath)
     requireIpcSuccess(saved, 'Failed to save the outline review.')
+    if (payload === null) {
+      callbacks.log('The model reply did not contain parsable JSON, so 0 suggestions were recorded.')
+    } else if (report.rawCount > 0 && findings.length === 0) {
+      const { unmatchedChapter, unknownCategory, emptyProblem } = report.dropped
+      callbacks.log('Model returned ' + report.rawCount + ' suggestion(s) but all were dropped by normalization'
+        + ' (unmatched chapter: ' + unmatchedChapter + ', unknown category: ' + unknownCategory + ', empty problem text: ' + emptyProblem + ').')
+    }
     callbacks.log('Outline review finished with ' + findings.length + ' suggestion(s).')
     return runId
   }
 }
+

@@ -1,156 +1,45 @@
 import { describe, expect, it } from 'vitest'
 import {
-  buildOutlineReviewPrompt,
-  buildBlueprintReviewPrompt,
   normalizeStageReviewFindings,
-  normalizeOutlineEntryFormat,
+  normalizeStageReviewFindingsDetailed,
+  normalizeStageReviewCategory,
   OUTLINE_REVIEW_CATEGORIES,
-  BLUEPRINT_REVIEW_CATEGORIES,
 } from '../stage-review-contract'
-import { OUTLINE_SECTIONS } from '../plot-outline-contract'
 
-describe('outline review contract', () => {
-  it('builds a prompt that carries the whole direction stack', () => {
-    const prompt = buildOutlineReviewPrompt({
-      chapters: [{ chapter: 1, title: '入学', body: '## 第1章：入学\n场景与出场人物：……' }],
-      selected: [1],
-      coreOutline: '全书方向：零号档案',
-      premise: '前提',
-      worldbuilding: '世界观',
-      arcDirective: '【当前章所属粗纲段】',
-      language: 'zh-CN',
-    })
-    expect(prompt).toContain('全书方向：零号档案')
-    expect(prompt).toContain('前提')
-    expect(prompt).toContain('世界观')
-    expect(prompt).toContain('当前章所属粗纲段')
-    expect(prompt).toContain('入学')
-    expect(prompt).toContain('plot_logic')
-    for (const section of OUTLINE_SECTIONS) expect(prompt).toContain(section)
-  })
+const SELECTED = [3, 4]
 
-  it('asks for a complete chapter replacement, not a fragment', () => {
-    const prompt = buildOutlineReviewPrompt({
-      chapters: [{ chapter: 1, title: '入学', body: 'x' }], selected: [1],
-      coreOutline: '', premise: '', worldbuilding: '', arcDirective: '', language: 'zh-CN',
-    })
-    expect(prompt).toContain('完整替换')
-  })
-
-  it('keeps only findings inside the selected range with a known category', () => {
-    const findings = normalizeStageReviewFindings([
-      { chapter: 2, category: 'pacing', severity: 'error', problemText: '流水账。', expectedText: '## 第2章：x' },
-      { chapter: 9, category: 'pacing', severity: 'warning', problemText: '越界。', expectedText: 'y' },
-      { chapter: 1, category: 'nonsense', severity: 'warning', problemText: '未知类别。', expectedText: 'z' },
-      { chapter: 1, category: 'plot_logic', severity: 'warning', problemText: '  ', expectedText: 'z' },
-    ], [1, 2], OUTLINE_REVIEW_CATEGORIES)
-    expect(findings).toHaveLength(1)
-    expect(findings[0]!.targetIndex).toBe(2)
-    expect(findings[0]!.severity).toBe('error')
-  })
-
-  it('accepts snake_case field spellings from the model', () => {
-    const findings = normalizeStageReviewFindings([
-      { target_index: 1, category: 'pacing', severity: 'warning', problem_text: '太赶。', expected_text: '放慢。' },
-    ], [1], OUTLINE_REVIEW_CATEGORIES)
-    expect(findings).toHaveLength(1)
-    expect(findings[0]!.problemText).toBe('太赶。')
-    expect(findings[0]!.expectedText).toBe('放慢。')
+describe('normalizeStageReviewCategory', () => {
+  it('accepts key and Chinese label aliases', () => {
+    expect(normalizeStageReviewCategory('pacing', OUTLINE_REVIEW_CATEGORIES)).toBe('pacing')
+    expect(normalizeStageReviewCategory(' 节奏 ', OUTLINE_REVIEW_CATEGORIES)).toBe('pacing')
+    expect(normalizeStageReviewCategory('情节逻辑', OUTLINE_REVIEW_CATEGORIES)).toBe('plot_logic')
+    expect(normalizeStageReviewCategory('不是类别', OUTLINE_REVIEW_CATEGORIES)).toBeNull()
   })
 })
 
-describe('blueprint review contract', () => {
-  it('builds a prompt that compares blueprints against the source outline', () => {
-    const prompt = buildBlueprintReviewPrompt({
-      chapters: [{
-        chapter: 3, title: '试探', role: 'rising', purpose: '试探对手', keyEvents: '潜入',
-        characters: ['沈砚'], suspenseHook: '被发现了吗', costsAndTurns: '失去一条线索', foreshadowing: '埋下钥匙',
-      }],
-      selected: [3],
-      outlineSlices: '## 第3章：试探\n场景与出场人物：沈砚',
-      charactersArch: '沈砚：主角',
-      worldbuilding: '世界观',
-      language: 'zh-CN',
-    })
-    expect(prompt).toContain('失去一条线索')
-    expect(prompt).toContain('埋下钥匙')
-    expect(prompt).toContain('沈砚：主角')
-    expect(prompt).toContain('第3章：试探')
-    expect(prompt).toContain('field_completeness')
+describe('normalizeStageReviewFindingsDetailed', () => {
+  it('keeps valid findings and reports why others were dropped', () => {
+    const report = normalizeStageReviewFindingsDetailed([
+      { chapter: 3, category: 'pacing', severity: 'warning', problemText: '节奏太赶。', expectedText: '改写。' },
+      { chapter: 9, category: 'pacing', problemText: '章号不在所选范围。' },
+      { chapter: 4, category: '节奏', problemText: '中文别名应被接受。', expectedText: '改写。' },
+      { chapter: 4, category: '不是类别', problemText: '类别未知。' },
+      { chapter: 4, category: 'pacing', problemText: '   ' },
+    ], SELECTED, OUTLINE_REVIEW_CATEGORIES)
+    expect(report.findings.map(f => f.targetIndex)).toEqual([3, 4])
+    expect(report.findings[1]!.category).toBe('pacing')
+    expect(report.rawCount).toBe(5)
+    expect(report.dropped).toEqual({ unmatchedChapter: 1, unknownCategory: 1, emptyProblem: 1 })
   })
 
-  it('lists the blueprint categories for normalization', () => {
-    expect(BLUEPRINT_REVIEW_CATEGORIES).toContain('outline_consistency')
-    expect(BLUEPRINT_REVIEW_CATEGORIES).toContain('cost_and_foreshadowing_continuity')
-    expect(BLUEPRINT_REVIEW_CATEGORIES).toContain('hook_repetition')
-  })
-})
-
-describe('outline entry formatting', () => {
-  it('demotes model-written section headings to the flat canonical form', () => {
-    const raw = [
-      '## 第1章：入学',
-      '### 场景与出场人物',
-      '林澈在校门口。',
-      '### 本章目标',
-      '进入校园。',
-      '### 阻力与升级',
-      '门禁阻拦。',
-      '### 转折与代价',
-      '暴露身份。',
-      '### 结尾钩子',
-      '有人认出他。',
-      '### 伏笔',
-      '零号档案。',
-    ].join(String.fromCharCode(10))
-    const text = normalizeOutlineEntryFormat(raw)
-    expect(text).toContain('场景与出场人物：')
-    expect(text).not.toContain('###')
-    for (const section of OUTLINE_SECTIONS) expect(text).toContain(section + '：')
+  it('returns empty for non-array payloads without throwing', () => {
+    const report = normalizeStageReviewFindingsDetailed(null, SELECTED, OUTLINE_REVIEW_CATEGORIES)
+    expect(report).toEqual({ findings: [], rawCount: 0, dropped: { unmatchedChapter: 0, unknownCategory: 0, emptyProblem: 0 } })
   })
 
-  it('leaves an already-flat entry unchanged', () => {
-    const flat = '## 第1章：入学' + String.fromCharCode(10) + OUTLINE_SECTIONS.map(s => s + '：内容').join(String.fromCharCode(10))
-    expect(normalizeOutlineEntryFormat(flat)).toBe(flat)
-  })
-})
-
-describe('blueprint finding payloads', () => {
-  it('keeps a JSON-object expectedText instead of dropping it', () => {
-    const findings = normalizeStageReviewFindings([
-      { chapter: 1, category: 'character_consistency', severity: 'warning', problemText: '多了一个角色。', expectedText: { characters: '林澈' } },
-    ], [1], BLUEPRINT_REVIEW_CATEGORIES)
-    expect(findings).toHaveLength(1)
-    expect(JSON.parse(findings[0]!.expectedText)).toEqual({ characters: '林澈' })
-  })
-
-  it('still accepts a plain string expectedText', () => {
-    const findings = normalizeStageReviewFindings([
-      { chapter: 2, category: 'pacing', severity: 'warning', problemText: '太赶。', expectedText: '  放慢  ' },
-    ], [2], BLUEPRINT_REVIEW_CATEGORIES)
-    expect(findings[0]!.expectedText).toBe('放慢')
-  })
-})
-
-describe('character naming rules', () => {
-  it('asks the outline reviewer to flag role-only cast entries', () => {
-    const prompt = buildOutlineReviewPrompt({
-      chapters: [{ chapter: 1, title: '入学', body: '## 第1章：入学' }],
-      selected: [1], coreOutline: '', premise: '', worldbuilding: '', arcDirective: '', language: 'zh-CN',
-    })
-    expect(prompt).toContain('只有身份、没有姓名')
-    expect(prompt).toContain('检测教员')
-  })
-
-  it('asks the blueprint reviewer to drop role-only entries from characters', () => {
-    const prompt = buildBlueprintReviewPrompt({
-      chapters: [{
-        chapter: 1, title: '入学', role: 'setup', purpose: 'p', keyEvents: 'k',
-        characters: ['林澈', '检测教员'], suspenseHook: 'h', costsAndTurns: 'c', foreshadowing: 'f',
-      }],
-      selected: [1], outlineSlices: 'x', charactersArch: '林澈', worldbuilding: '', language: 'zh-CN',
-    })
-    expect(prompt).toContain('只有身份没有姓名')
-    expect(prompt).toContain('keyEvents')
+  it('keeps the legacy delegate returning just findings', () => {
+    expect(normalizeStageReviewFindings([
+      { chapter: 3, category: 'pacing', problemText: 'x' },
+    ], SELECTED, OUTLINE_REVIEW_CATEGORIES)).toHaveLength(1)
   })
 })

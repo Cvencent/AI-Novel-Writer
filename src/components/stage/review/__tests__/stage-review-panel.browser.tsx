@@ -167,6 +167,23 @@ describe('StageReviewPanel', () => {
     expect(button('全部接受')).toBeUndefined()
   })
 
+  it('0 条建议的已完成检查会明说，而不是显示「还没有检查结果」', async () => {
+    invoke = vi.fn(async (channel: string) => {
+      if (channel === 'db:stage-review-latest') {
+        return { runId: 'r1', target: 'outline', selected: [3], sourceHash: 'h', createdAt: '', findings: [] }
+      }
+      return null
+    })
+    Object.defineProperty(window, 'aiNovelAPI', {
+      configurable: true,
+      writable: true,
+      value: { invoke, on: vi.fn(() => () => {}), once: vi.fn(), send: vi.fn(), setZoomLevel: vi.fn(), setZoomFactor: vi.fn(), getZoomLevel: vi.fn() },
+    })
+    await render()
+    await vi.waitFor(() => expect(host!.textContent).toContain('检查完成：这次没有提出任何修改建议。'))
+    expect(host!.textContent).not.toContain('还没有检查结果')
+    expect(button('开始检查')).toBeTruthy()
+  })
   it('清掉记录后回到空状态，并把删除请求发到后端', async () => {
     await render()
     await vi.waitFor(() => expect(host!.textContent).toContain('第 3 章是流水账。'))
@@ -215,6 +232,7 @@ describe('StageReviewPanel', () => {
     await vi.waitFor(() => expect(host!.textContent).not.toContain('第 3 章是流水账。'))
   })
 })
+
 
 
 
