@@ -164,6 +164,15 @@ describe('打开作品的落点不等审稿与修稿记录：落到哪个阶段�
     expect(open({ 12: reviewed, 13: reviewed, 14: merge })).toEqual(landed)
   })
 
+  it('蓝图没铺满时是进度环，铺满才打勾（与架构/正文同口径）', () => {
+    const stageOf = (blueprints: WorkFacts['blueprints']) =>
+      deriveStages({ ...work, blueprints }, deriveChapters({ ...work, blueprints })).find(stage => stage.stage === 'blueprint')!
+    expect(stageOf([])).toMatchObject({ planned: 0, total: 6, progress: { state: 'todo' } })
+    expect(stageOf([1, 2].map(chapterNumber => ({ chapterNumber, title: `第${chapterNumber}章` }))))
+      .toMatchObject({ planned: 2, total: 6, progress: { state: 'active', ratio: 2 / 6 } })
+    expect(stageOf([1, 2, 3, 4, 5, 6].map(chapterNumber => ({ chapterNumber, title: `第${chapterNumber}章` }))))
+      .toMatchObject({ planned: 6, total: 6, progress: { state: 'done' } })
+  })
   it('流程脊把粗纲算作架构的一节：五节全确认才是 5 / 5', () => {
     const all = deriveStages(work, deriveChapters(work))
     const arch = all.find(stage => stage.stage === 'architecture')!
@@ -187,3 +196,4 @@ describe('打开作品的落点不等审稿与修稿记录：落到哪个阶段�
     expect(open({ 1: [draft(15, 1, 'draft')], 2: emptyAfterFinal.map(meta => ({ ...meta, chapterNumber: 2 })) }).focus).toBe(2)
   })
 })
+

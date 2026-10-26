@@ -26,7 +26,7 @@ export type StageProgress =
 export type StageStatus =
   | { stage: 'setup'; progress: StageProgress; missing: readonly SetupField[] }
   | { stage: 'architecture'; progress: StageProgress; filled: number; total: number }
-  /** total 是设定里的规划章数；至少 1 章蓝图即完成，planned / total 只作进度说明。 */
+  /** total 是设定里的规划章数；planned / total 是蓝图进度环的比例。 */
   | { stage: 'blueprint'; progress: StageProgress; planned: number; total: number }
   | { stage: 'manuscript'; progress: StageProgress; finalized: number; total: number }
 
@@ -119,7 +119,8 @@ export function deriveStages(facts: WorkFacts, chapters: readonly ChapterRow[] =
     { stage: 'setup', missing,
       progress: missing.length === 0 ? DONE : { state: 'active', ratio: (SETUP_FIELDS.length - missing.length) / SETUP_FIELDS.length } },
     { stage: 'architecture', filled, total: ARCHITECTURE_SECTIONS.length, progress: fraction(filled, ARCHITECTURE_SECTIONS.length) },
-    { stage: 'blueprint', planned, total, progress: planned > 0 ? DONE : TODO },
+    // 没配置规划章数（total=0）时，有任何蓝图即视为完成；配置了则按比例走进度环。
+    { stage: 'blueprint', planned, total, progress: total > 0 ? fraction(planned, total) : planned > 0 ? DONE : TODO },
     { stage: 'manuscript', finalized, total,
       progress: total > 0 && finalized >= total ? DONE : started ? { state: 'active', ratio: total > 0 ? finalized / total : 0 } : TODO },
   ]
@@ -235,3 +236,5 @@ export function runProgress(run: Pick<WorkflowRun, 'steps' | 'currentStepIndex'>
   const partial = current && current.status === 'running' ? (current.progress ?? 0) / 100 : 0
   return Math.min(1, (completed + partial) / run.steps.length)
 }
+
+

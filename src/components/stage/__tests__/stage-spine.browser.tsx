@@ -68,11 +68,11 @@ describe('四个阶段的状态由项目数据派生', () => {
     expect(setup).toMatchObject({ missing: ['length'], progress: { state: 'active', ratio: 0.75 } })
   })
 
-  it('架构按已有内容的节数计进度；蓝图按 ia.md 至少 1 章即完成', () => {
+  it('架构按已有内容的节数计进度；蓝图按规划比例计进度，铺满才完成', () => {
     const stages = deriveStages(facts({ architecture: { premise: true, characters: true }, blueprints: blueprints(3) }))
     expect(stages[0].progress).toEqual({ state: 'done' })
     expect(stages[1]).toMatchObject({ filled: 2, total: 5, progress: { state: 'active', ratio: 0.4 } })
-    expect(stages[2]).toMatchObject({ planned: 3, total: 12, progress: { state: 'done' } })
+    expect(stages[2]).toMatchObject({ planned: 3, total: 12, progress: { state: 'active', ratio: 0.25 } })
     expect(stages[3].progress).toEqual({ state: 'todo' })
     // 用户决定 B（#394 §6）：已有蓝图时架构没写完不拉回架构，落点跳到下一个未完成的阶段。
     expect(landingStage(stages)).toBe('manuscript')
@@ -88,7 +88,7 @@ describe('四个阶段的状态由项目数据派生', () => {
     const partial = facts({ config: { ...READY_CONFIG, totalChapters: 100 }, blueprints: blueprints(20),
       drafts: { 1: [draft(1, 1, 'finalized')], 5: [draft(5, 1, 'draft')] } })
     const stages = deriveStages(partial)
-    expect(stages[2]).toMatchObject({ planned: 20, total: 100, progress: { state: 'done' } })
+    expect(stages[2]).toMatchObject({ planned: 20, total: 100, progress: { state: 'active', ratio: 0.2 } })
     expect(stages[3]).toMatchObject({ finalized: 1, total: 100, progress: { state: 'active', ratio: 0.01 } })
     expect(landingStage(stages)).toBe('manuscript')
     expect(focusChapter(deriveChapters(partial))?.number).toBe(5)
@@ -183,7 +183,7 @@ describe('流程脊', () => {
     expect(chapters.map(row => row.getAttribute('aria-current'))).toEqual([null, null, 'page', ...Array(9).fill(null)])
   })
 
-  it('蓝图已完成但没规划完时，说明写已规划与规划总章数', async () => {
+  it('蓝图没规划完时，说明写已规划与规划总章数', async () => {
     host = document.createElement('div')
     host.className = 'paper-ink stage-shell'
     document.body.append(host)
@@ -194,7 +194,7 @@ describe('流程脊', () => {
         onStage={() => undefined} onChapter={() => undefined} onResource={() => undefined} onSettings={() => undefined} />,
     ))
     const blueprint = host.querySelector('[data-stage="blueprint"]')!
-    expect([blueprint.getAttribute('data-state'), blueprint.querySelector('.stage-row-meta')?.textContent]).toEqual(['done', '20 / 100 章'])
+    expect([blueprint.getAttribute('data-state'), blueprint.querySelector('.stage-row-meta')?.textContent]).toEqual(['active', '20 / 100 章'])
   })
 
   it('没设规划章数时正文说明写已定稿章数，不写 0 / 0；没有章名的章用「第 N 章」', async () => {
@@ -247,7 +247,7 @@ describe('流程脊', () => {
     expect(rect.top >= box.top - 1 && rect.bottom <= box.bottom + 1).toBe(true)
   })
 
-  it('英文界面里只规划了一章时写 1 chapter，不写 1 chapters', async () => {
+  it('英文界面里只有一章蓝图时写 1 chapter，不写 1 chapters', async () => {
     useLocaleStore.setState({ locale: 'en-US' })
     try {
       host = document.createElement('div')
@@ -277,3 +277,5 @@ describe('流程脊', () => {
     expect(spy.mock.calls).toEqual([['stage', 'blueprint'], ['chapter', 4], ['resource', 'knowledge'], ['settings']])
   })
 })
+
+
