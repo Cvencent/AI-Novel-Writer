@@ -166,9 +166,16 @@ export class GenerateArcOutlineCommand extends BaseWorkflowCommand<string> {
 
     callbacks.log(text(`正在生成第 ${from} 章起的粗纲…`, `Generating the arc segment starting at chapter ${from}…`))
 
-    const priorArcSummary = arcs.slice(-2).map(arc => promptLanguageText(writingLanguage,
-      `第 ${arc.fromChapter}–${arc.toChapter} 章（${arc.beat}）：${arc.title}`,
-      `Chapters ${arc.fromChapter}-${arc.toChapter} (${arc.beat}): ${arc.title}`)).join('\n')
+    // 全书至今脉络：所有已生成段的标题行（轻量索引）。
+    const arcIndex = arcs.length > 0
+      ? promptLanguageText(writingLanguage,
+          `【粗纲至今（已有段落索引）】` + nl + arcs.map(arc => `第 ${arc.fromChapter}–${arc.toChapter} 章（${arc.beat}）：${arc.title}`).join(nl),
+          `[Arc outline so far]` + nl + arcs.map(arc => `Ch. ${arc.fromChapter}-${arc.toChapter} (${arc.beat}): ${arc.title}`).join(nl))
+      : ''
+    // 最近 3 段给完整 summary：这是「前面发生了什么」的主体。
+    const priorArcSummary = arcs.slice(-3).map(arc => promptLanguageText(writingLanguage,
+      `第 ${arc.fromChapter}–${arc.toChapter} 章（${arc.beat}）：${arc.title}` + nl + (arc.summary || '').slice(0, 800),
+      `Ch. ${arc.fromChapter}-${arc.toChapter} (${arc.beat}): ${arc.title}` + nl + (arc.summary || '').slice(0, 800))).join(nl + nl)
 
     // 阵容概览：只给身份、定位与关系概况，不给人名——支线编织的依托。
     const castOverview = roster?.entries?.length
@@ -191,9 +198,10 @@ export class GenerateArcOutlineCommand extends BaseWorkflowCommand<string> {
       promptLanguageText(writingLanguage,
         `【核心大纲（全书方向，必须遵守）】` + nl + (this.snapshot.novelConfig.coreOutline || `（未填写）`),
         `[Core outline (book-level direction, must follow)]` + nl + (this.snapshot.novelConfig.coreOutline || `(not provided)`)),
+      arcIndex ? arcIndex : '',
       priorArcSummary ? promptLanguageText(writingLanguage,
-        `【已确认的前序段（不要重复其内容）】\n${priorArcSummary}`,
-        `[Confirmed preceding segments (do not repeat)]\n${priorArcSummary}`) : '',
+        `【最近 3 段的完整内容（衔接它们写，不要重复其内容）】\n${priorArcSummary}`,
+        `[Full content of the last 3 segments (continue from them; do not repeat)]\n${priorArcSummary}`) : '',
       castOverview ? castOverview : '',
       arcInstruction(writingLanguage, from, totalChapters, recentBeats),
     ].filter(Boolean).join('\n\n')
@@ -623,6 +631,7 @@ function extractReviewJson(raw: string): unknown {
   if (start >= 0 && end > start) { try { return JSON.parse(text.slice(start, end + 1)) } catch { void 0 } }
   return null
 }
+
 
 
 
