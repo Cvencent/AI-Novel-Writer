@@ -1789,8 +1789,25 @@ ${params.candidate.text}`,
     projectSession: ProjectSessionContext,
     writingLanguage: WritingLanguage,
     relevantCharacterNames: readonly string[],
+    chapterNumber?: number,
   ): Promise<string> {
     try {
+    // 最近定稿后处理推进的派生状态：写第 N 章时看「第 N 章之前最后一次定稿」的状态。
+    const derivedStates = new Map<string, Map<string, { value: string; chapter: number }>>()
+    if (chapterNumber !== undefined && chapterNumber > 1) {
+      try {
+        const projections = await ipc.invokeWithProjectSession(projectSession, 'db:continuity-list-before', chapterNumber, projectPath) as Array<{ chapterNumber: number; characterStateCandidates?: ReadonlyArray<{ characterName: string; field: string; value: string; reason?: string }>; sourceStatus?: string }>
+        for (const projection of [...(projections ?? [])].sort((a, b) => b.chapterNumber - a.chapterNumber)) {
+          if (projection.sourceStatus === 'stale') continue
+          for (const candidate of projection.characterStateCandidates ?? []) {
+            if (candidate.reason === 'author-protected' || candidate.reason === 'legacy-protected') continue
+            const perCharacter = derivedStates.get(candidate.characterName) ?? new Map<string, { value: string; chapter: number }>()
+            if (!perCharacter.has(candidate.field)) perCharacter.set(candidate.field, { value: candidate.value, chapter: projection.chapterNumber })
+            derivedStates.set(candidate.characterName, perCharacter)
+          }
+        }
+      } catch { /* 连续性投影不可用时跳过派生状态，角色基础资料照常注入。 */ }
+    }
       const roster = await ipc.invokeWithProjectSession(projectSession, 'db:character-roster-read', projectPath)
       if (roster.status !== 'ready' && roster.status !== 'empty') {
         return promptLanguageText(
@@ -1834,12 +1851,20 @@ ${params.candidate.text}`,
             `relationship（legacy 来源未知）: ${legacyRelationshipNotes}`,
             `relationship (legacy provenance unknown): ${legacyRelationshipNotes}`,
           ))
-        }
-        for (const field of CHARACTER_STATE_TEXT_FIELDS) {
-          const provenance = card.currentState?.provenance?.[field]
-          const value = card.currentState?.[field]?.trim()
-          if (provenance?.kind === 'author' && value) {
-            facts.push(`${field}@chapter${provenance.chapterNumber}: ${value}`)
+          for (const field of CHARACTER_STATE_TEXT_FIELDS) {
+            const provenance = card.currentState?.provenance?.[field]
+            const value = card.currentState?.[field]?.trim()
+            if (provenance?.kind === 'author' && value) {
+              facts.push(`${field}@chapter${provenance.chapterNumber}: ${value}`)
+            }
+          }
+          // 最近定稿后处理推进的派生状态：作者手填之外，把最新事实也交给模型。
+          const derived = derivedStates.get(card.name)
+          if (derived) {
+            for (const field of CHARACTER_STATE_TEXT_FIELDS) {
+              const item = derived.get(field)
+              if (item?.value?.trim()) facts.push(`${field}@chapter${item.chapter}(derived): ${item.value.trim()}`)
+            }
           }
         }
         profiles.push(`${card.name} (${card.role || 'unknown'})${facts.length ? ` | ${facts.join(' | ')}` : ''}`)
@@ -2056,3 +2081,5 @@ ${params.candidate.text}`,
     }
   }
 }
+
+
