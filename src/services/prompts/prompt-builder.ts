@@ -310,6 +310,12 @@ export class ArchitecturePromptBuilder extends BasePromptBuilder {
   }
 
   /** 逐步指导（每步可选的补充说明） */
+  /** 世界观重生成时注入的已确立事实（定稿正文/粗纲/细纲/蓝图）；纯新项目为空。 */
+  withEstablishedContinuity(facts: string) {
+    this.variables.established_continuity = facts;
+    return this;
+  }
+
   withStepGuidance(guidance: string) {
     this.variables.step_guidance = guidance;
     return this;
@@ -445,3 +451,4 @@ export class ImportPromptBuilder extends BasePromptBuilder {
     return this;
   }
 }
+

@@ -492,6 +492,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
       protagonist_profile: '主角人设',
       global_guidance: '全局写作要求',
       step_guidance: '作者对本步骤的补充指导（可选）',
+      established_continuity: '已确立事实（重生成时提供：定稿正文、粗纲、细纲、蓝图与现有世界观；可选）',
     },
     requiredContextVariables: [
       'premise',
@@ -530,7 +531,11 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 1. 所有设定必须围绕「{{genre}}」题材的核心看点，不要写无法融入正文的废话设定。
 2. 金手指与世界规则的交互必须具体、可操作，避免泛泛而谈。
 3. 严格遵循故事前提、主角档案中的作者明确设定和全局写作要求；无需机械复述与世界无关的角色事实，但不得制造相反设定。
-4. 仅返回世界观设定文本，不要生成任何无关代码或解释。
+4. 提供「已确立事实」时进入修订模式：定稿正文里已经发生且生效的规则与事件不可推翻，世界观与其冲突时以正文为准修订；只更新过时、缺失或矛盾的部分，并在保留原结构的前提下输出完整修订版。
+5. 仅返回世界观设定文本，不要生成任何无关代码或解释。
+
+【已确立事实（重生成时提供，如有）】
+{{established_continuity}}
 
 `,
     systemSuffix: `★【作者对本步骤的额外指导（如有，最高优先级）】★：
@@ -1557,3 +1562,6 @@ export function getBuiltinPromptTemplate(
   }
   return translated ? { ...builtin, ...translated } : builtin
 }
+
+
+

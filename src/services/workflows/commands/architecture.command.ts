@@ -43,6 +43,11 @@ import type { NovelConfig, ProjectSessionContext } from '../../../shared/ipc-cha
 import type { ProjectCoreSynopsisExpected } from '../../../../electron/repositories/project-core-repository'
 import type { WritingLanguage } from '../../../shared/writing-language'
 import { createStructuredBatchExecutor, type StructuredBatchContract } from '../structured-batch-executor'
+import {
+  buildEstablishedContinuityContext,
+  establishedContinuityDirective,
+  DEFAULT_CONTINUITY_BUDGET,
+} from './worldbuilding-continuity'
 import { localizeNovelConfigFacts } from '../../../shared/novel-config-localization'
 import {
   GENERATED_GLOBAL_GUIDANCE_MAX_CHARS,
@@ -1372,6 +1377,53 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
       await this.persistWorldBuildingCandidate(projectSession, expectedProjectPath, context, '', factsFingerprint, expectedDbHash, stepGuidance)
     }
 
+    // 世界观重生成的「已确立事实」：已定稿正文（最高权威）、粗纲、已写细纲、蓝图要点与现有世界观。
+    // 纯新项目（没有这些材料）时不注入，提示词与旧版完全一致。
+    let establishedFacts: string | null = null
+    if (!resumeRequested) {
+      try {
+        callbacks.log(text('正在收集已定稿正文、粗纲、细纲与蓝图作为修订参考...', 'Collecting finalized prose, arc outline, chapter outline, and blueprints as revision references...'))
+        const [draftsAll, arcsAll, blueprintsAll] = await Promise.all([
+          ipc.invokeWithProjectSession(projectSession, 'db:draft-list-all', expectedProjectPath).catch(() => []),
+          ipc.invokeWithProjectSession(projectSession, 'db:arc-outline-list', expectedProjectPath).catch(() => []),
+          ipc.invokeWithProjectSession(projectSession, 'db:blueprint-get-all', expectedProjectPath).catch(() => []),
+        ])
+        const finalizedMetas = (Array.isArray(draftsAll) ? draftsAll : [] as Array<{ id: number; chapterNumber: number; chapterTitle?: string; status: string }>)
+          .filter(draft => draft.status === 'finalized')
+          .sort((a, b) => a.chapterNumber - b.chapterNumber)
+        const finalizedChapters: Array<{ chapterNumber: number; title?: string; content: string }> = []
+        for (const meta of finalizedMetas) {
+          const full = await ipc.invokeWithProjectSession(projectSession, 'db:draft-get-full', meta.id, expectedProjectPath).catch(() => null)
+          if (!full || typeof full.content !== 'string') continue
+          finalizedChapters.push({ chapterNumber: meta.chapterNumber, title: meta.chapterTitle, content: full.content })
+          this.assertNotCancelled(context)
+        }
+        establishedFacts = buildEstablishedContinuityContext({
+          finalizedChapters,
+          arcs: (Array.isArray(arcsAll) ? arcsAll : []) as never,
+          synopsis: core?.synopsis || '',
+          blueprints: (Array.isArray(blueprintsAll) ? blueprintsAll : []) as never,
+          currentWorldbuilding: core?.worldbuilding || '',
+        }, writingLanguage, DEFAULT_CONTINUITY_BUDGET)
+        callbacks.log(text(
+          establishedFacts
+            ? `已收集修订参考：${finalizedChapters.length} 章定稿正文、${(Array.isArray(arcsAll) ? arcsAll : []).length} 段粗纲、${(Array.isArray(blueprintsAll) ? blueprintsAll : []).length} 章蓝图。`
+            : '还没有已确立的事实（无定稿正文、粗纲、细纲或蓝图），按全新世界观生成。',
+          establishedFacts
+            ? `Collected revision references: ${finalizedChapters.length} finalized chapters, ${(Array.isArray(arcsAll) ? arcsAll : []).length} arc segments, ${(Array.isArray(blueprintsAll) ? blueprintsAll : []).length} blueprints.`
+            : 'No established facts yet (no finalized prose, arcs, outline, or blueprints); generating from scratch.',
+        ))
+      } catch (error) {
+        if (context.cancelled) throw error
+        // 参考材料收集失败不阻断生成：退回旧行为（不注入），日志说明。
+        callbacks.log(text(
+          `收集修订参考失败，按全新世界观生成：${String(error)}`,
+          `Failed to collect revision references; generating from scratch: ${String(error)}`,
+        ))
+        establishedFacts = null
+      }
+    }
+
     const promptBuilder = new ArchitecturePromptBuilder(template, writingLanguage)
       .withCoreSeed(premise_result)
       .withGenre(modelFacts.genre)
@@ -1380,6 +1432,7 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
       .withProtagonistProfile(config.protagonistProfile || missingValue)
       .withGlobalGuidance(config.globalGuidance || missingValue)
       .withStepGuidance(stepGuidance)
+    if (establishedFacts) promptBuilder.withEstablishedContinuity(establishedFacts + '\n\n' + establishedContinuityDirective(true, writingLanguage))
     const taskPrompt = promptBuilder.build()
     const systemPrompt = promptBuilder.getSystemRole()
     const llmOptions = {
@@ -2659,3 +2712,9 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     )
   }
 }
+
+
+
+
+
+
