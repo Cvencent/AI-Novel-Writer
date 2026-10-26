@@ -31,7 +31,9 @@ function arcInstruction(writingLanguage: 'zh-CN' | 'en-US', fromChapter: number,
 1. 每段跨度必须在 ${ARC_MIN_CHAPTERS}–${ARC_MAX_CHAPTERS} 章之间。具体跨度由你根据该段戏剧命题的大小自行判断：命题大就切长段，命题小就切短段；如果剩余章节不足上限，可以生成到全书末章。
 2. 正文**绝对不能出现任何具体人名**。用「主角」「对手」「师长」这类身份词，或「某位研究员」这类泛称。人名要到细纲阶段才出现。
 3. 只写：主要事件链与因果关系、冲突与代价、转折点与节奏、结果与状态变化、情绪基调走向。不要逐章流水账。
-4. beat 必须取自这个固定集合：${beats}。最近已用过的 beat 是：${recent} —— 不要连续复用同一 beat。
+4. **主线之外必须有支线**：每个段落至少编织一条非主角的支线（配角线、势力线、制度线或感情线），写清它与主线在何处交汇、对主角的处境产生什么影响。只围着主角一个人转的段落是不合格的。
+5. **必须利用世界观设定**：把设定里的势力、制度、场所、资源争夺写进冲突的成因与代价，不要让冲突悬空发生。世界观里已有的组织与规则要参与因果。
+6. beat 必须取自这个固定集合：${beats}。最近已用过的 beat 是：${recent} —— 不要连续复用同一 beat。
 
 输出格式（严格遵守，不要代码围栏、不要多余说明）：
 
@@ -46,7 +48,9 @@ Hard requirements:
 1. Span must be between ${ARC_MIN_CHAPTERS} and ${ARC_MAX_CHAPTERS} chapters. Choose the span yourself based on how large the dramatic proposition is: a large proposition deserves a long segment, a small one a short segment. If fewer chapters remain, you may run to the final chapter.
 2. The body must **never contain any proper character name**. Use role words such as "the protagonist", "the rival", "the mentor", or indefinite references. Names appear only in the chapter-outline stage.
 3. Write only: the main event chain and causality, conflict and cost, turning points and pacing, outcomes and state changes, emotional trajectory. Do not write a chapter-by-chapter ledger.
-4. beat must come from this fixed set: ${beats}. Recently used beats: ${recent} — do not repeat the same beat consecutively.
+4. **A subplot beyond the protagonist is mandatory**: every segment must weave in at least one non-protagonist thread (an ally line, a faction line, an institutional line, or a relationship line) and state where it intersects the main line and how it affects the protagonist's position. A segment that only orbits the protagonist is unacceptable.
+5. **Use the worldbuilding**: weave the factions, institutions, places, and resource conflicts from the setting into the causes and costs of the conflict; established organizations and rules must participate in the causality.
+6. beat must come from this fixed set: ${beats}. Recently used beats: ${recent} — do not repeat the same beat consecutively.
 
 Output format (strict, no code fences, no extra prose):
 
@@ -166,6 +170,20 @@ export class GenerateArcOutlineCommand extends BaseWorkflowCommand<string> {
       `第 ${arc.fromChapter}–${arc.toChapter} 章（${arc.beat}）：${arc.title}`,
       `Chapters ${arc.fromChapter}-${arc.toChapter} (${arc.beat}): ${arc.title}`)).join('\n')
 
+    // 阵容概览：只给身份、定位与关系概况，不给人名——支线编织的依托。
+    const castOverview = roster?.entries?.length
+      ? promptLanguageText(writingLanguage,
+          `【阵容概览（按身份，粗纲用身份词指代）】` + nl + roster.entries.map((entry: { role?: string; name: string; motivation?: string; background?: string }) => {
+            const roleLabel = entry.role === 'protagonist' ? '主角' : entry.role === 'antagonist' ? '对手' : entry.role === 'supporting' ? '配角' : '次要'
+            const gist = (entry.motivation || entry.background || '').slice(0, 60)
+            return `- ${roleLabel}（${gist}）`
+          }).join(nl),
+          `[Cast overview (by role; refer by role words in arcs)]` + nl + roster.entries.map((entry: { role?: string; name: string; motivation?: string; background?: string }) => {
+            const roleLabel = entry.role === 'protagonist' ? 'protagonist' : entry.role === 'antagonist' ? 'antagonist' : entry.role === 'supporting' ? 'supporting' : 'minor'
+            const gist = (entry.motivation || entry.background || '').slice(0, 60)
+            return `- ${roleLabel} (${gist})`
+          }).join(nl))
+      : ''
     const task = [
       promptLanguageText(writingLanguage,
         `【故事前提】\n${premise}\n\n【世界观】\n${worldbuilding}\n\n【题材与受众】\n${modelFacts.genre} / ${modelFacts.targetAudience}`,
@@ -176,6 +194,7 @@ export class GenerateArcOutlineCommand extends BaseWorkflowCommand<string> {
       priorArcSummary ? promptLanguageText(writingLanguage,
         `【已确认的前序段（不要重复其内容）】\n${priorArcSummary}`,
         `[Confirmed preceding segments (do not repeat)]\n${priorArcSummary}`) : '',
+      castOverview ? castOverview : '',
       arcInstruction(writingLanguage, from, totalChapters, recentBeats),
     ].filter(Boolean).join('\n\n')
 
@@ -604,3 +623,6 @@ function extractReviewJson(raw: string): unknown {
   if (start >= 0 && end > start) { try { return JSON.parse(text.slice(start, end + 1)) } catch { void 0 } }
   return null
 }
+
+
+
