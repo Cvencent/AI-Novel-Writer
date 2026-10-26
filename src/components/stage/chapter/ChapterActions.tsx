@@ -7,6 +7,7 @@ import type { HumanConfirmedReviewSnapshot } from '../../../shared/human-confirm
 import { chapterLabel } from '../../../shared/chapter-label'
 import { countDraftUnits } from '../../../shared/draft-units'
 import { isGenerationModel } from '../../../services/workflows/chapter-write-launch'
+import { createFinalizeSyncWorkflow } from '../../../services/workflows/finalize-sync-workflow'
 import { preferredFunctionModelId } from '../../../shared/function-models'
 import { useEditorStore, type EditorTab } from '../../../stores/editor-store'
 import { useLLMStore } from '../../../stores/llm-store'
@@ -17,6 +18,7 @@ import { useStageStore } from '../../../stores/navigation/stage-store'
 import { deriveChapters, type ChapterFacts } from '../../../stores/navigation/stage-progress'
 import { useDraftStore } from '../../../stores/draft-store'
 import { useProjectStore } from '../../../stores/project-store'
+import { useWorkflowStore } from '../../../stores/workflow-store'
 import { includedCount, useReviewChecklist } from '../../editor/review-checklist'
 import { reviewDimensions, type useDraftActions } from '../../editor/use-draft-actions'
 import { deleteDraftVersion } from '../../panels/sidebar/draft-deletion'
@@ -214,11 +216,29 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
   }
 
   const editable = stage === 'draft' || stage === 'reviewed' || stage === 'merge' || stage === 'revised'
+  /** 定稿正文为权威：AI 对比本章细纲与蓝图并直接写回校正（任务化，可切页）。 */
+  const alignOutlineWithFinal = () => {
+    const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!projectSession || !isProjectSessionCurrent(projectSession) || chapterNumber === undefined) return
+    const finalizedContent = tab.content ?? ''
+    useWorkflowStore.getState().addLog('info', text(`开始按定稿正文校正第 ${chapterNumber} 章细纲与蓝图`, `Aligning chapter ${chapterNumber} outline and blueprint with the finalized prose`), useLocaleStore.getState().locale)
+    void (async () => {
+      try {
+        const definition = await createFinalizeSyncWorkflow({ projectPath: projectKey, projectSession, chapterNumber, finalizedContent }, useLocaleStore.getState().locale)
+        useWorkflowStore.getState().startWorkflow(definition).catch((error: unknown) => {
+          useWorkflowStore.getState().addLog('error', text(`校正启动失败：${String(error)}`, `Failed to start the alignment: ${String(error)}`), useLocaleStore.getState().locale)
+        })
+      } catch (error) {
+        useWorkflowStore.getState().addLog('error', text(`校正启动失败：${String(error)}`, `Failed to start the alignment: ${String(error)}`), useLocaleStore.getState().locale)
+      }
+    })()
+  }
   const moreGroups: MenuGroupSpec[] = [
     { id: 'chapter', items: [
       ...(editable ? [{ id: 'refine', label: text('直接修稿…', 'Revise directly…'), disabled: busy, onSelect: () => { setRefinePrompt(''); setAsk('refine') } }] : []),
       ...(editable && stage !== 'revised' ? [{ id: 'finalize', label: text('定稿…', 'Finalize…'), disabled: !draft.canFinalize, onSelect: () => setAsk('finalize') }] : []),
       ...(review && !sheetOpen && !focus ? [{ id: 'report', label: text('审稿报告', 'Review report'), onSelect: () => setSheet(true) }] : []),
+      ...(stage === 'final' && chapterNumber !== undefined ? [{ id: 'sync-outline', label: text('按定稿正文校正细纲/蓝图', 'Align outline and blueprint with the prose'), disabled: busy, onSelect: () => { void alignOutlineWithFinal() } }] : []),
       { id: 'history', label: text('版本历史', 'Version history'), onSelect: () => navigate({ kind: 'resource', page: 'history' }) },
       { id: 'copy', label: text('复制本章正文', 'Copy chapter text'), onSelect: copyBody },
     ] },
@@ -458,4 +478,7 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
     </>
   )
 }
+
+
+
 
