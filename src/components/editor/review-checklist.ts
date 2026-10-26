@@ -8,6 +8,14 @@ import { requireIpcSuccess } from '../../services/ipc-result'
 import { availableGenerationModelId } from '../../services/workflows/chapter-write-launch'
 import type { ExpectedDraftSource } from '../../shared/ipc-channels'
 import { parseChapterGoalReview, type ChapterGoalReview } from '../../shared/chapter-goal-review'
+import { useEditorStore } from '../../stores/editor-store'
+import {
+  clearReviewChecklistDraft,
+  getReviewChecklistDraft,
+  parseReviewChecklistDraftLedger,
+  persistReviewChecklistDraft,
+  type ReviewChecklistDraft,
+} from './review-checklist-draft'
 import type { ReviewCycleProjection, ReviewFindingStatus } from '../../shared/review-cycle'
 import {
   confirmationSourceReviewId,
@@ -310,10 +318,25 @@ export function useReviewChecklist({
 }: ReviewChecklistInput) {
   const text = useLocaleStore(s => s.text)
   const parsedReport = parseReport(reportText, text('综合检查', 'General review'))
-  const [items, setItems] = useState<EditableReviewItem[]>(() => (
-    editableItemsFromReview(parsedReport.issues, initialSnapshot, cycle)
-  ))
-  const [authorGuidance, setAuthorGuidance] = useState(() => initialSnapshot?.authorGuidance ?? '')
+  // 挂载时优先恢复本稿的编辑中清单（跨标签/切页保留作者意见；数据库快照仍由 initialSnapshot 负责）。
+  const restoreLedgerDraft = () => {
+    const sourceId = confirmationSourceReviewId(initialSnapshot, reviewId)
+    if (!isReviewId(sourceId) || chapterNumber === undefined) return undefined
+    return getReviewChecklistDraft(
+      parseReviewChecklistDraftLedger(useEditorStore.getState().draftLedgers['review-checklist-drafts']),
+      projectKey,
+      chapterNumber,
+      sourceId,
+    )
+  }
+  const [items, setItems] = useState<EditableReviewItem[]>(() => restoreLedgerDraft()?.items
+    ?? editableItemsFromReview(parsedReport.issues, initialSnapshot, cycle))
+  const [authorGuidance, setAuthorGuidance] = useState(() => restoreLedgerDraft()?.authorGuidance
+    ?? initialSnapshot?.authorGuidance ?? '')
+  const setAuthorGuidancePersisted = (value: string) => {
+    setAuthorGuidance(value)
+    persistEditingDraft(items, value)
+  }
   const [confirmed, setConfirmed] = useState<ConfirmedChecklist | null>(() => (
     initialSnapshot && isReviewId(reviewId)
       ? {
@@ -378,19 +401,41 @@ export function useReviewChecklist({
   }, [chapterDir, cycle, draftPath, initialSnapshot, projectKey, reviewId])
 
 
+  const persistEditingDraft = (nextItems: EditableReviewItem[], nextGuidance: string) => {
+    if (!isReviewId(sourceReviewId) || chapterNumber === undefined) return
+    const snapshotNow = confirmed?.snapshot ?? null
+    if (snapshotNow && !editingChecklist) return
+    const record: ReviewChecklistDraft = {
+      draftId: chapterNumber,
+      reviewId: sourceReviewId,
+      items: nextItems,
+      authorGuidance: nextGuidance,
+      savedAt: '',
+    }
+    persistReviewChecklistDraft(useEditorStore.getState(), projectKey, record)
+  }
+
   const updateItem = (itemId: string, patch: Partial<EditableReviewItem>) => {
-    setItems(current => current.map(item => item.id === itemId ? { ...item, ...patch } : item))
+    setItems(current => {
+      const next = current.map(item => item.id === itemId ? { ...item, ...patch } : item)
+      persistEditingDraft(next, authorGuidance)
+      return next
+    })
     setChecklistError(null)
   }
 
   const removeItem = (itemId: string) => {
-    setItems(current => current.filter(candidate => candidate.id !== itemId))
+    setItems(current => {
+      const next = current.filter(candidate => candidate.id !== itemId)
+      persistEditingDraft(next, authorGuidance)
+      return next
+    })
   }
 
   const addAuthorItem = () => {
     setItems(current => {
       const authorItemCount = current.filter(item => item.origin === 'author').length
-      return [
+      const next: EditableReviewItem[] = [
         ...current,
         {
           id: 'author-' + Date.now() + '-' + (authorItemCount + 1),
@@ -402,6 +447,8 @@ export function useReviewChecklist({
           origin: 'author',
         },
       ]
+      persistEditingDraft(next, authorGuidance)
+      return next
     })
   }
 
@@ -455,6 +502,7 @@ export function useReviewChecklist({
         ))
         return null
       }
+      clearReviewChecklistDraft(useEditorStore.getState(), projectKey, draftMeta.id, sourceReviewId)
 
       const sourceReview = await ipc.invokeWithProjectSession(
         projectSession,
@@ -764,10 +812,10 @@ export function useReviewChecklist({
   }
 
   return {
-    items, authorGuidance, setAuthorGuidance, confirmed, editingChecklist, setEditingChecklist,
+    items, authorGuidance, confirmed, editingChecklist, setEditingChecklist,
     checklistError, setChecklistError, confirming, processing, rechecking, recheckMessage,
     summary, goalReview, canManageChecklist, cycle,
-    updateItem, removeItem, addAuthorItem, confirmChecklist, startConfirmedRevision, retryRequiredRecheck,
+    updateItem, removeItem, addAuthorItem, setAuthorGuidance: setAuthorGuidancePersisted, confirmChecklist, startConfirmedRevision, retryRequiredRecheck,
   }
 }
 
@@ -808,3 +856,19 @@ export function severityCopy(
 export function includedCount(items: readonly EditableReviewItem[]): number {
   return items.filter(item => item.severity !== 'pass' && item.decision === 'apply').length
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
