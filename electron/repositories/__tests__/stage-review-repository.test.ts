@@ -67,6 +67,26 @@ describe('StageReviewRepository', () => {
     d.close()
   })
 
+  it('removes every run of one target so older reviews cannot resurface', () => {
+    const d = db()
+    StageReviewRepository.save({ operationId: 'op-6', runId: 'run-6', target: 'arc', selected: [1], sourceHash: 'h6', findings: [
+      { targetIndex: 1, category: 'pacing', severity: 'warning', problemText: '旧的一批。', expectedText: 'A' },
+    ] }, d)
+    StageReviewRepository.save({ operationId: 'op-7', runId: 'run-7', target: 'arc', selected: [2], sourceHash: 'h7', findings: [
+      { targetIndex: 2, category: 'pacing', severity: 'warning', problemText: '新的一批。', expectedText: 'B' },
+    ] }, d)
+    StageReviewRepository.save({ operationId: 'op-8', runId: 'run-8', target: 'outline', selected: [1], sourceHash: 'h8', findings: [
+      { targetIndex: 1, category: 'pacing', severity: 'warning', problemText: '细纲的检查。', expectedText: 'C' },
+    ] }, d)
+
+    expect(StageReviewRepository.removeForTarget('arc', d)).toBe(2)
+    expect(StageReviewRepository.latestRun('arc', d)).toBeNull()
+    expect(StageReviewRepository.listByRun('run-6', d)).toHaveLength(0)
+    expect(StageReviewRepository.listByRun('run-7', d)).toHaveLength(0)
+    // 其它层的检查不受影响
+    expect(StageReviewRepository.latestRun('outline', d)!.runId).toBe('run-8')
+    d.close()
+  })
   it('removes a review run the author has dismissed', () => {
     const d = db()
     StageReviewRepository.save({ operationId: 'op-5', runId: 'run-5', target: 'outline', selected: [1], sourceHash: 'h5', findings: [
@@ -78,3 +98,4 @@ describe('StageReviewRepository', () => {
     d.close()
   })
 })
+

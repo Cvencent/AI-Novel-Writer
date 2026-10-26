@@ -906,8 +906,8 @@ export interface DatabaseChannels {
     return: { success: boolean; accepted?: number; error?: string }
   }
   'db:stage-review-remove': {
-    args: [runId: string, expectedProjectPath: string]
-    return: { success: boolean; removed?: boolean; error?: string }
+    args: [target: import('./stage-review-types').StageReviewTarget, expectedProjectPath: string]
+    return: { success: boolean; removed?: number; error?: string }
   }
   /** 接受一条细纲检查建议：按章替换 project_core.synopsis。 */
   'db:stage-review-apply-outline': {
@@ -1433,4 +1433,5 @@ export type InvokeChannel = keyof AllInvokeChannels
 
 /** 提取 event 频道名 */
 export type EventChannel = keyof AllEventChannels
+
 

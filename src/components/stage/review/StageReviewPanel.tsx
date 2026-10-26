@@ -140,9 +140,15 @@ export default function StageReviewPanel({
     if (!run) return
     const session = captureProjectSession(useProjectStore.getState().currentProject)
     if (!session || !isProjectSessionCurrent(session)) return
-    await ipc.invokeWithProjectSession(session, 'db:stage-review-resolve', run.runId, findingId, status, projectKey).catch(() => null)
+    const result = await ipc.invokeWithProjectSession(session, 'db:stage-review-resolve', run.runId, findingId, status, projectKey)
+      .catch((cause: unknown) => ({ success: false, error: cause instanceof Error ? cause.message : String(cause) }))
+    if (!result?.success) {
+      // 状态没写进数据库的话，下次进入卡片会复活；把失败亮出来，卡片保持可重试。
+      setError(text('处理建议失败：', 'Could not update the suggestion: ') + String(result?.error ?? ''))
+      return
+    }
     setRun(previous => previous && { ...previous, findings: previous.findings.map(f => f.findingId === findingId ? { ...f, status } : f) })
-  }, [projectKey, run])
+  }, [projectKey, run, text])
 
   const accept = useCallback(async (finding: StageReviewFindingRecord) => {
     setApplying(finding.findingId)
@@ -184,7 +190,7 @@ export default function StageReviewPanel({
     if (!run) return
     const session = captureProjectSession(useProjectStore.getState().currentProject)
     if (!session || !isProjectSessionCurrent(session)) return
-    const result = await ipc.invokeWithProjectSession(session, 'db:stage-review-remove', run.runId, projectKey)
+    const result = await ipc.invokeWithProjectSession(session, 'db:stage-review-remove', target, projectKey)
       .catch((cause: unknown) => ({ success: false, error: cause instanceof Error ? cause.message : String(cause) }))
     if (!result?.success) {
       // 静默吞掉失败会让人以为清掉了，切个页面记录又回来；必须把失败亮出来。
@@ -192,7 +198,7 @@ export default function StageReviewPanel({
       return
     }
     setRun(null)
-  }, [projectKey, run, text])
+  }, [projectKey, run, target, text])
 
   const findings = run?.findings ?? []
   // 只展示还没处理的建议：接受或忽略之后它就该从页面上消失。
@@ -267,4 +273,6 @@ export default function StageReviewPanel({
     </div>
   )
 }
+
+
 

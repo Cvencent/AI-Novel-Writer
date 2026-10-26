@@ -43,7 +43,7 @@ beforeEach(() => {
     if (channel === 'db:stage-review-apply-outline') return { success: true, synopsis: 'updated' }
     if (channel === 'db:stage-review-resolve') return { success: true }
     if (channel === 'db:stage-review-accept-all') return { success: true, accepted: 1 }
-    if (channel === 'db:stage-review-remove') return { success: true, removed: true }
+    if (channel === 'db:stage-review-remove') return { success: true, removed: 1 }
     return null
   })
   originalApi = (window as unknown as { aiNovelAPI?: unknown }).aiNovelAPI
@@ -173,7 +173,7 @@ describe('StageReviewPanel', () => {
     await act(async () => { button('清掉记录')!.click() })
     await vi.waitFor(() => expect(invoke.mock.calls.some(([name]) => name === 'db:stage-review-remove')).toBe(true))
     const removeCall = invoke.mock.calls.find(([name]) => name === 'db:stage-review-remove')
-    expect(removeCall?.[1]).toBe('r1')
+    expect(removeCall?.[1]).toBe('outline')
     expect(removeCall?.slice(2)).toContain(PROJECT_PATH)
     await vi.waitFor(() => expect(host!.textContent).toContain('还没有检查结果'))
     expect(host!.textContent).not.toContain('第 3 章是流水账。')
@@ -215,5 +215,6 @@ describe('StageReviewPanel', () => {
     await vi.waitFor(() => expect(host!.textContent).not.toContain('第 3 章是流水账。'))
   })
 })
+
 
 

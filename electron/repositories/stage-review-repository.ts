@@ -104,9 +104,19 @@ export class StageReviewRepository {
     }).immediate()
   }
 
+  /** 清掉该创作层的全部检查历史。旧版只删最新一次，更早的记录会在下次进入时又顶上来。 */
+  static removeForTarget(target: StageReviewTarget, db: BetterSqlite3.Database): number {
+    ensureStageReviewSchema(db)
+    return db.transaction(() => {
+      db.prepare('DELETE FROM stage_review_findings WHERE run_id IN (SELECT run_id FROM stage_review_runs WHERE target=?)').run(target)
+      return db.prepare('DELETE FROM stage_review_runs WHERE target=?').run(target).changes
+    }).immediate()
+  }
+
   static clearAll(db: BetterSqlite3.Database): void {
     ensureStageReviewSchema(db)
     db.prepare('DELETE FROM stage_review_findings').run()
     db.prepare('DELETE FROM stage_review_runs').run()
   }
 }
+

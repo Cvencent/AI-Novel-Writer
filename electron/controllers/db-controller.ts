@@ -244,12 +244,14 @@ export function registerDatabaseController() {
     } catch (error) { return { success: false, error: String(error) } }
   })
 
-  ipcMain.handle('db:stage-review-remove', async (_event, runId: string, expectedProjectPath: string) => {
+  ipcMain.handle('db:stage-review-remove', async (_event, target: string, expectedProjectPath: string) => {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
       const database = getProjectDb()
       if (!database) throw new Error('项目数据库未打开')
-      return { success: true, removed: StageReviewRepository.removeRun(runId, database) }
+      if (!isStageReviewTarget(target)) throw new Error('INVALID_STAGE_REVIEW_TARGET')
+      // 清掉该层全部检查历史：只删最新一次会让更早的记录在下次进入时又顶上来。
+      return { success: true, removed: StageReviewRepository.removeForTarget(target, database) }
     } catch (error) { return { success: false, error: String(error) } }
   })
 
@@ -1522,4 +1524,5 @@ export function registerDatabaseController() {
     return SummaryRepository.getLatestSnapshot()
   })
 }
+
 
