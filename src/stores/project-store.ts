@@ -896,7 +896,7 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
           plainData,
           project.path,
         ),
-        15_000,
+        60_000,
         'project:save',
       )
       console.log('[project-store.saveProject] IPC 调用完成，结果:', result)
@@ -1331,3 +1331,4 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
 useProjectStore.subscribe((state) => {
   setActiveProjectSessionContext(projectSessionContextFromProject(state.currentProject))
 })
+

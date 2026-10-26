@@ -910,6 +910,10 @@ export interface DatabaseChannels {
     return: { success: boolean; removed?: number; error?: string }
   }
   /** 接受一条细纲检查建议：按章替换 project_core.synopsis。 */
+  'db:stage-review-clear-all': {
+    args: [expectedProjectPath: string]
+    return: { success: boolean; removed?: number; error?: string }
+  }
   'db:stage-review-apply-outline': {
     args: [chapter: number, nextEntry: string, expectedProjectPath: string]
     return: { success: boolean; synopsis?: string; error?: string }
@@ -1433,5 +1437,6 @@ export type InvokeChannel = keyof AllInvokeChannels
 
 /** 提取 event 频道名 */
 export type EventChannel = keyof AllEventChannels
+
 
 

@@ -69,6 +69,7 @@ const mocks = vi.hoisted(() => ({
   recoveryUpdatePending: vi.fn(),
   recoveryResolve: vi.fn(),
   stageReviewRemoveForTarget: vi.fn(() => 2),
+  stageReviewClearAll: vi.fn(() => 5),
 }))
 
 vi.mock('electron', () => ({
@@ -166,6 +167,7 @@ vi.mock('../../repositories/recovery-candidate-repository', () => ({
 vi.mock('../../repositories/stage-review-repository', () => ({
   StageReviewRepository: {
     removeForTarget: mocks.stageReviewRemoveForTarget,
+    clearAll: mocks.stageReviewClearAll,
   },
 }))
 
@@ -1097,6 +1099,13 @@ describe('database controller project context guard', () => {
     expect(mocks.stageReviewRemoveForTarget).toHaveBeenCalledExactlyOnceWith('arc', db)
   })
 
+  it('clears every stage review run in one call', async () => {
+    const db = { synthetic: true }
+    mocks.getProjectDb.mockReturnValue(db)
+    await expect(rawHandler('db:stage-review-clear-all')({}, 'C:/projects/A', currentSession()))
+      .resolves.toEqual({ success: true, removed: 5 })
+    expect(mocks.stageReviewClearAll).toHaveBeenCalledExactlyOnceWith(db)
+  })
   it('rejects a stage review removal after the project context switches', async () => {
     mocks.getProjectDb.mockReturnValue({ synthetic: true })
 
@@ -1105,6 +1114,7 @@ describe('database controller project context guard', () => {
     expect(mocks.stageReviewRemoveForTarget).not.toHaveBeenCalled()
   })
 })
+
 
 
 

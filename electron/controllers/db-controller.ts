@@ -255,6 +255,15 @@ export function registerDatabaseController() {
     } catch (error) { return { success: false, error: String(error) } }
   })
 
+  ipcMain.handle('db:stage-review-clear-all', async (_event, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const database = getProjectDb()
+      if (!database) throw new Error('项目数据库未打开')
+      return { success: true, removed: StageReviewRepository.clearAll(database) }
+    } catch (error) { return { success: false, error: String(error) } }
+  })
+
   ipcMain.handle('db:stage-review-apply-outline', async (_event, chapter: number, nextEntry: string, expectedProjectPath: string) => {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
@@ -1524,5 +1533,6 @@ export function registerDatabaseController() {
     return SummaryRepository.getLatestSnapshot()
   })
 }
+
 
 

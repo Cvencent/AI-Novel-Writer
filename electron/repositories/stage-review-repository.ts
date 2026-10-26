@@ -113,10 +113,13 @@ export class StageReviewRepository {
     }).immediate()
   }
 
-  static clearAll(db: BetterSqlite3.Database): void {
+  static clearAll(db: BetterSqlite3.Database): number {
     ensureStageReviewSchema(db)
-    db.prepare('DELETE FROM stage_review_findings').run()
-    db.prepare('DELETE FROM stage_review_runs').run()
+    return db.transaction(() => {
+      db.prepare('DELETE FROM stage_review_findings').run()
+      return db.prepare('DELETE FROM stage_review_runs').run().changes
+    }).immediate()
   }
 }
+
 

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Sparkles, Trash2 } from 'lucide-react'
+import { Eraser, Sparkles, Trash2 } from 'lucide-react'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
+import { toast } from '../../ui/Toast'
 import { ipc } from '../../../services/ipc-client'
 import { captureProjectSession, isProjectSessionCurrent } from '../../project-session-gate'
 import { launchCreativeWorkflow, type CreativeIntent } from '../../../services/workflows/creative-workflow-launcher'
@@ -186,6 +187,20 @@ export default function StageReviewPanel({
     }
   }, [applyFinding, loadLatest, projectKey, run])
 
+  /** 一键清除：粗纲、细纲、蓝图三层的全部检查记录一起删，不用一层层点。 */
+  const clearEverything = useCallback(async () => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || !isProjectSessionCurrent(session)) return
+    const result = await ipc.invokeWithProjectSession(session, 'db:stage-review-clear-all', projectKey)
+      .catch((cause: unknown): { success: false; error: string } => ({ success: false, error: cause instanceof Error ? cause.message : String(cause) }))
+    if (!result?.success) {
+      setError(text('一键清除失败：', 'Could not clear all review records: ') + String(result?.error ?? ''))
+      return
+    }
+    setRun(null)
+    toast.success(text(`已清除全部 AI 检查记录（${result.removed ?? 0} 次检查）。`, `Cleared all AI review records (${result.removed ?? 0} runs).`))
+  }, [projectKey, text])
+
   const remove = useCallback(async () => {
     if (!run) return
     const session = captureProjectSession(useProjectStore.getState().currentProject)
@@ -227,6 +242,9 @@ export default function StageReviewPanel({
               {applying === 'all' ? text('应用中…', 'Applying…') : text('全部接受', 'Accept all')}
             </Button>
           )}
+          <Button variant="text" size="sm" disabled={busy || applying !== null} onClick={() => { void clearEverything() }} title={text('清掉粗纲、细纲、蓝图三层的全部 AI 检查记录', 'Clear all AI review records across every layer')}>
+            <Eraser size={14} aria-hidden />{text('一键清除全部', 'Clear all')}
+          </Button>
           {findings.length > 0 && (
             <Button variant="text" size="sm" disabled={applying !== null} onClick={() => { void remove() }} title={text('清掉这次检查的记录', 'Clear this review record')}>
               <Trash2 size={14} aria-hidden />{text('清掉记录', 'Clear')}
@@ -275,6 +293,9 @@ export default function StageReviewPanel({
     </div>
   )
 }
+
+
+
 
 
 

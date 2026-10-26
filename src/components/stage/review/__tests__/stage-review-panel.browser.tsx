@@ -184,6 +184,30 @@ describe('StageReviewPanel', () => {
     expect(host!.textContent).not.toContain('还没有检查结果')
     expect(button('开始检查')).toBeTruthy()
   })
+  it('一键清除会清掉全部层的检查记录并弹出确认提示', async () => {
+    invoke = vi.fn(async (channel: string) => {
+      if (channel === 'db:stage-review-latest') {
+        return { runId: 'r1', target: 'outline', selected: [3], sourceHash: 'h', createdAt: '', findings: [finding()] }
+      }
+      if (channel === 'db:stage-review-clear-all') return { success: true, removed: 3 }
+      if (channel === 'db:stage-review-resolve') return { success: true }
+      return null
+    })
+    Object.defineProperty(window, 'aiNovelAPI', {
+      configurable: true,
+      writable: true,
+      value: { invoke, on: vi.fn(() => () => {}), once: vi.fn(), send: vi.fn(), setZoomLevel: vi.fn(), setZoomFactor: vi.fn(), getZoomLevel: vi.fn() },
+    })
+    await render()
+    await vi.waitFor(() => expect(host!.textContent).toContain('第 3 章是流水账。'))
+    await act(async () => { button('一键清除全部')!.click() })
+    await vi.waitFor(() => expect(invoke.mock.calls.some(([name]) => name === 'db:stage-review-clear-all')).toBe(true))
+    const clearCall = invoke.mock.calls.find(([name]) => name === 'db:stage-review-clear-all')
+    expect(clearCall?.[1]).toBe(PROJECT_PATH)
+    await vi.waitFor(() => expect(document.body.textContent).toContain('已清除全部 AI 检查记录'))
+    // 本层面板也回到空状态
+    await vi.waitFor(() => expect(host!.textContent).toContain('还没有检查结果'))
+  })
   it('清掉记录后回到空状态，并把删除请求发到后端', async () => {
     await render()
     await vi.waitFor(() => expect(host!.textContent).toContain('第 3 章是流水账。'))
@@ -232,6 +256,10 @@ describe('StageReviewPanel', () => {
     await vi.waitFor(() => expect(host!.textContent).not.toContain('第 3 章是流水账。'))
   })
 })
+
+
+
+
 
 
 
