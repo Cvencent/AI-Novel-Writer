@@ -308,6 +308,7 @@ export interface GenerationOwnerChannels {
   /** 轻量列表：只要句柄与元数据；完整视图按需走 generation:read。 */
   'generation:list': { args: []; return: MainGenerationRunSummary[] }
   'generation:cancel': { args: [MainGenerationRunHandle]; return: MainGenerationRunView }
+  'generation:dismiss-recovery': { args: [MainGenerationRunHandle]; return: MainGenerationRunView }
   'generation:pause': { args: [MainGenerationRunHandle]; return: MainGenerationRunView }
   'generation:resume': { args: [MainGenerationRunHandle]; return: MainGenerationRunView }
   'generation:restart': { args: [MainGenerationRunHandle, BeginGenerationRequest]; return: MainGenerationRunView }
@@ -330,3 +331,4 @@ export function generationOutputContract(selection: BeginGenerationRequest): str
     throw new Error('GENERATION_OUTPUT_CONTRACT_INVALID')
   return overrides ? { primary: selection.output, overrides: structuredClone(overrides) } : selection.output
 }
+

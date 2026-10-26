@@ -255,6 +255,7 @@ export function registerGenerationController(options: {
   register('generation:list-directory-progress', 0, owner => owner.listDirectoryProgress())
   register('generation:pause', 1, (owner, handle) => owner.pause(handle))
   register('generation:cancel', 1, (owner, handle) => owner.cancel(handle))
+  register('generation:dismiss-recovery', 1, (owner, handle) => owner.dismissRecovery(handle))
   register('generation:resume', 1, (owner, handle) => guardKnowledge(owner, readActionContext(owner, handle).knowledgeSnapshot, () => owner.resume(handle)))
   register('generation:restart', 2, (owner, handle, request) => {
     if (request.operation === 'chapter-draft' && !request.preparationId) throw new Error('GENERATION_DRAFT_PREPARATION_REQUIRED')
@@ -264,3 +265,4 @@ export function registerGenerationController(options: {
   })
   register('generation:discard-candidate', 2, (owner, handle, artifactId) => owner.discardCandidate(handle, artifactId))
 }
+

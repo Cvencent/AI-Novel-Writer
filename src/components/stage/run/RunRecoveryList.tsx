@@ -23,6 +23,11 @@ export function RunRecoveryList({ recovery, liveRuns }: { recovery: RunRecovery;
   return (
     <section className="run-recovery" aria-label={text('可恢复的内容', 'Recoverable work')}>
       {errors.map(error => <p key={error} className="run-note" data-tone="danger" role="alert">{error}</p>)}
+      <div className="run-recovery-actions">
+        <Button variant="text" size="sm" disabled={recovery.busy} onClick={() => void recovery.dismissAll()} title={text('放弃下面全部可恢复卡片；正式内容不动', 'Dismiss every recoverable card below; saved content is untouched')}>
+          {text('一键清除全部卡片', 'Clear all cards')}
+        </Button>
+      </div>
       {entries.map(entry => <RecoveryCard key={`${entry.kind}:${entry.key}`} entry={entry} recovery={recovery} text={text} />)}
     </section>
   )
@@ -162,3 +167,4 @@ function CandidateCard({ entry, recovery, text, onDismiss }: { entry: CandidateE
     </RecoveryShell>
   )
 }
+

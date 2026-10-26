@@ -95,6 +95,8 @@ export interface RunRecovery {
   resumeDraft: (entry: DraftEntry) => void
   /** 从右侧列表移除一张恢复卡片；不改动已经保存的正式内容。 */
   dismiss: (entry: RecoveryEntry) => void
+  /** 一键放弃全部恢复卡片（持久）；正式内容不动。 */
+  dismissAll: () => Promise<void>
 }
 
 /**
@@ -163,6 +165,30 @@ export function useRunRecovery(): RunRecovery {
 
   const stillCurrent = useCallback(() => session !== null && sameProjectSessionContext(session, currentSession()), [session])
 
+  /** 一键放弃全部恢复卡片：持久 dismiss（生成运行）+ 持久放弃（候选表）；正式内容不动。 */
+  const dismissAll = useCallback(async () => {
+    if (!session || !stillCurrent() || busy) return
+    setBusy(true)
+    try {
+      const currentEntries = entries.filter(entry => !dismissed.has(`${entry.kind}:${entry.key}`))
+      for (const entry of currentEntries) {
+        setDismissed(previous => new Set(previous).add(`${entry.kind}:${entry.key}`))
+        try {
+          if (entry.kind === 'candidate') {
+            await ipc.invokeWithProjectSession(session, 'db:recovery-candidate-resolve', entry.candidate.candidateId, 'discarded', session.projectPath)
+          } else if (entry.kind === 'planning' || entry.kind === 'draft' || entry.kind === 'review' || entry.kind === 'editor') {
+            const handle = entry.kind === 'planning' ? entry.recovery.handle
+              : entry.kind === 'draft' || entry.kind === 'review' ? entry.view.handle
+              : entry.recovery.view.handle
+            await ipc.invokeWithProjectSession(session, 'generation:dismiss-recovery', handle)
+          } else if (entry.kind === 'batch') {
+            // 批量进度没有 dismiss 通道；保留（它代表真实的批次续写状态）。
+          }
+        } catch { /* 单个失败不阻断其余；下一次打开仍可见。 */ }
+      }
+      setSnapshotTick(value => value + 1)
+    } finally { setBusy(false) }
+  }, [session, stillCurrent, busy, entries, dismissed])
   /** 关掉卡片只影响这一份侧页视图：正式内容、检查点与运行记录都保留。 */
   const dismiss = useCallback((entry: RecoveryEntry) => {
     setDismissed(previous => new Set(previous).add(`${entry.kind}:${entry.key}`))
@@ -201,6 +227,7 @@ export function useRunRecovery(): RunRecovery {
   return {
     entries: entries.filter(entry => !dismissed.has(`${entry.kind}:${entry.key}`)),
     dismiss,
+    dismissAll,
     candidateError,
     generationError,
     busy,
@@ -266,3 +293,7 @@ export function useRunRecovery(): RunRecovery {
     },
   }
 }
+
+
+
+

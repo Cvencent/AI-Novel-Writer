@@ -909,9 +909,10 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
   }
   const readContext = (handle: MainGenerationRunHandle): GenerationRecoveryContext => {
     const run = requireRun(handle), manifest = run.binding.sourceManifest, composition = repository.isPrivatePlanningHistory(run.runId) ? null : repository.readVisibleComposition(run.runId)
-    const plotOutline = repository.readPlotOutline(run.runId)
+    const dismissed = repository.readRecoveryDismiss(run.runId)
+    const plotOutline = dismissed ? null : repository.readPlotOutline(run.runId)
     const continuation = planningContinuation(run)
-    const blueprint = manifest.operation === 'chapter-blueprint-directory' ? repository.readBlueprintRecovery(run.runId) : null
+    const blueprint = manifest.operation === 'chapter-blueprint-directory' && !dismissed ? repository.readBlueprintRecovery(run.runId) : null
     const blueprintSaved = blueprint?.kind === 'available' ? blueprint.authorEdit : null
     const draftSave = draftEffects.readRecovery(run.runId)
     const materialDecision = manifest.materialDecision as MaterialDecisionReceipt | undefined
@@ -1478,6 +1479,7 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     },
     pause: (handle: MainGenerationRunHandle) => { const run = requireRun(handle, true); service.pause(run.rootActionId); return viewOf(repository.get(run.runId)) },
     cancel: (handle: MainGenerationRunHandle) => { const run = requireRun(handle); service.cancel(run.rootActionId); return viewOf(repository.get(run.runId)) },
+    dismissRecovery: (handle: MainGenerationRunHandle) => { const run = requireRun(handle); repository.recordRecoveryDismiss(run.runId); return viewOf(repository.get(run.runId)) },
     restart: (handle: MainGenerationRunHandle, selection: BeginGenerationRequest) => {
       const old = requireRun(handle)
       repository.assertBlueprintRecoveryWritable(old.runId)
@@ -1543,3 +1545,4 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     },
   }
 }
+

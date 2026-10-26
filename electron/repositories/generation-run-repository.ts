@@ -178,6 +178,23 @@ export class GenerationRunRepository {
             .run(encode({ ...JSON.parse(original), $runEffects: { plotOutlineAuthorEdit: receipt } }), runId, original);
         if (result.changes !== 1) fail('GENERATION_PLOT_OUTLINE_AUTHOR_RECEIPT_CONFLICT');
     }
+    /** 作者显式放弃的恢复：右侧运行侧页不再派生恢复卡片（运行记录与产物保留，可审计）。 */
+    recordRecoveryDismiss(runId: string): void {
+        if (!this.db().inTransaction) fail('GENERATION_PLOT_OUTLINE_TRANSACTION_REQUIRED');
+        const original = this.db().prepare('SELECT binding_json FROM generation_runs WHERE run_id=?').pluck().get(runId) as string;
+        const parsed = JSON.parse(original) as { $runEffects?: Record<string, unknown> };
+        if (parsed.$runEffects?.['recoveryDismissed'] === true) return;
+        const next = { ...parsed, $runEffects: { ...parsed.$runEffects, recoveryDismissed: true } };
+        const result = this.db().prepare('UPDATE generation_runs SET binding_json=? WHERE run_id=? AND binding_json=?')
+            .run(JSON.stringify(next), runId, original);
+        if (result.changes !== 1) fail('GENERATION_PLOT_OUTLINE_AUTHOR_RECEIPT_CONFLICT');
+    }
+
+    readRecoveryDismiss(runId: string): boolean {
+        const stored = this.db().prepare('SELECT json_extract(binding_json,?) FROM generation_runs WHERE run_id=?').pluck().get(`${authorEffectPath}.recoveryDismissed`, runId);
+        return stored === 1 || stored === '1' || stored === 'true' || stored === true;
+    }
+
     readPlanningContinuation(runId: string): PlanningContinuationReceipt | null {
         const stored = this.db().prepare('SELECT json_extract(binding_json,?) FROM generation_runs WHERE run_id=?').pluck().get(`${authorEffectPath}.planningContinuation`, runId);
         if (stored === null || stored === undefined) return null;
@@ -823,3 +840,6 @@ export class GenerationRunRepository {
         this.db().prepare("UPDATE generation_artifacts SET status='discarded' WHERE artifact_id=?").run(artifactId);
     }
 }
+
+
+
