@@ -184,9 +184,15 @@ export default function StageReviewPanel({
     if (!run) return
     const session = captureProjectSession(useProjectStore.getState().currentProject)
     if (!session || !isProjectSessionCurrent(session)) return
-    await ipc.invokeWithProjectSession(session, 'db:stage-review-remove', run.runId, projectKey).catch(() => null)
+    const result = await ipc.invokeWithProjectSession(session, 'db:stage-review-remove', run.runId, projectKey)
+      .catch((cause: unknown) => ({ success: false, error: cause instanceof Error ? cause.message : String(cause) }))
+    if (!result?.success) {
+      // 静默吞掉失败会让人以为清掉了，切个页面记录又回来；必须把失败亮出来。
+      setError(text('清掉记录失败：', 'Could not clear the review record: ') + String(result?.error ?? ''))
+      return
+    }
     setRun(null)
-  }, [projectKey, run])
+  }, [projectKey, run, text])
 
   const findings = run?.findings ?? []
   // 只展示还没处理的建议：接受或忽略之后它就该从页面上消失。
@@ -261,3 +267,4 @@ export default function StageReviewPanel({
     </div>
   )
 }
+

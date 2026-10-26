@@ -10,7 +10,7 @@ import { ARCH_STEP_NAMES, type ArchGenerateStepKey, type ArchStepKey } from '../
 import { Button } from '../ui/Button'
 import { ipc } from '../../services/ipc-client'
 import { requireIpcSuccess } from '../../services/ipc-result'
-import { ARC_RESOURCE_KEY, CORE_FIELD_MAP, parseCoreField } from '../../services/resource-protocol'
+import { ARC_RESOURCE_KEY, CORE_FIELD_MAP, parseCoreField, readCoreContent } from '../../services/resource-protocol'
 import { appErrorMessage } from '../../i18n/app-errors'
 import { toast } from '../ui/Toast'
 import { DangerConfirm } from '../ui/DangerConfirm'
@@ -473,15 +473,9 @@ function ArchFileViewerSession({
     try {
       let newContent = ''
       if (filePath.startsWith('ai-novel://core/')) {
-        const core = await ipc.invokeWithProjectSession(
-          projectSession,
-          'db:project-core-get',
-          projectSession.projectPath,
-        )
-        const dbField = parseCoreField(filePath)
-        newContent = dbField && core
-          ? String(core[dbField as keyof typeof core] ?? '')
-          : ''
+        // 必须与首次加载同源（readCoreContent）：粗纲要从分段台账渲染，
+        // 直接查 project core 会拿不到 arc 字段而把编辑器刷成空白。
+        newContent = await readCoreContent(filePath, projectSession)
       } else {
         // 数据库存储后，架构文件不应再有物理路径。
         console.warn('[ArchFileViewer] 非预期的物理路径刷新:', filePath)
@@ -933,3 +927,4 @@ function ArchFileViewerSession({
     </div>
   )
 }
+

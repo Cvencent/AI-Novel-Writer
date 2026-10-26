@@ -68,6 +68,7 @@ const mocks = vi.hoisted(() => ({
   recoveryListPending: vi.fn((): unknown[] => []),
   recoveryUpdatePending: vi.fn(),
   recoveryResolve: vi.fn(),
+  stageReviewRemove: vi.fn(() => true),
 }))
 
 vi.mock('electron', () => ({
@@ -159,6 +160,12 @@ vi.mock('../../repositories/recovery-candidate-repository', () => ({
     listPending: mocks.recoveryListPending,
     updatePending: mocks.recoveryUpdatePending,
     resolve: mocks.recoveryResolve,
+  },
+}))
+
+vi.mock('../../repositories/stage-review-repository', () => ({
+  StageReviewRepository: {
+    removeRun: mocks.stageReviewRemove,
   },
 }))
 
@@ -1080,4 +1087,25 @@ describe('database controller project context guard', () => {
     expect(mocks.closeProjectDatabase).not.toHaveBeenCalled()
     expect(mocks.invalidateCurrentSession).toHaveBeenCalledOnce()
   })
+
+  it('removes a stage review run through the project-scoped seam', async () => {
+    const db = { synthetic: true }
+    mocks.getProjectDb.mockReturnValue(db)
+    mocks.stageReviewRemove.mockReturnValueOnce(true)
+
+    await expect(rawHandler('db:stage-review-remove')({}, 'run-1', 'C:/projects/A', currentSession()))
+      .resolves.toEqual({ success: true, removed: true })
+    expect(mocks.stageReviewRemove).toHaveBeenCalledExactlyOnceWith('run-1', db)
+  })
+
+  it('rejects a stage review removal after the project context switches', async () => {
+    mocks.getProjectDb.mockReturnValue({ synthetic: true })
+
+    await expect(rawHandler('db:stage-review-remove')({}, 'run-1', 'C:/projects/B', currentSession()))
+      .resolves.toMatchObject({ success: false })
+    expect(mocks.stageReviewRemove).not.toHaveBeenCalled()
+  })
 })
+
+
+

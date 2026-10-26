@@ -167,6 +167,39 @@ describe('StageReviewPanel', () => {
     expect(button('全部接受')).toBeUndefined()
   })
 
+  it('清掉记录后回到空状态，并把删除请求发到后端', async () => {
+    await render()
+    await vi.waitFor(() => expect(host!.textContent).toContain('第 3 章是流水账。'))
+    await act(async () => { button('清掉记录')!.click() })
+    await vi.waitFor(() => expect(invoke.mock.calls.some(([name]) => name === 'db:stage-review-remove')).toBe(true))
+    const removeCall = invoke.mock.calls.find(([name]) => name === 'db:stage-review-remove')
+    expect(removeCall?.[1]).toBe('r1')
+    expect(removeCall?.slice(2)).toContain(PROJECT_PATH)
+    await vi.waitFor(() => expect(host!.textContent).toContain('还没有检查结果'))
+    expect(host!.textContent).not.toContain('第 3 章是流水账。')
+  })
+
+  it('清掉记录失败时报错并保留记录，而不是静默吞掉', async () => {
+    invoke = vi.fn(async (channel: string) => {
+      if (channel === 'db:stage-review-latest') {
+        return { runId: 'r1', target: 'outline', selected: [3], sourceHash: 'h', createdAt: '', findings: [finding()] }
+      }
+      if (channel === 'db:stage-review-remove') return { success: false, error: 'DB 写入失败' }
+      return null
+    })
+    Object.defineProperty(window, 'aiNovelAPI', {
+      configurable: true,
+      writable: true,
+      value: { invoke, on: vi.fn(() => () => {}), once: vi.fn(), send: vi.fn(), setZoomLevel: vi.fn(), setZoomFactor: vi.fn(), getZoomLevel: vi.fn() },
+    })
+    await render()
+    await vi.waitFor(() => expect(host!.textContent).toContain('第 3 章是流水账。'))
+    await act(async () => { button('清掉记录')!.click() })
+    await vi.waitFor(() => expect(host!.textContent).toContain('DB 写入失败'))
+    // 记录仍在：卡片与「清掉记录」入口都保留，作者可以重试。
+    expect(host!.textContent).toContain('第 3 章是流水账。')
+    expect(button('清掉记录')).toBeTruthy()
+  })
   it('drops a card from the page as soon as it is ignored', async () => {
     await render()
     await vi.waitFor(() => expect(host!.querySelectorAll('.arch-arc-review-item')).toHaveLength(1))
@@ -182,3 +215,5 @@ describe('StageReviewPanel', () => {
     await vi.waitFor(() => expect(host!.textContent).not.toContain('第 3 章是流水账。'))
   })
 })
+
+
