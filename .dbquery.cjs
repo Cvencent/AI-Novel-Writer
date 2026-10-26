@@ -1,8 +1,6 @@
-const fs = require('node:fs')
-try {
-  const data = JSON.parse(fs.readFileSync('F:/yuanqi/源起/.ai-novel/partial_arch.json', 'utf8'))
-  for (const [k, v] of Object.entries(data)) {
-    const s = typeof v === 'string' ? v : JSON.stringify(v)
-    console.log(k, '=', s ? s.slice(0, 80) : s)
-  }
-} catch (e) { console.log('no partial_arch.json:', e.message) }
+const Database = require('F:/aiNovelWriter/repo/node_modules/better-sqlite3')
+const db = new Database('F:/yuanqi/源起/.ai-novel/project.db', { readonly: true })
+const rows = db.prepare("SELECT run_id, status, created_at_ms FROM generation_runs WHERE run_id LIKE '%' ORDER BY created_at_ms DESC LIMIT 8").all()
+console.log(JSON.stringify(db.prepare("SELECT name FROM pragma_table_info('generation_runs')").all().map(r=>r.name)))
+for (const r of rows) console.log(JSON.stringify(r))
+db.close()

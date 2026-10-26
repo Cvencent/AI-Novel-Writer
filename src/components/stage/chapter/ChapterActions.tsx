@@ -8,6 +8,7 @@ import { chapterLabel } from '../../../shared/chapter-label'
 import { countDraftUnits } from '../../../shared/draft-units'
 import { availableGenerationModelId, isGenerationModel, launchChapterRewrite } from '../../../services/workflows/chapter-write-launch'
 import { createFinalizeSyncWorkflow } from '../../../services/workflows/finalize-sync-workflow'
+import { createRosterSyncWorkflow } from '../../../services/workflows/roster-sync-workflow'
 import { preferredFunctionModelId } from '../../../shared/function-models'
 import { useEditorStore, type EditorTab } from '../../../stores/editor-store'
 import { useLLMStore } from '../../../stores/llm-store'
@@ -421,7 +422,23 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
           data={draft.mergeData}
           versionLabel={versionLabel}
           recheck={opened?.type === 'review-fix'}
-          onComplete={draft.completeMerge}
+          onComplete={async mergedText => {
+            const ok = await draft.completeMerge(mergedText)
+            if (ok && mergedText.trim()) {
+              try {
+                const syncSession = captureProjectSession(useProjectStore.getState().currentProject)
+                if (syncSession && isProjectSessionCurrent(syncSession)) {
+                  const definition = await createRosterSyncWorkflow({ projectPath: projectKey, projectSession: syncSession, mergedProse: mergedText }, useLocaleStore.getState().locale)
+                  useWorkflowStore.getState().startWorkflow(definition).catch((error: unknown) => {
+                    useWorkflowStore.getState().addLog('error', text(`人物关系同步启动失败：${String(error)}`, `Failed to start relationship sync: ${String(error)}`), useLocaleStore.getState().locale)
+                  })
+                }
+              } catch (error) {
+                useWorkflowStore.getState().addLog('error', text(`人物关系同步启动失败：${String(error)}`, `Failed to start relationship sync: ${String(error)}`), useLocaleStore.getState().locale)
+              }
+            }
+            return ok
+          }}
           onLater={() => { setMergeLater(true); draft.closeMerge() }}
         />
       )}
@@ -522,6 +539,7 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
     </>
   )
 }
+
 
 
 

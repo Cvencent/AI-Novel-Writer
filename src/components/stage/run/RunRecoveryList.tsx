@@ -50,6 +50,10 @@ function RecoveryCard({ entry, recovery, text }: { entry: RecoveryEntry; recover
         <RecoveryShell onDismiss={onDismiss} title={entry.title} text={text} notes={[entry.usage, entry.conflictNote]}
           budget={<GenerationBudgetDiagnostics diagnostics={entry.budget} locale={locale} />}
           actions={<>
+            {entry.recovery.view.status === 'running' && <span className="run-note" role="status">{text('生成中…', 'Generating…')}</span>}
+            {entry.recovery.view.status !== 'running' && entry.suggestions.length > 0 && (
+              <Button variant="primary" size="sm" disabled={busy} onClick={() => recovery.applyEditor(entry)}>{text('应用替换', 'Apply')}</Button>
+            )}
             <Button variant="secondary" size="sm" disabled={busy || !entry.canContinue} onClick={() => recovery.continueEditor(entry)}>{entry.labels.continue}</Button>
             <Button variant="text" size="sm" onClick={() => recovery.copy(entry.documentText)}>{entry.labels.copyDocument}</Button>
           </>}>

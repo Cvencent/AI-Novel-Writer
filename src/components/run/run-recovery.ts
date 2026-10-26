@@ -302,7 +302,7 @@ function draftEntry({ view, recovery }: RecoverySources['drafts'][number], local
  */
 export function isInFlight(entry: RecoveryEntry, leaseId: string | undefined, liveRuns: readonly Pick<WorkflowRun, 'type' | 'resourceKeys'>[]): boolean {
   if (entry.kind === 'batch') return liveRuns.some(run => run.type === 'batch_generate' && sameChapters(run.resourceKeys, entry.range))
-  if (entry.kind === 'editor') return entry.recovery.view.status === 'running' && entry.recovery.view.handle.epoch === leaseId
+  if (entry.kind === 'editor') return false
   if ((entry.kind !== 'draft' && entry.kind !== 'review') || entry.chapterNumber === undefined) return false
   const chapter = workflowResourceKey('chapter', entry.chapterNumber)
   return entry.view.status === 'running' && entry.view.handle.epoch === leaseId
@@ -331,3 +331,4 @@ export function buildRecoveryEntries(sources: RecoverySources, locale: Locale): 
     ...sources.candidates.map(candidate => candidateEntry(candidate, locale)),
   ]
 }
+

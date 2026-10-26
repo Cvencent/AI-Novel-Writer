@@ -6,6 +6,9 @@ import { withoutDraftReconciliationArtifacts } from '../../shared/draft-reconcil
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
 import { projectSessionContextFromProject, sameProjectSessionContext } from '../../shared/project-session-context'
 import { openPlanningRecoveryDraft, useEditorStore } from '../../stores/editor-store'
+import { formatResourceUri } from '../../shared/project-paths'
+import { writeCoreContent } from '../../services/resource-protocol'
+import { openArchFile } from '../panels/sidebar/sidebar-file-openers'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useProjectStore } from '../../stores/project-store'
 import { useWorkflowStore, type WorkflowDefinition } from '../../stores/workflow-store'
@@ -90,6 +93,7 @@ export interface RunRecovery {
   discardCandidate: (entry: CandidateEntry) => void
   openPlanning: (entry: PlanningEntry) => void
   continueEditor: (entry: EditorEntry) => void
+  applyEditor: (entry: EditorEntry) => void
   resumeReview: (entry: ReviewEntry) => void
   resumeBatch: (entry: BatchEntry) => void
   resumeDraft: (entry: DraftEntry) => void
@@ -281,7 +285,42 @@ export function useRunRecovery(): RunRecovery {
       if (!stillCurrent()) return
       openPlanningRecoveryDraft(fresh, current.projectPath, planningTitle(fresh, locale))
     }),
-    continueEditor: entry => void act(async current => {
+    /** 完成的选区建议：按原选区替换回原文档（正文稿或架构 core 字段），并打开对应标签。 */
+    applyEditor: entry => {
+      if (!session || !stillCurrent()) { setGenerationError(locale === 'en-US' ? 'The project session changed; reopen the book.' : '项目会话已切换，请重新打开作品。'); return }
+      const text = entry.suggestions.at(-1)?.text?.trim()
+      if (!text) { showGenerationFailure(locale === 'en-US' ? 'No completed suggestion to apply.' : '没有可应用的完成结果。'); return }
+      void act(async current => {
+        const recovery = await ipc.invokeWithProjectSession(current, 'editor-inline:read-recovery', { handle: entry.recovery.view.handle })
+        if (!stillCurrent()) return
+        if (recovery.sourceStatus !== 'current') { showGenerationFailure(locale === 'en-US' ? 'Sources changed; the result can only be copied.' : '来源已变化，结果只能复制。'); return }
+        const { documentText, from, to } = recovery.context
+        if (documentText.slice(from, to) !== entry.selectedText) { showGenerationFailure(locale === 'en-US' ? 'The original selection changed; apply from the editor instead.' : '原选区已变化，请在编辑器内应用。'); return }
+        const next = documentText.slice(0, from) + text + documentText.slice(to)
+        const scope = recovery.context.scope ?? 'chapter-draft'
+        if (scope === 'chapter-draft') {
+          // 正文稿：写入草稿库（以合并稿身份直接覆盖原文选区）
+          const tabs = useEditorStore.getState().tabs
+          // 用 open 恢复编辑器上下文：把结果放回预览的既有路径是编辑器组件；这里直接改 tab 内容并标记 dirty
+          const target = tabs.find(candidate => candidate.projectKey === current.projectPath && (candidate.content ?? '').includes(entry.selectedText))
+          if (target) {
+            useEditorStore.getState().openFile({ ...target, content: next, savedContent: target.savedContent, dirty: true })
+            useEditorStore.setState(state => ({ tabs: state.tabs.map(t => t.id === target.id ? { ...t, content: next, dirty: true } : t) }))
+            void ipc.invokeWithProjectSession(current, 'editor-inline:cancel', { handle: entry.recovery.view.handle }).catch(() => {})
+            return
+          }
+          showGenerationFailure(locale === 'en-US' ? 'Open the chapter editor first, then apply from there.' : '请先打开该章正文，再从编辑器应用。')
+          return
+        }
+        // 架构 core 字段：直接按整篇写回（writeCoreContent 对 arc 拒绝，届时提示复制）
+        const uri = formatResourceUri({ kind: 'core', key: scope as 'premise' | 'worldbuilding' | 'characters' | 'synopsis' })
+        const ok = await writeCoreContent(uri, next, current)
+        if (!stillCurrent()) return
+        if (!ok) { showGenerationFailure(locale === 'en-US' ? 'This document does not support direct overwrite; copy instead.' : '该文档不支持直接覆盖写回，请复制使用。'); return }
+        void ipc.invokeWithProjectSession(current, 'editor-inline:cancel', { handle: entry.recovery.view.handle }).catch(() => {})
+        void openArchFile(formatResourceUri({ kind: 'core', key: scope as 'premise' | 'worldbuilding' | 'characters' | 'synopsis' }), locale === 'en-US' ? 'Architecture' : '架构文档').catch(() => {})
+      })
+    },    continueEditor: entry => void act(async current => {
       await ipc.invokeWithProjectSession(current, 'editor-inline:execute', { handle: entry.recovery.view.handle })
       if (stillCurrent()) setSnapshotTick(value => value + 1)
     }),
@@ -293,6 +332,8 @@ export function useRunRecovery(): RunRecovery {
     },
   }
 }
+
+
 
 
 
