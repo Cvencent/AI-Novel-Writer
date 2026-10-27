@@ -14,6 +14,17 @@ describe('validateArcSpan', () => {
   it('拒绝小于下限', () => {
     expect(validateArcSpan(1, 10, 3000)).toEqual({ ok: false, code: 'ARC_SPAN_TOO_SMALL' })
   })
+  it('收官段允许短于下限，只要它铺到全书末章', () => {
+    // 回归：一键生成全部粗纲要覆盖全书。最后一段只剩不到 20 章时，
+    // 模型按提示词「可以生成到全书末章」收口，这一步不能反过来把整段判死。
+    expect(validateArcSpan(23, 40, 40)).toEqual({ ok: true })
+    expect(validateArcSpan(2, 12, 12)).toEqual({ ok: true })
+    expect(validateArcSpan(1, 12, 12)).toEqual({ ok: true })
+  })
+  it('不到下限且没铺到末章仍然拒绝（不能拿收官当借口切碎中段）', () => {
+    expect(validateArcSpan(23, 30, 40)).toEqual({ ok: false, code: 'ARC_SPAN_TOO_SMALL' })
+    expect(validateArcSpan(1, 12, 40)).toEqual({ ok: false, code: 'ARC_SPAN_TOO_SMALL' })
+  })
   it('拒绝大于上限', () => {
     expect(validateArcSpan(1, 500, 3000)).toEqual({ ok: false, code: 'ARC_SPAN_TOO_LARGE' })
   })

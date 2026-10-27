@@ -21,7 +21,10 @@ export function validateArcSpan(fromChapter: number, toChapter: number, totalCha
     return { ok: false, code: 'ARC_SPAN_OUT_OF_BOUNDS' }
   }
   const span = toChapter - fromChapter + 1
-  if (span < ARC_MIN_CHAPTERS) return { ok: false, code: 'ARC_SPAN_TOO_SMALL' }
+  // 收官段可以短于下限：一键生成全部粗纲要铺满全书，最后一段往往不足 20 章。
+  // 提示词也写明「如果剩余章节不足下限，这一段直接铺到全书末章」。只有铺到末章的
+  // 收口段才放行，避免拿收官当借口把中段切碎。
+  if (span < ARC_MIN_CHAPTERS && toChapter < totalChapters) return { ok: false, code: 'ARC_SPAN_TOO_SMALL' }
   if (span > ARC_MAX_CHAPTERS) return { ok: false, code: 'ARC_SPAN_TOO_LARGE' }
   return { ok: true }
 }

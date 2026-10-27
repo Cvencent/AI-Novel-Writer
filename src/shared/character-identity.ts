@@ -49,18 +49,26 @@ const sameProvenance = (a: CharacterStateFieldProvenance, b: CharacterStateField
   || a.kind === 'author' && b.kind === 'author' && a.chapterNumber === b.chapterNumber
   || a.kind === 'derived' && b.kind === 'derived' && sameSource(a.source, b.source)
 /**
- * A verified transfer origin shares the copied projection generation counter: `${origin}:G` is treated as `${projectId}:G`,
- * so an equal generation is allowed and chapter/revision order below still rejects regressions.
+ * 跨 epoch 比较：把已验证来源的旧 epoch 记法按 generation 计数器对齐。
+ *
+ * A verified transfer origin shares the copied projection generation counter: `${origin}:G` is treated as `${projectId}:G`.
+ * 返回 `newer`（generation 严格推进）、`equal`（generation 持平）或 `stale`（无法证明推进）。
+ * 只有 `newer` 才不再按章/修订排序——`equal` 仍然要比，否则同代旧回包会覆盖更新的章。
  */
-function advancesProjectContinuity(projectId: string, previous: string, current: string, originProjectId?: string): boolean {
+type ContinuityAdvance = 'newer' | 'equal' | 'stale'
+function projectContinuityAdvance(projectId: string, previous: string, current: string, originProjectId?: string): ContinuityAdvance {
   const generation = (epoch: string, project: string) => {
     if (!project || !epoch.startsWith(`${project}:`)) return null
     const value = epoch.slice(project.length + 1)
     return /^(0|[1-9][0-9]*)$/u.test(value) && Number.isSafeInteger(Number(value)) ? Number(value) : null
   }
-  const after = generation(current, projectId), before = generation(previous, projectId)
-  const fromOrigin = before === null && originProjectId ? generation(previous, originProjectId) : null
-  return after !== null && (before !== null && after > before || fromOrigin !== null && after >= fromOrigin)
+  const after = generation(current, projectId)
+  if (after === null) return 'stale'
+  const before = generation(previous, projectId)
+  if (before !== null) return after > before ? 'newer' : after === before ? 'equal' : 'stale'
+  const fromOrigin = originProjectId ? generation(previous, originProjectId) : null
+  if (fromOrigin === null) return 'stale'
+  return after > fromOrigin ? 'newer' : after === fromOrigin ? 'equal' : 'stale'
 }
 export type DerivedPatchDecision = 'apply-derived' | 'already-applied' | 'proposal-required' | 'source-conflict' | 'field-conflict'
 /** Caller recomputes hashes and reads field/authority in the same synchronous commit transaction. */
@@ -81,14 +89,19 @@ export function decideDerivedPatch(current: CharacterFieldSnapshot, patch: Deriv
     || previous.chapterNumber !== current.provenance.source.chapterNumber)) return 'source-conflict'
   if (previous && (!previous.continuityEpoch || !Number.isSafeInteger(previous.chapterNumber) || previous.chapterNumber < 1
     || !Number.isSafeInteger(previous.authoritativeFinalizationRevision) || previous.authoritativeFinalizationRevision < 1)) return 'source-conflict'
-  if (previous && (previous.continuityEpoch !== order.continuityEpoch
-    // The epoch generation counter is the cross-epoch ordering authority: once a
-    // strictly newer projection generation is proven for this project, chapter
-    // numbers recorded under the older epoch no longer order against the new
-    // context; intra-epoch (chapter, revision) ordering still applies unchanged.
-    ? !(current.provenance.kind === 'derived' && advancesProjectContinuity(patch.projectId, previous.continuityEpoch, order.continuityEpoch, authority.originProjectId))
-    : previous.chapterNumber > order.chapterNumber
+  if (previous) {
+    const sameEpoch = previous.continuityEpoch === order.continuityEpoch
+    // 只有「作者已验证来源 + 旧 era 记法 + generation 严格推进」才允许跨 epoch 直接采信；
+    // generation 持平（可能是同一代旧回包）仍要走章/修订排序，避免旧的回包覆盖更新的章。
+    const advance: ContinuityAdvance = sameEpoch
+      ? 'equal'
+      : current.provenance.kind === 'derived'
+        ? projectContinuityAdvance(patch.projectId, previous.continuityEpoch, order.continuityEpoch, authority.originProjectId)
+        : 'stale'
+    if (advance === 'stale') return 'source-conflict'
+    if (advance !== 'newer' && (previous.chapterNumber > order.chapterNumber
       || previous.chapterNumber === order.chapterNumber && previous.authoritativeFinalizationRevision > order.authoritativeFinalizationRevision)) return 'source-conflict'
+  }
   if (current.provenance.kind === 'derived' && sameSource(current.provenance.source, patch.source)
     && current.valueHash === patch.valueHash) return 'already-applied'
   if (current.revision !== patch.baseFieldRevision || current.valueHash !== patch.baseValueHash

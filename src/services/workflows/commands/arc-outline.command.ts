@@ -29,7 +29,7 @@ function arcInstruction(writingLanguage: 'zh-CN' | 'en-US', fromChapter: number,
 全书共 ${totalChapters} 章，本次需要生成**从第 ${fromChapter} 章开始**的下一段粗纲。
 
 硬性要求：
-1. 每段跨度必须在 ${ARC_MIN_CHAPTERS}–${ARC_MAX_CHAPTERS} 章之间。具体跨度由你根据该段戏剧命题的大小自行判断：命题大就切长段，命题小就切短段；如果剩余章节不足上限，可以生成到全书末章。
+1. 每段跨度必须在 ${ARC_MIN_CHAPTERS}–${ARC_MAX_CHAPTERS} 章之间。具体跨度由你根据该段戏剧命题的大小自行判断：命题大就切长段，命题小就切短段；如果剩余章节不足 ${ARC_MIN_CHAPTERS} 章，这一段直接铺到全书末章即可。
 2. 正文**绝对不能出现任何具体人名**。用「主角」「对手」「师长」这类身份词，或「某位研究员」这类泛称。人名要到细纲阶段才出现。
 3. 只写：主要事件链与因果关系、冲突与代价、转折点与节奏、结果与状态变化、情绪基调走向。不要逐章流水账。
 4. **主线之外必须有支线**：每个段落至少编织一条非主角的支线（配角线、势力线、制度线或感情线），写清它与主线在何处交汇、对主角的处境产生什么影响。只围着主角一个人转的段落是不合格的。
@@ -46,7 +46,7 @@ beat: {beat}
 The book has ${totalChapters} chapters. Generate the next arc segment **starting at chapter ${fromChapter}**.
 
 Hard requirements:
-1. Span must be between ${ARC_MIN_CHAPTERS} and ${ARC_MAX_CHAPTERS} chapters. Choose the span yourself based on how large the dramatic proposition is: a large proposition deserves a long segment, a small one a short segment. If fewer chapters remain, you may run to the final chapter.
+1. Span must be between ${ARC_MIN_CHAPTERS} and ${ARC_MAX_CHAPTERS} chapters. Choose the span yourself based on how large the dramatic proposition is: a large proposition deserves a long segment, a small one a short segment. If fewer than ${ARC_MIN_CHAPTERS} chapters remain, run this segment to the final chapter.
 2. The body must **never contain any proper character name**. Use role words such as "the protagonist", "the rival", "the mentor", or indefinite references. Names appear only in the chapter-outline stage.
 3. Write only: the main event chain and causality, conflict and cost, turning points and pacing, outcomes and state changes, emotional trajectory. Do not write a chapter-by-chapter ledger.
 4. **A subplot beyond the protagonist is mandatory**: every segment must weave in at least one non-protagonist thread (an ally line, a faction line, an institutional line, or a relationship line) and state where it intersects the main line and how it affects the protagonist's position. A segment that only orbits the protagonist is unacceptable.
@@ -467,7 +467,7 @@ export class ReverseArcOutlineCommand extends BaseWorkflowCommand<string> {
 
 请把它归纳成若干**粗纲段**，供作者检查方向。要求：
 
-1. 分段由你判断：一段覆盖多少章取决于该段戏剧命题的大小，跨度必须在 ${ARC_MIN_CHAPTERS}–${ARC_MAX_CHAPTERS} 章之间。
+1. 分段由你判断：一段覆盖多少章取决于该段戏剧命题的大小，跨度必须在 ${ARC_MIN_CHAPTERS}–${ARC_MAX_CHAPTERS} 章之间；收尾最后一段若不足 ${ARC_MIN_CHAPTERS} 章，可以直接收到第 ${lastChapterNumber(synopsis)} 章。
 2. 每段正文**绝对不能出现任何具体人名**，用「主角」「对手」这类身份词。人名只属于细纲层。
 3. 每段只写方向：主要事件链与因果、冲突与代价、转折与节奏、结果与状态变化。
 4. 必须完整覆盖从第 1 章到第 ${lastChapterNumber(synopsis)} 章，段与段首尾相接、不重叠、不留空。
@@ -484,7 +484,7 @@ Above is the finished chapter-by-chapter outline (book has ${totalChapters} chap
 
 Condense it into **arc segments** for the author to review. Requirements:
 
-1. You decide the segmentation: span depends on the dramatic proposition, and must be between ${ARC_MIN_CHAPTERS} and ${ARC_MAX_CHAPTERS}.
+1. You decide the segmentation: span depends on the dramatic proposition, and must be between ${ARC_MIN_CHAPTERS} and ${ARC_MAX_CHAPTERS}; if the final segment would be shorter than ${ARC_MIN_CHAPTERS}, run it to chapter ${lastChapterNumber(synopsis)}.
 2. A segment body must **never contain proper character names**; use role words. Names belong to the chapter level.
 3. Each segment states direction only: event chain and causality, conflict and cost, turning points and pacing, outcomes and state changes.
 4. Cover chapters 1 through ${lastChapterNumber(synopsis)} completely: contiguous, non-overlapping, no gaps.

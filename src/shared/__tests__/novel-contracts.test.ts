@@ -149,6 +149,24 @@ describe('S01共享契约（纯合成，不是生产持久化资格）', () => {
     const toOrigin = { ...order, continuityEpoch: `${origin}:3` }
     expect(decideDerivedPatch(reverse, { ...next, sourceOrder: toOrigin }, { source: patch.source, order: toOrigin, originProjectId: origin })).toBe('source-conflict')
   })
+
+  it('恢复副本：generation 持平只是记法对齐，仍要按章/修订排序，旧回包不能覆盖更新的章', () => {
+    // 回归：过去只要两个 epoch 字符串不同且 generation 既不小于来源，就整段跳过章/修订排序，
+    // 于是「同代旧回包」（例如原项目 :2 的旧数据先到、目标项目 :2 的新数据后到）会覆盖更新的章。
+    // generation 持平只能证明「记法对得上」，不能证明「更新」，仍要走章/修订比较。
+    const { current, patch } = characterCase()
+    const origin = '原项目', project = patch.projectId
+    // derived 记录的不变式：sourceOrder.chapterNumber 必须等于 provenance.source.chapterNumber。
+    const oldSource = { ...patch.source, draftId: 2, finalizationId: '原定稿', chapterNumber: 5 }
+    const previous: CharacterFieldSnapshot = { ...current, provenance: { kind: 'derived', source: oldSource }, sourceOrder: { continuityEpoch: `${origin}:2`, chapterNumber: 5, authoritativeFinalizationRevision: 1 } }
+    const order = { continuityEpoch: `${project}:2`, chapterNumber: 3, authoritativeFinalizationRevision: 2 }
+    const next = { ...patch, baseProvenance: previous.provenance, sourceOrder: order }
+    // generation 持平：旧记录停在第 5 章，新回包是第 3 章 → 章号回退，必须拒绝。
+    expect(decideDerivedPatch(previous, next, { source: patch.source, order, originProjectId: origin })).toBe('source-conflict')
+    // generation 推进（:2 → :3）：旧章号不再参与排序，允许采信。
+    const advanced = { ...order, continuityEpoch: `${project}:3` }
+    expect(decideDerivedPatch(previous, { ...next, sourceOrder: advanced }, { source: patch.source, order: advanced, originProjectId: origin })).toBe('apply-derived')
+  })
   it('同源同值幂等，拒绝去重按来源变化重新判定', () => {
     const { current, patch, authority } = characterCase()
     expect(decideDerivedPatch({ ...current, valueHash: patch.valueHash, sourceOrder: authority.order, provenance: { kind: 'derived', source: patch.source } }, patch, authority)).toBe('already-applied')
@@ -217,7 +235,7 @@ describe('S01共享契约（纯合成，不是生产持久化资格）', () => {
     for (const span of [{ start: -9, end: -1, unit: 'utf16-code-unit' }, { start: 2, end: 1, unit: 'utf16-code-unit' }, { start: 0, end: 1, unit: 'bytes' }]) expect(() => findingAnchorKey({ ...finding, source: { ...finding.source, span } } as ReviewFinding)).toThrow('UNVERIFIED_FINDING')
   })
   it('存储业务lane仅ID，不允许根相交或未证明reparse；mainReady先于appearance', () => {
-    expect(MIGRATION_IDS).toEqual(['M00', 'M01', 'M02', 'M03', 'M04', 'M05', 'M06'])
+    expect(MIGRATION_IDS).toEqual(['M00', 'M01', 'M02', 'M03', 'M04', 'M05', 'M06', 'M07', 'M08'])
     const proof = { canonicalRealPath: 'C:\\合成\\来源', platform: 'win32' as const, authorized: true, reparseFree: true }
     expect(() => assertDistinctStorageRoots([proof, { ...proof, canonicalRealPath: 'c:\\合成\\来源\\子目录' }])).toThrow()
     expect(() => assertDistinctStorageRoots([{ ...proof, reparseFree: false }])).toThrow()

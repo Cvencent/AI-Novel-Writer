@@ -36,6 +36,24 @@ beat: setup
     )).toThrow('ARC_SPAN_TOO_SMALL')
   })
 
+  it('收官段不足下限但铺到末章时接受，别的段不行', () => {
+    // 回归：一键生成全部粗纲要覆盖全书。40 章的书切到第 23 章起时只剩 18 章，
+    // 模型按提示词收口到末章，这一步过去会被 ARC_SPAN_TOO_SMALL 判死，永远铺不满。
+    expect(assertArcSegmentAcceptable(
+      `## 第23–40章：终局收束
+beat: climax
+主角追查到最后，支线在此交汇，全书收束。`,
+      23, 40, [], [],
+    )).toMatchObject({ fromChapter: 23, toChapter: 40, beat: 'climax' })
+    // 同样的短段只要没铺到末章，仍然拒绝。
+    expect(() => assertArcSegmentAcceptable(
+      `## 第23–30章：切碎了
+beat: climax
+主角追查。`,
+      23, 40, [], [],
+    )).toThrow('ARC_SPAN_TOO_SMALL')
+  })
+
   it('拒绝段长越上限的段', () => {
     expect(() => assertArcSegmentAcceptable(
       `## 第1–500章：太长
