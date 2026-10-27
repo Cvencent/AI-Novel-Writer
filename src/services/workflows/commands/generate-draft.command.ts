@@ -1910,11 +1910,11 @@ ${params.candidate.text}`,
         .map(candidate => candidate.value || candidate.characterName)
         .filter(Boolean)
       const evidence = [...new Set([...factEvidence, ...candidateEvidence])]
-      return evidence.length > 0 ? [{ projection, evidence }] : []
+      return isRecent || evidence.length > 0 ? [{ projection, evidence, continuityAnchor: isRecent }] : []
     }).sort((left, right) => right.projection.chapterNumber - left.projection.chapterNumber).slice(0, 12)
 
     const sources: FinalizedMaterialSource[] = []
-    for (const { projection, evidence } of selected) {
+    for (const { projection, evidence, continuityAnchor } of selected) {
       try {
         const sourceDraftId = projection.sourceStatus === 'stale' && projection.currentFinalizedDraftId
           ? projection.currentFinalizedDraftId : projection.draftId
@@ -1937,6 +1937,7 @@ ${params.candidate.text}`,
           content,
           evidence,
           includeEnding: projection.chapterNumber === currentChapter - 1,
+          continuityAnchor,
           sourceStatus: sourceRead.status === 'invalid'
             ? 'invalid'
             : sourceRead.status === 'legacy'

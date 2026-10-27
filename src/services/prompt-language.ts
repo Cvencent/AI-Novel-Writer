@@ -312,7 +312,11 @@ Build three connected dimensions, each with a concrete source of conflict:
 1. Every setting must support the core appeal of {{genre}} and be usable in scenes.
 2. Make the advantage's interaction with the world rules specific and actionable.
 3. Preserve explicit author facts from the story premise and protagonist profile together with the project-wide guidance. Facts unrelated to world mechanics need not be repeated, but the world must not contradict them.
-4. Return the world-building text only, with no code, analysis, or explanation.`,
+4. On regeneration, treat explicit events and rules already established in the supplied finalized prose as authoritative; revise only stale, missing, or contradictory world details while preserving the existing structure.
+5. Return the world-building text only, with no code, analysis, or explanation.
+
+[Established facts (provided on regeneration when available)]
+{{established_continuity}}`,
     systemSuffix: `[Author guidance for this step — highest priority when present]
 {{step_guidance}}`,
   },
@@ -400,6 +404,9 @@ Return JSON only, with no Markdown, preface, analysis, plan, code fence, or reas
     systemRole: 'You are an experienced chapter architect. Preserve long-form continuity through concrete events, motivated choices, causal links, and controlled pacing. Do not reveal reasoning.',
     content: `Generate chapter blueprints from chapter {{n}} through chapter {{m}} by continuing the established story architecture and prior blueprint progress.
 
+[Requested range]
+- Chapters {{n}} through {{m}} (exactly {{chapter_count}} chapters).
+
 [Authoritative project settings]
 - Genre: {{genre}}
 - Total chapters: {{number_of_chapters}}
@@ -417,7 +424,7 @@ Return JSON only, with no Markdown, preface, analysis, plan, code fence, or reas
 2. Maintain an escalation or payoff cycle every three to five chapters.
 3. Resolve or intensify relevant open threats and planted clues.
 4. Give every chapter a material event change; do not add filler.
-5. Return exactly one JSON object with a blueprints array and no analysis, plan, explanation, Markdown, or code fence.
+5. Return exactly one JSON object with a blueprints array containing exactly {{chapter_count}} items, covering chapters {{n}} through {{m}} once each, with no analysis, plan, explanation, Markdown, or code fence.
 
 [Author pacing and style guidance]
 {{pacing_guidance}}`,

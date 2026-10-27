@@ -7,7 +7,7 @@ import { BUILTIN_PROMPTS, EDITABLE_PROMPT_KEYS, getBuiltinPromptTemplate, getPro
 const expectedPromptVariables: Record<string, string[]> = {
   planning_material_character_extraction: ['requested_ids', 'sources'],
   assistant_writing_identity: ['mode_instruction'],
-  edit_selected_text: ['edit_instruction', 'selected_text', 'edit_scope', 'scope_constraint', 'context_before', 'context_after', 'project_facts', 'same_field_context'],
+  edit_selected_text: ['edit_instruction', 'edit_scope', 'selected_text', 'context_before', 'context_after', 'project_facts', 'same_field_context', 'scope_constraint'],
   generate_novel_config_field: ['existing_config', 'field_label', 'field_requirements'],
   generate_global_config: ['user_idea', 'number_of_chapters', 'word_number'],
   premise: [
@@ -43,7 +43,9 @@ const expectedPromptVariables: Record<string, string[]> = {
     'protagonist_profile',
     'global_guidance',
     'step_guidance',
+    'established_continuity',
   ],
+  arc_outline: [],
   synopsis: [
     'premise',
     'character_dynamics',
@@ -63,6 +65,7 @@ const expectedPromptVariables: Record<string, string[]> = {
     'number_of_chapters',
     'n',
     'm',
+    'chapter_count',
     'global_guidance',
     'genre',
     'pacing_guidance',

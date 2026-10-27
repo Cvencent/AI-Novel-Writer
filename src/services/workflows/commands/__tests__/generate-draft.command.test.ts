@@ -3143,6 +3143,37 @@ ${headingPrefix}第3章：潮门
     expectNoDraftPersistence(invoke)
   })
 
+  it('keeps a recent chapter continuity anchor when its fact index is empty', async () => {
+    let observedTask: GenerationTask | undefined
+    const runtime = fakeRuntime((_attempt, task) => {
+      observedTask = task
+      return outcome('新章正文。'.repeat(125), 'stop')
+    })
+    const head = '第六章开场连续性哨兵。'
+    const tail = '第六章收束连续性哨兵。'
+    const recentContent = [head, '中间事件持续推进。'.repeat(500), tail].join('\n\n')
+    const { context, callbacks, command } = setup({
+      runtime,
+      chapterNumber: 8,
+      characters: ['林岚'],
+      wordsTarget: 500,
+      previousFinalizedContent: '第七章定稿原文。',
+      continuitySourceContents: { 66: recentContent },
+      continuity: [
+        { draftId: 66, chapterNumber: 6, chapterTitle: '第六章', chapterNotes: '', facts: [] },
+        { draftId: 11, chapterNumber: 1, chapterTitle: '第一章', chapterNotes: '', facts: [] },
+      ],
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const prompt = observedTask?.messages.find(message => message.role === 'user')?.content ?? ''
+    expect(prompt).toContain(head)
+    expect(prompt).toContain(tail)
+    expect(prompt).not.toContain('第一章摘要')
+    expect(prompt.length).toBeGreaterThan(0)
+  })
+
   it('keeps older facts only when they are relevant to the current chapter entities', async () => {
     let observedTask: GenerationTask | undefined
     const runtime = fakeRuntime((_attempt, task) => {

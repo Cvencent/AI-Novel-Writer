@@ -21,6 +21,7 @@ import { useDraftStore } from '../../../stores/draft-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
 import { includedCount, useReviewChecklist } from '../../editor/review-checklist'
+import { finalizationReviewBlocked } from '../../editor/review-finalization'
 import { reviewDimensions, type useDraftActions } from '../../editor/use-draft-actions'
 import { deleteDraftVersion } from '../../panels/sidebar/draft-deletion'
 import { deleteFinalizedChapter } from '../../panels/sidebar/finalized-chapter-deletion'
@@ -117,6 +118,8 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
     if (useStageStore.getState().sheet?.kind !== 'run') useStageStore.setState({ sheet: { kind: 'review', filePath } })
   }, [review, stage, filePath])
   const included = includedCount(checklist.items)
+  const reviewBlocksFinalization = finalizationReviewBlocked(checklist.items, Boolean(checklist.confirmed))
+  const canFinalize = draft.canFinalize && !reviewBlocksFinalization
   const busy = draft.isChapterBusy
   const generationModels = models.filter(isGenerationModel)
   const selectedReviseModel = reviseModelId ?? preferredFunctionModelId(models, functionModels, 'draft_generation', defaultModelId)
@@ -255,7 +258,7 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
   const moreGroups: MenuGroupSpec[] = [
     { id: 'chapter', items: [
       ...(editable ? [{ id: 'refine', label: text('直接修稿…', 'Revise directly…'), disabled: busy, onSelect: () => { setRefinePrompt(''); setAsk('refine') } }] : []),
-      ...(editable && stage !== 'revised' ? [{ id: 'finalize', label: text('定稿…', 'Finalize…'), disabled: !draft.canFinalize, onSelect: () => setAsk('finalize') }] : []),
+      ...(editable && stage !== 'revised' ? [{ id: 'finalize', label: text('定稿…', 'Finalize…'), disabled: !canFinalize, onSelect: () => setAsk('finalize') }] : []),
       ...(review && !sheetOpen && !focus ? [{ id: 'report', label: text('审稿报告', 'Review report'), onSelect: () => setSheet(true) }] : []),
       ...(stage === 'final' && chapterNumber !== undefined ? [{ id: 'sync-outline', label: text('按定稿正文校正细纲/蓝图', 'Align outline and blueprint with the prose'), disabled: busy, onSelect: () => { void alignOutlineWithFinal() } }] : []),
       { id: 'history', label: text('版本历史', 'Version history'), onSelect: () => navigate({ kind: 'resource', page: 'history' }) },
@@ -320,7 +323,9 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
             </SplitAction>}
             {reviewAgain}
             {more}
-            <span className="stage-ch-hint">{confirmWaived
+            <span className="stage-ch-hint">{reviewBlocksFinalization
+              ? text('复验仍有已确认未解决的意见，请先修稿或标记不修改', 'Confirmed review findings remain unresolved; revise or mark them as no-change before finalizing')
+              : confirmWaived
               ? text('这些意见都不修改，确认后记进审稿记录', 'None of these notes will be revised; confirm to record that in the review')
               : included > 0
                 ? text('修稿结果会以差异给你确认，不会直接覆盖', 'You confirm the revision as a diff; nothing is overwritten')
@@ -342,12 +347,12 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
       case 'revised':
         return (
           <>
-            <Button variant="primary" disabled={!draft.canFinalize} onClick={() => setAsk('finalize')}>
+            <Button variant="primary" disabled={!canFinalize} onClick={() => setAsk('finalize')}>
               <BadgeCheck size={15} aria-hidden />{text('定稿', 'Finalize')}
             </Button>
             {reviewAgain}
             {more}
-            <span className="stage-ch-hint" data-tone={recheck?.recheckDisposition === 'completed' ? 'ok' : undefined}>{revisedHint}</span>
+            <span className="stage-ch-hint" data-tone={recheck?.recheckDisposition === 'completed' ? 'ok' : undefined}>{reviewBlocksFinalization ? text('复验仍有已确认未解决的意见，请先处理后再定稿', 'Confirmed findings remain unresolved; handle them before finalizing') : revisedHint}</span>
           </>
         )
       case 'final':
@@ -482,7 +487,7 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
         footer={(
           <>
             <Button variant="secondary" onClick={() => setAsk(null)}>{text('再看看', 'Not yet')}</Button>
-            <Button variant="primary" disabled={!draft.canFinalize} onClick={() => { setAsk(null); void draft.finalize() }}>{text('确认定稿', 'Finalize')}</Button>
+            <Button variant="primary" disabled={!canFinalize} onClick={() => { setAsk(null); void draft.finalize() }}>{text('确认定稿', 'Finalize')}</Button>
           </>
         )}
       >

@@ -282,6 +282,26 @@ describe('chapter materials', () => {
     }))
   })
 
+  it('adds a bounded recent-chapter anchor when no fact evidence locates a source', async () => {
+    const head = '第三章开场连续性哨兵。'
+    const tail = '第三章收束连续性哨兵。'
+    const recent = [head, '中段逐事推进。'.repeat(400), tail].join('\n\n')
+    const bundle = await assemble({
+      writingLanguage: 'zh-CN', authorProjectFacts: [], characterProfiles: '', futurePlans: '（无）',
+      references: [], candidates: [], relevanceTerms: [],
+      finalized: [
+        { chapterNumber: 3, draftId: 33, title: '第三章', content: recent, evidence: [], continuityAnchor: true },
+        { chapterNumber: 1, draftId: 11, title: '第一章', content: '第一章不应进入近期锚点。', evidence: [] },
+      ],
+    })
+
+    const recentBlock = finalizedBlock(bundle, 33)
+    expect(recentBlock).toContain(head)
+    expect(recentBlock).toContain(tail)
+    expect(recentBlock.length).toBeLessThan(1_500)
+    expect(bundle.text).not.toContain('第一章不应进入近期锚点。')
+  })
+
   describe('the direct finalized predecessor is required continuity', () => {
     const endingSentinel = '上一章定稿结尾哨兵。'
     const evidenceLine = '林岚把红色钥匙收进口袋。'

@@ -229,6 +229,12 @@ export class PostProcessPromptBuilder extends BasePromptBuilder {
  * 架构生成与逆向推演 Builders
  */
 export class ArchitecturePromptBuilder extends BasePromptBuilder {
+  constructor(template: PromptTemplate, writingLanguage: WritingLanguage) {
+    super(template, writingLanguage)
+    // 新项目没有已确立事实；显式置空，让可选段被裁剪而不是留下未赋值占位符。
+    this.variables.established_continuity = ''
+  }
+
   withGenre(genre: string) {
     this.variables.genre = genre;
     return this;
@@ -364,6 +370,11 @@ export class DirectoryPromptBuilder extends BasePromptBuilder {
 
   withM(m: string | number) {
     this.variables.m = String(m);
+    return this;
+  }
+
+  withChapterCount(count: string | number) {
+    this.variables.chapter_count = String(count);
     return this;
   }
 

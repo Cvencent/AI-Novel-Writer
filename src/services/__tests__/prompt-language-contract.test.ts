@@ -24,6 +24,7 @@ const REQUIRED_CORE_KEYS = [
   'character_dynamics',
   'world_building',
   'synopsis',
+  'arc_outline',
   'chapter_blueprint',
   'chapter_blueprint_chunk',
   'first_chapter_draft',
@@ -158,6 +159,7 @@ describe('core model prompt language contract', () => {
       .withGenre('Mystery')
       .withN(2)
       .withM(4)
+      .withChapterCount(3)
       .withPacingGuidance('')
       .build()
 

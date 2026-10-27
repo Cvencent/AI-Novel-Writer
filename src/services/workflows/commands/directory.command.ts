@@ -351,6 +351,7 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
           .withNumberOfChapters(totalChapters)
           .withN(batchStart)
           .withM(batchEnd)
+          .withChapterCount(batchEnd - batchStart + 1)
           .withGlobalGuidance(novelConfig.globalGuidance || '')
           .withGenre(modelFacts.genre)
           .withPacingGuidance((context.data.pacingGuidance as string) || '')

@@ -321,6 +321,7 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
   /**
    * 能否定稿：项目、元数据就位，本章没有写作任务在跑，也没有进行中的定稿或待处理的定稿冲突（ADR 0003 要求冲突显式保留，
    * 再定稿会清掉它）。所有定稿入口都看这一项，finalize 自己也再查一次。
+   * 审稿核验状态不在这里阻断：unverified/unknown 不是已确认问题；只有已确认且仍未解决的意见由单章操作层附加阻断。
    */
   const canFinalize = Boolean(projectMatches && currentProject && meta && !isChapterBusy && !finalizationConflict && !finalizationPending)
 

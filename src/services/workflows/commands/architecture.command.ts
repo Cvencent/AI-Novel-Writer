@@ -86,6 +86,8 @@ interface PartialArchData extends SynopsisCheckpoint {
   world_building_db_hash?: string
   /** 候选实际使用的作者步骤指导；恢复时沿用，不读取新输入。 */
   world_building_step_guidance?: string
+  /** 首次生成时冻结的修订参考；恢复时原样复用，避免续写任务上下文变化。 */
+  world_building_established_facts?: string
   /** 大纲赖以生成的源事实指纹；源事实变化后禁止续写旧检查点。 */
   synopsis_facts_fingerprint?: string
   /** 本批实际使用的作者步骤指导；恢复必须沿用，不读取新输入。 */
@@ -1379,8 +1381,11 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
 
     // 世界观重生成的「已确立事实」：已定稿正文（最高权威）、粗纲、已写细纲、蓝图要点与现有世界观。
     // 纯新项目（没有这些材料）时不注入，提示词与旧版完全一致。
-    let establishedFacts: string | null = null
-    if (!resumeRequested) {
+    let establishedFacts: string | null = resumeRequested
+      && typeof partial.world_building_established_facts === 'string'
+      ? partial.world_building_established_facts || null
+      : null
+    if (!resumeRequested || typeof partial.world_building_established_facts !== 'string') {
       try {
         callbacks.log(text('正在收集已定稿正文、粗纲、细纲与蓝图作为修订参考...', 'Collecting finalized prose, arc outline, chapter outline, and blueprints as revision references...'))
         const [draftsAll, arcsAll, blueprintsAll] = await Promise.all([
@@ -1422,6 +1427,7 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
         ))
         establishedFacts = null
       }
+      partial.world_building_established_facts = establishedFacts ?? ''
     }
 
     const promptBuilder = new ArchitecturePromptBuilder(template, writingLanguage)
@@ -1583,6 +1589,7 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
     delete partial.world_building_facts_fingerprint
     delete partial.world_building_db_hash
     delete partial.world_building_step_guidance
+    delete partial.world_building_established_facts
     this.assertNotCancelled(context)
     await savePartialData(
       expectedProjectPath,

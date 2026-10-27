@@ -35,6 +35,8 @@ export interface FinalizedMaterialSource {
   content: string
   evidence: readonly string[]
   includeEnding?: boolean
+  /** Include a bounded opening/ending anchor when no indexed fact locates this recent chapter. */
+  continuityAnchor?: boolean
   sourceStatus?: 'current' | 'stale' | 'legacy' | 'invalid'
   sourceIdentity?:
     | { kind: 'finalized'; finalizationId: string; contentHash: string }
@@ -221,6 +223,7 @@ function compareCodeUnit(left: string, right: string): number {
 
 const MATERIAL_BUDGET_CHARS = 6_000
 const PREVIOUS_ENDING_MAX_CHARS = 1_000
+const CONTINUITY_ANCHOR_SIDE_MAX_CHARS = 500
 /**
  * 单位统一（S10B-1b）：旧遍历按 UTF-16 码元计量，选择契约按 UTF-8 字节计量
  * （估算器版本冻结为 `utf8-bytes-v1`）。这里按**写作语言的主要字符集**把码元预算换算成
@@ -377,6 +380,23 @@ export function previousChapterEnding(content: string): string {
     : tail.trim()
 }
 
+function continuityAnchorPassage(content: string): string {
+  const trimmed = content.trim()
+  if (!trimmed) return ''
+  if (trimmed.length <= CONTINUITY_ANCHOR_SIDE_MAX_CHARS * 2) return trimmed
+  const sourceParagraphs = paragraphs(content)
+  const first = sourceParagraphs[0] ?? ''
+  const last = sourceParagraphs.at(-1) ?? ''
+  const head = first.length <= CONTINUITY_ANCHOR_SIDE_MAX_CHARS
+    ? first.trim()
+    : first.slice(0, CONTINUITY_ANCHOR_SIDE_MAX_CHARS).trim()
+  const tail = last.length <= CONTINUITY_ANCHOR_SIDE_MAX_CHARS
+    ? last.trim()
+    : last.slice(-CONTINUITY_ANCHOR_SIDE_MAX_CHARS).trim()
+  if (!head || !tail || head === tail) return trimmed.slice(0, CONTINUITY_ANCHOR_SIDE_MAX_CHARS * 2).trim()
+  return [head, '[...]', tail].join('\n\n')
+}
+
 function relevantPassages(content: string, terms: readonly string[]): string[] {
   const sourceParagraphs = paragraphs(content)
   const normalizedTerms = terms.map(term => term.trim().toLocaleLowerCase()).filter(term => term.length >= 2)
@@ -417,8 +437,10 @@ function finalizedPassages(source: FinalizedMaterialSource, relevanceTerms: read
   // 上一章结尾是本章续写的时点锚点，必进定稿块，不依赖模型上次定稿时给出的证据位置；
   // 与 candidatePassages 的必需前驱同一写法。结尾不是证据，不计入 locatedEvidence。
   const ending = source.includeEnding ? [previousChapterEnding(source.content)] : []
+  const anchor = source.continuityAnchor && located.passages.length === 0 && recovered.length === 0
+    ? [continuityAnchorPassage(source.content)] : []
   return {
-    passages: removeContainedPassages([...located.passages, ...recovered, ...ending].filter(Boolean)),
+    passages: removeContainedPassages([...located.passages, ...recovered, ...anchor, ...ending].filter(Boolean)),
     locatedEvidence: located.locatedEvidence,
   }
 }

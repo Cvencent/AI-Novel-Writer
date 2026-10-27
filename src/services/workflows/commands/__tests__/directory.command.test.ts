@@ -650,6 +650,9 @@ describe('GenerateDirectoryCommand', () => {
     }
     expect(invoke.mock.calls.filter(([channel]) => channel === 'db:blueprint-commit-range'))
       .toHaveLength(1)
+    expect(firstPrompt).toContain('本次生成范围：第1章至第5章')
+    expect(firstPrompt).toContain('共 5 章')
+    expect(firstPrompt).toContain('恰好 5 个蓝图对象')
     expect(createRuntime).toHaveBeenCalledWith({ budget: WORKFLOW_GENERATION_BUDGETS.structured }, expect.objectContaining({
       selection: expect.objectContaining({ operation: 'chapter-blueprint-directory', promptKeys: ['chapter_blueprint_chunk'], skillStages: ['planning'], output: 'structured-data' }),
     }))
@@ -853,6 +856,8 @@ describe('GenerateDirectoryCommand', () => {
     expect(result.map(item => item.chapterNumber)).toEqual([1, 2, 3, 4, 5])
     expect(observedRanges).toEqual([[1, 5], [1, 2], [3, 5]])
     expect(observedPrompts).toHaveLength(3)
+    expect(observedPrompts[1]).toContain('共 2 章')
+    expect(observedPrompts[2]).toContain('共 3 章')
     expect(observedPrompts.every(prompt => (
       prompt.includes('每章正文目标约 1200 字，可接受范围 840–1560 字')
     ))).toBe(true)

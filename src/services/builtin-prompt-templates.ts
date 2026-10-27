@@ -60,7 +60,13 @@ export const PROMPT_VARIABLE_DESCRIPTIONS_EN: Readonly<Record<string, string>> =
   field_label: 'Requested configuration field',
   field_requirements: 'Field-specific guidance',
   edit_instruction: 'Author request for the selected prose',
+  edit_scope: 'Project field or document containing the selected text',
   selected_text: 'Selected prose from the editor',
+  context_before: 'Short original text immediately before the selection (optional)',
+  context_after: 'Short original text immediately after the selection (optional)',
+  project_facts: 'Relevant established project facts',
+  same_field_context: 'Other established text in the same field',
+  scope_constraint: 'Consistency constraints required for this field',
   user_idea: 'Idea or premise provided by the author',
   number_of_chapters: 'Planned total number of chapters',
   word_number: 'Target words per chapter',
@@ -73,6 +79,7 @@ export const PROMPT_VARIABLE_DESCRIPTIONS_EN: Readonly<Record<string, string>> =
   protagonist_profile: 'Protagonist profile',
   global_guidance: 'Global writing guidance',
   step_guidance: 'Additional guidance for this step (optional)',
+  established_continuity: 'Established facts available when regenerating worldbuilding (optional)',
   reference_works: 'Reference works (optional)',
   novel_config: 'Author-confirmed novel configuration',
   premise: 'Story premise',
@@ -102,6 +109,7 @@ export const PROMPT_VARIABLE_DESCRIPTIONS_EN: Readonly<Record<string, string>> =
   chapter_list: 'Existing chapter blueprint list',
   n: 'Starting chapter number for this segment',
   m: 'Ending chapter number for this segment',
+  chapter_count: 'Number of chapters requested in this segment',
   pacing_guidance: 'Author pacing guidance (optional)',
   chapter_number: 'Chapter number',
   chapter_title: 'Chapter title',
@@ -699,6 +707,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 }
 
 要求：
+- 【解法类型轮换】每个蓝图对象的 keyEvents 末尾必须用“【解法：类型】”标注本章主要解决方式，类型只能是：规则反杀、正面失败、人情或牺牲、纯动作、交易、信息差。同一批蓝图中连续两章不得使用同一类型，且每种类型最多使用 2 次；章节数超过 12 时按顺序循环但仍禁止相邻重复。不要把每章都写成“引用规程或数据反杀”，冲突必须通过不同类型的选择与代价解决。
 - 每章的 keyEvents 控制在 100-150 字以内，信息密度必须极高。
 - 每个对象必须包含完整的 chapterNumber、title、role、purpose、characters、relationships、keyEvents、suspenseHook；relationships 仅写本章可确认的角色关系，无则输出空数组。
 - 仅给出最终的 JSON 文本，不要任何客套解释、分析、计划、Markdown 或代码块。
@@ -718,6 +727,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
       number_of_chapters: '总章数',
       n: '起始章节号',
       m: '结束章节号',
+      chapter_count: '本次生成章数',
       global_guidance: '全局写作要求',
       genre: '小说类型',
       pacing_guidance: '节奏/风格指导（可选）',
@@ -737,6 +747,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 【核心防偏离守则】
 - 小说题材：{{genre}}
 - 全书规模：共 {{number_of_chapters}} 章
+- 本次生成范围：第{{n}}章至第{{m}}章，共 {{chapter_count}} 章
 - 全局写作要求：{{global_guidance}}
 - 全书架构中的作者明确设定是权威事实；涉及对应角色、关系或规则的章节必须落实，不得遗漏、弱化或反转。
 
@@ -773,6 +784,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 
 要求：
 - 严格遵循上下文连贯，不要前后矛盾。
+- 【数量硬约束】必须输出恰好 {{chapter_count}} 个蓝图对象，chapterNumber 必须连续且完整覆盖第{{n}}章到第{{m}}章，不得少写、多写、合并或跳过章节。
 - 每个对象必须包含完整的 chapterNumber、title、role、purpose、characters、relationships、keyEvents、suspenseHook；relationships 仅写本章可确认的角色关系，无则输出空数组。
 - 仅给出最终的 JSON 文本，不要解释、分析、计划、Markdown 或代码块。
 
@@ -839,6 +851,16 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 - **强制排版要求：【段落与段落之间必须保留一个空行作为分隔】。绝对不允许连续多行不留空行！**
 - 结尾法则：仅落实【本章信息】明确要求的钩子；不得为制造悬念擅自新增高潮、突发变故或后续事件。
 - 接近目标篇幅时按本章结束状态收束，不要超过目标；不要写“继续生成”“点我继续”之类的界面提示。
+
+【写作质量硬约束（违反即视为不合格稿）】
+- 视角锁定：全章只能写视角人物能看见、听见、感知或推测到的内容。不得进入其他角色的内心，不得写其他角色的回忆、动机或未说出口的念头；需要表现其意图时，只用外部动作、表情、语气和台词。若前文出现其他角色的内心独白，本章一律不沿用。
+- 制度与条文：全章直接引用法规、细则、条款、工单编号或制度说明合计不超过 2 处。每次引用必须立即改变某个人物的具体行动、选择或代价；禁止成段解释制度，禁止用法条代替冲突。
+- 意象配额：不要让同一种物件或意象反复承担情绪。手环、配额、代偿、倒计时、门牌、托管层、铁锈味、视网膜、雪花这类意象，每个词在本章最多出现 2 次；清单外的重复同样受限。
+- 生理反应：鼻血、耳鸣、雪花点、左臂痉挛、咬舌尖、攥紧拳头、喉结滚动等模板化反应，全章合计最多 1 处，且不得与上一章使用同一种。
+- 比喻配额：像、仿佛、如同、宛如、犹如全章合计不超过 2 次；能用动作或数字直接写清的，不用比喻。
+- 句长与节奏：平均句长控制在 22 字以内；每 5 个自然段至少出现 1 个 12 字以内的短句或纯动作句；不得连续 3 句都超过 35 字。解释性段落单段不超过 3 句。
+- 场景单元：全章至少 3 个可辨认的场景单元，每个单元结束时必须发生一次选择、代价或信息变化；不得用一段概述代替场景。
+- 专名一致：场所、机构、职级、编号一律沿用前文既定写法；不得为同一地点另起新称。
 
 【AI 味反制——以下模式严禁出现】
 - 禁止段尾总结句（如“他知道，这一切才刚刚开始”、“命运的齿轮开始转动”）
@@ -914,6 +936,16 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 - **强制排版要求：【段落与段落之间必须毫无例外地保留一个空行作为分隔】。禁止将多个段落紧凑拼凑成一大块！**
 - 接近目标篇幅时按本章结束状态收束，不要超过目标；不要写“继续生成”“点我继续”之类的界面提示。
 
+【写作质量硬约束（违反即视为不合格稿）】
+- 视角锁定：全章只能写视角人物能看见、听见、感知或推测到的内容。不得进入其他角色的内心，不得写其他角色的回忆、动机或未说出口的念头；需要表现其意图时，只用外部动作、表情、语气和台词。若前文出现其他角色的内心独白，本章一律不沿用。
+- 制度与条文：全章直接引用法规、细则、条款、工单编号或制度说明合计不超过 2 处。每次引用必须立即改变某个人物的具体行动、选择或代价；禁止成段解释制度，禁止用法条代替冲突。
+- 意象配额：不要让同一种物件或意象反复承担情绪。手环、配额、代偿、倒计时、门牌、托管层、铁锈味、视网膜、雪花这类意象，每个词在本章最多出现 2 次；清单外的重复同样受限。
+- 生理反应：鼻血、耳鸣、雪花点、左臂痉挛、咬舌尖、攥紧拳头、喉结滚动等模板化反应，全章合计最多 1 处，且不得与上一章使用同一种。
+- 比喻配额：像、仿佛、如同、宛如、犹如全章合计不超过 2 次；能用动作或数字直接写清的，不用比喻。
+- 句长与节奏：平均句长控制在 22 字以内；每 5 个自然段至少出现 1 个 12 字以内的短句或纯动作句；不得连续 3 句都超过 35 字。解释性段落单段不超过 3 句。
+- 场景单元：全章至少 3 个可辨认的场景单元，每个单元结束时必须发生一次选择、代价或信息变化；不得用一段概述代替场景。
+- 专名一致：场所、机构、职级、编号一律沿用前文既定写法；不得为同一地点另起新称。
+
 【AI 味反制——以下模式严禁出现】
 - 禁止段尾总结句（如"他知道，这一切才刚刚开始"、"命运的齿轮开始转动"）
 - "仿佛"、"犹如"、"宛如"全章合计不超过3次
@@ -972,6 +1004,13 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 ★【作者对本步骤的额外指导（如有，最高优先级）】★：
 {{user_refine_prompt}}
 
+【改稿质量硬约束】
+- 不得新增法规、条款或制度说明；原文引用超过 2 处的，压到 2 处以内，并保留真正改变行动的那几处。
+- 删除重复意象与模板化生理反应；同一意象全章最多保留 2 次，鼻血、耳鸣、雪花点、痉挛、咬舌尖一类最多 1 处。
+- 把解释性长句改为动作、对话或可核对的结果；平均句长压到 22 字以内，单段不超过 3 句解释。
+- 不得改变视角归属；原文中进入非视角人物内心的句子，改为可观察的外部表现。
+- 专名、地名、机构名、时间线一律以原文和前文为准，不得改写或新增别称。
+
 请直接输出精修后的全文章节内容。强制要求纯文本，禁止使用任何 Markdown 语法符号，严禁剧本式对话。【严禁】任何开场白或解释文字。
 **【强制排版要求】：段落与段落之间必须保留一个空行作为分隔，绝不允许不留空行的连续长段落。**`,
 
@@ -985,7 +1024,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
     key: 'consistency_check',
     name: '一致性审稿',
     description: '检查章节的一致性问题',
-    systemRole: '你是一位严谨的小说审稿编辑。依据文本证据检查事实连续性、因果与动机、当章明确必需目标及非必要完整旧事件复述，不评纯文笔或风格偏好。',
+    systemRole: '你是一位严谨的小说审稿编辑。依据文本证据检查事实连续性、因果与动机、当章明确必需目标及非必要完整旧事件复述，不评纯文笔或风格偏好；视角边界、专名一致性、时间线期限与跨章重复按可核对事实审查。',
     variables: {
       chapter_content: '章节内容',
       character_states: '角色状态',
@@ -1022,6 +1061,10 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 4. 前后章节串联：本章与合法前情、伏笔或悬念的衔接是否有可定位的矛盾或因果断裂？
 5. 当章明确必需目标：按随请求提供的原目标和既有 goalReviews 合同核对。缺失或证据不足须指明是哪项原目标，不伪造正文引文，也不在 items 重复报告同一目标问题。
 6. 前情复述：当前正文是否有完整重述已发生旧事件、却没有提供必要新信息、动作或变化的可定位片段？报告须说明重复了哪项前情，以及为何没有新推进。
+7. 视角与信息边界：是否写出非视角人物的内心、回忆或未说出口的念头？只写其外部动作、表情、语气和台词的，不算问题。
+8. 专名与术语一致性：同一场所、机构、职级、编号是否被写成不同名称？以【世界观设定】和【全局摘要】中的既定写法为准。
+9. 时间线与期限：倒计时、截止时间、剩余时长与事件发生时序是否自相矛盾？
+10. 跨章重复：同一意象或生理反应是否在相邻章节以同一方式反复出现？此项只报可定位的重复实体，不评价文风偏好。
 
 `,
     systemSuffix: `★【作者要求重点检查的维度（如有，这些维度必须优先、深入检查）】★：
