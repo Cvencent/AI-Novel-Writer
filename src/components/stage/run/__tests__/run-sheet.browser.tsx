@@ -55,6 +55,9 @@ function candidate(): RecoveryCandidate {
 async function render(sheet: StageSheet = { kind: 'run', tab: 'active' }) {
   await act(async () => useStageStore.setState({ sheet }))
   await act(async () => root!.render(<Sheet />))
+  // Drain the initial stats/history/quality IPC round-trips inside act so their
+  // state updates are accounted for instead of warning after the test body.
+  await act(async () => { await Promise.resolve(); await Promise.resolve() })
 }
 
 function Sheet() {
@@ -83,6 +86,7 @@ beforeEach(() => {
     if (channel === 'db:get-llm-stats') return { totalCalls: 3, successfulCalls: 2, failedCalls: 1, knownUsageCalls: 3, totalTokens: 21400, totalPromptTokens: 15200, totalCompletionTokens: 6200 }
     if (channel === 'db:get-llm-history') return [{ id: 1, modelName: '夹具模型', purpose: 'chapter-draft', promptTokens: 8420, completionTokens: 1236, totalTokens: 9656,
       durationMs: 41000, success: true, createdAt: '2026-10-12T08:31:00.000Z' }]
+    if (channel === 'db:writing-intelligence-quality-list') return []
     throw new Error(`未配置调用：${channel}`)
   })
   Object.defineProperty(window, 'aiNovelAPI', { configurable: true, value: { invoke, on: () => () => {} } })

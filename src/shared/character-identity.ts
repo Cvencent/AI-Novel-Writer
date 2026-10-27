@@ -82,9 +82,13 @@ export function decideDerivedPatch(current: CharacterFieldSnapshot, patch: Deriv
   if (previous && (!previous.continuityEpoch || !Number.isSafeInteger(previous.chapterNumber) || previous.chapterNumber < 1
     || !Number.isSafeInteger(previous.authoritativeFinalizationRevision) || previous.authoritativeFinalizationRevision < 1)) return 'source-conflict'
   if (previous && (previous.continuityEpoch !== order.continuityEpoch
-    && !(current.provenance.kind === 'derived' && advancesProjectContinuity(patch.projectId, previous.continuityEpoch, order.continuityEpoch, authority.originProjectId))
-    || previous.chapterNumber > order.chapterNumber
-    || previous.chapterNumber === order.chapterNumber && previous.authoritativeFinalizationRevision > order.authoritativeFinalizationRevision)) return 'source-conflict'
+    // The epoch generation counter is the cross-epoch ordering authority: once a
+    // strictly newer projection generation is proven for this project, chapter
+    // numbers recorded under the older epoch no longer order against the new
+    // context; intra-epoch (chapter, revision) ordering still applies unchanged.
+    ? !(current.provenance.kind === 'derived' && advancesProjectContinuity(patch.projectId, previous.continuityEpoch, order.continuityEpoch, authority.originProjectId))
+    : previous.chapterNumber > order.chapterNumber
+      || previous.chapterNumber === order.chapterNumber && previous.authoritativeFinalizationRevision > order.authoritativeFinalizationRevision)) return 'source-conflict'
   if (current.provenance.kind === 'derived' && sameSource(current.provenance.source, patch.source)
     && current.valueHash === patch.valueHash) return 'already-applied'
   if (current.revision !== patch.baseFieldRevision || current.valueHash !== patch.baseValueHash

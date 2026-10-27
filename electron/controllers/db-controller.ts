@@ -66,6 +66,7 @@ import {
 } from '../repositories/draft-source-guard'
 import type { ExpectedDraftSource } from '../../src/shared/ipc-channels'
 import { PostProcessRepository } from '../repositories/post-process-repository'
+import { WritingIntelligenceRepository } from '../repositories/writing-intelligence-repository'
 
 // 沿用的旧表
 import { LLMHistoryRepository } from '../repositories/llm-repository'
@@ -315,6 +316,60 @@ export function registerDatabaseController() {
     } catch (error) { return { success: false, error: String(error) } }
   })
 
+  ipcMain.handle('db:writing-intelligence-scenes-get', async (_event, chapterNumber: number, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return WritingIntelligenceRepository.getScenes(chapterNumber)
+  })
+
+  ipcMain.handle('db:writing-intelligence-scenes-save', async (_event, chapterNumber: number, scenes: import('../../src/shared/writing-intelligence').SceneCard[], expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return WritingIntelligenceRepository.saveScenes(chapterNumber, scenes)
+  })
+
+  ipcMain.handle('db:writing-intelligence-quality-get', async (_event, draftId: number, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return WritingIntelligenceRepository.getQualityReview(draftId)
+  })
+
+  ipcMain.handle('db:writing-intelligence-quality-list', async (_event, chapterNumber: number | undefined, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return WritingIntelligenceRepository.listQualityReviews(chapterNumber)
+  })
+
+  ipcMain.handle('db:writing-intelligence-quality-save', async (_event, input: { draftId: number; chapterNumber: number; contentHash: string; panel: import('../../src/shared/writing-intelligence').EditorialPanelReview }, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return WritingIntelligenceRepository.saveQualityReview(input)
+  })
+
+  ipcMain.handle('db:writing-intelligence-voices-list', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return WritingIntelligenceRepository.listVoiceProfiles()
+  })
+
+  ipcMain.handle('db:writing-intelligence-voices-save', async (_event, sourceDraftId: number, contentHash: string, profiles: import('../../src/shared/writing-intelligence').CharacterVoiceProfileRecord[], expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return WritingIntelligenceRepository.saveVoiceProfiles(sourceDraftId, contentHash, profiles)
+  })
+
+  ipcMain.handle('db:writing-intelligence-commit-get', async (_event, chapterNumber: number, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return WritingIntelligenceRepository.getChapterCommit(chapterNumber)
+  })
+
+  ipcMain.handle('db:writing-intelligence-commit-list', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return WritingIntelligenceRepository.listChapterCommits()
+  })
+
+  ipcMain.handle('db:writing-intelligence-commit-build', async (_event, chapterNumber: number, draftId: number, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return WritingIntelligenceRepository.commitFinalizedChapter(chapterNumber, draftId)
+  })
+
+  ipcMain.handle('db:writing-intelligence-commit-rebuild', async (_event, chapterNumber: number, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return WritingIntelligenceRepository.rebuildChapterCommit(chapterNumber)
+  })
   ipcMain.handle('db:arc-outline-save-document', async (_event, markdown: string, expectedProjectPath: string) => {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)

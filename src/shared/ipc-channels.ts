@@ -807,6 +807,10 @@ export interface ModelProfile {
   capabilitySources?: Partial<Record<keyof ModelCapabilities, 'endpoint' | 'preset' | 'manual' | 'unknown'>>
   /** 旧配置和当前执行路径使用的输出 token 上限，保持兼容。 */
   maxTokens: number
+  /** Optional USD price per one million input tokens for local cost estimates. */
+  inputPricePerMillion?: number
+  /** Optional USD price per one million output tokens for local cost estimates. */
+  outputPricePerMillion?: number
   purposes: Array<'generation' | 'refinement' | 'summary' | 'embedding'>
   /** Profile-scoped advanced request; `auto` defers to project strategy and purpose. */
   reasoningOverride?: ReasoningOverride
@@ -927,6 +931,52 @@ export interface DatabaseChannels {
   'db:stage-review-apply-blueprint': {
     args: [chapter: number, patch: Partial<import('../../electron/repositories/blueprint-repository').BlueprintData>, expectedProjectPath: string]
     return: { success: boolean; error?: string }
+  }
+
+  // Writing intelligence: scene cards, editorial quality, voice, fact commits.
+  'db:writing-intelligence-scenes-get': {
+    args: [chapterNumber: number, expectedProjectPath: string]
+    return: import('./writing-intelligence').SceneCard[]
+  }
+  'db:writing-intelligence-scenes-save': {
+    args: [chapterNumber: number, scenes: import('./writing-intelligence').SceneCard[], expectedProjectPath: string]
+    return: import('./writing-intelligence').SceneCard[]
+  }
+  'db:writing-intelligence-quality-get': {
+    args: [draftId: number, expectedProjectPath: string]
+    return: import('./writing-intelligence').DraftQualityReview | null
+  }
+  'db:writing-intelligence-quality-list': {
+    args: [chapterNumber: number | undefined, expectedProjectPath: string]
+    return: import('./writing-intelligence').DraftQualityReview[]
+  }
+  'db:writing-intelligence-quality-save': {
+    args: [input: { draftId: number; chapterNumber: number; contentHash: string; panel: import('./writing-intelligence').EditorialPanelReview }, expectedProjectPath: string]
+    return: import('./writing-intelligence').DraftQualityReview
+  }
+  'db:writing-intelligence-voices-list': {
+    args: [expectedProjectPath: string]
+    return: import('./writing-intelligence').CharacterVoiceProfileRecord[]
+  }
+  'db:writing-intelligence-voices-save': {
+    args: [sourceDraftId: number, contentHash: string, profiles: import('./writing-intelligence').CharacterVoiceProfileRecord[], expectedProjectPath: string]
+    return: import('./writing-intelligence').CharacterVoiceProfileRecord[]
+  }
+  'db:writing-intelligence-commit-get': {
+    args: [chapterNumber: number, expectedProjectPath: string]
+    return: import('./writing-intelligence').ChapterCommit | null
+  }
+  'db:writing-intelligence-commit-list': {
+    args: [expectedProjectPath: string]
+    return: import('./writing-intelligence').ChapterCommit[]
+  }
+  'db:writing-intelligence-commit-build': {
+    args: [chapterNumber: number, draftId: number, expectedProjectPath: string]
+    return: import('./writing-intelligence').ChapterCommit
+  }
+  'db:writing-intelligence-commit-rebuild': {
+    args: [chapterNumber: number, expectedProjectPath: string]
+    return: import('./writing-intelligence').ChapterCommit
   }
   'db:arc-outline-save-document': {
     args: [markdown: string, expectedProjectPath: string]

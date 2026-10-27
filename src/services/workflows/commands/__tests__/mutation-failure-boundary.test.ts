@@ -313,6 +313,7 @@ describe('workflow mutation failure boundaries', () => {
     })
     const invoke = vi.fn(async (channel: string) => {
       if (channel === 'kb:import-text') return { success: true, chunkCount: 1, docId: 'synthetic-doc' }
+      if (channel === 'db:finalization-superseded-knowledge') return { success: true, documents: [] }
       if (channel === 'db:finalization-link-knowledge-document' || channel === 'db:continuity-save-finalized') return { success: true }
       if (channel === 'db:blueprint-update-notes') return { success: true }
       if (channel === 'db:character-roster-read') return { status: 'empty', revision: 0, entries: [] }
@@ -328,7 +329,7 @@ describe('workflow mutation failure boundaries', () => {
 
     for (const step of steps) await step.executor(callbacks(), context())
 
-    expect(steps.map(step => step.key)).toEqual(['kb_import', 'chapter_notes', 'character_cards'])
+    expect(steps.map(step => step.key)).toEqual(['kb_import', 'chapter_notes', 'character_cards', 'chapter_commit'])
     expect(complete).toHaveBeenCalledTimes(2)
     expect(invoke.mock.calls.map(([channel]) => channel)).toEqual(expect.arrayContaining([
       'kb:import-text',
@@ -559,6 +560,7 @@ describe('workflow mutation failure boundaries', () => {
       if (channel === 'kb:import-text') {
         return { success: true, docId: 'knowledge-document-41', chunkCount: 1 }
       }
+      if (channel === 'db:finalization-superseded-knowledge') return { success: true, documents: [] }
       if (channel === 'db:finalization-link-knowledge-document') {
         return { success: true, finalization: { knowledgeDocumentId: 'knowledge-document-41' } }
       }

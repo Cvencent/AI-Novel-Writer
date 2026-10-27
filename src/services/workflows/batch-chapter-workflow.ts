@@ -10,6 +10,7 @@ import type { ChapterBlueprint } from './directory-workflow'
 import { GenerateDraftCommand } from './commands/generate-draft.command'
 import type { SelectedCandidateDraft } from './chapter-materials'
 import { FinalizeChapterCommand, RunFinalizePostProcessCommand } from './commands/finalize-chapter.command'
+import { EditorialPanelCommand } from './commands/editorial-panel.command'
 import { retryFinalizationPublication } from '../finalization-client'
 import type { Locale } from '../../i18n/types'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
@@ -40,6 +41,8 @@ export interface BatchChapterWorkflowParams {
   chapterWordsTarget?: number
   /** 点击开始时冻结；草稿待审与自动定稿在同一批次内不得混用。 */
   completionMode: BatchChapterCompletionMode
+  /** Auto-finalize only: 0 disables the gate; otherwise stop before finalization below this editorial score. */
+  qualityGateScore?: number
   /** Exact main-issued batch identity selected for recovery. */
   resumeBatchId?: string
 }
@@ -51,6 +54,8 @@ export interface BatchChapterWorkflowDefinition extends WorkflowDefinition {
   chapterWordsTarget: number
   /** 随定义冻结的批量完成模式，供启动收据与 UI 验证。 */
   completionMode: BatchChapterCompletionMode
+  /** Auto-finalize only: 0 disables the gate; otherwise stop before finalization below this editorial score. */
+  qualityGateScore?: number
   /** Exact main-issued batch identity selected for recovery. */
   resumeBatchId?: string
 }
@@ -285,6 +290,21 @@ async function runOneBatchChapter(
     )
   }
 
+  const qualityGateScore = batchState.params.qualityGateScore ?? 0
+  if (qualityGateScore > 0) {
+    const draftId = Number(context.data.draftId)
+    const draftVersion = Number(context.data.draftVersion)
+    if (!Number.isSafeInteger(draftId) || !Number.isSafeInteger(draftVersion)) {
+      throw new Error(localeText(uiLocale, `第${chapterNumber}章缺少可评审的草稿身份，已停止自动定稿。`, `Chapter ${chapterNumber} has no reviewable draft identity; auto-finalization stopped.`))
+    }
+    callbacks.log(localeText(uiLocale, `第${chapterNumber}章正在通过编辑部质量门槛（${qualityGateScore} 分）...`, `Chapter ${chapterNumber} is passing the editorial quality gate (${qualityGateScore})...`))
+    const panel = await new EditorialPanelCommand({ chapterNumber, draftId, draftVersion }).execute({ step, context, callbacks })
+    if (panel.blockingCount > 0 || panel.weightedScore < qualityGateScore) {
+      throw new Error(localeText(uiLocale,
+        `第${chapterNumber}章编辑部评分为 ${panel.weightedScore.toFixed(1)}，阻断问题 ${panel.blockingCount} 条，未达到自动定稿门槛 ${qualityGateScore}。草稿已保留，任务停在章节边界。`,
+        `Chapter ${chapterNumber} scored ${panel.weightedScore.toFixed(1)} with ${panel.blockingCount} blocking findings, below the ${qualityGateScore} auto-finalize gate. The draft was kept and the batch stopped at the chapter boundary.`))
+    }
+  }
   callbacks.setProgress(55)
 
   const draftPath = String(context.data.draftPath || '')
@@ -370,9 +390,11 @@ export function createBatchChapterWorkflow(params: BatchChapterWorkflowParams): 
     ))
   }
   const completionMode = normalizeCompletionMode(params.completionMode)
+  const qualityGateScore = completionMode === 'auto_finalize' && Number.isFinite(params.qualityGateScore)
+    ? Math.min(100, Math.max(0, Number(params.qualityGateScore))) : 0
   const chapterWordsTarget = normalizeChapterWordsTarget(params.chapterWordsTarget)
   const endChapterNumber = startChapterNumber + chapterCount - 1
-  const batchState = { batchId: params.resumeBatchId, params }
+  const batchState = { batchId: params.resumeBatchId, params: { ...params, qualityGateScore } }
   const chapterResourceKeys = Array.from({ length: chapterCount }, (_, index) => (
     workflowResourceKey('chapter', startChapterNumber + index)
   ))
@@ -399,6 +421,7 @@ export function createBatchChapterWorkflow(params: BatchChapterWorkflowParams): 
       workflowResourceKey('blueprints'),
     ],
     completionMode,
+    qualityGateScore,
     title: localeText(uiLocale, `${modeZh} · ${rangeZh}`, `${modeEn} · ${rangeEn}`),
     steps: Array.from({ length: chapterCount }, (_, index) => {
       const chapterNumber = startChapterNumber + index

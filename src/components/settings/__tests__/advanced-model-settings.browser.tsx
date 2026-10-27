@@ -102,13 +102,19 @@ describe('advanced model settings', () => {
 
     const temperature = page.getByLabelText('温度')
     const maxOutputTokens = page.getByLabelText('最大输出 Token')
+    const inputPrice = page.getByLabelText('输入价格 / 百万 Token')
+    const outputPrice = page.getByLabelText('输出价格 / 百万 Token')
     await expect.element(temperature).toHaveValue(0.35)
     await expect.element(maxOutputTokens).toHaveValue(6000)
+    await expect.element(inputPrice).toHaveValue(null)
+    await expect.element(outputPrice).toHaveValue(null)
     expect(document.querySelector('[data-reasoning-status="capped"]')?.textContent).toContain('最高 → 高')
 
     await act(async () => {
       await temperature.fill('0.9')
       await maxOutputTokens.fill('7000')
+      await inputPrice.fill('2.5')
+      await outputPrice.fill('10')
       await page.getByLabelText('模型推理覆盖').selectOptions('low')
       await page.getByRole('button', { name: '保存配置', exact: true }).click()
     })
@@ -120,6 +126,8 @@ describe('advanced model settings', () => {
     await expect.element(page.getByLabelText('温度')).toHaveValue(0.9)
     await expect.element(page.getByLabelText('最大输出 Token')).toHaveValue(7000)
     expect(container?.querySelector('[data-effective-output-limit="6000"]')).not.toBeNull()
+    await expect.element(page.getByLabelText('输入价格 / 百万 Token')).toHaveValue(2.5)
+    await expect.element(page.getByLabelText('输出价格 / 百万 Token')).toHaveValue(10)
     await expect.element(page.getByLabelText('模型推理覆盖')).toHaveValue('low')
 
     await act(async () => page.getByRole('button', { name: '恢复默认值', exact: true }).click())

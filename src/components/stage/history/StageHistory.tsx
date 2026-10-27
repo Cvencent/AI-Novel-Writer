@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowRight, Lock, RotateCcw } from 'lucide-react'
 import type { VersionRecord } from '../../../services/version-service'
 import { useDraftStore } from '../../../stores/draft-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useProjectStore } from '../../../stores/project-store'
+import { useWorkflowStore } from '../../../stores/workflow-store'
 import { sameProjectSessionContext, projectSessionContextFromProject } from '../../../shared/project-session-context'
 import { sqliteTime } from '../../../shared/sqlite-time'
 import { Button } from '../../ui/Button'
@@ -14,9 +15,16 @@ import { toast } from '../../ui/Toast'
 import RevertDialog from './RevertDialog'
 import { useVersionHistory, type VersionComparison } from './use-version-history'
 import { diffProse } from './version-diff'
+import { ipc } from '../../../services/ipc-client'
+import { createCandidateTournamentWorkflow } from '../../../services/workflows/writing-intelligence-workflow'
+import { captureProjectSession, isProjectSessionCurrent } from '../../project-session-gate'
+import { globalEventBus } from '../../../shared/event-bus'
+import type { DraftQualityReview } from '../../../shared/writing-intelligence'
 import { pluralEn } from '../../../shared/plural-en'
 
 type Text = (zh: string, en: string) => string
+
+const EMPTY_REVIEWS: DraftQualityReview[] = []
 
 const TYPE_NAMES: Record<string, [string, string]> = {
   draft: ['草稿', 'Draft'],
@@ -82,14 +90,82 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
   const [comparison, setComparison] = useState<VersionComparison | null>(null)
   const [reverting, setReverting] = useState(false)
   const [revertOpen, setRevertOpen] = useState(false)
+  // Paired with the chapter it was read for, so switching chapters never shows
+  // the previous chapter's scores while the new read is in flight.
+  const [qualityData, setQualityData] = useState<{ chapterNumber: number; reviews: DraftQualityReview[] } | null>(null)
+  const [tournamentStarting, setTournamentStarting] = useState(false)
   const comparisonRequest = useRef(0)
+  // A tournament is frozen at launch: same chapter, same candidate set, same
+  // project session, one run id. Only that exact run may settle this UI.
+  const activeTournament = useRef<{
+    runId: string | null
+    chapterNumber: number
+  } | null>(null)
+  const qualityRequest = useRef(0)
+
+  const qualityReviews = qualityData && qualityData.chapterNumber === selectedChapter ? qualityData.reviews : EMPTY_REVIEWS
 
   const draftCounts = sameProjectSessionContext(draftSession, projectSessionContextFromProject(project)) ? draftsByChapter : null
   const ordered = useMemo(() => [...versions].sort((left, right) => right.version - left.version), [versions])
   const latest = ordered[0]
   const selected = ordered.find(version => version.id === selectedVersionId) ?? null
   const chapter = chapters.find(candidate => candidate.number === selectedChapter)
+  const qualityByDraft = useMemo(() => new Map(qualityReviews.map(review => [review.draftId, review])), [qualityReviews])
+  // Only rank reviews that belong to the currently displayed candidate set.
+  const currentDraftIds = useMemo(() => new Set(ordered.map(version => version.id)), [ordered])
+  const rankedQuality = useMemo(
+    () => qualityReviews
+      .filter(review => currentDraftIds.has(review.draftId))
+      .sort((left, right) => right.weightedScore - left.weightedScore),
+    [qualityReviews, currentDraftIds],
+  )
+  const bestQuality = rankedQuality[0]
 
+  const loadQuality = useCallback((chapterNumber: number) => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session) return
+    const revision = ++qualityRequest.current
+    void ipc.invokeWithProjectSession(session, 'db:writing-intelligence-quality-list', chapterNumber, session.projectPath)
+      .then(reviews => {
+        if (isProjectSessionCurrent(session) && revision === qualityRequest.current) setQualityData({ chapterNumber, reviews })
+      })
+      .catch(() => { /* keep the last good read; a failure must not wipe the panel */ })
+  }, [])
+
+  useEffect(() => {
+    if (selectedChapter === null) return
+    loadQuality(selectedChapter)
+  }, [selectedChapter, loadQuality])
+
+  useEffect(() => globalEventBus.on('WORKFLOW_COMPLETE', ({ projectSession, runId }) => {
+    const current = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!current || !sameProjectSessionContext(projectSession, current)) return
+    const tournament = activeTournament.current
+    if (tournament && runId === tournament.runId) {
+      activeTournament.current = null
+      setTournamentStarting(false)
+      loadQuality(tournament.chapterNumber)
+      return
+    }
+    // Any other completed workflow touching this chapter may have written quality.
+    if (selectedChapter !== null) loadQuality(selectedChapter)
+  }), [selectedChapter, loadQuality])
+
+  const runTournament = () => {
+    if (selectedChapter === null || ordered.length < 2 || ordered.length > 6 || tournamentStarting) return
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session) return
+    setTournamentStarting(true)
+    const workflow = createCandidateTournamentWorkflow({
+      projectPath: session.projectPath, projectSession: session, chapterNumber: selectedChapter,
+      candidates: ordered.map(version => ({ draftId: version.id, version: version.version })), locale,
+    })
+    activeTournament.current = { runId: workflow.runId ?? null, chapterNumber: selectedChapter }
+    navigate({ kind: 'run', facet: 'tasks' })
+    void useWorkflowStore.getState().startWorkflow(workflow).finally(() => {
+      if (isProjectSessionCurrent(session)) setTournamentStarting(false)
+    })
+  }
   const formatTime = (value: string) => sqliteTime(value).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 
   const pickChapter = (chapterNumber: number) => {
@@ -185,6 +261,12 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
           {chapter ? <>
             <div className="stage-hist-eyebrow">{text(`第 ${chapter.number} 章`, `Chapter ${chapter.number}`)}</div>
             <h2 className="stage-hist-chapter-title">{chapter.title}</h2>
+            <div className="stage-hist-tournament">
+              <span>{bestQuality ? text(`当前最高分：${bestQuality.weightedScore.toFixed(1)}`, `Best score: ${bestQuality.weightedScore.toFixed(1)}`) : text('可用同一套五角色标准评估多个版本。', 'Score multiple versions with the same five-role rubric.')}</span>
+              <Button variant="secondary" size="sm" disabled={ordered.length < 2 || ordered.length > 6 || tournamentStarting} onClick={runTournament}>
+                {tournamentStarting ? text('已启动', 'Started') : text(`候选锦标赛（${ordered.length}）`, `Candidate tournament (${ordered.length})`)}
+              </Button>
+            </div>
             {versionsLoading
               ? <SlowLoading key={chapter.number} />
               : versionsFailed
@@ -210,6 +292,7 @@ export default function StageHistory({ projectKey }: { projectKey: string }) {
                         <span className="stage-hist-version-name">
                           {versionName(version, text)}
                           {version === latest && <span className="stage-hist-badge">{text('当前', 'Current')}</span>}
+                          {qualityByDraft.get(version.id) && <span className="stage-hist-badge" data-tone="ok">{text(`评分 ${qualityByDraft.get(version.id)!.weightedScore.toFixed(1)}`, `Score ${qualityByDraft.get(version.id)!.weightedScore.toFixed(1)}`)}</span>}
                           {version.dependencies_stale && (
                             <span
                               className="stage-hist-badge"

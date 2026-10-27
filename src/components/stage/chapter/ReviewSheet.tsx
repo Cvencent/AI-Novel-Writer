@@ -9,6 +9,7 @@ import { Check } from '../../ui/Check'
 import { Notice } from '../../ui/Notice'
 import { Sheet } from '../../ui/Sheet'
 import { StatGrid } from '../../ui/StatGrid'
+import EditorialPanelSection from './EditorialPanelSection'
 
 type Checklist = ReturnType<typeof useReviewChecklist>
 
@@ -116,10 +117,13 @@ function IssueCard({ item, checklist, onEdit }: {
  * 单章视图的审稿侧页（ReviewReport 的数据逻辑）：严重、建议、待核实三格统计，逐条勾选纳入修稿，
  * 添加作者意见与总体修稿指导，合并后复验未完成时可重试。勾选数与章节动作条上的「按 N 项意见修稿」同步。
  */
-export default function ReviewSheet({ checklist, subtitle, reportText, onClose }: {
+export default function ReviewSheet({ checklist, subtitle, reportText, chapterNumber, draftId, draftVersion, onClose }: {
   checklist: Checklist
   subtitle: string
   reportText: string
+  chapterNumber: number
+  draftId: number
+  draftVersion: number
   onClose: () => void
 }) {
   const text = useLocaleStore(s => s.text)
@@ -147,6 +151,7 @@ export default function ReviewSheet({ checklist, subtitle, reportText, onClose }
         </div>
       )}
     >
+      <EditorialPanelSection chapterNumber={chapterNumber} draftId={draftId} draftVersion={draftVersion} />
       <StatGrid
         label={text('审稿统计', 'Review summary')}
         items={[

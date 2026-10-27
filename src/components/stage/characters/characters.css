@@ -469,3 +469,14 @@
 .cast-import-consent {
   white-space: pre-line;
 }
+
+/* Character voice profile */
+.cast-voice-card { margin: var(--s-3) 0; padding: var(--s-3); border: 1px solid var(--rule); border-radius: var(--radius); background: var(--sunken); }
+.cast-voice-card header { display: flex; gap: var(--s-2); align-items: baseline; }
+.cast-voice-card header span { font-weight: 600; }
+.cast-voice-card header small { color: var(--ink-3); }
+.cast-voice-card > p { margin: var(--s-2) 0; color: var(--ink-2); }
+.cast-voice-card dl { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: var(--s-2); margin: 0; }
+.cast-voice-card dt { color: var(--ink-3); font-size: var(--fs-12); }
+.cast-voice-card dd { margin: 2px 0 0; color: var(--ink); }
+@media (max-width: 720px) { .cast-voice-card dl { grid-template-columns: 1fr; } }

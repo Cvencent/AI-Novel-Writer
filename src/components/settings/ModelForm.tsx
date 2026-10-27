@@ -133,6 +133,8 @@ export function ModelForm({
       ...model,
       temperature: 0.7,
       maxTokens: defaultMaxOutputTokens,
+      inputPricePerMillion: undefined,
+      outputPricePerMillion: undefined,
       capabilities: { ...currentCapabilities, maxOutputTokens: providerOutputLimit ?? DEFAULT_GENERATION_OUTPUT_TOKENS },
       capabilitySources: { ...capabilitySources, maxOutputTokens: providerOutputLimit === undefined ? 'unknown' : 'preset' },
       reasoningOverride: 'auto',
@@ -526,6 +528,19 @@ export function ModelForm({
                   <p className="mt-1 text-[0.7rem] text-[var(--color-text-muted)]">
                     {text('作者设置的单次输出限制；实际请求仍受模型容量与任务预算约束。', 'Your per-response limit; model capacity and task budgets still apply.')}
                   </p>
+                </div>
+                <div>
+                  <Label>{text('输入价格 / 百万 Token', 'Input price / 1M tokens')}</Label>
+                  <Input aria-label={text('输入价格 / 百万 Token', 'Input price / 1M tokens')} type="number" min={0} step={0.0001}
+                    value={model.inputPricePerMillion ?? ''} placeholder="0"
+                    onChange={event => up('inputPricePerMillion', event.target.value === '' ? undefined : Math.max(0, Number(event.target.value)))} />
+                  <p className="mt-1 text-[0.7rem] text-[var(--color-text-muted)]">{text('USD，用于本地成本估算，不发起价格查询。', 'USD for local estimates; no price lookup is performed.')}</p>
+                </div>
+                <div>
+                  <Label>{text('输出价格 / 百万 Token', 'Output price / 1M tokens')}</Label>
+                  <Input aria-label={text('输出价格 / 百万 Token', 'Output price / 1M tokens')} type="number" min={0} step={0.0001}
+                    value={model.outputPricePerMillion ?? ''} placeholder="0"
+                    onChange={event => up('outputPricePerMillion', event.target.value === '' ? undefined : Math.max(0, Number(event.target.value)))} />
                 </div>
                 <div>
                   <Label>{text('模型输出容量', 'Model output capacity')}</Label>

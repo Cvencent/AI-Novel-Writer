@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { findBlueprintContinuityRisks, mergeConsistencyFindingsIntoReview } from '../consistency-preflight'
+import { findBlueprintContinuityRisks, findExpandedContinuityRisks, mergeConsistencyFindingsIntoReview } from '../consistency-preflight'
 import { buildFinalizedContinuityFacts } from '../finalized-continuity-facts'
 
 it('本章候选名单超过八人时仍识别后续事实中的角色', () => {
@@ -125,6 +125,34 @@ describe('findBlueprintContinuityRisks', () => {
     expect(ignored).toEqual([])
   })
 
+  it('reports absent, never-appeared, thin-cast, and overdue thread risks without duplicating AI review work', () => {
+    const findings = findExpandedContinuityRisks({
+      currentChapter: 8,
+      blueprints: [
+        { chapterNumber: 1, characters: ['林岚'] },
+        { chapterNumber: 2, characters: ['林岚'] },
+        { chapterNumber: 8, characters: ['周砚'] },
+      ],
+      cast: [
+        { name: '林岚', role: 'protagonist', motivation: '查清父亲失踪真相' },
+        { name: '周砚', role: 'antagonist', motivation: '' },
+        { name: '沈舟', role: 'supporting', motivation: '守住码头' },
+      ],
+      threads: [
+        { title: '银色怀表', status: 'progressing', dormantChapters: 5, overdue: false, authorIntent: '在第十章回收' },
+        { title: '旧码头账册', status: 'planted', dormantChapters: 0, overdue: true, authorIntent: '账册必须在第八章前出现' },
+        { title: '已收线索', status: 'resolved', dormantChapters: 8, overdue: true, authorIntent: '已解决' },
+      ],
+    })
+    const messages = findings.map(item => item.issue.zhCN).join('\n')
+    expect(messages).toContain('林岚')
+    expect(messages).toContain('周砚')
+    expect(messages).toContain('银色怀表')
+    expect(messages).toContain('旧码头账册')
+    expect(messages).not.toContain('已收线索')
+    expect(messages).not.toContain('沈舟')
+    expect(new Set(findings.map(item => item.stableFactKey)).size).toBe(findings.length)
+  })
   it('maps deterministic findings into the existing review item shape', () => {
     const finding = findBlueprintContinuityRisks(projection, {
       chapterNumber: 2, title: '重逢', role: '发展', purpose: '顾舟归来', keyEvents: '顾舟敲门',

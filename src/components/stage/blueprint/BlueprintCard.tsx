@@ -10,6 +10,7 @@ import { Button } from '../../ui/Button'
 import { Menu } from '../../ui/Menu'
 import { isComposing } from '../shortcut-keys'
 import { CHAPTER_PHASE_TEXT, CHAPTER_RUNNING_TEXT } from '../stage-text'
+import SceneCardEditor from './SceneCardEditor'
 
 interface BlueprintCardProps {
   blueprint: ChapterBlueprint
@@ -133,6 +134,8 @@ export default function BlueprintCard({ blueprint, row, saving, onField, onSave,
         </div>
 
         <div className="stage-bp-field">
+        <SceneCardEditor chapterNumber={number} characters={blueprint.characters} disabled={saving} />
+
           <label htmlFor={ids.guide}>{text('作者微操指导', 'Author guidance')} <em>{text('写作此章时一并交给 AI，优先于蓝图', 'Sent with this chapter when writing; it takes priority over the blueprint')}</em></label>
           <textarea
             id={ids.guide}

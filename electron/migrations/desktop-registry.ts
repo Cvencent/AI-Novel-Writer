@@ -9,11 +9,12 @@ import { applyM05CharacterAssets, createM05Migration } from './m05-character-ass
 import { createM00Migration } from './m00-baseline'
 import { initializeLegacyBaselineSchema, applyBaselineTables } from './baseline-schema'
 import { addBlueprintExtendedColumns, ensureBaselineBlueprintTables } from './baseline-blueprint-schema'
+import { applyM08WritingIntelligence, verifyM08WritingIntelligence } from './m08-writing-intelligence'
 import { SqliteSchemaAdapter, sqliteSchemaFingerprint } from './sqlite-schema-adapter'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3') as typeof import('better-sqlite3')
-export const CURRENT_DESKTOP_SCHEMA_VERSION = 8
+export const CURRENT_DESKTOP_SCHEMA_VERSION = 9
 let installed: MigrationRegistry | undefined
 
 function installKnownDonorAvatarColumn(db: import('better-sqlite3').Database): void {
@@ -100,11 +101,20 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
       migrate: (db: SchemaReader) => addBlueprintExtendedColumns(native(db)),
       verify: (db: SchemaReader) => extendedBlueprintFingerprints.has(sqliteSchemaFingerprint(native(db))),
     }
-    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07], [
+    for (const db of references) db.transaction(() => applyM08WritingIntelligence(db))()
+    const writingIntelligenceSchemas = schemas(9)
+    const writingIntelligenceFingerprints = new Set(writingIntelligenceSchemas.map(item => item.fingerprint))
+    const m08 = {
+      id: 'M08' as const, from: 8, to: 9, owner: 'WI',
+      migrate: (db: SchemaReader) => applyM08WritingIntelligence(native(db)),
+      verify: (db: SchemaReader) => writingIntelligenceFingerprints.has(sqliteSchemaFingerprint(native(db)))
+        && verifyM08WritingIntelligence(native(db)),
+    }
+    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08], [
       ...sourceSchemas, ...baselineSchemas.map(schema => ({ ...schema, version: 0 })),
       ...baselineSchemas, ...generationSchemas, ...identitySchemas,
       ...reviewCycleSchemas, ...importEffectSchemas, ...characterAssetSchemas, ...mergeSnapshotSchemas,
-      ...extendedBlueprintSchemas,
+      ...extendedBlueprintSchemas, ...writingIntelligenceSchemas,
     ])
     return installed
   } finally { reference.close(); donor.close() }

@@ -341,6 +341,34 @@ export function buildFinalizePostProcessSteps(
     },
   })
 
+  steps.push({
+    key: 'chapter_commit',
+    label: text('章节事实账本', 'Chapter fact ledger'),
+    critical: false,
+    executor: async (callbacks, context) => {
+      if (!context || context.cancelled) throw new Error('GENERATION_WORKFLOW_CANCELLED')
+      if (finalizedDraftId === undefined || !finalizedSource) throw new Error('CHAPTER_COMMIT_FINALIZED_SOURCE_REQUIRED')
+      const projectSession = requireWorkflowProjectSession(context)
+      try {
+        const commit = await ipc.invokeWithProjectSession(
+          projectSession,
+          'db:writing-intelligence-commit-build',
+          chapterNumber,
+          finalizedDraftId,
+          _project.path,
+        )
+        callbacks.log(text(
+          `章节事实已提交：${commit.facts.length} 条事实、${commit.characterStates.length} 项角色状态、${commit.foreshadowing.length} 条伏笔，质量分 ${commit.quality.weightedScore.toFixed(1)}。`,
+          `Chapter facts committed: ${commit.facts.length} facts, ${commit.characterStates.length} character states, ${commit.foreshadowing.length} foreshadowing items, quality ${commit.quality.weightedScore.toFixed(1)}.`,
+        ))
+      } catch (error) {
+        callbacks.log(text(
+          `章节事实账本暂不可用，后处理其余部分继续：${String(error)}`,
+          `The chapter fact ledger was unavailable; the rest of post-processing continues: ${String(error)}`,
+        ))
+      }
+    },
+  })
   return steps
 }
 
@@ -401,6 +429,11 @@ export class RunFinalizePostProcessCommand extends BaseWorkflowCommand<PostProce
         slot: { source: this.params.finalizedSource, stepKey: 'character_cards' },
       })
       const candidate = (recovery?.view.candidates ?? recovery?.view.artifacts)?.at(-1)
+      // A completed artifact exists whenever the LLM already answered. Rerunning
+      // generation after a failed commit would only discard that answer and cost
+      // another call; commit itself is a sealed effect that replays without
+      // regenerating. Repair retry therefore always replays this artifact (and
+      // only repairs invalid model output when the caller asks for it).
       if (!recovery?.effect && candidate?.status === 'completed' && candidate.compositionEligible) {
         retryOf = { artifactId: candidate.artifactId, revision: candidate.revision, textHash: candidate.textHash }
       }

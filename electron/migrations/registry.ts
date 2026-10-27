@@ -11,9 +11,10 @@ export const MIGRATION_LANE = Object.freeze([
   Object.freeze({ id: 'M06', from: 6, to: 7, owner: 'S11' }),
   // WP2: blueprint extended columns (turn/cost + foreshadowing).
   Object.freeze({ id: 'M07', from: 7, to: 8, owner: 'WP2' }),
+  Object.freeze({ id: 'M08', from: 8, to: 9, owner: 'WI' }),
 ] as const)
 
-export const LATEST_SCHEMA_VERSION = 8
+export const LATEST_SCHEMA_VERSION = 9
 export type { MigrationId } from '../../src/shared/project-storage'
 
 /** This adapter is supplied for an already authorized, exclusive staging DB by S04.

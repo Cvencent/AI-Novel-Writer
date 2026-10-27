@@ -872,3 +872,19 @@
   font-size: var(--fs-12);
   color: var(--ink-3);
 }
+
+/* Five-role editorial panel */
+.stage-editorial-panel { margin: var(--s-4) 0; padding: var(--s-3); border: 1px solid var(--rule); border-radius: var(--radius); background: color-mix(in srgb, var(--paper) 88%, var(--sunken)); }
+.stage-editorial-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-3); }
+.stage-editorial-head h3 { margin: 0; font-size: var(--fs-16); }
+.stage-editorial-head p { margin: 4px 0 0; color: var(--ink-3); font-size: var(--fs-12); }
+.stage-editorial-roles { display: grid; gap: var(--s-2); margin-top: var(--s-3); }
+.stage-editorial-role { border: 1px solid var(--rule); border-radius: var(--radius); padding: var(--s-2) var(--s-3); }
+.stage-editorial-role > summary { display: grid; grid-template-columns: 80px 48px minmax(0,1fr); gap: var(--s-2); cursor: pointer; align-items: baseline; }
+.stage-editorial-role > summary > span { font-weight: 700; color: var(--accent); }
+.stage-editorial-role > summary small { color: var(--ink-3); }
+.stage-editorial-role ul { margin: var(--s-2) 0 0; padding-left: var(--s-5); }
+.stage-editorial-role li { margin: var(--s-1) 0; color: var(--ink-2); }
+.stage-editorial-role li > b { margin-right: var(--s-2); font-size: var(--fs-12); }
+.stage-editorial-role li[data-severity="blocking"] > b { color: var(--danger); }
+.stage-editorial-role q { display: block; color: var(--ink-3); }

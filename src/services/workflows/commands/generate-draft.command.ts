@@ -47,6 +47,8 @@ import type { FinalizedContinuityProjection } from '../../../shared/finalized-co
 import type { NarrativeThreadView } from '../../../shared/narrative-thread'
 import { promptLanguageText } from '../../prompt-language'
 import { buildChapterRewriteBlock } from '../../../shared/chapter-rewrite-contract'
+import type { SceneCard } from '../../../shared/writing-intelligence'
+import { readConsistencyPreflight } from '../../consistency-preflight'
 import { countDraftUnits, draftTargetUnitRange } from '../../../shared/draft-units'
 import type { RecoveryChapterSource } from '../../../shared/recovery-candidate'
 import { CHARACTER_STATE_TEXT_FIELDS } from '../../../shared/character-roster'
@@ -260,7 +262,7 @@ type WriterChapterInfo = Pick<ChapterInfo,
 >
 
 /** Keep workflow metadata out of both initial and continuation writer prompts. */
-function toWriterChapterInfo(chapterInfo: ChapterInfo): WriterChapterInfo {
+function toWriterChapterInfo(chapterInfo: ChapterInfo, scenes: readonly SceneCard[] = []): WriterChapterInfo {
   return {
     chapterNumber: chapterInfo.chapterNumber,
     title: chapterInfo.title,
@@ -272,6 +274,7 @@ function toWriterChapterInfo(chapterInfo: ChapterInfo): WriterChapterInfo {
     costsAndTurns: chapterInfo.costsAndTurns,
     foreshadowing: chapterInfo.foreshadowing,
     userGuidance: chapterInfo.userGuidance,
+    ...(scenes.length > 0 ? { scenes: [...scenes] } : {}),
   }
 }
 
@@ -548,7 +551,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     const defaultMain = this.dependencies.createRuntime === DEFAULT_DEPENDENCIES.createRuntime
     const isFirstChapter = this.chapterInfo.chapterNumber === 1
     const templateKey = isFirstChapter ? 'first_chapter_draft' : 'next_chapter_draft'
-    const writerChapterInfo = toWriterChapterInfo(this.chapterInfo)
+    const scenes = await ipc.invokeWithProjectSession(projectSession, 'db:writing-intelligence-scenes-get', this.chapterInfo.chapterNumber, expectedProjectPath).catch(() => []) as SceneCard[]
+    const writerChapterInfo = toWriterChapterInfo(this.chapterInfo, scenes)
     const targetChars = normalizeChapterWordsTarget(this.chapterInfo.wordsTarget, novelConfig.wordsPerChapter)
     const knowledgeQueryHint = this.chapterInfo.knowledgeQueryHint?.trim() ?? ''
     const searchQuery = [knowledgeQueryHint, this.chapterInfo.title, this.chapterInfo.keyEvents,
@@ -778,6 +782,27 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         `The required finalized source for Chapter ${previousChapterNumber} could not be fixed, so generation stopped. Repair or re-finalize that chapter and try again.`,
       ))
     }
+    const consistencyPreflight = await readConsistencyPreflight(projectSession, [{
+      chapterNumber: this.chapterInfo.chapterNumber,
+      title: this.chapterInfo.title,
+      role: this.chapterInfo.role,
+      purpose: this.chapterInfo.purpose,
+      keyEvents: this.chapterInfo.keyEvents,
+      characters: this.chapterInfo.characters,
+      suspenseHook: this.chapterInfo.suspenseHook ?? '',
+      costsAndTurns: this.chapterInfo.costsAndTurns,
+      foreshadowing: this.chapterInfo.foreshadowing,
+      userGuidance: this.chapterInfo.userGuidance ?? '',
+      notes: '',
+    }]).catch(() => ({ findings: [], exemptions: [] }))
+    const consistencyConstraintText = consistencyPreflight.findings.length > 0
+      ? promptLanguageText(
+          writingLanguage,
+          `【写作前确定性连续性约束】\n以下问题来自角色、蓝图与叙事线索的确定性检查。写作时优先避开或明确处理，但不要机械解释这些约束：\n${consistencyPreflight.findings.map(finding => `- ${finding.issue.zhCN}${finding.suggestion.zhCN ? ` 建议：${finding.suggestion.zhCN}` : ''}`).join('\n')}`,
+          `[Deterministic continuity constraints before drafting]\nThese issues come from deterministic cast, blueprint, and narrative-thread checks. Avoid or explicitly handle them without mechanically explaining the checks:\n${consistencyPreflight.findings.map(finding => `- ${finding.issue.enUS}${finding.suggestion.enUS ? ` Suggestion: ${finding.suggestion.enUS}` : ''}`).join('\n')}`,
+        )
+      : ''
+
     let chapterMaterials: ChapterMaterialAssembly
     try {
       chapterMaterials = await assembleChapterMaterials({
@@ -789,6 +814,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         futurePlans: futureBlueprintsStr,
         references: [
           ...(activeThreadContext ? [{ text: activeThreadContext, rendered: activeThreadContext }] : []),
+          ...(consistencyConstraintText ? [{ text: consistencyConstraintText, rendered: consistencyConstraintText }] : []),
           ...knowledgeReferences,
         ],
         finalized: finalizedSources,
@@ -1809,6 +1835,7 @@ ${params.candidate.text}`,
       } catch { /* 连续性投影不可用时跳过派生状态，角色基础资料照常注入。 */ }
     }
       const roster = await ipc.invokeWithProjectSession(projectSession, 'db:character-roster-read', projectPath)
+      const voiceProfiles = await ipc.invokeWithProjectSession(projectSession, 'db:writing-intelligence-voices-list', projectPath).catch(() => [])
       if (roster.status !== 'ready' && roster.status !== 'empty') {
         return promptLanguageText(
           writingLanguage,
@@ -1839,6 +1866,14 @@ ${params.candidate.text}`,
           card.arc && `arc: ${card.arc}`,
           card.notes && `notes: ${card.notes}`,
         ].filter(Boolean)
+        const voice = Array.isArray(voiceProfiles) ? voiceProfiles.find(profile => profile.characterId === card.characterId) : undefined
+        if (voice) {
+          facts.push(promptLanguageText(
+            writingLanguage,
+            `角色声音：${voice.summary} | 句式：${voice.sentenceStyle} | 用词：${voice.vocabulary} | 对白习惯：${voice.dialogueHabits.join('、') || '无'} | 情绪表现：${voice.emotionalTells} | 避免：${voice.avoid.join('、') || '无'}`,
+            `Character voice: ${voice.summary} | Sentences: ${voice.sentenceStyle} | Vocabulary: ${voice.vocabulary} | Dialogue habits: ${voice.dialogueHabits.join(', ') || 'none'} | Emotional tells: ${voice.emotionalTells} | Avoid: ${voice.avoid.join(', ') || 'none'}`,
+          ))
+        }
         for (const relationship of card.relationships ?? []) {
           const target = relationship.target?.trim()
           const relation = relationship.relation?.trim()
@@ -1851,20 +1886,20 @@ ${params.candidate.text}`,
             `relationship（legacy 来源未知）: ${legacyRelationshipNotes}`,
             `relationship (legacy provenance unknown): ${legacyRelationshipNotes}`,
           ))
-          for (const field of CHARACTER_STATE_TEXT_FIELDS) {
-            const provenance = card.currentState?.provenance?.[field]
-            const value = card.currentState?.[field]?.trim()
-            if (provenance?.kind === 'author' && value) {
-              facts.push(`${field}@chapter${provenance.chapterNumber}: ${value}`)
-            }
+        }
+        for (const field of CHARACTER_STATE_TEXT_FIELDS) {
+          const provenance = card.currentState?.provenance?.[field]
+          const value = card.currentState?.[field]?.trim()
+          if (provenance?.kind === 'author' && value) {
+            facts.push(`${field}@chapter${provenance.chapterNumber}: ${value}`)
           }
-          // 最近定稿后处理推进的派生状态：作者手填之外，把最新事实也交给模型。
-          const derived = derivedStates.get(card.name)
-          if (derived) {
-            for (const field of CHARACTER_STATE_TEXT_FIELDS) {
-              const item = derived.get(field)
-              if (item?.value?.trim()) facts.push(`${field}@chapter${item.chapter}(derived): ${item.value.trim()}`)
-            }
+        }
+        // 最近定稿后处理推进的派生状态：作者手填之外，把最新事实也交给模型。
+        const derived = derivedStates.get(card.name)
+        if (derived) {
+          for (const field of CHARACTER_STATE_TEXT_FIELDS) {
+            const item = derived.get(field)
+            if (item?.value?.trim()) facts.push(`${field}@chapter${item.chapter}(derived): ${item.value.trim()}`)
           }
         }
         profiles.push(`${card.name} (${card.role || 'unknown'})${facts.length ? ` | ${facts.join(' | ')}` : ''}`)

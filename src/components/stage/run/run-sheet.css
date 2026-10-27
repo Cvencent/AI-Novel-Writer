@@ -544,3 +544,6 @@ button.run-step-row:hover {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+.run-quality-review { margin-top: var(--s-3); }
+.run-quality-review > summary { cursor: pointer; font-weight: 600; }

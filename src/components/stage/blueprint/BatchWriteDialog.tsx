@@ -24,7 +24,7 @@ export default function BatchWriteDialog(props: BatchChapterProps) {
 function BatchWriteDialogSession(props: BatchChapterProps) {
   const form = useBatchChapterForm(props)
   const defaultModelId = useLLMStore(s => s.defaultModelId)
-  const ids = { count: useId(), words: useId(), model: useId(), mode: useId() }
+  const ids = { count: useId(), words: useId(), model: useId(), mode: useId(), quality: useId() }
   const { text, start, end, normalizedCount, starting, completionMode } = form
   const auto = completionMode === 'auto_finalize'
   const message = form.modelSelectionError ?? form.authorityError ?? form.error
@@ -125,6 +125,17 @@ function BatchWriteDialogSession(props: BatchChapterProps) {
             `Chapters ${start}–${end} (${normalizedCount}). Pausing takes effect after the current chapter; cancelling stops the next one from starting.`)}
         </p>
 
+        {auto && (
+          <div className="pi-field">
+            <label htmlFor={ids.quality}>{text('编辑部最低分', 'Editorial minimum score')} <em>{text('0 = 不启用质量门槛', '0 disables the gate')}</em></label>
+            <input
+              id={ids.quality} type="number" className="pi-input" min={0} max={100}
+              value={form.qualityGateScore} disabled={starting}
+              onChange={event => { form.setQualityGateScore(event.target.value === '' ? '' : Math.min(100, Math.max(0, Number(event.target.value)))); changed(); form.setError(null) }}
+            />
+            <p className="stage-ch-hint">{text('开启后每章先跑五角色编辑部评审；低于门槛或出现阻断问题，会在章节边界停下并保留草稿。', 'When enabled, each chapter runs the five-role editorial review first. A low score or blocking finding stops the batch at the chapter boundary and keeps the draft.')}</p>
+          </div>
+        )}
         {auto && (
           <Notice tone="warn" title={form.confirmingAutoFinalize
             ? text(`即将自动定稿第 ${start}～${end} 章`, `About to auto-finalize chapters ${start}–${end}`)

@@ -536,3 +536,16 @@
   border-radius: var(--radius-lg);
   background: var(--paper);
 }
+
+/* Writing intelligence: scene cards */
+.stage-bp-scenes { margin-top: var(--s-4); padding-top: var(--s-3); border-top: 1px solid var(--rule); }
+.stage-bp-scenes > summary { cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: var(--s-2); }
+.stage-bp-scenes > summary small { color: var(--ink-3); font-weight: 400; font-size: var(--fs-12); }
+.stage-bp-scene-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin: var(--s-3) 0; }
+.stage-bp-scene-list { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--s-3); }
+.stage-bp-scene-card { border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); padding: var(--s-3); }
+.stage-bp-scene-head { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: var(--s-2); align-items: center; }
+.stage-bp-scene-head > span { color: var(--ink-3); text-align: center; }
+.stage-bp-scene-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2); margin-top: var(--s-2); }
+.stage-bp-scene-foot { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: var(--s-2); margin-top: var(--s-2); }
+@media (max-width: 720px) { .stage-bp-scene-grid, .stage-bp-scene-foot { grid-template-columns: 1fr; } }

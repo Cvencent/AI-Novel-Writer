@@ -50,6 +50,7 @@ export function useBatchChapterForm({ isOpen, startChapterNumber, onClose }: Bat
   const [error, setError] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
   const [completionMode, setCompletionMode] = useState<BatchChapterCompletionMode>('draft_review')
+  const [qualityGateScore, setQualityGateScore] = useState<number | ''>(0)
   const [confirmingAutoFinalize, setConfirmingAutoFinalize] = useState(false)
   const [authoritativeStart, setAuthoritativeStart] = useState<number | null>(null)
   const [authorityError, setAuthorityError] = useState<string | null>(null)
@@ -268,7 +269,7 @@ export function useBatchChapterForm({ isOpen, startChapterNumber, onClose }: Bat
 
   return {
     text, currentProject, chapterCount, setChapterCount, chapterWordsTarget, setChapterWordsTarget, error, setError, starting,
-    completionMode, setCompletionMode, confirmingAutoFinalize, setConfirmingAutoFinalize, authorityError, authorityLoading,
+    completionMode, setCompletionMode, qualityGateScore, setQualityGateScore, confirmingAutoFinalize, setConfirmingAutoFinalize, authorityError, authorityLoading,
     consistencyPreflight, generationModels, selectedGenerationModelId, setGenerationModelId, modelSelectionError,
     normalizedCount, start, end, handleStart, saveArrangement, revokeArrangement,
   }

@@ -66,7 +66,7 @@ it('从原资料快照恢复附加检索词，不发起新的准备或检索', a
   const workflow = await createDraftRecoveryWorkflow(session, handle)
   await expect(execute(workflow).result).rejects.toThrow('CONTEXT_READING_REACHED')
   expect(invoke.mock.calls.map(([channel]) => channel)).toEqual([
-    'generation:read-context', 'generation:read-context', 'db:draft-get-latest',
+    'generation:read-context', 'db:writing-intelligence-scenes-get', 'generation:read-context', 'db:draft-get-latest',
   ])
 })
 
@@ -82,7 +82,7 @@ it.each([false, true])('已保存回执不依赖被删除的前章，显式片�
   await expect(execution.result).resolves.toBe(content)
   expect(execution.context.data).toMatchObject({ draftId: 42, draftVersion: 1, draftContent: content })
   expect(invoke.mock.calls.map(([channel]) => channel)).toEqual([
-    'generation:read-context', 'generation:read-context', 'db:draft-list-all',
+    'generation:read-context', 'db:writing-intelligence-scenes-get', 'generation:read-context', 'db:draft-list-all',
   ])
 })
 
@@ -103,7 +103,7 @@ it('工作流创建后正文发生变化时拒绝发布旧生成正文', async (
   const execution = execute(workflow)
   await expect(execution.result).rejects.toThrow('GENERATION_DRAFT_RECEIPT_INVALID')
   expect(execution.context.data).toEqual({})
-  expect(invoke.mock.calls.map(([channel]) => channel)).toEqual(['generation:read-context', 'generation:read-context'])
+  expect(invoke.mock.calls.map(([channel]) => channel)).toEqual(['generation:read-context', 'db:writing-intelligence-scenes-get', 'generation:read-context'])
 })
 
 it('重选候选后的读取发现正文已变化时拒绝创建恢复工作流', async () => {

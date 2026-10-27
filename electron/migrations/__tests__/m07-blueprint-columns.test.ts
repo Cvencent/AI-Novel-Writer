@@ -37,7 +37,7 @@ describe('M07 blueprint extended columns', () => {
     try {
       const before = db.prepare('SELECT body FROM contents').pluck().get()
       const result = migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry())
-      expect(result.completedSteps).toEqual(['M07'])
+      expect(result.completedSteps).toEqual(['M07', 'M08'])
       expect(result.version).toBe(CURRENT_DESKTOP_SCHEMA_VERSION)
       const cols = (db.prepare('PRAGMA table_info(blueprints)').all() as { name: string }[]).map(c => c.name)
       expect(cols).toContain('costs_and_turns')

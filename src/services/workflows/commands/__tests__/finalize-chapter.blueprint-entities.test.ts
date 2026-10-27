@@ -239,7 +239,7 @@ describe('FinalizeChapterCommand blueprint character fallback', () => {
       { slot: { source: { draftId: 33, finalizationId: 'finalization-3', chapterNumber: 3, contentHash: CONTENT_HASH }, stepKey: 'character_cards' } },
     ])
     expect(invoke.mock.calls.some(([channel]) => ['db:continuity-save-finalized', 'db:blueprint-update-notes', 'finalization-generation:begin', 'finalization-generation:execute', 'finalization-generation:commit'].includes(channel))).toBe(false)
-    expect(completedSteps).toEqual(new Set(['kb_import', 'chapter_notes', 'character_cards']))
+    expect(completedSteps).toEqual(new Set(['kb_import', 'chapter_notes', 'character_cards', 'chapter_commit']))
     const visibleLogs = vi.mocked(stepCallbacks.log).mock.calls.flat().join('\n')
     expect(visibleLogs).toContain('Starting finalization and post-processing analysis')
     expect(visibleLogs).toContain('Finalized content committed to SQLite and published as a manuscript')

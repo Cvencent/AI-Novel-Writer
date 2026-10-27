@@ -42,6 +42,7 @@ import type { ChapterStage } from './chapter-lifecycle'
 import MergeView from './MergeView'
 import PostProcessSteps from './PostProcessSteps'
 import ReviewSheet from './ReviewSheet'
+import ChapterCommitDialog from './ChapterCommitDialog'
 import { pluralEn } from '../../../shared/plural-en'
 
 type DraftActions = ReturnType<typeof useDraftActions>
@@ -100,6 +101,7 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
   const [refinePrompt, setRefinePrompt] = useState('')
   const [rewritePrompt, setRewritePrompt] = useState('')
   const [mergeLater, setMergeLater] = useState(false)
+  const [commitOpen, setCommitOpen] = useState(false)
   const reviewOptions = useAnchoredLayer('start')
   const reviseOptions = useAnchoredLayer('start')
 
@@ -255,12 +257,30 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
       }
     })()
   }
+  const analyzeCharacterVoices = () => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || !isProjectSessionCurrent(session)) return
+    void (async () => {
+      try {
+        const { createVoiceProfileWorkflow } = await import('../../../services/workflows/writing-intelligence-workflow')
+        useWorkflowStore.getState().startWorkflow(createVoiceProfileWorkflow({
+          projectPath: session.projectPath, projectSession: session, chapterNumber,
+          draftId: meta.id, draftVersion: meta.version, locale: useLocaleStore.getState().locale,
+        }))
+        navigate({ kind: 'run', facet: 'tasks' })
+      } catch (error) {
+        useWorkflowStore.getState().addLog('error', text(`角色声音提取启动失败：${String(error)}`, `Could not start voice extraction: ${String(error)}`), useLocaleStore.getState().locale)
+      }
+    })()
+  }
   const moreGroups: MenuGroupSpec[] = [
     { id: 'chapter', items: [
       ...(editable ? [{ id: 'refine', label: text('直接修稿…', 'Revise directly…'), disabled: busy, onSelect: () => { setRefinePrompt(''); setAsk('refine') } }] : []),
+      ...(editable ? [{ id: 'voice-profiles', label: text('分析角色声音…', 'Analyze character voices…'), disabled: busy, onSelect: analyzeCharacterVoices }] : []),
       ...(editable && stage !== 'revised' ? [{ id: 'finalize', label: text('定稿…', 'Finalize…'), disabled: !canFinalize, onSelect: () => setAsk('finalize') }] : []),
       ...(review && !sheetOpen && !focus ? [{ id: 'report', label: text('审稿报告', 'Review report'), onSelect: () => setSheet(true) }] : []),
       ...(stage === 'final' && chapterNumber !== undefined ? [{ id: 'sync-outline', label: text('按定稿正文校正细纲/蓝图', 'Align outline and blueprint with the prose'), disabled: busy, onSelect: () => { void alignOutlineWithFinal() } }] : []),
+      { id: 'fact-ledger', label: text('事实账本…', 'Fact ledger…'), onSelect: () => setCommitOpen(true) },
       { id: 'history', label: text('版本历史', 'Version history'), onSelect: () => navigate({ kind: 'resource', page: 'history' }) },
       { id: 'copy', label: text('复制本章正文', 'Copy chapter text'), onSelect: copyBody },
     ] },
@@ -451,11 +471,16 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
         <ReviewSheet
           checklist={checklist}
           reportText={review.report}
+          chapterNumber={chapterNumber}
+          draftId={meta.id}
+          draftVersion={meta.version}
           subtitle={text(`基于草稿 v${meta.version}`, `Based on draft v${meta.version}`)}
           onClose={() => setSheet(false)}
         />,
         sheetSlot,
       )}
+      <ChapterCommitDialog open={commitOpen} chapterNumber={chapterNumber} onClose={() => setCommitOpen(false)} />
+
       <InkDialog
         open={ask === 'refine'}
         onOpenChange={open => { if (!open) setAsk(null) }}

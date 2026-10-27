@@ -1,9 +1,16 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Copy, Lock, Trash2 } from 'lucide-react'
 import type { LLMCallRecord } from '../../../services/stats-service'
 import { sqliteTime } from '../../../shared/sqlite-time'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
+import { useProjectStore } from '../../../stores/project-store'
+import { useLLMStore } from '../../../stores/llm-store'
+import { ipc } from '../../../services/ipc-client'
+import { captureProjectSession, isProjectSessionCurrent } from '../../project-session-gate'
+import { projectSessionContextFromProject, sameProjectSessionContext } from '../../../shared/project-session-context'
+import { globalEventBus } from '../../../shared/event-bus'
+import { estimateUsageCost, type DraftQualityReview } from '../../../shared/writing-intelligence'
 import { copySafeDiagnostic, useModelCalls } from '../../run/use-model-calls'
 import { Button } from '../../ui/Button'
 import { Check } from '../../ui/Check'
@@ -83,6 +90,56 @@ function RunLog({ text }: { text: Text }) {
 function ModelCallLog({ text }: { text: Text }) {
   const locale = useLocaleStore(s => s.locale)
   const { stats, history, workflowFor } = useModelCalls()
+  const models = useLLMStore(s => s.models)
+  const project = useProjectStore(s => s.currentProject)
+  const [qualityReviews, setQualityReviews] = useState<DraftQualityReview[]>([])
+  const qualityRequest = useRef(0)
+  const qualitySession = useMemo(() => projectSessionContextFromProject(project), [project])
+  const loadQuality = useCallback((session = captureProjectSession(useProjectStore.getState().currentProject)) => {
+    if (!session) return
+    const revision = ++qualityRequest.current
+    void ipc.invokeWithProjectSession(session, 'db:writing-intelligence-quality-list', undefined, session.projectPath)
+      .then(reviews => { if (isProjectSessionCurrent(session) && revision === qualityRequest.current) setQualityReviews(reviews) })
+      .catch(() => { if (isProjectSessionCurrent(session) && revision === qualityRequest.current) setQualityReviews([]) })
+  }, [])
+
+  useEffect(() => { loadQuality() }, [loadQuality, qualitySession])
+  // A finished review writes a new quality row; refresh so the diagnostics tab shows it.
+  useEffect(() => globalEventBus.on('WORKFLOW_COMPLETE', ({ projectSession }) => {
+    const current = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!current || !sameProjectSessionContext(projectSession, current)) return
+    loadQuality()
+  }), [loadQuality])
+
+  // Each call contributes one of three outcomes: a real cost, or a specific
+  // reason it cannot be priced — no usage reported, no model price, or a failed call.
+  const costed = useMemo(() => history.map(call => {
+    const model = models.find(candidate => candidate.id === call.modelId)
+      ?? models.find(candidate => candidate.name === call.modelName || candidate.modelName === call.modelName)
+    const value = estimateUsageCost({
+      promptTokens: call.promptTokens, completionTokens: call.completionTokens,
+      inputPerMillion: model?.inputPricePerMillion, outputPerMillion: model?.outputPricePerMillion,
+    })
+    if (value !== null) return { call, value, reason: null as null }
+    const reason: 'failed' | 'usage' | 'price' = !call.success && call.promptTokens === null && call.completionTokens === null
+      ? 'failed'
+      : (call.promptTokens === null || call.completionTokens === null ? 'usage' : 'price')
+    return { call, value: null, reason }
+  }), [history, models])
+  const knownCosts = costed.filter(entry => entry.value !== null)
+  const totalCost = knownCosts.reduce((sum, entry) => sum + (entry.value ?? 0), 0)
+  const missingUsage = costed.filter(entry => entry.reason === 'usage').length
+  const missingPrice = costed.filter(entry => entry.reason === 'price').length
+  const failedWithoutUsage = costed.filter(entry => entry.reason === 'failed').length
+  const costHint = (() => {
+    const parts: string[] = []
+    if (missingUsage > 0) parts.push(text(`${missingUsage} 次未上报用量`, `${missingUsage} ${pluralEn(missingUsage, 'call')} without usage`))
+    if (missingPrice > 0) parts.push(text(`${missingPrice} 次模型缺价格`, `${missingPrice} ${pluralEn(missingPrice, 'call')} with no model price`))
+    if (failedWithoutUsage > 0) parts.push(text(`${failedWithoutUsage} 次调用失败且无用量`, `${failedWithoutUsage} failed ${pluralEn(failedWithoutUsage, 'call')} with no usage`))
+    return parts.length > 0 ? parts.join(' · ') : undefined
+  })()
+  const averageQuality = qualityReviews.length > 0
+    ? qualityReviews.reduce((sum, review) => sum + review.weightedScore, 0) / qualityReviews.length : null
   const count = (value: number | null) => compactNumber(value, locale)
   const titleId = useId()
   return (
@@ -97,8 +154,21 @@ function ModelCallLog({ text }: { text: Text }) {
           { id: 'input', label: text('输入用量', 'Input usage'), value: count(stats.totalPromptTokens) },
           { id: 'output', label: text('输出用量', 'Output usage'), value: count(stats.totalCompletionTokens),
             hint: stats.knownUsageCalls < stats.totalCalls ? text(`${stats.totalCalls - stats.knownUsageCalls} 次未上报用量`, `${stats.totalCalls - stats.knownUsageCalls} ${pluralEn(stats.totalCalls - stats.knownUsageCalls, 'call')} without usage`) : undefined },
+          { id: 'cost', label: text('估算费用', 'Estimated cost'), value: knownCosts.length > 0 ? `$${totalCost.toFixed(4)}` : '—', hint: costHint },
+          { id: 'quality', label: text('平均质量分', 'Average quality'), value: averageQuality === null ? '—' : averageQuality.toFixed(1) },
           { id: 'failed', label: text('失败', 'Failed'), value: count(stats.failedCalls) },
         ]} />
+      )}
+      {qualityReviews.length > 0 && (
+        <details className="run-quality-review">
+          <summary>{text(`质量评分记录 ${qualityReviews.length} 份`, `${qualityReviews.length} quality reviews`)}</summary>
+          <div className="run-table-frame">
+            <table className="run-table">
+              <thead><tr><th scope="col">{text('章节', 'Chapter')}</th><th scope="col">{text('草稿', 'Draft')}</th><th scope="col" data-align="end">{text('总分', 'Score')}</th><th scope="col" data-align="end">{text('阻断', 'Blocking')}</th><th scope="col">{text('时间', 'Time')}</th></tr></thead>
+              <tbody>{qualityReviews.map(review => <tr key={review.draftId}><td>{text(`第 ${review.chapterNumber} 章`, `Chapter ${review.chapterNumber}`)}</td><td>#{review.draftId}</td><td data-align="end">{review.weightedScore.toFixed(1)}</td><td data-align="end">{review.blockingCount}</td><td>{new Date(review.reviewedAt).toLocaleString(locale)}</td></tr>)}</tbody>
+            </table>
+          </div>
+        </details>
       )}
       {history.length === 0
         ? <p className="run-empty-line">{text('还没有调用记录。', 'No AI calls yet.')}</p>

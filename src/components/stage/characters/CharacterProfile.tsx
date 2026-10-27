@@ -8,6 +8,7 @@ import { authorStateEdit, CHARACTER_STATE_FIELDS, stateFieldView } from '../../e
 import RelationshipGraph from '../../editor/RelationshipGraph'
 import { useCharacterAvatar } from '../../editor/use-character-avatar'
 import { useCharacterProfile } from '../../editor/use-character-profile'
+import CharacterVoiceCard from './CharacterVoiceCard'
 import { Button } from '../../ui/Button'
 import { DangerConfirm } from '../../ui/DangerConfirm'
 import { EmptyState } from '../../ui/EmptyState'
@@ -125,6 +126,8 @@ export default function CharacterProfile({ projectKey }: { projectKey: string })
           <div className="cast-profile-actions">{menu}</div>
         </header>
       )}
+
+      <CharacterVoiceCard characterId={card?.characterId} />
 
       <div className="cast-view-switch">
         <SegmentedControl label={text('档案视图', 'Profile view')} options={viewOptions} value={view} onChange={setView} />
