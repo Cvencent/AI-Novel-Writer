@@ -303,7 +303,7 @@ async function runProfile(profile, endpoint) {
         byteSize: archiveBytes.length })
       assert.deepEqual(completion.archive, manifest.archive)
       const portable = await archiveManifest(archiveBytes)
-      assert.equal(portable.sourceSchemaVersion, 7)
+  assert.equal(portable.sourceSchemaVersion, 9)
       assert.equal(portable.originProjectId, originProjectId)
       assert.equal(portable.semanticCounts['table.drafts'], 1)
       assert.equal(portable.semanticCounts['table.review_cycle_merges'], 0)

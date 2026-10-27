@@ -10,7 +10,7 @@ const repositoryRoot = path.resolve(path.dirname(scriptPath), '..')
 const semanticVersionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 const expectedGithubSource = Object.freeze({
   provider: 'github',
-  owner: 'EthanYoQ',
+  owner: 'Cvencent',
   repo: 'AI-Novel-Writer',
   releaseType: 'release',
   channel: 'latest',

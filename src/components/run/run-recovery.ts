@@ -59,6 +59,15 @@ export interface EditorEntry extends Usage {
   tails: RecoveryText[]
   documentText: string
   canContinue: boolean
+  /**
+   * 这次运行此刻还有一次未被结算的物理请求：卡片显示「生成中…」并暂时收起「应用替换」。
+   *
+   * 不能用 view.status === 'running' 来判：generation_runs.status 是运行级生命周期列，
+   * 只在 暂停/取消 时改写，跑完也不会落回终态，因此它永远停在 'running'。
+   * 真正的终态在 attempt 上，预算诊断把它投影成 actualState：只有 reserved
+   * （reserved / dispatch-marked，即尚未结算的物理请求）才算「正在生成」。
+   */
+  generating: boolean
   labels: { copySuggestion: string; copyTail: string; copyDocument: string; continue: string }
   recovery: EditorInlineRecovery
 }
@@ -186,6 +195,8 @@ function planningEntry(recovery: GenerationRecoveryContext, locale: Locale): Pla
 function editorEntry(recovery: EditorInlineRecovery, locale: Locale): EditorEntry {
   const t = lang(locale)
   const { view } = recovery
+  const generating = view.status !== 'cancelled'
+    && (view.budgetDiagnostics ?? []).some(item => item.actualState === 'reserved')
   return {
     kind: 'editor',
     key: view.handle.runId,
@@ -200,6 +211,7 @@ function editorEntry(recovery: EditorInlineRecovery, locale: Locale): EditorEntr
     })),
     tails: texts(view.unsavedTails),
     documentText: recovery.context.documentText,
+    generating,
     canContinue: recovery.sourceStatus === 'current' && view.status !== 'cancelled'
       && view.ledger?.physicalRequests === 0 && !(view.candidates?.length || view.artifacts.length),
     labels: {

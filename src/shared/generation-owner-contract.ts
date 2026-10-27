@@ -164,6 +164,15 @@ export interface GenerationRecoveryContext {
   draftShortOutline?: { artifactIds: string[]; completedOutput: string | null; promptHash: string; initialDraftTask?: GenerationTask; retry: ShortOutlineRetry }
   /** Present only when the originally selected drafts still match their frozen source references. */
   selectedDrafts?: PreparedDraftContext['selectedDrafts']
+  /**
+   * 作者显式「移除卡片」后为 true。
+   *
+   * 恢复卡片按运行派生，来源是 generation_runs 里的 binding；移除动作只把
+   * $runEffects.recoveryDismissed 写进同一条记录，产物与运行记录都保留。
+   * 这里把标记透出来，运行侧页才能把「已放弃的恢复」从恢复区过滤掉——
+   * 否则移除后一刷新，同一张卡片又会从运行记录里重新长出来。
+   */
+  recoveryDismissed?: boolean
 }
 export interface PlanningContinuationReceipt {
   kind: 'planning-continuation'

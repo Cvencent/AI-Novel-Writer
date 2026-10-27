@@ -75,7 +75,10 @@ export default function StageReviewPanel({
     const session = captureProjectSession(useProjectStore.getState().currentProject)
     if (!session || !isProjectSessionCurrent(session)) return
     const latest = await ipc.invokeWithProjectSession(session, 'db:stage-review-latest', target, projectKey).catch(() => null)
-    if (latest && typeof latest === 'object' && 'findings' in latest) setRun(latest as StageReviewRunRecord)
+    // 库里已经没有这次检查（被清掉、或作者删了粗纲段）时要显式清空面板：
+    // 只写 `if (latest)` 会让内存里那份旧结果在切页/切层后继续显示，
+    // 看起来就是「清不掉」。
+    setRun(latest && typeof latest === 'object' && 'findings' in latest ? latest as StageReviewRunRecord : null)
   }, [projectKey, target])
 
   useEffect(() => { void Promise.resolve().then(loadLatest).catch(() => {}) }, [loadLatest])

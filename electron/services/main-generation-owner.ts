@@ -947,6 +947,8 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
       selectedBlueprintChapterNumbers: structuredClone(manifest.selectedBlueprintChapterNumbers as number[] ?? []), composition,
       lastCompositionFinishReason: last ? repository.receipt(last).result?.finishReason ?? null : null,
       attemptedPurposes: rows.map(row => row.purpose ?? 'unknown'),
+      // 作者已移除这张恢复卡片：把标记透给渲染层，让它把这条运行派生的卡片过滤掉。
+      ...(dismissed ? { recoveryDismissed: true } : {}),
       ...(materialDecision?.shortOutlinePromptHash ? { draftShortOutline: shortOutlineContext(run) } : {}),
       ...(rows.some(row => row.purpose === DRAFT_RECONCILE_PURPOSE) ? { draftReconciliation: {
         artifactIds: rows.filter(row => row.purpose === DRAFT_RECONCILE_PURPOSE)
@@ -1479,7 +1481,15 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     },
     pause: (handle: MainGenerationRunHandle) => { const run = requireRun(handle, true); service.pause(run.rootActionId); return viewOf(repository.get(run.runId)) },
     cancel: (handle: MainGenerationRunHandle) => { const run = requireRun(handle); service.cancel(run.rootActionId); return viewOf(repository.get(run.runId)) },
-    dismissRecovery: (handle: MainGenerationRunHandle) => { const run = requireRun(handle); repository.recordRecoveryDismiss(run.runId); return viewOf(repository.get(run.runId)) },
+    // recordRecoveryDismiss 要求处在事务里（它做的是 binding_json 的读改写 + CAS）。
+    // 过去这里没有开事务，于是每次「移除卡片 / 一键清除全部卡片」都会抛
+    // GENERATION_PLOT_OUTLINE_TRANSACTION_REQUIRED；渲染层把单张失败吞掉，
+    // 卡片下一次读取又全部长回来——作者看到的正是「清了还在」。
+    dismissRecovery: (handle: MainGenerationRunHandle) => deps.database.transaction(() => {
+      const run = requireRun(handle)
+      repository.recordRecoveryDismiss(run.runId)
+      return viewOf(repository.get(run.runId))
+    }).immediate(),
     restart: (handle: MainGenerationRunHandle, selection: BeginGenerationRequest) => {
       const old = requireRun(handle)
       repository.assertBlueprintRecoveryWritable(old.runId)

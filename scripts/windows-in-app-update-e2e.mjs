@@ -26,7 +26,7 @@ const apiBaseUrl = 'https://api.github.com'
 
 /** The release source is deliberately not configurable by workflow inputs or CLI flags. */
 export const OFFICIAL_UPDATE_REPOSITORY = Object.freeze({
-  owner: 'EthanYoQ',
+  owner: 'Cvencent',
   repo: 'AI-Novel-Writer',
 })
 

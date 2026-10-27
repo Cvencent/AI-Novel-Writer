@@ -131,7 +131,15 @@ export class GenerationRunRepository {
         return { runId: row.run_id, rootActionId: row.root_action_id, binding: frozen, status: row.status };
     }
     private authorEditedRoot(rootId: string): boolean {
-        return !!this.db().prepare('SELECT 1 FROM generation_runs WHERE root_action_id=? AND json_type(binding_json,?) IS NOT NULL LIMIT 1').get(rootId, authorEffectPath);
+        // $runEffects 里同时住着「作者编辑/续接」与「作者移除恢复卡片」两类标记，
+        // 只有前者才代表这次运行的写入被作者接管、必须冻结。
+        // 按整个 $runEffects 是否存在来判定，会把「移除卡片」误当成作者编辑，
+        // 让一个还在跑的运行突然拒绝执行。这里只把 recoveryDismissed 当作非作者效果：
+        // 其余任何键仍然算作者效果（以后新增效果键也不会被漏判）。
+        return !!this.db().prepare(`SELECT 1 FROM generation_runs r
+            WHERE r.root_action_id=?
+              AND EXISTS (SELECT 1 FROM json_each(r.binding_json, ?) effect WHERE effect.key <> 'recoveryDismissed')
+            LIMIT 1`).get(rootId, authorEffectPath);
     }
     assertPlotOutlineWritable(runId: string): void {
         if (this.isPrivatePlanningHistory(runId)) fail('GENERATION_PLANNING_HISTORY_READ_ONLY');
@@ -160,7 +168,8 @@ export class GenerationRunRepository {
         if (stored === null || stored === undefined) return null;
         const value = JSON.parse(String(stored)) as { plotOutlineAuthorEdit?: PlotOutlineAuthorEditReceipt; planningContinuation?: PlanningContinuationReceipt };
         const receipt = value?.plotOutlineAuthorEdit;
-        if (Object.keys(value).some(key => !['plotOutlineAuthorEdit', 'blueprintAuthorEdit', 'planningContinuation'].includes(key))) fail('GENERATION_PLOT_OUTLINE_AUTHOR_RECEIPT_INVALID');
+        // recoveryDismissed 与作者编辑/续接并列存在，都是 $runEffects 里的合法键。
+        if (Object.keys(value).some(key => !['plotOutlineAuthorEdit', 'blueprintAuthorEdit', 'planningContinuation', 'recoveryDismissed'].includes(key))) fail('GENERATION_PLOT_OUTLINE_AUTHOR_RECEIPT_INVALID');
         if (!receipt) return null;
         if (!receipt.committedRange
             || !isDeepStrictEqual(receipt, this.plotOutlineAuthorEditReceipt(runId, receipt.operationId, receipt.committedRange, receipt.synopsisHash)))
@@ -174,8 +183,12 @@ export class GenerationRunRepository {
         if (!isDeepStrictEqual(receipt, this.plotOutlineAuthorEditReceipt(runId, receipt.operationId, receipt.committedRange, receipt.synopsisHash)))
             fail('GENERATION_PLOT_OUTLINE_AUTHOR_RECEIPT_INVALID');
         const original = this.db().prepare('SELECT binding_json FROM generation_runs WHERE run_id=?').pluck().get(runId) as string;
+        // 合并写回：$runEffects 里可能已经有 blueprintAuthorEdit / planningContinuation /
+        // recoveryDismissed，整块覆盖会把它们一起抹掉（既有数据丢失，也会让作者
+        // 刚移除的恢复卡片复活）。
+        const binding = JSON.parse(original) as { $runEffects?: Record<string, unknown> };
         const result = this.db().prepare('UPDATE generation_runs SET binding_json=? WHERE run_id=? AND binding_json=?')
-            .run(encode({ ...JSON.parse(original), $runEffects: { plotOutlineAuthorEdit: receipt } }), runId, original);
+            .run(encode({ ...binding, $runEffects: { ...binding.$runEffects, plotOutlineAuthorEdit: receipt } }), runId, original);
         if (result.changes !== 1) fail('GENERATION_PLOT_OUTLINE_AUTHOR_RECEIPT_CONFLICT');
     }
     /** 作者显式放弃的恢复：右侧运行侧页不再派生恢复卡片（运行记录与产物保留，可审计）。 */

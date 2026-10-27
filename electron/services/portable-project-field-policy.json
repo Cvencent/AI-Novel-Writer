@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 7,
+  "schemaVersion": 9,
   "rules": {
     "D": ["preserve-domain", "signed-domain-value", "portable-domain-copy"],
     "H": ["historical-nonreplayable", "nonreplayable-history", "portable-history-projector"],
@@ -17,6 +17,8 @@
     "character_avatar_assets", "character_avatar_unresolved"
   ],
   "m06Tables": ["review_cycle_merges"],
+  "m07Fields": ["blueprints.costs_and_turns", "blueprints.foreshadowing"],
+  "m08Tables": ["blueprint_scene_plans", "chapter_commits", "character_voice_profiles", "draft_quality_reviews"],
   "optionalFields": ["characters.avatar"],
   "deltaCharacterFields": ["character_id", "legacy_key", "static_provenance", "identity_revision", "retired"],
   "signedOverrides": {
@@ -74,8 +76,10 @@
   "tables": {
     "blueprint_character_sync_operations": {"operation_id":"H","blueprint_commit_operation_id":"H","blueprint_commit_payload_hash":"R","status":"H","start_chapter":"H","end_chapter":"H","character_sync_input":"R","completion_receipt":"R","created_at":"H","updated_at":"H","completed_at":"H"},
     "blueprint_commit_operations": {"operation_id":"H","payload_hash":"R","mode":"H","start_chapter":"H","end_chapter":"H","character_sync_input":"R","committed_at":"H"},
-    "blueprints": {"chapter_number":"D","title":"D","role":"D","purpose":"D","key_events":"D","characters":"D","suspense_hook":"D","user_guidance":"D","notes":"D","notes_updated_at":"D","created_at":"D","updated_at":"D"},
+    "blueprint_scene_plans": {"chapter_number":"D","scenes_json":"D","source_hash":"D","updated_at":"D"},
+    "blueprints": {"chapter_number":"D","title":"D","role":"D","purpose":"D","key_events":"D","characters":"D","suspense_hook":"D","user_guidance":"D","notes":"D","notes_updated_at":"D","costs_and_turns":"D","foreshadowing":"D","created_at":"D","updated_at":"D"},
     "chapter_deletion_operations": {"operation_id":"H","draft_id":"H","chapter_number":"H","chapter_title":"H","finalization_id":"H","target_file_name":"P","knowledge_document_id":"H","post_process_run_ids":"H","manuscript_status":"H","manuscript_error":"R","knowledge_status":"H","knowledge_error":"R","legacy_knowledge_authorization":"X","legacy_knowledge_authorized_at":"X","status":"H","attempt_count":"H","created_at":"H","updated_at":"H","completed_at":"H"},
+    "chapter_commits": {"commit_id":"H","chapter_number":"H","draft_id":"H","finalization_id":"H","content_hash":"H","facts_json":"H","character_states_json":"H","foreshadowing_json":"H","quality_json":"H","created_at":"H"},
     "character_aliases": {"character_id":"D","name":"D","source_key":"D","valid_from":"D","valid_through":"D"},
     "character_avatar_assets": {"character_id":"A","asset_revision":"A","relative_path":"A","content_hash":"A","mime":"A","byte_size":"A","source_reference":"A"},
     "character_avatar_unresolved": {"record_id":"A","disposition":"A","source_reference":"A","source_relative_path":"A","preserved_relative_path":"A","content_hash":"A","mime":"A","byte_size":"A","candidate_character_ids_json":"A"},
@@ -86,10 +90,12 @@
     "character_relationships": {"relationship_id":"D","source_character_id":"D","target_character_id":"D","relation":"D","source_display_snapshot":"D","target_display_snapshot":"D","provenance_json":"R","approval_id":"D"},
     "character_roster_meta": {"id":"D","schema_version":"D","revision":"D","migration_state":"D","legacy_markdown":"D","projection_hash":"D","fact_hash":"D","updated_at":"D"},
     "character_roster_operations": {"operation_id":"H","payload_hash":"D","committed_revision":"H","projection_hash":"D","created_at":"H"},
+    "character_voice_profiles": {"character_id":"H","source_draft_id":"H","content_hash":"H","profile_json":"H","updated_at":"H"},
     "characters": {"character_id":"D","legacy_key":"D","static_provenance":"D","identity_revision":"D","retired":"D","name":"D","role":"D","gender":"D","age":"D","appearance":"D","personality":"D","background":"D","abilities":"D","motivation":"D","relationships":"D","arc":"D","notes":"D","avatar":"X","cs_location":"D","cs_power_level":"D","cs_physical_state":"D","cs_mental_state":"D","cs_key_items":"D","cs_recent_events":"D","cs_updated_at_chapter":"D","cs_provenance":"D","created_at":"D","updated_at":"D"},
     "consistency_exemptions": {"stable_fact_key":"D","reason":"D","revoked":"D"},
     "contents": {"id":"D","body":"D","created_at":"D"},
     "continuity_projection_meta": {"id":"D","generation":"D","stale_from_chapter":"D"},
+    "draft_quality_reviews": {"draft_id":"H","chapter_number":"H","content_hash":"H","panel_json":"H","weighted_score":"H","blocking_count":"H","reviewed_at":"H"},
     "drafts": {"id":"D","chapter_number":"D","version":"D","status":"D","source":"D","content_id":"D","word_count":"D","source_dependencies":"R","created_at":"D","updated_at":"D"},
     "finalization_outbox": {"finalization_id":"D","draft_id":"D","chapter_number":"D","chapter_title":"D","content_hash":"D","content_revision":"D","content_snapshot":"D","target_file_name":"P","knowledge_document_id":"D","publication_status":"H","last_error":"R","published_at":"D","created_at":"D","updated_at":"D"},
     "finalized_draft_import_operations": {"operation_id":"D","payload_hash":"R","receipt_json":"R","created_at":"H"},

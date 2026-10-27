@@ -721,6 +721,49 @@ describe('explicit planning recovery with real SQLite', () => {
 })
 
 describe('frozen planning roots', () => {
+  // 作者点「移除卡片」后，恢复卡片必须持久消失：过去标记写进了
+  // $runEffects.recoveryDismissed，却没有任何读取方消费它，于是切页/重开
+  // 作品后同一张卡片又从 generation_runs 里长回来。
+  describe('recovery dismissal is durable', () => {
+    it('read-context reports recoveryDismissed and drops the derived recovery draft', async () => {
+      const dispatch = vi.fn<GenerationRunServiceDependencies['dispatch']>(async (_request, options) => {
+        options.onVisible({ kind: 'delta', text: '## 第1章：未完成\n候选原文还未写完' }); return { finishReason: 'length', usage: null }
+      })
+      const f = fixture(dispatch), run = f.owner.begin(outlineSelection(f, 3))
+      for (const nonce of ['normal', 'compact']) await f.owner.execute({ handle: run.handle, invocationNonce: nonce, task: outlineTask(f.owner.read(run.handle).plotOutline!) })
+      const before = f.owner.readContext(run.handle)
+      expect(before.recoveryDismissed).toBeUndefined()
+      expect(before.plotOutlineRecovery).toBeDefined()
+
+      f.owner.dismissRecovery(run.handle)
+      const after = f.owner.readContext(run.handle)
+      expect(after.recoveryDismissed).toBe(true)
+      // 派生的恢复稿不再返回；底层续接状态本身照旧保留（渲染层据标记过滤卡片）。
+      expect(after.plotOutlineRecovery).toBeUndefined()
+
+      // 重开作品后仍然读得到标记，卡片不会复活。
+      const reopened = f.reopen()
+      const fresh = reopened.readContext(run.handle)
+      expect(fresh.recoveryDismissed).toBe(true)
+      expect(fresh.plotOutlineRecovery).toBeUndefined()
+    })
+
+    it('does not misread a recovery dismissal as an author edit that freezes the run', async () => {
+      const dispatch = vi.fn<GenerationRunServiceDependencies['dispatch']>(async (_request, options) => {
+        options.onVisible({ kind: 'delta', text: '## 第1章：线索1\n正文候选' }); return { finishReason: 'length', usage: null }
+      })
+      const f = fixture(dispatch), run = f.owner.begin(outlineSelection(f, 3))
+      await f.owner.execute({ handle: run.handle, invocationNonce: 'one', task: outlineTask(run.plotOutline!) })
+      f.owner.dismissRecovery(run.handle)
+      // $runEffects 里只有 recoveryDismissed 时，这次运行的写入并没有被作者接管：
+      // 继续执行、续接与重开都应当照常，不能被误判成 AUTHOR_SAVED 而冻结。
+      await f.owner.execute({ handle: run.handle, invocationNonce: 'two', task: outlineTask(f.owner.read(run.handle).plotOutline!) })
+      const reopened = f.reopen()
+      expect(reopened.readContext(run.handle).recoveryDismissed).toBe(true)
+      expect(dispatch).toHaveBeenCalledTimes(2)
+    })
+  })
+
   const fullIntent: ArchitecturePlanningIntent = { version: 'architecture-action-v1',
     priorSteps: ['premise', 'characters', 'worldbuilding'], synopsisRange: { from: 1, to: 10 } }
   function planningFixture() {

@@ -174,13 +174,13 @@ function fixtureFetcher(fromTag: string, expectedTag: string, options: { latestT
     const value = String(url)
     requests.push(value)
     authorizations.push(`${new URL(value).host} ${new Headers(init?.headers).get('authorization') ?? '(none)'}`)
-    if (value === 'https://api.github.com/repos/EthanYoQ/AI-Novel-Writer/releases/latest') {
+    if (value === 'https://api.github.com/repos/Cvencent/AI-Novel-Writer/releases/latest') {
       return response({ ...expected.release, tag_name: latestTag })
     }
-    if (value === `https://api.github.com/repos/EthanYoQ/AI-Novel-Writer/releases/tags/${fromTag}`) {
+    if (value === `https://api.github.com/repos/Cvencent/AI-Novel-Writer/releases/tags/${fromTag}`) {
       return response(from.release)
     }
-    if (value === `https://api.github.com/repos/EthanYoQ/AI-Novel-Writer/releases/tags/${expectedTag}`) {
+    if (value === `https://api.github.com/repos/Cvencent/AI-Novel-Writer/releases/tags/${expectedTag}`) {
       return response(expected.release)
     }
     const bytes = from.files.get(value) ?? expected.files.get(value)
@@ -282,7 +282,7 @@ describe('Windows official in-app update E2E contract', () => {
   })
 
   it('pins the official repository and accepts final semantic release tags only', () => {
-    expect(OFFICIAL_UPDATE_REPOSITORY).toEqual({ owner: 'EthanYoQ', repo: 'AI-Novel-Writer' })
+    expect(OFFICIAL_UPDATE_REPOSITORY).toEqual({ owner: 'Cvencent', repo: 'AI-Novel-Writer' })
     expect(normalizeFinalReleaseTag('v0.5.2', 'from_tag')).toBe('v0.5.2')
     expect(normalizeFinalReleaseTag('0.6.0', 'expected_tag')).toBe('v0.6.0')
 
@@ -312,11 +312,11 @@ describe('Windows official in-app update E2E contract', () => {
     expect(plan.expected.assets.installer.name).toBe('ai-novel-writer-setup-0.6.0.exe')
     expect(readFileSync(join(evidenceRoot, 'release-plan.json'), 'utf8')).toContain('sha256:')
     expect(requests).toEqual(expect.arrayContaining([
-      'https://api.github.com/repos/EthanYoQ/AI-Novel-Writer/releases/latest',
-      'https://api.github.com/repos/EthanYoQ/AI-Novel-Writer/releases/tags/v0.5.2',
-      'https://api.github.com/repos/EthanYoQ/AI-Novel-Writer/releases/tags/v0.6.0',
+        'https://api.github.com/repos/Cvencent/AI-Novel-Writer/releases/latest',
+        'https://api.github.com/repos/Cvencent/AI-Novel-Writer/releases/tags/v0.5.2',
+        'https://api.github.com/repos/Cvencent/AI-Novel-Writer/releases/tags/v0.6.0',
     ]))
-    expect(requests.every(url => url.includes('EthanYoQ/AI-Novel-Writer') || url.startsWith('https://downloads.example.test/'))).toBe(true)
+      expect(requests.every(url => url.includes('Cvencent/AI-Novel-Writer') || url.startsWith('https://downloads.example.test/'))).toBe(true)
   })
 
   it('authenticates only GitHub API metadata requests and downloads assets anonymously', async () => {
@@ -466,7 +466,7 @@ describe('Windows official in-app update E2E contract', () => {
     expect(workflow).toContain('${{ env.AI_NOVEL_UPDATE_E2E_EVIDENCE_ROOT }}/*.json')
     expect(workflow).not.toContain('path: ${{ env.AI_NOVEL_UPDATE_E2E_EVIDENCE_ROOT }}')
     expect(workflow).toContain('node scripts/windows-in-app-update-e2e.mjs run')
-    expect(workflow).toContain('EthanYoQ/AI-Novel-Writer')
+    expect(workflow).toContain('Cvencent/AI-Novel-Writer')
     expect(workflow).toContain('v0.5.2')
     expect(workflow).toContain('v0.6.0')
 

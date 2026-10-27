@@ -50,19 +50,22 @@ async function loadGenerationSources(session: ProjectSessionContext): Promise<{ 
   const contexts = await Promise.all(candidates.map(async summary => ({ view: await ipc.invokeWithProjectSession(session, 'generation:read', summary.handle),
     recovery: await ipc.invokeWithProjectSession(session, 'generation:read-context', { handle: summary.handle }),
   })))
-  const reviews = await Promise.allSettled(contexts.filter(item => REVIEW_OPERATIONS.includes(item.recovery.operation))
+  // 作者点过「移除卡片」的运行：产物与运行记录都还在，但不再派生恢复卡片。
+  // 只看这次读到的标记，不额外查库；标记随 read-context 一起回来。
+  const live = contexts.filter(item => item.recovery.recoveryDismissed !== true)
+  const reviews = await Promise.allSettled(live.filter(item => REVIEW_OPERATIONS.includes(item.recovery.operation))
     .map(async ({ view }) => ({ view, recovery: await ipc.invokeWithProjectSession(session, 'review-revision:read-recovery', { handle: view.handle }) })))
-  const editors = await Promise.allSettled(contexts.filter(item => item.recovery.operation === 'editor-inline')
+  const editors = await Promise.allSettled(live.filter(item => item.recovery.operation === 'editor-inline')
     .map(({ view }) => ipc.invokeWithProjectSession(session, 'editor-inline:read-recovery', { handle: view.handle })))
   const ours = (projectId: string) => projectId === session.projectId
   return {
     partial: [...reviews, ...editors].some(result => result.status === 'rejected'),
     sources: {
-      planning: contexts.flatMap(item => (item.recovery.plotOutlineRecovery || item.recovery.blueprintRecovery)
+      planning: live.flatMap(item => (item.recovery.plotOutlineRecovery || item.recovery.blueprintRecovery)
         && item.recovery.planningContinuation?.state !== 'complete' && ours(item.recovery.handle.projectId) ? [item.recovery] : []),
       reviews: reviews.flatMap(result => result.status === 'fulfilled' && ours(result.value.view.handle.projectId) ? [result.value] : []),
       editors: editors.flatMap(result => result.status === 'fulfilled' && ours(result.value.view.handle.projectId) ? [result.value] : []),
-      drafts: contexts.filter(item => item.recovery.operation === 'chapter-draft' && !item.recovery.batchId && ours(item.view.handle.projectId)
+      drafts: live.filter(item => item.recovery.operation === 'chapter-draft' && !item.recovery.batchId && ours(item.view.handle.projectId)
         && (item.recovery.composition || item.recovery.draftShortOutline?.completedOutput || item.recovery.draftShortOutline?.retry?.kind === 'available'
           || withoutDraftReconciliationArtifacts([...item.view.artifacts, ...(item.view.candidates ?? [])], item.recovery).some(hasText)
           || item.view.unsavedTails?.some(hasText))),
@@ -169,34 +172,57 @@ export function useRunRecovery(): RunRecovery {
 
   const stillCurrent = useCallback(() => session !== null && sameProjectSessionContext(session, currentSession()), [session])
 
-  /** 一键放弃全部恢复卡片：持久 dismiss（生成运行）+ 持久放弃（候选表）；正式内容不动。 */
+  const showGenerationFailure = useCallback((reason: unknown) => {
+    if (stillCurrent()) setGenerationError(reason instanceof Error ? reason.message : String(reason))
+  }, [stillCurrent])
+
+  /**
+   * 持久放弃一张恢复卡片。正式内容、检查点与运行记录都保留；只是让运行侧页
+   * 不再从这条记录派生卡片。
+   *
+   * 过去的「移除卡片」只写进会话内的 dismissed 集合，切页或重开作品后同一张
+   * 卡片又从 generation_runs 里长回来——这正是作者反复反馈的现象。现在与
+   * 「一键清除全部卡片」走同一条持久路径：
+   *   候选表 → recovery-candidate-resolve('discarded')
+   *   生成运行 → generation:dismiss-recovery（写 $runEffects.recoveryDismissed）
+   */
+  const persistDismiss = useCallback(async (current: ProjectSessionContext, entry: RecoveryEntry): Promise<void> => {
+    setDismissed(previous => new Set(previous).add(`${entry.kind}:${entry.key}`))
+    if (entry.kind === 'candidate') {
+      await ipc.invokeWithProjectSession(current, 'db:recovery-candidate-resolve', entry.candidate.candidateId, 'discarded', current.projectPath)
+      return
+    }
+    if (entry.kind === 'planning' || entry.kind === 'draft' || entry.kind === 'review' || entry.kind === 'editor') {
+      const handle = entry.kind === 'planning' ? entry.recovery.handle
+        : entry.kind === 'draft' || entry.kind === 'review' ? entry.view.handle
+        : entry.recovery.view.handle
+      await ipc.invokeWithProjectSession(current, 'generation:dismiss-recovery', handle)
+    }
+    // 批量进度没有 dismiss 通道；保留（它代表真实的批次续写状态）。
+  }, [])
+
+  /** 一键放弃全部恢复卡片：逐张持久放弃；正式内容不动。 */
   const dismissAll = useCallback(async () => {
     if (!session || !stillCurrent() || busy) return
     setBusy(true)
     try {
       const currentEntries = entries.filter(entry => !dismissed.has(`${entry.kind}:${entry.key}`))
       for (const entry of currentEntries) {
-        setDismissed(previous => new Set(previous).add(`${entry.kind}:${entry.key}`))
-        try {
-          if (entry.kind === 'candidate') {
-            await ipc.invokeWithProjectSession(session, 'db:recovery-candidate-resolve', entry.candidate.candidateId, 'discarded', session.projectPath)
-          } else if (entry.kind === 'planning' || entry.kind === 'draft' || entry.kind === 'review' || entry.kind === 'editor') {
-            const handle = entry.kind === 'planning' ? entry.recovery.handle
-              : entry.kind === 'draft' || entry.kind === 'review' ? entry.view.handle
-              : entry.recovery.view.handle
-            await ipc.invokeWithProjectSession(session, 'generation:dismiss-recovery', handle)
-          } else if (entry.kind === 'batch') {
-            // 批量进度没有 dismiss 通道；保留（它代表真实的批次续写状态）。
-          }
-        } catch { /* 单个失败不阻断其余；下一次打开仍可见。 */ }
+        try { await persistDismiss(session, entry) } catch { /* 单个失败不阻断其余；下一次打开仍可见。 */ }
       }
       setSnapshotTick(value => value + 1)
     } finally { setBusy(false) }
-  }, [session, stillCurrent, busy, entries, dismissed])
-  /** 关掉卡片只影响这一份侧页视图：正式内容、检查点与运行记录都保留。 */
+  }, [session, stillCurrent, busy, entries, dismissed, persistDismiss])
+  /** 移除单张卡片：与一键清除走同一条持久路径，重开作品后不再出现。 */
   const dismiss = useCallback((entry: RecoveryEntry) => {
-    setDismissed(previous => new Set(previous).add(`${entry.kind}:${entry.key}`))
-  }, [])
+    if (!session || !stillCurrent()) {
+      setGenerationError(locale === 'en-US' ? 'The project session changed; reopen the book.' : '项目会话已切换，请重新打开作品。')
+      return
+    }
+    void persistDismiss(session, entry)
+      .then(() => setGenerationError(''))
+      .catch(error => showGenerationFailure(error))
+  }, [session, stillCurrent, persistDismiss, locale, showGenerationFailure])
 
 
   const act = useCallback(async (operation: (session: ProjectSessionContext) => Promise<void>) => {
@@ -205,10 +231,6 @@ export function useRunRecovery(): RunRecovery {
     try { await operation(session); setGenerationError('') } catch (reason) { setGenerationError(reason instanceof Error ? reason.message : String(reason)) }
     finally { setBusy(false) }
   }, [busy, session, stillCurrent])
-
-  const showGenerationFailure = useCallback((reason: unknown) => {
-    if (stillCurrent()) setGenerationError(reason instanceof Error ? reason.message : String(reason))
-  }, [stillCurrent])
 
   /** startWorkflow 要等整个工作流结束才返回；只等定义建好，不让恢复区在运行期间一直忙。 */
   const startRecovery = useCallback((create: (session: ProjectSessionContext) => Promise<WorkflowDefinition>) =>

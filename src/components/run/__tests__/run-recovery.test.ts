@@ -113,6 +113,26 @@ describe('审稿与修稿中断', () => {
 })
 
 describe('列表', () => {
+  it('选区建议只有尚未结算的物理请求才算「生成中」，跑完的不会永远卡住', () => {
+    const editor = (view: Record<string, unknown>) => buildRecoveryEntries({
+      ...EMPTY_RECOVERY_SOURCES,
+      editors: [{ view: view as never, modelId: '模型', sourceStatus: 'current',
+        context: { selectedText: '选中', documentText: '全文' } } as never],
+    }, 'zh-CN')[0]
+    // generation_runs.status 常驻 'running'（暂停/取消才会改写），不能拿它判终态。
+    const settled = editor(view('选区', { status: 'running',
+      budgetDiagnostics: [{ actualState: 'settled' }], artifacts: [artifact('甲', true)] }))
+    expect(settled).toMatchObject({ generating: false })
+    // 尚未结算（reserved / dispatch-marked）才是真正在跑。
+    const pending = editor(view('选区', { status: 'running',
+      budgetDiagnostics: [{ actualState: 'reserved' }], artifacts: [] }))
+    expect(pending).toMatchObject({ generating: true })
+    // 已取消的运行不再显示生成中。
+    const cancelled = editor(view('选区', { status: 'cancelled',
+      budgetDiagnostics: [{ actualState: 'reserved' }], artifacts: [] }))
+    expect(cancelled).toMatchObject({ generating: false })
+  })
+
   it('按恢复稿、选区建议、审修、批量、单章、旧恢复候选排列，英文界面用英文', () => {
     const sources: RecoverySources = {
       planning: [{ handle: { ...handle, runId: '大纲' }, plotOutlineRecovery: {} } as never],

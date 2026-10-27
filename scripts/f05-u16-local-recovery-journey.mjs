@@ -287,7 +287,7 @@ async function main() {
     assert.match(await panel.getByRole('status').last().innerText(), new RegExp(localSha256))
     assert.equal(hash(originalDb), originalSha256, 'local export changed original project database')
     const localManifest = await archiveManifest(fs.readFileSync(localArchive))
-    assert.equal(localManifest.sourceSchemaVersion, 7)
+  assert.equal(localManifest.sourceSchemaVersion, 9)
     assert.equal(localManifest.originProjectId, created.projectId)
     assert.equal(localManifest.semanticCounts['table.review_cycle_merges'], 0)
     assert(localManifest.entries.some(entry => entry.path === 'project.db' && entry.disposition === 'portable-database'))
@@ -417,7 +417,7 @@ async function main() {
     await generationChoice.check()
     assert.equal(await panel.locator('input[name="restore-generation"]:checked').inputValue(), generationId)
     const remoteManifest = await archiveManifest(remoteArchive)
-    assert.equal(remoteManifest.sourceSchemaVersion, 7)
+  assert.equal(remoteManifest.sourceSchemaVersion, 9)
     assert.equal(remoteManifest.originProjectId, created.projectId)
 
     currentStep = 'U16.A08-cloud-restore'
