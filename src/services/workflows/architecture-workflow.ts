@@ -148,6 +148,27 @@ export function createArchitectureWorkflow(
     return handle
   }
 
+  /** 上游瞬时失败（网络断开 / 5xx）的有限重试：真实通道偶发 502 很常见，
+   *  单发失败就让整个架构工作流停摆会让作者白等。只重试这类「没有产出」的
+   *  传输型失败；内容类失败（合同拒绝等）不在此列。 */
+  const withTransientRetry = async <T>(callbacks: StepCallbacks, run: () => Promise<T>): Promise<T> => {
+    const TRANSIENT_RETRY_LIMIT = 3
+    const TRANSIENT_RETRY_BACKOFF_MS = 5_000
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await run()
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        const transient = message.includes('NETWORK_ERROR') || message.includes('GENERATION_PROVIDER_FAILED')
+        if (!transient || attempt >= TRANSIENT_RETRY_LIMIT) throw error
+        callbacks.log(text(
+          `与模型的连接中断（上游瞬时故障），正在重试（第 ${attempt + 1} 次，最多 ${TRANSIENT_RETRY_LIMIT} 次）…`,
+          `Transient upstream failure; retrying (${attempt + 1} of at most ${TRANSIENT_RETRY_LIMIT})…`))
+        await new Promise(resolve => setTimeout(resolve, TRANSIENT_RETRY_BACKOFF_MS * (attempt + 1)))
+      }
+    }
+  }
+
   const allSteps = [
     {
       name: text('故事前提', 'Story premise'),
@@ -156,7 +177,8 @@ export function createArchitectureWorkflow(
       executor: async (step: unknown, context: WorkflowContext, callbacks: StepCallbacks) => {
         context.data.stepGuidance = guidance
         const { GenerateCoreSeedCommand } = await import('./commands/architecture.command')
-        return new GenerateCoreSeedCommand(projectSnapshot).execute({ step, context, callbacks })
+        return withTransientRetry(callbacks, () =>
+          new GenerateCoreSeedCommand(projectSnapshot).execute({ step, context, callbacks }))
       },
     },
     {
@@ -166,7 +188,8 @@ export function createArchitectureWorkflow(
       executor: async (step: unknown, context: WorkflowContext, callbacks: StepCallbacks) => {
         context.data.stepGuidance = guidance
         const { GenerateCharactersCommand } = await import('./commands/architecture.command')
-        return new GenerateCharactersCommand(projectSnapshot).execute({ step, context, callbacks })
+        return withTransientRetry(callbacks, () =>
+          new GenerateCharactersCommand(projectSnapshot).execute({ step, context, callbacks }))
       },
     },
     {
@@ -178,10 +201,12 @@ export function createArchitectureWorkflow(
       executor: async (step: unknown, context: WorkflowContext, callbacks: StepCallbacks) => {
         context.data.stepGuidance = guidance
         const { GenerateWorldBuildingCommand } = await import('./commands/architecture.command')
-        return new GenerateWorldBuildingCommand(projectSnapshot, undefined, {
-          resumeWorldBuilding: params.resumeWorldBuilding,
-          ...(resumingWorldBuilding ? { resumeHandle: await recoveryHandle(context, 'worldbuilding') } : {}),
-        }).execute({ step, context, callbacks })
+        const resumeHandle = resumingWorldBuilding ? await recoveryHandle(context, 'worldbuilding') : undefined
+        return withTransientRetry(callbacks, () =>
+          new GenerateWorldBuildingCommand(projectSnapshot, undefined, {
+            resumeWorldBuilding: params.resumeWorldBuilding,
+            ...(resumeHandle ? { resumeHandle } : {}),
+          }).execute({ step, context, callbacks }))
       },
     },
     {
@@ -193,13 +218,15 @@ export function createArchitectureWorkflow(
       executor: async (step: unknown, context: WorkflowContext, callbacks: StepCallbacks) => {
         context.data.stepGuidance = guidance
         const { GeneratePlotArchitectureCommand } = await import('./commands/architecture.command')
-        return new GeneratePlotArchitectureCommand(sel, projectSnapshot, undefined, {
-          resumeSynopsis: params.resumeSynopsis,
-          restartHandle: params.restartFrom,
-          ...(resumingSynopsis ? { resumeHandle: await recoveryHandle(context, 'synopsis') } : {}),
-          synopsisRange,
-          arcContext: params.arcContext ?? null,
-        }).execute({ step, context, callbacks })
+        const resumeHandle = resumingSynopsis ? await recoveryHandle(context, 'synopsis') : undefined
+        return withTransientRetry(callbacks, () =>
+          new GeneratePlotArchitectureCommand(sel, projectSnapshot, undefined, {
+            resumeSynopsis: params.resumeSynopsis,
+            restartHandle: params.restartFrom,
+            ...(resumeHandle ? { resumeHandle } : {}),
+            synopsisRange,
+            arcContext: params.arcContext ?? null,
+          }).execute({ step, context, callbacks }))
       },
     },
   ]
