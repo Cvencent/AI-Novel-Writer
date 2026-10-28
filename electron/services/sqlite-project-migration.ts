@@ -79,9 +79,16 @@ function physicalSnapshot(source: string) {
   const identity = sourceIdentity(source)
   // Installed apps may have a read-only working directory. Every external
   // snapshot owns its scratch directory and removes it after all handles close.
-  const base = path.join(fs.realpathSync(process.env.LOCALAPPDATA || os.tmpdir()), 'VibeCodingScratch', 'ai-novel-writer')
-  safeDirectory(base, true)
-  fs.mkdirSync(base, { recursive: true })
+  // 用户常把 AppData\Local 下的子目录 junction/ symlink 到其它盘（cmove 类工具）。
+  // 固定基目录是 app 自己的私有路径而非作者输入：对完整基目录先解析真实路径
+  // 再校验祖先链，否则逐级链接检查会把这种合理布局误判为
+  // PROJECT_MIGRATION_UNSAFE_DIRECTORY，任何项目都打不开。
+  // 先沿未解析路径把目录建出来（穿过 junction 落到真实盘），再 realpath 成
+  // 真实路径——快照副本创建在无任何链接段的链上，对其自身的 identity 校验
+  // （sourceFile 逐级拒绝链接）才不会把 app 自己的 scratch 布局判死。
+  const unresolvedBase = path.join(process.env.LOCALAPPDATA || os.tmpdir(), 'VibeCodingScratch', 'ai-novel-writer')
+  fs.mkdirSync(unresolvedBase, { recursive: true })
+  const base = fs.realpathSync(unresolvedBase)
   const root = fs.mkdtempSync(path.join(base, 'sqlite-read-')), file = path.join(root, 'snapshot.db')
   const unchanged = () => {
     if (JSON.stringify(sourceIdentity(source)) !== JSON.stringify(identity)) throw new Error('PROJECT_MIGRATION_SOURCE_CHANGED')
