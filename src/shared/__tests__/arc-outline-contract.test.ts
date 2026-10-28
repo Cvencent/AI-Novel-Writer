@@ -146,6 +146,41 @@ beat: escalation
     expect(result).toMatchObject({ ok: true, segment: { toChapter: 40, summary: '第一段正文。' } })
   })
 
+  it('段内粗体小节（**第21–24章：…**）是正文结构，不再截断摘要', () => {
+    const result = parseArcSegment(`## 第21–40章：潮噬
+beat: escalation
+
+**第21–24章：断水之后**
+
+主角用蒸馏法从海水中提取淡水，勉强维持灯塔运转。
+
+**第25–28章：盐霜**
+
+盐霜斑在手臂上蔓延，她学会用潮汐节律掩藏痕迹。`)
+    expect(result).toMatchObject({ ok: true, segment: { fromChapter: 21, toChapter: 40, beat: 'escalation' } })
+    expect((result as { ok: true; segment: { summary: string } }).segment.summary).toContain('蒸馏法')
+    expect((result as { ok: true; segment: { summary: string } }).segment.summary).toContain('盐霜斑')
+  })
+
+  it('编辑整篇粗纲文档时，段内粗体小节不再被拆成新段', () => {
+    const markdown = `## 第1–40章：潮痕
+beat: setup · 状态: confirmed
+
+**第1–20章：旧港**
+
+守塔人的日常与能力发现。
+
+## 第41–80章：盐蚀
+beat: escalation · 状态: confirmed
+
+对手的反扑与主角的反制。`
+    const segments = parseArcOutlineDocument(markdown)
+    expect(segments).toHaveLength(2)
+    expect(segments[0]).toMatchObject({ fromChapter: 1, toChapter: 40, status: 'confirmed' })
+    expect(segments[0]!.summary).toContain('守塔人的日常')
+    expect(segments[1]).toMatchObject({ fromChapter: 41, toChapter: 80 })
+  })
+
   it('段落为空判不合格', () => {
     expect(parseArcSegment('')).toEqual({ ok: false, code: 'ARC_PARSE_NO_SEGMENT' })
   })

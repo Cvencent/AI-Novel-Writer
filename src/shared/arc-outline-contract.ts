@@ -141,11 +141,14 @@ export function parseArcOutlineDocument(markdown: string): ParsedArcDocumentSegm
     current = null
   }
   for (const rawLine of lines) {
-    const heading = tryParseArcHeading(rawLine.trim())
-    if (heading) {
-      push()
-      current = { ...heading, beat: null, status: null, body: [] }
-      continue
+    // 文档编辑器里的段边界同样只认 Markdown 标题行；粗体段内小节属于正文。
+    if (isArcSegmentBoundary(rawLine)) {
+      const heading = tryParseArcHeading(rawLine.trim())
+      if (heading) {
+        push()
+        current = { ...heading, beat: null, status: null, body: [] }
+        continue
+      }
     }
     if (!current) continue
     const line = normalizeArcText(rawLine).trim()
@@ -173,6 +176,13 @@ function normalizeArcText(text: string): string {
  *   ## 第1章至第30章：标题 / **第1-30章：标题** / 第1-30章：标题
  */
 const ARC_HEADING = /^[#*\s]*第\s*(\d+)\s*(?:[–—~\-至到]\s*(?:第\s*)?(\d+)\s*)?章\s*[：:\-–—]?\s*(.*?)[*\s]*$/u
+/** 段边界只认 Markdown 标题行。粗体段内小节（**第21–24章：断水之后**）是模型
+ * 合法的段内结构，不是新的一段——用 ARC_HEADING 判边界会把正文截成空摘要。 */
+const ARC_SEGMENT_BOUNDARY = /^#{1,6}\s*第\s*\d+/u
+
+function isArcSegmentBoundary(line: string): boolean {
+  return ARC_SEGMENT_BOUNDARY.test(normalizeArcText(line.trim()))
+}
 
 /** beat 行：beat: setup / **beat**：setup / 形态: setup / Beat - setup */
 const ARC_BEAT_LINE = /^\**\s*(?:beat|形态)\s*\**\s*[：:\-–—]\s*\**\s*([^\s:：]+)\s*\**\s*$/iu
@@ -194,7 +204,7 @@ export function normalizeArcSummary(summary: string): string {
   const lines = summary.replace(/\r\n?/gu, "\n").split("\n")
   const kept: string[] = []
   for (const line of lines) {
-    if (kept.some(item => item.trim()) && tryParseArcHeading(line)) break
+    if (kept.some(item => item.trim()) && isArcSegmentBoundary(line)) break
     kept.push(line)
   }
   return kept.join("\n").trim()
@@ -227,8 +237,8 @@ export function parseArcSegment(text: string): ArcParseResult {
       continue
     }
     if (!line) { body.push(""); continue }
-    // 后面又出现一段标题：一次调用只应产出当前这一段，直接截断。
-    if (tryParseArcHeading(line)) break
+    // 后面又出现一段标题（Markdown 标题行才算）：一次调用只应产出当前这一段，直接截断。
+    if (isArcSegmentBoundary(line)) break
     const beatMatch = ARC_BEAT_LINE.exec(line)
     if (beatMatch && beat === null) {
       const candidate = beatMatch[1]!.toLowerCase()
