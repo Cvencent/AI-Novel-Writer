@@ -8,6 +8,7 @@ import { createRequire } from 'node:module'
 import fs from 'node:fs'
 import { initializeLegacyBaselineSchema } from './migrations/baseline-schema'
 import { CURRENT_DESKTOP_SCHEMA_VERSION, getDesktopMigrationRegistry } from './migrations/desktop-registry'
+import { GenerationRunRepository } from './repositories/generation-run-repository'
 import { migrateSchema, verifySchema } from './migrations/runner'
 import { SqliteSchemaAdapter } from './migrations/sqlite-schema-adapter'
 import { activateCanonicalProjectData, deactivateProjectData, getNewProjectDatabasePath, getProjectDatabasePath, upgradeCanonicalProjectData } from './services/project-data-locator'
@@ -49,6 +50,7 @@ export function initProjectDatabase(projectPath: string): void {
     fenceProjectSession(database)
     projectDb = database
     currentProjectPath = projectPath
+    startIdleRunReaper(database)
   } catch (error) {
     database?.close(); deactivateProjectData(projectPath); throw error
   }
@@ -87,8 +89,25 @@ export function closeProjectDatabase(): void {
   const closingProjectPath = currentProjectPath
   projectDb = null
   currentProjectPath = null
+  if (idleReapTimer) { clearInterval(idleReapTimer); idleReapTimer = null }
   if (closingProjectPath) deactivateProjectData(closingProjectPath)
   closingDatabase?.close()
+}
+
+/** 空闲运行收割定时器：renderer 流程在两次模型请求之间挂死时，运行会永远
+ *  停在「进行中」；主进程每分钟收割一次超过空闲阈值（15 分钟无结算推进）
+ *  的运行，置 ROOT_IDLE_TIMEOUT 并转失败，运行面板出现失败卡片与恢复入口。
+ *  项目数据库关闭时停止。收割失败不致命（下次定时再试）。 */
+let idleReapTimer: ReturnType<typeof setInterval> | null = null
+const startIdleRunReaper = (database: BetterSqlite3.Database) => {
+  if (idleReapTimer) clearInterval(idleReapTimer)
+  idleReapTimer = setInterval(() => {
+    try {
+      const repository = new GenerationRunRepository(() => database)
+      repository.reapIdleRuns()
+    } catch { /* The next tick retries; a busy or locked database is not fatal. */ }
+  }, 60_000)
+  idleReapTimer.unref?.()
 }
 
 /** 获取当前数据库实例 */

@@ -1447,7 +1447,7 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     },
     assertSynopsisCommit, commitPlotOutlineAuthorEdit, commitBlueprintAuthorEdit,
     withAgentChildEffect: <T>(handle: MainGenerationRunHandle, effect: () => T): T => { requireRun(handle); return agents.withChildEffect(handle, effect) },
-    read: (handle: MainGenerationRunHandle) => viewOf(requireRun(handle)),
+    read: (handle: MainGenerationRunHandle) => { repository.reapIdleRuns(); return viewOf(requireRun(handle)) },
     listDirectoryProgress: () => {
       assertCurrent()
       const catalog = repository.listDirectoryProgress()
