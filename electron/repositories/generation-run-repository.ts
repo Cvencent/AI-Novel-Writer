@@ -92,6 +92,10 @@ const receiptSelect = `SELECT t.attempt_id,t.run_id,t.rowid AS ordinal,t.attempt
     a.artifact_id,a.run_id AS artifact_run_id,a.artifact_json,a.revision,a.status AS artifact_status
     FROM generation_attempts t LEFT JOIN generation_artifacts a ON a.attempt_id=t.attempt_id`;
 export const textHash = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
+/** 一次运行在所有在途请求结束后仍停留 running 的最长时间：超过即由
+ *  reapIdleRuns 判 ROOT_IDLE_TIMEOUT 并置 failed，防止 renderer 侧流程
+ *  在两次模型请求之间挂死时，运行永远停留在「进行中」。 */
+export const GENERATION_IDLE_TIMEOUT_MS = 15 * 60_000;
 const encode = (value: unknown): string => JSON.stringify(value);
 const authorEffectPath = '$."$runEffects"';
 function fail(code: string): never { throw new Error(code); }
@@ -745,7 +749,7 @@ export class GenerationRunRepository {
             if (usage?.trusted)
                 receipt.attempt.actualTokens = usage.actualTokens;
             const old = this.db().prepare('SELECT usage_receipt_json FROM generation_attempts WHERE attempt_id=?').pluck().get(attemptId) as string;
-            this.db().prepare('UPDATE generation_attempts SET attempt_json=?,usage_receipt_json=? WHERE attempt_id=?').run(encode(receipt.attempt), encode({ ...JSON.parse(old), result: { usage, finishReason, ...(failureCode ? { failureCode } : {}), ...(diagnostics ? { diagnostics } : {}) } }), attemptId);
+            this.db().prepare('UPDATE generation_attempts SET attempt_json=?,usage_receipt_json=? WHERE attempt_id=?').run(encode(receipt.attempt), encode({ ...JSON.parse(old), result: { usage, finishReason, ...(failureCode ? { failureCode } : {}), ...(diagnostics ? { diagnostics } : {}), settledAt: this.now() } }), attemptId);
             // Old receipts without a policy retain their original hard-bound rule.
             // Estimated overruns remain actual root usage, never clipped or erased.
             if (JSON.parse(old).usagePolicy?.canBoundTotalLiability !== false
@@ -783,6 +787,37 @@ export class GenerationRunRepository {
     block(rootId: string, code: string): void {
         if (this.authorEditedRoot(rootId)) fail('GENERATION_PLOT_OUTLINE_AUTHOR_SAVED');
         this.db().prepare('UPDATE generation_roots SET blocked_code=? WHERE root_action_id=?').run(code, rootId);
+    }
+    /** 收割空闲运行：running 且 root active、idle 时钟已停（无在途请求）、
+     *  最后一个 attempt 的 settledAt 距今超过 idleMs —— 说明 renderer 侧
+     *  流程在两次请求之间挂死，run 会永远停在 running。blocked_code 会让
+     *  运行面板显示失败卡片；后续 dispatch 被拒绝（GENERATION_DISPATCH_BLOCKED）。
+     *  幂等：已 blocked 或 sealed 的 root 跳过。返回被收割的 runId 列表。 */
+    reapIdleRuns(idleMs = GENERATION_IDLE_TIMEOUT_MS): string[] {
+        return this.transaction(() => {
+            const rows = (this.db().prepare(`
+        SELECT r.run_id, r.root_action_id,
+               json_extract(a.usage_receipt_json,'$.result.settledAt') AS settledAt
+          FROM generation_runs r
+          JOIN generation_roots o ON o.root_action_id = r.root_action_id
+          LEFT JOIN generation_attempts a ON a.rowid = (
+            SELECT MAX(rowid) FROM generation_attempts WHERE root_action_id = r.root_action_id)
+         WHERE r.status = 'running'
+           AND json_extract(o.action_json,'$.status') = 'active'
+           AND o.blocked_code IS NULL
+           AND o.active_since_ms IS NULL
+           AND a.attempt_id IS NOT NULL
+      `).all() as { run_id: string; root_action_id: string; settledAt: number | null }[]).filter(row => row.settledAt !== null && this.now() - row.settledAt >= idleMs);
+            const reaped: string[] = [];
+            for (const row of rows) {
+                try {
+                    this.db().prepare('UPDATE generation_roots SET blocked_code=? WHERE root_action_id=?').run('ROOT_IDLE_TIMEOUT', row.root_action_id);
+                    this.db().prepare("UPDATE generation_runs SET status='failed' WHERE run_id=?").run(row.run_id);
+                    reaped.push(row.run_id);
+                } catch { /* An author-edited root stays untouched; retry on the next read. */ }
+            }
+            return reaped;
+        });
     }
     pause(rootId: string, cancel = false): void {
         this.transaction(() => {

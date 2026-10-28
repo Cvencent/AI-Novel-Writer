@@ -306,6 +306,38 @@ describe('chapter outline main authority', () => {
     expect(requests.map(item => item.purpose)).toEqual(['plot-outline:chapter:1:normal', 'plot-outline:chapter:1:compact'])
   })
 
+  it('reaps a running run whose last attempt settled beyond the idle timeout, instead of staying running forever', async () => {
+    const dispatch = vi.fn<GenerationRunServiceDependencies['dispatch']>(async (_request, options) => {
+      options.onVisible({ kind: 'delta', text: outlineEntry(1) })
+      return { finishReason: 'stop', usage: null }
+    })
+    const f = fixture(dispatch), run = f.owner.begin(outlineSelection(f, 1))
+    await f.owner.execute({ handle: run.handle, invocationNonce: 'first', task: outlineTask(run.plotOutline!) })
+    const repository = new GenerationRunRepository(() => f.db)
+    expect(repository.get(run.handle.runId)!.status).toBe('running')
+
+    // 把最后一次 settle 时间拨回超时阈值之前，模拟 renderer 流程在两次请求之间挂死。
+    const idleMs = 15 * 60_000
+    const row = f.db.prepare('SELECT usage_receipt_json FROM generation_attempts WHERE run_id=? ORDER BY rowid DESC LIMIT 1').pluck().get(run.handle.runId) as string
+    const receipt = JSON.parse(row)
+    receipt.result.settledAt = Date.now() - idleMs - 1000
+    f.db.prepare('UPDATE generation_attempts SET usage_receipt_json=? WHERE run_id=?').run(JSON.stringify(receipt), run.handle.runId)
+
+    const reaped = repository.reapIdleRuns()
+    expect(reaped).toEqual([run.handle.runId])
+    expect(repository.get(run.handle.runId)!.status).toBe('failed')
+    expect(repository.budget(run.handle.rootActionId).blockedCode).toBe('ROOT_IDLE_TIMEOUT')
+    // 收割后 run 面板把这次运行显示为失败；恢复上下文仍可读（恢复卡片可继续使用）。
+    expect(f.reopen().readContext(run.handle).plotOutlineRecovery).toBeDefined()
+    // 未超时的运行不受影响。repository 在构造时捕获 db 句柄，reopen 后须用新实例。
+    const reopenedOwner = f.reopen()
+    const fresh = reopenedOwner.begin(outlineSelection(f, 1))
+    const reopenedRepository = new GenerationRunRepository(() => f.db)
+    expect(reopenedRepository.reapIdleRuns()).toEqual([])
+    // reopen 会把未完成运行挂起（suspendForProjectClose）；reap 只针对 active root。
+    expect(reopenedRepository.get(fresh.handle.runId)!.status).toBe('paused')
+  })
+
   it.each(['normal', 'compact'] as const)('keeps an unknown %s candidate and does not automatically resend it', async unknownKind => {
     const dispatch = vi.fn<GenerationRunServiceDependencies['dispatch']>(async (request, options) => {
       const kind = (request as { task: GenerationTask }).task.purpose.split(':').at(-1)

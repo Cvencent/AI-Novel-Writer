@@ -339,6 +339,8 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
   })
   const list = () => {
     assertCurrent()
+    // 运行列表是运行面板的数据源：刷新列表时顺带收割空闲超时的运行。
+    repository.reapIdleRuns()
     const rows = deps.database.prepare(`SELECT r.run_id, r.root_action_id, r.status,
         json_extract(r.binding_json,'$.projectId') AS project_id,
         json_extract(r.binding_json,'$.epoch') AS epoch,
@@ -908,7 +910,11 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     return false
   }
   const readContext = (handle: MainGenerationRunHandle): GenerationRecoveryContext => {
-    const run = requireRun(handle), manifest = run.binding.sourceManifest, composition = repository.isPrivatePlanningHistory(run.runId) ? null : repository.readVisibleComposition(run.runId)
+    const run = requireRun(handle)
+    // 每次恢复上下文读取前先收割空闲运行：renderer 流程在两次模型请求之间
+    // 挂死时，run 会永远停在 running；这里把超时者判失败并落到失败卡片。
+    repository.reapIdleRuns()
+    const manifest = run.binding.sourceManifest, composition = repository.isPrivatePlanningHistory(run.runId) ? null : repository.readVisibleComposition(run.runId)
     const dismissed = repository.readRecoveryDismiss(run.runId)
     const plotOutline = dismissed ? null : repository.readPlotOutline(run.runId)
     const continuation = planningContinuation(run)
