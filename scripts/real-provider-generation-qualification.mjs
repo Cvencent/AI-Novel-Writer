@@ -791,6 +791,8 @@ function dryRunCompletion(fixture) {
         characters: ['林岚', '周砚'],
         relationships: [{ from: '林岚', to: '周砚', relation: '共同查案' }],
         suspenseHook: `第${chapterNumber}封信留下新的时间矛盾。`,
+        costsAndTurns: `第${chapterNumber}章的排查暴露了行踪，代价是打草惊蛇。`,
+        foreshadowing: `第${chapterNumber}封信的邮戳与寄出日期不符。`,
       }))
       return {
         content: JSON.stringify({ blueprints }),

@@ -80,7 +80,9 @@ afterEach(() => {
   fs.rmSync(projectPath, { recursive: true, force: true })
 })
 
-describe('stable reference knowledge receipt', () => {
+// 与 vector-store-dimension 同理：LanceDB 冷启动可超默认 5s，超时会级联
+// GENERATION_KNOWLEDGE_BUSY，放宽到 30s。
+describe('stable reference knowledge receipt', { timeout: 30_000 }, () => {
   it('discards a delayed embedding result when its only import authority expires', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(1_000)

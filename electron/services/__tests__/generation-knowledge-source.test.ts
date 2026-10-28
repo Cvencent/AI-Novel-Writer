@@ -57,7 +57,8 @@ it('does not create an absent store and rejects empty to populated transition', 
   await seed()
   await expect(verifyGenerationKnowledge({ projectStorageRoot: root, snapshot })).rejects.toThrow('SOURCE_STALE')
 })
-it.each(['chunk', 'document'] as const)('rejects %s corruption as an explicit failure, not empty retrieval', async kind => {
+// LanceDB 冷启动在全量并行跑时可超默认 5s，放宽避免误报。
+it.each(['chunk', 'document'] as const)('rejects %s corruption as an explicit failure, not empty retrieval', { timeout: 30_000 }, async kind => {
   await seed()
   await mutate(kind === 'chunk' ? 'chunks' : 'documents', async table => {
     await table.update({ where: "id = '" + (kind === 'chunk' ? 'chunk' : 'doc') + "'", values: kind === 'chunk' ? { totalChunks: 7 } : { chunkCount: 7 } })

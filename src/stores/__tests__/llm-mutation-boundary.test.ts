@@ -57,6 +57,7 @@ describe('LLM settings mutation boundaries', () => {
         }
       }
       if (channel === 'llm:list-models') return []
+      if (channel === 'llm:get-function-models') return {}
       throw new Error(`unexpected IPC: ${channel}`)
     })
 

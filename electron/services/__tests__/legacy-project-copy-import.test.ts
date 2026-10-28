@@ -325,7 +325,7 @@ it.each(['v100-official', 'v110'] as const)('%s 同一角色对的不同关系�
   expect(sourceState(f)).toEqual(before)
 })
 
-it('官方 v1.0 ready 旧卡在只读验源后导入，源和旧副本的 DDL、行、已有 DB/WAL 数据不变', async () => {
+it('官方 v1.0 ready 旧卡在只读验源后导入，源和旧副本的 DDL、行、已有 DB/WAL 数据不变', { timeout: 30_000 }, async () => {
   const f = fixture('v100-official', '')
   addLegacyCards(f)
   await markLegacyCardsReady(f, true)

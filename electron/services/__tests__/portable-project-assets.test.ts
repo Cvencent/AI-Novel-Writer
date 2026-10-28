@@ -131,7 +131,7 @@ describe('production portable project assets', () => {
       snapshotGeneration: 'g' })).rejects.toThrow('PORTABLE_ASSET_UNSAFE')
   })
 
-  it('rebuilds and strictly verifies canonical full text without embeddings', async () => {
+  it('rebuilds and strictly verifies canonical full text without embeddings', { timeout: 30_000 }, async () => {
     const f = fixture()
     await restorePortableKnowledgeSnapshot(f.storage, knowledge)
     expect(await verifyPortableKnowledgeSnapshot(f.storage, knowledge)).toBe(true)

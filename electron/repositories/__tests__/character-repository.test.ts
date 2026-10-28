@@ -85,6 +85,8 @@ beforeEach(() => {
       key_events TEXT DEFAULT '',
       characters TEXT DEFAULT '[]',
       suspense_hook TEXT DEFAULT '',
+      costs_and_turns TEXT NOT NULL DEFAULT '',
+      foreshadowing TEXT NOT NULL DEFAULT '',
       user_guidance TEXT DEFAULT '',
       notes TEXT DEFAULT '',
       notes_updated_at TEXT DEFAULT '',

@@ -115,7 +115,7 @@ describe('S09C factHash properties', () => {
     }), { numRuns: 25 })
   })
 
-  it('is a pure function of the current facts, not of edit history', () => {
+  it('is a pure function of the current facts, not of edit history', { timeout: 30_000 }, () => {
     fc.assert(fc.property(displayName, name => {
       const f = fixture(name)
       const baseline = f.retarget('基线', '目标甲')

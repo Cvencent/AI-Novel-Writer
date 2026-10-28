@@ -11,7 +11,7 @@ export type PortableFieldDisposition = 'preserve-domain' | 'historical-nonreplay
   | 'redacted-projection' | 'exclude-machine-authority' | 'rebuild-stale'
   | 'validated-relative' | 'avatar-asset'
 
-export type PortableFieldOrigin = 'signed-s01' | 'm01-m05-delta' | 'm06-delta' | 'm07-delta' | 'm08-delta' | 'registered-donor'
+export type PortableFieldOrigin = 'signed-s01' | 'm01-m05-delta' | 'm06-delta' | 'm07-delta' | 'm08-delta' | 'arc-delta' | 'registered-donor'
 
 export interface PortableFieldPolicy {
   disposition: PortableFieldDisposition
@@ -32,6 +32,8 @@ const deltaTables = new Set<string>(fieldPolicyDocument.deltaTables)
 const m06Tables = new Set<string>(fieldPolicyDocument.m06Tables)
 const m07Fields = new Set<string>(fieldPolicyDocument.m07Fields)
 const m08Tables = new Set<string>(fieldPolicyDocument.m08Tables)
+const arcTables = new Set<string>((fieldPolicyDocument as typeof fieldPolicyDocument & { arcTables?: string[] }).arcTables ?? [])
+const optionalTables = new Set<string>((fieldPolicyDocument as typeof fieldPolicyDocument & { optionalTables?: string[] }).optionalTables ?? [])
 const deltaCharacterFields = new Set<string>(fieldPolicyDocument.deltaCharacterFields)
 const optionalFields = new Set<string>(fieldPolicyDocument.optionalFields)
 const signedOverrides = fieldPolicyDocument.signedOverrides as Record<string, string>
@@ -51,7 +53,7 @@ function loadFieldPolicy(): ReadonlyMap<string, PortableFieldPolicy> {
       const rule = rules[code]
       const key = `${table}.${field}`
       const delta = optionalFields.has(key) || deltaTables.has(table) || m06Tables.has(table)
-        || m07Fields.has(key) || m08Tables.has(table)
+        || m07Fields.has(key) || m08Tables.has(table) || arcTables.has(table)
         || table === 'characters' && deltaCharacterFields.has(field)
       const signedDisposition = delta ? null : signedOverrides[key] ?? signedDefaults[code]
       if (!field || !rule || rule.length !== 3 || !PORTABLE_FIELD_DISPOSITIONS.has(rule[0])
@@ -62,8 +64,9 @@ function loadFieldPolicy(): ReadonlyMap<string, PortableFieldPolicy> {
       result.set(key, Object.freeze({ disposition: rule[0], validator: rule[1], consumer: rule[2],
         origin: optionalFields.has(key) ? 'registered-donor'
           : m08Tables.has(table) ? 'm08-delta'
-            : m07Fields.has(key) ? 'm07-delta'
-              : m06Tables.has(table) ? 'm06-delta' : delta ? 'm01-m05-delta' : 'signed-s01', signedDisposition }))
+            : arcTables.has(table) ? 'arc-delta'
+              : m07Fields.has(key) ? 'm07-delta'
+                : m06Tables.has(table) ? 'm06-delta' : delta ? 'm01-m05-delta' : 'signed-s01', signedDisposition }))
     }
   }
   if (Object.keys(signedOverrides).some(key => result.get(key)?.origin !== 'signed-s01')) {
@@ -85,24 +88,29 @@ export function listPortableFieldPolicyKeys(): readonly string[] {
 
 function quoteIdentifier(value: string): string { return `"${value.replaceAll('"', '""')}"` }
 
-/** Read-only bidirectional schema gate. sqlite_* implementation objects are deliberately outside the portable contract. */
+/** Read-only bidirectional schema gate. sqlite_* implementation objects are deliberately outside the portable contract.
+ * optionalTables are installed lazily at first use (arc outlines); a database may or may not carry them.
+ * When present, their fields must match the policy exactly; when absent, their keys are skipped. */
 export function assertPortableSourceSchema(database: Database.Database): { tables: number; fields: number } {
   try {
     database.pragma('foreign_keys = ON')
     verifySchema(new SqliteSchemaAdapter(database), getDesktopMigrationRegistry(), CURRENT_DESKTOP_SCHEMA_VERSION)
   } catch { formatError('PORTABLE_SCHEMA_UNSUPPORTED') }
   const actual = new Set<string>()
+  const presentTables = new Set<string>()
   const objects = database.prepare("SELECT name,type FROM pragma_table_list WHERE schema='main' AND name NOT LIKE 'sqlite_%' ORDER BY name")
     .all() as Array<{ name: string; type: string }>
   for (const object of objects) {
     if (object.type !== 'table' || !(object.name in tables)) formatError('PORTABLE_SCHEMA_UNSUPPORTED')
+    presentTables.add(object.name)
     for (const row of database.prepare(`PRAGMA table_info(${quoteIdentifier(object.name)})`).all() as Array<{ name: string }>) {
       const key = `${object.name}.${row.name}`
       if (!fieldPolicy.has(key)) formatError('PORTABLE_SCHEMA_UNSUPPORTED')
       actual.add(key)
     }
   }
-  if ([...fieldPolicy.keys()].some(key => !actual.has(key) && !optionalFields.has(key))) {
+  if ([...fieldPolicy.keys()].some(key => !actual.has(key) && !optionalFields.has(key)
+    && !(optionalTables.has(key.split('.')[0]!) && !presentTables.has(key.split('.')[0]!)))) {
     formatError('PORTABLE_SCHEMA_UNSUPPORTED')
   }
   return { tables: objects.length, fields: actual.size }

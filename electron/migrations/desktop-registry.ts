@@ -99,7 +99,10 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
     const m07 = {
       id: 'M07' as const, from: 7, to: 8, owner: 'WP2',
       migrate: (db: SchemaReader) => addBlueprintExtendedColumns(native(db)),
-      verify: (db: SchemaReader) => extendedBlueprintFingerprints.has(sqliteSchemaFingerprint(native(db))),
+      // Schema-only fingerprints cannot detect tampered identity rows; keep the
+      // M02/M03 domain re-verification every later step re-establishes.
+      verify: (db: SchemaReader) => extendedBlueprintFingerprints.has(sqliteSchemaFingerprint(native(db)))
+        && verifyM02CharacterIdentity(native(db)) && verifyM03ReviewCycle(native(db)),
     }
     for (const db of references) db.transaction(() => applyM08WritingIntelligence(db))()
     const writingIntelligenceSchemas = schemas(9)
@@ -108,7 +111,8 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
       id: 'M08' as const, from: 8, to: 9, owner: 'WI',
       migrate: (db: SchemaReader) => applyM08WritingIntelligence(native(db)),
       verify: (db: SchemaReader) => writingIntelligenceFingerprints.has(sqliteSchemaFingerprint(native(db)))
-        && verifyM08WritingIntelligence(native(db)),
+        && verifyM08WritingIntelligence(native(db))
+        && verifyM02CharacterIdentity(native(db)) && verifyM03ReviewCycle(native(db)),
     }
     installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08], [
       ...sourceSchemas, ...baselineSchemas.map(schema => ({ ...schema, version: 0 })),

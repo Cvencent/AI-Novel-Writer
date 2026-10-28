@@ -473,7 +473,7 @@ describe('explicit planning recovery with real SQLite', () => {
     const f = fixture(dispatch), run = f.owner.begin(outlineSelection(f, 3))
     for (const nonce of ['normal', 'compact']) await f.owner.execute({ handle: run.handle, invocationNonce: nonce, task: outlineTask(f.owner.read(run.handle).plotOutline!) })
     const attempts = f.db.prepare('SELECT * FROM generation_attempts').all()
-    expect(f.owner.readContext(run.handle)).toMatchObject({ plotOutlineRecovery: { draft: expect.stringContaining(raw) }, planningContinuation: { state: 'ready', remainingRange: { from: 1, to: 3 }, targetUnits: 600 } })
+    expect(f.owner.readContext(run.handle)).toMatchObject({ plotOutlineRecovery: { draft: expect.stringContaining(raw) }, planningContinuation: { state: 'ready', remainingRange: { from: 1, to: 3 }, targetUnits: 300 } })
     const nextInput = { ...outlineSelection(f, 3), uiActionNonce: 'explicit-next' }
     const next = f.owner.restart(run.handle, nextInput)
     expect(next.handle.rootActionId).not.toBe(run.handle.rootActionId)
@@ -1795,13 +1795,20 @@ it('freezes a purpose-specific output exception and rejects all undeclared chang
 })
 
 describe('main generation owner with actual SQLite and provider adapter', () => {
-  it('freezes default five chapters and 600 units, admits ten and 1000, and keeps a complete longer outline', async () => {
-    const content = `## 第1章：完整情节\n${'完整行动与结果。'.repeat(200)}`
+  it('freezes default five chapters and 300 units, admits ten and 1000, and keeps a complete longer outline', async () => {
+    const content = [`## 第1章：完整情节`, ``,
+      `**场景与出场人物**：林岚与同伴。`, ``,
+      `**本章目标**：查清第1章事实。`, ``,
+      `**阻力与升级**：证词与现场记录冲突。`, ``,
+      `**转折与代价**：证词成立，代价是暴露同伴。`, ``,
+      `**结尾钩子**：现场记录多出一页。`, ``,
+      `**伏笔**：多出的一页接后文编号线。`, ``,
+      ...Array.from({ length: 200 }, () => '完整行动与结果。')].join('\n')
     const f = fixture(async (_request, options) => { options.onVisible({ kind: 'delta', text: content }); return { finishReason: 'stop', usage: null } })
     const defaultSelection = outlineSelection(f, 20)
     defaultSelection.authorInputs = defaultSelection.authorInputs!.filter(item => item.id !== 'architecture:planning-intent')
     const defaultRun = f.owner.begin(defaultSelection)
-    expect(defaultRun.plotOutline).toMatchObject({ range: { from: 1, to: 5 }, targetUnits: 600 })
+    expect(defaultRun.plotOutline).toMatchObject({ range: { from: 1, to: 5 }, targetUnits: 300 })
     const selected = { ...outlineSelection(f, 10), uiActionNonce: 'ten' }
     selected.authorInputs!.push({ id: 'planning:target-units', text: '1000' })
     const run = f.owner.begin(selected)
@@ -1921,7 +1928,7 @@ describe('main generation owner with actual SQLite and provider adapter', () => 
       const prompt = '为第1章生成完整蓝图，保留作者事实；必须且只能返回 chapterNumber=1 的一项。'
       const directoryTask: GenerationTask = { purpose, output: 'structured-data', messages: [
         { role: 'system', content: '你是一位经验丰富的章节架构师。' }, { role: 'user', content: prompt },
-        { role: 'system', content: planningTargetInstruction('blueprint', 600, 'zh-CN') },
+        { role: 'system', content: planningTargetInstruction('blueprint', 300, 'zh-CN') },
       ], ...(purpose.includes(':compact-single:') ? { promptBudget: { limitUtf8Bytes: 32 * 1024,
         sections: [{ sectionName: 'target-chapter', messageIndex: 1, finalText: 'chapterNumber=1' }] } } : {}) }
       const repository = new GenerationRunRepository(() => f.db), frozen = repository.get(view.handle.runId)
@@ -1963,7 +1970,7 @@ describe('main generation owner with actual SQLite and provider adapter', () => 
       expect(f.db.name).toBe(databasePath)
       expect(restored.artifacts).toEqual(result.run.artifacts)
       expect(restored.budgetDiagnostics).toEqual(result.run.budgetDiagnostics)
-      expect(reopened.readContext(view.handle)).toMatchObject({ attemptedPurposes: [purpose], authorInputs: [...authorInputs, { id: 'planning:target-units', text: '600' }] })
+      expect(reopened.readContext(view.handle)).toMatchObject({ attemptedPurposes: [purpose], authorInputs: [...authorInputs, { id: 'planning:target-units', text: '300' }] })
       const reopenedRepository = new GenerationRunRepository(() => f.db)
       expect(reopenedRepository.receipt(reference.attemptId).artifact).toEqual(durable.artifact)
       expect(reopenedRepository.get(view.handle.runId).binding.sourceRefs).toEqual(frozen.binding.sourceRefs)
@@ -2907,5 +2914,7 @@ it('keeps the next plot-outline recovery chapter empty instead of duplicating th
  acceptOutline(f.owner,run.handle)
  const recovery=f.owner.readContext(run.handle).plotOutlineRecovery!
  expect(recovery.draft.split(outlineEntry(1))).toHaveLength(2)
- expect(recovery.draft).toContain('## 第2章：')
+ // 恢复稿只包含已接受的第 1 章与覆盖说明；绝不预写一个「有标题、无正文」的第 2 章。
+ expect(recovery.draft).not.toContain('## 第2章：')
+ expect(recovery.draft).toContain('其余章节将在后续批次继续生成')
 })

@@ -566,6 +566,13 @@ export abstract class BaseWorkflowCommand<TResult = string> {
       },
     })
     this.assertNotCancelled(context)
+    // 细纲逐章轮次的收尾判定以「游标」为准：主进程已把本次候选（含 length）
+    // 落成 artifact，derivePlotOutlineCursor 会把 length 判成同章 compact 重建、
+    // 把不可接受产出判成重建，本章 while 循环据此继续或停止。
+    // 因此主进程持账的大纲轮次遇到非 stop 的有界失败时不在这里抛出，
+    // 否则整批细纲会被一次 length 候选中断，游标设计（normal→compact→stopped）失效。
+    const outlineRound = execution.mainOwned && !!options.purpose
+      && parsePlotOutlinePurpose(options.purpose) !== null
     if (lastFinish !== 'stop') {
       // 工具轮次里模型可能先调工具、再在同一个 finishReason=length 的响应里写正文。
       // 从最后一轮原文提取可见部分，避免把已经写出的章节丢掉。
@@ -580,7 +587,12 @@ export abstract class BaseWorkflowCommand<TResult = string> {
           'Connection to the model failed (network drop or upstream outage), so this chapter was not generated. Retry later; finished chapters are unaffected.',
         ))
       }
-      throw createBoundedCompletionError(lastFinish, context?.uiLocale ?? 'zh-CN')
+      if (!outlineRound) throw createBoundedCompletionError(lastFinish, context?.uiLocale ?? 'zh-CN')
+      callbacks.log(workflowUiText(
+        context ?? execution.context,
+        `第 ${parsePlotOutlinePurpose(options.purpose!)!.chapterNumber} 章本次产出未完整结束（${lastFinish}），已保留候选，按游标继续。`,
+        `Chapter ${parsePlotOutlinePurpose(options.purpose!)!.chapterNumber} finished incompletely (${lastFinish}); the candidate is kept and the cursor decides the next step.`,
+      ))
     }
     // 细纲轮次：这次产出必须真的是一章合规大纲（单章标题 + 六个固定小节 + 非账本体）。
     // 不合格时不要在这里撞合成闸门，而是让上层重新读游标——它会按设计发起一次 compact 重建；

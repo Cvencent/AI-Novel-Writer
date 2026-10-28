@@ -92,6 +92,9 @@ describe('recovery candidate source-draft migration', () => {
   it('leaves legacy draft identity unknown and fails closed', () => {
     const projectRoot = makeLegacyProject()
     openLegacyNormalizationFixture(projectRoot)
+    // The legacy baseline predates the M07 blueprint columns; add them the way
+    // the migration lane would before seeding through the repository.
+    getProjectDb()!.exec("ALTER TABLE blueprints ADD COLUMN costs_and_turns TEXT NOT NULL DEFAULT ''; ALTER TABLE blueprints ADD COLUMN foreshadowing TEXT NOT NULL DEFAULT ''")
     BlueprintRepository.upsert({ ...source, notes: '', notesUpdatedAt: '' })
 
     const db = getProjectDb()!

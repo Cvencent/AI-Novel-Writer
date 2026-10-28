@@ -154,7 +154,7 @@ it('registered child 同root计账且伪parent/缺registration拒绝',async()=>{
  const result=await f.round(),ref=result.rounds[0]!.actions[0]!.ref
  f.owner.agents.claimTool({ref,confirmed:true});const registration=f.owner.agents.registerWorkflow(ref)
  const selection: BeginGenerationRequest={operation:'chapter-blueprint-directory',uiActionNonce:'子流程',modelId:'synthetic',promptKeys:['directory'],skillStages:[],selectedDraftIds:[],selectedFinalizedDraftIds:[],output:'structured-data',parentRootActionId:result.handle.rootActionId,agentWorkflowRegistrationId:registration.registrationId,
-   authorInputs:[{id:'directory:author-config',text:'{"totalChapters":80}'},{id:'directory:requested-range',text:'{"mode":"full","startChapter":1,"endChapter":5}'},{id:'planning:target-units',text:'600'}]}
+   authorInputs:[{id:'directory:author-config',text:'{"totalChapters":80}'},{id:'directory:requested-range',text:'{"mode":"full","startChapter":1,"endChapter":5}'},{id:'planning:target-units',text:'300'}]}
  expect(()=>f.owner.begin({...selection,parentRootActionId:'伪造父动作'})).toThrow('GENERATION_AGENT_CHILD_NOT_AUTHORIZED')
  expect(()=>f.owner.begin({...selection,agentWorkflowRegistrationId:undefined})).toThrow('GENERATION_AGENT_REGISTRATION_REQUIRED')
  const child=f.owner.begin(selection)
@@ -180,9 +180,9 @@ describe('planning authorization before confirmation', () => {
    {id:'planning:target-units',text:String(planning.targetUnits)},
   ]
  })
- it('persists default five chapters and 600 units before exposing an unconfirmed action', async () => {
+ it('persists default five chapters and 300 units before exposing an unconfirmed action', async () => {
   const f=fixture(planningDispatch({workflow:'generate_blueprint'})), result=await f.round(), action=result.rounds[0].actions[0]
-  expect(action).toMatchObject({status:'pending',arguments:{workflow:'generate_blueprint',start_chapter:1,chapter_count:5,target_units:600}})
+  expect(action).toMatchObject({status:'pending',arguments:{workflow:'generate_blueprint',start_chapter:1,chapter_count:5,target_units:300}})
   const raw=JSON.parse(f.db.prepare('SELECT usage_receipt_json FROM generation_attempts WHERE attempt_id=?').pluck().get(action.ref.attemptId) as string)
   expect(raw.agentActions[action.ref.toolCallId].planningArguments).toEqual(action.arguments)
   f.db.prepare('UPDATE project_core SET total_chapters=2').run()
@@ -403,7 +403,7 @@ it('advances all prior Agent rounds after a confirmed config change before a chi
  const child=f.owner.begin({operation:'chapter-blueprint-directory',uiActionNonce:'config-child',modelId:'synthetic',
    promptKeys:['directory'],skillStages:[],selectedDraftIds:[],selectedFinalizedDraftIds:[],output:'structured-data',
    parentRootActionId:recovery.handle.rootActionId,agentWorkflowRegistrationId:registration.registrationId,
-   authorInputs:[{id:'directory:author-config',text:'{"totalChapters":80}'},{id:'directory:requested-range',text:'{"mode":"full","startChapter":1,"endChapter":5}'},{id:'planning:target-units',text:'600'}]})
+   authorInputs:[{id:'directory:author-config',text:'{"totalChapters":80}'},{id:'directory:requested-range',text:'{"mode":"full","startChapter":1,"endChapter":5}'},{id:'planning:target-units',text:'300'}]})
  f.db.transaction(()=>f.owner.withAgentChildEffect(child.handle,()=>f.db.prepare('UPDATE blueprints SET title=? WHERE chapter_number=1').run('子任务已写入')))()
  expect(f.db.prepare('SELECT title FROM blueprints WHERE chapter_number=1').pluck().get()).toBe('子任务已写入')
  expect(f.owner.agents.read(recovery.handle).sourceStatus).toBe('current')

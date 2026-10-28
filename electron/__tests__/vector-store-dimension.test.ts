@@ -56,7 +56,9 @@ function failNthTableOpen(
   })
 }
 
-describe('知识库向量维度', () => {
+// 全量并行跑时 LanceDB 原生线程池冷启动可能超过默认 5s；超时会让未完成的
+// 知识源 gate 尾巴溢出到下一条用例（GENERATION_KNOWLEDGE_BUSY 级联），故放宽。
+describe('知识库向量维度', { timeout: 30_000 }, () => {
   const projects: string[] = []
 
   afterEach(async () => {

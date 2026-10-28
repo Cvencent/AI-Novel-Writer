@@ -4,6 +4,7 @@ import { createRequire } from 'node:module'
 import { randomUUID } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BlueprintRepository } from '../../repositories/blueprint-repository'
+import { ArcOutlineRepository } from '../../repositories/arc-outline-repository'
 import { closeProjectDatabase, createProjectDatabase, getProjectDb, initProjectDatabase } from '../../database'
 import { createCanonicalProjectManifest } from '../../../src/shared/project-format'
 import {
@@ -36,6 +37,9 @@ function openCurrent(): { databasePath: string; database: import('better-sqlite3
   const project = fixture()
   initProjectDatabase(project.root)
   BlueprintRepository.listPendingCharacterSyncOperations()
+  // 粗纲表与蓝图同步表一样是惰性建表；任何用过粗纲的项目都带着它们，
+  // 便携契约必须按「使用中的真实形态」双向匹配。
+  ArcOutlineRepository.list()
   const database = getProjectDb()!
   return { databasePath: project.databasePath, database }
 }
@@ -67,15 +71,15 @@ afterEach(() => {
 })
 
 describe('portable v9 field policy', () => {
-  it('与实际当前registry双向精确匹配55表509字段，并包含两个lazy表', () => {
+  it('与实际当前registry双向精确匹配57表524字段，并包含arc与blueprint sync两个lazy表', () => {
     const { database } = openCurrent()
     expect(database.pragma('user_version', { simple: true })).toBe(9)
     const tables = database.prepare("SELECT name FROM pragma_table_list WHERE schema='main' AND type='table' AND name NOT LIKE 'sqlite_%'")
       .all() as Array<{ name: string }>
     const fieldCount = tables.reduce((count, table) => count
       + (database.prepare(`PRAGMA table_info("${table.name}")`).all() as unknown[]).length, 0)
-    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 55, fields: 509 })
-    expect(assertPortableSourceSchema(database)).toEqual({ tables: 55, fields: 509 })
+    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 57, fields: 524 })
+    expect(assertPortableSourceSchema(database)).toEqual({ tables: 57, fields: 524 })
     expect(getPortableFieldPolicy('review_cycle_merges', 'cycle_id').disposition).toBe('historical-nonreplayable')
     expect(getPortableFieldPolicy('review_cycle_merges', 'body').disposition).toBe('historical-nonreplayable')
     expect(listPortableFieldPolicyKeys()).toContain('blueprint_commit_operations.operation_id')
@@ -104,7 +108,7 @@ describe('portable v9 field policy', () => {
     const baseline = new Set(signed.fieldDispositions.map(field => `${field.table}.${field.field}`))
     const baselineTables = new Set(signed.fieldDispositions.map(field => field.table))
     const added = listPortableFieldPolicyKeys().filter(key => !baseline.has(key))
-    expect(added).toHaveLength(154)
+    expect(added).toHaveLength(169)
     expect(getPortableFieldPolicy('characters', 'avatar')).toMatchObject({
       origin: 'registered-donor', disposition: 'exclude-machine-authority', signedDisposition: null,
     })
@@ -114,6 +118,14 @@ describe('portable v9 field policy', () => {
     expect(delta.filter(key => key.startsWith('characters.')).sort()).toEqual([
       'characters.character_id', 'characters.identity_revision', 'characters.legacy_key',
       'characters.retired', 'characters.static_provenance',
+    ])
+    expect(listPortableFieldPolicyKeys().filter(key => getPortableFieldPolicy(
+      ...key.split('.') as [string, string]).origin === 'arc-delta').sort()).toEqual([
+      'arc_outlines.arc_index', 'arc_outlines.beat', 'arc_outlines.created_at', 'arc_outlines.from_chapter',
+      'arc_outlines.id', 'arc_outlines.revision', 'arc_outlines.status', 'arc_outlines.summary',
+      'arc_outlines.title', 'arc_outlines.to_chapter', 'arc_outlines.updated_at',
+      'outline_segment_bindings.arc_id', 'outline_segment_bindings.arc_revision_at_build',
+      'outline_segment_bindings.chapter_number', 'outline_segment_bindings.fine_state',
     ])
     expect(listPortableFieldPolicyKeys().filter(key => getPortableFieldPolicy(
       ...key.split('.') as [string, string]).origin === 'm06-delta')).toEqual([
@@ -181,6 +193,8 @@ describe('portable v9 field policy', () => {
 
   it('同表同字段但删除index的v9 DDL fork被registry fingerprint拒绝', () => {
     const project = fixture()
+    initProjectDatabase(project.root)
+    ArcOutlineRepository.list() // 粗纲惰性表也属于当前契约形态。
     const mutate = new Database(project.databasePath)
     try { mutate.exec('DROP INDEX idx_character_avatar_revision') } finally { mutate.close() }
     const before = fs.readFileSync(project.databasePath)
@@ -191,7 +205,7 @@ describe('portable v9 field policy', () => {
         .all() as Array<{ name: string }>
       const fields = tables.reduce((count, table) => count
         + (database.prepare(`PRAGMA table_info("${table.name}")`).all() as unknown[]).length, 0)
-      expect({ tables: tables.length, fields }).toEqual({ tables: 55, fields: 509 })
+      expect({ tables: tables.length, fields }).toEqual({ tables: 57, fields: 524 })
       expect(() => assertPortableSourceSchema(database)).toThrow('PORTABLE_SCHEMA_UNSUPPORTED')
     } finally { database.close() }
     expect(fs.readFileSync(project.databasePath)).toEqual(before)

@@ -3205,7 +3205,7 @@
             1,
             5
           ],
-          "targetUnits": 600
+          "targetUnits": 300
         },
         {
           "id": "planning-outline-6",
@@ -3214,7 +3214,7 @@
             6,
             6
           ],
-          "targetUnits": 600
+          "targetUnits": 300
         },
         {
           "id": "planning-directory-1-5",
@@ -3223,7 +3223,7 @@
             1,
             5
           ],
-          "targetUnits": 600
+          "targetUnits": 300
         },
         {
           "id": "planning-directory-6",
@@ -3232,7 +3232,7 @@
             6,
             6
           ],
-          "targetUnits": 600
+          "targetUnits": 300
         },
         {
           "id": "planning-draft",

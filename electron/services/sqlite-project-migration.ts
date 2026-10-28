@@ -10,6 +10,7 @@ import type { MigrationRegistry } from '../migrations/registry'
 import { SqliteSchemaAdapter } from '../migrations/sqlite-schema-adapter'
 import { M02_ADDED_CHARACTER_COLUMNS, M02_AUXILIARY_TABLES } from '../migrations/m02-character-identity'
 import { M03_REVIEW_CYCLE_TABLES } from '../migrations/m03-review-cycle'
+import { BLUEPRINT_EXTENDED_COLUMNS } from '../migrations/baseline-blueprint-schema'
 import { initializeLegacyBaselineSchema } from '../migrations/baseline-schema'
 import { ensureBaselineBlueprintTables } from '../migrations/baseline-blueprint-schema'
 import { initializeCharacterRosterMetadata } from '../repositories/character-roster-schema'
@@ -103,10 +104,17 @@ const M05_ASSET_TABLES = ['character_avatar_assets', 'character_avatar_unresolve
 function domainColumns(db: BetterSqlite3.Database, preIdentity = false, preAsset = false): DomainColumns {
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as { name: string }[]
   const postLegacyTables = [...M02_AUXILIARY_TABLES, ...M03_REVIEW_CYCLE_TABLES, ...M05_ASSET_TABLES] as readonly string[]
+  // Pre-identity evidence must stay comparable with what a schema2 database
+  // could express: later migration columns on legacy tables (M07 blueprint
+  // WP2 columns) are projection artifacts, not author content that moved.
+  const addedColumns: Record<string, readonly string[]> = {
+    characters: M02_ADDED_CHARACTER_COLUMNS,
+    blueprints: BLUEPRINT_EXTENDED_COLUMNS.map(column => column.name),
+  }
   return tables.filter(({ name }) => (!preIdentity || !postLegacyTables.includes(name))
     && (!preAsset || !(M05_ASSET_TABLES as readonly string[]).includes(name))).map(({ name }) => ({ name,
     columns: (db.prepare(`PRAGMA table_info(${quoteIdentifier(name)})`).all() as { name: string }[]).map(column => column.name)
-      .filter(column => !preIdentity || name !== 'characters' || !(M02_ADDED_CHARACTER_COLUMNS as readonly string[]).includes(column)),
+      .filter(column => !preIdentity || !addedColumns[name]?.includes(column)),
   }))
 }
 /**

@@ -19,6 +19,8 @@
   "m06Tables": ["review_cycle_merges"],
   "m07Fields": ["blueprints.costs_and_turns", "blueprints.foreshadowing"],
   "m08Tables": ["blueprint_scene_plans", "chapter_commits", "character_voice_profiles", "draft_quality_reviews"],
+  "arcTables": ["arc_outlines", "outline_segment_bindings"],
+  "optionalTables": ["arc_outlines", "outline_segment_bindings"],
   "optionalFields": ["characters.avatar"],
   "deltaCharacterFields": ["character_id", "legacy_key", "static_provenance", "identity_revision", "retired"],
   "signedOverrides": {
@@ -74,6 +76,8 @@
     "summary_snapshots.continuity_facts": "preserve-domain-value-with-current-source-check"
   },
   "tables": {
+    "arc_outlines": {"id":"D","arc_index":"D","from_chapter":"D","to_chapter":"D","title":"D","summary":"D","beat":"D","status":"D","revision":"D","created_at":"D","updated_at":"D"},
+    "outline_segment_bindings": {"chapter_number":"D","arc_id":"D","arc_revision_at_build":"D","fine_state":"D"},
     "blueprint_character_sync_operations": {"operation_id":"H","blueprint_commit_operation_id":"H","blueprint_commit_payload_hash":"R","status":"H","start_chapter":"H","end_chapter":"H","character_sync_input":"R","completion_receipt":"R","created_at":"H","updated_at":"H","completed_at":"H"},
     "blueprint_commit_operations": {"operation_id":"H","payload_hash":"R","mode":"H","start_chapter":"H","end_chapter":"H","character_sync_input":"R","committed_at":"H"},
     "blueprint_scene_plans": {"chapter_number":"D","scenes_json":"D","source_hash":"D","updated_at":"D"},

@@ -34,7 +34,8 @@ import {
 import { removeDirectoryWithWindowsRetry } from '../utils/remove-directory'
 import { EmbeddingResponseValidationError } from '../services/embedding-response-error'
 
-describe('知识库嵌入空间回填', () => {
+// LanceDB 冷启动在全量并行跑时可超默认 5s；超时会级联 GENERATION_KNOWLEDGE_BUSY。
+describe('知识库嵌入空间回填', { timeout: 30_000 }, () => {
   const projects: string[] = []
 
   afterEach(async () => {

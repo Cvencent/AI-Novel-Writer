@@ -43,7 +43,8 @@ it('keeps chapter identity and scoped metadata across reindex and exact deletion
   expect(await listDocuments(projectPath)).toEqual([expect.objectContaining({ id: 'reference' })])
 })
 
-it('restores native tables on reindex failure while a concurrent import waits for the same gate', async () => {
+// LanceDB 冷启动在全量并行跑时可超默认 5s；超时会级联 GENERATION_KNOWLEDGE_BUSY。
+it('restores native tables on reindex failure while a concurrent import waits for the same gate', { timeout: 30_000 }, async () => {
   const projectPath = workspace()
   generateEmbeddings.mockResolvedValue([[1, 0]])
   const first = await importText('chapter before', 'chapter.txt', projectPath, 'openai', { baseUrl: 'fixture', apiKey: 'fixture' })

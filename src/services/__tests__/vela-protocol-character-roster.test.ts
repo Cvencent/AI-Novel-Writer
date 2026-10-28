@@ -97,7 +97,8 @@ describe('structured character roster static contract', () => {
     expect(workflow).not.toContain('runArchCharacterExtract')
     expect(workflow).not.toContain('createCharacterExtractSteps')
     expect(workflow).not.toContain('runPostProcessPipeline')
-    expect(architectureSection).toContain("...(!cast && filled ? [{ id: 'danger'")
+    // 危险清空组只出现在没有角色名单的普通小节（粗纲小节也不提供）。
+    expect(architectureSection).toContain("...(!cast && !arc && filled ? [{ id: 'danger'")
     expect(worldBuilding).toContain('useCharacterRosterRepair')
     expect(archFileViewer).toContain('useCharacterRosterRepair')
     expect(worldBuilding).toContain("characters: rosterSnapshot?.status === 'ready'")

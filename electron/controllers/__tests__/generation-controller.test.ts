@@ -602,7 +602,16 @@ describe('chapter outline command through registered main IPC and formal CAS', (
       name: '合成小说', sessionLease: session.leaseId, novelConfig: config, characterStates: '', createdAt: '', updatedAt: '' } })
     syncProject()
     let fault = options.crash, calls = 0
-    const prompts: string[] = [], accepted = (chapter: number) => `## 第${chapter}章：证词${chapter}\n林岚核对证词${chapter}，保留原件，并约定下一步。`
+    const prompts: string[] = []
+    // 大纲条目必须通过现行六小节接受闸门（38b6bef8 起新输出强制固定小节）。
+    const accepted = (chapter: number) => [`## 第${chapter}章：证词${chapter}`, ``,
+      `**场景与出场人物**：林岚与同伴。`, ``,
+      `**本章目标**：核对证词${chapter}。`, ``,
+      `**阻力与升级**：证词与现场记录冲突。`, ``,
+      `**转折与代价**：证词成立，代价是暴露同伴。`, ``,
+      `**结尾钩子**：现场记录多出一页。`, ``,
+      `**伏笔**：多出的一页接后文编号线。`, ``,
+      `林岚核对证词${chapter}，保留原件，并约定下一步。`].join('\n')
     const fetch = vi.fn(async (_url: string, init: RequestInit) => {
       const body = JSON.parse(String(init.body)) as { messages: { role: string; content: string }[] }
       const prompt = body.messages.find(message => message.role === 'user')!.content

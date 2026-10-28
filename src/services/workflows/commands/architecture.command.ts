@@ -2421,7 +2421,13 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       `【全书叙事约束】\n- 小说类型：${config.genre || '（未填写）'}${config.subGenre ? `（${config.subGenre}）` : ''}\n- 叙事视角：${getNarrativePOVLabel(config.narrativePOV || 'third_limited', language)}\n- 故事结构：${config.plotStructure || 'three_act'}\n- 计划总章数：${sourceExpected.totalChapters} 章；每章约 ${sourceExpected.wordsPerChapter} 字`
       ,
       `[Narrative constraints]\n- Genre: ${config.genre || '(not provided)'}\n- POV: ${getNarrativePOVLabel(config.narrativePOV || 'third_limited', language)}\n- Structure: ${config.plotStructure || 'three_act'}\n- Length: ${sourceExpected.totalChapters} chapters of ~${sourceExpected.wordsPerChapter} words`)
-    const chapterPrompt = [originalPrompt, narrativeContext, additionalContext].filter(Boolean).join('\n\n')
+    // 步骤指导是作者对本步骤的硬要求（如结尾必须归还钥匙），固定事实合同不承载它，
+    // 必须显式注入每一次章节大纲请求，否则作者的补充指导被静默丢弃。
+    const stepGuidanceContext = guidance.trim()
+      ? promptLanguageText(language, `【作者对本步骤的额外指导（最高优先级）】\n${guidance.trim()}`,
+          `[Author step guidance (highest priority)]\n${guidance.trim()}`)
+      : ''
+    const chapterPrompt = [originalPrompt, narrativeContext, additionalContext, stepGuidanceContext].filter(Boolean).join('\n\n')
 
 
     const partial = (context.data.partial as PartialArchData) || await loadPartialData(expectedProjectPath, session)

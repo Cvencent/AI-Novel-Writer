@@ -18,6 +18,16 @@ import { resolveOpenAIChatCompletionsUrl } from '../../electron/llm/openai-compa
 const phase = 'r3-native-revision-diagnostic'
 const protocol = JSON.parse(fs.readFileSync(path.join(ROOT, 'docs/research/novel-quality-modernization/protocol.json')))
 
+/** 六小节章节大纲条目：38b6bef8 起新产出必须通过 isAcceptablePlotOutlineEntry 闸门。 */
+const outlineEntryFixture = (chapter, body) => [`## 第${chapter}章：接续`, ``,
+  `**场景与出场人物**：林岚与同伴。`, ``,
+  `**本章目标**：查清第${chapter}章事实。`, ``,
+  `**阻力与升级**：证词与现场记录冲突。`, ``,
+  `**转折与代价**：证词成立，代价是暴露同伴。`, ``,
+  `**结尾钩子**：现场记录多出一页。`, ``,
+  `**伏笔**：多出的一页接后文编号线。`, ``,
+  body].join('\n')
+
 test('native bridge checks the configured official path for GLM and retains the DeepSeek path', () => {
   const fixture = fs.readFileSync(path.join(ROOT, 'scripts/fixtures/quality-modernization-production.fixture.mjs'), 'utf8')
   const start = fixture.indexOf("preflight(new URL(String(url)).host ===")
@@ -222,7 +232,7 @@ test('planning diagnostic uses its six-chapter scope and native 64K profile with
   assert.equal(planningPolicy.formalDenominatorContribution, 0)
   assert.deepEqual(planningNativeOperations(planningPolicy.caseId, 'review').map(item => item.kind), ['outline', 'outline', 'directory', 'directory', 'draft', 'review'])
   assert.deepEqual(planningPolicy.operations.slice(0, 4).map(item => [item.range, item.targetUnits]),
-    [[[1, 5], 600], [[6, 6], 600], [[1, 5], 600], [[6, 6], 600]])
+    [[[1, 5], 300], [[6, 6], 300], [[1, 5], 300], [[6, 6], 300]])
   assert.ok(Object.values(planningPolicy.planningRootBudgets).every(budget => budget.maxPhysicalRequests === 32))
   assert.equal(planningPolicy.maxPhysicalRequests, Object.values(planningPolicy.physicalRequestBounds).reduce((sum, count) => sum + count, 0))
   assert.deepEqual(planningNativeOperations(planningPolicy.caseId, 'complete').map(item => item.kind), ['refine', 'final-review'])
@@ -254,7 +264,8 @@ test('planning directory starts with the production 5+1 batches and rejects a si
 test('planning outline replay preserves long STOP and only retries a settled failed chapter', () => {
   const first = { attemptId: 'normal', purpose: 'plot-outline:chapter:6:normal' }
   const compact = { attemptId: 'compact', purpose: 'plot-outline:chapter:6:compact' }
-  const output = `## 第6章：接续\n${'完整内容'.repeat(300)}`
+  // 38b6bef8 起新产出必须通过六小节接受闸门。
+  const output = outlineEntryFixture(6, `${'完整内容'.repeat(300)}`)
   assert.equal(planningOutlineState([first], [6, 6], () => ({ output, finishReason: 'stop' })).text, output)
   assert.throws(() => planningOutlineState([first, compact], [6, 6], () => ({ output, finishReason: 'stop' })), /SEQUENCE/)
   assert.throws(() => planningOutlineState([compact], [6, 6], () => ({ output, finishReason: 'stop' })), /SEQUENCE/)
@@ -276,7 +287,7 @@ test('planning receipt validates two outline roots, preserved prefix and full ch
     for (const operation of operations) {
       const artifactIds = [], entries = []
       for (let chapter = operation.range[0]; chapter <= operation.range[1]; chapter++) {
-        const attemptId = `chapter-${chapter}`, artifactId = `artifact-${chapter}`, output = `## 第${chapter}章：维修\n${'事实'.repeat(600)}`
+        const attemptId = `chapter-${chapter}`, artifactId = `artifact-${chapter}`, output = outlineEntryFixture(chapter, `${'事实'.repeat(600)}`)
         const outputPath = path.join(directory, `${attemptId}.md`)
         fs.writeFileSync(outputPath, output)
         const actual = { ...binding.actual, attemptId, runId: operation.id, rootActionId: operation.id, purpose: `plot-outline:chapter:${chapter}:normal` }
@@ -286,11 +297,11 @@ test('planning receipt validates two outline roots, preserved prefix and full ch
         artifactIds.push(artifactId); entries.push(output)
       }
       const body = [prefix, entries.join('\n\n')].filter(Boolean).join('\n\n')
-      const synopsis = `# 情节大纲\n\n${body}${operation.range[1] < 6 ? '\n\n> 本大纲已覆盖至第 5 章（全书 6 章），其余章节将在后续批次继续生成。' : ''}`
+      const synopsis = `# 细纲\n\n${body}${operation.range[1] < 6 ? '\n\n> 本大纲已覆盖至第 5 章（全书 6 章），其余章节将在后续批次继续生成。' : ''}`
       const outputPath = path.join(directory, `${operation.id}.md`)
       fs.writeFileSync(outputPath, synopsis)
       result.operations.push({ operation: operation.id, kind: operation.kind, handle: { runId: operation.id, rootActionId: operation.id }, planningOutline: {
-        progress: { protocol: 'chapter-outline-v3', range: { from: operation.range[0], to: operation.range[1] }, targetUnits: 600,
+        progress: { protocol: 'chapter-outline-v3', range: { from: operation.range[0], to: operation.range[1] }, targetUnits: operation.targetUnits,
           cursor: { kind: 'complete' }, confirmedPrefix: prefix, sourceExpected: { totalChapters: 6, writingLanguage: 'zh-CN', synopsis: previousSynopsis }, composition: { artifactIds } },
         savedSynopsis: { outputPath, contentHash: hash(synopsis) } } })
       prefix = body; previousSynopsis = synopsis

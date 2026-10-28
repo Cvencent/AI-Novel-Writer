@@ -28,6 +28,9 @@ describe('release dependency contract', () => {
     expect(pkg.scripts?.['build:win-dir']).toContain('pnpm run clean:build')
     expect(pkg.scripts?.['build:win-dir']).toContain('pnpm run rebuild:electron')
     expect(pkg.scripts?.['build:win-dir']).toContain('pnpm run verify:win-package')
+    // electron-builder rebuilds better-sqlite3 for the Electron ABI; a standalone
+    // dir build must end by restoring the ordinary Node ABI so `pnpm test` works.
+    expect(pkg.scripts?.['build:win-dir']).toMatch(/verify:win-package && pnpm run prepare:native-node$/)
     expect(pkg.scripts?.['verify:win-package']).toBe('node scripts/verify-win-package.mjs')
     expect(pkg.scripts?.['smoke:win-app']).toContain('scripts/smoke-win-app.ps1')
 
@@ -68,6 +71,8 @@ describe('release dependency contract', () => {
     expect(pkg.scripts?.['build:win:artifacts']).toContain('pnpm run rebuild:electron')
     expect(pkg.scripts?.['build:win:artifacts']).toContain('electron-builder --win --x64')
     expect(pkg.scripts?.['build:win:artifacts']).toContain('--publish never')
+    // Artifacts builds outside the full release gate must also restore the Node ABI.
+    expect(pkg.scripts?.['build:win:artifacts']).toMatch(/--publish never && pnpm run prepare:native-node$/)
 
     const releaseGate = readFileSync('scripts/release-win-verify.mjs', 'utf8')
     const releaseMonitor = readNormalizedSource('scripts/monitor-win-release-gate.ps1')

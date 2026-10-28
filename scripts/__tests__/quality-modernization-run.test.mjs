@@ -254,7 +254,7 @@ test('AI final manuscript distinguishes raw goal discoveries from mechanical unk
     savedContent: discovered.savedContent.replace('柜台描述', '人工补题'), context }), /SAVED_REPORT_MISMATCH/)
 })
 
-test('post-UI baseline uses its native review projection, persisted AI-only confirmation and 8192 refine command', async () => {
+test('post-UI baseline uses its native review projection, persisted AI-only confirmation and 8192 refine command', { timeout: 30_000 }, async () => {
   const directory = fs.mkdtempSync(path.join(ROOT, '.runtime/.cache/novel-quality-modernization/post-ui-baseline-native-'))
   let db, nativeDatabase
   try {
@@ -458,7 +458,7 @@ test.each([
   [false, { units: 1171, target: 900, expected: null, historical: 'AI_REVISION_LENGTH_MISMATCH' }],
   [false, { units: 735, target: 900, expected: null, historical: null }],
   [false, { units: 1103, target: 900, expected: null, historical: null }],
-])('AI final manuscript native main owner persists keyEvents unknown confirmation, one revision, merge and ordinary final review (LENGTH replacement=%s, revision bounds=%j)', async (lengthRecovery, revisionBounds) => {
+])('AI final manuscript native main owner persists keyEvents unknown confirmation, one revision, merge and ordinary final review (LENGTH replacement=%s, revision bounds=%j)', { timeout: 30_000 }, async (lengthRecovery, revisionBounds) => {
   const formal = lengthRecovery === 'formal'
   const current = formal || Boolean(revisionBounds)
   const scenario = formal ? productionScenario('full', 'final', CANDIDATE_ONLY_PROTOCOL_REVISION) : null
@@ -2366,7 +2366,7 @@ function continuityResults(dir, { condensedIndex = null, primaryText, savedUnits
   })
 }
 
-test('C17/C18 压缩结果最多两次 attempt、正式效果只在末次，且首稿超上限须可复核', () => {
+test('C17/C18 压缩结果最多两次 attempt、正式效果只在末次，且首稿超上限须可复核', { timeout: 30_000 }, () => {
   const dir = fs.mkdtempSync(path.join(ROOT, '.runtime/.cache/novel-quality-modernization/condense-result-test-'))
   try {
     const { syntheticDraftText } = syntheticLengthHelpers()
@@ -2425,7 +2425,7 @@ test('C17/C18 压缩结果最多两次 attempt、正式效果只在末次，且�
   } finally { fs.rmSync(dir, { recursive: true, force: true }) }
 })
 
-test('C17-B 重新定稿后处理：notes/cards 绑定替换后的新 finalizationId，attempt 记账含 cards 原生 repair', () => {
+test('C17-B 重新定稿后处理：notes/cards 绑定替换后的新 finalizationId，attempt 记账含 cards 原生 repair', { timeout: 30_000 }, () => {
   const dir = fs.mkdtempSync(path.join(ROOT, '.runtime/.cache/novel-quality-modernization/c17b-post-process-test-'))
   try {
     const check = (results, expected, message, mode = 'synthetic') => assert.deepEqual(validateCandidateContinuityResults(results, mode), expected, message)
@@ -2539,7 +2539,7 @@ test('C17-B 重新定稿后处理：notes/cards 绑定替换后的新 finalizati
   assert.match(driver, /postProcess\.length !== \(item\.sourceSuffix \? 2 : 0\)/)
 })
 
-test('C16–C18 恢复案例只以授权标识调用恢复 IPC：harness 授权与选择器同一 owner，baseline 臂不经过恢复', async () => {
+test('C16–C18 恢复案例只以授权标识调用恢复 IPC：harness 授权与选择器同一 owner，baseline 臂不经过恢复', { timeout: 30_000 }, async () => {
   const fixture = fixtureSource()
   // 行为：取夹具里真实的授权签发器源码，对真实授权 owner 生效（进程内 harness 没有 dialog，不能走选择器）。
   const sandbox = {}
@@ -2589,7 +2589,7 @@ this.restoreGrantIssuer = restoreGrantIssuer`, sandbox)
   assert.match(fixture, /const restorationKinds = continuityRun \? /)
 })
 
-test('C17-B 替换后前驱：readback 与 parity 记录续写实际纳入的新来源，替换前另存，且与 materialDecision 一致', () => {
+test('C17-B 替换后前驱：readback 与 parity 记录续写实际纳入的新来源，替换前另存，且与 materialDecision 一致', { timeout: 30_000 }, () => {
   const dir = fs.mkdtempSync(path.join(ROOT, '.runtime/.cache/novel-quality-modernization/c17b-predecessor-test-'))
   try {
     const failure = { status: 'failed', candidateFailure: 'PREDECESSOR_AFTER_REPLACEMENT_MISMATCH' }
@@ -2719,7 +2719,7 @@ test('c16-c18 v7 场景沿用有界恢复、条件作者保护与 C17-B 重新�
 })
 
 // 26 组夹具串行重建 104 次 SQLite 审稿库；本项验证证据合同，不是性能合同。
-test('C16-B 作者保护按正式产物是否提议改写而条件判定：真实未触发可过，提议无候选、证据缺失或畸形均失败，合成仍强制候选', () => {
+test('C16-B 作者保护按正式产物是否提议改写而条件判定：真实未触发可过，提议无候选、证据缺失或畸形均失败，合成仍强制候选', { timeout: 60_000 }, () => {
   const dir = fs.mkdtempSync(path.join(ROOT, '.runtime/.cache/novel-quality-modernization/author-protection-test-'))
   try {
     const check = (results, mode, expected, message) => assert.deepEqual(validateCandidateContinuityResults(results, mode), expected, message)

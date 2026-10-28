@@ -103,7 +103,7 @@ test('dispatch requires settled immutable evidence and same run/root/project/epo
 })
 
 const blueprint = number => ({ chapterNumber: number, title: '章节', role: '开篇', purpose: '寻找证据', keyEvents: '发现线索',
-  characters: ['林澄'], relationships: [], suspenseHook: '日期错位', userGuidance: '' })
+  characters: ['林澄'], relationships: [], suspenseHook: '日期错位', costsAndTurns: '付出代价', foreshadowing: '埋下伏笔', userGuidance: '' })
 const structured = (range, values, purpose = 'chapter-blueprint-directory', finishReason = 'stop') => ({ structuredRange: range,
   purpose, output: JSON.stringify({ blueprints: values }), finishReason })
 const replayStructure = (attempts, range = [1]) => structuredRecoveryState(attempts, { chapterNumbers: range }, value => value)
