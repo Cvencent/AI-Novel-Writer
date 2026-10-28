@@ -743,7 +743,10 @@ export function registerProjectController(options: ProjectControllerOptions = {}
         if (data.novelConfig.writingLanguage !== undefined) {
           coreUpdate.writingLanguage = resolveWritingLanguage(data.novelConfig.writingLanguage)
         }
-        Object.assign(coreUpdate, {
+        // 只合并调用方给出的字段：partial 保存（例如只改字数或流派）不得把
+        // 未提供的故事模型/视角/全局指导等配置冲成 NULL——那会让下一次
+        // 细纲生成的来源校验直接拒绝（GENERATION_PLOT_OUTLINE_SOURCE_INVALID）。
+        const provided = {
           genre: data.novelConfig.genre,
           subGenre: data.novelConfig.subGenre,
           targetAudience: data.novelConfig.targetAudience,
@@ -760,7 +763,10 @@ export function registerProjectController(options: ProjectControllerOptions = {}
           protagonistProfile: data.novelConfig.protagonistProfile,
           writingStyle: data.novelConfig.writingStyle ?? '',
           referenceWorks: data.novelConfig.referenceWorks ?? '',
-        })
+        } as Partial<Parameters<typeof ProjectCoreRepository.update>[0]>
+        for (const [key, value] of Object.entries(provided)) {
+          if (value !== undefined) (coreUpdate as Record<string, unknown>)[key] = value
+        }
       }
 
       if (data.name) {
@@ -812,7 +818,9 @@ export function registerProjectController(options: ProjectControllerOptions = {}
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
       assertRequiredProjectSession(_projectId, data, getCurrentProjectPath(), context)
       if (data.novelConfig) {
-        ProjectCoreRepository.update({
+        // 只合并调用方给出的字段：partial 保存不得把未提供的故事模型/视角/
+        // 全局指导等配置冲成 NULL——细纲生成的来源校验会直接拒绝 NULL。
+        const provided = {
           genre: data.novelConfig.genre,
           subGenre: data.novelConfig.subGenre,
           targetAudience: data.novelConfig.targetAudience,
@@ -829,7 +837,12 @@ export function registerProjectController(options: ProjectControllerOptions = {}
           protagonistProfile: data.novelConfig.protagonistProfile,
           writingStyle: data.novelConfig.writingStyle ?? '',
           referenceWorks: data.novelConfig.referenceWorks ?? '',
-        })
+        }
+        const coreUpdate: Partial<ProjectCoreData> = {}
+        for (const [key, value] of Object.entries(provided)) {
+          if (value !== undefined) (coreUpdate as Record<string, unknown>)[key] = value
+        }
+        ProjectCoreRepository.update(coreUpdate)
       }
       return { success: true }
     } catch (error) {

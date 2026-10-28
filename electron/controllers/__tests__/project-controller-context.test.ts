@@ -1073,6 +1073,31 @@ describe('project controller project identity', () => {
     expect(mocks.projectCoreUpdate.mock.calls[0]?.[0]).not.toHaveProperty('creativeStrategy')
   })
 
+  it('does not write NULLs for config fields a partial update omits (they would fail the outline source gate)', async () => {
+    const data = {
+      path: projectA,
+      sessionLease: 'lease-project-A',
+      novelConfig: {
+        coreOutline: '旧港的灯塔看守人。',
+        genre: '悬疑',
+        targetAudience: '男频',
+        totalChapters: 40,
+        wordsPerChapter: 700,
+        writingLanguage: 'zh-CN',
+      },
+    }
+
+    await expect(handler('project:update-config')({}, 'project-A', data, projectA, projectSession()))
+      .resolves.toEqual({ success: true })
+    const update = mocks.projectCoreUpdate.mock.calls[0]?.[0] as Record<string, unknown>
+    // plot_structure/narrative_pov/global_guidance 等未提供字段不得出现在更新里
+    //（undefined 会被 SQLite 写成 NULL，细纲生成的来源校验随即拒绝）。
+    for (const key of ['plotStructure', 'narrativePov', 'globalGuidance', 'goldenFinger', 'worldSetting', 'protagonistProfile', 'subGenre']) {
+      expect(update, key).not.toHaveProperty(key)
+    }
+    expect(update).toMatchObject({ genre: '悬疑', totalChapters: 40 })
+  })
+
   it('rejects a supplied stale session lease before a project config write commits', async () => {
     mocks.projectAccess.assertCurrentProjectContext.mockImplementationOnce(() => {
       throw new Error('项目会话已失效，已拒绝操作')
