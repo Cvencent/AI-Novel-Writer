@@ -292,7 +292,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
   ): Promise<string> {
     const completion = await this.callLLMResult(prompt, systemPrompt, callbacks, options, context)
     if (completion.finishReason !== 'stop') {
-      throw this.createIncompleteCompletionError(completion.finishReason)
+      throw this.createIncompleteCompletionError(completion.finishReason, completion.receipt?.failureCode)
     }
     return completion.content
   }
@@ -709,10 +709,11 @@ export abstract class BaseWorkflowCommand<TResult = string> {
     if (receipt.promptBudget) callbacks.setPromptBudgetReport?.(receipt.promptBudget)
   }
 
-  protected createIncompleteCompletionError(finishReason: LLMFinishReason): Error {
+  protected createIncompleteCompletionError(finishReason: LLMFinishReason, transportFailureCode?: string): Error {
     return createBoundedCompletionError(
       finishReason,
       this.activeGenerationExecution?.context.uiLocale ?? 'zh-CN',
+      transportFailureCode,
     )
   }
 

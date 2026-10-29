@@ -248,6 +248,19 @@ describe('bounded completion', () => {
     expect(requestContinuation).not.toHaveBeenCalled()
   })
 
+  it('appends the transport failure code so workflow-level retry can match it', () => {
+    const error = createBoundedCompletionError('error', 'zh-CN', 'GENERATION_PROVIDER_FAILED')
+    expect(error).toMatchObject({ failureCode: 'error' })
+    expect(error.message).toContain('AI 未正常完成生成，结果未被保存。')
+    expect(error.message).toContain('[GENERATION_PROVIDER_FAILED]')
+  })
+
+  it('keeps the plain message when no transport failure code is supplied', () => {
+    const error = createBoundedCompletionError('error')
+    expect(error.message).toBe('AI 未正常完成生成，结果未被保存。')
+    expect(error.message).not.toContain('[')
+  })
+
   it('overlap-merges an ordinary visible text continuation', async () => {
     const repeatedTail = '林岚推开办公室的门，屏幕上的航班编号仍在闪烁。'.repeat(3)
     const text = await completeBoundedCompletion({

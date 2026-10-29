@@ -142,8 +142,13 @@ function incompleteCompletionError(
 export function createBoundedCompletionError(
   finishReason: LLMFinishReason,
   uiLocale: Locale = 'zh-CN',
+  transportFailureCode?: string,
 ): BoundedCompletionFailure {
-  return incompleteCompletionError(finishReason, uiLocale)
+  const error = incompleteCompletionError(finishReason, uiLocale)
+  // 流中断/断网这类传输失败必须让调用方能按码识别（如工作流层重试），同时
+  // 保留原有的人类可读文案；追加在消息尾部不改变作者看到的主要提示。
+  if (transportFailureCode) error.message = `${error.message} [${transportFailureCode}]`
+  return error
 }
 
 function continuationLimitExceededError(maxContinuations: number, uiLocale: Locale): Error {
