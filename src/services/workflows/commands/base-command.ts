@@ -311,6 +311,11 @@ export abstract class BaseWorkflowCommand<TResult = string> {
   ): Promise<string> {
     const text = (zhCNText: string, enUSText: string) => workflowUiText(context, zhCNText, enUSText)
     const completion = await this.callLLMResult(prompt, systemPrompt, callbacks, options, context)
+    // 非长度中断（流断开/上游故障）在这里就失败：带上传输失败码抛出，
+    // 让工作流层的瞬时重试能按码识别；不进入续写循环。
+    if (completion.finishReason !== 'stop' && completion.finishReason !== 'length') {
+      throw this.createIncompleteCompletionError(completion.finishReason, completion.receipt?.failureCode)
+    }
     callbacks.log(text(
       `  有界生成初始响应：finishReason=${completion.finishReason}`,
       `  Initial bounded response: finishReason=${completion.finishReason}`,
@@ -687,6 +692,15 @@ export abstract class BaseWorkflowCommand<TResult = string> {
     } catch (error) {
       if (error instanceof GenerationAttemptError) {
         this.reportGenerationPromptBudget(callbacks, error.receipt)
+        // 物理请求失败（断网/上游 5xx）以 GenerationAttemptError 抛出，消息是
+        // 通用的「模型请求失败。」；把主进程归类的传输失败码补进消息，让
+        // 工作流层的瞬时重试（withTransientRetry）能按码识别。非主进程拥有的
+        // 运行时没有失败码，统一用 PROVIDER_REQUEST_FAILED 表达「可重试传输失败」。
+        const transportCode = error.receipt?.failureCode
+          ?? (error.code === 'PROVIDER_REQUEST_FAILED' ? 'GENERATION_PROVIDER_FAILED' : undefined)
+        if (transportCode === 'NETWORK_ERROR' || transportCode === 'GENERATION_PROVIDER_FAILED') {
+          throw new Error(`${error.message} [${transportCode}]`)
+        }
       }
       if (context?.cancelled || (
         typeof error === 'object'

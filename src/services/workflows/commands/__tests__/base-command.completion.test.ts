@@ -230,6 +230,23 @@ describe('BaseWorkflowCommand completion boundary', () => {
     expect(completeWithLease).toHaveBeenCalledOnce()
   })
 
+  it('surfaces the transport failure code when a physical request fails so retries can match it', async () => {
+    const completeWithLease = vi.fn<GenerationRuntimeEnvironment['completeWithLease']>()
+      .mockRejectedValue(new Error('fetch failed'))
+    const environment: GenerationRuntimeEnvironment = {
+      snapshotDefaultModelId: () => 'model-a',
+      beginModelExecution: vi.fn().mockResolvedValue(leaseReceipt()),
+      completeWithLease,
+      closeModelExecution: vi.fn().mockResolvedValue(undefined),
+    }
+
+    await expect(new CompletionProbeCommand(dependenciesFor(environment)).execute({
+      step: { kind: 'single' } satisfies ProbeStep,
+      context,
+      callbacks,
+    })).rejects.toThrow(/模型请求失败。 \[GENERATION_PROVIDER_FAILED\]/)
+  })
+
   it('uses the frozen UI locale for an ordinary terminal failure', async () => {
     const completeWithLease = vi.fn<GenerationRuntimeEnvironment['completeWithLease']>()
       .mockResolvedValue({ content: '半截结果', finishReason: 'length' })
