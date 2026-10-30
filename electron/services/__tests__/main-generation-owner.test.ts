@@ -117,6 +117,7 @@ function acceptOutline(owner: ReturnType<typeof fixture>['owner'], handle: Param
   const text = joinPlotOutlineEntries(progress.composition?.text ?? '', progress.cursor.text)
   return owner.composeVisible(handle, [...(progress.composition?.artifactIds ?? []), ...progress.cursor.artifactIds], textHash(text), PLOT_OUTLINE_PROTOCOL)
 }
+const NL2 = String.fromCharCode(10, 10)
 const outlineEntry = (chapter: number) => [`## 第${chapter}章：线索${chapter}`,
   ``,
   `**场景与出场人物**：林岚与同伴。`,
@@ -543,6 +544,34 @@ describe('explicit planning recovery with real SQLite', () => {
     expect(next.plotOutline?.range).toEqual({ from: 2, to: 3 })
     expect(next.plotOutline?.confirmedPrefix).toBe(outlineEntry(1))
     expect(dispatch).toHaveBeenCalledTimes(3)
+  })
+  it('列表给可恢复运行标 recoverableHint：半途中断的粗纲为 true，大纲已保存进作品的为 false', async () => {
+    const dispatch = vi.fn<GenerationRunServiceDependencies['dispatch']>(async (request, options) => {
+      options.onVisible({ kind: 'delta', text: outlineEntry(Number((request as { task: GenerationTask }).task.purpose.split(':')[2])) })
+      return { finishReason: 'stop', usage: null }
+    })
+    const f = fixture(dispatch), expected = { totalChapters: 2, writingLanguage: 'zh-CN' as const }
+    const synopsis = renderPlotOutlineSynopsis([1, 2].map(outlineEntry).join(NL2), 2, expected)
+    f.db.prepare('UPDATE project_core SET synopsis=?,total_chapters=2').run(synopsis)
+    const repository = new GenerationRunRepository(() => f.db)
+    // 半途中断：只写了第 1 章，第 2 章还没影 —— 仍可能恢复 → hint true。
+    let owner = f.owner
+    const run = owner.begin(outlineSelection(f, 2))
+    await owner.execute({ handle: run.handle, invocationNonce: 'round-1', task: outlineTask(owner.read(run.handle).plotOutline!) })
+    acceptOutline(owner, run.handle)
+    repository.pause(run.handle.rootActionId)
+    expect(owner.list().find(item => item.handle.runId === run.handle.runId)?.recoverableHint).toBe(true)
+
+    // 作者回来补完第 2 章，并按工作流一样把大纲保存进作品：续写消费完 → hint false。
+    owner = f.reopen()
+    const resumed = await owner.resume(run.handle)
+    await owner.execute({ handle: resumed.handle, invocationNonce: 'round-2', task: outlineTask(resumed.plotOutline!) })
+    acceptOutline(owner, resumed.handle)
+    const context = owner.readContext(resumed.handle), outline = context.plotOutline!
+    const payload: ProjectCoreSynopsisCommitRequest = { synopsis, expected: outline.sourceExpected,
+      authorRecovery: { sourceHandle: resumed.handle, leaseEpoch: context.plotOutlineRecovery!.leaseEpoch, operationId: 'author-final', committedRange: { from: 1, to: 2 } } }
+    f.db.transaction(() => owner.commitPlotOutlineAuthorEdit(payload)).immediate()
+    expect(owner.list().find(item => item.handle.runId === run.handle.runId)?.recoverableHint).toBe(false)
   })
   it('升级前以乱序大纲（1、5、2、3、4）开跑的第 3–5 章任务：列表与恢复照常读出，判为不能继续，派发、续接与保存都拒绝', async () => {
     const dispatch = vi.fn<GenerationRunServiceDependencies['dispatch']>(async (request, options) => {

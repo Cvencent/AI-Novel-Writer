@@ -106,6 +106,8 @@ export interface MainGenerationRunSummary {
   handle: MainGenerationRunHandle
   status: MainGenerationRunView['status']
   operation: string | null
+  /** 主进程按运行纪要便宜地判定的「可能仍有可恢复内容」。false 时渲染层跳过深读取。 */
+  recoverableHint?: boolean
 }
 export interface MainGenerationRunView {
   plotOutline?: import('../../shared/plot-outline-contract').PlotOutlineProgress

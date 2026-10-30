@@ -350,7 +350,20 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
       ORDER BY r.created_at_ms DESC, r.rowid DESC`).all(deps.projectId) as {
       run_id: string; root_action_id: string; status: string; project_id: string; epoch: string; operation: string | null
     }[]
-    return rows.map(row => listViewOf(row))
+    // 恢复深扫描的门槛：只对「可能仍有可恢复内容」的运行做完整水合。
+    // planningContinuation 只查纪要与续写记录，不水合 artifact，单价很低；
+    // 老项目几百条历史运行里绝大多数的续写早已消费完（complete）或来源已失效，
+    // 用它把深扫描集合从几百条压到个位数，运行侧页挂载不再拖慢整个界面。
+    const recoverableOps = new Set(['generate-plot-outline', 'chapter-blueprint-directory', 'chapter-draft',
+      'review-chapter', 'refine-draft', 'refine-from-review', 'editor-inline'])
+    return rows.map(row => {
+      const summary = listViewOf(row)
+      if (!row.operation || !recoverableOps.has(row.operation)) return { ...summary, recoverableHint: false }
+      const run = repository.get(row.run_id)
+      const continuation = planningContinuation(run)
+      const recoverable = !continuation || !['complete', 'source-invalid'].includes(continuation.state)
+      return { ...summary, recoverableHint: recoverable }
+    })
   }
   // S10B：'materialDecision'/'materialDecisionHash' 只在**取得准入之后**才可能出现在真正
   // 运行的 manifest 上（prepare 阶段早于材料装配），因此与 selectedFinalizedDraftIds 同类，

@@ -49,7 +49,11 @@ async function loadGenerationSources(session: ProjectSessionContext): Promise<{ 
     'generate-plot-outline', 'chapter-blueprint-directory', 'chapter-draft',
     ...REVIEW_OPERATIONS, 'editor-inline',
   ])
-  const candidates = summaries.filter(view => !view.operation || RECOVERABLE_OPERATIONS.has(view.operation))
+  // 主进程已用运行纪要便宜地判定「可能仍有可恢复内容」（recoverableHint）。
+  // hint=false 的老运行（续写已消费完/来源失效）直接跳过深读取——老项目几百条
+  // 历史运行里绝大多数属于这一类，深扫描集合因此压到个位数。
+  const candidates = summaries.filter(view =>
+    !view.operation || (RECOVERABLE_OPERATIONS.has(view.operation) && view.recoverableHint !== false))
   // 单个旧运行的深读取可能失败（损坏的候选、旧版本的记录形态……）。
   // 一条坏记录不该让整个恢复区反复报「部分任务暂时无法读取」——失败的运行
   // 收进 unreadable，由界面聚成一行，作者可一键按 runId 永久忽略。
