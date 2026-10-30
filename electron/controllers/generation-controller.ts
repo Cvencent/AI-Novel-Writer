@@ -1,3 +1,4 @@
+import type { MainGenerationSnapshot } from '../../src/services/generation/generation-runtime'
 import { ipcMain, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import type Database from 'better-sqlite3'
 import type { GenerationOwnerChannels } from '../../src/shared/generation-owner-contract'
@@ -103,6 +104,52 @@ export function registerGenerationController(options: {
           if (!template) throw new Error('GENERATION_BUILTIN_PROMPT_MISSING')
           return JSON.stringify(template)
         } }
+      // 流式增量可能每秒几十个。快照/推理事件只用于显示：在 IPC 边界合并到
+      // 100ms 一帧、每帧每个 artifact/attempt 只发最新状态，终态立即发送。
+      // 没有节流时渲染层每个增量都做一次 zustand 更新 + React 重渲染，
+      // 生成期间切页会整页卡死。owner 直连的单元测试不受影响。
+      const SNAPSHOT_FRAME_MS = 100
+      const pendingSnapshots = new Map<string, ReturnType<typeof setTimeout>>()
+      const latestSnapshots = new Map<string, MainGenerationSnapshot>()
+      const sendSnapshot = (key: string) => {
+        pendingSnapshots.delete(key)
+        const snapshot = latestSnapshots.get(key)
+        if (!snapshot) return
+        latestSnapshots.delete(key)
+        for (const subscriber of subscribers) {
+          if (subscriber.isDestroyed()) subscribers.delete(subscriber)
+          else subscriber.send('generation:snapshot', snapshot)
+        }
+      }
+      const streamThrottle = {
+        snapshot: (snapshot: MainGenerationSnapshot) => {
+          const key = snapshot.artifactId
+          latestSnapshots.set(key, snapshot)
+          if (snapshot.status !== 'running') { sendSnapshot(key); return }
+          if (pendingSnapshots.has(key)) return
+          pendingSnapshots.set(key, setTimeout(() => sendSnapshot(key), SNAPSHOT_FRAME_MS))
+        },
+        reasoning: (reasoning: { runId: string; rootActionId: string; attemptId: string; text: string }) => {
+          const key = reasoning.attemptId
+          const previous = latestReasoning.get(key)
+          const text = (previous?.text ?? '') + reasoning.text
+          latestReasoning.set(key, { ...reasoning, text })
+          if (pendingReasoning.has(key)) return
+          pendingReasoning.set(key, setTimeout(() => sendReasoning(key), SNAPSHOT_FRAME_MS))
+        },
+      }
+      const pendingReasoning = new Map<string, ReturnType<typeof setTimeout>>()
+      const latestReasoning = new Map<string, { runId: string; rootActionId: string; attemptId: string; text: string }>()
+      const sendReasoning = (key: string) => {
+        pendingReasoning.delete(key)
+        const event = latestReasoning.get(key)
+        if (!event) return
+        latestReasoning.delete(key)
+        for (const subscriber of subscribers) {
+          if (subscriber.isDestroyed()) subscribers.delete(subscriber)
+          else subscriber.send('generation:reasoning', event)
+        }
+      }
       const owner = createMainGenerationOwner({ database, projectId: captured.projectId, epoch: captured.leaseId,
         assertCurrent: () => { projectAccess.assertCurrentProjectContext(captured, getCurrentProjectPath());
           if (getProjectDb() !== database) throw new Error('GENERATION_DATABASE_CHANGED') },
@@ -113,14 +160,8 @@ export function registerGenerationController(options: {
           projectId: captured.projectId, epoch: captured.leaseId, modelReceipt, policy, outputContract: generationOutputContract(selection) }).binding,
         rebuildBinding: (previous, modelReceipt) => rebuildGenerationSourceBinding(sourceDependencies, previous, captured.leaseId,
           modelReceipt, readMainGenerationPolicy(previous.sourceManifest.policy)).binding,
-        onSnapshot: snapshot => { for (const subscriber of subscribers) {
-          if (subscriber.isDestroyed()) subscribers.delete(subscriber)
-          else subscriber.send('generation:snapshot', snapshot)
-        } },
-        onReasoning: reasoning => { for (const subscriber of subscribers) {
-          if (subscriber.isDestroyed()) subscribers.delete(subscriber)
-          else subscriber.send('generation:reasoning', reasoning)
-        } },
+        onSnapshot: snapshot => streamThrottle.snapshot(snapshot),
+        onReasoning: reasoning => streamThrottle.reasoning(reasoning),
       })
       entry = { owner, session: captured, subscribers }
       ownerSessions.set(owner, captured)
