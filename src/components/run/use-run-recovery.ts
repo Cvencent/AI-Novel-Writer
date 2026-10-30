@@ -3,6 +3,8 @@ import { ipc } from '../../services/ipc-client'
 import { createBatchRecoveryWorkflow, createDraftRecoveryWorkflow } from '../../services/workflows/draft-recovery-workflow'
 import { createReviewRevisionRecoveryWorkflow } from '../../services/workflows/review-revision-recovery-workflow'
 import { withoutDraftReconciliationArtifacts } from '../../shared/draft-reconciliation'
+import type { GenerationRecoveryContext } from '../../shared/generation-owner-contract'
+import type { MainGenerationRunView } from '../../services/generation/generation-runtime'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
 import type { MainGenerationRunHandle } from '../../services/generation/generation-runtime'
 import { projectSessionContextFromProject, sameProjectSessionContext } from '../../shared/project-session-context'
@@ -51,10 +53,20 @@ async function loadGenerationSources(session: ProjectSessionContext): Promise<{ 
   // 单个旧运行的深读取可能失败（损坏的候选、旧版本的记录形态……）。
   // 一条坏记录不该让整个恢复区反复报「部分任务暂时无法读取」——失败的运行
   // 收进 unreadable，由界面聚成一行，作者可一键按 runId 永久忽略。
-  const settledContexts = await Promise.allSettled(candidates.map(async (summary, index) => ({ index,
-    view: await ipc.invokeWithProjectSession(session, 'generation:read', summary.handle),
-    recovery: await ipc.invokeWithProjectSession(session, 'generation:read-context', { handle: summary.handle }),
-  })))
+  // 历史运行可能有几百条：全量并发深读取会把主进程和渲染层同时打满，
+  // 作者切页时整个界面都加载不出来。这里限制并发、分批推进，让出主线程。
+  const DEEP_READ_CONCURRENCY = 6
+  type DeepRead = { index: number; view: MainGenerationRunView; recovery: GenerationRecoveryContext }
+  const settledContexts: PromiseSettledResult<DeepRead>[] = []
+  for (let start = 0; start < candidates.length; start += DEEP_READ_CONCURRENCY) {
+    const batch = candidates.slice(start, start + DEEP_READ_CONCURRENCY)
+    const settled = await Promise.allSettled(batch.map(async (summary, offset) => ({ index: start + offset,
+      view: await ipc.invokeWithProjectSession(session, 'generation:read', summary.handle),
+      recovery: await ipc.invokeWithProjectSession(session, 'generation:read-context', { handle: summary.handle }),
+    })))
+    settledContexts.push(...settled)
+    await new Promise(resolve => setTimeout(resolve, 0))
+  }
   const contexts = settledContexts.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
   const unreadableHandles = settledContexts.flatMap((result, index) => result.status === 'rejected' ? [candidates[index]!.handle] : [])
   // 作者点过「移除卡片」的运行：产物与运行记录都还在，但不再派生恢复卡片。
