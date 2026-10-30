@@ -4,6 +4,7 @@ import { createBatchRecoveryWorkflow, createDraftRecoveryWorkflow } from '../../
 import { createReviewRevisionRecoveryWorkflow } from '../../services/workflows/review-revision-recovery-workflow'
 import { withoutDraftReconciliationArtifacts } from '../../shared/draft-reconciliation'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
+import type { MainGenerationRunHandle } from '../../services/generation/generation-runtime'
 import { projectSessionContextFromProject, sameProjectSessionContext } from '../../shared/project-session-context'
 import { openPlanningRecoveryDraft, useEditorStore } from '../../stores/editor-store'
 import { formatResourceUri } from '../../shared/project-paths'
@@ -30,7 +31,7 @@ function currentSession(): ProjectSessionContext | null {
  * 因此这里先用列表里的 operation 缩小范围，再只对**可能是恢复候选**的运行读完整视图与恢复上下文。
  * 助手任务与已经跑完的任务从头到尾不会被水合。
  */
-async function loadGenerationSources(session: ProjectSessionContext): Promise<{ sources: Omit<RecoverySources, 'candidates'>; partial: boolean }> {
+async function loadGenerationSources(session: ProjectSessionContext): Promise<{ sources: Omit<RecoverySources, 'candidates'>; partial: boolean; unreadableHandles: MainGenerationRunHandle[] }> {
   const [summaries, progress] = await Promise.all([
     ipc.invokeWithProjectSession(session, 'generation:list'),
     ipc.invokeWithProjectSession(session, 'generation:list-batches'),
@@ -47,9 +48,15 @@ async function loadGenerationSources(session: ProjectSessionContext): Promise<{ 
     ...REVIEW_OPERATIONS, 'editor-inline',
   ])
   const candidates = summaries.filter(view => !view.operation || RECOVERABLE_OPERATIONS.has(view.operation))
-  const contexts = await Promise.all(candidates.map(async summary => ({ view: await ipc.invokeWithProjectSession(session, 'generation:read', summary.handle),
+  // 单个旧运行的深读取可能失败（损坏的候选、旧版本的记录形态……）。
+  // 一条坏记录不该让整个恢复区反复报「部分任务暂时无法读取」——失败的运行
+  // 收进 unreadable，由界面聚成一行，作者可一键按 runId 永久忽略。
+  const settledContexts = await Promise.allSettled(candidates.map(async (summary, index) => ({ index,
+    view: await ipc.invokeWithProjectSession(session, 'generation:read', summary.handle),
     recovery: await ipc.invokeWithProjectSession(session, 'generation:read-context', { handle: summary.handle }),
   })))
+  const contexts = settledContexts.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
+  const unreadableHandles = settledContexts.flatMap((result, index) => result.status === 'rejected' ? [candidates[index]!.handle] : [])
   // 作者点过「移除卡片」的运行：产物与运行记录都还在，但不再派生恢复卡片。
   // 只看这次读到的标记，不额外查库；标记随 read-context 一起回来。
   const live = contexts.filter(item => item.recovery.recoveryDismissed !== true)
@@ -59,6 +66,7 @@ async function loadGenerationSources(session: ProjectSessionContext): Promise<{ 
     .map(({ view }) => ipc.invokeWithProjectSession(session, 'editor-inline:read-recovery', { handle: view.handle })))
   const ours = (projectId: string) => projectId === session.projectId
   return {
+    unreadableHandles,
     partial: [...reviews, ...editors].some(result => result.status === 'rejected'),
     sources: {
       planning: live.flatMap(item => (item.recovery.plotOutlineRecovery || item.recovery.blueprintRecovery)
@@ -104,6 +112,10 @@ export interface RunRecovery {
   dismiss: (entry: RecoveryEntry) => void
   /** 一键放弃全部恢复卡片（持久）；正式内容不动。 */
   dismissAll: () => Promise<void>
+  /** 深读取失败的旧任务数量（>0 时恢复区给出可忽略提示）。 */
+  unreadableCount: number
+  /** 永久忽略全部无法读取的旧任务（按 runId 写恢复忽略标记）。 */
+  dismissUnreadable: () => Promise<void>
 }
 
 /**
@@ -156,13 +168,21 @@ export function useRunRecovery(): RunRecovery {
   useEffect(() => {
     if (!session) return
     let active = true
-    void loadGenerationSources(session).then(({ sources, partial }) => {
+    void loadGenerationSources(session).then(({ sources, partial, unreadableHandles }) => {
       if (!active) return
       setGeneration({ session, value: sources })
-      setGenerationError(partial ? (locale === 'en-US' ? 'Some tasks could not be loaded; the other candidates remain available.' : '部分任务暂时无法读取，其他候选仍可恢复。') : '')
+      setUnreadable({ session, value: unreadableHandles })
+      // 深读取失败的旧任务聚成一行可忽略的提示；只有审修/编辑恢复载荷读取失败仍按原样提示。
+      setGenerationError(unreadableHandles.length > 0
+        ? (locale === 'en-US'
+          ? `${unreadableHandles.length} old task(s) could not be read. You can ignore them.`
+          : `${unreadableHandles.length} 个旧任务暂时无法读取，可一键忽略。`)
+        : partial ? (locale === 'en-US' ? 'Some tasks could not be loaded; the other candidates remain available.' : '部分任务暂时无法读取，其他候选仍可恢复。') : '')
     }).catch(reason => { if (active) setGenerationError(reason instanceof Error ? reason.message : String(reason)) })
     return () => { active = false }
   }, [session, endedRuns, locale, snapshotTick])
+
+  const [unreadable, setUnreadable] = useState<Loaded<readonly MainGenerationRunHandle[]>>({ session: null, value: [] })
 
   const entries = useMemo(() => {
     if (!session) return []
@@ -224,6 +244,24 @@ export function useRunRecovery(): RunRecovery {
       .catch(error => showGenerationFailure(error))
   }, [session, stillCurrent, persistDismiss, locale, showGenerationFailure])
 
+  /** 深读取失败的旧任务：按 runId 永久忽略，恢复区不再反复提示。 */
+  const dismissUnreadable = useCallback(async () => {
+    if (!session || busy || !unreadable.session || !sameProjectSessionContext(unreadable.session, session)) return
+    setBusy(true)
+    try {
+      for (const handle of unreadable.value) {
+        await ipc.invokeWithProjectSession(session, 'generation:dismiss-recovery', handle).catch(() => undefined)
+      }
+      setUnreadable({ session, value: [] })
+      setGenerationError('')
+      setSnapshotTick(value => value + 1)
+    } catch (cause) {
+      showGenerationFailure(cause)
+    } finally {
+      setBusy(false)
+    }
+  }, [session, busy, unreadable, showGenerationFailure])
+
 
   const act = useCallback(async (operation: (session: ProjectSessionContext) => Promise<void>) => {
     if (busy || !session || !stillCurrent()) return
@@ -254,6 +292,8 @@ export function useRunRecovery(): RunRecovery {
     entries: entries.filter(entry => !dismissed.has(`${entry.kind}:${entry.key}`)),
     dismiss,
     dismissAll,
+    unreadableCount: session && unreadable.session && sameProjectSessionContext(unreadable.session, session) ? unreadable.value.length : 0,
+    dismissUnreadable,
     candidateError,
     generationError,
     busy,

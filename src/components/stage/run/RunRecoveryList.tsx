@@ -23,6 +23,13 @@ export function RunRecoveryList({ recovery, liveRuns }: { recovery: RunRecovery;
   return (
     <section className="run-recovery" aria-label={text('可恢复的内容', 'Recoverable work')}>
       {errors.map(error => <p key={error} className="run-note" data-tone="danger" role="alert">{error}</p>)}
+      {recovery.unreadableCount > 0 && (
+        <div className="run-recovery-actions">
+          <Button variant="text" size="sm" disabled={recovery.busy} onClick={() => void recovery.dismissUnreadable()} title={text('这些旧任务的恢复数据已无法读取，永久忽略后不再提示；正式内容不动', 'These old tasks have unreadable recovery data; ignoring them stops the notice. Saved content is untouched')}>
+            {text(`忽略 ${recovery.unreadableCount} 个无法读取的旧任务`, `Ignore ${recovery.unreadableCount} unreadable old task(s)`)}
+          </Button>
+        </div>
+      )}
       <div className="run-recovery-actions">
         <Button variant="text" size="sm" disabled={recovery.busy} onClick={() => void recovery.dismissAll()} title={text('放弃下面全部可恢复卡片；正式内容不动', 'Dismiss every recoverable card below; saved content is untouched')}>
           {text('一键清除全部卡片', 'Clear all cards')}
