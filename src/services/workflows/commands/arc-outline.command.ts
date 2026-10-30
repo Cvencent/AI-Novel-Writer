@@ -203,17 +203,38 @@ export class GenerateArcOutlineCommand extends BaseWorkflowCommand<string> {
       arcInstruction(writingLanguage, from, totalChapters, recentBeats),
     ].filter(Boolean).join('\n\n')
 
-    const completion = await this.callLLMResult(
-      task,
-      promptLanguageText(writingLanguage, '你是一位长篇小说的故事架构师。', 'You are a story architect for long-form fiction.'),
-      callbacks,
+    const systemPrompt = promptLanguageText(writingLanguage, '你是一位长篇小说的故事架构师。', 'You are a story architect for long-form fiction.')
+    // 内容契约失败（模型没按「## 第N–M章：标题」输出/输出了空内容）不是传输问题，
+    // 带着失败样例纠正重发一次；仍失败才把原始错误抛给工作流。
+    let completion = await this.callLLMResult(
+      task, systemPrompt, callbacks,
       { purpose: `arc-outline:from:${from}`, reasoningStage: 'planning', writingSkillStage: 'planning' },
       context,
     )
-
-    const accepted = acceptArcSegmentWithNameFallback(
-      completion.content, from, totalChapters, characterNames, recentBeats, roleByName, writingLanguage,
-    )
+    let accepted: ReturnType<typeof acceptArcSegmentWithNameFallback>
+    try {
+      accepted = acceptArcSegmentWithNameFallback(
+        completion.content, from, totalChapters, characterNames, recentBeats, roleByName, writingLanguage,
+      )
+    } catch (error) {
+      const code = error instanceof Error ? error.message : String(error)
+      if (!/^ARC_PARSE_/.test(code)) throw error
+      callbacks.log(text(
+        `粗纲格式不符合要求（${code}），已附上失败样例让模型重写一次。`,
+        `Arc draft violated the format (${code}); retrying once with the rejected sample attached.`,
+      ))
+      const corrective = promptLanguageText(writingLanguage,
+        `【上一次输出不合格，错误码：${code}】\n以下是上一次的输出原文。请严格按本任务开头的输出格式重写一次：第一行必须是「## 第${from}–{结束章}章：{段标题}」，第二行必须是「beat: {beat}」，正文不得含人名；不要输出代码围栏或任何额外说明。\n\n--- 上一次输出开始 ---\n${completion.content.slice(0, 4000)}\n--- 上一次输出结束 ---`,
+        `[Previous output rejected, code: ${code}]\nBelow is the previous output verbatim. Rewrite strictly following the output format at the top of this task: the first line must be "## Chapter ${from}-{end}: {title}", the second line "beat: {beat}", and the body must not contain proper names; no code fences or extra prose.\n\n--- previous output start ---\n${completion.content.slice(0, 4000)}\n--- previous output end ---`)
+      const retry = await this.callLLMResult(
+        `${task}\n\n${corrective}`, systemPrompt, callbacks,
+        { purpose: `arc-outline:from:${from}`, reasoningStage: 'planning', writingSkillStage: 'planning' },
+        context,
+      )
+      accepted = acceptArcSegmentWithNameFallback(
+        retry.content, from, totalChapters, characterNames, recentBeats, roleByName, writingLanguage,
+      )
+    }
     const segment = accepted.segment
     if (accepted.replacedNames.length > 0) {
       callbacks.log(text(
@@ -351,15 +372,30 @@ beat: {beat}
 {body, containing no proper names}`),
     ].filter(Boolean).join('\n\n')
 
-    const completion = await this.callLLMResult(
-      task,
-      promptLanguageText(writingLanguage, '你是一位长篇小说的故事架构师。', 'You are a story architect for long-form fiction.'),
-      callbacks,
+    const reviseSystemPrompt = promptLanguageText(writingLanguage, '你是一位长篇小说的故事架构师。', 'You are a story architect for long-form fiction.')
+    let completion = await this.callLLMResult(
+      task, reviseSystemPrompt, callbacks,
       { purpose: `arc-outline:revise:${target.arcIndex}`, reasoningStage: 'planning', writingSkillStage: 'planning' },
       context,
     )
 
-    const parsed = parseArcSegment(completion.content)
+    // 同生成路径：格式不符时带失败样例纠正重发一次。
+    let parsed = parseArcSegment(completion.content)
+    if (!parsed.ok) {
+      callbacks.log(text(
+        `重写的粗纲格式不符合要求（${parsed.code}），已附上失败样例让模型重写一次。`,
+        `The rewritten arc violated the format (${parsed.code}); retrying once with the rejected sample attached.`,
+      ))
+      const corrective = promptLanguageText(writingLanguage,
+        `【上一次输出不合格，错误码：${parsed.code}】\n请严格按本任务开头的输出格式重写一次：第一行必须是「## 第${target.fromChapter}–${target.toChapter}章：{段标题}」，第二行必须是「beat: {beat}」；不要输出代码围栏或任何额外说明。\n\n--- 上一次输出开始 ---\n${completion.content.slice(0, 4000)}\n--- 上一次输出结束 ---`,
+        `[Previous output rejected, code: ${parsed.code}]\nRewrite strictly following the output format at the top of this task: the first line must be "## Chapter ${target.fromChapter}-${target.toChapter}: {title}", the second line "beat: {beat}"; no code fences or extra prose.\n\n--- previous output start ---\n${completion.content.slice(0, 4000)}\n--- previous output end ---`)
+      const retry = await this.callLLMResult(
+        `${task}\n\n${corrective}`, reviseSystemPrompt, callbacks,
+        { purpose: `arc-outline:revise:${target.arcIndex}`, reasoningStage: 'planning', writingSkillStage: 'planning' },
+        context,
+      )
+      parsed = parseArcSegment(retry.content)
+    }
     if (!parsed.ok) throw new Error(parsed.code)
     const segment = parsed.segment
     if (segment.fromChapter !== target.fromChapter || segment.toChapter !== target.toChapter) {
@@ -498,15 +534,29 @@ beat: {beat}
 `),
     ].join('\n\n')
 
-    const completion = await this.callLLMResult(
-      task,
-      promptLanguageText(writingLanguage, '你是一位长篇小说的故事架构师。', 'You are a story architect for long-form fiction.'),
-      callbacks,
+    const reverseSystemPrompt = promptLanguageText(writingLanguage, '你是一位长篇小说的故事架构师。', 'You are a story architect for long-form fiction.')
+    let completion = await this.callLLMResult(
+      task, reverseSystemPrompt, callbacks,
       { purpose: 'reverse-arc-outline', reasoningStage: 'planning', writingSkillStage: 'planning' },
       context,
     )
 
-    const segments = parseArcSegments(completion.content)
+    let segments = parseArcSegments(completion.content)
+    if (segments.length === 0) {
+      callbacks.log(text(
+        '模型没有返回可用的粗纲段，已附上失败样例让模型重写一次。',
+        'The model returned no usable arc segments; retrying once with the rejected sample attached.',
+      ))
+      const corrective = promptLanguageText(writingLanguage,
+        `【上一次输出不合格：没有可解析的粗纲段】\n请严格按本任务开头的输出格式重写：每段以「## 第{起始}–{结束}章：{段标题}」开头，第二行「beat: {beat}」；不要输出代码围栏或任何额外说明。\n\n--- 上一次输出开始 ---\n${completion.content.slice(0, 4000)}\n--- 上一次输出结束 ---`,
+        `[Previous output rejected: no parseable arc segments]\nRewrite strictly following the output format at the top of this task: each segment starts with "## Chapter {from}-{to}: {title}", the second line "beat: {beat}"; no code fences or extra prose.\n\n--- previous output start ---\n${completion.content.slice(0, 4000)}\n--- previous output end ---`)
+      const retry = await this.callLLMResult(
+        `${task}\n\n${corrective}`, reverseSystemPrompt, callbacks,
+        { purpose: 'reverse-arc-outline', reasoningStage: 'planning', writingSkillStage: 'planning' },
+        context,
+      )
+      segments = parseArcSegments(retry.content)
+    }
     if (segments.length === 0) throw new Error(text('模型没有返回可用的粗纲段。', 'The model returned no usable arc segments.'))
 
     // 逐段校验：人名、段长、连续覆盖。任一段不合格即整体拒绝，避免半截粗纲。
