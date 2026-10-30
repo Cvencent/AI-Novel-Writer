@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { acceptArcSegmentWithNameFallback, assertArcSegmentAcceptable } from '../arc-outline.command'
+import { sanitizeArcProperNames } from '../../../../shared/arc-outline-contract'
 
 /**
  * 粗纲验证闸门的契约测试。命令本体依赖工作流运行时，这里锁定
@@ -121,5 +122,46 @@ beat: setup
 主角觉醒。`,
       1, 3000, [], [],
     )).toMatchObject({ beat: 'escalation' })
+  })
+})
+
+describe('sanitizeArcProperNames 引号术语豁免', () => {
+  const roleByName = new Map([['源起', 'antagonist']])
+
+  it('「」引号内的复合术语不被洗成身份词', () => {
+    const { text, replaced } = sanitizeArcProperNames(
+      '惊动了深埋地底的系统终极核心，「源起熔断」总清盘程序发生跳频加速。',
+      ['源起'], roleByName,
+    )
+    expect(text).toContain('「源起熔断」')
+    expect(text).not.toContain('对手熔断')
+    expect(replaced).toEqual([])
+  })
+
+  it('引号外的散文指代照常替换', () => {
+    const { text, replaced } = sanitizeArcProperNames(
+      '主角在数据底层看见源起凝视的目光，「源起熔断」的倒计时开始跳动。',
+      ['源起'], roleByName,
+    )
+    expect(text).toContain('对手凝视')
+    expect(text).toContain('「源起熔断」')
+    expect(replaced).toEqual(['源起'])
+  })
+
+  it('未闭合引号时引号之后不再替换（防御性）', () => {
+    const { text } = sanitizeArcProperNames(
+      '前文源起现身。「未闭合的源起熔断',
+      ['源起'], roleByName,
+    )
+    expect(text).toBe('前文对手现身。「未闭合的源起熔断')
+  })
+
+  it('没有引号时行为与旧版一致（全量替换）', () => {
+    const { text, replaced } = sanitizeArcProperNames(
+      '源起盯上了主角。',
+      ['源起'], roleByName,
+    )
+    expect(text).toBe('对手盯上了主角。')
+    expect(replaced).toEqual(['源起'])
   })
 })

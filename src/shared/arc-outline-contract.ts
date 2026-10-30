@@ -80,10 +80,38 @@ export function sanitizeArcProperNames(
       : (role === 'protagonist' ? '主角'
         : role === 'antagonist' ? '对手'
           : role === 'supporting' ? '配角' : '某位角色')
-    next = next.split(name).join(word)
-    replaced.push(name)
+    const before = next
+    next = replaceOutsideQuotedTerms(next, name, word)
+    if (next !== before) replaced.push(name)
   }
   return { text: next, replaced }
+}
+
+/**
+ * 替换人名，但跳过「」引号内的复合术语。角色名常常参与构词——反派 AI
+ * 「源起」的必杀程序叫「源起熔断」、初代编号叫「源起-0」。这些是引号括起
+ * 的专有名词，不是在指代角色本人；整串替换会把术语洗成「对手熔断」这类
+ * 无意义词，后续 AI 检查反而会把锅算回粗纲头上。引号外的散文指代照常替换。
+ */
+function replaceOutsideQuotedTerms(text: string, name: string, word: string): string {
+  if (!text.includes(name)) return text
+  const OPEN = '「'
+  const CLOSE = '」'
+  let out = ''
+  let index = 0
+  while (index < text.length) {
+    const openAt = text.indexOf(OPEN, index)
+    if (openAt === -1) {
+      out += text.slice(index).split(name).join(word)
+      return out
+    }
+    const closeAt = text.indexOf(CLOSE, openAt + OPEN.length)
+    const segmentEnd = closeAt === -1 ? text.length : closeAt + CLOSE.length
+    out += text.slice(index, openAt).split(name).join(word)
+    out += text.slice(openAt, segmentEnd)
+    index = segmentEnd
+  }
+  return out
 }
 
 /** 形态去重：最近 window 段的 beat 与本段全同时判重复。 */
