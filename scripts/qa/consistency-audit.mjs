@@ -25,11 +25,13 @@ const PROJECT_DB = path.join('.ai-novel', 'project.db')
 /** 服饰/外貌类属性词：命中这些词才算描述「外观状态」，避免把动作当属性。 */
 const APPEARANCE_VOCAB = [
   // 上衣
-  '白大褂', '风衣', '外套', '夹克', '大衣', '校服', '制服', '作战服', '训练服', '罩衫', '开衫', '衬衫', '卫衣', '披风', '袍子', '长袍', '工装',
+  '白大褂', '风衣', '外套', '夹克', '大衣', '校服', '制服', '作战服', '训练服', '外勤服', '罩衫', '开衫', '衬衫', '卫衣', '披风', '袍子', '长袍', '工装',
   // 下装与配件
   '长裤', '短裤', '裙子', '围巾', '披肩', '帽子', '斗篷', '护腕', '手环', '面具', '头盔',
-  // 颜色
-  '白色', '黑色', '灰色', '深灰', '浅灰', '银灰', '蓝色', '深蓝', '浅蓝', '红色', '暗红', '青色', '绿色', '墨绿', '黄色', '紫色', '棕色', '米色', '藏青', '卡其', '泛白', '泛黄',
+  // 颜色：常见复合色入词表（其余组合靠语素扫描兜底），让「靛蓝短褂」这类
+  // 颜色即服饰的写法也能定位衣着词。
+  '白色', '黑色', '灰色', '深灰', '浅灰', '银灰', '蓝色', '深蓝', '浅蓝', '红色', '暗红', '青色', '绿色', '墨绿', '黄色', '紫色', '棕色', '米色', '藏青', '卡其',
+  '靛蓝', '月白', '黛青', '赭黄', '绯红', '玄色', '洗白', '泛白', '泛黄',
 ]
 
 /** 只描述身体/装备状态的词，和外观分开归类，但同样追踪跨章一致性。 */
@@ -113,9 +115,36 @@ function loadCharacters(db) {
   return db.prepare(sql).all()
 }
 
-/** 一行里同一属性的候选词：先找属性词，再在它周围 6 个字符里找颜色。 */
-const COLOR_ADJ = ['白色', '黑色', '灰色', '深灰', '浅灰', '银灰', '蓝色', '深蓝', '浅蓝', '红色', '暗红', '青色', '绿色', '墨绿', '黄色', '紫色', '棕色', '米色', '藏青', '卡其', '泛白', '泛黄']
-const COLOR_CHARS = '白黑灰蓝红青绿黄紫棕米银墨赤绯黛褐'
+/**
+ * 颜色识别按「语素」而不是有限全词表：靛蓝/月白/墨绿/赭黄这类复合色写不完，
+ * 全词表漏一个就静默假阴性（issue #9 实测「洗白的靛蓝短褂」0 命中却报「无冲突」）。
+ *
+ *  - hue：固定颜色。色语素与修饰字组合成 2 字词面（靛蓝、月白、深灰、墨绿……），参与跨章互斥判定。
+ *  - faded：状态色。「泛白/发白/洗得发白/褪色/磨白/泛黄」这类**变化**描述，
+ *    不参与互斥——「洗得发白的靛蓝短褂」仍是靛蓝系，把 faded 与 hue 互判必然误报。
+ */
+const COLOR_MORPHS = '白黑灰蓝红青绿黄紫棕米银墨赤绯黛褐橙粉金赭靛'
+const COLOR_MODIFIERS = '月深浅暗亮玉象牙雪天湖玄嫩老淡浓'
+const HUE_COLOR_CHARS = COLOR_MORPHS + COLOR_MODIFIERS
+const HUE_COLOR = new RegExp(`[${HUE_COLOR_CHARS}]{2}(?![${HUE_COLOR_CHARS}色])|[${COLOR_MORPHS}]色(?![色])`, 'gu')
+const FADED_COLORS = ['泛白', '发白', '洗白', '褪色', '褪得', '泛黄', '发黄', '发黑', '磨白', '洗得发白', '洗得泛白', '洗得发黄', '洗得泛黄']
+const FADED_CHANGE_PREFIX = /(?:洗得|染得|褪得|磨得)?(?:洗|褪|泛|磨|变|染|发)(?:得|成了?)?/u
+const COLOR_ADJ = ['白色', '黑色', '灰色', '深灰', '浅灰', '银灰', '蓝色', '深蓝', '浅蓝', '红色', '暗红', '青色', '绿色', '墨绿', '黄色', '紫色', '棕色', '米色', '藏青', '卡其']
+const COLOR_CHARS = HUE_COLOR_CHARS
+
+/** 收集一段文本里出现的固定色（hue）词面，如「靛蓝」「月白」「深灰」。 */
+function scanHueColors(text) {
+  return [...new Set([...text.matchAll(HUE_COLOR)].map(match => match[0]))]
+}
+
+/** 收集状态色（faded）词面；变化动词头可以隔着「得」出现，如「洗得发白」。 */
+function scanFadedColors(text) {
+  const colors = new Set()
+  for (const word of FADED_COLORS) {
+    if (text.includes(word)) colors.add(word)
+  }
+  return [...colors]
+}
 
 /**
  * 按段落切分并记录「这一段的属性描写归谁」。
@@ -148,34 +177,66 @@ const PUNCTUATION = /[。！？，、；：\n\r“”「」（）()]/u
 // 前缀匹配，不能带 $ —— 带了就只匹配空串，「风衣洗得泛黄」的补语会被整条漏掉。
 const POSTFIX_LEAD = /^(?:洗得|染成|改成|换成|穿成|变成|已经|早就|依旧|仍然|也|都|很|略微|微微|有些|显得|透着|泛着)/u
 
+/**
+ * 衣着词邻域内的颜色取值。
+ * 返回 { hues, faded }：hues 参与跨章互斥，faded 只作证据。
+ * 邻域里同时命中 hue 与 faded（「洗白的靛蓝短褂」「靛蓝短褂洗得发白」）不算冲突——
+ * 状态色描述的是同一件衣服的变化，不是另一件不同色的衣服。
+ */
 function outfitColorFor(paragraph, word, at) {
   const before = paragraph.slice(Math.max(0, at - 16), at)
   const after = paragraph.slice(at + word.length, Math.min(paragraph.length, at + word.length + 10))
-  const colors = []
+  const hues = new Set()
+  const faded = new Set()
 
-  // 前置定语：「泛白的九班制式风衣」「深灰色作战服」「那件洗得发硬的配给员罩衫」
-  let lastColor = ''
-  let lastColorAt = -1
-  for (const color of COLOR_ADJ) {
+  // 词面本身就是颜色（「靛蓝短褂」「白色外勤服」）：颜色即衣着词，直接入账。
+  for (const color of scanHueColors(word)) hues.add(color)
+  for (const color of scanFadedColors(word)) faded.add(color)
+
+  // 前置定语：「泛白的九班制式风衣」「深灰色作战服」「洗白的靛蓝短褂」
+  for (const color of scanHueColors(before)) {
     const idx = before.lastIndexOf(color)
-    if (idx > lastColorAt) { lastColorAt = idx; lastColor = color }
-  }
-  if (lastColorAt >= 0) {
-    const gap = before.slice(lastColorAt + lastColor.length)
-    const otherColorInGap = COLOR_ADJ.some(color => gap.includes(color))
+    const gap = before.slice(idx + color.length)
     const otherNounInGap = APPEARANCE_VOCAB.some(noun => gap.includes(noun))
-    if (gap.length <= 10 && !PUNCTUATION.test(gap) && !otherColorInGap && !otherNounInGap) colors.push(lastColor)
+    if (gap.length <= 10 && !PUNCTUATION.test(gap) && !otherNounInGap) hues.add(color)
+  }
+  for (const color of scanFadedColors(before)) {
+    const idx = before.lastIndexOf(color)
+    const gap = before.slice(idx + color.length)
+    const otherNounInGap = APPEARANCE_VOCAB.some(noun => gap.includes(noun))
+    if (gap.length <= 12 && !PUNCTUATION.test(gap) && !otherNounInGap) faded.add(color)
   }
 
-  // 后置补语：「风衣洗得泛黄」「外套已经发黑」
-  const lead = after.match(POSTFIX_LEAD)
-  if (lead) {
-    const rest = after.slice(lead[0].length)
-    for (const color of COLOR_ADJ) {
-      if (rest.startsWith(color)) { colors.push(color); break }
+  // 后置补语：「风衣洗得泛黄」「外套已经发黑」「靛蓝短褂洗得发白」
+  // faded 词只要出现在衣着词后 12 字窗内且中间无标点即收——「短褂洗得发白」的
+  // 状态色不在 startsWith 位置，硬要求开头会漏掉最常见的「衣着词+洗得+状态色」句式。
+  const afterWindow = after.slice(0, 12)
+  for (const color of scanHueColors(afterWindow.slice(0, 8))) {
+    if (after.startsWith(color)) hues.add(color)
+  }
+  for (const color of scanFadedColors(afterWindow)) {
+    const idx = afterWindow.indexOf(color)
+    if (idx >= 0) {
+      const gap = afterWindow.slice(0, idx)
+      if (!PUNCTUATION.test(gap)) faded.add(color)
     }
   }
-  return [...new Set(colors)].sort()
+
+  // fading 直接替代色值（「褪成灰白」——裸动词+色，无其他固定色兜底）→ 归 faded。
+  // 「洗白的靛蓝短褂」例外：hue 前面紧贴的是 FADED_COLORS 词（洗白/泛白），那是修饰关系，
+  // 靛蓝仍是色值，保留 hue（洗白本身已单独记入 faded）。
+  const window = before + word
+  for (const hue of [...hues]) {
+    const at2 = window.lastIndexOf(hue)
+    if (at2 <= 0) continue
+    const leadText = window.slice(Math.max(0, at2 - 5), at2)
+    if (!FADED_CHANGE_PREFIX.test(leadText)) continue
+    // 「洗白的/泛黄的」带结构助词「的」时是修饰定语，色值仍是该 hue 本身。
+    if (FADED_COLORS.some(word2 => leadText.replace(/的$/u, '').endsWith(word2))) continue
+    hues.delete(hue)
+    faded.add(hue)
+  }
+  return { hues: [...hues].sort(), faded: [...faded].sort() }
 }
 
 function extractMentions(chapters, characterNames) {
@@ -194,24 +255,35 @@ function extractMentions(chapters, characterNames) {
       if (namedHere.length) carryOver = namedHere[namedHere.length - 1]
       if (!carrier) continue
 
-      const outfitColors = new Set()
+      const hues = new Set()
+      const fadedColors = new Set()
+      let outfitWordHit = false
       for (const word of APPEARANCE_VOCAB) {
+        // 「泛白/泛黄/洗白」这类状态色也在词表里（颜色即服饰的写法），但它们不能
+        // 自己证明「这是衣着描写」——否则「指关节微微泛白」就自我满足了。
+        const wordIsColorish = scanHueColors(word).length > 0 || scanFadedColors(word).length > 0
         let from = 0
         for (;;) {
           const at = paragraph.indexOf(word, from)
           if (at < 0) break
           from = at + word.length
-          for (const color of outfitColorFor(paragraph, word, at)) outfitColors.add(color)
+          if (!wordIsColorish) outfitWordHit = true
+          const found = outfitColorFor(paragraph, word, at)
+          for (const color of found.hues) hues.add(color)
+          for (const color of found.faded) fadedColors.add(color)
         }
       }
-      if (outfitColors.size) {
+      // hue 是衣着取色的充分证据；faded（泛白/发白）只有在同一句里出现衣着词时才算衣着描写
+      // ——「指关节微微泛白」也含 faded，但那不是衣着（issue 场景的防误报边界）。
+      if (hues.size || (fadedColors.size && outfitWordHit)) {
         mentions.push({
           chapter: chapter.chapterNumber,
           character: carrier,
           attribute: 'outfit',
           attributeLabel: '衣着',
           namedInParagraph: namedHere.includes(carrier),
-          colors: [...outfitColors].sort(),
+          colors: [...hues].sort(),
+          ...(fadedColors.size ? { fadedColors: [...fadedColors].sort() } : {}),
           sentence: paragraph.slice(0, 240),
         })
       }
@@ -376,6 +448,15 @@ function main() {
         mentions: mentions.length,
         conflicts: conflicts.length,
         cardIssues: cardIssues.length,
+        // 按「角色×属性」聚合的命中数：0 命中与「真无冲突」在报告上一眼可分（issue #9）。
+        mentionsByAttribute: (() => {
+          const byAttribute = {}
+          for (const mention of mentions) {
+            const key = `${mention.character}×${mention.attributeLabel}`
+            byAttribute[key] = (byAttribute[key] ?? 0) + 1
+          }
+          return Object.fromEntries(Object.entries(byAttribute).sort(([a], [b]) => a.localeCompare(b)))
+        })(),
       },
     }
 
@@ -394,7 +475,12 @@ function main() {
           for (const ev of item.evidence.slice(0, 4)) console.log(`      第${ev.chapter}章 [${ev.value}] ${ev.sentence.slice(0, 90)}`)
         }
       } else {
-        console.log('✓ 规则层未发现互斥描述')
+        const outfitMentions = mentions.filter(mention => mention.attribute === 'outfit').length
+        if (outfitMentions === 0) {
+          console.log('⚠ 规则层没有命中任何衣着描写——0 命中不等于「无冲突」，检查器对这部作品的用词可能失明，请人工抽查')
+        } else {
+          console.log(`✓ 规则层未发现互斥描述（衣着命中 ${outfitMentions} 段）`)
+        }
       }
       if (cardIssues.length) {
         console.log(`\n⚠ ${cardIssues.length} 条角色卡问题`)
@@ -410,4 +496,7 @@ function main() {
   }
 }
 
-main()
+export { extractMentions, findConflicts, findSingleMentionSuspects, outfitColorFor, scanHueColors, scanFadedColors }
+
+const invokedDirectly = process.argv[1] && import.meta.url.endsWith(path.resolve(process.argv[1]).split(path.sep).join('/'))
+if (invokedDirectly) main()
