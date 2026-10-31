@@ -39,6 +39,24 @@ export function createScenePlanWorkflow(params: {
   }
 }
 
+const ROLE_SHORT: Record<string, [string, string]> = {
+  plot: ['情节', 'Plot'], continuity: ['连续性', 'Continuity'], character: ['角色', 'Character'],
+  style: ['文风', 'Style'], pacing: ['节奏', 'Pacing'],
+}
+
+/** 运行卡片/日志里给人看的摘要：五角色分数与加权总分，而不是一整段 JSON。 */
+function editorialSummary(
+  review: { roles: { role: string; score: number }[]; weightedScore: number; blockingCount: number },
+  locale: 'zh-CN' | 'en-US',
+): string {
+  const parts = review.roles.map(role => {
+    const label = ROLE_SHORT[role.role]?.[locale === 'en-US' ? 1 : 0] ?? role.role
+    return `${label} ${role.score.toFixed(1)}`
+  })
+  const blocking = locale === 'en-US' ? ` · blocking ${review.blockingCount}` : ` · 阻断 ${review.blockingCount}`
+  return `${parts.join(' · ')}${blocking} · ${locale === 'en-US' ? 'weighted' : '加权'} ${review.weightedScore.toFixed(1)}`
+}
+
 export function createEditorialPanelWorkflow(params: {
   projectPath: string
   projectSession: ProjectSessionContext
@@ -63,7 +81,8 @@ export function createEditorialPanelWorkflow(params: {
       description: localize(locale, '情节、连续性、角色、文风、节奏分别评分并给出证据。', 'Score plot, continuity, character, style, and pacing with evidence.'),
       executor: async (step, context, callbacks) => {
         const { EditorialPanelCommand } = await import('./commands/editorial-panel.command')
-        return JSON.stringify(await new EditorialPanelCommand(params).execute({ step, context, callbacks }))
+        const review = await new EditorialPanelCommand(params).execute({ step, context, callbacks })
+        return editorialSummary(review, locale)
       },
     }],
     onComplete: { mode: 'silent', message: localize(locale, '编辑部评审完成。', 'Editorial review completed.') },
@@ -94,7 +113,8 @@ export function createCandidateTournamentWorkflow(params: {
       description: localize(locale, '使用同一套五角色标准独立评分。', 'Score independently with the same five-role rubric.'),
       executor: async (step, context, callbacks) => {
         const { EditorialPanelCommand } = await import('./commands/editorial-panel.command')
-        return JSON.stringify(await new EditorialPanelCommand({ chapterNumber: params.chapterNumber, draftId: candidate.draftId, draftVersion: candidate.version }).execute({ step, context, callbacks }))
+        const review = await new EditorialPanelCommand({ chapterNumber: params.chapterNumber, draftId: candidate.draftId, draftVersion: candidate.version }).execute({ step, context, callbacks })
+        return editorialSummary(review, locale)
       },
     })),
     onComplete: { mode: 'silent', message: localize(locale, '候选锦标赛完成，可在版本历史查看排名。', 'Tournament completed. See the ranking in version history.') },

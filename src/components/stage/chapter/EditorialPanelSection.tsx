@@ -3,7 +3,6 @@ import { Sparkles } from 'lucide-react'
 import { createEditorialPanelWorkflow } from '../../../services/workflows/writing-intelligence-workflow'
 import { ipc } from '../../../services/ipc-client'
 import { captureProjectSession, isProjectSessionCurrent } from '../../project-session-gate'
-import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
@@ -71,7 +70,8 @@ export default function EditorialPanelSection({ chapterNumber, draftId, draftVer
     setStarting(true)
     const workflow = createEditorialPanelWorkflow({ projectPath: session.projectPath, projectSession: session, chapterNumber, draftId, draftVersion, locale })
     activeRunId.current = workflow.runId ?? null
-    navigate({ kind: 'run', facet: 'tasks' })
+    // 不跳到运行侧页：评审就是在这块面板里出分。跳走会把审稿报告（含勾选修稿）
+    // 整个换掉，作者回来只看到运行日志和一步 JSON，还以为没出结果。
     void useWorkflowStore.getState().startWorkflow(workflow).finally(() => {
       if (isProjectSessionCurrent(session)) setStarting(false)
     })
@@ -83,7 +83,7 @@ export default function EditorialPanelSection({ chapterNumber, draftId, draftVer
     <section className="stage-editorial-panel" aria-label={text('编辑部评审', 'Editorial panel')}>
       <header className="stage-editorial-head">
         <div><h3>{text('编辑部评审', 'Editorial panel')}</h3><p>{text('情节、连续性、角色、文风、节奏分别评分。', 'Independent scores for plot, continuity, character, style, and pacing.')}</p></div>
-        <Button variant="secondary" size="sm" disabled={starting || draftVersion === undefined} onClick={run}><Sparkles size={13} aria-hidden />{quality ? text('重新评估', 'Re-evaluate') : text('运行编辑部', 'Run panel')}</Button>
+        <Button variant="secondary" size="sm" disabled={starting || draftVersion === undefined} onClick={run}><Sparkles size={13} aria-hidden />{starting ? text('五位编辑评审中…', 'Reviewing…') : quality ? text('重新评估', 'Re-evaluate') : text('运行编辑部', 'Run panel')}</Button>
       </header>
       {quality ? (
         <>
