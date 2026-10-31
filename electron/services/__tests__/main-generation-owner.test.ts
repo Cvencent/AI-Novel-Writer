@@ -906,6 +906,19 @@ describe('frozen planning roots', () => {
     expect(reopened.read(resumed.handle).ledger).toMatchObject({ tokenLiability: 124, physicalRequests: 2 })
   })
 
+  it('records every default-dispatch provider call into llm_calls for the diagnostics panel', async () => {
+    // 不注入 dispatch stub：走 dispatchProvider 真路径（主进程直调 provider）；
+    // syntheticStream 只 stub 全局 fetch，不替换 owner 的 dispatch。
+    syntheticStream()
+    const f = planningFixture()
+    const root = f.owner.begin(architectureSelection(f, fullIntent))
+    await f.owner.execute({ handle: root.handle, invocationNonce: 'recorded', task: { ...plotTask, purpose: 'generate-core-seed' } })
+    const rows = f.db.prepare('SELECT model_id, model_name, purpose, prompt_tokens, completion_tokens, total_tokens, success FROM llm_calls').all() as Array<Record<string, unknown>>
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ model_id: f.model.id, model_name: f.model.name, purpose: 'generate-core-seed',
+      prompt_tokens: 50, completion_tokens: 12, total_tokens: 62, success: 1 })
+  })
+
   it('freezes selected subsets and refuses an unselected child or invalid range before creating a run', () => {
     const f = planningFixture()
     const intent: ArchitecturePlanningIntent = { version: 'architecture-action-v1', priorSteps: ['worldbuilding'], synopsisRange: { from: 151, to: 160 } }

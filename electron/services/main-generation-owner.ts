@@ -16,6 +16,7 @@ import { ModelExecutionLeaseRegistry, createModelExecutionLeaseReceipt } from '.
 import { createGenerationRunService, type GenerationRunServiceDependencies } from './generation-run-service'
 import { assertSemanticGenerationTask, buildMainGenerationPlan, MAIN_GENERATION_POLICY, newMainGenerationPolicy, planningGenerationScope, readMainGenerationPolicy, type MainGenerationPlan, type MainGenerationPolicy } from './main-generation-plan'
 import { LLMFactory } from '../llm/llm-factory'
+import { LLMHistoryRepository } from '../repositories/llm-repository'
 import type { GenerationAttemptReceipt, GenerationTask } from '../../src/services/generation/generation-harness'
 import type { ProviderUsageEvidence } from '../llm/provider.interface'
 import { BlueprintRepository, type BlueprintRangeCommitReceipt, type BlueprintRangeCommitRequest } from '../repositories/blueprint-repository'
@@ -85,18 +86,39 @@ async function dispatchProvider(value: unknown, options: Parameters<GenerationRu
   let evidence: ProviderUsageEvidence | null = null
   let finishReason: LLMFinishReason | null = null
   let failureCode: string | null = null
-  await LLMFactory.getProvider(model).generateStream(model, task.messages.map(message => ({ ...message })), {
-    ...plan.options, conversationId, signal: options.signal, visibleOnly: true,
-    onChunk: text => options.onVisible({ kind: 'delta', text }),
-    onReasoning: options.onReasoning,
-    onDiagnostics: options.onDiagnostics,
-    onUsageEvidence: value => { evidence = value },
-    onDone: (text, _usage, reason) => { options.onVisible({ kind: 'cumulative', text }); finishReason = reason },
-    onError: error => {
-      failureCode = /fetch failed|failed to fetch|network|ECONNRESET|ETIMEDOUT|无法读取响应流|完成标记前结束/iu.test(error)
-        ? 'NETWORK_ERROR' : 'GENERATION_PROVIDER_FAILED'
-    },
-  })
+  const startedAt = Date.now()
+  try {
+    await LLMFactory.getProvider(model).generateStream(model, task.messages.map(message => ({ ...message })), {
+      ...plan.options, conversationId, signal: options.signal, visibleOnly: true,
+      onChunk: text => options.onVisible({ kind: 'delta', text }),
+      onReasoning: options.onReasoning,
+      onDiagnostics: options.onDiagnostics,
+      onUsageEvidence: value => { evidence = value },
+      onDone: (text, _usage, reason) => { options.onVisible({ kind: 'cumulative', text }); finishReason = reason },
+      onError: error => {
+        failureCode = /fetch failed|failed to fetch|network|ECONNRESET|ETIMEDOUT|无法读取响应流|完成标记前结束/iu.test(error)
+          ? 'NETWORK_ERROR' : 'GENERATION_PROVIDER_FAILED'
+      },
+    })
+  } finally {
+    // 主进程直调 provider 不经过 llm:generate(-stream) IPC，是唯一没被记录的
+    // 生成路径；诊断面板「AI 调用记录」靠这条写入。统计只用于诊断，
+    // 失败或无项目库时静默放弃，绝不改变生成结果。
+    try {
+      // evidence 的赋值发生在回调里，TS 收窄成 never；按原类型读回。
+      const usage = (evidence as ProviderUsageEvidence | null)?.usage
+      LLMHistoryRepository.logCall({
+        modelId: model.id, modelName: model.name || model.modelName,
+        purpose: task.purpose?.trim() || 'generation',
+        promptTokens: usage?.promptTokens ?? null,
+        completionTokens: usage?.completionTokens ?? null,
+        totalTokens: usage?.totalTokens ?? null,
+        durationMs: Math.max(0, Date.now() - startedAt),
+        success: failureCode === null && finishReason !== null,
+        errorMessage: failureCode ?? (finishReason && finishReason !== 'stop' ? `finish:${finishReason}` : undefined),
+      })
+    } catch { /* statistics only */ }
+  }
   if (failureCode || finishReason === null) throw new Error(failureCode ?? 'GENERATION_PROVIDER_FAILED')
   const usageEvidence = evidence as ProviderUsageEvidence | null
   return { finishReason, usage: usageEvidence ? { ...usageEvidence.usage, reasoningTokens: usageEvidence.reasoningTokens,
