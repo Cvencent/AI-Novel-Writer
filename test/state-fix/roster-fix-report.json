@@ -1,0 +1,10 @@
+{
+  "repairedAt": "2026-10-31T16:09:09.733Z",
+  "repaired": true,
+  "statusBefore": "inconsistent",
+  "statusAfter": "ready",
+  "revisionBefore": 2174,
+  "revisionAfter": 2175,
+  "archLengthBefore": 7097,
+  "archLengthAfter": 7136
+}

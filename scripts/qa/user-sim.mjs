@@ -80,12 +80,32 @@ const FUNCTION_MODELS = {
 const log = (...args) => console.log('[sim]', ...args)
 
 /**
- * 每轮一套全新的隔离目录。dirname 带上时间戳，旧轮次留着供排查，
- * 但只保留最近几轮（清理在本脚本末尾做，只清自己的 work-root）。
+ * 常驻工作区：整个 QA 只维护**一套**隔离目录和**一本**测试书，逐轮往后写。
+ *
+ * 为什么不每轮从零开始：长程一致性问题（第 2 章的白风衣到第 20 章变灰）
+ * 只有累积到足够章数才暴露得出来；每轮新建只能看到前几章，永远测不到
+ * 用户真正抱怨的那类漂移。所以工作区固定在 --work-root 下，测试书一直续写。
+ *
+ * 想重开一本就传 --fresh，旧的那本会原地留着（不删），只把指针指到新书。
  */
-function makeRoots() {
+const STATE_PATH = path.join(WORK_ROOT, 'state.json')
+
+function readState() {
+  try {
+    return JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+function writeState(state) {
   fs.mkdirSync(WORK_ROOT, { recursive: true })
-  const root = path.join(WORK_ROOT, `run-${Date.now()}`)
+  fs.writeFileSync(STATE_PATH, JSON.stringify(state, null, 2))
+}
+
+/** 常驻目录（只建一次，之后每轮复用）。 */
+function ensureWorkspace() {
+  const root = WORK_ROOT
   const dirs = {
     root,
     appData: path.join(root, 'appData'),
@@ -95,6 +115,7 @@ function makeRoots() {
     home: path.join(root, 'home'),
     localAppData: path.join(root, 'localappdata'),
     temp: path.join(root, 'temp'),
+    appdataRoaming: path.join(root, 'appdata-roaming'),
   }
   for (const dir of Object.values(dirs)) fs.mkdirSync(dir, { recursive: true })
   return dirs
@@ -112,14 +133,10 @@ function seedGlobalConfig(roots) {
   }, null, 2))
 }
 
-/** 只清 work-root 下自己的旧轮次，保留最近 3 轮。 */
-function pruneOldRuns() {
-  if (!fs.existsSync(WORK_ROOT)) return
-  const runs = fs.readdirSync(WORK_ROOT, { withFileTypes: true })
-    .filter(entry => entry.isDirectory() && /^run-\d+$/.test(entry.name))
-    .map(entry => ({ name: entry.name, at: fs.statSync(path.join(WORK_ROOT, entry.name)).mtimeMs }))
-    .sort((a, b) => b.at - a.at)
-  for (const run of runs.slice(3)) fs.rmSync(path.join(WORK_ROOT, run.name), { recursive: true, force: true })
+/** 常驻工作区只清自己的临时垃圾：每次启动清 temp，不动作品与配置。 */
+function pruneTemp(roots) {
+  if (fs.existsSync(roots.temp)) fs.rmSync(roots.temp, { recursive: true, force: true })
+  fs.mkdirSync(roots.temp, { recursive: true })
 }
 
 const invoke = (page, channel, ...args) =>
@@ -136,11 +153,10 @@ async function launch(roots, exe) {
     HOME: roots.home,
     USERPROFILE: roots.home,
     LOCALAPPDATA: roots.localAppData,
-    APPDATA: path.join(roots.root, 'appdata-roaming'),
+    APPDATA: roots.appdataRoaming,
     TEMP: roots.temp,
     TMP: roots.temp,
   }
-  fs.mkdirSync(env.APPDATA, { recursive: true })
   for (const key of ['ELECTRON_RUN_AS_NODE', 'VITE_DEV_SERVER_URL', 'AI_NOVEL_SMOKE_OPEN_PROJECT']) delete env[key]
   const app = await electron.launch({
     executablePath: exe,
@@ -254,12 +270,10 @@ async function pollUntilOrStall(page, predicate, { label, stallMs = 4 * 60_000, 
   }
 }
 
-const bookName = 'QA 夜航船 ' + String(Date.now()).slice(-4)
-
 const report = {
   schemaVersion: 1,
   startedAt: new Date().toISOString(),
-  bookName,
+  bookName: null,
   chapters: CHAPTERS,
   wordsPerChapter: WORDS,
   model: MODEL.modelName,
@@ -288,14 +302,27 @@ const step = async (name, fn) => {
 }
 
 async function main() {
-  pruneOldRuns()
+  const fresh = process.argv.includes('--fresh')
   const exe = resolveExe()
   report.exe = exe
-  const roots = makeRoots()
-  report.workRoot = roots.root
+  const roots = ensureWorkspace()
+  pruneTemp(roots)
   seedGlobalConfig(roots)
-  log('隔离目录', roots.root)
+  report.workRoot = roots.root
+  log('常驻工作区', roots.root)
   log('可执行文件', exe)
+
+  let state = fresh ? null : readState()
+  if (state?.projectPath && !fs.existsSync(state.projectPath)) {
+    log('上次的测试书目录已不在，本轮重开一本')
+    state = null
+  }
+  if (!state) {
+    state = { bookName: 'QA 夜航船 ' + String(Date.now()).slice(-4), projectPath: null, createdAt: new Date().toISOString() }
+  }
+  report.bookName = state.bookName
+  report.resumed = Boolean(state.projectPath)
+  log(state.projectPath ? `续写《${state.bookName}》` : `新开《${state.bookName}》`)
 
   const { app, page } = await launch(roots, exe)
   page.on('console', message => {
@@ -309,104 +336,151 @@ async function main() {
 
     await step('模型通道就绪（DeepSeek V4.1 Flash）', async () => {
       const models = await invoke(page, 'llm:list-models')
-      assert.equal(models.length, 1, `应只有一个隔离模型，实际 ${models.length}`)
-      assert.ok(models[0].baseUrl.includes(new URL(PROXY.url).port), '模型没指向本地代理')
+      assert.ok(models.some(item => item.id === MODEL.id), `隔离模型不在列表里：${models.map(m => m.id)}`)
       const functionModels = await invoke(page, 'llm:get-function-models')
       assert.equal(functionModels.draft_generation, MODEL.id, '正文生成没指向 Flash')
-      return { model: models[0].modelName }
+      return { model: MODEL.modelName }
     })
 
-    await step('新建作品', async () => {
-      await page.getByRole('button', { name: '新建作品', exact: true }).click()
-      const dialog = page.getByRole('dialog')
-      await dialog.waitFor({ state: 'visible', timeout: 30_000 })
-      await dialog.getByRole('textbox').first().fill(bookName)
-      await stubOpenDialog(app, roots.projects, () => dialog.getByRole('button', { name: '选择', exact: true }).click())
-      await dialog.getByRole('button', { name: /^(创建项目|创建作品)$/ }).click()
-      await dialog.waitFor({ state: 'hidden', timeout: 90_000 })
-      await stage.waitForWork(page, bookName, 90_000)
+    await step(state.projectPath ? '打开常驻测试书' : '新建测试书（仅第一次）', async () => {
+      if (!state.projectPath) {
+        await page.getByRole('button', { name: '新建作品', exact: true }).click()
+        const dialog = page.getByRole('dialog')
+        await dialog.waitFor({ state: 'visible', timeout: 30_000 })
+        await dialog.getByRole('textbox').first().fill(state.bookName)
+        await stubOpenDialog(app, roots.projects, () => dialog.getByRole('button', { name: '选择', exact: true }).click())
+        await dialog.getByRole('button', { name: /^(创建项目|创建作品)$/ }).click()
+        await dialog.waitFor({ state: 'hidden', timeout: 90_000 })
+        await stage.waitForWork(page, state.bookName, 90_000)
+      } else {
+        await stage.openFromLibrary(page, state.bookName)
+      }
       const session = await sessionOf(app)
       assert.ok(session?.leaseId, '没拿到项目会话')
+      state.projectPath = session.projectPath
       report.projectPath = session.projectPath
+      writeState(state)
       return { projectPath: session.projectPath }
     })
 
-    await step('填核心设定', async () => {
+    // 设定只在第一次写；之后每轮把总章数抬到「本次要写到哪」之后的余量。
+    await step('确保核心设定', async () => {
       const session = await sessionOf(app)
+      const core = await invokeSession(page, session, 'db:project-core-get', session.projectPath)
+      const alreadyWritten = await writtenChapters(page, session)
+      const target = Math.max(Number(core?.totalChapters ?? 0) || 0, alreadyWritten + CHAPTERS + 2, 8)
       const saved = await invoke(page, 'project:update-config', session.projectId, {
         novelConfig: {
-          coreOutline: '沿海小城的夜航船每夜多载一名不该上船的乘客。船工周叙要在航次记录被涂改前查出是谁在替死人买票，而他的搭档温珩始终穿着同一件洗得发白的靛蓝短褂。',
-          genre: '悬疑', targetAudience: '男频',
-          totalChapters: Math.max(CHAPTERS, 8), wordsPerChapter: WORDS, writingLanguage: 'zh-CN',
+          ...(String(core?.coreOutline ?? '').trim() ? {} : {
+            coreOutline: '沿海小城的夜航船每夜多载一名不该上船的乘客。船工周叙要在航次记录被涂改前查出是谁在替死人买票，而他的搭档温珩始终穿着同一件洗得发白的靛蓝短褂。',
+          }),
+          genre: core?.genre || '悬疑',
+          targetAudience: core?.targetAudience || '男频',
+          totalChapters: target, wordsPerChapter: WORDS, writingLanguage: 'zh-CN',
         },
       }, session.projectPath, session)
       assert.equal(saved.success ?? true, true, JSON.stringify(saved))
       await page.reload()
       await stage.waitForStage(page, 90_000)
-      await stage.openFromLibrary(page, bookName)
-      return { saved: true }
+      await stage.openFromLibrary(page, state.bookName)
+      return { totalChapters: target, alreadyWritten }
     })
 
-    await step('生成故事前提/世界观/角色', async () => {
+    await step('确保故事前提/世界观/角色', async () => {
       const session = await sessionOf(app)
+      const core = await invokeSession(page, session, 'db:project-core-get', session.projectPath)
+      if (core?.premise && core?.worldbuilding && core?.charactersArch) {
+        return { skipped: true, premiseLength: (core.premise ?? '').length }
+      }
       await arch.open(page)
       await arch.primary(page).click()
       await arch.dialog(page).waitFor({ state: 'visible', timeout: 30_000 })
       await arch.selectOnly(page, ['premise', 'worldbuilding', 'characters'])
       await arch.startGenerate(page)
       await runSheet.waitForRunDone(page, GENERATION_TIMEOUT_MS)
-      const core = await pollUntilOrStall(page, async () => {
-        const value = await invokeSession(page, session, 'db:project-core-get', session.projectPath)
-        return value?.premise && value?.worldbuilding && value?.charactersArch ? value : null
+      const value = await pollUntilOrStall(page, async () => {
+        const current = await invokeSession(page, session, 'db:project-core-get', session.projectPath)
+        return current?.premise && current?.worldbuilding && current?.charactersArch ? current : null
       }, { label: '故事前提与世界观', stallMs: 5 * 60_000 })
-      return { premiseLength: (core.premise ?? '').length, charactersArchLength: (core.charactersArch ?? '').length }
+      return { premiseLength: (value.premise ?? '').length, charactersArchLength: (value.charactersArch ?? '').length }
     })
 
-    await step(`生成整本粗纲（铺满 ${Math.max(CHAPTERS, 8)} 章）`, async () => {
+    await step('确保粗纲覆盖到本次要写的章', async () => {
       const session = await sessionOf(app)
-      const wanted = Math.max(CHAPTERS, 8)
-      const arcSection = arch.section(page, 'arc')
-      await arcSection.getByRole('button', { name: '一键生成全部粗纲' }).click()
+      const core = await invokeSession(page, session, 'db:project-core-get', session.projectPath)
+      const wanted = Math.max(Number(core?.totalChapters ?? 0) || 0, CHAPTERS + 2, 8)
+      const existing = await invokeSession(page, session, 'db:arc-outline-list', session.projectPath)
+      const covered = (existing ?? []).reduce((max, item) => Math.max(max, item.toChapter), 0)
+      if (covered >= wanted) return { skipped: true, coveredTo: covered }
+      await arch.open(page)
+      const button = await arch.page(page).getByRole('button', { name: /^(一键生成全部粗纲|继续生成粗纲)$/ }).first()
+      await button.click().catch(async () => {
+        await arch.primary(page).click()
+        await arch.dialog(page).waitFor({ state: 'visible', timeout: 30_000 })
+        await arch.selectOnly(page, ['arc'])
+        await arch.startGenerate(page)
+      })
       const arcs = await pollUntilOrStall(page, async () => {
         const list = await invokeSession(page, session, 'db:arc-outline-list', session.projectPath)
-        const covered = (list ?? []).reduce((max, item) => Math.max(max, item.toChapter), 0)
-        return covered >= wanted ? list : null
+        const coveredNow = (list ?? []).reduce((max, item) => Math.max(max, item.toChapter), 0)
+        return coveredNow >= wanted ? list : null
       }, { timeoutMs: ARC_TIMEOUT_MS, intervalMs: 5000, label: '粗纲铺满全书', stallMs: 5 * 60_000 })
       return { segments: arcs.length, coveredTo: arcs.at(-1)?.toChapter }
     })
 
-    await step(`生成细纲 1–${CHAPTERS}`, async () => {
+    // 每轮要写的范围：接在已有章数之后。
+    const session0 = await sessionOf(app)
+    const already = await writtenChapters(page, session0)
+    const from = already + 1
+    const to = already + CHAPTERS
+    report.writingRange = { from, to, alreadyWritten: already }
+    log(`本轮写第 ${from}–${to} 章（已有 ${already} 章）`)
+
+    await step(`确保细纲 ${from}–${to}`, async () => {
       const session = await sessionOf(app)
+      const core = await invokeSession(page, session, 'db:project-core-get', session.projectPath)
+      const synopsis = String(core?.synopsis ?? '')
+      const hasRange = new RegExp(`^## 第${to}章`, 'mu').test(synopsis)
+      if (hasRange) return { skipped: true, synopsisLength: synopsis.length }
+      await arch.open(page)
       await arch.page(page).getByRole('button', { name: '继续生成架构' }).click()
       await arch.selectOnly(page, ['synopsis'])
-      await arch.setRange(page, 1, CHAPTERS)
+      await arch.setRange(page, 1, to)
       await arch.startGenerate(page)
-      const core = await pollUntilOrStall(page, async () => {
-        const value = await invokeSession(page, session, 'db:project-core-get', session.projectPath)
-        return value?.synopsis?.includes(`第${CHAPTERS}章`) ? value : null
-      }, { label: `细纲 1–${CHAPTERS}`, stallMs: 5 * 60_000 })
-      const blocks = [...(core.synopsis.matchAll(/^## 第(\d+)章/gmu))].map(m => Number(m[1]))
-      return { synopsisLength: core.synopsis.length, chapters: blocks }
+      const value = await pollUntilOrStall(page, async () => {
+        const current = await invokeSession(page, session, 'db:project-core-get', session.projectPath)
+        return new RegExp(`^## 第${to}章`, 'mu').test(String(current?.synopsis ?? '')) ? current : null
+      }, { label: `细纲 1–${to}`, stallMs: 5 * 60_000 })
+      const blocks = [...String(value.synopsis).matchAll(/^## 第(\d+)章/gmu)].map(m => Number(m[1]))
+      return { synopsisLength: value.synopsis.length, chapters: blocks }
     })
 
-    await step(`生成蓝图 1–${CHAPTERS}`, async () => {
+    await step(`确保蓝图 ${from}–${to}`, async () => {
       const session = await sessionOf(app)
       await blueprintPage.open(page)
       await page.locator('.stage-capsule[aria-expanded="true"]').click().catch(() => {})
-      await blueprintPage.generateRange(page, 1, CHAPTERS)
+      const existing = await invokeSession(page, session, 'db:blueprint-get-all', session.projectPath)
+      const missing = []
+      for (let chapter = from; chapter <= to; chapter += 1) {
+        if (!(existing ?? []).some(item => item.chapterNumber === chapter)) missing.push(chapter)
+      }
+      if (!missing.length) return { skipped: true }
+      await blueprintPage.generateRange(page, missing[0], missing.at(-1))
       await runSheet.waitForRunDone(page, GENERATION_TIMEOUT_MS)
       const blueprints = await pollUntilOrStall(page, async () => {
         const list = await invokeSession(page, session, 'db:blueprint-get-all', session.projectPath)
-        const got = (list ?? []).filter(item => item.chapterNumber <= CHAPTERS)
-        return got.length >= CHAPTERS ? got : null
+        const got = (list ?? []).filter(item => item.chapterNumber >= from && item.chapterNumber <= to)
+        return got.length === (to - from + 1) ? got : null
       }, { label: '蓝图落库', stallMs: 5 * 60_000 })
       return { chapters: blueprints.map(item => item.chapterNumber) }
     })
 
-    // 逐章写正文：模拟用户一章一章写，比批量更好定位哪一章出问题。
-    for (let chapter = 1; chapter <= CHAPTERS; chapter += 1) {
+    for (let chapter = from; chapter <= to; chapter += 1) {
       await step(`写第 ${chapter} 章正文`, async () => {
         const session = await sessionOf(app)
+        const existing = await invokeSession(page, session, 'db:draft-list', chapter, session.projectPath)
+        const done = (existing ?? []).find(item => item.wordCount > 200)
+        if (done) return { skipped: true, draftId: done.id, words: done.wordCount }
         await stage.stageButton(page, '蓝图').click()
         await blueprintPage.plan(page).waitFor({ state: 'visible', timeout: 60_000 })
         await page.locator('.stage-capsule[aria-expanded="true"]').click().catch(() => {})
@@ -414,47 +488,57 @@ async function main() {
         await runSheet.waitForRunDone(page, GENERATION_TIMEOUT_MS)
         const draft = await pollUntilOrStall(page, async () => {
           const list = await invokeSession(page, session, 'db:draft-list', chapter, session.projectPath)
-          const latest = (list ?? []).at(-1)
-          return latest && latest.wordCount > 200 ? latest : null
+          const latest = [...(list ?? [])].reverse().find(item => item.wordCount > 200)
+          return latest ?? null
         }, { label: `第 ${chapter} 章草稿`, stallMs: 6 * 60_000 })
         return { draftId: draft.id, version: draft.version, words: draft.wordCount }
       })
+
+      // 定稿会触发连续性抽取与角色状态回写——这是长程一致性的关键一环，必须走。
+      await step(`审稿并定稿第 ${chapter} 章`, async () => {
+        const session = await sessionOf(app)
+        const drafts = await invokeSession(page, session, 'db:draft-list', chapter, session.projectPath)
+        if ((drafts ?? []).some(item => item.status === 'finalized')) return { skipped: true }
+        await chapterView.open(page, chapter)
+        await chapterView.review(page)
+        await runSheet.waitForRunDone(page, GENERATION_TIMEOUT_MS)
+        const excerpt = await page.evaluate(() => {
+          const sheet = document.querySelector('.stage-ch-sheet, [aria-label="审稿报告"]')
+          return sheet ? (sheet.textContent ?? '').slice(0, 800) : ''
+        })
+        await chapterView.finalize(page, chapter)
+        await pollUntilOrStall(page, async () => {
+          const list = await invokeSession(page, session, 'db:draft-list', chapter, session.projectPath)
+          return (list ?? []).some(item => item.status === 'finalized') ? list : null
+        }, { label: `第 ${chapter} 章定稿`, stallMs: 5 * 60_000 })
+        return { reviewExcerpt: excerpt.slice(0, 400) }
+      })
     }
 
-    await step('事件账本与角色状态（连续性抽取）', async () => {
+    await step('角色状态与账本快照', async () => {
       const session = await sessionOf(app)
-      const continuity = await invokeSession(page, session, 'db:continuity-list-before', CHAPTERS + 1, session.projectPath)
+      const written = await writtenChapters(page, session)
+      const continuity = await invokeSession(page, session, 'db:continuity-list-before', written + 1, session.projectPath)
       const characters = await invokeSession(page, session, 'db:character-get-all', session.projectPath)
-      // currentState 存在与否由列表是否为 NULL 决定，字段挂在 currentState 下。
       const updated = (characters ?? []).filter(item => typeof item.currentState?.updatedAtChapter === 'number')
       return {
+        writtenChapters: written,
         continuityEntries: (continuity ?? []).length,
         characters: (characters ?? []).length,
         withState: updated.length,
         missingAppearance: (characters ?? []).filter(item => !String(item.appearance ?? '').trim()).map(item => item.name),
       }
     })
-
-    await step(`审稿并定稿第 1 章`, async () => {
-      const session = await sessionOf(app)
-      await chapterView.open(page, 1)
-      await chapterView.review(page)
-      await runSheet.waitForRunDone(page, GENERATION_TIMEOUT_MS)
-      const review = await page.evaluate(() => {
-        const sheet = document.querySelector('.stage-ch-sheet, [aria-label="审稿报告"]')
-        return sheet ? sheet.textContent?.slice(0, 1500) ?? '' : ''
-      })
-      await chapterView.finalize(page, 1)
-      const finalized = await pollUntilOrStall(page, async () => {
-        const list = await invokeSession(page, session, 'db:draft-list', 1, session.projectPath)
-        return (list ?? []).some(item => item.status === 'finalized') ? list : null
-      }, { label: '第 1 章定稿' })
-      return { reviewExcerpt: review.slice(0, 600), drafts: finalized.map(item => ({ v: item.version, s: item.status })) }
-    })
   } finally {
     report.finalScreen = await page.evaluate(() => document.body.innerText.slice(0, 2000)).catch(() => null)
     await app.close().catch(() => {})
   }
+}
+
+/** 已写到第几章：有草稿就算写过（不要求定稿）。 */
+async function writtenChapters(page, session) {
+  const drafts = await invokeSession(page, session, 'db:draft-list-all', session.projectPath).catch(() => [])
+  return (drafts ?? []).reduce((max, item) => Math.max(max, Number(item.chapterNumber) || 0), 0)
 }
 
 async function runAudit() {
