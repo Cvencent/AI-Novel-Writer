@@ -34,6 +34,7 @@ const REPORT_PATH = path.resolve(option('report') ?? path.join(repo, '.runtime',
 const CHAPTERS = Number(option('chapters') ?? 3)
 const WORDS = Number(option('words') ?? 800)
 const PROXY = { url: option('proxy') ?? 'http://127.0.0.1:8790/v1', key: 'test_key' }
+const REVIEW_SHEET_TIMEOUT_MS = Number(option('review-timeout-min') ?? 12) * 60_000
 const ARC_TIMEOUT_MS = Number(option('arc-timeout-min') ?? 25) * 60_000
 const GENERATION_TIMEOUT_MS = Number(option('gen-timeout-min') ?? 25) * 60_000
 
@@ -367,8 +368,10 @@ async function main() {
     await step('确保核心设定', async () => {
       const session = await sessionOf(app)
       const core = await invokeSession(page, session, 'db:project-core-get', session.projectPath)
-      const alreadyWritten = await writtenChapters(page, session)
-      const target = Math.max(Number(core?.totalChapters ?? 0) || 0, alreadyWritten + CHAPTERS + 2, 8)
+      const finalized = await finalizedChapters(page, session)
+      const nextChapter = await nextChapterFromAuthority(page, session)
+      const furthest = Math.max(0, ...finalized)
+      const target = Math.max(Number(core?.totalChapters ?? 0) || 0, (nextChapter ?? furthest + 1) + CHAPTERS, 8)
       const saved = await invoke(page, 'project:update-config', session.projectId, {
         novelConfig: {
           ...(String(core?.coreOutline ?? '').trim() ? {} : {
@@ -383,7 +386,7 @@ async function main() {
       await page.reload()
       await stage.waitForStage(page, 90_000)
       await stage.openFromLibrary(page, state.bookName)
-      return { totalChapters: target, alreadyWritten }
+      return { totalChapters: target, nextChapter, finalizedChapters: finalized }
     })
 
     await step('确保故事前提/世界观/角色', async () => {
@@ -428,13 +431,17 @@ async function main() {
       return { segments: arcs.length, coveredTo: arcs.at(-1)?.toChapter }
     })
 
-    // 每轮要写的范围：接在已有章数之后。
+    // 每轮要写的范围：从应用的权威「下一章」开始，连写 CHAPTERS 章。
+    // 上一轮如果只写了草稿没定稿，下一章不会前进——这是应用的实际语义，
+    // harness 必须跟着它走，否则会一直重写同一章。
     const session0 = await sessionOf(app)
-    const already = await writtenChapters(page, session0)
-    const from = already + 1
-    const to = already + CHAPTERS
-    report.writingRange = { from, to, alreadyWritten: already }
-    log(`本轮写第 ${from}–${to} 章（已有 ${already} 章）`)
+    const finalized0 = await finalizedChapters(page, session0)
+    const first = await nextChapterFromAuthority(page, session0)
+    assert.ok(Number.isSafeInteger(first) && first >= 1, `拿不到权威下一章：${first}`)
+    const from = first
+    const to = first + CHAPTERS - 1
+    report.writingRange = { from, to, finalizedChapters: finalized0 }
+    log(`本轮写第 ${from}–${to} 章（已定稿 ${finalized0.length} 章）`)
 
     await step(`确保细纲 ${from}–${to}`, async () => {
       const session = await sessionOf(app)
@@ -475,54 +482,72 @@ async function main() {
       return { chapters: blueprints.map(item => item.chapterNumber) }
     })
 
-    for (let chapter = from; chapter <= to; chapter += 1) {
+for (let chapter = from; chapter <= to; chapter += 1) {
       await step(`写第 ${chapter} 章正文`, async () => {
         const session = await sessionOf(app)
-        const existing = await invokeSession(page, session, 'db:draft-list', chapter, session.projectPath)
-        const done = (existing ?? []).find(item => item.wordCount > 200)
-        if (done) return { skipped: true, draftId: done.id, words: done.wordCount }
         await stage.stageButton(page, '蓝图').click()
         await blueprintPage.plan(page).waitFor({ state: 'visible', timeout: 60_000 })
         await page.locator('.stage-capsule[aria-expanded="true"]').click().catch(() => {})
-        await blueprintPage.writeNext(page)
+
+        // 以按钮文字为准：应用始终把「权威下一章」摆在主按钮上，
+        // 若它和 harness 认为的 chapter 不同，说明前面某一章还没定稿，
+        // 此时按按钮实际写的章号处理，不要硬套自己的编号。
+        const button = page.getByRole('button', { name: /^写第 \d+ 章$/ }).first()
+        await button.waitFor({ state: 'visible', timeout: 60_000 })
+        const buttonText = (await button.innerText()).trim()
+        const target = Number(buttonText.match(/\d+/)?.[0] ?? chapter)
+        if (target !== chapter) log(`  主按钮实际是「${buttonText}」，按第 ${target} 章处理`)
+
+        await button.click()
         await runSheet.waitForRunDone(page, GENERATION_TIMEOUT_MS)
         const draft = await pollUntilOrStall(page, async () => {
-          const list = await invokeSession(page, session, 'db:draft-list', chapter, session.projectPath)
+          const list = await invokeSession(page, session, 'db:draft-list', target, session.projectPath)
           const latest = [...(list ?? [])].reverse().find(item => item.wordCount > 200)
           return latest ?? null
-        }, { label: `第 ${chapter} 章草稿`, stallMs: 6 * 60_000 })
-        return { draftId: draft.id, version: draft.version, words: draft.wordCount }
+        }, { label: `第 ${target} 章草稿`, stallMs: 6 * 60_000 })
+        return { chapter: target, draftId: draft.id, version: draft.version, words: draft.wordCount }
       })
 
-      // 定稿会触发连续性抽取与角色状态回写——这是长程一致性的关键一环，必须走。
+      // 定稿会触发连续性抽取与角色状态回写——长程一致性的关键一环，必须走。
       await step(`审稿并定稿第 ${chapter} 章`, async () => {
         const session = await sessionOf(app)
         const drafts = await invokeSession(page, session, 'db:draft-list', chapter, session.projectPath)
-        if ((drafts ?? []).some(item => item.status === 'finalized')) return { skipped: true }
+        const latest = [...(drafts ?? [])].reverse()[0]
+        if (latest?.status === 'finalized') return { skipped: true }
         await chapterView.open(page, chapter)
-        await chapterView.review(page)
-        await runSheet.waitForRunDone(page, GENERATION_TIMEOUT_MS)
-        const excerpt = await page.evaluate(() => {
-          const sheet = document.querySelector('.stage-ch-sheet, [aria-label="审稿报告"]')
-          return sheet ? (sheet.textContent ?? '').slice(0, 800) : ''
-        })
+
+        // 已有审稿记录的稿，面板会自己出现；没有就先点「AI 审稿」。
+        // 审稿实测量级是几分钟（本轮首章审稿用了 5 分多），等待必须给足，
+        // 否则会把「生成慢」误报成「界面不出审稿报告」。
+        if (!await chapterView.reviewSheet(page).isVisible().catch(() => false)) {
+          await chapterView.review(page)
+        }
+        await chapterView.reviewSheet(page).waitFor({ state: 'visible', timeout: REVIEW_SHEET_TIMEOUT_MS })
+        const excerpt = await chapterView.reviewSheet(page).innerText().catch(() => '')
         await chapterView.finalize(page, chapter)
         await pollUntilOrStall(page, async () => {
           const list = await invokeSession(page, session, 'db:draft-list', chapter, session.projectPath)
           return (list ?? []).some(item => item.status === 'finalized') ? list : null
-        }, { label: `第 ${chapter} 章定稿`, stallMs: 5 * 60_000 })
-        return { reviewExcerpt: excerpt.slice(0, 400) }
+        }, { label: `第 ${chapter} 章定稿`, stallMs: 8 * 60_000 })
+
+        // 定稿 → 后处理链（知识库导入/要点/角色状态/事实账本）。写下一章的前置条件，
+        // 不等完就点下一章会被静默拒绝（见 waitForPostProcess 的注释）。
+        const postProcess = await waitForPostProcess(page, session, chapter)
+        return { reviewExcerpt: excerpt.slice(0, 400), postProcess }
       })
     }
 
     await step('角色状态与账本快照', async () => {
       const session = await sessionOf(app)
-      const written = await writtenChapters(page, session)
-      const continuity = await invokeSession(page, session, 'db:continuity-list-before', written + 1, session.projectPath)
+      const finalized = await finalizedChapters(page, session)
+      const nextChapter = await nextChapterFromAuthority(page, session)
+      const furthest = finalized.at(-1) ?? 0
+      const continuity = await invokeSession(page, session, 'db:continuity-list-before', furthest + 1, session.projectPath)
       const characters = await invokeSession(page, session, 'db:character-get-all', session.projectPath)
       const updated = (characters ?? []).filter(item => typeof item.currentState?.updatedAtChapter === 'number')
       return {
-        writtenChapters: written,
+        finalizedChapters: finalized,
+        nextChapter,
         continuityEntries: (continuity ?? []).length,
         characters: (characters ?? []).length,
         withState: updated.length,
@@ -535,10 +560,53 @@ async function main() {
   }
 }
 
-/** 已写到第几章：有草稿就算写过（不要求定稿）。 */
-async function writtenChapters(page, session) {
+/**
+ * 本轮该写哪几章。
+ *
+ * 注意：应用决定「下一章」用的是 `db:draft-authority-sequence`，它按**已定稿**序列算，
+ * 不是按有没有草稿。只写了草稿没定稿的章，主按钮仍然是「写第 N 章」。
+ * harness 早期版本拿「最大草稿章号 + 1」当下一章，结果每轮都在重写同一章，
+ * 并被误判成「点写作但没产生运行」。这里直接问应用权威序列，跟它看到的一致。
+ */
+async function nextChapterFromAuthority(page, session) {
+  const sequence = await invokeSession(page, session, 'db:draft-authority-sequence', session.projectPath)
+  const next = Number(sequence?.nextChapterNumber)
+  return Number.isSafeInteger(next) && next >= 1 ? next : null
+}
+
+/**
+ * 等某一章的后处理链（定稿后处理）全部关键步骤跑完。
+ *
+ * 为什么必须等：`guardChapterWriting` 要求「前一章定稿后处理全部通过」才允许写下一章；
+ * 不满足时点击会被拒绝并且**不产生任何运行行**（只在弹层里给一句提示）。
+ * harness 早期版本定稿完就立刻点下一章，正好撞进后处理还没跑完的窗口，
+ * 于是表现成「点了没反应、也查不到运行」——那不是产品缺陷。
+ */
+async function waitForPostProcess(page, session, chapter, { timeoutMs = 10 * 60_000, intervalMs = 5000 } = {}) {
+  const deadline = Date.now() + timeoutMs
+  let last = null
+  for (;;) {
+    const run = await invokeSession(page, session, 'db:post-process-get-latest-run', 'chapter_finalize', String(chapter), session.projectPath)
+      .catch(() => null)
+    if (run?.id) {
+      const steps = await invokeSession(page, session, 'db:post-process-get-steps', run.id, session.projectPath).catch(() => [])
+      const pending = (steps ?? []).filter(step => !step.completedAt)
+      last = { allCriticalPassed: run.allCriticalPassed, steps: (steps ?? []).map(s => ({ key: s.stepKey, done: Boolean(s.completedAt) })) }
+      if (!pending.length && run.allCriticalPassed) return last
+    }
+    if (Date.now() > deadline) throw new Error(`第 ${chapter} 章后处理未在期限内通过：${JSON.stringify(last).slice(0, 300)}`)
+    await page.waitForTimeout(intervalMs)
+  }
+}
+
+/** 已定稿的章号：定稿才进权威序列，决定连续性产物和下一章。 */
+async function finalizedChapters(page, session) {
   const drafts = await invokeSession(page, session, 'db:draft-list-all', session.projectPath).catch(() => [])
-  return (drafts ?? []).reduce((max, item) => Math.max(max, Number(item.chapterNumber) || 0), 0)
+  return [...new Set((drafts ?? [])
+    .filter(item => item.status === 'finalized')
+    .map(item => Number(item.chapterNumber)))]
+    .filter(Number.isSafeInteger)
+    .sort((a, b) => a - b)
 }
 
 async function runAudit() {

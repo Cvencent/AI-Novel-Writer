@@ -24,6 +24,28 @@ node scripts/qa/user-sim.mjs --chapters=3 --words=700 --report=.runtime/qa/sim-$
 - **通道类错误**（`ERR_CONNECTION_RESET`、`no_healthy_account`、`platform exhausted`）→ 是 8790 代理侧问题，**不是应用 bug**，只在小结里记一句，不建 issue。
 - **元素找不到 / 点击超时** → 通常是界面回归（文案改了、按钮被门控、布局遮住），**要建 issue**，附上那条 `Call log` 里的选择器期望与实际页面文本。
 
+### 建 issue 前必须排除的三种「看起来像 bug」的情况
+
+这几种我本人都踩过，白建过 issue。下结论前先核对：
+
+1. **数据库里 `generation_*` 全是 `partial` artifact、run 停在 `running` —— 这是这个应用的常态，不是判据。**
+   正常完成的运行也长这样（历史成功运行一样是 partial + running）。
+   真正的判据是**产物有没有落库**：粗纲有没有进 `arc_outlines`、草稿有没有进 `drafts`、
+   审稿有没有进 `reviews`/`review_findings`。产物在 = 成功；产物不在 + 库长时间无变化 = 真挂起。
+
+2. **「点了写作/生成但没产生运行」** → 先查是不是被前置守卫挡了：
+   `guardChapterWriting`（`src/services/workflows/workflow-guards.ts`）要求
+   **前一章已定稿且后处理全部通过**，否则点击被拒绝并不产生运行行，
+   只在弹层里给提示（这是设计好的行为，用户能看到原因）。
+   定稿后的后处理链要跑几十秒到几分钟，**刷新页面/切章去看不到就以为没反应**是最常见的误判。
+   要判定是不是产品问题，用探针 `scripts/qa/probe-ch2-write.mjs` 单独点一次，看它到底弹了什么。
+
+3. **「下一章」不等于「最大草稿章号 + 1」**。应用按 `db:draft-authority-sequence`
+   （**已定稿**序列）算下一章。只写草稿没定稿的章，主按钮仍是「写第 N 章」。
+   想验证应用行为时，以主按钮文字为准，别拿自己的章号硬套。
+
+真正确认是产品缺陷时，证据要包含：产物**没有**落库的查询结果 + 库无变化的时长 + 界面截图/弹层文本 + 通道排除依据。
+
 ## 第二件事：跑只读一致性检查
 
 ```bash
