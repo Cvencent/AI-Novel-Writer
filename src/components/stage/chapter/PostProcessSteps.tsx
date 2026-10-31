@@ -1,32 +1,64 @@
+import { useEffect, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { getChapterFinalizeScope } from '../../../services/workflows/workflow-utils'
 import { useLocaleStore } from '../../../stores/locale-store'
+import { useProjectStore } from '../../../stores/project-store'
+import { captureProjectSession } from '../../project-session-gate'
 import { Button } from '../../ui/Button'
 import { usePostProcessStatus } from '../../ui/use-post-process-status'
+
+/**
+ * 持久化的定稿发布状态（SQLite outbox）：跨会话稳定，「正文文件」行不再依赖
+ * 本次打开期间是否定稿过。tab.finalizationPublication 仍是会话内的实时标记
+ * （pending→published 的过渡），两者取并集。
+ */
+function useDurablePublication(chapterNumber: number, draftId: number | undefined): 'pending' | 'published' | null {
+  const [status, setStatus] = useState<'pending' | 'published' | null>(null)
+  const project = useProjectStore(s => s.currentProject)
+  useEffect(() => {
+    let active = true
+    setStatus(null)
+    const session = captureProjectSession(project)
+    if (!session || draftId === undefined) return
+    void (async () => {
+      try {
+        const response = await (window as unknown as { aiNovelAPI: { invoke(channel: string, ...args: unknown[]): Promise<unknown> } }).aiNovelAPI.invoke(
+          'finalization:read-publication', chapterNumber, draftId ?? null, session,
+        ) as { success?: boolean; publicationStatus?: 'pending' | 'published' | null }
+        if (active && response?.success && response.publicationStatus) setStatus(response.publicationStatus)
+      } catch { /* 显示用途的读取失败不阻塞后处理列表 */ }
+    })()
+    return () => { active = false }
+  }, [chapterNumber, draftId, project])
+  return status
+}
 
 /**
  * 定稿视图里的后处理（F-090、F-091）：正文文件与后处理流水线逐步列出完成、处理中或失败。
  * 失败的步骤各自可以重试；「重试失败步骤」只重跑失败的那些。正文文件写入失败时重试的是已提交的发布（F-089），不重新定稿。
  * 正文文件这一步只有本次打开期间定稿过才知道结果，否则不列出。
  */
-export default function PostProcessSteps({ chapterNumber, publication, busy, onRetryStep, onRetryFailed, onRetryPublication }: {
+export default function PostProcessSteps({ chapterNumber, draftId, publication, busy, onRetryStep, onRetryFailed, onRetryPublication }: {
   chapterNumber: number
+  draftId: number | undefined
   publication: 'pending' | 'published' | undefined
   busy: boolean
   onRetryStep: (stepKey: string) => void
   onRetryFailed: () => void
   onRetryPublication: () => void
 }) {
+  const durablePublication = useDurablePublication(chapterNumber, draftId)
   const text = useLocaleStore(s => s.text)
   const { loading, steps } = usePostProcessStatus(getChapterFinalizeScope(chapterNumber))
   if (loading && !publication) return null
 
+  const publicationShown = publication ?? (durablePublication === 'published' ? 'published' : undefined)
   const rows = [
-    ...(publication ? [{
+    ...(publicationShown ? [{
       key: 'publication',
       label: text('正文文件', 'Manuscript file'),
-      presentation: publication === 'published' ? 'success' as const : 'failed' as const,
-      detail: publication === 'published'
+      presentation: publicationShown === 'published' ? 'success' as const : 'failed' as const,
+      detail: publicationShown === 'published'
         ? text('已写入项目目录', 'Written to the project folder')
         : text('定稿已提交，正文文件还没写入', 'Finalization is committed; the manuscript file is not written yet'),
       retry: onRetryPublication,

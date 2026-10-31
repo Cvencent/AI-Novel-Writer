@@ -3,6 +3,7 @@ import { ipcMain } from 'electron'
 import { getCurrentProjectPath } from '../database'
 import { projectAccess } from '../services/project-access'
 import { FinalizationService } from '../services/finalization-service'
+import { FinalizationRepository } from '../repositories/finalization-repository'
 import type { ProjectSessionContext } from '../../src/shared/ipc-channels'
 import { isProjectSessionContext } from '../../src/shared/project-session-context'
 import type { FinalizationSnapshot } from '../../src/services/finalization-snapshot'
@@ -63,6 +64,30 @@ export function registerFinalizationController(): void {
       })
     } catch (error) {
       return { success: false, committed: false, error: String(error) }
+    }
+  })
+
+  // 定稿后处理页的「正文文件」行需要跨会话稳定显示：从 SQLite outbox 读
+  // 持久化的发布状态（draft 维度最新一条），而不是只依赖本次会话的内存标记。
+  ipcMain.handle('finalization:read-publication', async (
+    _event,
+    chapterNumber: unknown,
+    draftId: unknown,
+    context: unknown,
+  ) => {
+    try {
+      if (!isProjectSessionContext(context)) {
+        throw new Error('缺少项目会话，已拒绝读取定稿发布状态')
+      }
+      projectAccess.assertCurrentProjectContext(context, getCurrentProjectPath())
+      if (!Number.isSafeInteger(draftId)) return { success: true, publicationStatus: null }
+      const record = FinalizationRepository.getByDraftId(draftId as number)
+      if (!record || record.chapterNumber !== chapterNumber) {
+        return { success: true, publicationStatus: null }
+      }
+      return { success: true, publicationStatus: record.publicationStatus, finalizationId: record.finalizationId }
+    } catch (error) {
+      return { success: false, publicationStatus: null, error: String(error) }
     }
   })
 
