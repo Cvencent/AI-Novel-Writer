@@ -15,7 +15,10 @@ import { createHash } from 'node:crypto'
 import { afterAll, expect, it } from 'vitest'
 
 import { closeProjectDatabase, getProjectDb, initProjectDatabase } from '../../electron/database'
-import { refreshCharacterStateProjection } from '../../electron/repositories/character-roster-repository'
+import {
+  refreshCharacterIdentityProjection,
+  refreshCharacterStateProjection,
+} from '../../electron/repositories/character-roster-repository'
 
 const projectPath = process.env.STATE_FIX_PROJECT ?? ''
 
