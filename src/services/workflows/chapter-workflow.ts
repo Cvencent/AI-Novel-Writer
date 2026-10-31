@@ -1,6 +1,6 @@
 import { formatResourceUri } from '../../shared/project-paths'
 import { canonicalResourceUri, parseResourceUri, resourceWriteAllowed } from '../../shared/project-paths'
-import { workflowResourceKey, type WorkflowDefinition } from '../../stores/workflow-store'
+import { useWorkflowStore, workflowResourceKey, type WorkflowDefinition } from '../../stores/workflow-store'
 import type { DraftMeta } from '../draft-index'
 import { requireIpcSuccess } from '../ipc-result'
 import { ipc } from '../ipc-client'
@@ -467,15 +467,32 @@ export function createFinalizeWorkflow(
         },
       },
     ],
-    // 定稿界面结算只由携带 immutable snapshot 的 FINALIZE_COMPLETE 完成；不要在
-    // workflow onComplete 中重新读 DB 并打开/覆盖旧 tab。
+    // 关系同步从修稿合并挪到定稿后：修稿只改草稿，关系以定稿正文为准。
+    // 定稿界面结算仍由携带 immutable snapshot 的 FINALIZE_COMPLETE 完成。
     onComplete: {
       mode: 'silent',
       message: localize(
         uiLocale,
-        `第${params.chapterNumber}章已定稿。`,
+        `第${params.chapterNumber}章已定稿，人物关系将按本章正文同步。`,
         `Chapter ${params.chapterNumber} finalized.`,
       ),
+      openResult: async () => {
+        // 关系同步从修稿合并挪到定稿后：修稿只改草稿，关系以定稿正文为准。
+        try {
+          const { createRosterSyncWorkflow } = await import('./roster-sync-workflow')
+          const session = params.snapshot?.projectSession ?? sourceProjectSession
+          const definition = createRosterSyncWorkflow({
+            projectPath: params.projectPath,
+            projectSession: session,
+            mergedProse: params.draftContent,
+          }, uiLocale)
+          useWorkflowStore.getState().startWorkflow(definition).catch((error: unknown) => {
+            useWorkflowStore.getState().addLog('error', localize(uiLocale, `人物关系同步启动失败：${String(error)}`, `Failed to start relationship sync: ${String(error)}`), uiLocale)
+          })
+        } catch (error) {
+          useWorkflowStore.getState().addLog('error', localize(uiLocale, `人物关系同步启动失败：${String(error)}`, `Failed to start relationship sync: ${String(error)}`), uiLocale)
+        }
+      },
     },
   }
 }

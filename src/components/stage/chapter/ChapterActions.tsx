@@ -8,7 +8,6 @@ import { chapterLabel } from '../../../shared/chapter-label'
 import { countDraftUnits } from '../../../shared/draft-units'
 import { availableGenerationModelId, isGenerationModel, launchChapterRewrite } from '../../../services/workflows/chapter-write-launch'
 import { createFinalizeSyncWorkflow } from '../../../services/workflows/finalize-sync-workflow'
-import { createRosterSyncWorkflow } from '../../../services/workflows/roster-sync-workflow'
 import { preferredFunctionModelId } from '../../../shared/function-models'
 import { useEditorStore, type EditorTab } from '../../../stores/editor-store'
 import { useLLMStore } from '../../../stores/llm-store'
@@ -451,17 +450,8 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
           onComplete={async mergedText => {
             const ok = await draft.completeMerge(mergedText)
             if (ok && mergedText.trim()) {
-              try {
-                const syncSession = captureProjectSession(useProjectStore.getState().currentProject)
-                if (syncSession && isProjectSessionCurrent(syncSession)) {
-                  const definition = await createRosterSyncWorkflow({ projectPath: projectKey, projectSession: syncSession, mergedProse: mergedText }, useLocaleStore.getState().locale)
-                  useWorkflowStore.getState().startWorkflow(definition).catch((error: unknown) => {
-                    useWorkflowStore.getState().addLog('error', text(`人物关系同步启动失败：${String(error)}`, `Failed to start relationship sync: ${String(error)}`), useLocaleStore.getState().locale)
-                  })
-                }
-              } catch (error) {
-                useWorkflowStore.getState().addLog('error', text(`人物关系同步启动失败：${String(error)}`, `Failed to start relationship sync: ${String(error)}`), useLocaleStore.getState().locale)
-              }
+              // 关系同步挪到定稿后执行：修稿只改草稿，人物关系以定稿正文为准。
+              useWorkflowStore.getState().addLog('info', text('修稿已合并；人物关系将在本章定稿后同步。', 'Revision merged; relationships will sync when this chapter is finalized.'), useLocaleStore.getState().locale)
             }
             return ok
           }}
