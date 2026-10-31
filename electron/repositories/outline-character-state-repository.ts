@@ -17,6 +17,16 @@ function requireDb(db?: BetterSqlite3.Database): BetterSqlite3.Database {
   return database
 }
 
+type StateProvenance = Record<string, unknown>
+
+function parseProvenance(value: string | null | undefined): StateProvenance {
+  if (!value?.trim()) return {}
+  try {
+    const parsed: unknown = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as StateProvenance : {}
+  } catch { return {} }
+}
+
 /**
  * 让细纲推进角色的动态状态。
  *
@@ -32,13 +42,29 @@ export class OutlineCharacterStateRepository {
       throw new Error('OUTLINE_CHARACTER_CHAPTER_INVALID')
     }
     return database.transaction(() => {
+      // 细纲层写的是「计划摘要」，不是定稿正文证明的事实：
+      // 必须同时摘掉被写字段的 provenance，否则旧的 author/derived 标记会
+      // 继续给这段摘要背书，下一章写稿就会把它当作者事实注入。
+      const row = database.prepare('SELECT cs_provenance FROM characters WHERE name = ? AND retired = 0 LIMIT 1')
+        .pluck().get(name) as string | undefined
+      if (row === undefined) return false
+      const provenance = parseProvenance(row)
+      // recentEvents 每次都会写；location / keyItems 只在传了非空值时才写，
+      // 没写的字段保留原来源。
+      const overwritten = [
+        'recentEvents',
+        ...(patch.location?.trim() ? ['location'] : []),
+        ...(patch.keyItems?.trim() ? ['keyItems'] : []),
+      ]
+      for (const field of overwritten) delete provenance[field]
       const info = database.prepare(`
         UPDATE characters
         SET cs_recent_events = ?, cs_location = COALESCE(NULLIF(?, ''), cs_location),
             cs_key_items = COALESCE(NULLIF(?, ''), cs_key_items),
-            cs_updated_at_chapter = ?, updated_at = datetime('now')
+            cs_updated_at_chapter = ?, cs_provenance = ?, updated_at = datetime('now')
         WHERE name = ? AND retired = 0
-      `).run(patch.recentEvents, patch.location ?? '', patch.keyItems ?? '', patch.chapterNumber, name)
+      `).run(patch.recentEvents, patch.location ?? '', patch.keyItems ?? '', patch.chapterNumber,
+        JSON.stringify(provenance), name)
       if (info.changes === 0) return false
       // cs_* 是完整角色事实的一部分。细纲推进后若不刷新 roster 事实哈希，
       // 下一次读取会把完全正常的角色卡误判为 inconsistent。

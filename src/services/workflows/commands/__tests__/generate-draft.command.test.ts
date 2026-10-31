@@ -1784,6 +1784,87 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     }
   })
 
+  it('injects derived on-page state (outfit) from an earlier finalization into the draft prompt', async () => {
+    const runtime = fakeRuntime(() => outcome('新章正文。'.repeat(125), 'stop'))
+    const { context, callbacks, command } = setup({
+      runtime,
+      chapterNumber: 5,
+      characters: ['沈砚'],
+      wordsTarget: 500,
+      previousFinalizedContent: '第四章定稿原文。',
+      characterCards: [{
+        name: '沈砚',
+        role: 'supporting',
+        currentState: {
+          location: '公示大厅',
+          physicalState: '穿洗得泛白的九班制式风衣，领口有油墨',
+          recentEvents: '退入排队人群',
+          updatedAtChapter: 2,
+          provenance: {
+            location: {
+              kind: 'derived',
+              source: {
+                draftId: 18, finalizationId: 'fin-18', chapterNumber: 2,
+                contentHash: 'b'.repeat(64),
+              },
+            },
+            physicalState: {
+              kind: 'derived',
+              source: {
+                draftId: 18, finalizationId: 'fin-18', chapterNumber: 2,
+                contentHash: 'b'.repeat(64),
+              },
+            },
+            recentEvents: { kind: 'legacy' },
+          },
+        },
+      }],
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const prompt = runtime.complete.mock.calls[0]?.[0].messages
+      .find(message => message.role === 'user')?.content ?? ''
+    expect(prompt).toContain('physicalState@chapter2(derived): 穿洗得泛白的九班制式风衣，领口有油墨')
+    expect(prompt).toContain('location@chapter2(derived): 公示大厅')
+    // legacy 来源未知，不能当作者事实注入。
+    expect(prompt).not.toContain('退入排队人群')
+  })
+
+  it('never injects a state derived from this chapter or a later one as the starting point', async () => {
+    const runtime = fakeRuntime(() => outcome('新章正文。'.repeat(125), 'stop'))
+    const { context, callbacks, command } = setup({
+      runtime,
+      chapterNumber: 3,
+      characters: ['沈砚'],
+      wordsTarget: 500,
+      previousFinalizedContent: '第二章定稿原文。',
+      characterCards: [{
+        name: '沈砚',
+        role: 'supporting',
+        currentState: {
+          physicalState: 'FUTURE_OUTFIT_SENTINEL',
+          updatedAtChapter: 4,
+          provenance: {
+            physicalState: {
+              kind: 'derived',
+              source: {
+                draftId: 40, finalizationId: 'fin-40', chapterNumber: 4,
+                contentHash: 'c'.repeat(64),
+              },
+            },
+          },
+        },
+      }],
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const prompt = runtime.complete.mock.calls[0]?.[0].messages
+      .find(message => message.role === 'user')?.content ?? ''
+    expect(prompt).not.toContain('FUTURE_OUTFIT_SENTINEL')
+  })
+
   it('rebuilds a stale locator from immutable finalized prose without injecting its statement', async () => {
     let observedTask: GenerationTask | undefined
     const runtime = fakeRuntime((_attempt, task) => {
@@ -2133,7 +2214,7 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     )
   })
 
-  it.each([1, 2])('dispatches all five long future plans and global facts above the optional target for chapter %i', async chapterNumber => {
+  it.each([1, 2])('dispatches all five long future plans and global facts without truncating required material for chapter %i', async chapterNumber => {
     const blueprints = Array.from({ length: 5 }, (_, index) => ({
       chapterNumber: chapterNumber + index + 1,
       title: `后续计划${index + 1}`,
@@ -2156,10 +2237,10 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     const prompt = runtime.complete.mock.calls[0]?.[0].messages.find(message => message.role === 'user')?.content ?? ''
     for (const blueprint of blueprints) expect(prompt).toContain(blueprint.keyEvents)
     expect(prompt).toContain(worldSetting)
-    expect(prompt).not.toContain('OPTIONAL_REFERENCE_')
+    // 可选额度独立于必需材料：这段参考没有撑破 24k 可选预算，应当照常提交。
+    expect(prompt).toContain('OPTIONAL_REFERENCE_')
     const decision = runtime.createRuntime.mock.calls[0]?.[1]?.selection.materialDecision
-    expect(decision?.included.filter(item => !item.required)).toHaveLength(0)
-    expect(decision?.omitted).toContainEqual(expect.objectContaining({ sourceId: 'reference:0', reason: 'budget', required: false }))
+    expect(decision?.included).toContainEqual(expect.objectContaining({ sourceId: 'reference:0', required: false }))
     if (chapterNumber === 2) {
       expect(prompt).toContain('PREVIOUS_TAIL_钥匙仍由林舟保管。')
       expect(decision?.included).toContainEqual(expect.objectContaining({ sourceId: 'finalized:77', required: true }))

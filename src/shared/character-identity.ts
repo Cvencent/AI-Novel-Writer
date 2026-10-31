@@ -106,6 +106,8 @@ export function decideDerivedPatch(current: CharacterFieldSnapshot, patch: Deriv
     && current.valueHash === patch.valueHash) return 'already-applied'
   if (current.revision !== patch.baseFieldRevision || current.valueHash !== patch.baseValueHash
     || !sameProvenance(current.provenance, patch.baseProvenance)) return 'field-conflict'
+  // legacy 与 author 都受保护：来源未知的旧值可能是早期作者输入，不能静默覆盖；
+  // 定稿正文只能提出待确认提议，由作者决定。
   if (current.provenance.kind !== 'derived' && !(current.provenance.kind === 'legacy' && current.value === '')) return 'proposal-required'
   return 'apply-derived'
 }

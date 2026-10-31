@@ -1,6 +1,6 @@
 import { parsePlanningTargetUnits, planningTargetInstruction, DEFAULT_PLANNING_ACTION_CHAPTERS } from '../../../shared/plot-outline-contract'
 import { buildOutlineRetrievalContext, extractCharacterNames } from '../../../shared/outline-retrieval-context'
-import { extractChapterDigest, splitChapterBlock } from '../../../shared/outline-chapter-digest'
+import { extractChapterDigest, outlineRecentEvent, splitChapterBlock } from '../../../shared/outline-chapter-digest'
 import { extractChapterShape, isShapeRepetitive } from '../../../shared/chapter-shape'
 import type { CharacterProposalChoices } from '../../character-proposal-choices'
 import { decodeCharacterIdentityManifest, decodeCharacterDetails, validateCharacterDetail, type CharacterIdentitySlot, type CharacterDetailOutput } from '../../../shared/character-proposal-parser'
@@ -2274,7 +2274,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
           await ipc.invokeWithProjectSession(projectSession, 'db:outline-character-state-apply', {
             characterName: name,
             chapterNumber,
-            recentEvents: digest.chapterNotes,
+            recentEvents: outlineRecentEvent(digest.chapterNotes),
           }, expectedProjectPath).catch(() => null)
         }
         await ipc.invokeWithProjectSession(projectSession, 'db:outline-summary-save', {
@@ -2546,7 +2546,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         if (!digest.chapterNotes) continue
         for (const name of digest.characterNames) {
           await ipc.invokeWithProjectSession(session, 'db:outline-character-state-apply', {
-            characterName: name, chapterNumber, recentEvents: digest.chapterNotes,
+            characterName: name, chapterNumber, recentEvents: outlineRecentEvent(digest.chapterNotes),
           }, expectedProjectPath).catch(() => null)
         }
         await ipc.invokeWithProjectSession(session, 'db:outline-summary-save', {

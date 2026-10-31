@@ -563,7 +563,8 @@ describe('RunFinalizePostProcessCommand character-state persistence', () => {
     })).rejects.toThrow('next-chapter-prompt-captured')
     expect(nextChapterPrompt).toContain('Lin Lan (protagonist)')
     expect(nextChapterPrompt).toContain('keyItems@chapter1: brass key')
-    expect(nextChapterPrompt).not.toContain('handed the brass key to Zhou Yan')
+    // 上一章定稿写明的状态必须作为时点事实进入下一章（带章节标记），否则人物会漂移。
+    expect(nextChapterPrompt).toContain('recentEvents@chapter2(derived): handed the brass key to Zhou Yan')
   })
 
   it('keeps protected author and legacy state while retaining source-only lookup candidates', async () => {

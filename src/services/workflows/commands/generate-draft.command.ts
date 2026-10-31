@@ -625,6 +625,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       projectSession,
       writingLanguage,
       this.chapterInfo.characters,
+      this.chapterInfo.chapterNumber,
     )
     let futureBlueprintsStr = promptLanguageText(
       writingLanguage,
@@ -842,11 +843,13 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     const admittedCandidateSourceIds = new Set(chapterMaterials.selection.included
       .map(material => material.ref.sourceId)
       .filter(sourceId => sourceId.startsWith('candidate:')))
-    if (selectedCandidateDrafts.length > 0 && admittedCandidateSourceIds.size === 0) {
+    // 同章同文的候选会被定稿去重吸收；此时前驱由那份定稿承担，不算缺失。
+    const finalizedPredecessorAdmitted = requiredFinalizedSource !== undefined
+      && chapterMaterials.selection.included.some(material => material.ref.sourceId === `finalized:${requiredFinalizedSource.draftId}`)
+    if (selectedCandidateDrafts.length > 0 && admittedCandidateSourceIds.size === 0 && !finalizedPredecessorAdmitted) {
       throw new Error('GENERATION_DRAFT_REQUIRED_PREDECESSOR_NOT_ADMITTED')
     }
-    if (selectedCandidateDrafts.length === 0 && requiredFinalizedSource
-      && !chapterMaterials.selection.included.some(material => material.ref.sourceId === `finalized:${requiredFinalizedSource.draftId}`)) {
+    if (selectedCandidateDrafts.length === 0 && requiredFinalizedSource && !finalizedPredecessorAdmitted) {
       throw new Error('GENERATION_DRAFT_REQUIRED_PREDECESSOR_NOT_ADMITTED')
     }
     if (chapterMaterials.omissions.length > 0) {
@@ -1818,22 +1821,6 @@ ${params.candidate.text}`,
     chapterNumber?: number,
   ): Promise<string> {
     try {
-    // 最近定稿后处理推进的派生状态：写第 N 章时看「第 N 章之前最后一次定稿」的状态。
-    const derivedStates = new Map<string, Map<string, { value: string; chapter: number }>>()
-    if (chapterNumber !== undefined && chapterNumber > 1) {
-      try {
-        const projections = await ipc.invokeWithProjectSession(projectSession, 'db:continuity-list-before', chapterNumber, projectPath) as Array<{ chapterNumber: number; characterStateCandidates?: ReadonlyArray<{ characterName: string; field: string; value: string; reason?: string }>; sourceStatus?: string }>
-        for (const projection of [...(projections ?? [])].sort((a, b) => b.chapterNumber - a.chapterNumber)) {
-          if (projection.sourceStatus === 'stale') continue
-          for (const candidate of projection.characterStateCandidates ?? []) {
-            if (candidate.reason === 'author-protected' || candidate.reason === 'legacy-protected') continue
-            const perCharacter = derivedStates.get(candidate.characterName) ?? new Map<string, { value: string; chapter: number }>()
-            if (!perCharacter.has(candidate.field)) perCharacter.set(candidate.field, { value: candidate.value, chapter: projection.chapterNumber })
-            derivedStates.set(candidate.characterName, perCharacter)
-          }
-        }
-      } catch { /* 连续性投影不可用时跳过派生状态，角色基础资料照常注入。 */ }
-    }
       const roster = await ipc.invokeWithProjectSession(projectSession, 'db:character-roster-read', projectPath)
       const voiceProfiles = await ipc.invokeWithProjectSession(projectSession, 'db:writing-intelligence-voices-list', projectPath).catch(() => [])
       if (roster.status !== 'ready' && roster.status !== 'empty') {
@@ -1887,19 +1874,19 @@ ${params.candidate.text}`,
             `relationship (legacy provenance unknown): ${legacyRelationshipNotes}`,
           ))
         }
+        // 角色状态是时点事实：作者手填与定稿派生都注入，并标明来源章节。
+        // 派生状态必须早于本章——重写旧章时不得把后续章节的终态当成起点。
         for (const field of CHARACTER_STATE_TEXT_FIELDS) {
           const provenance = card.currentState?.provenance?.[field]
           const value = card.currentState?.[field]?.trim()
-          if (provenance?.kind === 'author' && value) {
+          if (!value) continue
+          if (provenance?.kind === 'author') {
             facts.push(`${field}@chapter${provenance.chapterNumber}: ${value}`)
-          }
-        }
-        // 最近定稿后处理推进的派生状态：作者手填之外，把最新事实也交给模型。
-        const derived = derivedStates.get(card.name)
-        if (derived) {
-          for (const field of CHARACTER_STATE_TEXT_FIELDS) {
-            const item = derived.get(field)
-            if (item?.value?.trim()) facts.push(`${field}@chapter${item.chapter}(derived): ${item.value.trim()}`)
+          } else if (provenance?.kind === 'derived') {
+            const derivedChapter = provenance.source.chapterNumber
+            if (chapterNumber === undefined || derivedChapter < chapterNumber) {
+              facts.push(`${field}@chapter${derivedChapter}(derived): ${value}`)
+            }
           }
         }
         profiles.push(`${card.name} (${card.role || 'unknown'})${facts.length ? ` | ${facts.join(' | ')}` : ''}`)
@@ -1940,9 +1927,14 @@ ${params.candidate.text}`,
           ))
         return isRecent || entityRelevant
       }).map(fact => fact.evidence).filter(Boolean)
+      // 只有正文引文能作为定位器；候选 value 是状态摘要，不是原文，混进来必然定位失败。
+      // 契约里的 evidence 是一句连续原文；若历史数据里存的是整章（跨段落），退回人名定位。
       const candidateEvidence = (projection.characterStateCandidates ?? [])
         .filter(candidate => isRecent || currentEntities.includes(candidate.characterName))
-        .map(candidate => candidate.value || candidate.characterName)
+        .map(candidate => {
+          const quote = candidate.evidence?.text?.trim() ?? ''
+          return quote && !/[\r\n]/u.test(quote) && quote.length <= 200 ? quote : candidate.characterName
+        })
         .filter(Boolean)
       const evidence = [...new Set([...factEvidence, ...candidateEvidence])]
       return isRecent || evidence.length > 0 ? [{ projection, evidence, continuityAnchor: isRecent }] : []

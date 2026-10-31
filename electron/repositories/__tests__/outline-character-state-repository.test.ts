@@ -63,4 +63,25 @@ describe('OutlineCharacterStateRepository', () => {
     expect(after.revision).toBe(before.revision + 1)
     expect(after.factHash).not.toBe(before.factHash)
   })
+
+  it('写入细纲摘要时摘掉被写字段的旧来源，避免摘要冒充作者事实', () => {
+    const db = getProjectDb()!
+    db.prepare(`UPDATE characters SET cs_recent_events=?, cs_provenance=? WHERE character_id='char-lead'`).run(
+      '作者确认过的旧事件',
+      JSON.stringify({
+        recentEvents: { kind: 'author', chapterNumber: 1, revision: 1 },
+        location: { kind: 'author', chapterNumber: 1, revision: 2 },
+      }),
+    )
+
+    OutlineCharacterStateRepository.apply({ characterName: '主角', chapterNumber: 9, recentEvents: '本章计划摘要' }, db)
+
+    const row = db.prepare("SELECT cs_recent_events AS recentEvents, cs_provenance AS provenance FROM characters WHERE character_id='char-lead'")
+      .get() as { recentEvents: string; provenance: string }
+    expect(row.recentEvents).toBe('本章计划摘要')
+    const provenance = JSON.parse(row.provenance) as Record<string, unknown>
+    expect(provenance.recentEvents).toBeUndefined()
+    // 本次没写的字段，来源保持原样。
+    expect(provenance.location).toMatchObject({ kind: 'author', chapterNumber: 1 })
+  })
 })

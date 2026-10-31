@@ -10,6 +10,20 @@ export interface OutlineChapterDigest {
   continuityFacts: string[]
 }
 
+/**
+ * 细纲推进角色状态时只写一句「本章发生了什么」。
+ *
+ * `chapterNotes` 是四句话的摘要，直接写进 `recentEvents` 会让角色卡的「最近事件」
+ * 变成一坨计划文本（实测会整段顶掉前一章的真实事件）。按首个句末截断并限长。
+ */
+export function outlineRecentEvent(notes: string, maxLength = 50): string {
+  const normalized = notes.replace(/\s+/gu, ' ').trim()
+  if (!normalized) return ''
+  const firstSentence = (/^[^。！？!?]*[。！？!?]/u.exec(normalized)?.[0] ?? normalized).trim()
+  if (firstSentence.length <= maxLength) return firstSentence
+  return `${firstSentence.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`
+}
+
 const CHAPTER_HEADING = /^#{0,4}\s*(?:第\s*(\d+)\s*章|Chapter\s+(\d+))\s*[:：]?\s*(.*)$/u
 
 /** 从一章的 Markdown 分块中取出标题与正文。 */
