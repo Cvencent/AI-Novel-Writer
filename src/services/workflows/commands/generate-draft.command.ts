@@ -1,4 +1,5 @@
 import { chapterTimeContinuity } from '../../../shared/chapter-time-continuity'
+import { normalizeAgeField } from '../../../shared/character-age'
 import { appErrorMessage } from '../../../i18n/app-errors'
 import { sanitizeDraftText, composeDraftVisibleContinuation, DRAFT_CONDENSE_PURPOSE, DRAFT_VISIBLE_TEXT_VERSION, isDraftVisibleTextVersion, type DraftVisibleTextVersion } from '../../../shared/draft-visible-text'
 import { DRAFT_RECONCILE_PURPOSE, draftReconciliationBlock } from '../../../shared/draft-reconciliation'
@@ -1844,7 +1845,9 @@ ${params.candidate.text}`,
       for (const card of selected) {
         const facts = [
           card.gender && `gender: ${card.gender}`,
-          card.age && `age: ${card.age}`,
+          // 历史名单里 age 可能是「五十七岁」「约二十六岁」这类自由文本：
+          // 注入提示词前归一成可比较的数值形态，模型每章看到同一套写法。
+          card.age && `age: ${normalizeAgeField(card.age)}`,
           card.appearance && `appearance: ${card.appearance}`,
           card.personality && `personality: ${card.personality}`,
           card.background && `background: ${card.background}`,

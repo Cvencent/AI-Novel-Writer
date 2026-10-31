@@ -13,6 +13,7 @@ import {
   normalizeCharacterRole,
   type CharacterRole,
 } from '../../shared/character-role'
+import { normalizeAgeField } from '../../shared/character-age'
 
 type RawCard = RawCharacterCard
 export type CharacterRelationshipEdge = { target: string; relation: string }
@@ -191,7 +192,9 @@ export function normalizeCharacterCardsForPersistence(rawCards: RawCard[]): Char
     name,
     role: normalizeRole(readField(card, CHARACTER_FIELD_ALIASES.role)),
     gender: stringifyValue(readField(card, CHARACTER_FIELD_ALIASES.gender)),
-    age: stringifyValue(readField(card, CHARACTER_FIELD_ALIASES.age)),
+    // 年龄归一成可比较的数值形态（28 / 约26），否则同一份名单里
+    // 「28」「五十七岁」「约二十六岁」混排，按年龄的比较与校验都无从下手。
+    age: normalizeAgeField(stringifyValue(readField(card, CHARACTER_FIELD_ALIASES.age))),
     appearance: stringifyValue(readField(card, CHARACTER_FIELD_ALIASES.appearance)),
     personality: stringifyValue(readField(card, CHARACTER_FIELD_ALIASES.personality)),
     background: stringifyValue(readField(card, CHARACTER_FIELD_ALIASES.background)),
