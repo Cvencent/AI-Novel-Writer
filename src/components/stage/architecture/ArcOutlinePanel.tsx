@@ -52,7 +52,9 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
   const [busyFineArc, setBusyFineArc] = useState<number | null>(null)
   const [selectedArcs, setSelectedArcs] = useState<Set<number>>(new Set())
   const [pendingDeleteArc, setPendingDeleteArc] = useState<number | null>(null)
+  // 粗纲段多时默认收起（>8 段），整页不被占满；作者手动展开过就不再自动收。
   const [listCollapsed, setListCollapsed] = useState(false)
+  const manualCollapse = useRef(false)
   const [error, setError] = useState('')
   // AI 检查（粗纲）：状态由共享面板自己持有，面板只回传「写回这一段」的动作。
   const [reviewBusy, setReviewBusy] = useState(false)
@@ -66,7 +68,10 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
       ipc.invoke('db:arc-outline-list', projectKey).catch(() => []),
       ipc.invoke('db:arc-outline-stale-list', projectKey).catch(() => []),
     ])
-    setArcs(Array.isArray(list) ? list : [])
+    const fresh = Array.isArray(list) ? list as ArcOutlineRecord[] : []
+    setArcs(fresh)
+    // 粗纲段多时默认收起，整页不被 40 段占满；作者手动展开过就不再自动收。
+    if (!manualCollapse.current) setListCollapsed(fresh.length > 8)
     setStaleChapters(Array.isArray(stale) ? stale : [])
     const synopsis = fineSource?.synopsis ?? ''
     const total = fineSource?.totalChapters ?? 0
@@ -326,7 +331,7 @@ export default function ArcOutlinePanel({ projectKey, fineSource, fineProgress, 
       {arcs.length === 0
         ? <p className="arch-arc-empty">{text('还没有粗纲。粗纲负责定方向，不含人名；确认后再生成逐章细纲。', 'No arc outline yet. The arc outline sets direction without character names; chapter outlines come after you confirm it.')}</p>
         : (<>
-          <Button variant="text" size="sm" aria-expanded={!listCollapsed} onClick={() => setListCollapsed(value => !value)}>
+          <Button variant="text" size="sm" aria-expanded={!listCollapsed} onClick={() => { manualCollapse.current = true; setListCollapsed(value => !value) }}>
             {listCollapsed ? text(`展开粗纲（${arcs.length} 段）`, `Show arc segments (${arcs.length})`) : text('收起粗纲', 'Collapse arc segments')}
           </Button>
           {!listCollapsed && <>
