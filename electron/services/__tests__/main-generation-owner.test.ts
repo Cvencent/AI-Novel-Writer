@@ -307,7 +307,7 @@ describe('chapter outline main authority', () => {
     expect(requests.map(item => item.purpose)).toEqual(['plot-outline:chapter:1:normal', 'plot-outline:chapter:1:compact'])
   })
 
-  it('reaps a running run whose last attempt settled beyond the idle timeout, instead of staying running forever', async () => {
+  it('reaps a running run whose last attempt FAILED and settled beyond the idle timeout; a successfully settled idle run is left alone', async () => {
     const dispatch = vi.fn<GenerationRunServiceDependencies['dispatch']>(async (_request, options) => {
       options.onVisible({ kind: 'delta', text: outlineEntry(1) })
       return { finishReason: 'stop', usage: null }
@@ -317,12 +317,17 @@ describe('chapter outline main authority', () => {
     const repository = new GenerationRunRepository(() => f.db)
     expect(repository.get(run.handle.runId)!.status).toBe('running')
 
-    // 把最后一次 settle 时间拨回超时阈值之前，模拟 renderer 流程在两次请求之间挂死。
+    // 把最后一次 settle 时间拨回超时阈值之前，并把收场原因改成失败——
+    // 只有「失败/未知的最后尝试之后长时间没有新尝试」才是真挂死。
     const idleMs = 15 * 60_000
-    const row = f.db.prepare('SELECT usage_receipt_json FROM generation_attempts WHERE run_id=? ORDER BY rowid DESC LIMIT 1').pluck().get(run.handle.runId) as string
-    const receipt = JSON.parse(row)
-    receipt.result.settledAt = Date.now() - idleMs - 1000
-    f.db.prepare('UPDATE generation_attempts SET usage_receipt_json=? WHERE run_id=?').run(JSON.stringify(receipt), run.handle.runId)
+    const poison = (runId: string) => {
+      const row = f.db.prepare('SELECT usage_receipt_json FROM generation_attempts WHERE run_id=? ORDER BY rowid DESC LIMIT 1').pluck().get(runId) as string
+      const receipt = JSON.parse(row)
+      receipt.result.settledAt = Date.now() - idleMs - 1000
+      receipt.result.finishReason = 'error'
+      f.db.prepare('UPDATE generation_attempts SET usage_receipt_json=? WHERE run_id=?').run(JSON.stringify(receipt), runId)
+    }
+    poison(run.handle.runId)
 
     const reaped = repository.reapIdleRuns()
     expect(reaped).toEqual([run.handle.runId])
@@ -332,11 +337,21 @@ describe('chapter outline main authority', () => {
     expect(f.reopen().readContext(run.handle).plotOutlineRecovery).toBeDefined()
     // 未超时的运行不受影响。repository 在构造时捕获 db 句柄，reopen 后须用新实例。
     const reopenedOwner = f.reopen()
-    const fresh = reopenedOwner.begin(outlineSelection(f, 1))
+    const fresh = reopenedOwner.begin(outlineSelection(f, 2))
     const reopenedRepository = new GenerationRunRepository(() => f.db)
+    await reopenedOwner.execute({ handle: fresh.handle, invocationNonce: 'round-1', task: outlineTask(reopenedOwner.read(fresh.handle).plotOutline!) })
+    acceptOutline(reopenedOwner, fresh.handle)
+    reopenedRepository.pause(fresh.handle.rootActionId)
+    // 对照：最后一次尝试是 stop 的运行即使闲置超时也不收割——它的工作流多半
+    // 已经正常完成、只是运行行没有落账；判失败会给根挂上 blocked_code，把后续
+    // 以它为父级的合法续接（修稿/蓝图续写）全部堵死。
+    const idleStopRow = f.db.prepare('SELECT usage_receipt_json FROM generation_attempts WHERE run_id=? ORDER BY rowid DESC LIMIT 1').pluck().get(fresh.handle.runId) as string
+    const idleStopReceipt = JSON.parse(idleStopRow)
+    idleStopReceipt.result.settledAt = Date.now() - idleMs - 1000
+    f.db.prepare('UPDATE generation_attempts SET usage_receipt_json=? WHERE run_id=?').run(JSON.stringify(idleStopReceipt), fresh.handle.runId)
     expect(reopenedRepository.reapIdleRuns()).toEqual([])
-    // reopen 会把未完成运行挂起（suspendForProjectClose）；reap 只针对 active root。
-    expect(reopenedRepository.get(fresh.handle.runId)!.status).toBe('paused')
+    expect(reopenedRepository.get(fresh.handle.runId)!.status).not.toBe('failed')
+    expect(reopenedRepository.budget(fresh.handle.rootActionId).blockedCode).toBeNull()
   })
 
   it.each(['normal', 'compact'] as const)('keeps an unknown %s candidate and does not automatically resend it', async unknownKind => {

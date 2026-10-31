@@ -797,7 +797,8 @@ export class GenerationRunRepository {
         return this.transaction(() => {
             const rows = (this.db().prepare(`
         SELECT r.run_id, r.root_action_id,
-               json_extract(a.usage_receipt_json,'$.result.settledAt') AS settledAt
+               json_extract(a.usage_receipt_json,'$.result.settledAt') AS settledAt,
+               json_extract(a.usage_receipt_json,'$.result.finishReason') AS finishReason
           FROM generation_runs r
           JOIN generation_roots o ON o.root_action_id = r.root_action_id
           LEFT JOIN generation_attempts a ON a.rowid = (
@@ -807,7 +808,12 @@ export class GenerationRunRepository {
            AND o.blocked_code IS NULL
            AND o.active_since_ms IS NULL
            AND a.attempt_id IS NOT NULL
-      `).all() as { run_id: string; root_action_id: string; settledAt: number | null }[]).filter(row => row.settledAt !== null && this.now() - row.settledAt >= idleMs);
+      `).all() as { run_id: string; root_action_id: string; settledAt: number | null; finishReason: string | null }[])
+        // 只收割「真正挂死」的运行：最后一次尝试以失败/未知收场且 15 分钟没有新尝试。
+        // 最后一次尝试是 stop 的运行，其工作流多半已经正常完成、只是运行行没有落账——
+        // 把它判成失败并给根打上 blocked_code，会让后续以它为父级的合法续接
+        // （修稿、蓝图续写等）全部被 GENERATION_DIRECTORY_CONTINUATION_BLOCKED 拒之门外。
+        .filter(row => row.settledAt !== null && this.now() - row.settledAt >= idleMs && row.finishReason !== 'stop');
             const reaped: string[] = [];
             for (const row of rows) {
                 try {
