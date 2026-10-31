@@ -27,8 +27,24 @@ export async function openFromPalette(page) {
 
 /** 没有进行中的运行、上一次运行已完成。侧页在运行开始时自动展开，作者没关它就一直在。 */
 export async function waitForRunDone(page, timeout = 90_000) {
-  await anyCard(page).filter({ hasText: /^(上一次运行|Last run)/ }).getByText(/已完成|Complete/).waitFor({ state: 'visible', timeout })
-  await waitForCompletionToast(page)
+  // 确认门（如「确认采用角色提议」）出现时先点确认，再继续等完成。
+  const deadline = Date.now() + timeout
+  while (Date.now() < deadline) {
+    const confirmButton = page.locator('.run-confirm-button:visible')
+    if (await confirmButton.count() > 0) {
+      await confirmButton.first().click({ timeout: 5_000 }).catch(() => {})
+      await page.waitForTimeout(1_000)
+      continue
+    }
+    const done = anyCard(page).filter({ hasText: /^(上一次运行|Last run)/ }).getByText(/已完成|Complete/)
+    if (await done.count() > 0) {
+      await done.first().waitFor({ state: 'visible', timeout: 5_000 }).catch(() => {})
+      await waitForCompletionToast(page)
+      return
+    }
+    await page.waitForTimeout(2_000)
+  }
+  throw new Error(`waitForRunDone: not done within ${timeout}ms`)
 }
 
 /** 进行中分页里运行卡片的标题。 */

@@ -58,7 +58,13 @@ export async function generateRange(page, from, to) {
   // 生成对话框收起后警告才出现；先等它收起，否则「对话框或警告」会先命中还在卸载的对话框。
   await dialog.waitFor({ state: 'hidden' })
   const warning = page.getByRole('dialog', { name: '架构还不完整' })
-  await warning.or(runSheet.sheet(page)).first().waitFor({ state: 'visible', timeout: 60_000 })
+  try {
+    await warning.or(runSheet.sheet(page)).first().waitFor({ state: 'visible', timeout: 60_000 })
+  } catch (error) {
+    const body = await page.locator('body').innerText().catch(() => '<unreadable>')
+    console.log('[blueprint.generateRange] neither warning nor run sheet appeared; body:', body.slice(0, 800).replace(/\n+/g, ' | '))
+    throw error
+  }
   if (!await warning.isVisible()) return false
   await warning.getByRole('button', { name: '继续生成' }).click()
   return true
