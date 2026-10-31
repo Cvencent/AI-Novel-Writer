@@ -263,7 +263,7 @@ describe('写作此章弹层', () => {
     expect(popover.element().textContent).not.toMatch(/章节号|目标字数|章节定位|出场角色|关键事件/)
   })
 
-  it('一致性预检有提醒时不启动，在弹层里说明；仅本次忽略后才开始写', async () => {
+  it('一致性预检有提醒时首次点击只弹层说明；主按钮再点即带提醒开写', async () => {
     continuityProjections = [{
       draftId: 1, chapterNumber: 1, chapterTitle: '终局', chapterNotes: '老周死亡',
       source: { draftId: 1, finalizationId: 'finalization-1', chapterNumber: 1, contentHash: 'a'.repeat(64) },
@@ -277,11 +277,30 @@ describe('写作此章弹层', () => {
     await expect.element(popover.getByText(/一致性预检 · 1 条线索提醒/)).toBeVisible()
     expect(startWorkflow).not.toHaveBeenCalled()
 
+    // 提醒已展示：再点主按钮视为作者已读过，带提醒直接开写（页脚也如实说明）。
+    await act(async () => page.getByRole('button', { name: '写第 5 章' }).click())
+    await vi.waitFor(() => expect(startWorkflow).toHaveBeenCalledOnce())
+    expect(exemptions).toEqual([])
+  })
+
+  it('预检弹层里「带提醒继续写」与「改蓝图后重检」各自生效', async () => {
+    continuityProjections = [{
+      draftId: 1, chapterNumber: 1, chapterTitle: '终局', chapterNotes: '老周死亡',
+      source: { draftId: 1, finalizationId: 'finalization-1', chapterNumber: 1, contentHash: 'a'.repeat(64) },
+      sourceStatus: 'current',
+      facts: [{ category: 'character-state', entities: ['老周'], statement: '老周已经死亡。', sourceChapter: 1, evidence: '老周停止了呼吸。' }],
+    }]
+    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" />)
+    await act(async () => page.getByRole('button', { name: '写第 5 章' }).click())
+    const popover = page.getByRole('dialog', { name: '本次写作选项' })
+    await expect.element(popover.getByRole('region', { name: '一致性预检' })).toBeVisible()
+    expect(startWorkflow).not.toHaveBeenCalled()
+
     await act(async () => popover.getByRole('button', { name: '改蓝图后重检' }).click())
     await expect.element(popover.getByRole('region', { name: '一致性预检' })).toBeVisible()
     expect(startWorkflow).not.toHaveBeenCalled()
 
-    await act(async () => popover.getByRole('button', { name: '仅本次忽略' }).click())
+    await act(async () => popover.getByRole('button', { name: '带提醒继续写' }).click())
     await vi.waitFor(() => expect(startWorkflow).toHaveBeenCalledOnce())
     expect(exemptions).toEqual([])
   })
@@ -338,7 +357,7 @@ describe('写作此章弹层', () => {
     await expect.element(popover.getByLabelText(/知识库检索关键词/)).toHaveValue('列车时刻表')
   })
 
-  it('一致性预检提醒时作者改过的选项都留着，仅本次忽略后按这些选项写', async () => {
+  it('一致性预检提醒时作者改过的选项都留着，带提醒继续写后按这些选项写', async () => {
     continuityProjections = DEAD_KEEPER
     await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" />)
     await act(async () => page.getByRole('button', { name: '本次写作选项' }).click())
@@ -350,12 +369,12 @@ describe('写作此章弹层', () => {
     await expect.element(popover.getByRole('region', { name: '一致性预检' })).toBeVisible()
     await expect.element(popover.getByLabelText(/作者微操指导/)).toHaveValue('预检前写的指导')
     await expect.element(popover.getByLabelText(/知识库检索关键词/)).toHaveValue('列车时刻表')
-    await act(async () => popover.getByRole('button', { name: '仅本次忽略' }).click())
+    await act(async () => popover.getByRole('button', { name: '带提醒继续写' }).click())
     await vi.waitFor(() => expect(startWorkflow).toHaveBeenCalledOnce())
     expect(launched().chapterInfo).toMatchObject({ userGuidance: '预检前写的指导', knowledgeQueryHint: '列车时刻表' })
   })
 
-  it.each([[1280, 720], [1024, 640]])('%i×%i 下三条预检提醒时弹层停在视口内，内部滚到底点得到「仅本次忽略」，内部滚动不关闭弹层', async (width, height) => {
+  it.each([[1280, 720], [1024, 640]])('%i×%i 下三条预检提醒时弹层停在视口内，内部滚到底点得到「带提醒继续写」，内部滚动不关闭弹层', async (width, height) => {
     await page.viewport(width, height)
     await vi.waitFor(() => expect([window.innerWidth, window.innerHeight]).toEqual([width, height]))
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
@@ -378,7 +397,7 @@ describe('写作此章弹层', () => {
       layer.scrollTop = layer.scrollHeight
       await new Promise(resolve => layer.addEventListener('scroll', resolve, { once: true }))
     })
-    const ignore = popover.getByRole('button', { name: '仅本次忽略' }).element()
+    const ignore = popover.getByRole('button', { name: '带提醒继续写' }).element()
     const rect = ignore.getBoundingClientRect()
     expect(rect.bottom).toBeLessThanOrEqual(layer.getBoundingClientRect().bottom)
     expect(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)).toBe(ignore)
@@ -432,7 +451,7 @@ describe('写作此章弹层', () => {
     await act(async () => popover.getByLabelText('安排说明').fill('老周以幽灵身份出现，是刻意安排。'))
     await act(async () => popover.getByRole('button', { name: '保存安排' }).click())
     await expect.element(popover.getByRole('button', { name: '保存安排' })).toBeDisabled()
-    await expect.element(popover.getByRole('button', { name: '仅本次忽略' })).toBeDisabled()
+    await expect.element(popover.getByRole('button', { name: '带提醒继续写' })).toBeDisabled()
     const main = page.getByRole('button', { name: '写第 5 章' }).element() as HTMLButtonElement
     expect(main.disabled).toBe(true)
     expect(main.getAttribute('aria-busy')).toBeNull()

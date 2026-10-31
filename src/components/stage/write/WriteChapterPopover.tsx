@@ -158,6 +158,9 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
   }
 
   const showPreflight = preflight && (preflight.findings.length > 0 || preflight.exemptions.some(item => !item.revoked))
+  // 预检提醒已经展示过一次后，主按钮再点就是「带提醒开写」：预检只是证据提示，
+  // 不该让作者在同一个按钮上反复弹层（弹层页脚明明写着「点『写第 N 章』开始」）。
+  const preflightSeen = !!preflight && preflight.findings.length > 0
 
   return (
     <SplitAction
@@ -166,7 +169,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       icon={<PenLine size={15} aria-hidden />}
       disabled={busy}
       busy={starting}
-      onRun={() => void start(false)}
+      onRun={() => void start(preflightSeen)}
       optionsLabel={text('本次写作选项', 'Options for this run')}
       popoverClassName="stage-write-pop"
     >
@@ -227,7 +230,9 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
         />
       )}
       {message && <p className="stage-write-error" role="alert">{message}</p>}
-      <p className="stage-write-foot">{text(`这些选项只用于本次写作，点「${label}」开始。`, `These options apply to this run only. Choose “${label}” to start.`)}</p>
+      <p className="stage-write-foot">{preflightSeen
+        ? text(`这些选项只用于本次写作。再点「${label}」将带提醒开始写；也可以在下方保存安排。`, `These options apply to this run only. Click “${label}” again to start with reminders, or save an arrangement below.`)
+        : text(`这些选项只用于本次写作，点「${label}」开始。`, `These options apply to this run only. Choose “${label}” to start.`)}</p>
     </SplitAction>
   )
 }

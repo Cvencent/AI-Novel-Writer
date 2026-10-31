@@ -13,7 +13,7 @@ interface WritePreflightProps {
   onRevoke: (stableFactKey: string) => void
 }
 
-/** 写作弹层里的一致性预检：线索提醒只作提示，作者可以保存为刻意安排、仅本次忽略，或改蓝图后重检；已保存的安排可以撤销。 */
+/** 写作弹层里的一致性预检：线索提醒只作提示，作者可以保存为刻意安排、带提醒继续写，或改蓝图后重检；已保存的安排可以撤销。 */
 export default function WritePreflight({ preflight, busy, onIgnoreOnce, onRerun, onSave, onRevoke }: WritePreflightProps) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
@@ -56,7 +56,7 @@ export default function WritePreflight({ preflight, busy, onIgnoreOnce, onRerun,
       })}
       {findings.length > 0 && (
         <div className="stage-preflight-actions">
-          <Button variant="text" size="sm" disabled={busy} onClick={onIgnoreOnce}>{text('仅本次忽略', 'Ignore this time')}</Button>
+          <Button variant="text" size="sm" disabled={busy} onClick={onIgnoreOnce}>{text('带提醒继续写', 'Continue with reminders')}</Button>
           <Button variant="text" size="sm" disabled={busy} onClick={onRerun}>{text('改蓝图后重检', 'Recheck after editing')}</Button>
         </div>
       )}

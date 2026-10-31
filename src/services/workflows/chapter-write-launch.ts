@@ -150,7 +150,7 @@ export interface ChapterWriteLaunch {
   generationModelId: string | null
   /** 设定里的每章字数，表单字数无效时回退到它。 */
   wordsPerChapter: number | undefined
-  /** 一致性预检提醒「仅本次忽略」后重新开始。 */
+  /** 一致性预检提醒确认后（带提醒继续写）重新开始。 */
   ignoreFindingsOnce: boolean
   locale: Locale
 }
