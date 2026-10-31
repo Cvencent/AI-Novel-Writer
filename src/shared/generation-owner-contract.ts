@@ -70,7 +70,7 @@ export const MATERIAL_DECISION_OMISSION_REASONS = [
   'invalid-source-ref', 'plot-tree-not-manuscript', 'duplicate-content',
   'duplicate-source-ref', 'budget',
   'source-invalid', 'evidence-not-locatable', 'no-relevant-passage',
-  'deduplicated-against-finalized',
+  'deduplicated-against-finalized', 'superseded-by-candidate',
 ] as const
 export type MaterialDecisionOmissionReason = typeof MATERIAL_DECISION_OMISSION_REASONS[number]
 

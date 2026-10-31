@@ -429,13 +429,12 @@ describe('chapter materials', () => {
       const roomy = await assemble({ ...base, references: [] })
       const fullBlock = `${scenario.header}\n${scenario.content}`
       expect(finalizedBlock(roomy, 11)).toBe(fullBlock)
-      const authorUnits = roomy.decision.included.find(item => item.sourceId === 'author:required')!.units
       const capacity = base.budgetChars * (scenario.writingLanguage === 'zh-CN' ? 3 : 1)
-      const fillerCount = Math.floor((capacity - authorUnits - Math.floor(bytes(fullBlock) / 2) - bytes(scenario.term)) / bytes(scenario.filler))
+      // 可选额度是独立预算：竞争者必须自己撑破它，才会被挡住。
+      const fillerCount = Math.ceil((capacity + 1 - bytes(scenario.term)) / bytes(scenario.filler))
       const reference = { text: scenario.term, rendered: `${scenario.term}${scenario.filler.repeat(fillerCount)}` }
-      expect(authorUnits + bytes(reference.rendered)).toBeLessThanOrEqual(capacity)
-      expect(authorUnits + bytes(reference.rendered) + bytes(fullBlock)).toBeGreaterThan(capacity)
-      expect(authorUnits + bytes(fullBlock)).toBeLessThanOrEqual(capacity)
+      expect(bytes(reference.rendered)).toBeGreaterThan(capacity)
+      expect(bytes(fullBlock)).toBeLessThanOrEqual(capacity)
 
       const bundle = await assemble({ ...base, references: [reference] })
 
@@ -504,7 +503,7 @@ describe('chapter materials', () => {
       expect(bundle.text).toContain('批内上一章候选结尾。')
       expect(finalizedBlock(bundle, 11)).toBe('')
       expect(bundle.consumedFinalizedSources).toEqual([])
-      expect(bundle.omissions).toContainEqual({ source: 'finalized', chapterNumber: 1, reason: 'budget' })
+      expect(bundle.omissions).toContainEqual({ source: 'finalized', chapterNumber: 1, reason: 'superseded-by-candidate' })
     })
 
     it('retains the complete predecessor when even its ending exceeds the remaining optional room', async () => {
@@ -882,7 +881,10 @@ describe('chapter materials', () => {
       finalized: [{ chapterNumber: 1, draftId: 99, title: '旧章', content, evidence: ['已失效的定位'], sourceStatus: 'stale' as const }],
     }
     const bundle = await assemble(input)
-    for (const sourceId of ['candidate:101', 'candidate:100', 'finalized:99']) {
+    // candidate:100 与 finalized:99 同文同章，已被定稿去重吸收，不再重复进入提示词。
+    expect(bundle.omissions).toContainEqual({ source: 'candidate', chapterNumber: 1, reason: 'duplicate-content' })
+    expect(bundle.selection.included.some(item => item.ref.sourceId === 'candidate:100')).toBe(false)
+    for (const sourceId of ['candidate:101', 'finalized:99']) {
       const material = bundle.selection.included.find(item => item.ref.sourceId === sourceId)!
       expect(material.text).toContain(middle)
       expect(material.text).toContain(late)
@@ -997,11 +999,11 @@ describe('审稿/修稿入口的共享准入（selectReviewRevisionMaterials）'
     })
   })
 
-  it('admits required text above the local ceiling without admitting optional history above its remaining allowance', () => {
+  it('admits required text above the local ceiling while the optional allowance stays independent', () => {
     const required = '长'.repeat(9_000)
     const admission = select([
       material('finalized:1', hash('a'), required, { required: true }),
-      material('finalized:2', hash('b'), '可选历史'),
+      material('finalized:2', hash('b'), '可'.repeat(9_000)),
     ], 8_000)
     expect(admission.admitted.map(item => item.text)).toEqual([required])
     expect(admission.decision.capacity).toMatchObject({ maxInputUnits: MATERIAL_DECISION_MAX_INPUT_UNITS, admittedUnits: 27_000 })
@@ -1009,8 +1011,8 @@ describe('审稿/修稿入口的共享准入（selectReviewRevisionMaterials）'
 
     const bounded = select([
       material('finalized:1', hash('a'), '前'.repeat(6_000), { required: true }),
-      material('finalized:2', hash('b'), '小'.repeat(1_000)),
-      material('finalized:3', hash('c'), '大'.repeat(1_500)),
+      material('finalized:2', hash('b'), '小'.repeat(6_000)),
+      material('finalized:3', hash('c'), '大'.repeat(3_000)),
     ], 8_000)
     expect(bounded.admitted.map(item => item.identity.sourceId)).toEqual(['finalized:1', 'finalized:2'])
     expect(bounded.selection.omissions).toContainEqual(expect.objectContaining({ sourceId: 'finalized:3', reason: 'budget' }))

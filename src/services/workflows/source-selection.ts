@@ -191,6 +191,9 @@ export function selectChapterSources(input: SourceSelectionInput): SourceSelecti
   const included: SelectedMaterial[] = []
   const coveredContent = new Set<string>()
   let remaining = input.capacity.maxInputUnits
+  // 可选额度只结算可选材料。把必需材料也算进去时，作者资料＋上一章正文一旦超过
+  // 本地额度，所有可选历史都会被永久饿死（只剩紧邻的上一章）。
+  let optionalIncluded = 0
 
   for (const candidate of requiredFirst) {
     // 同一份不可变内容已由别的来源贡献：只记一次重复省略就够，
@@ -213,11 +216,12 @@ export function selectChapterSources(input: SourceSelectionInput): SourceSelecti
     }
     const cost = blocks.reduce((sum, piece) => sum + unitOf(piece.text), 0)
     if (cost > remaining || !candidate.required && input.optionalMaterialCeiling !== undefined
-      && input.capacity.maxInputUnits - remaining + cost > input.optionalMaterialCeiling) {
+      && optionalIncluded + cost > input.optionalMaterialCeiling) {
       block(candidate, 'budget')
       continue
     }
     remaining -= cost
+    if (!candidate.required) optionalIncluded += cost
     for (const piece of blocks) {
       included.push({ ref: candidate.ref, category: candidate.category, text: piece.text,
         required: candidate.required, reason: piece.reason })

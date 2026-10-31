@@ -50,7 +50,7 @@ export interface ChapterMaterialOmission {
    * `evidence-not-locatable` / `source-invalid` / `no-relevant-passage` 由材料摘取给出，
    * `budget` / `duplicate-content` 由选择契约的容量与内容唯一性结算给出。
    */
-  reason: 'evidence-not-locatable' | 'source-invalid' | 'no-relevant-passage' | 'budget' | 'duplicate-content'
+  reason: 'evidence-not-locatable' | 'source-invalid' | 'no-relevant-passage' | 'budget' | 'duplicate-content' | 'superseded-by-candidate'
 }
 
 export interface ChapterMaterialReference {
@@ -487,9 +487,17 @@ export async function assembleChapterMaterials(input: {
   const requiredPredecessor = orderedCandidates.length === 1
     ? orderedCandidates[0]
     : explicitRequiredCandidates[0]
-  const predecessorSource = requiredPredecessor
-    ? undefined
-    : input.finalized.find(source => source.includeEnding && source.sourceStatus !== 'invalid' && source.content.trim())
+  // 同一章、同一份正文既有候选又是定稿时，定稿才是可绑定的权威来源：
+  // 候选按重复内容省略，前驱由这份定稿承担。
+  const identicalFinalizedPredecessor = requiredPredecessor
+    ? input.finalized.find(source => source.sourceStatus !== 'invalid'
+        && source.chapterNumber === requiredPredecessor.chapterNumber
+        && source.content.trim() === requiredPredecessor.content.trim())
+    : undefined
+  const predecessorSource = identicalFinalizedPredecessor
+    ?? (requiredPredecessor
+      ? undefined
+      : input.finalized.find(source => source.includeEnding && source.sourceStatus !== 'invalid' && source.content.trim()))
 
   const push = async (family: MaterialFamily, material: {
     sourceId: string
@@ -573,6 +581,24 @@ export async function assembleChapterMaterials(input: {
   // ---- 定稿来源 ----
   // 摘取顺序仍是新章在前，这样摘取层的省略清单保持稳定；**渲染顺序由合同决定**。
   for (const source of [...input.finalized].sort((left, right) => right.chapterNumber - left.chapterNumber)) {
+    // 作者已经指定了同章的未定稿候选作前驱时，该章旧版定稿不再是续写边界：
+    // 两版同章正文同时进提示词只会让模型在旧稿和新稿之间摇摆。
+    if (requiredPredecessor && !identicalFinalizedPredecessor
+      && source.chapterNumber === requiredPredecessor.chapterNumber) {
+      omissions.push({
+        source: 'finalized',
+        chapterNumber: source.chapterNumber,
+        reason: 'superseded-by-candidate',
+      })
+      await recordDecisionOmission({
+        sourceId: `finalized:${source.draftId}`,
+        revision: source.draftId,
+        text: source.content,
+        reason: 'superseded-by-candidate',
+        category: 'finalized-history',
+      })
+      continue
+    }
     if (source.sourceStatus === 'invalid') {
       omissions.push({
         source: 'finalized',
@@ -632,6 +658,32 @@ export async function assembleChapterMaterials(input: {
   let requiredPredecessorMaterial: MaterialCandidate | undefined
   for (const candidate of orderedCandidates) {
     const isRequired = candidate === requiredPredecessor
+    // 同章定稿原文已经包含这段候选正文时，候选不再贡献新事实。
+    // 可选额度独立后如果不显式去重，同章的两份相同正文会一起挤进提示词。
+    const candidateText = candidate.content.trim()
+    if (candidate === requiredPredecessor && identicalFinalizedPredecessor) {
+      omissions.push({ source: 'candidate', chapterNumber: candidate.chapterNumber, reason: 'duplicate-content' })
+      await recordDecisionOmission({
+        sourceId: `candidate:${candidate.draftId}`,
+        revision: candidate.version,
+        text: candidate.content,
+        reason: 'duplicate-content',
+        category: 'finalized-history',
+      })
+      continue
+    }
+    if (!isRequired && candidateText && input.finalized.some(source =>
+      source.sourceStatus !== 'invalid' && source.content.includes(candidateText))) {
+      omissions.push({ source: 'candidate', chapterNumber: candidate.chapterNumber, reason: 'duplicate-content' })
+      await recordDecisionOmission({
+        sourceId: `candidate:${candidate.draftId}`,
+        revision: candidate.version,
+        text: candidate.content,
+        reason: 'duplicate-content',
+        category: 'finalized-history',
+      })
+      continue
+    }
     const passages = candidatePassages(candidate, isRequired, input.relevanceTerms)
     if (passages.length === 0) {
       omissions.push({ source: 'candidate', chapterNumber: candidate.chapterNumber, reason: 'no-relevant-passage' })
@@ -659,7 +711,7 @@ export async function assembleChapterMaterials(input: {
     })
     if (isRequired) requiredPredecessorMaterial = material
   }
-  if (requiredPredecessor && !requiredPredecessorMaterial) {
+  if (requiredPredecessor && !requiredPredecessorMaterial && !identicalFinalizedPredecessor) {
     throw new ChapterMaterialCapacityError({
       decision: 'capacity-conflict',
       blockingSourceId: `candidate:${requiredPredecessor.draftId}`,
