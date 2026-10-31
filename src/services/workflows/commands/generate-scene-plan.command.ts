@@ -19,7 +19,7 @@ export class GenerateScenePlanCommand extends BaseWorkflowCommand<SceneCard[]> {
   async execute(params: CommandExecuteParams): Promise<SceneCard[]> {
     return this.executeWithGenerationRuntime('structured', params, () => this.executeWithinGeneration(params), {
       authorInputs: [{ id: 'scene-plan:chapter', text: String(this.params.chapterNumber) }, { id: 'scene-plan:target-units', text: String(this.params.targetWords) }],
-      operation: 'generate-scene-plan', promptKeys: [], skillStages: ['planning'], output: 'structured-data',
+      operation: 'generate-scene-plan', promptKeys: ['chapter_blueprint'], skillStages: ['planning'], output: 'structured-data',
     })
   }
 

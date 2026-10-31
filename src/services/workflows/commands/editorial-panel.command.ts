@@ -21,7 +21,10 @@ export class EditorialPanelCommand extends BaseWorkflowCommand<DraftQualityRevie
   async execute(params: CommandExecuteParams): Promise<DraftQualityReview> {
     return this.executeWithGenerationRuntime('structured', params, () => this.executeWithinGeneration(params), {
       authorInputs: [{ id: 'editorial-panel:draft', text: String(this.params.draftId) }, { id: 'editorial-panel:version', text: String(this.params.draftVersion) }],
-      operation: 'editorial-panel-review', promptKeys: [], skillStages: ['review'], output: 'structured-data',
+      // begin 准入要求 promptKeys 非空且可解析到内建模板（来源绑定会对每个 key
+      // 取内建提示词做指纹）。本命令的评审提示词由 buildEditorialPanelPrompt
+      // 内联构建，这里登记语义最接近的 consistency_check 作为来源资产。
+      operation: 'editorial-panel-review', promptKeys: ['consistency_check'], skillStages: ['review'], output: 'structured-data',
     })
   }
 

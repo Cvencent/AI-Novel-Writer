@@ -20,7 +20,7 @@ export class ExtractVoiceProfilesCommand extends BaseWorkflowCommand<CharacterVo
   async execute(params: CommandExecuteParams): Promise<CharacterVoiceProfileRecord[]> {
     return this.executeWithGenerationRuntime('structured', params, () => this.executeWithinGeneration(params), {
       authorInputs: [{ id: 'voice-profile:draft', text: String(this.params.draftId) }, { id: 'voice-profile:version', text: String(this.params.draftVersion) }],
-      operation: 'extract-character-voices', promptKeys: [], skillStages: ['review'], output: 'structured-data',
+      operation: 'extract-character-voices', promptKeys: ['update_character_cards'], skillStages: ['review'], output: 'structured-data',
     })
   }
 
