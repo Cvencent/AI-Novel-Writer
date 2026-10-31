@@ -258,6 +258,10 @@ export function useChapterBlueprints({
       applyVisibleDraftState([], new Set())
     }
     try {
+      // 权威章号与蓝图清单互不依赖：并行取，省一次串行往返。
+      const nextChapterPromise = readAuthoritativeNextChapter(projectSession, locale)
+        .then(next => ({ next }))
+        .catch((error: unknown) => ({ error }))
       const restored = await refreshChapterCardDraftFromRemote({
         projectKey,
         loadRemote: () => loadDirectoryBlueprints(projectKey, projectSession),
@@ -280,14 +284,14 @@ export function useChapterBlueprints({
       })
       // 项目可能在远端读取期间切换；旧项目结果不会进入 commit。
       if (!restored || !isLatestProjectRequest()) return
-      try {
-        const nextChapter = await readAuthoritativeNextChapter(projectSession, locale)
-        if (!isLatestProjectRequest()) return
+      const outcome = await nextChapterPromise
+      if (!isLatestProjectRequest()) return
+      if ('next' in outcome) {
         setAuthorityError(null)
         setLegacyImportedTextRecoveryChapter(null)
-        setNextWriteChapter(nextChapter)
-      } catch (error) {
-        if (!isLatestProjectRequest()) return
+        setNextWriteChapter(outcome.next)
+      } else {
+        const error = outcome.error
         const message = error instanceof Error ? error.message : String(error)
         const recoveryChapter = error instanceof AuthoritativeChapterSequenceError
           && error.sequence.firstGapChapterNumber !== undefined
