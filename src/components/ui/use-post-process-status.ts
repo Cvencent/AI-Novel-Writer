@@ -7,12 +7,27 @@ import { captureProjectSession, isProjectSessionCurrent } from '../project-sessi
 
 export type StepPresentation = 'success' | 'pending' | 'failed'
 
+/** 这条运行被中断了：创建后从未推进过任何账目（updated=created）、没跑完，
+ *  且已过去足够久——后处理是进程内工作流，重启后不可能还在跑，而它也不会自己恢复。
+ *  把这种形态从「处理中」里救出来标成失败，作者才有「重试」入口（issue #8）。 */
+export function isRunInterrupted(run: Pick<PostProcessStatus, 'createdAt' | 'updatedAt' | 'allCriticalPassed'>, now = Date.now()): boolean {
+  if (run.allCriticalPassed) return false
+  if (run.updatedAt !== run.createdAt) return false
+  const created = new Date(run.createdAt).getTime()
+  if (!Number.isFinite(created)) return false
+  return now - created > INTERRUPTED_RUN_GRACE_MS
+}
+
+const INTERRUPTED_RUN_GRACE_MS = 2 * 60_000
+
 /**
  * A fresh post-process run persists every step before it attempts any of them.
  * The database default is `ok = false`, so distinguish that pending shape from
- * a failed attempt by requiring durable failure evidence.
+ * a failed attempt by requiring durable failure evidence. A stale never-advanced
+ * run (app killed mid-run) is reported as interrupted instead of spinning on
+ * 「处理中」forever.
  */
-export function getStepPresentation(step: PostProcessStatus['steps'][string]): StepPresentation {
+export function getStepPresentation(step: PostProcessStatus['steps'][string], runInterrupted = false): StepPresentation {
   if (step.ok) return 'success'
 
   const hasFailureEvidence = Number(step.attemptCount) > 0
@@ -20,7 +35,7 @@ export function getStepPresentation(step: PostProcessStatus['steps'][string]): S
     || Boolean(step.lastAttemptAt?.trim())
     || Boolean(step.completedAt?.trim())
 
-  return hasFailureEvidence ? 'failed' : 'pending'
+  return hasFailureEvidence || runInterrupted ? 'failed' : 'pending'
 }
 
 /**
@@ -72,7 +87,7 @@ export function usePostProcessStatus(scope: string) {
   }, [loadStatus, project])
 
   const steps = status
-    ? Object.entries(status.steps).map(([key, step]) => ({ key, step, presentation: getStepPresentation(step) }))
+    ? Object.entries(status.steps).map(([key, step]) => ({ key, step, presentation: getStepPresentation(step, isRunInterrupted(status)) }))
     : []
-  return { status, loading, steps }
+  return { status, loading, steps, runInterrupted: status ? isRunInterrupted(status) : false }
 }

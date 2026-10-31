@@ -49,7 +49,7 @@ export default function PostProcessSteps({ chapterNumber, draftId, publication, 
 }) {
   const durablePublication = useDurablePublication(chapterNumber, draftId)
   const text = useLocaleStore(s => s.text)
-  const { loading, steps } = usePostProcessStatus(getChapterFinalizeScope(chapterNumber))
+  const { loading, steps, runInterrupted } = usePostProcessStatus(getChapterFinalizeScope(chapterNumber))
   if (loading && !publication) return null
 
   const publicationShown = publication ?? (durablePublication === 'published' ? 'published' : undefined)
@@ -70,7 +70,10 @@ export default function PostProcessSteps({ chapterNumber, draftId, publication, 
       presentation,
       detail: presentation === 'success'
         ? text('完成', 'Done')
-        : presentation === 'pending' ? text('处理中', 'In progress') : step.error || text('失败', 'Failed'),
+        : presentation === 'pending' ? text('处理中', 'In progress')
+          : runInterrupted && !step.error?.trim()
+            ? text('上次运行被中断，未执行到这一步', 'The previous run was interrupted before this step')
+            : step.error || text('失败', 'Failed'),
       retry: () => onRetryStep(key),
       retryLabel: text('重试', 'Retry'),
     })),
