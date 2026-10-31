@@ -145,7 +145,23 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
     openRevision(pending)
   }, [stage, pending, mergeData, mergeLater, openRevision])
 
-  const startReview = () => void draft.review(dims.filter(dim => checkedDims[dim.key]).map(dim => dim.promptLabel).join('、') || undefined)
+  // 审稿完成后自动打开审稿报告：勾选意见、编辑部评审（五角色）都在那份侧页里，
+  // 不自动打开的话作者只能从「更多操作 → 审稿报告」自己找，容易以为流程没走完。
+  // 只在「新出现一份审稿」时打开一次：切章节/重开时已有的旧报告不打扰。
+  const pendingReviewOpen = useRef<{ baseline: number | null } | null>(null)
+  useEffect(() => {
+    const pending = pendingReviewOpen.current
+    if (!pending) return
+    const current = review?.reviewId ?? null
+    if (current !== null && current !== pending.baseline) {
+      pendingReviewOpen.current = null
+      setSheet(true)
+    }
+  }, [review?.reviewId])
+  const startReview = () => {
+    pendingReviewOpen.current = { baseline: review?.reviewId ?? null }
+    void draft.review(dims.filter(dim => checkedDims[dim.key]).map(dim => dim.promptLabel).join('、') || undefined)
+  }
 
   /**
    * 按勾选的意见修稿：清单改过或还没确认就先确认成新快照，再按它启动修稿；失败原因写在侧页里。
