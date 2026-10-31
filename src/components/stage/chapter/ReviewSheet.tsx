@@ -151,7 +151,7 @@ export default function ReviewSheet({ checklist, subtitle, reportText, chapterNu
         </div>
       )}
     >
-      <EditorialPanelSection chapterNumber={chapterNumber} draftId={draftId} draftVersion={draftVersion} />
+      <EditorialPanelSection chapterNumber={chapterNumber} draftId={draftId} draftVersion={draftVersion} checklist={checklist} />
       <StatGrid
         label={text('审稿统计', 'Review summary')}
         items={[

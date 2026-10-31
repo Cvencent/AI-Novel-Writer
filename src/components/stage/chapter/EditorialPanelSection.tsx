@@ -9,6 +9,9 @@ import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
 import { globalEventBus } from '../../../shared/event-bus'
 import type { DraftQualityReview, EditorialRole } from '../../../shared/writing-intelligence'
+import type { useReviewChecklist } from '../../editor/review-checklist'
+
+type Checklist = ReturnType<typeof useReviewChecklist>
 import { Button } from '../../ui/Button'
 import { StatGrid } from '../../ui/StatGrid'
 
@@ -16,10 +19,12 @@ const ROLE_LABELS: Record<EditorialRole, [string, string]> = {
   plot: ['情节', 'Plot'], continuity: ['连续性', 'Continuity'], character: ['角色', 'Character'], style: ['文风', 'Style'], pacing: ['节奏', 'Pacing'],
 }
 
-export default function EditorialPanelSection({ chapterNumber, draftId, draftVersion }: {
+export default function EditorialPanelSection({ chapterNumber, draftId, draftVersion, checklist }: {
   chapterNumber: number
   draftId?: number
   draftVersion?: number
+  /** 提供时，编辑部发现项可逐条「纳入修稿」，与普通审稿意见走同一条修稿链路。 */
+  checklist?: Checklist
 }) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
@@ -89,14 +94,50 @@ export default function EditorialPanelSection({ chapterNumber, draftId, draftVer
           ]} />
           {quality.summary && <p className="stage-ch-sheet-summary">{quality.summary}</p>}
           <div className="stage-editorial-roles">
-            {quality.roles.map(role => (
+            {quality.roles.map(role => {
+              const roleLabel = text(...ROLE_LABELS[role.role])
+              return (
               <details key={role.role} className="stage-editorial-role" open={role.findings.some(finding => finding.severity === 'blocking') || undefined}>
-                <summary><b>{text(...ROLE_LABELS[role.role])}</b><span>{role.score.toFixed(0)}</span><small>{role.summary}</small></summary>
-                {role.findings.length > 0 ? <ul>{role.findings.map((finding, index) => <li key={index} data-severity={finding.severity}><b>{finding.severity}</b>{finding.description}{finding.evidence && <q>{finding.evidence}</q>}</li>)}</ul>
-                  : <p>{text('未发现需要记录的问题。', 'No finding recorded.')}</p>}
+                <summary><b>{roleLabel}</b><span>{role.score.toFixed(0)}</span><small>{role.summary}</small></summary>
+                {role.findings.length > 0 ? (
+                  <ul>
+                    {role.findings.map((finding, index) => {
+                      const included = checklist
+                        ? checklist.items.some(item => item.origin === 'author'
+                            && (item.description + '|' + (item.quote ?? '')).trim() === (finding.description + '|' + (finding.evidence ?? '')).trim())
+                        : false
+                      return (
+                        <li key={index} data-severity={finding.severity}>
+                          <b>{finding.severity}</b>
+                          {finding.description}
+                          {finding.evidence && <q>{finding.evidence}</q>}
+                          {checklist && (included
+                            ? <span className="stage-editorial-included">{text('已纳入修稿', 'Included in revision')}</span>
+                            : <Button variant="secondary" size="sm" onClick={() => {
+                                checklist.includeEditorialFinding({ severity: finding.severity, description: finding.description, evidence: finding.evidence, roleLabel })
+                              }}>{text('纳入修稿', 'Include in revision')}</Button>)}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                ) : <p>{text('未发现需要记录的问题。', 'No finding recorded.')}</p>}
               </details>
-            ))}
+              )
+            })}
           </div>
+          {checklist && quality.roles.some(role => role.findings.length > 0) && (
+            <div className="stage-editorial-actions">
+              <Button variant="secondary" size="sm" onClick={() => {
+                for (const role of quality.roles) {
+                  const roleLabel = text(...ROLE_LABELS[role.role])
+                  for (const finding of role.findings) {
+                    checklist.includeEditorialFinding({ severity: finding.severity, description: finding.description, evidence: finding.evidence, roleLabel })
+                  }
+                }
+              }}>{text('全部纳入修稿', 'Include all in revision')}</Button>
+              <span className="stage-editorial-hint">{text('纳入后与普通审稿意见一样：在上方清单勾选，然后「按 N 项意见修稿」。', 'Included notes join the checklist above: tick them, then revise by the selected items.')}</span>
+            </div>
+          )}
         </>
       ) : <p className="stage-ch-sheet-note">{text('还没有编辑部评分。运行后会写入这份草稿的质量记录。', 'No editorial score yet. Running it records quality for this draft.')}</p>}
     </section>

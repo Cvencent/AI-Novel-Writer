@@ -432,6 +432,30 @@ export function useReviewChecklist({
     })
   }
 
+  // 把编辑部评审的一条发现纳入修稿清单：以「编辑部·角色」为类别、severity
+  // 对齐到清单的三档、证据作为原文引用。重复纳入同一条会被拒绝（按描述+证据判重）。
+  const includeEditorialFinding = (finding: { severity: string; description: string; evidence?: string; roleLabel: string }): boolean => {
+    const key = (finding.description + '|' + (finding.evidence ?? '')).trim()
+    if (items.some(item => (item.description + '|' + (item.quote ?? '')).trim() === key)) return false
+    const severity = (finding.severity === 'blocking' ? 'error' : 'warning') as 'error' | 'warning'
+    const next: EditableReviewItem[] = [
+      ...items,
+      {
+        id: 'editorial-' + Date.now() + '-' + (items.length + 1),
+        reviewItemIndex: items.length,
+        category: text('编辑部评审', 'Editorial panel') + '·' + finding.roleLabel,
+        severity,
+        description: finding.description,
+        quote: finding.evidence || undefined,
+        decision: 'apply',
+        origin: 'author',
+      },
+    ]
+    setItems(next)
+    persistEditingDraft(next, authorGuidance)
+    setEditingChecklist(true)
+    return true
+  }
   const addAuthorItem = () => {
     setItems(current => {
       const authorItemCount = current.filter(item => item.origin === 'author').length
@@ -815,7 +839,7 @@ export function useReviewChecklist({
     items, authorGuidance, confirmed, editingChecklist, setEditingChecklist,
     checklistError, setChecklistError, confirming, processing, rechecking, recheckMessage,
     summary, goalReview, canManageChecklist, cycle,
-    updateItem, removeItem, addAuthorItem, setAuthorGuidance: setAuthorGuidancePersisted, confirmChecklist, startConfirmedRevision, retryRequiredRecheck,
+    updateItem, removeItem, addAuthorItem, includeEditorialFinding, setAuthorGuidance: setAuthorGuidancePersisted, confirmChecklist, startConfirmedRevision, retryRequiredRecheck,
   }
 }
 
