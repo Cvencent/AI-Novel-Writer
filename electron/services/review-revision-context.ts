@@ -5,6 +5,8 @@ import type { PrepareReviewRevisionRequest, ReviewMaterialIdentity, ReviewRevisi
 import { parseHumanConfirmedReviewSnapshot, serializeHumanConfirmedReviewSnapshot } from '../../src/shared/human-confirmed-review'
 import { freezeChapterGoals } from '../../src/shared/chapter-goal-review'
 import { findBlueprintContinuityRisks } from '../../src/shared/consistency-preflight'
+import { findProseRepetition, proseRepetitionEvidence } from '../../src/shared/prose-repetition'
+import type { ConsistencyFinding } from '../../src/shared/consistency-preflight'
 import { CHARACTER_STATE_TEXT_FIELDS } from '../../src/shared/character-roster'
 import { ProjectCoreRepository } from '../repositories/project-core-repository'
 import { CharacterRepository } from '../repositories/character-repository'
@@ -148,7 +150,52 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
       worldbuilding: core.worldbuilding, history, blueprints, ...(predecessor ? { predecessor } : {}),
       frozenGoals: freezeChapterGoals(source.chapterNumber, currentBlueprint?.keyEvents,
         [core.worldSetting, ...authorCards.map(card => card.notes)]),
-      preflightFindings: currentBlueprint ? findBlueprintContinuityRisks(history.flatMap(item => item.projection ? [item.projection] : []), currentBlueprint, ConsistencyExemptionRepository.list(db)) : [],
+      preflightFindings: [
+        ...(currentBlueprint ? findBlueprintContinuityRisks(history.flatMap(item => item.projection ? [item.projection] : []), currentBlueprint, ConsistencyExemptionRepository.list(db)) : []),
+        // 正文层的跨章重复（issue #32 场景装置 / #33 人物反应句式）：审稿的「跨章重复」
+        // 维度对「同构写法」0 命中（本样本 19 份报告只报出 1 条逐字复写），这里用可机器判的
+        // 分布判据补上——样本是**最近定稿正文 + 本章正文**，正是审稿该看的范围。
+        ...proseRepetitionFindings([...history.map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
+          { chapterNumber: source.chapterNumber, content: source.content }], source.chapterNumber),
+      ],
       ...(confirmation ? { confirmation } : {}), ...(recheck ? { recheck } : {}) }
   })()
+}
+
+/**
+ * 正文层重复 → 一致性发现（issue #32 / #33）。
+ *
+ * 只在「同一族短语覆盖了六成以上样本章」时才报，且样本 ≥ 8 章；本机 9 章定稿样本
+ * （写法各异）覆盖 2/9 不触发——这是刻意的保守阈值，避免给作者刷噪声。
+ * stableFactKey 带章号与族名，便于作者在一致性豁免里逐条关掉。
+ */
+export function proseRepetitionFindings(
+  chapters: ReadonlyArray<{ chapterNumber: number; content: string }>,
+  currentChapter: number,
+): ConsistencyFinding[] {
+  return findProseRepetition(chapters).map(hit => {
+    const isStillness = hit.kind === 'stillness'
+    return {
+      stableFactKey: `prose:${hit.kind}:${currentChapter}`,
+      severity: 'warning' as const,
+      sourceChapter: currentChapter,
+      evidence: proseRepetitionEvidence(hit),
+      issue: {
+        zhCN: isStillness
+          ? `人物反应被写成了固定短句：${hit.chapters.length} 章都用同一批否定式微动作（没动／没答／没应／没说话）表达受挫或被追问，读者能预判角色的反应。`
+          : `核心戏的场景装置被固定复用了：${hit.chapters.length} 章都用同一套「地点＋起手动作」搭戏（如舱底＋拧水隔＋票根蘸水），读者一看起手就知道接下来会发生什么。`,
+        enUS: isStillness
+          ? `Character reactions have become a fixed formula: ${hit.chapters.length} chapters express setback or being questioned with the same negated micro-phrases, so readers can predict the reaction.`
+          : `The core scene's staging repeats: ${hit.chapters.length} chapters set it up with the same place-plus-opening-action, so readers know what follows from the opening beat.`,
+      },
+      suggestion: {
+        zhCN: isStillness
+          ? '换一种呈现方式表达沉默与受挫（身体动作、视线、呼吸、手上的活），也不要每章都用「提问→对方不回答」收场。'
+          : '换场合与起手动作搭这一场戏；同一套装置不要连着多章用。',
+        enUS: isStillness
+          ? 'Show silence and setback another way (bodily action, gaze, breathing, the work in their hands), and stop ending every chapter on "asked a question, got no answer".'
+          : 'Change the setting and the opening action for this scene; do not reuse the same staging across adjacent chapters.',
+      },
+    }
+  })
 }
