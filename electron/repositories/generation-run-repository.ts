@@ -790,9 +790,16 @@ export class GenerationRunRepository {
     }
     /** 收割空闲运行：running 且 root active、idle 时钟已停（无在途请求）、
      *  最后一个 attempt 的 settledAt 距今超过 idleMs —— 说明 renderer 侧
-     *  流程在两次请求之间挂死，run 会永远停在 running。blocked_code 会让
-     *  运行面板显示失败卡片；后续 dispatch 被拒绝（GENERATION_DISPATCH_BLOCKED）。
-     *  幂等：已 blocked 或 sealed 的 root 跳过。返回被收割的 runId 列表。 */
+     *  流程在两次请求之间挂死，run 会永远停在 running。
+     *
+     *  两种收场（issue #39）：
+     *  - 最后一次尝试以失败/未知收场 → 判死：给根打 blocked_code，运行面板出现失败卡片；
+     *  - 最后一次尝试是 stop（产物已落库）→ **收成 paused**：成功路径没有「结算运行」这一步
+     *    （root 必须保持 active 才能被续接沿用），于是成功的粗纲/蓝图/正文运行会一直挂在
+     *    running，直到下次冷启动才由 recoverInterrupted 收成 paused。这里把那条收尾前移，
+     *    **不打 blocked_code**——它没失败，不该挡住后续以它为父级的合法续接。
+     *
+     *  幂等：已 blocked / sealed / paused 的 root 跳过。返回被判死的 runId。 */
     reapIdleRuns(idleMs = GENERATION_IDLE_TIMEOUT_MS): string[] {
         return this.transaction(() => {
             const rows = (this.db().prepare(`
@@ -809,18 +816,20 @@ export class GenerationRunRepository {
            AND o.active_since_ms IS NULL
            AND a.attempt_id IS NOT NULL
       `).all() as { run_id: string; root_action_id: string; settledAt: number | null; finishReason: string | null }[])
-        // 只收割「真正挂死」的运行：最后一次尝试以失败/未知收场且 15 分钟没有新尝试。
-        // 最后一次尝试是 stop 的运行，其工作流多半已经正常完成、只是运行行没有落账——
-        // 把它判成失败并给根打上 blocked_code，会让后续以它为父级的合法续接
-        // （修稿、蓝图续写等）全部被 GENERATION_DIRECTORY_CONTINUATION_BLOCKED 拒之门外。
-        .filter(row => row.settledAt !== null && this.now() - row.settledAt >= idleMs && row.finishReason !== 'stop');
+                .filter(row => row.settledAt !== null && this.now() - row.settledAt >= idleMs);
             const reaped: string[] = [];
             for (const row of rows) {
-                try {
-                    this.db().prepare('UPDATE generation_roots SET blocked_code=? WHERE root_action_id=?').run('ROOT_IDLE_TIMEOUT', row.root_action_id);
-                    this.db().prepare("UPDATE generation_runs SET status='failed' WHERE run_id=?").run(row.run_id);
-                    reaped.push(row.run_id);
-                } catch { /* An author-edited root stays untouched; retry on the next read. */ }
+                if (row.finishReason !== 'stop') {
+                    try {
+                        this.db().prepare('UPDATE generation_roots SET blocked_code=? WHERE root_action_id=?').run('ROOT_IDLE_TIMEOUT', row.root_action_id);
+                        this.db().prepare("UPDATE generation_runs SET status='failed' WHERE run_id=?").run(row.run_id);
+                        reaped.push(row.run_id);
+                    } catch { /* An author-edited root stays untouched; retry on the next read. */ }
+                    continue;
+                }
+                // 成功但没人结算：收成 paused（与冷启动 recoverInterrupted 的结果一致），
+                // 不打 blocked_code、不改写父级可续接性。
+                try { this.pause(row.root_action_id) } catch { /* 作者改过的根保持原样，下次再试 */ }
             }
             return reaped;
         });

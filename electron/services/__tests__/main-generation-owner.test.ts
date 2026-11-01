@@ -352,6 +352,22 @@ describe('chapter outline main authority', () => {
     expect(reopenedRepository.reapIdleRuns()).toEqual([])
     expect(reopenedRepository.get(fresh.handle.runId)!.status).not.toBe('failed')
     expect(reopenedRepository.budget(fresh.handle.rootActionId).blockedCode).toBeNull()
+
+    // issue #39：成功（finishReason=stop）但没人结算的运行，闲置超时后要收成 paused，
+    // 不能永远挂在 running（侧页一直显示「进行中」，后续步骤全被它挡着）；
+    // 它不是失败，所以不能打 blocked_code——否则以它为父级的合法续接会被堵死。
+    const succeeded = reopenedOwner.begin(outlineSelection(f, 3))
+    await reopenedOwner.execute({ handle: succeeded.handle, invocationNonce: 'round-2', task: outlineTask(reopenedOwner.read(succeeded.handle).plotOutline!) })
+    acceptOutline(reopenedOwner, succeeded.handle)
+    expect(reopenedRepository.get(succeeded.handle.runId)!.status).toBe('running')
+    const succeededRow = f.db.prepare('SELECT usage_receipt_json FROM generation_attempts WHERE run_id=? ORDER BY rowid DESC LIMIT 1').pluck().get(succeeded.handle.runId) as string
+    const succeededReceipt = JSON.parse(succeededRow)
+    expect(succeededReceipt.result.finishReason).toBe('stop')
+    succeededReceipt.result.settledAt = Date.now() - idleMs - 1000
+    f.db.prepare('UPDATE generation_attempts SET usage_receipt_json=? WHERE run_id=?').run(JSON.stringify(succeededReceipt), succeeded.handle.runId)
+    expect(new GenerationRunRepository(() => f.db).reapIdleRuns()).toEqual([])
+    expect(reopenedRepository.get(succeeded.handle.runId)!.status).toBe('paused')
+    expect(reopenedRepository.budget(succeeded.handle.rootActionId).blockedCode).toBeNull()
   })
 
   it.each(['normal', 'compact'] as const)('keeps an unknown %s candidate and does not automatically resend it', async unknownKind => {
