@@ -2,6 +2,54 @@ import type { FinalizedCharacterContext, FinalizedContinuityFact, FinalizedConti
 
 const CONTINUITY_FACT_LIMIT = 12
 
+/**
+ * 把要点正文切成候选事实条目。
+ *
+ * 直接按句末标点切会产出三类垃圾（issue #10 实测 12 条里 6 条是碎片）：
+ *  1. 引号内的句号（对话「……账？”，温珩……」）把一条完整叙述切成两半，
+ *     后半条以收引号 `”` 开头、前言不搭后语；
+ *  2. Markdown 表格行（角色动态/伏笔表）整行混进 plot 事实；
+ *  3. 碎片占掉 CONTINUITY_FACT_LIMIT 名额，把真正的设定与伏笔挤出账本。
+ *
+ * 规则：
+ *  - 先剥离结构行：标题、表格（含分隔行）、空行——表格是结构化数据，不属于叙事事实；
+ *  - 段内只在**引号外**的句末标点处切（逐字符扫描，进出 “…”「…」『…』"…" 时关闭切分）；
+ *  - 兜底：仍以收引号/竖线/标点开头的残片并回上一条，不单独占名额。
+ */
+export function segmentChapterNotes(chapterNotes: string): string[] {
+  const segments: string[] = []
+  for (const rawLine of chapterNotes.split(/\n+/u)) {
+    const line = rawLine.trim()
+    if (!line) continue
+    // Markdown 结构行：标题、表格行/分隔行。
+    if (/^#{1,6}\s/u.test(line) || /^\|/u.test(line)) continue
+    let current = ''
+    let quoteDepth = 0
+    for (const character of line) {
+      if ('“「『"'.includes(character)) quoteDepth += 1
+      else if ('”」』"'.includes(character)) quoteDepth = Math.max(0, quoteDepth - 1)
+      const endsSentence = quoteDepth === 0 && /[。！？.!?]/u.test(character)
+      if (endsSentence) {
+        const finished = `${current}${character}`.replace(/^\s*(?:[-*•]|\d+[.)、])\s*/u, '').trim()
+        if (finished) segments.push(finished)
+        current = ''
+        continue
+      }
+      current += character
+    }
+    const tail = current.replace(/^\s*(?:[-*•]|\d+[.)、])\s*/u, '').trim()
+    if (tail) segments.push(tail)
+  }
+  // 残片兜底：以收引号/竖线/标点开头的段并回上一条（正常情况下引号感知切分不会产生，防御性）。
+  const merged: string[] = []
+  for (const segment of segments) {
+    const isFragment = /^[”』」"’|，、；：!?]/u.test(segment)
+    if (isFragment && merged.length > 0) merged[merged.length - 1] += segment
+    else merged.push(segment)
+  }
+  return merged
+}
+
 function factCategory(statement: string): FinalizedContinuityFactCategory {
   if (/(?:角色|状态|持有|受伤|位于|死亡|身亡|牺牲|去世|character|holds?|injur|location|dead|died|deceased)/iu.test(statement)) return 'character-state'
   if (/(?:时间|当日|翌日|多年|之前|之后|timeline|before|after|years?)/iu.test(statement)) return 'timeline'
@@ -62,10 +110,7 @@ export function buildFinalizedContinuityFacts(
   identityContext?: FinalizedCharacterContext,
 ): FinalizedContinuityFact[] {
   const entities = [...new Set([...chapterEntities, ...(identityContext?.characters.map(item => item.displayNameSnapshot) ?? [])].map(entity => entity.trim()).filter(Boolean))]
-  const statements = chapterNotes
-    .split(/\n+|(?<=[。！？.!?])\s*/u)
-    .map(statement => statement.replace(/^\s*(?:[-*•]|\d+[.)、])\s*/u, '').trim())
-    .filter(Boolean)
+  const statements = segmentChapterNotes(chapterNotes)
   return statements.flatMap(statement => {
     const factEntities = entities.filter(entity => statement.includes(entity)).slice(0, 8)
     const evidence = evidenceExcerpt(finalizedContent, statement, factEntities)

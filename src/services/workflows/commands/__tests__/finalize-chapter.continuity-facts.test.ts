@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { EN_US_BUILTIN_PROMPTS } from '../../../prompt-language'
 import { BUILTIN_PROMPTS } from '../../../prompt-templates'
+import { segmentChapterNotes } from '../../../../shared/finalized-continuity-facts'
 import { buildFinalizedContinuityFacts } from '../finalize-chapter.command'
 
 describe('buildFinalizedContinuityFacts', () => {
@@ -99,6 +100,53 @@ describe('buildFinalizedContinuityFacts', () => {
       sourceChapter: 6,
       evidence: supportedFact,
     }])
+  })
+
+  it('does not split inside quotes: dialogue with sentence marks stays one fact', () => {
+    const notes = '周叙问“三天前谁动过账？”，温珩走过来伸手合上记录本，说“再核下去，今晚船就别想开。”'
+    const content = '周叙问“三天前谁动过账？”，温珩走过来伸手合上记录本，说“再核下去，今晚船就别想开。”温珩走过来，伸手把记录本合上了。'
+
+    const facts = buildFinalizedContinuityFacts(1, notes, content, ['周叙', '温珩'])
+
+    expect(facts).toHaveLength(1)
+    expect(facts[0].statement).toBe(notes)
+    expect(facts[0].statement.startsWith('”')).toBe(false)
+  })
+
+  it('skips markdown heading and table rows instead of storing them as facts', () => {
+    const notes = [
+      '## 角色动态',
+      '| 周叙 | 核完三十二张票根；问“三天前谁动过账？',
+      '---',
+      '温珩替老太太临开船补了一张湿票，没有入底。',
+      '| 温珩 | 承认补票 |',
+      '父亲留下的空白票根受潮压到涂改处，原字会慢慢洇出。',
+    ].join('\n')
+    const content = '温珩替老太太临开船补了一张湿票，没有入底。父亲留下的空白票根受潮压到涂改处，原字会慢慢洇出。'
+
+    const facts = buildFinalizedContinuityFacts(2, notes, content, ['温珩'])
+
+    expect(facts.every(fact => !fact.statement.startsWith('|'))).toBe(true)
+    expect(facts.some(fact => fact.statement.includes('湿票'))).toBe(true)
+    expect(facts.some(fact => fact.statement.includes('洇出'))).toBe(true)
+  })
+
+  it('keeps real facts ahead of fragments when the limit would truncate', () => {
+    // 旧版把对话切成 2+ 残片（” 开头）挤占名额，真事实被截在 12 条之外；新规则不会。
+    const realFact = '父亲留下的空白票根受潮压到涂改处，原字会慢慢洇出。'
+    const dialogueLine = '周叙问“三天前谁动过账？”，温珩合上记录本说“再核下去，今晚船就别想开。”'
+    const filler = Array.from({ length: 10 }, (_, index) => `第${index + 1}段流水记录，周叙核对第${index + 1}张票根的墨迹。`)
+    const notes = [...filler, dialogueLine, realFact].join('\n')
+    const content = `${realFact}周叙核对票根的墨迹。`
+
+    const facts = buildFinalizedContinuityFacts(3, notes, content, ['周叙'])
+
+    expect(facts.length).toBeLessThanOrEqual(12)
+    expect(facts.some(fact => fact.statement === realFact)).toBe(true)
+    // dialogueLine 没有正文证据不会落库（既有证据门），但切分层面它必须是完整一条，
+    // 不能以 ” 残片形式占名额。
+    expect(segmentChapterNotes(notes)).toContain(dialogueLine)
+    expect(segmentChapterNotes(notes).every(statement => !statement.startsWith('”'))).toBe(true)
   })
 
   it('asks chapter notes to preserve only explicit continuity context without filling every field', () => {
