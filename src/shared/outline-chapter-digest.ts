@@ -8,6 +8,13 @@ export interface OutlineChapterDigest {
   chapterNotes: string
   /** 剥掉签头行后的全章叙事文本：逐角色取「最近事件」的取值窗口（issue #24）。 */
   narrativeBody: string
+  /**
+   * 只保留**事件型小节**（转折与代价 / 结尾钩子）的文本，供角色「最近事件」取值（issue #45）。
+   *
+   * 「本章目标」是计划、「场景与出场人物」是名单、「伏笔」是待兑现的坑——都不是本章发生了什么。
+   * 用全章文本取值会把计划写进 `recentEvents`，还会给只在名单里被提一句的人写上「刚参与过」。
+   */
+  eventBody: string
   characterNames: string[]
   continuityFacts: string[]
 }
@@ -45,7 +52,8 @@ export function outlineRecentEventForCharacter(notes: string, characterName: str
   taken: ReadonlySet<string>, maxLength = 50): string {
   if (!characterName) return ''
   const sentences = notes.replace(/\s+/gu, ' ').match(/[^。！？!?]*[。！？!?]?/gu)
-    ?.map(item => item.trim()).filter(Boolean) ?? []
+    ?.map(item => item.trim().replace(/^["'“”「」『』\s]+/u, ''))
+    .filter(Boolean) ?? []
   const related = sentences.filter(sentence => sentence.includes(characterName))
   for (const sentence of related) {
     const event = outlineRecentEvent(sentence, maxLength)
@@ -57,19 +65,28 @@ export function outlineRecentEventForCharacter(notes: string, characterName: str
 /**
  * 从一章的细纲摘要里算出每个出场角色要推进的「最近事件」（issue #24）。
  *
- * 取值窗口是剥掉签头行后的**全章叙事文本**而不是前 4 句的 `chapterNotes`：
- * 「转折与代价」「结尾钩子」「伏笔」三节整段落在 4 句窗口之外，而角色的动作
- * 常常正写在那里——13 个出场角色因此拿到空值。规则：
+ * 取值窗口是**事件型小节**（`eventBody`），既不是前 4 句的 `chapterNotes`，也不再是整章
+ * `narrativeBody`（issue #45）：
+ * - 「本章目标」是计划、「场景与出场人物」是名单、「阻力与升级」是障碍清单——把它们写进
+ *   `recentEvents`，下一章起草读到的就是「上一章还没发生的事」，模型容易当成已发生；
+ * - 只在名单里被提一句的人（本章 0 出场）会因此拿到「刚参与过」的假标记。
+ * 只有「转折与代价」「结尾钩子」两节写的是本章真正发生的结果。
+ *
+ * 规则：
  * - 提到该角色名的句子才取值；取不到的**不进写库清单**（返回 undefined），
  *   调用方据此跳过该角色，避免把上一章已有的值无条件覆盖成空；
  * - 同章算出的值与他人重复（如两人始终同句）时后写者返回 undefined。
+ * - 调用方没给 `eventBody` 时退回 `narrativeBody`（保持既有调用点可用）。
  */
-export function outlineCharacterStateWrites(digest: Pick<OutlineChapterDigest, 'narrativeBody' | 'characterNames'>,
-  maxLength = 50): Array<{ characterName: string; recentEvents: string }> {
+export function outlineCharacterStateWrites(
+  digest: Pick<OutlineChapterDigest, 'narrativeBody' | 'characterNames'> & { eventBody?: string },
+  maxLength = 50,
+): Array<{ characterName: string; recentEvents: string }> {
+  const window = digest.eventBody?.trim() ? digest.eventBody : digest.narrativeBody
   const writes: Array<{ characterName: string; recentEvents: string }> = []
   const taken = new Set<string>()
   for (const name of digest.characterNames) {
-    const recentEvents = outlineRecentEventForCharacter(digest.narrativeBody, name, taken, maxLength)
+    const recentEvents = outlineRecentEventForCharacter(window, name, taken, maxLength)
     if (!recentEvents) continue
     taken.add(recentEvents)
     writes.push({ characterName: name, recentEvents })
@@ -108,6 +125,34 @@ function firstSentences(text: string, count: number): string {
  */
 /** 章节签头段（「**场景与出场人物**：…」这类粗体标签行）：是场景清单不是情节，不进摘要。 */
 const HEADER_LINE = /^\*?\*?(?:场景与出场人物|场景|出场人物)\*?\*?\s*[:：]/u
+/**
+ * 事件型小节（issue #45）：只有这两节写「本章真正发生了什么」。
+ * 「本章目标」是计划、「阻力与升级」是障碍、「伏笔」是待兑现的坑——都不算事件。
+ */
+const EVENT_SECTION = /^\*?\*?(?:转折与代价|结尾钩子)\*?\*?\s*[:：]/u
+/** 任一固定小节标题：用于判断「事件型小节到哪里结束」。 */
+const ANY_SECTION = /^\*?\*?(?:场景与出场人物|本章目标|阻力与升级|转折与代价|结尾钩子|伏笔)\*?\*?\s*[:：]/u
+/** 小节标题开头的粗体标签（**转折与代价**、**结尾钩子**）：取值时剥掉，它不是内容。 */
+const SECTION_LABEL_PREFIX = /^\s*\*\*[^*]{1,12}\*\*\s*[:：]\s*/u
+
+/** 只保留事件型小节的文本（issue #45）；没有这些小节时返回空串，由调用方决定退路。 */
+export function outlineEventBody(narrativeBody: string): string {
+  const lines = narrativeBody.split(/\n+/u).map(line => line.trim()).filter(Boolean)
+  const kept: string[] = []
+  // 'event' 事件型小节内 / 'other' 计划类小节内 / 'none' 不属于任何小节（裸叙述）
+  let inside: 'event' | 'other' | 'none' = 'none'
+  for (const line of lines) {
+    if (ANY_SECTION.test(line)) {
+      inside = EVENT_SECTION.test(line) ? 'event' : 'other'
+      if (inside === 'event') kept.push(line.replace(SECTION_LABEL_PREFIX, ''))
+      continue
+    }
+    // 裸叙述（没有小节标签包着的那几句）本身就是正文写法，不算计划，保留；
+    // 计划类小节（本章目标/阻力与升级/伏笔/场景名单）里的句子一律不收。
+    if (inside !== 'other') kept.push(line)
+  }
+  return kept.join('\n')
+}
 
 export function extractChapterDigest(block: string, knownCharacterNames: readonly string[]): OutlineChapterDigest {
   const { body } = splitChapterBlock(block)
@@ -115,11 +160,12 @@ export function extractChapterDigest(block: string, knownCharacterNames: readonl
   // 剥离签头行再取首句：否则「场景与出场人物」清单会顶掉真实情节成为所有出场角色
   // 共用的 recentEvents（issue #18：6/8 角色拿到同一句 50 字签头残段）。
   const narrativeBody = body.split(/\n+/u).filter(line => !HEADER_LINE.test(line.trim())).join('\n')
+  const eventBody = outlineEventBody(narrativeBody)
   const notes = firstSentences(narrativeBody, 4)
   // 事实：取含转折/结果词的句子，最多 3 条，作为可检索的连续性锚点。
   const facts = (body.match(/[^。！？!?]*[。！？!?]/gu) ?? [])
     .map(item => item.replace(/\s+/gu, ' ').trim())
     .filter(item => /(?:于是|因此|结果|最终|代价|暴露|发现|决定|失去|得到|留下|改变了)/u.test(item))
     .slice(0, 3)
-  return { chapterNotes: notes, narrativeBody, characterNames, continuityFacts: facts }
+  return { chapterNotes: notes, narrativeBody, eventBody, characterNames, continuityFacts: facts }
 }

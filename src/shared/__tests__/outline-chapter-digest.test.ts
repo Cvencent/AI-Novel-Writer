@@ -37,7 +37,7 @@ describe('extractChapterDigest', () => {
 
   it('正文为空时返回空字段而不抛错', () => {
     expect(extractChapterDigest('## 第1章：空', [])).toEqual({
-      chapterNotes: '', narrativeBody: '', characterNames: [], continuityFacts: [],
+      chapterNotes: '', narrativeBody: '', eventBody: '', characterNames: [], continuityFacts: [],
     })
   })
 })
@@ -131,5 +131,49 @@ describe('outlineRecentEvent', () => {
     }
     const writes = outlineCharacterStateWrites(digest)
     expect(writes).toEqual([{ characterName: '温珩', recentEvents: '温珩在验票舱核对名册。' }])
+  })
+})
+
+// issue #45：cs_recent_events 被写成「本章目标」这个**计划**，而且只在名单里被提一句的人
+// （本章 0 出场）也拿到了 ch=本章 的「刚参与过」标记。
+describe('recentEvents 只取事件型小节（issue #45）', () => {
+  const block = [
+    '## 第11章：笔尖悬停',
+    '',
+    '**场景与出场人物**：验票舱与货舱口；出场的有验票船工·周叙、账房伙计·任九、只在船尾誊抄的搭档·温珩。已淡出的陆敬堂只被人一句带过，不在场。',
+    '',
+    '**本章目标**：周叙要把这一班验完销差，提笔录完当夜乘客、落笔、交册。',
+    '',
+    '**阻力与升级**：原墨已焚销，新册内页誊得工整，没有一处涂改；陆敬堂借“私留票根”清洗了两名旧人。',
+    '',
+    '**转折与代价**：他提笔录完当夜乘客，笔尖悬在自己名字正上方那一格。任九又催一遍，他把笔收回，写了句“今夜无增”。',
+    '',
+    '**结尾钩子**：周叙手按着那块翘起的船板，没有掀开。',
+    '',
+    '**伏笔**：半画双名票根仍压在船板夹缝；温珩的誊抄痕迹淡得几乎看不见。',
+  ].join('\n')
+
+  const digest = extractChapterDigest(block, ['周叙', '任九', '温珩', '陆敬堂'])
+  const byName = new Map(outlineCharacterStateWrites(digest).map(w => [w.characterName, w.recentEvents]))
+
+  it('计划文本不再进入 recentEvents', () => {
+    expect(digest.eventBody).not.toContain('本章目标')
+    expect(digest.eventBody).not.toContain('阻力与升级')
+    expect(digest.eventBody).not.toContain('伏笔')
+    for (const event of byName.values()) {
+      expect(event).not.toContain('本章目标')
+      expect(event.startsWith('**')).toBe(false)
+    }
+  })
+
+  it('只出现在名单/伏笔里的人不会被写着「刚参与过」', () => {
+    // 温珩只在名单与伏笔里被提，陆敬堂只在名单与阻力段被提——两节都不是事件型，两人都不该写
+    expect(byName.has('温珩')).toBe(false)
+    expect(byName.has('陆敬堂')).toBe(false)
+  })
+
+  it('真正参与事件的人仍能取到本章发生的事', () => {
+    expect(byName.get('任九')).toContain('催')
+    for (const event of byName.values()) expect(event.length).toBeLessThanOrEqual(50)
   })
 })
