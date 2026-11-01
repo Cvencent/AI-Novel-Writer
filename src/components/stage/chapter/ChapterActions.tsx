@@ -193,6 +193,9 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
   // 每条意见都选了不修改时没有可修的，主按钮改为把这些弃修决定确认进审稿记录（旧审稿报告的「确认审稿清单」）。
   const waived = checklist.items.some(item => item.decision === 'waive')
   const confirmWaived = included === 0 && waived && (checklist.editingChecklist || !checklist.confirmed)
+  // 审稿通过（没有任何意见，也没有可勾的弃修项）时走同一条确认：把「无意见」记进审稿记录，
+  // 否则主按钮永远禁用、流程脊停在「待修稿」，作者找不到下一步（issue #13）。
+  const reviewPasses = included === 0 && !waived && !checklist.confirmed
   const confirmWaiver = async () => {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
     const confirmed = await checklist.confirmChecklist()
@@ -338,6 +341,10 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
               <Button variant="primary" disabled={busy || checklist.confirming || checklist.processing} onClick={() => void confirmWaiver()}>
                 {text('确认不修改', 'Confirm no revision')}
               </Button>
+            ) : reviewPasses ? (
+              <Button variant="primary" disabled={busy || checklist.confirming || checklist.processing} onClick={() => void confirmWaiver()}>
+                {text('确认审稿通过，无需修改', 'Confirm the review passed')}
+              </Button>
             ) : <SplitAction
               layer={reviseOptions}
               popoverClassName="stage-ch-options"
@@ -362,11 +369,15 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
               ? text('复验仍有已确认未解决的意见，请先修稿或标记不修改', 'Confirmed review findings remain unresolved; revise or mark them as no-change before finalizing')
               : confirmWaived
               ? text('这些意见都不修改，确认后记进审稿记录', 'None of these notes will be revised; confirm to record that in the review')
+              : reviewPasses
+              ? text('审稿未发现问题；确认后记进审稿记录，就可以在「更多」里定稿', 'The review found no issues; confirm to record it, then finalize from More')
               : included > 0
                 ? text('修稿结果会以差异给你确认，不会直接覆盖', 'You confirm the revision as a diff; nothing is overwritten')
                 : waived
                   ? text('已确认不修改，可以在「更多」里定稿', 'Confirmed with no revision; finalize from More')
-                  : text('至少勾选一项意见', 'Check at least one note')}</span>
+                  : checklist.confirmed
+                    ? text('审稿已确认，可以在「更多」里定稿', 'The review is confirmed; finalize from More')
+                    : text('至少勾选一项意见', 'Check at least one note')}</span>
           </>
         )
       case 'merge':
