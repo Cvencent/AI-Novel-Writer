@@ -165,3 +165,50 @@ describe('buildFinalizedContinuityFacts', () => {
     expect(en.content).toContain('Do not substitute a more prominent earlier event for the current plan or describe a plan as executed')
   })
 })
+
+// issue #41：12 条上限被同义事实占满——第 9/10 章各 12 条，ch9 至少 5 对高度重叠。
+// 同一事件在「本章目标」「转折与代价」「伏笔」各写一遍，去重必须在截断之前发生。
+describe('事实账本去重 (issue #41)', () => {
+  it('同一件事换个小节标题再写一遍时只保留一条（第 9 章真实样本）', () => {
+    const content = [
+      '底册末页为九十九格，却写出一百个名字；陆敬堂称“册子乱了”。',
+      '阿茂塞给周叙半张空白票根，称“重抄那夜我不在船上”；周叙在票根写下自己的名字。',
+    ].join('')
+    const notes = [
+      '[触发] 账房伙计第二次来催缴，称子初前缴清；陆敬堂指认底册末页九十九格却写出一百个名字，称“册子乱了”，宣布今夜换卷。',
+      '底册末页为九十九格，却写出一百个名字；陆敬堂称“册子乱了”。',
+      '[结果] 阿茂塞给他半张空白票根并称“重抄那夜我不在船上”，周叙在票根写下自己的名字。',
+      '[埋] 阿茂塞给周叙半张空白票根，称“重抄那夜我不在船上”；周叙在票根写下自己的名字。',
+    ].join('\n')
+
+    const facts = buildFinalizedContinuityFacts(9, notes, content, ['周叙', '陆敬堂', '阿茂'])
+    expect(facts).toHaveLength(2)
+    // 保留信息更完整的那条（长句），而不是先出现的短摘要
+    expect(facts.some(fact => fact.statement.startsWith('[触发]') && fact.statement.includes('今夜换卷'))).toBe(true)
+    expect(facts.some(fact => fact.statement.includes('周叙在票根写下自己的名字'))).toBe(true)
+  })
+
+  it('不重复时一条都不删（12 条互不相同的流水不误伤）', () => {
+    const statements = Array.from({ length: 12 }, (_, index) => `第${index + 1}次核对时，账房在${index + 1}号票根背面发现一道旧墨。`)
+    const content = statements.join('')
+    const facts = buildFinalizedContinuityFacts(3, statements.join('\n'), content, ['周叙'])
+    expect(facts).toHaveLength(12)
+    expect(new Set(facts.map(fact => fact.statement)).size).toBe(12)
+  })
+
+  it('近重复被合并后腾出的名额，留给后面的独特事实', () => {
+    const unique = Array.from({ length: 11 }, (_, index) => `第${index + 1}份清单登记了${index + 7}个不同编号。`)
+    const duplicated = [
+      '周叙把票根塞进船板翘起的夹缝。',
+      '周叙把票根塞进船板翘起的一道夹缝。',
+      '周叙把票根塞进船板翘起的夹缝里。',
+    ]
+    const notes = [...duplicated, ...unique].join('\n')
+    const content = [...duplicated, ...unique].join('')
+    const facts = buildFinalizedContinuityFacts(5, notes, content, ['周叙'])
+    // 3 条近重复压成 1 条 + 11 条独特 = 12 条，且最后一条独特事实没被截掉
+    expect(facts).toHaveLength(12)
+    expect(facts.filter(fact => fact.statement.includes('夹缝'))).toHaveLength(1)
+    expect(facts.some(fact => fact.statement === unique.at(-1))).toBe(true)
+  })
+})

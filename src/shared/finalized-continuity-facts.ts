@@ -102,6 +102,83 @@ function evidenceExcerpt(content: string, statement: string, entities: readonly 
   return matched ?? ''
 }
 
+/**
+ * 近重复判据（issue #41）：同一件事常被拆成多条记录——「本章目标」「转折与代价」「伏笔」
+ * 各写一遍，`slice(0, 12)` 之前没有人比较过它们是否在说同一件事，12 条名额被同一事件占多次，
+ * 真正独特的设定／伏笔／道具交接反而被截掉（实测第 9、10 章都是「刚好 12 条」且至少 5 对高度重合）。
+ *
+ * 判据用**二元组包含度**：较小一方至少 DUPLICATE_MIN_BIGRAMS 个二元组，且重合占比 ≥ 0.66。
+ * 用「包含度」而不是 Jaccard，是因为近重复的典型形态是「一条短摘要 + 一条长叙述」——
+ * Jaccard 会被长度差稀释，包含度才抓得住。
+ */
+const DUPLICATE_CONTAINMENT = 0.66
+const DUPLICATE_MIN_BIGRAMS = 6
+
+/** 类别优先级：伏笔／角色状态／时间线比泛泛的 plot 陈述更值得占名额（issue #41 建议 2）。 */
+const CATEGORY_PRIORITY: Record<FinalizedContinuityFactCategory, number> = {
+  'open-thread': 0,
+  'character-state': 1,
+  timeline: 2,
+  plot: 3,
+}
+
+function containmentOf(left: Set<string>, right: Set<string>): number {
+  const smaller = Math.min(left.size, right.size)
+  if (smaller < DUPLICATE_MIN_BIGRAMS) return 0
+  let shared = 0
+  for (const gram of left) if (right.has(gram)) shared += 1
+  return shared / smaller
+}
+
+/**
+ * 数字是判别性信息：「登记了七个编号」与「登记了八个编号」意思相反，
+ * 只差一个数字的句子按二元组算重合度很高，但绝不能合并。
+ * 只在**两边都有数字**且数字集合不同的时候否决合并；序号（「第二次」「第 7 份」）不算——
+ * 那是叙述顺序，不是事实内容（否则「第 2 次催缴……九十九格」与「九十九格……」会被判成不同）。
+ */
+function numeralsDiffer(left: string, right: string): boolean {
+  const numerals = (value: string) => new Set(
+    [...value.matchAll(/(?<!第)(\d+|[零一二三四五六七八九十百千万]+)/gu)].map(match => match[1]),
+  )
+  const leftNumerals = numerals(left), rightNumerals = numerals(right)
+  if (!leftNumerals.size || !rightNumerals.size) return false
+  if (leftNumerals.size !== rightNumerals.size) return true
+  for (const numeral of leftNumerals) if (!rightNumerals.has(numeral)) return true
+  return false
+}
+
+/**
+ * 去掉「同一件事说了好几遍」的事实（issue #41）。
+ *
+ * - 只与**已保留**的条目比较，保持原有先后顺序（账本顺序是作者读到的顺序）；
+ * - 命中近重复时二选一：类别更硬者优先（伏笔 > 角色状态 > 时间线 > 情节），
+ *   同类别保留更长（信息更完整）的那条；被替换的槽位沿用原位置。
+ */
+export function dedupeContinuityFacts(facts: readonly FinalizedContinuityFact[]): FinalizedContinuityFact[] {
+  const kept: FinalizedContinuityFact[] = []
+  const keptBigrams: Set<string>[] = []
+  for (const fact of facts) {
+    const bigrams = textBigrams(fact.statement)
+    const duplicateIndex = kept.findIndex((existing, index) => (
+      containmentOf(bigrams, keptBigrams[index]!) >= DUPLICATE_CONTAINMENT
+      && !numeralsDiffer(fact.statement, existing.statement)
+    ))
+    if (duplicateIndex < 0) {
+      kept.push(fact)
+      keptBigrams.push(bigrams)
+      continue
+    }
+    const existing = kept[duplicateIndex]!
+    const preferred = CATEGORY_PRIORITY[fact.category] < CATEGORY_PRIORITY[existing.category]
+      || (CATEGORY_PRIORITY[fact.category] === CATEGORY_PRIORITY[existing.category]
+        && fact.statement.length > existing.statement.length)
+    if (!preferred) continue
+    kept[duplicateIndex] = fact
+    keptBigrams[duplicateIndex] = bigrams
+  }
+  return kept
+}
+
 export function buildFinalizedContinuityFacts(
   chapterNumber: number,
   chapterNotes: string,
@@ -111,7 +188,7 @@ export function buildFinalizedContinuityFacts(
 ): FinalizedContinuityFact[] {
   const entities = [...new Set([...chapterEntities, ...(identityContext?.characters.map(item => item.displayNameSnapshot) ?? [])].map(entity => entity.trim()).filter(Boolean))]
   const statements = segmentChapterNotes(chapterNotes)
-  return statements.flatMap(statement => {
+  const facts = statements.flatMap(statement => {
     const factEntities = entities.filter(entity => statement.includes(entity)).slice(0, 8)
     const evidence = evidenceExcerpt(finalizedContent, statement, factEntities)
     const characterRefs = identityContext ? factEntities.flatMap(entity => {
@@ -129,5 +206,7 @@ export function buildFinalizedContinuityFacts(
           ...(characterRefs ? { characterRefs } : {}),
         }]
       : []
-  }).slice(0, CONTINUITY_FACT_LIMIT)
+  })
+  // 先去重再截断（issue #41）：重复项占满 12 条名额会把真正独特的事实挤出去。
+  return dedupeContinuityFacts(facts).slice(0, CONTINUITY_FACT_LIMIT)
 }
