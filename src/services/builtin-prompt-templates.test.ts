@@ -133,3 +133,13 @@ describe('conclusion reversal dimension (issue #52)', () => {
     expect(review?.content).toContain('若正文已写出核验过程，则不报')
   })
 })
+
+// issue #51：核心能力「每班次只用一次」被自己作废，必须有维度问「是否超出已声明上限」。
+describe('ability budget dimension (issue #51)', () => {
+  it('the chapter review prompt checks ability use against stated limits', () => {
+    const review = BUILTIN_PROMPTS.find(template => template.key === 'consistency_check')
+    expect(review?.content).toContain('能力上限')
+    expect(review?.content).toContain('用尽／只剩一次／再读不出')
+    expect(review?.content).toContain('若正文已写出恢复条件，则不报')
+  })
+})

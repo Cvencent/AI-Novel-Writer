@@ -11,7 +11,7 @@ import { SqliteSchemaAdapter } from '../../migrations/sqlite-schema-adapter'
 import { getProjectDb } from '../../database'
 import { ReviewRepository } from '../../repositories/review-repository'
 import { textHash } from '../../repositories/generation-run-repository'
-import { assertionReversalFindings, captureReviewRevisionContext, numberingFindings, reviewRevisionRequest } from '../review-revision-context'
+import { abilityBudgetFindings, assertionReversalFindings, captureReviewRevisionContext, numberingFindings, reviewRevisionRequest } from '../review-revision-context'
 vi.mock('../../database', () => ({ getProjectDb: vi.fn() }))
 const Database = createRequire(import.meta.url)('better-sqlite3') as typeof import('better-sqlite3')
 const connections: import('better-sqlite3').Database[] = []
@@ -210,5 +210,28 @@ describe('assertionReversalFindings (issue #52)', () => {
       { chapterNumber: 17, content: '他把那一笔抄进私册，笔迹与叶九平日一样稳匀。' },
       ['叶九'],
     )).toEqual([])
+  })
+})
+
+// issue #51：能力上限被同一段自相抵消（第 13 章「用尽」后紧接着又读出）。
+describe('abilityBudgetFindings (issue #51)', () => {
+  it('同一段内声明用尽后再次成功使用时给出可定位提示', () => {
+    const findings = abilityBudgetFindings({
+      chapterNumber: 13,
+      content: '纸面发了脆，最后一次溯读已经用尽，本班次再读不出第二处。凑近灯，一行字浮出来。',
+    })
+    expect(findings).toHaveLength(1)
+    expect(findings[0]!.severity).toBe('warning')
+    expect(findings[0]!.sourceChapter).toBe(13)
+    expect(findings[0]!.stableFactKey).toContain('ability-budget:reuse:13')
+    expect(findings[0]!.evidence).toContain('用尽')
+    expect(findings[0]!.suggestion.zhCN).toContain('恢复条件')
+  })
+
+  it('用尽后没有再用时不报（正常「这次真用完了」）', () => {
+    expect(abilityBudgetFindings({
+      chapterNumber: 5,
+      content: '最后一次溯读已经用尽。他把票根收回怀里，夜里什么也没再发生。',
+    })).toEqual([])
   })
 })

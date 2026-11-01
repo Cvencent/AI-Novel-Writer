@@ -8,6 +8,7 @@ import { findBlueprintContinuityRisks } from '../../src/shared/consistency-prefl
 import { findCharacterProseRepetition, findProseRepetition, proseRepetitionEvidence } from '../../src/shared/prose-repetition'
 import { findDeclaredDigitCountMismatches } from '../../src/shared/numbering-consistency'
 import { findCrossChapterAssertionReversals } from '../../src/shared/consistency-preflight'
+import { findAbilityReuseContradictions } from '../../src/shared/ability-budget'
 import type { ConsistencyFinding } from '../../src/shared/consistency-preflight'
 import { CHARACTER_STATE_TEXT_FIELDS } from '../../src/shared/character-roster'
 import { ProjectCoreRepository } from '../repositories/project-core-repository'
@@ -164,6 +165,9 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
         // 命中即错，不需要词表。样本是本章正文（最近定稿的编号体系在前面章节里，
         // 但「同一句自相矛盾」永远发生在当章）。
         ...numberingFindings({ chapterNumber: source.chapterNumber, content: source.content }),
+        // 能力／资源上限的自相矛盾（issue #51）：第 13 章同一段先说「最后一次溯读已经用尽、
+        // 本班次再读不出第二处」，紧接着又写「一行字浮出来」——核心能力的定价机制被自己作废。
+        ...abilityBudgetFindings({ chapterNumber: source.chapterNumber, content: source.content }),
         // 跨章「断言反转」（issue #52）：第 16 章正文「是叶九的手」，第 19 章正文「不是叶九的手」，
         // 而第 19 章整章推理架在后一句上。比对源是**前序定稿正文**——它们与本章正文都在这份上下文里。
         ...assertionReversalFindings(
@@ -174,6 +178,29 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
       ],
       ...(confirmation ? { confirmation } : {}), ...(recheck ? { recheck } : {}) }
   })()
+}
+
+/**
+ * 能力／资源上限的自相矛盾 → 一致性发现（issue #51）。
+ *
+ * 只报能直接机器判的那一类：**同一章内先声明资源用尽、随后又成功使用**。
+ * 跨章的「还剩几次」需要一个结构化消耗账字段（本轮未做，见 issue 评论）。
+ */
+export function abilityBudgetFindings(chapter: { chapterNumber: number; content: string }): ConsistencyFinding[] {
+  return findAbilityReuseContradictions(chapter.content).map(contradiction => ({
+    stableFactKey: `ability-budget:reuse:${chapter.chapterNumber}:${contradiction.index}`,
+    severity: 'warning' as const,
+    sourceChapter: chapter.chapterNumber,
+    evidence: `第${chapter.chapterNumber}章：「${contradiction.declaration}」→ 随后「${contradiction.reuse}」`,
+    issue: {
+      zhCN: `能力的上限被自己作废了：这里刚声明资源已经用尽（「${contradiction.declaration.slice(0, 40)}…」），紧接着又成功用了一次。读者据此会认为这套限制不作数，前面的取舍也就不成立。`,
+      enUS: `A stated limit is voided inside the same passage: the text declares the resource exhausted, then the ability succeeds again a few lines later. Readers conclude the constraint does not hold, which voids every earlier trade-off built on it.`,
+    },
+    suggestion: {
+      zhCN: '三选一：把用尽声明挪到这次使用之后；写出恢复条件（换班次、补水、换物件）并说明为什么这次还能读；或删掉这次使用。别让两句留在同一段里自相抵消。',
+      enUS: 'Pick one: move the exhaustion statement after this use; write the recovery condition (new shift, refill, another object) and why this read is still possible; or drop this use. Do not leave both claims in the same passage canceling each other.',
+    },
+  }))
 }
 
 /**
