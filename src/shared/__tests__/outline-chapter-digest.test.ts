@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractChapterDigest, outlineRecentEvent, outlineRecentEventForCharacter, splitChapterBlock } from '../outline-chapter-digest'
+import { extractChapterDigest, outlineCharacterStateWrites, outlineRecentEvent, outlineRecentEventForCharacter, splitChapterBlock } from '../outline-chapter-digest'
 
 const block = `## 第12章：旧仓库
 主角在旧仓库找到账册，于是确认了失踪者的行动路线。
@@ -36,7 +36,9 @@ describe('extractChapterDigest', () => {
   })
 
   it('正文为空时返回空字段而不抛错', () => {
-    expect(extractChapterDigest('## 第1章：空', [])).toEqual({ chapterNotes: '', characterNames: [], continuityFacts: [] })
+    expect(extractChapterDigest('## 第1章：空', [])).toEqual({
+      chapterNotes: '', narrativeBody: '', characterNames: [], continuityFacts: [],
+    })
   })
 })
 
@@ -96,5 +98,38 @@ describe('outlineRecentEvent', () => {
     taken.add(first)
     const second = outlineRecentEventForCharacter(notes, '搭档', taken)
     expect(second).toBe('')
+  })
+
+  it('出场角色写到第 5 句之后的动作也能被取到（issue #24：窗口是全章不是前 4 句）', () => {
+    // 真实细纲的形状：签头行 + 六个小节，角色动作在「转折与代价」段（第 5 句之后）。
+    const block = [
+      '## 第8章：淡出的半径',
+      '',
+      '**场景与出场人物**：雾津港行会茶棚、潮生号验票舱；验票船工·温珩、搭档·陈阿水。',
+      '',
+      '雾津港的雾比往常浓。',
+      '验票舱核出的名册多了一名乘客。',
+      '按约定双方要在栈桥碰头交换消息。',
+      '船工们商量着改走水路。',
+      '笔反倒慢下来，温珩把折角的那一页誊进私册。',
+      '结尾钩子：陈阿水认出通缉令上那张脸。',
+    ].join('\n')
+    const digest = extractChapterDigest(block, ['温珩', '陈阿水'])
+    // 前 4 句里根本没有第 5 句之后的动作——这正是 1.5.66 旧窗口的缺陷。
+    expect(digest.chapterNotes.includes('笔反倒慢下来')).toBe(false)
+    expect(digest.narrativeBody.includes('笔反倒慢下来')).toBe(true)
+    const writes = outlineCharacterStateWrites(digest)
+    const byName = new Map(writes.map(write => [write.characterName, write.recentEvents]))
+    expect(byName.get('温珩')).toContain('折角的那一页')
+    expect(byName.get('陈阿水')).toContain('通缉令')
+  })
+
+  it('取不到专属句的角色不进写库清单，而不是返回空值（issue #24：空值覆盖会擦掉旧事件）', () => {
+    const digest = {
+      narrativeBody: '温珩在验票舱核对名册。',
+      characterNames: ['温珩', '没出场的角色'],
+    }
+    const writes = outlineCharacterStateWrites(digest)
+    expect(writes).toEqual([{ characterName: '温珩', recentEvents: '温珩在验票舱核对名册。' }])
   })
 })

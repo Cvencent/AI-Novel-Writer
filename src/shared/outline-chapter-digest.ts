@@ -6,6 +6,8 @@
  */
 export interface OutlineChapterDigest {
   chapterNotes: string
+  /** 剥掉签头行后的全章叙事文本：逐角色取「最近事件」的取值窗口（issue #24）。 */
+  narrativeBody: string
   characterNames: string[]
   continuityFacts: string[]
 }
@@ -50,6 +52,29 @@ export function outlineRecentEventForCharacter(notes: string, characterName: str
     if (event && !taken.has(event)) return event
   }
   return ''
+}
+
+/**
+ * 从一章的细纲摘要里算出每个出场角色要推进的「最近事件」（issue #24）。
+ *
+ * 取值窗口是剥掉签头行后的**全章叙事文本**而不是前 4 句的 `chapterNotes`：
+ * 「转折与代价」「结尾钩子」「伏笔」三节整段落在 4 句窗口之外，而角色的动作
+ * 常常正写在那里——13 个出场角色因此拿到空值。规则：
+ * - 提到该角色名的句子才取值；取不到的**不进写库清单**（返回 undefined），
+ *   调用方据此跳过该角色，避免把上一章已有的值无条件覆盖成空；
+ * - 同章算出的值与他人重复（如两人始终同句）时后写者返回 undefined。
+ */
+export function outlineCharacterStateWrites(digest: Pick<OutlineChapterDigest, 'narrativeBody' | 'characterNames'>,
+  maxLength = 50): Array<{ characterName: string; recentEvents: string }> {
+  const writes: Array<{ characterName: string; recentEvents: string }> = []
+  const taken = new Set<string>()
+  for (const name of digest.characterNames) {
+    const recentEvents = outlineRecentEventForCharacter(digest.narrativeBody, name, taken, maxLength)
+    if (!recentEvents) continue
+    taken.add(recentEvents)
+    writes.push({ characterName: name, recentEvents })
+  }
+  return writes
 }
 const CHAPTER_HEADING = /^#{0,4}\s*(?:第\s*(\d+)\s*章|Chapter\s+(\d+))\s*[:：]?\s*(.*)$/u
 
@@ -96,5 +121,5 @@ export function extractChapterDigest(block: string, knownCharacterNames: readonl
     .map(item => item.replace(/\s+/gu, ' ').trim())
     .filter(item => /(?:于是|因此|结果|最终|代价|暴露|发现|决定|失去|得到|留下|改变了)/u.test(item))
     .slice(0, 3)
-  return { chapterNotes: notes, characterNames, continuityFacts: facts }
+  return { chapterNotes: notes, narrativeBody, characterNames, continuityFacts: facts }
 }

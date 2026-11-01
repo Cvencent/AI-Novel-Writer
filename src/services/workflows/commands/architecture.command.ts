@@ -1,6 +1,6 @@
 import { parsePlanningTargetUnits, planningTargetInstruction, DEFAULT_PLANNING_ACTION_CHAPTERS } from '../../../shared/plot-outline-contract'
 import { buildOutlineRetrievalContext, extractCharacterNames } from '../../../shared/outline-retrieval-context'
-import { extractChapterDigest, outlineRecentEventForCharacter, splitChapterBlock } from '../../../shared/outline-chapter-digest'
+import { extractChapterDigest, outlineCharacterStateWrites, splitChapterBlock } from '../../../shared/outline-chapter-digest'
 import { extractChapterShape, isShapeRepetitive } from '../../../shared/chapter-shape'
 import type { CharacterProposalChoices } from '../../character-proposal-choices'
 import { decodeCharacterIdentityManifest, decodeCharacterDetails, validateCharacterDetail, type CharacterIdentitySlot, type CharacterDetailOutput } from '../../../shared/character-proposal-parser'
@@ -2270,15 +2270,14 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         if (chapterNumber === null || chapterNumber < from || chapterNumber > to) continue
         const digest = extractChapterDigest(block, characterNames)
         if (!digest.chapterNotes) continue
-        const taken = new Set<string>()
-        for (const name of digest.characterNames) {
-          // 逐角色取「要点里提到该角色的句子」：同一句写给每个角色等于没有信息（issue #18）。
-          const recentEvents = outlineRecentEventForCharacter(digest.chapterNotes, name, taken)
-          if (recentEvents) taken.add(recentEvents)
+        // 取值窗口是全章叙事文本，取不到专属句的角色不写库——写空值会把
+        // 上一章已有的「最近事件」无条件擦掉（issue #24）。
+        const writes = outlineCharacterStateWrites(digest)
+        for (const write of writes) {
           await ipc.invokeWithProjectSession(projectSession, 'db:outline-character-state-apply', {
-            characterName: name,
+            characterName: write.characterName,
             chapterNumber,
-            recentEvents,
+            recentEvents: write.recentEvents,
           }, expectedProjectPath).catch(() => null)
         }
         await ipc.invokeWithProjectSession(projectSession, 'db:outline-summary-save', {
@@ -2548,12 +2547,11 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         if (chapterNumber === null || chapterNumber < outline.range.from || chapterNumber > outline.range.to) continue
         const digest = extractChapterDigest(block, names)
         if (!digest.chapterNotes) continue
-        const taken = new Set<string>()
-        for (const name of digest.characterNames) {
-          const recentEvents = outlineRecentEventForCharacter(digest.chapterNotes, name, taken)
-          if (recentEvents) taken.add(recentEvents)
+        // 同上：全章窗口取值，取不到专属句的角色跳过，不覆盖旧值（issue #24）。
+        const writes = outlineCharacterStateWrites(digest)
+        for (const write of writes) {
           await ipc.invokeWithProjectSession(session, 'db:outline-character-state-apply', {
-            characterName: name, chapterNumber, recentEvents,
+            characterName: write.characterName, chapterNumber, recentEvents: write.recentEvents,
           }, expectedProjectPath).catch(() => null)
         }
         await ipc.invokeWithProjectSession(session, 'db:outline-summary-save', {
