@@ -331,10 +331,27 @@ export function plotOutlineConfirmedPrefix(expected: PlotOutlineRangeSource, ran
   if (following) return expected.synopsis.slice(before[0].index, following.index).trim()
   const title = `# ${expected.writingLanguage === 'en-US' ? 'Plot Outline' : '细纲'}\n\n`
   const suffix = renderPlotOutlineSynopsis('', range.from - 1, expected).slice(title.length)
-  if (!expected.synopsis.startsWith(title) || !suffix || !expected.synopsis.endsWith(suffix)) throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
-  const prefix = expected.synopsis.slice(title.length, -suffix.length).trim()
-  if (!prefix || renderPlotOutlineSynopsis(prefix, range.from - 1, expected) !== expected.synopsis) throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
-  return prefix
+  if (!expected.synopsis.startsWith(title)) throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
+  // 上一批按旧总章数写满时不写覆盖说明（coveredTo === 旧 total）；
+  // 作者事后调大总章数后，正式大纲末尾没有说明行是合法历史形态（issue #21）。
+  // 「正文以 prefix 直接结尾」与「带说明行」都接受为合法前缀。
+  const barePrefix = expected.synopsis.slice(title.length).trim()
+  if (suffix && expected.synopsis.endsWith(suffix)) {
+    const prefix = expected.synopsis.slice(title.length, -suffix.length).trim()
+    if (!prefix || renderPlotOutlineSynopsis(prefix, range.from - 1, expected) !== expected.synopsis) {
+      throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
+    }
+    return prefix
+  }
+  // bare-prefix 仅在「真的在续写」时接受：range.from 不超过全书章数，
+  // 且 coveredTo（before 末尾）紧邻 range.from（不跳章）。
+  if (!barePrefix || range.from > expected.totalChapters
+    || renderPlotOutlineSynopsis(barePrefix, range.from - 1, expected) !== expected.synopsis
+    || renderPlotOutlineSynopsis(barePrefix, range.from - 1,
+      { ...expected, totalChapters: range.from - 1 }) !== expected.synopsis) {
+    throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
+  }
+  return barePrefix
 }
 
 /**
