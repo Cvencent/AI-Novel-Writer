@@ -24,6 +24,14 @@ export const MAIN_GENERATION_POLICY = Object.freeze({
   safetyMarginTokens: 512,
 })
 
+/** 审稿输出上限：审稿产物只是 JSON 报告，通用 32k 上限只会诱导推理灌水（issue #17）。 */
+export const REVIEW_OUTPUT_TOKEN_CAP = 8_192
+const REVIEW_PURPOSES: ReadonlySet<string> = new Set(['review-chapter', 'review-chapter-rebuild'])
+
+function isReviewPurpose(purpose: string | undefined): boolean {
+  return purpose !== undefined && REVIEW_PURPOSES.has(purpose)
+}
+
 export type MainGenerationPolicy = Readonly<Omit<typeof MAIN_GENERATION_POLICY, 'version' | 'budget'> & {
   version: typeof MAIN_GENERATION_POLICY.version | 's07-planning-v1' | 's07-capacity-v2'
   budget: RootBudget
@@ -264,6 +272,7 @@ export function buildMainGenerationPlan(model: ModelProfile, receipt: Pick<Model
   const evidence = receipt.capabilityEvidence, safety = MAIN_GENERATION_POLICY.safetyMarginTokens
   const rootRemaining = budget.policy.maxTokenLiability - budget.attempts.reduce((sum, attempt) => sum + tokenLiability(attempt), 0)
   const remaining = policy.version === 's07-capacity-v2' ? Math.min(rootRemaining, reservationCeiling) : rootRemaining
+  const purposeOutputCap = isReviewPurpose(task.purpose) ? REVIEW_OUTPUT_TOKEN_CAP : Number.POSITIVE_INFINITY
   if (task.budgetDemand) {
     if (remaining <= 0 || totalBounded && remaining < 1_048_576) throw new Error('ROOT_BUDGET_EXHAUSTED')
     const separateOutput = totalBounded || model.protocol === 'gemini' || geminiReasoning !== null
@@ -277,7 +286,8 @@ export function buildMainGenerationPlan(model: ModelProfile, receipt: Pick<Model
       demand: task.budgetDemand,
       inputEstimate: { upperBoundTokens: inputUpperBoundTokens, estimatorVersion: MAIN_GENERATION_POLICY.estimatorVersion },
       capability,
-      root: { remainingTokenLiability: remaining, maxOutputPerRequest: budget.policy.maxOutputPerRequest },
+      root: { remainingTokenLiability: remaining,
+        maxOutputPerRequest: Math.min(budget.policy.maxOutputPerRequest, purposeOutputCap) },
       liability: totalBounded ? { mode: 'total-bounded', totalLiabilityUpperBoundTokens: 1_048_576 }
         : !canBound ? { mode: 'unknown', reasoningUpperBoundTokens: separateReasoning }
           : gemini ? { mode: 'separate-bounded', reasoningUpperBoundTokens: separateReasoning } : { mode: 'included-in-output' },
@@ -302,13 +312,16 @@ export function buildMainGenerationPlan(model: ModelProfile, receipt: Pick<Model
   // Report exhausted root accounting before
   // deriving a misleading non-positive per-request input capacity.
   if (remaining <= 0 || totalBounded && remaining < 1_048_576) throw new Error('ROOT_BUDGET_EXHAUSTED')
+  // 审稿的产物是一份几百到两千 token 的 JSON 报告，给它 32768 的通用输出上限只会
+  // 让模型把推理文本灌到撞顶（实测单次 1.6–3.2 万 tok、10 次里 1 次 finish:length，
+  // 撞顶整份作废重跑——issue #17）。审稿按家族降到 8192，推理模型同时被压住思考篇幅。
   // Same capability merge as planTaskBudget: the verified model limits are only
   // ever narrowed by the user's ModelSettings limits, the root ceiling/remaining
   // liability and the input occupancy. The lease's frozen evidence numbers are
   // not a bound here: they take the user's value when the preset has no lease-level
   // capabilities (OpenAI, Silicon) and let a verified context hide a smaller user one.
   const requestedOutputTokens = Math.min(modelOutput ?? Infinity, capability.userMaxOutputTokens ?? Infinity,
-    budget.policy.maxOutputPerRequest, remaining - inputUpperBoundTokens - separateReasoning - safety,
+    budget.policy.maxOutputPerRequest, purposeOutputCap, remaining - inputUpperBoundTokens - separateReasoning - safety,
     effectiveContext - inputUpperBoundTokens - separateReasoning - safety)
   if (!Number.isSafeInteger(requestedOutputTokens) || requestedOutputTokens <= 0) throw new Error('GENERATION_INPUT_CAPACITY_EXCEEDED')
   // SiliconFlow max_tokens excludes reasoning, and thinking_budget is not a hard
