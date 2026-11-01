@@ -14,6 +14,7 @@ import { leaveSettingsThen, openProjectFolder } from './components/settings/unsa
 import StageRoot from './components/stage/StageRoot'
 import StageShell from './components/stage/StageShell'
 import { actionToast } from './components/ui/ActionToast'
+import { subscribeSystemNotices } from './components/ui/system-notice'
 import { UpdateNotifier } from './components/updates/UpdateNotifier'
 import { globalEventBus } from './shared/event-bus'
 import {
@@ -109,6 +110,10 @@ export default function App() {
       })()
     })
 
+    // C) 系统通知（SYSTEM_NOTICE）：后台刷新失败等错误必须有出口，否则用户只看到
+    // 「点了没反应」（issue #25）。与 ActionToast 同栈，tone 与去重都复用现成规则。
+    const unsubSystemNotices = subscribeSystemNotices()
+
     return () => {
       // App 卸载时销毁 ProjectService（开发环境 HMR 时会触发）
       import('./services/project-service').then(({ disposeProjectService }) => {
@@ -116,6 +121,7 @@ export default function App() {
       }).catch(() => {})
       unsubActionToast()
       unsubAutoOpenNextChapter()
+      unsubSystemNotices()
     }
   }, [initLocale, initTheme, initLLM, loadRecentProjects])
 

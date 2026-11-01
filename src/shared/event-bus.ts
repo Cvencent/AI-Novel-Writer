@@ -125,6 +125,10 @@ export const globalEventBus = new EventBus()
 
 // ===== 便捷日志工具 =====
 
+/**
+ * 便捷日志工具。发出的 SYSTEM_NOTICE 由 `subscribeSystemNotices`（App 层）接到
+ * 右下角提示栈上（issue #25：这条通道此前零订阅者，错误提示全部静默）。
+ */
 export const AppLogger = {
   info: (msg: string) => globalEventBus.emit('SYSTEM_NOTICE', { level: 'info', message: msg }),
   warn: (msg: string) => globalEventBus.emit('SYSTEM_NOTICE', { level: 'warn', message: msg }),
