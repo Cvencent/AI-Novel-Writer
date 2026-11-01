@@ -7,6 +7,7 @@ import { freezeChapterGoals } from '../../src/shared/chapter-goal-review'
 import { findBlueprintContinuityRisks } from '../../src/shared/consistency-preflight'
 import { findCharacterProseRepetition, findProseRepetition, proseRepetitionEvidence } from '../../src/shared/prose-repetition'
 import { findDeclaredDigitCountMismatches } from '../../src/shared/numbering-consistency'
+import { findCrossChapterAssertionReversals } from '../../src/shared/consistency-preflight'
 import type { ConsistencyFinding } from '../../src/shared/consistency-preflight'
 import { CHARACTER_STATE_TEXT_FIELDS } from '../../src/shared/character-roster'
 import { ProjectCoreRepository } from '../repositories/project-core-repository'
@@ -163,9 +164,39 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
         // 命中即错，不需要词表。样本是本章正文（最近定稿的编号体系在前面章节里，
         // 但「同一句自相矛盾」永远发生在当章）。
         ...numberingFindings({ chapterNumber: source.chapterNumber, content: source.content }),
+        // 跨章「断言反转」（issue #52）：第 16 章正文「是叶九的手」，第 19 章正文「不是叶九的手」，
+        // 而第 19 章整章推理架在后一句上。比对源是**前序定稿正文**——它们与本章正文都在这份上下文里。
+        ...assertionReversalFindings(
+          history.map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
+          { chapterNumber: source.chapterNumber, content: source.content },
+          authorCards.map(card => card.name),
+        ),
       ],
       ...(confirmation ? { confirmation } : {}), ...(recheck ? { recheck } : {}) }
   })()
+}
+
+/**
+ * 跨章「断言反转」→ 一致性发现（issue #52）。
+ *
+ * 真实事故：第 16 章正文断定「笔压没抖一下……叶九的手」，第 19 章正文又断定「不是叶九的手」，
+ * 而第 19 章整章推理（「温珩的名字是被添上去的」）立在后一句上。定稿后本章只读，
+ * 这类冲突只能靠后面的章节打补丁，越补越绕——所以要在写这一章时就摆出来。
+ *
+ * 判据刻意窄（见 findCrossChapterAssertionReversals 的注释）：短语必须含在册角色名、
+ * 逐字相同、且方向是「前章断言 → 本章否定」。这是证据提示，不是禁止条款。
+ */
+export function assertionReversalFindings(
+  earlier: ReadonlyArray<{ chapterNumber: number; content: string }>,
+  current: { chapterNumber: number; content: string },
+  castNames: readonly string[],
+): ConsistencyFinding[] {
+  if (!castNames.length) return []
+  return findCrossChapterAssertionReversals({
+    castNames,
+    earlier: earlier.map(item => ({ chapterNumber: item.chapterNumber, text: item.content, label: '正文' })),
+    current: { chapterNumber: current.chapterNumber, text: current.content },
+  })
 }
 
 /**

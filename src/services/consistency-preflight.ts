@@ -1,6 +1,7 @@
 import type { ProjectSessionContext } from '../shared/ipc-channels'
 import type { BlueprintForPreflight, ConsistencyExemption, ConsistencyFinding } from '../shared/consistency-preflight'
-import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuityRisks, findUnregisteredBlueprintCast } from '../shared/consistency-preflight'
+import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuityRisks,
+  findUnregisteredBlueprintCast } from '../shared/consistency-preflight'
 import { ipc } from './ipc-client'
 
 export interface ConsistencyPreflightResult {

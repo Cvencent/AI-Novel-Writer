@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   findAppearanceGaps,
   findBlueprintContinuityRisks,
+  findCrossChapterAssertionReversals,
   findExpandedContinuityRisks,
   findSynopsisCastMismatches,
   findUnregisteredBlueprintCast,
@@ -312,5 +313,69 @@ describe('findAppearanceGaps (issue #40)', () => {
   it('一次性上限 6 条，不刷屏', () => {
     const many = Array.from({ length: 9 }, (_, index) => ({ name: `路人${index}`, role: 'minor', appearance: '' }))
     expect(findAppearanceGaps({ cast: many, chapterNumber: 1 })).toHaveLength(6)
+  })
+})
+
+// issue #52：第 16 章蓝图/正文断言「是叶九的手」，第 19 章蓝图与正文都写「不是叶九的手」，
+// 而第 19 章整章推理架在后一句上——生成本章蓝图时第 16 章还在最近三章窗口内，却没人比对过。
+describe('findCrossChapterAssertionReversals (issue #52)', () => {
+  const castNames = ['周叙', '温珩', '叶九', '林棠', '全叔']
+  const asserted = {
+    chapterNumber: 16,
+    text: '周叙回船趁开航前的水汽再读待核栏：温珩的名字果然已被写上，墨迹极新，笔压稳匀，是叶九的手。',
+    label: '蓝图',
+  }
+
+  it('前一章断言、本章否定同一短语时报出，并指向两章的原文', () => {
+    const findings = findCrossChapterAssertionReversals({
+      castNames,
+      earlier: [asserted],
+      current: {
+        chapterNumber: 19,
+        text: '压在叶九昨夜新落的“待核”那一笔上溯读：这一笔落在签押之后，笔压发慌，与叶九平日稳匀的手不是一路。不是叶九的手。',
+      },
+    })
+    expect(findings).toHaveLength(1)
+    expect(findings[0]).toMatchObject({ severity: 'warning', sourceChapter: 19 })
+    expect(findings[0]!.evidence).toContain('第16章蓝图')
+    expect(findings[0]!.evidence).toContain('叶九的手')
+    expect(findings[0]!.stableFactKey).toContain('assertion-reversal:叶九的手')
+    // 两条出路：改成一致，或写出「为什么上一次读错了」
+    expect(findings[0]!.issue.zhCN).toContain('推翻前一次的核验过程')
+    expect(findings[0]!.suggestion.zhCN).toContain('为什么上一次读错了')
+  })
+
+  it('短语不含在册角色名时不报（「不是钱的事」这类日常否定不能当反转）', () => {
+    expect(findCrossChapterAssertionReversals({
+      castNames,
+      earlier: [{ chapterNumber: 3, text: '这一趟不是钱的事，是人情。', label: '蓝图' }],
+      current: { chapterNumber: 5, text: '他心里清楚，不是钱的事。' },
+    })).toEqual([])
+  })
+
+  it('本章没有明确否定时不报（正常推进不打扰）', () => {
+    expect(findCrossChapterAssertionReversals({
+      castNames,
+      earlier: [asserted],
+      current: { chapterNumber: 17, text: '周叙把那一笔抄进私册，笔迹与叶九平日一样稳匀。' },
+    })).toEqual([])
+  })
+
+  it('顺序不能反：后章断言、前章否定不算反转', () => {
+    expect(findCrossChapterAssertionReversals({
+      castNames,
+      earlier: [{ chapterNumber: 5, text: '那不是叶九的手。', label: '蓝图' }],
+      current: { chapterNumber: 9, text: '墨压稳匀，是叶九的手。' },
+    })).toEqual([])
+  })
+
+  it('同一短语最多一条，避免同章多处否定刷屏', () => {
+    const findings = findCrossChapterAssertionReversals({
+      castNames,
+      earlier: [asserted, { ...asserted, chapterNumber: 14 }],
+      current: { chapterNumber: 19, text: '不是叶九的手。再一次：不是叶九的手。' },
+    })
+    expect(findings).toHaveLength(2)   // 两章各一条（同一断言在两章都说过）
+    expect(new Set(findings.map(finding => finding.stableFactKey)).size).toBe(2)
   })
 })

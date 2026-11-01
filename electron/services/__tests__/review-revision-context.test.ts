@@ -11,7 +11,7 @@ import { SqliteSchemaAdapter } from '../../migrations/sqlite-schema-adapter'
 import { getProjectDb } from '../../database'
 import { ReviewRepository } from '../../repositories/review-repository'
 import { textHash } from '../../repositories/generation-run-repository'
-import { captureReviewRevisionContext, numberingFindings, reviewRevisionRequest } from '../review-revision-context'
+import { assertionReversalFindings, captureReviewRevisionContext, numberingFindings, reviewRevisionRequest } from '../review-revision-context'
 vi.mock('../../database', () => ({ getProjectDb: vi.fn() }))
 const Database = createRequire(import.meta.url)('better-sqlite3') as typeof import('better-sqlite3')
 const connections: import('better-sqlite3').Database[] = []
@@ -179,5 +179,36 @@ describe('numberingFindings (issue #47)', () => {
 
   it('正常章节不产出 finding', () => {
     expect(numberingFindings({ chapterNumber: 3, content: '编号五位，零三一七〇。他把票根收好。' })).toEqual([])
+  })
+})
+
+// issue #52：第 16 章正文断言「是叶九的手」，第 19 章正文又断言「不是叶九的手」。
+describe('assertionReversalFindings (issue #52)', () => {
+  it('前章断言、本章否定同一短语时报出，证据指向两章', () => {
+    const findings = assertionReversalFindings(
+      [{ chapterNumber: 16, content: '温珩的名字果然已被写上，墨迹极新，笔压稳匀，是叶九的手。' }],
+      { chapterNumber: 19, content: '他往下按了按，笔压在纸面上抖。不是叶九的手。叶九的笔稳、匀，起笔带锋。' },
+      ['周叙', '温珩', '叶九'],
+    )
+    expect(findings).toHaveLength(1)
+    expect(findings[0]!.evidence).toContain('第16章正文')
+    expect(findings[0]!.evidence).toContain('第19章')
+    expect(findings[0]!.stableFactKey).toContain('assertion-reversal:叶九的手')
+  })
+
+  it('没有在册角色名时直接返回空（无名单不做推断）', () => {
+    expect(assertionReversalFindings(
+      [{ chapterNumber: 16, content: '是叶九的手。' }],
+      { chapterNumber: 19, content: '不是叶九的手。' },
+      [],
+    )).toEqual([])
+  })
+
+  it('本章只是继续沿用前一章结论时不报', () => {
+    expect(assertionReversalFindings(
+      [{ chapterNumber: 16, content: '笔压稳匀，是叶九的手。' }],
+      { chapterNumber: 17, content: '他把那一笔抄进私册，笔迹与叶九平日一样稳匀。' },
+      ['叶九'],
+    )).toEqual([])
   })
 })

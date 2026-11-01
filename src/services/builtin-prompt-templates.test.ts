@@ -123,3 +123,13 @@ describe('numbering coherence dimension (issue #47)', () => {
     expect(review?.content).toContain('区间')
   })
 })
+
+// issue #52：第 16 章断言「是叶九的手」，第 19 章断言「不是」——结论反转必须要求核验过程。
+describe('conclusion reversal dimension (issue #52)', () => {
+  it('the chapter review prompt asks for the verification behind a reversed conclusion', () => {
+    const review = BUILTIN_PROMPTS.find(template => template.key === 'consistency_check')
+    expect(review?.content).toContain('结论反转')
+    expect(review?.content).toContain('推翻前一次读法的核验过程')
+    expect(review?.content).toContain('若正文已写出核验过程，则不报')
+  })
+})

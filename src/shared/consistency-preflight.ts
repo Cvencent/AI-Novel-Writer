@@ -341,6 +341,77 @@ export function findSynopsisCastMismatches(input: SynopsisChapterCastInput): Con
   return findings.slice(0, 4)
 }
 /**
+ * 跨章「断言反转」（issue #52）：同一个短语先在某一章被断定为真，
+ * 后面某章又被明确否定——「是叶九的手」→「不是叶九的手」，整章推理架在后一句上。
+ *
+ * 判据刻意做**窄**：
+ * - 短语取「是/正是/就是」后面 2–8 个非标点字符，且**必须含在册角色名**——
+ *   把「是不是他」「不是钱的事」这类日常否定挡在外面（#20 的教训：宽词法判据在中文里
+ *   会把「同一件事换个说法」当成矛盾，最终只能整案回滚）；
+ * - 只在**蓝图与正文**上比对，不在全书写法之间做语义推断：同短语逐字出现才算。
+ * 这是证据提示，不是禁止条款：作者可以据此确认反转是否有依据（复核/豁免走既有机制）。
+ */
+const ASSERTION_PHRASE = /(?:是|正是|就是)([^，。！？；：、\s“”「」]{2,8})/gu
+const NEGATED_ASSERTION_PHRASE = /(?:不是|并非|不像是|不像)([^，。！？；：、\s“”「」]{2,8})/gu
+
+/** 取一段文本里「被断定为真的短语」（含在册角色名的才留）。 */
+export function blueprintAssertionPhrases(text: string, castNames: readonly string[]): string[] {
+  const phrases: string[] = []
+  for (const match of String(text ?? '').matchAll(ASSERTION_PHRASE)) {
+    const phrase = match[1]!
+    if (!castNames.some(name => name && phrase.includes(name))) continue
+    phrases.push(phrase)
+  }
+  return [...new Set(phrases)]
+}
+
+/** 取一段文本里被明确否定的短语（同样只留在册角色相关的）。 */
+export function negatedAssertionPhrases(text: string, castNames: readonly string[]): string[] {
+  const phrases: string[] = []
+  for (const match of String(text ?? '').matchAll(NEGATED_ASSERTION_PHRASE)) {
+    const phrase = match[1]!
+    if (!castNames.some(name => name && phrase.includes(name))) continue
+    phrases.push(phrase)
+  }
+  return [...new Set(phrases)]
+}
+
+export interface CrossChapterAssertionInput {
+  /** 已定稿（或已生成）的前序章节，按章号升序。 */
+  earlier: ReadonlyArray<{ chapterNumber: number; text: string; label?: string }>
+  /** 当前章要检查的文本。 */
+  current: { chapterNumber: number; text: string }
+  castNames: readonly string[]
+}
+
+export function findCrossChapterAssertionReversals(input: CrossChapterAssertionInput): ConsistencyFinding[] {
+  const findings: ConsistencyFinding[] = []
+  const negatedHere = negatedAssertionPhrases(input.current.text, input.castNames)
+  if (!negatedHere.length) return findings
+  for (const earlier of input.earlier) {
+    const asserted = blueprintAssertionPhrases(earlier.text, input.castNames)
+    for (const phrase of asserted) {
+      if (!negatedHere.includes(phrase)) continue
+      findings.push({
+        stableFactKey: `assertion-reversal:${phrase}:${earlier.chapterNumber}:${input.current.chapterNumber}`,
+        severity: 'warning',
+        sourceChapter: input.current.chapterNumber,
+        evidence: `第${earlier.chapterNumber}章${earlier.label ?? ''}：「是${phrase}」；第${input.current.chapterNumber}章：「不是${phrase}」`,
+        issue: {
+          zhCN: `同一件事的结论被反转了：第${earlier.chapterNumber}章断定为「是${phrase}」，本章又断定为「不是${phrase}」。若这是有依据的翻案，本章需要写出推翻前一次的核验过程；否则读者会以为是自己记错了。`,
+          enUS: `A prior conclusion is reversed: chapter ${earlier.chapterNumber} asserted “${phrase}”, and this chapter asserts it is not. If this is an earned reversal, show the check that overturns the earlier reading; otherwise readers will think they misread.`,
+        },
+        suggestion: {
+          zhCN: `二选一：把本章的否定改成与第${earlier.chapterNumber}章一致的结论，或在正文里写出「为什么上一次读错了」（新的证据、不同的对照物、当时看漏的条件）。反转必须由当章的动作或证据支撑。`,
+          enUS: `Either align this chapter with chapter ${earlier.chapterNumber}, or show in the prose why the earlier reading was wrong (new evidence, a different reference, a condition missed then). A reversal must be carried by this chapter's action or evidence.`,
+        },
+      })
+    }
+  }
+  return findings.slice(0, 4)
+}
+
+/**
  * 在册角色缺外貌锚点（issue #40）。
  *
  * 真实事故：AI 新建的「邵德昌」在第 8、9 章各有戏（茶棚谈判、带人堵舱口），
