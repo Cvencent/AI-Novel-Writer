@@ -8,9 +8,15 @@
 
 ## 每轮流程
 
+> **所有 gh 命令必须显式带 `--repo Cvencent/AI-Novel-Writer`。**
+> 仓库有两个 remote：`origin` = Cvencent/AI-Novel-Writer（本项目）、
+> `upstream` = EthanYoQ/AI-Novel-Writer（**别人的仓库**）。`gh` 默认仓库曾被设为 upstream，
+> 导致 issue 发错仓库（2026-11-01 实测）。`gh issue list / view / comment / close` 全部要带，
+> 动手前可用 `gh repo view --json nameWithOwner` 核对当前默认仓库。
+
 ```bash
 cd F:\aiNovelWriter\repo
-gh issue list --state open --limit 30 --json number,title,labels,createdAt
+gh issue list --repo Cvencent/AI-Novel-Writer --state open --limit 30 --json number,title,labels,createdAt
 ```
 
 按「文字/角色连贯性 > 功能缺陷 > 界面交互 > 建议」的顺序挑。一轮最多处理 **2 个** issue，把它做透，不要摊开五个都做一半。

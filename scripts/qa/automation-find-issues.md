@@ -73,7 +73,13 @@ node scripts/qa/consistency-audit.mjs --project "<模拟器这轮的作品目录
 
 ## 建 issue 规则
 
-1. **先查重**：`gh issue list --state all --limit 100 --search "<关键词>"`。已有同主题 → 在那边评论补证据，不要新建。
+0. **每条 gh 命令都必须显式带 `--repo Cvencent/AI-Novel-Writer`**。
+   仓库有两个 remote：`origin` = Cvencent/AI-Novel-Writer（本项目自己的仓库）、
+   `upstream` = EthanYoQ/AI-Novel-Writer（**别人的仓库**）。`gh` 的默认仓库曾被设成 upstream，
+   结果一条 QA issue 被发到了别人的仓库（2026-11-01 实测，事后关闭并在本项目重建）。
+   `gh issue create / list / view / comment / close` **全部**要带 `--repo Cvencent/AI-Novel-Writer`；
+   建完 issue 后核对返回 URL 里的仓库名是否为本项目。
+1. **先查重**：`gh issue list --repo Cvencent/AI-Novel-Writer --state all --limit 100 --search "<关键词>"`。已有同主题 → 在那边评论补证据，不要新建。
 2. 每条 issue 必须含：**现象**（用户视角一句话）、**复现**（具体步骤或脚本命令）、**证据**（章节原文摘录 / 报错 / SQL 结果 / 截图路径）、**影响**（用户会怎么看）。没有证据不发。
 3. 标题带前缀：`[bug]` 功能缺陷、`[text]` 文字/角色连贯性、`[ui]` 界面交互、`[idea]` 改进建议、`[infra]` QA 基础设施。
 4. 标签：`bug` / `enhancement`，文字类加 `bug`。
