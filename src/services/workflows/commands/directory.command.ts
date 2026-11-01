@@ -174,6 +174,8 @@ function buildCompactBlueprintTask(input: {
       chapterNumber: chapter.chapterNumber,
       title: chapter.title,
       keyEvents: chapter.keyEvents,
+      // 上一章付过的代价也要给模型看：代价桥段跨章照抄的根因就是它不可见（issue #14）。
+      costs: chapter.costsAndTurns,
       suspenseHook: chapter.suspenseHook,
     })),
     globalGuidance: input.globalGuidance,
