@@ -9,9 +9,10 @@ import {
 import { StructuredContractDiagnostic } from '../structured-contract-diagnostic'
 
 function validBlueprint(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  const chapterNumber = typeof overrides.chapterNumber === 'number' ? overrides.chapterNumber : 1
   return {
-    chapterNumber: 1,
-    title: '雨夜来信',
+    chapterNumber,
+    title: `雨夜来信${chapterNumber}`,
     role: '开篇建置',
     purpose: '让主角接下无法回避的委托',
     keyEvents: '主角收到失踪多年的兄长寄来的密信，并在信封夹层发现追踪器。',
@@ -29,7 +30,7 @@ describe('blueprint semantic contract', () => {
       [1],
     )).toEqual([{
       chapterNumber: 1,
-      title: '雨夜来信',
+      title: '雨夜来信1',
       role: '开篇建置',
       purpose: '让主角接下无法回避的委托',
       keyEvents: '主角收到失踪多年的兄长寄来的密信，并在信封夹层发现追踪器。',
@@ -204,5 +205,16 @@ describe('blueprint semantic contract', () => {
       { blueprints: [validBlueprint(), validBlueprint()] },
       [1],
     )).toThrow(/code=duplicate_item path=blueprints/u)
+  })
+
+  it('rejects two chapters sharing one title, even across the batch boundary context (issue #16)', () => {
+    expect(() => decodeBlueprintSemanticPayload(
+      { blueprints: [validBlueprint({ chapterNumber: 5, title: '待核' }), validBlueprint({ chapterNumber: 9, title: '待核' })] },
+      [5, 9],
+    )).toThrow(/code=duplicate_title path=blueprints.title/u)
+    expect(decodeBlueprintSemanticPayload(
+      { blueprints: [validBlueprint({ chapterNumber: 5, title: '待核' }), validBlueprint({ chapterNumber: 9, title: '另一次核对' })] },
+      [5, 9],
+    )).toHaveLength(2)
   })
 })

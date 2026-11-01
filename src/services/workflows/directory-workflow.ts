@@ -152,12 +152,14 @@ export function parseTextBlueprints(content: string, startNum: number, endNum: n
   return []
 }
 
-export function parseTextBlueprintsStrict(content: string, startNum: number, endNum: number, source: 'model' | 'author' = 'model'): ChapterBlueprint[] {
+export function parseTextBlueprintsStrict(content: string, startNum: number, endNum: number, source: 'model' | 'author' = 'model',
+  existingTitles: readonly string[] = []): ChapterBlueprint[] {
   try {
     if (source === 'author') return parseBlueprintAuthorResponseText(content, chapterRange(startNum, endNum))
     return parseBlueprintSemanticResponseText(
       stripThinkingTags(content),
       chapterRange(startNum, endNum),
+      existingTitles,
     ).map(persistedBlueprint)
   } catch (error) {
     if (structuredContractDiagnostic(error)) throw error

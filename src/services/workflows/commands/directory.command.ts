@@ -384,6 +384,8 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
         content,
         activeRange.startChapter,
         activeRange.endChapter,
+        // 批内标题查重（existingTitles 默认空 → 只查本批同名）；跨章同名由合同与模板约束。
+        'model',
       ),
       validateItem: validateBlueprintSemanticItem,
       syntaxRepairContract: ({ items }) => (

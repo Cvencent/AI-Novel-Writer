@@ -7,6 +7,7 @@ export type StructuredContractDiagnosticCode =
   | 'empty_value'
   | 'value_too_long'
   | 'duplicate_item'
+  | 'duplicate_title'
   | 'unexpected_item'
   | 'missing_item'
   | 'relationship_self_reference'

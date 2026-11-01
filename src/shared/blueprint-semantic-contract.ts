@@ -43,7 +43,7 @@ export function blueprintSemanticGenerationContract(writingLanguage: WritingLang
   if (writingLanguage === 'en-US') {
     return `[Immutable blueprint JSON contract]
 Output {"blueprints":[...]} only. Every item must contain all of these fields: ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.requiredFields.join(', ')}.
-chapterNumber must cover every target chapter exactly once, without duplicates or out-of-range values. title, role, purpose, keyEvents, and suspenseHook must be non-empty strings.
+chapterNumber must cover every target chapter exactly once, without duplicates or out-of-range values. title, role, purpose, keyEvents, and suspenseHook must be non-empty strings. title must be unique across the whole book: never reuse a title from an earlier chapter (recentBlueprints/chapter_list), and keyEvents must not replay a scene already written in a finalized chapter.
 suspenseHook is always required; even without a mystery, state one concrete unresolved decision, threat, revelation, or consequence that creates forward pressure.
 characters must list named people only (already in the character facts, or declared in this item's newCharacterCandidates), with at least one unique non-empty full name. Role-only labels such as "the examiner", "the guard" or "the clerk" must never appear in characters; describe them in keyEvents instead.
 newCharacterCandidates is optional. When present, include only important named characters first introduced by this blueprint and expected to recur. Every item must contain name and role, name must exactly copy one entry from characters, and role must be protagonist, antagonist, supporting, or minor. Omit it or use [] when there are no candidates; never include incidental figures.
@@ -55,7 +55,7 @@ Do not omit required fields, combine chapters, rename fields, explain, or output
   }
   return `【不可变蓝图 JSON 合同】
 只输出 {"blueprints":[...]}，每项必须完整包含：${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.requiredFields.join('、')}。
-chapterNumber 必须覆盖本批每个目标章节且不得重复或越界；title、role、purpose、keyEvents、suspenseHook 必须是非空字符串。
+chapterNumber 必须覆盖本批每个目标章节且不得重复或越界；title、role、purpose、keyEvents、suspenseHook 必须是非空字符串。title 必须全书唯一：不得复用已有章节的标题（见 recentBlueprints/chapter_list），keyEvents 不得重演已定稿章节里已经写过的场景。
 suspenseHook 始终必填；即使本章没有谜团，也要写明一个制造推进压力的具体未决决定、威胁、揭示或后果。
 characters 必须只写具名角色（角色名单里已建档的，或本章 newCharacterCandidates 声明的），至少含一个唯一非空姓名。「检测教员」「门卫」「店员」这类只有身份没有姓名的角色不得写进 characters，只能写进 keyEvents 的场景描述。
 newCharacterCandidates 可选；提供时只声明由本章首次引入且预计后续复用的重要具名角色，每项必须包含 name、role，name 必须逐字复制 characters 中的一个完整姓名，role 只能是 protagonist、antagonist、supporting、minor。无候选时可省略或传 []，一次性路人不得声明为候选。
@@ -249,6 +249,7 @@ export function normalizeBlueprintSemanticItem(value: unknown, path = 'blueprint
 export function decodeBlueprintSemanticPayload(
   payload: unknown,
   expectedChapterNumbers: readonly number[],
+  existingTitles: readonly string[] = [],
 ): BlueprintSemanticItem[] {
   const candidates = isRecord(payload) && Object.hasOwn(payload, 'blueprints')
     ? payload.blueprints
@@ -265,11 +266,19 @@ export function decodeBlueprintSemanticPayload(
 
   const decoded = candidates.map((candidate, index) => normalizeBlueprintSemanticItem(candidate, `blueprints[${index}]`))
   const seen = new Set<number>()
+  // 标题去重：同一批内同名、或与已有章节同名（如两章都叫「待核」）都是合同违规——
+  // 标题是目录里最显眼的身份，重名意味着场景重演已经发生（issue #16）。
+  const titles = new Set(existingTitles.map(title => title.trim()))
   for (const blueprint of decoded) {
     if (seen.has(blueprint.chapterNumber)) {
       throw new StructuredContractDiagnostic('duplicate_item', 'blueprints')
     }
     seen.add(blueprint.chapterNumber)
+    const title = blueprint.title.trim()
+    if (titles.has(title)) {
+      throw new StructuredContractDiagnostic('duplicate_title', 'blueprints.title')
+    }
+    titles.add(title)
     if (!expected.has(blueprint.chapterNumber)) {
       throw new StructuredContractDiagnostic('unexpected_item', 'blueprints')
     }
