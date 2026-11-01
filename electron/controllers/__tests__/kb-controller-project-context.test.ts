@@ -410,4 +410,31 @@ describe('getEmbeddingConfig generation-model fallback (issue #520)', () => {
     const { getEmbeddingConfig } = await import('../kb-controller')
     expect(getEmbeddingConfig()).toMatchObject({ model: { modelName: 'embed' } })
   })
+
+  /**
+   * 本机地址上的检索模型不需要 API Key：设置页保存、连接测试和知识库嵌入共用同一条规则。
+   * 只认 `apiKey` 真值会把 Ollama 这类本机端点误判成「未配置」，知识库退回全文检索。
+   */
+  it('treats a keyless loopback retrieval model as configured', async () => {
+    mocks.readJsonFile.mockImplementation((file: string) => {
+      if (file === 'global.json') return { defaultEmbeddingModelId: 'local-embed', defaultModelId: 'gen-1' }
+      return [
+        { id: 'gen-1', protocol: 'openai', baseUrl: 'https://api.example.com', apiKey: 'k', modelName: 'gen', purposes: ['generation'] },
+        { id: 'local-embed', provider: 'custom', protocol: 'openai', baseUrl: 'http://127.0.0.1:11434/v1', apiKey: '', modelName: 'nomic-embed-text' },
+      ]
+    })
+    const { getEmbeddingConfig } = await import('../kb-controller')
+    expect(getEmbeddingConfig()).toMatchObject({ model: { modelName: 'nomic-embed-text', apiKey: '' } })
+  })
+
+  it('keeps a keyless cloud retrieval model unconfigured', async () => {
+    mocks.readJsonFile.mockImplementation((file: string) => {
+      if (file === 'global.json') return { defaultEmbeddingModelId: 'cloud-embed', defaultModelId: 'gen-1' }
+      return [
+        { id: 'gen-1', protocol: 'openai', baseUrl: 'https://api.example.com', apiKey: 'k', modelName: 'gen', purposes: ['generation'] },
+        { id: 'cloud-embed', provider: 'openai', protocol: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: '  ', modelName: 'text-embedding-3-small' },
+      ]
+    })
+    await expect(handler('kb:get-vector-rebuild-status')({}, 'C:/projects/A')).resolves.toMatchObject({ embeddingConfigured: false, canRebuild: false })
+  })
 })

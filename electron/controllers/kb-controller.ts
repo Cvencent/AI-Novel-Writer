@@ -5,6 +5,7 @@ import { readJsonFile, GLOBAL_CONFIG_PATH, DEFAULT_GLOBAL_CONFIG, MODELS_CONFIG_
 import { GlobalConfig, ModelProfile } from '../../src/shared/ipc-channels'
 import { isProjectSessionContext } from '../../src/shared/project-session-context'
 import type { EmbeddingOptions } from '../../src/shared/embedding-options'
+import { hasRequiredApiKey } from '../../src/shared/provider-presets'
 import type { ImportRunExecutionAuthority } from '../../src/shared/import-run'
 import { knowledgeBaseLoader } from '../services/knowledge-base-loader'
 import { mainText } from '../i18n'
@@ -121,7 +122,7 @@ function isLegacyMigrationBlockedResult(value: unknown): boolean {
     && (value as { errorCode?: unknown }).errorCode === LEGACY_VECTOR_MIGRATION_BLOCKED
 }
 
-export function getEmbeddingConfig(): { protocol: 'openai' | 'gemini'; model: { baseUrl: string; apiKey: string; modelName: string; embeddingOptions?: EmbeddingOptions } } | null {
+export function getEmbeddingConfig(): { protocol: 'openai' | 'gemini'; model: { provider: string; baseUrl: string; apiKey: string; modelName: string; embeddingOptions?: EmbeddingOptions } } | null {
   const config = readJsonFile<GlobalConfig>(GLOBAL_CONFIG_PATH, DEFAULT_GLOBAL_CONFIG)
   const targetModelId = config.defaultEmbeddingModelId || config.defaultModelId
   if (!targetModelId) return null
@@ -136,14 +137,22 @@ export function getEmbeddingConfig(): { protocol: 'openai' | 'gemini'; model: { 
   if (!config.defaultEmbeddingModelId && !(model.purposes ?? []).includes('embedding')) return null
   return {
     protocol: model.protocol as 'openai' | 'gemini',
-    model: { baseUrl: model.baseUrl, apiKey: model.apiKey, modelName: model.modelName, embeddingOptions: model.embeddingOptions },
+    // models.json 只经过宽松的迁移校验，旧档案可能缺这几个字段。
+    model: {
+      provider: model.provider ?? '',
+      baseUrl: model.baseUrl ?? '',
+      apiKey: model.apiKey ?? '',
+      modelName: model.modelName,
+      embeddingOptions: model.embeddingOptions,
+    },
   }
 }
 
 function hasUsableEmbeddingConfig(
   config: ReturnType<typeof getEmbeddingConfig>,
 ): config is NonNullable<ReturnType<typeof getEmbeddingConfig>> {
-  return !!config && !!config.model.baseUrl.trim() && !!config.model.apiKey.trim()
+  // 本机地址（Ollama、llama.cpp、LM Studio）上的检索模型不需要 API Key。
+  return !!config && !!config.model.baseUrl.trim() && hasRequiredApiKey(config.model)
 }
 
 function requireProjectPath(expectedProjectPath: string): string {

@@ -13,6 +13,7 @@ import path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { chunkText, generateEmbeddings } from './embedding'
 import { normalizeEmbeddingOptions, type EmbeddingOptions } from '../src/shared/embedding-options'
+import { hasRequiredApiKey } from '../src/shared/provider-presets'
 import type { ImportRunExecutionAuthority } from '../src/shared/import-run'
 import { EmbeddingResponseValidationError } from './services/embedding-response-error'
 import {
@@ -96,7 +97,7 @@ export async function captureWritingKnowledgeSnapshot(query: string, projectPath
   configuration: { protocol: 'openai' | 'gemini'; model: { baseUrl: string; apiKey: string; modelName?: string; embeddingOptions?: EmbeddingOptions } } | null) {
   await ensureMigration(projectPath)
   let queryVector: number[] | undefined
-  if (configuration?.model.apiKey && query.trim()) {
+  if (configuration && hasRequiredApiKey(configuration.model) && query.trim()) {
     try {
       const [vector] = await generateEmbeddings([query], configuration.protocol, configuration.model, configuration.model.embeddingOptions?.batchSize)
       if (vector?.length) queryVector = vector
@@ -151,7 +152,7 @@ export async function importDocument(
 
     // 3. 可选：生成向量（如果有 Embedding 配置）
     let vectors: number[][] | undefined
-    if (model.apiKey && await canWriteIncrementalVectors(projectPath)) {
+    if (hasRequiredApiKey(model) && await canWriteIncrementalVectors(projectPath)) {
       try {
         onProgress?.(20, `正在向量化 ${chunks.length} 个块...`)
         vectors = await generateEmbeddings(chunks, protocol, model, model.embeddingOptions?.batchSize)
@@ -207,7 +208,7 @@ export async function searchKnowledge(
 
   // 可选：生成查询向量
   let queryVector: number[] | undefined
-  if (model.apiKey && query.trim()) {
+  if (hasRequiredApiKey(model) && query.trim()) {
     try {
       const [vec] = await generateEmbeddings([query], protocol, model, model.embeddingOptions?.batchSize)
       if (vec && vec.length > 0) {
@@ -429,7 +430,7 @@ async function importTextInternal(
     // 可选：生成向量
     let vectors: number[][] | undefined
     if (
-      model.apiKey
+      hasRequiredApiKey(model)
       && options?.mode !== 'fts-only'
       && await canWriteIncrementalVectors(projectPath)
     ) {
@@ -656,7 +657,7 @@ async function performReferenceTextImport(
     `).run(documentId)
 
     let vectors: number[][] | undefined
-    if (model.apiKey) {
+    if (hasRequiredApiKey(model)) {
       try {
         vectors = await generateEmbeddings(
           chunks,
@@ -802,7 +803,7 @@ export async function backfillVectors(
 }> {
   try {
     await ensureMigration(projectPath)
-    if (!model.apiKey.trim() || !model.baseUrl.trim()) {
+    if (!hasRequiredApiKey(model) || !model.baseUrl.trim()) {
       return { success: false, processed: 0, failed: 0, error: '未配置 Embedding 模型' }
     }
     const space = embeddingSpaceFor(protocol, model)
