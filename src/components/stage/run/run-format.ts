@@ -31,17 +31,33 @@ const PURPOSES: Record<string, [string, string]> = {
   'refine-from-review': ['按审稿修稿', 'Revision from review'],
   'character-state': ['角色状态', 'Character state'],
   'finalized-character-state': ['角色状态', 'Character state'],
+  'finalized-chapter-notes': ['章节要点', 'Chapter notes'],
   'chapter-blueprint-directory': ['生成蓝图', 'Blueprints'],
   'generate-core-seed': ['填充设定', 'Setup fill'],
   'generate-world-building': ['世界观', 'World-building'],
   'generate-plot-outline': ['细纲', 'Plot outline'],
+  'generate-arc-outline': ['生成粗纲', 'Arc outline'],
+  'reverse-arc-outline': ['反推粗纲', 'Derive arc outline'],
+  'arc-outline-review': ['检查粗纲', 'Arc review'],
   'planning-material-character-extraction': ['提取角色卡', 'Character extraction'],
   'plot-tree-snapshot': ['剧情树', 'Plot tree'],
 }
 
+/** 带运行参数的 purpose 前缀：`plot-outline:chapter:7:normal` 这类键按家族归一显示，
+ *  不把章号与尝试序号吐给作者。 */
+const PURPOSE_PATTERNS: ReadonlyArray<{ pattern: RegExp; label: [string, string] }> = [
+  { pattern: /^plot-outline:chapter:\d+:(?:normal|compact)$/u, label: ['写细纲', 'Chapter outline'] },
+  { pattern: /^arc-outline:(?:from|revise):\d+$/u, label: ['生成粗纲', 'Arc outline'] },
+  { pattern: /^chapter-blueprint-directory:compact-single/u, label: ['生成蓝图', 'Blueprints'] },
+  { pattern: /^finalize-sync:chapter:\d+$/u, label: ['定稿同步', 'Finalize sync'] },
+  { pattern: /^editor-ai-/u, label: ['编辑器改写', 'Editor rewrite'] },
+]
+
 export function callPurpose(purpose: string, text: Text): string {
   const known = PURPOSES[purpose]
-  return known ? text(...known) : purpose || '—'
+  if (known) return text(...known)
+  const matched = PURPOSE_PATTERNS.find(({ pattern }) => pattern.test(purpose))
+  return matched ? text(...matched.label) : purpose || '—'
 }
 
 /** 统计数字：大数按本地习惯缩写（21.4万 / 21.4K），没有上报时写一条短横。 */
