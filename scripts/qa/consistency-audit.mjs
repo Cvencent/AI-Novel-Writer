@@ -239,6 +239,65 @@ function outfitColorFor(paragraph, word, at) {
   return { hues: [...hues].sort(), faded: [...faded].sort() }
 }
 
+/**
+ * 真正的衣物名词（不是颜色）。issue #30 的反例是：
+ *   「新底册的封面是深蓝硬布，边角压得平整。周叙翻开内页」
+ * 段落里有名字、有颜色（深蓝），于是被记成「周叙的衣着色」——深蓝修饰的是布面，不是人。
+ *
+ * 修法：颜色本身不能证明「这是衣着描写」，必须附近有衣物名词。
+ * 「靛蓝短褂 / 洗白的靛蓝短褂袖口 / 换了件月白长衫」都能满足；「深蓝硬布 / 白纸 / 铜盆」不满足。
+ */
+const GARMENT_NOUNS = [
+  '白大褂', '风衣', '外套', '夹克', '大衣', '校服', '制服', '作战服', '训练服', '外勤服', '罩衫', '开衫',
+  '衬衫', '卫衣', '披风', '袍子', '长袍', '长衫', '短褂', '马褂', '工装', '上衣', '衣襟', '衣摆', '衣角',
+  '长裤', '短裤', '裙子', '围巾', '披肩', '帽子', '斗篷', '护腕', '手环', '面具', '头盔',
+  '袖口', '袖筒', '领口', '肩章', '裤腿', '鞋面', '靴筒', '腰封', '腰带',
+]
+
+/** 衣物名词与颜色之间允许的距离（超过就认为两者不是同一处修饰关系）。 */
+const GARMENT_PROXIMITY = 12
+
+/** 颜色词附近是否有衣物名词（同一句内、无标点隔断）。 */
+function hasGarmentNear(paragraph, at, length) {
+  const sentenceStart = Math.max(
+    paragraph.lastIndexOf('。', at) + 1,
+    paragraph.lastIndexOf('！', at) + 1,
+    paragraph.lastIndexOf('？', at) + 1,
+  )
+  const sentenceEnds = ['。', '！', '？']
+    .map(mark => paragraph.indexOf(mark, at + length))
+    .filter(index => index >= 0)
+  const sentenceEnd = sentenceEnds.length ? Math.min(...sentenceEnds) : paragraph.length
+  const windowStart = Math.max(sentenceStart, at - GARMENT_PROXIMITY)
+  const windowEnd = Math.min(sentenceEnd, at + length + GARMENT_PROXIMITY)
+  const window = paragraph.slice(windowStart, windowEnd)
+  return GARMENT_NOUNS.some(noun => window.includes(noun))
+}
+
+/**
+ * 段落内离这一处描写最近的角色名。issue #30 的另一个反例是「段落里最后一个名字」：
+ * 温珩的短褂被记到在场的旁观者周叙名下。改为按命中位置就近归属，没有更近的再退回段末名。
+ */
+function nearestName(namedHere, paragraph, at) {
+  let best = null
+  let bestDistance = Infinity
+  for (const name of namedHere) {
+    let from = 0
+    for (;;) {
+      const index = paragraph.indexOf(name, from)
+      if (index < 0) break
+      from = index + name.length
+      // 名字出现在描写之前优先（「温珩的靛蓝短褂」），出现在之后也算但距离加倍。
+      const distance = index <= at ? at - index : (index - at) * 2
+      if (distance < bestDistance) {
+        best = name
+        bestDistance = distance
+      }
+    }
+  }
+  return best
+}
+
 function extractMentions(chapters, characterNames) {
   const mentions = []
   const sortedNames = [...characterNames].sort((a, b) => b.length - a.length)
@@ -255,9 +314,13 @@ function extractMentions(chapters, characterNames) {
       if (namedHere.length) carryOver = namedHere[namedHere.length - 1]
       if (!carrier) continue
 
-      const hues = new Set()
-      const fadedColors = new Set()
       let outfitWordHit = false
+      // 每处命中按「就近的名字」归属；段内没有更近的名字时退回段末名（原行为）。
+      const perCarrier = new Map()
+      const bucketFor = (name) => {
+        if (!perCarrier.has(name)) perCarrier.set(name, { hues: new Set(), faded: new Set() })
+        return perCarrier.get(name)
+      }
       for (const word of APPEARANCE_VOCAB) {
         // 「泛白/泛黄/洗白」这类状态色也在词表里（颜色即服饰的写法），但它们不能
         // 自己证明「这是衣着描写」——否则「指关节微微泛白」就自我满足了。
@@ -267,23 +330,29 @@ function extractMentions(chapters, characterNames) {
           const at = paragraph.indexOf(word, from)
           if (at < 0) break
           from = at + word.length
+          // 颜色词必须紧邻衣物名词才算这件衣服的色（issue #30：深蓝硬布 → 不是衣着）。
+          if (wordIsColorish && !hasGarmentNear(paragraph, at, word.length)) continue
           if (!wordIsColorish) outfitWordHit = true
           const found = outfitColorFor(paragraph, word, at)
-          for (const color of found.hues) hues.add(color)
-          for (const color of found.faded) fadedColors.add(color)
+          if (!found.hues.length && !found.faded.length) continue
+          const owner = namedHere.length ? (nearestName(namedHere, paragraph, at) ?? carrier) : carrier
+          const bucket = bucketFor(owner)
+          for (const color of found.hues) bucket.hues.add(color)
+          for (const color of found.faded) bucket.faded.add(color)
         }
       }
       // hue 是衣着取色的充分证据；faded（泛白/发白）只有在同一句里出现衣着词时才算衣着描写
       // ——「指关节微微泛白」也含 faded，但那不是衣着（issue 场景的防误报边界）。
-      if (hues.size || (fadedColors.size && outfitWordHit)) {
+      for (const [owner, bucket] of perCarrier) {
+        if (!bucket.hues.size && !(bucket.faded.size && outfitWordHit)) continue
         mentions.push({
           chapter: chapter.chapterNumber,
-          character: carrier,
+          character: owner,
           attribute: 'outfit',
           attributeLabel: '衣着',
-          namedInParagraph: namedHere.includes(carrier),
-          colors: [...hues].sort(),
-          ...(fadedColors.size ? { fadedColors: [...fadedColors].sort() } : {}),
+          namedInParagraph: namedHere.includes(owner),
+          colors: [...bucket.hues].sort(),
+          ...(bucket.faded.size ? { fadedColors: [...bucket.faded].sort() } : {}),
           sentence: paragraph.slice(0, 240),
         })
       }

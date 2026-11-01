@@ -63,3 +63,46 @@ describe('issue #9 复合色命中', () => {
     expect(mentions.filter(mention => mention.attribute === 'outfit')).toHaveLength(0)
   })
 })
+
+/**
+ * issue #30：假阳性 —— 检查器把「底册封面是深蓝硬布」记成周叙的衣着。
+ * 根因两条：① 颜色词自己就算衣着（没有衣物名词邻接）；② 归属取「段落里最后一个名字」。
+ * 修的时候必须同时守住 #9 那一侧（「洗白的靛蓝短褂」仍要命中）。
+ */
+describe('issue #30 宾语 / 主语归属', () => {
+  it('「底册封面是深蓝硬布」不产生任何衣着 mention', () => {
+    const body = '新底册的封面是深蓝硬布，边角压得平整。周叙翻开内页，纸页泛旧。'
+    const mentions = extractMentions(chaptersOf(body), ['周叙'])
+    expect(mentions.filter(mention => mention.attribute === 'outfit')).toHaveLength(0)
+  })
+
+  it('同一段里颜色修饰的是旁观者的衣服时，归给衣服的主人而不是段末名字', () => {
+    const body = '温珩的靛蓝短褂下摆滴着水，周叙站在一旁看着。'
+    const mentions = extractMentions(chaptersOf(body), ['温珩', '周叙'])
+    const outfits = mentions.filter(mention => mention.attribute === 'outfit')
+    expect(outfits).toHaveLength(1)
+    expect(outfits[0].character).toBe('温珩')
+    expect(outfits[0].colors).toContain('靛蓝')
+  })
+
+  it('#9 那一侧不能被修坏：紧邻衣物名词的复合色仍要命中', () => {
+    for (const [body, color] of [
+      ['温珩伏案抄录，洗白的靛蓝短褂袖口搭在纸面上。', '靛蓝'],
+      ['温珩坐在角落，靛蓝短褂洗得发白。', '靛蓝'],
+      ['温珩换了件月白长衫走进来。', '月白'],
+      ['老周穿一件白色外勤服站岗。', '白色'],
+    ]) {
+      const outfits = extractMentions(chaptersOf(body), ['温珩', '老周']).filter(mention => mention.attribute === 'outfit')
+      expect(outfits, body).toHaveLength(1)
+      expect(outfits[0].colors, body).toContain(color)
+    }
+  })
+
+  it('真冲突仍然报：同一人不同章穿互斥色', () => {
+    const mentions = extractMentions(chaptersOf(
+      '温珩的靛蓝短褂下摆滴着水。',
+      '温珩换了件月白长衫走进来。',
+    ), ['温珩'])
+    expect(findConflicts(mentions)).toHaveLength(1)
+  })
+})
