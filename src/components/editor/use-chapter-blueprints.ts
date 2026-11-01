@@ -102,6 +102,9 @@ export function useChapterBlueprints({
       for (const view of directoryRuns) {
         const recovery = await ipc.invokeWithProjectSession(session, 'generation:read-context', { handle: view.handle })
         if (!current || !isCurrentProjectSession(session)) return
+        // 作者在运行侧页点过「移除卡片」的运行不再驱动横幅——与侧页恢复区的
+        // 过滤判据一致，否则侧页清空了横幅仍常驻（issue #22）。
+        if (recovery.recoveryDismissed === true) continue
         if (recovery.blueprintRecovery && recovery.blueprintRecovery.writeState !== 'complete') { setPlanningRecovery(recovery); return }
       }
       if (current) setPlanningRecovery(null)
