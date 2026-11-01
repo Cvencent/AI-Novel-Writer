@@ -1,7 +1,7 @@
 import type { ProjectSessionContext } from '../shared/ipc-channels'
 import type { BlueprintForPreflight, ConsistencyExemption, ConsistencyFinding } from '../shared/consistency-preflight'
 import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuityRisks,
-  findUnregisteredBlueprintCast } from '../shared/consistency-preflight'
+  findNearCastNameFindings, findUnregisteredBlueprintCast } from '../shared/consistency-preflight'
 import { ipc } from './ipc-client'
 
 export interface ConsistencyPreflightResult {
@@ -70,8 +70,19 @@ export async function readConsistencyPreflight(
       appearance: typeof entry.appearance === 'string' ? entry.appearance : '',
     })),
   })
+  // 描述文字里「与在册角色仅一字之差」的名字（issue #58）：#42 只看 characters 数组，
+  // 而「柯阅」这种写在 keyEvents 里的署名正好从那条通道底下走过去。
+  // 这里把蓝图里除 characters 之外会写人名的字段一并纳入比对面。
+  const nearNameFindings = castNames.length === 0 ? [] : blueprints.flatMap(blueprint => findNearCastNameFindings({
+    chapterNumber: blueprint.chapterNumber,
+    castNames,
+    descriptionText: [
+      blueprint.keyEvents, blueprint.purpose, blueprint.suspenseHook, blueprint.costsAndTurns ?? '',
+      blueprint.foreshadowing ?? '',
+    ].join('\n'),
+  }))
   return {
-    findings: [...terminalFindings, ...expandedFindings, ...unregisteredFindings, ...appearanceGaps]
+    findings: [...terminalFindings, ...expandedFindings, ...unregisteredFindings, ...appearanceGaps, ...nearNameFindings]
       .filter(item => !activeExemptions.has(item.stableFactKey)),
     exemptions,
     castNames,

@@ -412,6 +412,118 @@ export function findCrossChapterAssertionReversals(input: CrossChapterAssertionI
 }
 
 /**
+ * 蓝图 keyEvents 等描述性文字里出现的「与在册角色仅一字之差」的名字（issue #58）。
+ *
+ * 真实事故：第 21 章蓝图在 key_events 里凭空写出「柯阅」，并当场解释成在册角色「柯明远」；
+ * 正文照抄，整章探案结论（谁在封存前翻过账）都架在这两个汉字上。
+ * #42 的「未登记角色」检查只看 `characters` 数组，**盖不到写在事件描述里的人名**：
+ * 第 21 章的 characters 全是名册内的人，于是这条检查报 0。
+ *
+ * 判据刻意做窄（与 #20 的教训一致）：
+ * - 只取 `「…」`／`“…”`／`『…』` 引号内的 **2–6 字纯汉字**词；
+ * - 必须与**某个在册角色名首字相同**、且长度相同或相差 1、逐字比较**至多一处不同**；
+ * - 命中的词本身**不在名册**、也不等于名册里任何名字。
+ * 命中即给一条 warning，让作者决定「这是同一人的写法（去补别名）」还是「新角色（去建档）」。
+ * 这是证据提示，不阻断生成，也不自动改蓝图。
+ */
+const QUOTED_NAME = /[「『“"]([一-龥]{2,6})[」』”"]/gu
+
+export interface NearNameCandidate {
+  /** 描述文字里出现的名字（如「柯阅」）。 */
+  name: string
+  /** 与之相近的在册角色名（如「柯明远」）。 */
+  near: string
+}
+
+function nearDiffCount(left: string, right: string): number {
+  if (left === right) return 0
+  if (Math.abs(left.length - right.length) > 1) return Number.POSITIVE_INFINITY
+  let edits = 0
+  let i = 0
+  let j = 0
+  while (i < left.length && j < right.length) {
+    if (left[i] === right[j]) {
+      i += 1
+      j += 1
+      continue
+    }
+    edits += 1
+    if (edits > 1) return Number.POSITIVE_INFINITY
+    if (left.length === right.length) {
+      i += 1
+      j += 1
+    } else if (left.length > right.length) {
+      i += 1
+    } else {
+      j += 1
+    }
+  }
+  edits += (left.length - i) + (right.length - j)
+  return edits
+}
+
+/**
+ * 找出描述文字里「像是在册角色的另一种写法、却不在名册」的引号内名字。
+ *
+ * 两条**都窄**的判据（issue 给的建议是「编辑距离 ≤1 且首字相同」，但那一条其实抓不到
+ * 它自己的样本：「柯阅」→「柯明远」要删一个字 + 换一个字，距离是 2）：
+ *  ① 与某个在册名字首字相同、长度相同或相差 1、逐字比较至多一处不同（「柯明元」≈「柯明远」）；
+ *  ② 姓氏与某个在册角色相同、且该姓氏在名册里**只出现过一次**，候选本身又不在名册
+ *     （「柯阅」≈「柯明远」：全书只有一个姓柯的人，引号里又出现另一个姓柯的名字）。
+ * 两条都要求候选是 2–3 个纯汉字且不在名册里，因此「三十三张」「靛蓝短褂」「底册」这类引号内名词不会命中。
+ */
+export function findNearCastNames(text: string, castNames: readonly string[]): NearNameCandidate[] {
+  const names = castNames.map(name => castDisplayName(name)).filter(name => name.length >= 2)
+  const exact = new Set(names)
+  const surnameCounts = new Map<string, number>()
+  for (const name of names) surnameCounts.set(name[0]!, (surnameCounts.get(name[0]!) ?? 0) + 1)
+  const uniqueSurnameOwner = new Map<string, string>()
+  for (const name of names) if (surnameCounts.get(name[0]!) === 1) uniqueSurnameOwner.set(name[0]!, name)
+
+  const found = new Map<string, string>()
+  for (const match of String(text ?? '').matchAll(QUOTED_NAME)) {
+    const candidate = match[1]!
+    if (!candidate || candidate.length > 3 || exact.has(candidate) || found.has(candidate)) continue
+    for (const name of names) {
+      if (candidate[0] !== name[0]) continue
+      if (nearDiffCount(candidate, name) <= 1) {
+        found.set(candidate, name)
+        break
+      }
+      if (uniqueSurnameOwner.get(candidate[0]!) === name && name.length !== candidate.length) {
+        found.set(candidate, name)
+        break
+      }
+    }
+  }
+  return [...found].map(([name, near]) => ({ name, near }))
+}
+
+export interface NearCastInput {
+  chapterNumber: number
+  /** 蓝图里除 characters 之外会写人名的字段（keyEvents / purpose / foreshadowing / costsAndTurns…）。 */
+  descriptionText: string
+  castNames: readonly string[]
+}
+
+export function findNearCastNameFindings(input: NearCastInput): ConsistencyFinding[] {
+  return findNearCastNames(input.descriptionText, input.castNames).map(({ name, near }) => ({
+    stableFactKey: `blueprint-cast:near-name:${input.chapterNumber}:${name}`,
+    severity: 'warning' as const,
+    sourceChapter: input.chapterNumber,
+    evidence: `第${input.chapterNumber}章蓝图的事件描述里出现「${name}」，与在册角色「${near}」仅一字之差`,
+    issue: {
+      zhCN: `蓝图里出现了与在册角色「${near}」只差一个字的名字「${name}」，但角色名单里没有这个人、也没有声明这是「${near}」的另一种写法。读者无法判断这是同一人的花押/署名，还是另一个人；若之后把它当独立角色用，就会凭空长出一个从未建立的人物。`,
+      enUS: `The blueprint names “${name}”, one character away from the cast member “${near}”, yet no one by that name is on the roster and nothing declares it a variant spelling of “${near}”. Readers cannot tell whether it is the same person, and using it later would create a character that was never established.`,
+    },
+    suggestion: {
+      zhCN: `二选一：确认是同一人，就在角色别名里给「${near}」加上「${name}」（并说明依据，例如署名/花押）；确实是新角色，就在角色名单里为「${name}」建卡，并把本章标为他的首次出场。`,
+      enUS: `Either confirm it is the same person — add “${name}” as an alias of “${near}” with the reason (a signature, a seal) — or treat it as a new character: add “${name}” to the roster and mark this chapter as their first appearance.`,
+    },
+  }))
+}
+
+/**
  * 在册角色缺外貌锚点（issue #40）。
  *
  * 真实事故：AI 新建的「邵德昌」在第 8、9 章各有戏（茶棚谈判、带人堵舱口），
