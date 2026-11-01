@@ -384,7 +384,7 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     charactersArch?: string
     worldbuilding?: string
     synopsis?: string
-    blueprints?: Array<{ chapterNumber: number; title: string; keyEvents: string }>
+    blueprints?: Array<{ chapterNumber: number; title: string; keyEvents: string; costsAndTurns?: string }>
     userGuidance?: string
     globalGuidance?: string
     writingStyle?: string
@@ -644,6 +644,26 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     const prompt = runtime.complete.mock.calls[0]![0].messages.map(message => message.content).join('\n')
     for (const sentinel of injected) expect(prompt).toContain(sentinel)
     for (const sentinel of absent) expect(prompt).not.toContain(sentinel)
+  })
+
+  it('injects the recent chapters\' paid costs and the ledger rule (issue #36)', async () => {
+    const runtime = fakeOutcomes(outcome('本章正文。'.repeat(125), 'stop'))
+    const f = setup({ runtime, wordsTarget: 500, chapterNumber: 2, characters: ['周叙'],
+      previousFinalizedContent: '第一章正文。',
+      blueprints: [
+        { chapterNumber: 1, title: '第一章', keyEvents: '开端。', costsAndTurns: '温珩昨夜在舱口说的话被墨吞掉，周叙再也想不起' },
+        { chapterNumber: 2, title: '第二章', keyEvents: '本章。', costsAndTurns: '本章的代价' },
+      ] })
+    await f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks })
+    const prompt = runtime.complete.mock.calls[0]![0].messages.map(message => message.content).join('\n')
+    // 上一章的代价要看得见，否则起草会把代价当场抹平（本样本四次「遗忘」都在 320 字内自愈）
+    expect(prompt).toContain('【前几章付过的代价（本章不得无偿找回，也不得重复付同一笔）】')
+    expect(prompt).toContain('温珩昨夜在舱口说的话被墨吞掉')
+    // 本章自己的代价不进这份清单（那是 authorItems 的事）
+    expect(prompt).not.toContain('第2章：本章的代价')
+    // 执行合同里的硬规则
+    expect(prompt).toContain('【代价必须留账】')
+    expect(prompt).toContain('另一笔代价')
   })
 
   it('injects every current character sharing a blueprint name', async () => {

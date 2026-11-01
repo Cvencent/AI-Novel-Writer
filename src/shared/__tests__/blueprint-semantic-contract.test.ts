@@ -272,3 +272,19 @@ describe('blueprint staging and reaction rotation (issue #32 / #33)', () => {
     expect(stagingOf('')).toBe('')
   })
 })
+
+// issue #36：代价要留账——本样本四次「遗忘」代价都在同章 320 字内自愈，蓝图阶段就已
+// 把「怎么找回来」写进了代价字段，起草只是执行。
+describe('blueprint cost ledger (issue #36)', () => {
+  it('the immutable contract forbids dissolving the cost inside the same chapter', () => {
+    const zh = blueprintSemanticGenerationContract('zh-CN')
+    expect(zh).toContain('代价必须留账')
+    expect(zh).toContain('另一笔代价')
+    // 明确禁止把「怎么找回来」写进代价字段（第 16 章蓝图原文就是这种写法）
+    expect(zh).toContain('严禁把「怎么找回来」写进代价字段')
+    const en = blueprintSemanticGenerationContract('en-US')
+    expect(en).toContain('The cost must leave a ledger')
+    expect(en).toContain('another price')
+    expect(en).toContain('Never write the recovery into the cost field itself')
+  })
+})

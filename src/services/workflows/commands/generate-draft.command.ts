@@ -424,6 +424,7 @@ function chapterExecutionContractText(writingLanguage: WritingLanguage, chapterI
 【前文已定稿事实】本章蓝图、章节计划或必需事件的措辞与已定稿章节中确立的事实（包括作者在定稿中的最新更正）冲突时，以定稿事实为准：按与定稿事实一致的方式落实该条目，不得把已撤回、取消或被取代的计划追溯写成已执行。人物身份、物品持有、人物知情、付款与收回及事件时点应承接前文；付款、收回、失去等状态改变必须按事件先后写清，不能把同一笔钱款或物品同时写成已收回与仍然失去。
 【前文计划与本章决定】人物的等待、暂停或撤回是当时的计划状态，不是作者禁令；本章可以先写出人物基于既有事实作出的新决定、理由及连续性依据，再推进或替换计划，但不能违反作者明确禁令、必需呈现或既成事实。
 【本章事件兑现】作者或本章蓝图要求在本章发生的事件，必须在本章通过具体行动及其实际后果发生；复述、确认或记账前章已发生的结果不能替代本章要求发生的动作或结果。
+【代价必须留账】本章写明的代价（遗忘、失去、受伤、被夺、被夺权、承诺、暴露行踪等）在发生后必须仍然有效：遗忘的内容不得在本章内被无偿想起或当场找回，丢失的东西不得隔一句就捡回来，伤势、时限、暴露风险不得下一段就消失。剧情确实需要找回同一信息或解除损失时，必须先写出角色为此付出的**另一笔代价**（再溯读一次、求人提醒、暴露自己、放弃别的东西），并把这一笔写明；不得用一声咳、一次顺手或同一段内的动作把上一笔代价抹平。
 【前文待核实问题】定稿只发现疑点、提出猜测或写明待核实时，不能把某一解释、原因或哪一方出错写成已确认事实；本章可以通过新线索和调查推进并解决疑点，但须先写出与既有事实相容且足以支持结论的核验过程与证据，证据不足时保留疑点，结论的方向、时间和因果前后必须一致。
 ${chapterTimeContinuity('zh-CN')}` : ''}
 【操作边界】本合同不扩大本次请求的操作范围：续写及无进展恢复只接续已有正文，不重写旧文；已达目标篇幅时只补完断句并收束。压缩只删减既有正文，不新增情节或修补缺失事件。`,
@@ -433,6 +434,7 @@ ${chapterTimeContinuity('zh-CN')}` : ''}
 [Established finalized facts] When the chapter blueprint, chapter plans, or the wording of required events conflict with facts established in finalized chapters (including the author's latest corrections in them), the finalized facts prevail: realize the item consistently and never retroactively portray a withdrawn, cancelled, or superseded plan as executed. Preserve identities, item ownership, character knowledge, payments and recoveries, and event times from prior prose. Keep the order and result of paying, recovering, or losing money or property consistent; do not describe the same amount or item as both recovered and still lost.
 [Prior plans and current decisions] Characters' waiting, paused, or withdrawn plans describe their prior intention, not an author prohibition; this chapter may first show a new decision grounded in established facts, the character's reason, and continuity evidence, then advance or replace the plan without violating explicit author prohibitions, required on-page events, or completed facts.
 [Required events in this chapter] Events required by the author or this chapter blueprint to happen in this chapter must happen through concrete action and actual consequence here; merely repeating, confirming, or accounting for an outcome already completed in an earlier chapter cannot replace the action or outcome required in this chapter.
+[Costs must leave a ledger] A cost stated in this chapter (forgetting, losing, being hurt, being robbed, a promise, exposing one's position) must still be in force once paid: what was forgotten may not be recalled for free inside this chapter, what was lost may not be picked back up two sentences later, and an injury, deadline, or exposure risk may not vanish on the next page. When the story genuinely needs the information back or the loss lifted, first show another price the character pays for it (reading again, asking someone, exposing themselves, giving something up) and write that price down; never dissolve a cost with a cough, a convenient gesture, or the very next action.
 [Unverified prior questions] If a finalized chapter only discovers a discrepancy, raises a suspicion, or leaves a question for verification, do not present an explanation, cause, or which side is wrong as confirmed. This chapter may pursue new clues and resolve the question, but first show a verification process and evidence sufficient for a conclusion consistent with established facts; otherwise keep it unresolved. The conclusion's direction, timing, and causality must remain consistent throughout.
 ${chapterTimeContinuity('en-US')}` : ''}
 [Operation boundary] This contract does not expand the current request's scope: continuation and no-progress recovery only append to existing prose without rewriting it; at the target length, only finish the truncated sentence and close. Condensing only cuts existing prose and must not add plot or repair missing events.`,
@@ -666,6 +668,22 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           `【最近几章的收束方式与场景装置（本章都不要重复）】\n${lines.join('\n')}`,
           `[Closing shots and staging of the recent chapters (repeat neither in this chapter)]\n${enLines.join('\n')}`,
         )
+      }
+      // 前几章付过的代价（issue #36）：起草时知道主角上一章刚失去/暴露/许下什么，
+      // 否则代价会在同一章里被无偿抹平（本样本四次「遗忘」都在 320 字内自愈）。
+      const recentCostArr = allBlueprints
+        .filter(b => b.chapterNumber < this.chapterInfo.chapterNumber)
+        .slice(-3)
+        .map(b => ({ chapterNumber: b.chapterNumber, cost: String(b.costsAndTurns ?? '').replace(/\s+/g, ' ').trim().slice(0, 80) }))
+        .filter(item => item.cost)
+      if (recentCostArr.length > 0) {
+        const costLines = recentCostArr.map(item => `第${item.chapterNumber}章：${item.cost}`)
+        const enCostLines = recentCostArr.map(item => `Chapter ${item.chapterNumber}: ${item.cost}`)
+        recentClosingShots += `\n\n${promptLanguageText(
+          writingLanguage,
+          `【前几章付过的代价（本章不得无偿找回，也不得重复付同一笔）】\n${costLines.join('\n')}\n若本章需要找回被代价吞掉的信息或解除损失，必须写出角色为此付出的另一笔代价，不得凭一句提醒、一次顺手或同一段内的动作就把代价抹平。`,
+          `[Costs already paid in the recent chapters (do not recover them for free, and do not pay the same price again)]\n${enCostLines.join('\n')}\nIf this chapter must recover what a cost took away, or lift a loss, show another price the character pays for it; never dissolve a cost with a reminder, a convenient gesture, or the very next action.`,
+        )}`
       }
     } catch { /* 忽略 */ }
 

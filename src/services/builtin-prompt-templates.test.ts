@@ -49,6 +49,25 @@ describe('blueprint staging & reaction rotation rules (issue #32 / #33)', () => 
   })
 })
 
+// issue #36：代价写了却被当场抹平（四次「遗忘」都在 320 字内自愈）。
+describe('cost ledger rules (issue #36)', () => {
+  const full = BUILTIN_PROMPTS.find(template => template.key === 'chapter_blueprint')
+  const chunk = BUILTIN_PROMPTS.find(template => template.key === 'chapter_blueprint_chunk')
+
+  it('both blueprint templates mandate that a cost leaves a ledger', () => {
+    expect(full?.content).toContain('【代价必须留账】')
+    expect(chunk?.content).toContain('【代价必须留账】')
+    expect(full?.content).toContain('不算代价')
+  })
+
+  it('the chapter review prompt has a cost-redemption dimension', () => {
+    // 审稿侧此前从不问「这笔代价是不是当场就被抹平了」，四次遗忘全部被放过。
+    const review = BUILTIN_PROMPTS.find(template => template.key === 'consistency_check')
+    expect(review?.content).toContain('代价兑现')
+    expect(review?.content).toContain('被抹平')
+  })
+})
+
 // issue #20：钩子逐章写、下一章却整章不提。模型看得到 recentBlueprints 里的 suspenseHook，
 // 缺的是「必须接」这条硬约束——与代价轮换一样写进不可变合同。
 describe('blueprint hook carry-over rule (issue #20)', () => {
