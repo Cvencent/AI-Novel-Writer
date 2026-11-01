@@ -310,8 +310,9 @@ function parseBlueprintJsonText(text: string): unknown {
   return parsed
 }
 
-export function parseBlueprintSemanticResponseText(text: string, expectedChapterNumbers: readonly number[]): BlueprintSemanticItem[] {
-  return decodeBlueprintSemanticPayload(parseBlueprintJsonText(text), expectedChapterNumbers)
+export function parseBlueprintSemanticResponseText(text: string, expectedChapterNumbers: readonly number[],
+  existingTitles: readonly string[] = []): BlueprintSemanticItem[] {
+  return decodeBlueprintSemanticPayload(parseBlueprintJsonText(text), expectedChapterNumbers, existingTitles)
 }
 
 export function decodeBlueprintAuthorPayload(payload: unknown, expectedChapterNumbers: readonly number[]): BlueprintAuthorItem[] {
