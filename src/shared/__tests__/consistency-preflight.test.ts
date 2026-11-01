@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { findBlueprintContinuityRisks, findExpandedContinuityRisks, mergeConsistencyFindingsIntoReview } from '../consistency-preflight'
+import {
+  findBlueprintContinuityRisks,
+  findExpandedContinuityRisks,
+  findSynopsisCastMismatches,
+  mergeConsistencyFindingsIntoReview,
+  synopsisSceneCharacters,
+} from '../consistency-preflight'
 import { buildFinalizedContinuityFacts } from '../finalized-continuity-facts'
 
 it('本章候选名单超过八人时仍识别后续事实中的角色', () => {
@@ -164,5 +170,73 @@ describe('findBlueprintContinuityRisks', () => {
       quote: '表盖内侧刻着一组陌生坐标。',
     })])
     expect(review.items[0]?.description).toContain('顾舟')
+  })
+})
+
+describe('findSynopsisCastMismatches (issue #27)', () => {
+  const castNames = ['周叙', '温珩', '阿茂', '陆敬堂', '柯有顺', '陶有根', '邵德昌', '陈阿水']
+
+  it('解析「身份·姓名」出场人物行，剥离身份前缀', () => {
+    const line = '**场景与出场人物**：雾津港验票舱与码头酒棚，出场的有验票船工·周叙、搭档·温珩、补网匠·陶有根。舱口挂灯摇晃。'
+    const names = synopsisSceneCharacters(line)
+    // 解析只给候选；场景条目这类非人名候选由调用方按 characters 名单过滤。
+    expect(names).toEqual(expect.arrayContaining(['周叙', '温珩', '陶有根']))
+  })
+
+  it('细纲点名、蓝图漏掉的角色给出提示（陶有根式：蓝图把这条线换成了别人）', () => {
+    const synopsisChunk = [
+      '## 第1章：多出的名字',
+      '',
+      '**场景与出场人物**：雾津港验票舱口，出场的有验票船工·周叙、搭档·温珩，以及本章失踪的补网匠·陶有根。',
+      '',
+      '**本章目标**：周叙要弄清补网匠·陶有根到底上没上船。',
+      '**结尾钩子**：开航点名，陶有根没来。',
+    ].join('\n')
+    const findings = findSynopsisCastMismatches({
+      chapterNumber: 1,
+      synopsisChunk,
+      blueprintCharacters: ['周叙', '温珩', '陈阿水'],
+      castNames,
+    })
+    const messages = findings.map(item => item.issue.zhCN).join('\n')
+    // 细纲主线人物被蓝图漏掉
+    expect(messages).toContain('陶有根')
+    // 蓝图排了一个细纲整章都没写的角色（替换信号）
+    expect(messages).toContain('陈阿水')
+    expect(findings.every(item => item.severity === 'warning' && item.sourceChapter === 1)).toBe(true)
+    expect(new Set(findings.map(item => item.stableFactKey)).size).toBe(findings.length)
+  })
+
+  it('细纲与蓝图互相覆盖时不产生发现（正常章节不打扰作者）', () => {
+    const synopsisChunk = [
+      '## 第2章：压平的那一格',
+      '',
+      '**场景与出场人物**：验票舱，出场的有验票船工·周叙、搭档·温珩、售票经手人·阿茂。',
+      '',
+      '**本章目标**：周叙查底册，温珩帮他重抄，阿茂递来票根。',
+    ].join('\n')
+    expect(findSynopsisCastMismatches({
+      chapterNumber: 2,
+      synopsisChunk,
+      blueprintCharacters: ['周叙', '温珩', '阿茂'],
+      castNames,
+    })).toEqual([])
+  })
+
+  it('场景/舱口这类非人名条目不算角色，只在册角色参与比对', () => {
+    const synopsisChunk = [
+      '## 第3章：撕口',
+      '',
+      '**场景与出场人物**：潮生号后舱验票台与码头酒棚，出场的有验票船工·周叙、散工·陈阿水。',
+    ].join('\n')
+    const findings = findSynopsisCastMismatches({
+      chapterNumber: 3,
+      synopsisChunk,
+      blueprintCharacters: ['周叙'],
+      castNames,
+    })
+    expect(findings.map(item => item.issue.zhCN).join('\n')).toContain('陈阿水')
+    expect(findings.map(item => item.issue.zhCN).join('\n')).not.toContain('潮生号后舱验票台')
+    expect(findings.map(item => item.issue.zhCN).join('\n')).not.toContain('码头酒棚')
   })
 })

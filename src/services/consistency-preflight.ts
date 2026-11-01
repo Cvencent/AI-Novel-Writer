@@ -6,6 +6,8 @@ import { ipc } from './ipc-client'
 export interface ConsistencyPreflightResult {
   findings: ConsistencyFinding[]
   exemptions: ConsistencyExemption[]
+  /** 在册角色名（retired=0）：细纲↔蓝图角色比对用（issue #27）。 */
+  castNames: string[]
 }
 
 export async function readConsistencyPreflight(
@@ -47,5 +49,8 @@ export async function readConsistencyPreflight(
     })),
   })
   const activeExemptions = new Set(exemptions.filter(item => !item.revoked).map(item => item.stableFactKey))
-  return { findings: [...terminalFindings, ...expandedFindings].filter(item => !activeExemptions.has(item.stableFactKey)), exemptions }
+  const castNames = (Array.isArray(roster?.entries) ? roster.entries : [])
+    .map(entry => (typeof entry.name === 'string' ? entry.name.trim() : ''))
+    .filter(Boolean)
+  return { findings: [...terminalFindings, ...expandedFindings].filter(item => !activeExemptions.has(item.stableFactKey)), exemptions, castNames }
 }

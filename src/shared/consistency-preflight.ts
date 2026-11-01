@@ -35,6 +35,17 @@ export interface BlueprintForPreflight {
   notes: string
 }
 
+/** 只读类比对：细纲本章与蓝图角色名单是否互相覆盖（issue #27）。 */
+export interface SynopsisChapterCastInput {
+  chapterNumber: number
+  /** 本章细纲正文（全书细纲的按章投影）。 */
+  synopsisChunk: string
+  /** 本章蓝图 role 名单。 */
+  blueprintCharacters: readonly string[]
+  /** characters 表里的在册角色名（retired=0）。 */
+  castNames: readonly string[]
+}
+
 function normalizedKeyPart(value: string): string {
   return value.trim().replace(/\s+/gu, ' ')
 }
@@ -233,6 +244,101 @@ export function findExpandedContinuityRisks(input: {
     }
   }
   return findings
+}
+
+/** 细纲的出场人物行；「场景与出场人物」是章节契约的固定小节名。 */
+const SCENE_ROSTER_LINE = /^\s*\*{0,2}\s*(?:场景与出场人物|出场人物)\s*\*{0,2}\s*[:：]\s*(.+)$/u
+
+/** 去掉「身份·姓名」里的身份前缀（issue #27：细纲写「补网匠·陶有根」，蓝图写「陶有根」）。 */
+function castDisplayName(raw: string): string {
+  const token = raw.replace(/[。.!！?？；;]+$/u, '').trim()
+  const separator = Math.max(token.lastIndexOf('·'), token.lastIndexOf('・'))
+  return separator >= 0 ? token.slice(separator + 1).trim() : token
+}
+
+/** 解析细纲「场景与出场人物」行里的具名角色；场景/舱口这类非人名条目由调用方按名单过滤。 */
+export function synopsisSceneCharacters(synopsisChunk: string): string[] {
+  const names = new Set<string>()
+  for (const line of synopsisChunk.replace(/\r\n?/gu, '\n').split('\n')) {
+    const match = SCENE_ROSTER_LINE.exec(line)
+    if (!match) continue
+    for (const raw of match[1]!.split(/[、，,；;。．.！!？?／/]/u)) {
+      const name = castDisplayName(raw)
+      if (name.length >= 2) names.add(name)
+    }
+  }
+  return [...names]
+}
+
+/**
+ * 细纲本章 ↔ 蓝图角色名单的双向差集（issue #27）。
+ *
+ * 真实事故：细纲第 1、2 章整章写「补网匠·陶有根失踪」，蓝图却把「陈阿水」排进
+ * 第 1 章角色、正文照着蓝图写，陶有根全书 0 出场。两种形态都是「静默换人」，
+ * 起草前必须让模型和作者看见：
+ * - 细纲点名/多处在写、名单里也在册、蓝图却没排 → 蓝图漏人，不得换成别人；
+ * - 蓝图排了、细纲本章整段都没写 → 警惕顶替细纲点名的角色。
+ * 只认在册角色（characters 表），场景、舱口这类非人名条目自然落选。
+ * 每章最多 4 条，避免提示挤占起草上下文。
+ */
+export function findSynopsisCastMismatches(input: SynopsisChapterCastInput): ConsistencyFinding[] {
+  const cast = new Set(input.castNames.map(name => normalizedKeyPart(castDisplayName(name))))
+  const chunk = input.synopsisChunk.replace(/\r\n?/gu, '\n')
+  const blueprint = new Map(input.blueprintCharacters.map(name => [normalizedKeyPart(castDisplayName(name)), name]))
+  const findings: ConsistencyFinding[] = []
+  const seen = new Set<string>()
+  const push = (finding: ConsistencyFinding) => {
+    if (seen.has(finding.stableFactKey)) return
+    seen.add(finding.stableFactKey)
+    findings.push(finding)
+  }
+
+  const sceneNames = synopsisSceneCharacters(chunk)
+  const sceneKeys = new Set(sceneNames.map(name => normalizedKeyPart(name)))
+  for (const raw of input.castNames) {
+    const name = castDisplayName(raw)
+    const key = normalizedKeyPart(name)
+    if (!name || !key || blueprint.has(key)) continue
+    const occurrences = chunk.split(name).length - 1
+    if (occurrences === 0) continue
+    // 出场人物行点名，或正文至少两处在写：视为本章的实质角色，而非顺带提及。
+    if (!sceneKeys.has(key) && occurrences < 2) continue
+    push({
+      stableFactKey: `synopsis-cast:missing:${input.chapterNumber}:${key}`,
+      severity: 'warning',
+      sourceChapter: input.chapterNumber,
+      evidence: `细纲第${input.chapterNumber}章写到「${name}」（${occurrences} 处）；蓝图角色：${input.blueprintCharacters.join('、') || '（空）'}`,
+      issue: {
+        zhCN: `细纲第${input.chapterNumber}章写到「${name}」，但本章蓝图角色名单里没有该角色。起草时不要把这条线换成别的角色。`,
+        enUS: `The chapter ${input.chapterNumber} synopsis involves “${name}”, but the chapter blueprint does not schedule that character. Do not reassign this thread to a different character while drafting.`,
+      },
+      suggestion: {
+        zhCN: `确认「${name}」是否出场：出场就补进蓝图角色并落实其动作与后果；只是前情提及时，请在蓝图注明，别让模型用其他角色顶替。`,
+        enUS: `Confirm whether “${name}” appears: add them to the blueprint cast and realize their action if they do; if this is only a back-reference, say so in the blueprint instead of letting another character stand in.`,
+      },
+    })
+  }
+
+  for (const [key, raw] of blueprint) {
+    const name = castDisplayName(raw)
+    if (!cast.has(key) || !name || chunk.includes(name)) continue
+    push({
+      stableFactKey: `synopsis-cast:unplanned:${input.chapterNumber}:${key}`,
+      severity: 'warning',
+      sourceChapter: input.chapterNumber,
+      evidence: `蓝图第${input.chapterNumber}章角色「${name}」在本章细纲中未出现`,
+      issue: {
+        zhCN: `本章蓝图把「${name}」列为出场角色，但本章细纲从头到尾没有提到他。起草时不要用他来顶替细纲点名的角色。`,
+        enUS: `The blueprint schedules “${name}”, but this chapter's synopsis never mentions them. Do not let them stand in for a character the synopsis does name.`,
+      },
+      suggestion: {
+        zhCN: '核对蓝图角色名单与细纲是否一致；要换角色就先改细纲，不要只改蓝图。',
+        enUS: 'Reconcile the blueprint cast with the synopsis; change the synopsis before changing the cast.',
+      },
+    })
+  }
+
+  return findings.slice(0, 4)
 }
 export function mergeConsistencyFindingsIntoReview(
   review: ReviewLike,

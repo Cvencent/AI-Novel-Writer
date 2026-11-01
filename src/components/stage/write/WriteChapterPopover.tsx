@@ -73,7 +73,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     if (!session) return
     void ipc.invokeWithProjectSession(session, 'db:consistency-exemption-list', session.projectPath).then(exemptions => {
       if (isProjectSessionCurrent(session) && exemptions.some(item => !item.revoked)) {
-        setPreflight(current => current ?? { findings: [], exemptions })
+        setPreflight(current => current ?? { findings: [], exemptions, castNames: [] })
       }
     }).catch(() => undefined)
   }, [open])

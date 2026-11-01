@@ -100,7 +100,7 @@ export function useBatchChapterForm({ isOpen, startChapterNumber, onClose }: Bat
     void ipc.invokeWithProjectSession(session, 'db:consistency-exemption-list', session.projectPath)
       .then(exemptions => {
         if (isProjectSessionCurrent(session) && exemptions.some(item => !item.revoked)) {
-          setConsistencyPreflight({ findings: [], exemptions })
+          setConsistencyPreflight({ findings: [], exemptions, castNames: [] })
         }
       })
   }, [currentProject, isOpen])

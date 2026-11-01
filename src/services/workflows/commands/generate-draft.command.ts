@@ -50,6 +50,7 @@ import { promptLanguageText } from '../../prompt-language'
 import { buildChapterRewriteBlock } from '../../../shared/chapter-rewrite-contract'
 import type { SceneCard } from '../../../shared/writing-intelligence'
 import { readConsistencyPreflight } from '../../consistency-preflight'
+import { findSynopsisCastMismatches } from '../../../shared/consistency-preflight'
 import { countDraftUnits, draftTargetUnitRange } from '../../../shared/draft-units'
 import type { RecoveryChapterSource } from '../../../shared/recovery-candidate'
 import { CHARACTER_STATE_TEXT_FIELDS } from '../../../shared/character-roster'
@@ -605,7 +606,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     const { coreOutline, worldSetting, goldenFinger, protagonistProfile } = novelConfig
     const authoredConfigFacts = [coreOutline, worldSetting, goldenFinger, protagonistProfile]
       .filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
-    const architecture = await this.readArchitecture(
+    const architectureSource = await this.readArchitecture(
       expectedProjectPath,
       projectSession,
       this.chapterInfo.chapterNumber,
@@ -711,7 +712,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     const chapterLengthContract = chapterLengthContractText(writingLanguage, targetChars)
     const promptBuilder = new ChapterPromptBuilder(template, writingLanguage)
       // ---- 缓存命中区（跨章稳定，前缀对齐）----
-      .withArchitecture(architecture)
+      .withArchitecture(architectureSource.architecture)
       .withGlobalGuidance(mergedGuidance)
       .withWritingStyle(writingStyle)
       .withNovelConfig(novelConfigFactsJson)
@@ -796,12 +797,21 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       foreshadowing: this.chapterInfo.foreshadowing,
       userGuidance: this.chapterInfo.userGuidance ?? '',
       notes: '',
-    }]).catch(() => ({ findings: [], exemptions: [] }))
-    const consistencyConstraintText = consistencyPreflight.findings.length > 0
+    }]).catch(() => ({ findings: [], exemptions: [], castNames: [] as string[] }))
+    // 细纲本章 ↔ 蓝图角色的双向差集（issue #27）：蓝图漏人、蓝图排了细纲没提的人
+    // 都是「静默换人」的前兆，必须在起草提示里点名，否则模型会照着蓝图写另一个人。
+    const castMismatchFindings = findSynopsisCastMismatches({
+      chapterNumber: this.chapterInfo.chapterNumber,
+      synopsisChunk: architectureSource.synopsisChunk,
+      blueprintCharacters: this.chapterInfo.characters,
+      castNames: consistencyPreflight.castNames,
+    })
+    const consistencyFindings = [...consistencyPreflight.findings, ...castMismatchFindings]
+    const consistencyConstraintText = consistencyFindings.length > 0
       ? promptLanguageText(
           writingLanguage,
-          `【写作前确定性连续性约束】\n以下问题来自角色、蓝图与叙事线索的确定性检查。写作时优先避开或明确处理，但不要机械解释这些约束：\n${consistencyPreflight.findings.map(finding => `- ${finding.issue.zhCN}${finding.suggestion.zhCN ? ` 建议：${finding.suggestion.zhCN}` : ''}`).join('\n')}`,
-          `[Deterministic continuity constraints before drafting]\nThese issues come from deterministic cast, blueprint, and narrative-thread checks. Avoid or explicitly handle them without mechanically explaining the checks:\n${consistencyPreflight.findings.map(finding => `- ${finding.issue.enUS}${finding.suggestion.enUS ? ` Suggestion: ${finding.suggestion.enUS}` : ''}`).join('\n')}`,
+          `【写作前确定性连续性约束】\n以下问题来自角色、蓝图与叙事线索的确定性检查。写作时优先避开或明确处理，但不要机械解释这些约束：\n${consistencyFindings.map(finding => `- ${finding.issue.zhCN}${finding.suggestion.zhCN ? ` 建议：${finding.suggestion.zhCN}` : ''}`).join('\n')}`,
+          `[Deterministic continuity constraints before drafting]\nThese issues come from deterministic cast, blueprint, and narrative-thread checks. Avoid or explicitly handle them without mechanically explaining the checks:\n${consistencyFindings.map(finding => `- ${finding.issue.enUS}${finding.suggestion.enUS ? ` Suggestion: ${finding.suggestion.enUS}` : ''}`).join('\n')}`,
         )
       : ''
 
@@ -1770,19 +1780,16 @@ ${params.candidate.text}`,
     projectSession: ProjectSessionContext,
     chapterNumber: number,
     authoredConfigFacts: readonly string[],
-  ): Promise<string> {
+  ): Promise<{ architecture: string; synopsisChunk: string }> {
     const core = await ipc.invokeWithProjectSession(projectSession, 'db:project-core-get', projectPath)
     const duplicates = exactParagraphs(authoredConfigFacts)
     const parts: string[] = []
     if (core?.premise) parts.push(withoutExactParagraphDuplicates(core.premise, duplicates))
     if (core?.worldbuilding) parts.push(withoutExactParagraphDuplicates(core.worldbuilding, duplicates))
-    if (core?.synopsis) {
-      parts.push(withoutExactParagraphDuplicates(
-        synopsisForDraftChapter(core.synopsis, chapterNumber),
-        duplicates,
-      ))
-    }
-    return parts.filter(Boolean).join('\n\n---\n\n')
+    // 本章细纲分块同时供「细纲↔蓝图角色」比对（issue #27），不能只在 prompt 里拼完就丢。
+    const synopsisChunk = core?.synopsis ? synopsisForDraftChapter(core.synopsis, chapterNumber) : ''
+    if (synopsisChunk) parts.push(withoutExactParagraphDuplicates(synopsisChunk, duplicates))
+    return { architecture: parts.filter(Boolean).join('\n\n---\n\n'), synopsisChunk }
   }
 
   private async readProjectPrompts(
