@@ -14,6 +14,8 @@ import { review } from '../redesign/pages/chapter-view.mjs'
 import * as runSheet from '../redesign/pages/run-sheet.mjs'
 // issue #46：细纲续写入口按状态选，不能硬点不存在的按钮。
 import { continueSynopsis } from '../redesign/pages/architecture.mjs'
+// issue #53：写正文前的「一致性预检」弹层要按状态处理，否则永远停在「带提醒继续写」。
+import * as blueprintPage from '../redesign/pages/blueprint.mjs'
 
 /** 只提供 review() 用到的三个选择器与 waitFor，不拉起真实浏览器。 */
 function fakeReviewPage({ visible = false } = {}) {
@@ -219,5 +221,47 @@ describe('run-sheet.collapseCapsule (issue #50)', () => {
     const outcome = await runSheet.collapseCapsule(f.page)
     expect(outcome).toContain('failed:')
     expect(outcome).toContain('intercepted')
+  })
+})
+
+/**
+ * issue #53：预检有提醒时应用不会直接开写，而是把弹层打开、把「带提醒继续写」做成显式按钮。
+ * 点完「写第 N 章」就去等运行的 harness 会永远停在这一层（实测 6 分钟零正文调用）。
+ * continuePastPreflight 必须按状态判断：没有弹层就立即返回，有按钮就点它。
+ */
+describe('blueprint.continuePastPreflight (issue #53)', () => {
+  const fakeWritePage = ({ dialogVisible, hasContinue }) => {
+    const clicks = []
+    const dialog = {
+      waitFor: async () => { if (!dialogVisible) throw new Error('Timeout') },
+      innerText: async () => '一致性预检 · 3 条线索提醒 任九不在角色卡',
+      getByRole: () => ({
+        count: async () => (hasContinue ? 1 : 0),
+        first: () => ({ click: async () => { clicks.push('continue') } }),
+      }),
+    }
+    return { page: { locator: () => ({ first: () => dialog }) }, clicks }
+  }
+
+  it('没有弹层时立即返回 no-dialog（正常章节形态）', async () => {
+    const f = fakeWritePage({ dialogVisible: false, hasContinue: true })
+    await expect(blueprintPage.continuePastPreflight(f.page)).resolves.toEqual({ outcome: 'no-dialog' })
+    expect(f.clicks).toEqual([])
+  })
+
+  it('弹层带「带提醒继续写」时点它，并把提醒摘要带回去', async () => {
+    const f = fakeWritePage({ dialogVisible: true, hasContinue: true })
+    const result = await blueprintPage.continuePastPreflight(f.page)
+    expect(result.outcome).toBe('continued')
+    expect(result.summary).toContain('一致性预检')
+    expect(f.clicks).toEqual(['continue'])
+  })
+
+  it('弹层在但没有该按钮时如实回报（可能不是预检弹层）', async () => {
+    const f = fakeWritePage({ dialogVisible: true, hasContinue: false })
+    const result = await blueprintPage.continuePastPreflight(f.page)
+    expect(result.outcome).toBe('no-continue-button')
+    expect(result.summary).toContain('一致性预检')
+    expect(f.clicks).toEqual([])
   })
 })

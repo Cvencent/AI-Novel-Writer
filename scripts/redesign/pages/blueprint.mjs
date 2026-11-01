@@ -76,6 +76,28 @@ export async function generateRange(page, from, to) {
   return true
 }
 
+/**
+ * 点「写第 N 章」之后处理可能出现的「一致性预检」弹层（issue #53）。
+ *
+ * 预检有提醒时应用**不会**直接开写，而是把弹层打开、把「带提醒继续写」做成显式按钮——
+ * 产品行为是对的，但 harness 若点完主按钮就去等运行，就会永远停在这一层
+ * （本轮实测等了 6 分钟、零 chapter-draft 调用）。
+ *
+ * 这里按状态判断：弹层出现且带该按钮就点它（= 作者会做的动作），并返回提醒条数与首条摘要，
+ * 供报告留痕；三点都判不到时返回 no-dialog（正常章节没有提醒时就是这个形态）。
+ */
+export async function continuePastPreflight(page, { timeout = 3_000 } = {}) {
+  // 用 :visible 限定：本页同时可能存在「本次写作选项」这类 role=dialog 的弹层。
+  const dialog = page.locator('[role="dialog"]:visible').first()
+  const visible = await dialog.waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false)
+  if (!visible) return { outcome: 'no-dialog' }
+  const summary = await dialog.innerText().catch(() => '')
+  const go = dialog.getByRole('button', { name: /^(带提醒继续写|Continue with reminders)$/ })
+  if (await go.count().catch(() => 0) === 0) return { outcome: 'no-continue-button', summary: summary.slice(0, 400) }
+  await go.first().click({ timeout: 15_000 })
+  return { outcome: 'continued', summary: summary.slice(0, 400) }
+}
+
 /** 批量创作 count 章，模型用默认，写完留作草稿。 */
 export async function startBatch(page, count) {
   await page.getByRole('button', { name: '批量创作' }).click()

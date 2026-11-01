@@ -515,13 +515,18 @@ for (let chapter = from; chapter <= to; chapter += 1) {
         if (target !== chapter) log(`  主按钮实际是「${buttonText}」，按第 ${target} 章处理`)
 
         await button.click()
+        // 预检有提醒时应用会先把弹层打开（issue #53）：点完「写第 N 章」就等运行会永远停在这一层。
+        // 按状态判断，并把提醒摘要记进报告——这是应用给作者的核心信号，报告里不该看不到。
+        const preflight = await blueprintPage.continuePastPreflight(page)
+        if (preflight.outcome === 'continued') log(`  一致性预检有提醒，已点「带提醒继续写」：${preflight.summary.replace(/\s+/g, ' ').slice(0, 160)}`)
+        else if (preflight.outcome === 'no-continue-button') log(`  弹层出现但没有「带提醒继续写」按钮（可能不是一致性预检）：${String(preflight.summary ?? '').replace(/\s+/g, ' ').slice(0, 200)}`)
         await runSheet.waitForRunDone(page, GENERATION_TIMEOUT_MS)
         const draft = await pollUntilOrStall(page, async () => {
           const list = await invokeSession(page, session, 'db:draft-list', target, session.projectPath)
           const latest = [...(list ?? [])].reverse().find(item => item.wordCount > 200)
           return latest ?? null
         }, { label: `第 ${target} 章草稿`, stallMs: 6 * 60_000 })
-        return { chapter: target, draftId: draft.id, version: draft.version, words: draft.wordCount }
+        return { chapter: target, preflight: preflight.outcome, draftId: draft.id, version: draft.version, words: draft.wordCount }
       })
 
       // 定稿会触发连续性抽取与角色状态回写——长程一致性的关键一环，必须走。
