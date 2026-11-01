@@ -129,6 +129,11 @@ export function getEmbeddingConfig(): { protocol: 'openai' | 'gemini'; model: { 
   const models = readJsonFile<ModelProfile[]>(MODELS_CONFIG_PATH, [])
   const model = models.find((m) => m.id === targetModelId)
   if (!model) return null
+  // 未配置检索模型时回退到默认生成模型，但只有该模型声明了「嵌入」用途才真的可用：
+  // 生成模型的服务商多半没有嵌入接口（如 DeepSeek 官方），回退会让每次写稿前
+  // 都多发一次注定失败的请求，然后静默降级全文检索（issue #520）。
+  // 靠回退工作的用户（服务商同时提供嵌入）在检索模型页把该模型设为检索模型即可。
+  if (!config.defaultEmbeddingModelId && !(model.purposes ?? []).includes('embedding')) return null
   return {
     protocol: model.protocol as 'openai' | 'gemini',
     model: { baseUrl: model.baseUrl, apiKey: model.apiKey, modelName: model.modelName, embeddingOptions: model.embeddingOptions },

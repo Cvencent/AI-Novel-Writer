@@ -378,3 +378,36 @@ describe('knowledge-base controller project context guard', () => {
     })
   })
 })
+
+
+describe('getEmbeddingConfig generation-model fallback (issue #520)', () => {
+  it('returns null when falling back to a generation model that declares no embedding purpose', async () => {
+    mocks.readJsonFile.mockImplementation((file: string) => {
+      if (file === 'global.json') return { defaultEmbeddingModelId: null, defaultModelId: 'gen-1' }
+      return [{ id: 'gen-1', protocol: 'openai', baseUrl: 'https://api.example.com', apiKey: 'k', modelName: 'gen', purposes: ['generation'] }]
+    })
+    const { getEmbeddingConfig } = await import('../kb-controller')
+    expect(getEmbeddingConfig()).toBeNull()
+  })
+
+  it('still falls back when the generation model declares the embedding purpose', async () => {
+    mocks.readJsonFile.mockImplementation((file: string) => {
+      if (file === 'global.json') return { defaultEmbeddingModelId: null, defaultModelId: 'gen-1' }
+      return [{ id: 'gen-1', protocol: 'openai', baseUrl: 'https://api.example.com', apiKey: 'k', modelName: 'gen', purposes: ['generation', 'embedding'] }]
+    })
+    const { getEmbeddingConfig } = await import('../kb-controller')
+    expect(getEmbeddingConfig()).toMatchObject({ model: { modelName: 'gen' } })
+  })
+
+  it('always honors a dedicated retrieval model regardless of purposes', async () => {
+    mocks.readJsonFile.mockImplementation((file: string) => {
+      if (file === 'global.json') return { defaultEmbeddingModelId: 'embed-1', defaultModelId: 'gen-1' }
+      return [
+        { id: 'gen-1', protocol: 'openai', baseUrl: 'https://api.example.com', apiKey: 'k', modelName: 'gen', purposes: ['generation'] },
+        { id: 'embed-1', protocol: 'openai', baseUrl: 'https://embed.example.com', apiKey: 'k', modelName: 'embed' },
+      ]
+    })
+    const { getEmbeddingConfig } = await import('../kb-controller')
+    expect(getEmbeddingConfig()).toMatchObject({ model: { modelName: 'embed' } })
+  })
+})
