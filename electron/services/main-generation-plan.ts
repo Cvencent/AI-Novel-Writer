@@ -24,12 +24,20 @@ export const MAIN_GENERATION_POLICY = Object.freeze({
   safetyMarginTokens: 512,
 })
 
-/** 审稿输出上限：审稿产物只是 JSON 报告，通用 32k 上限只会诱导推理灌水（issue #17）。 */
-export const REVIEW_OUTPUT_TOKEN_CAP = 8_192
+/**
+ * 审稿输出上限：一份完整审稿 JSON（summary + items + goalReviews）实测需要 21–23k tok
+ * 才说完（issue #17 里的正常样本 id 11/22）。#17 曾降到 8192 抑制推理灌水，结果是每次
+ * 审稿必然 finishReason=length、报告永远落不了库（issue #26）。这里改成实测够用的量级，
+ * 既压住 32k 灌水，又不把报告掐断；替代输出（-rebuild）放开到策略上限。
+ */
+export const REVIEW_OUTPUT_TOKEN_CAP = 24_576
 const REVIEW_PURPOSES: ReadonlySet<string> = new Set(['review-chapter', 'review-chapter-rebuild'])
+/** 替代输出若沿用同一个 8192 配额，等于「重试=再撞一次」（issue #26 建议 3）。 */
+const REVIEW_REBUILD_PURPOSES: ReadonlySet<string> = new Set(['review-chapter-rebuild'])
 
-function isReviewPurpose(purpose: string | undefined): boolean {
-  return purpose !== undefined && REVIEW_PURPOSES.has(purpose)
+function reviewPurposeOutputCap(purpose: string | undefined): number {
+  if (purpose !== undefined && REVIEW_REBUILD_PURPOSES.has(purpose)) return Number.POSITIVE_INFINITY
+  return purpose !== undefined && REVIEW_PURPOSES.has(purpose) ? REVIEW_OUTPUT_TOKEN_CAP : Number.POSITIVE_INFINITY
 }
 
 export type MainGenerationPolicy = Readonly<Omit<typeof MAIN_GENERATION_POLICY, 'version' | 'budget'> & {
@@ -272,7 +280,7 @@ export function buildMainGenerationPlan(model: ModelProfile, receipt: Pick<Model
   const evidence = receipt.capabilityEvidence, safety = MAIN_GENERATION_POLICY.safetyMarginTokens
   const rootRemaining = budget.policy.maxTokenLiability - budget.attempts.reduce((sum, attempt) => sum + tokenLiability(attempt), 0)
   const remaining = policy.version === 's07-capacity-v2' ? Math.min(rootRemaining, reservationCeiling) : rootRemaining
-  const purposeOutputCap = isReviewPurpose(task.purpose) ? REVIEW_OUTPUT_TOKEN_CAP : Number.POSITIVE_INFINITY
+  const purposeOutputCap = reviewPurposeOutputCap(task.purpose)
   if (task.budgetDemand) {
     if (remaining <= 0 || totalBounded && remaining < 1_048_576) throw new Error('ROOT_BUDGET_EXHAUSTED')
     const separateOutput = totalBounded || model.protocol === 'gemini' || geminiReasoning !== null

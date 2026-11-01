@@ -185,12 +185,14 @@ describe('main generation physical liability planning without provider calls', (
     expect(result.reservedTokens).toBe(result.inputUpperBoundTokens + result.requestedOutputTokens + 512)
     expect(result.usagePolicy.reasoning).toBe('included-in-completion')
   })
-  it('caps review purposes at 8192 output tokens while other purposes keep the policy ceiling', () => {
+  it('caps a review request at the measured complete-report budget while rebuild may use the policy ceiling', () => {
     const reviewTask: GenerationTask = { purpose: 'review-chapter', output: 'structured-data', reasoningStage: 'review', messages: [{ role: 'user', content: '雨夜，铜钥匙落在门前。' }] }
     const review = plan(model({ maxTokens: 32768 }), reviewTask)
-    expect(review.requestedOutputTokens).toBe(8192)
+    // issue #26：8192 必然撞顶（实测完整报告需 21–23k），改为实测够用的 24k。
+    expect(review.requestedOutputTokens).toBe(24_576)
+    // 替代输出若沿用同一配额，等于「重试=再撞一次」；这里放开到策略上限。
     const rebuild = plan(model({ maxTokens: 32768 }), { ...reviewTask, purpose: 'review-chapter-rebuild' })
-    expect(rebuild.requestedOutputTokens).toBe(8192)
+    expect(rebuild.requestedOutputTokens).toBe(32768)
     const draft = plan(model({ maxTokens: 32768 }))
     expect(draft.requestedOutputTokens).toBe(32768)
   })

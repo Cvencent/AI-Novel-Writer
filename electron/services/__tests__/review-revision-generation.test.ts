@@ -306,8 +306,28 @@ describe('review and revision generation through the actual owner and SQLite', (
     expect(f.db.prepare('SELECT COUNT(*) FROM reviews').pluck().get()).toBe(0)
     expect(f.owner.read(request.handle).candidates).toHaveLength(1)
   })
-  it.each([['length', report], ['stop', report], ['stop', 'bad-json']] as const)(
-    'limits exhausted review recovery without blocking STOP save or rebuild (%s, %s)', async (finishReason, text) => {
+  // issue #26：8192 的审稿配额让report必然被截断、永远落不了库。上限提到实测够用的 24k 后，
+// 正常长度的报告会以 finishReason='stop' 完成并照常落库（配额问题在 plan 层修，见
+// main-generation-plan.test.ts）。这里锁住「截断产物仍不得作为正式审稿落库」这一不变量。
+  it('keeps a length-terminated review candidate out of the reviews table (issue #26 invariant)', async () => {
+    const f = fixture(async (_request, options) => {
+      options.onVisible({ kind: 'delta', text: report }); return { finishReason: 'length', usage: null }
+    })
+    const request = await f.run()
+    await f.owner.execute({ handle: request.handle, invocationNonce: 'review-chapter',
+      task: { purpose: 'review-chapter', output: 'structured-data', messages: [{ role: 'user', content: '检查冻结正文' }] } })
+    const recovery = f.owner.readReviewRevisionRecovery(request.handle)
+    expect(recovery.latestArtifactFinishReason).toBe('length')
+    expect(recovery.saved).toBeUndefined()
+    expect(f.db.prepare('SELECT COUNT(*) FROM reviews').pluck().get()).toBe(0)
+    const artifact = recovery.latestArtifact!
+    expect(() => f.owner.commitReview({ contextId: recovery.contextId ?? 'absent', handle: request.handle,
+      artifact: { artifactId: artifact.artifactId, revision: artifact.revision, textHash: artifact.textHash } })).toThrow()
+    expect(f.db.prepare('SELECT COUNT(*) FROM reviews').pluck().get()).toBe(0)
+  })
+
+  it.each([['stop', report], ['stop', 'bad-json']] as const)(
+    'keeps STOP save and rebuild behaviour unchanged (%s, %s)', async (finishReason, text) => {
       let calls = 0
       const f = fixture(async (_request, options) => {
         options.onVisible({ kind: 'delta', text }); return { finishReason: calls++ === 0 ? 'length' : finishReason, usage: null }
@@ -321,14 +341,7 @@ describe('review and revision generation through the actual owner and SQLite', (
       expect(recovery.attemptedPurposes).toEqual(['review-chapter', 'review-chapter'])
       expect(recovery.latestArtifactFinishReason).toBe(finishReason)
       expect(recovery.saved).toBeUndefined()
-      expect.soft(recovery.canResume).toBe(finishReason === 'stop')
-      if (finishReason === 'length') {
-        expect.soft(recovery.contextId).toBeUndefined()
-        expect(f.db.prepare('SELECT body FROM contents WHERE id=1').pluck().get()).toBe(prose)
-        expect(f.db.prepare('SELECT COUNT(*) FROM reviews').pluck().get()).toBe(0)
-        expect(f.spy).toHaveBeenCalledTimes(2)
-        return
-      }
+      expect(recovery.canResume).toBe(true)
       expect(recovery.contextId).toEqual(expect.any(String))
       const artifact = recovery.latestArtifact!
       const commit = { contextId: recovery.contextId!, handle: request.handle,
