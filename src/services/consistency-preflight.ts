@@ -1,6 +1,6 @@
 import type { ProjectSessionContext } from '../shared/ipc-channels'
 import type { BlueprintForPreflight, ConsistencyExemption, ConsistencyFinding } from '../shared/consistency-preflight'
-import { findBlueprintContinuityRisks, findExpandedContinuityRisks } from '../shared/consistency-preflight'
+import { findBlueprintContinuityRisks, findExpandedContinuityRisks, findUnregisteredBlueprintCast } from '../shared/consistency-preflight'
 import { ipc } from './ipc-client'
 
 export interface ConsistencyPreflightResult {
@@ -52,5 +52,17 @@ export async function readConsistencyPreflight(
   const castNames = (Array.isArray(roster?.entries) ? roster.entries : [])
     .map(entry => (typeof entry.name === 'string' ? entry.name.trim() : ''))
     .filter(Boolean)
-  return { findings: [...terminalFindings, ...expandedFindings].filter(item => !activeExemptions.has(item.stableFactKey)), exemptions, castNames }
+  // 蓝图引入了不在名册里的角色（issue #42）：任九式。放在这里而不是只在起草命令里，
+  // 是因为审稿与写前预检共用同一个结果，作者在定稿前也能看到。
+  const unregisteredFindings = blueprints.flatMap(blueprint => findUnregisteredBlueprintCast({
+    chapterNumber: blueprint.chapterNumber,
+    blueprintCharacters: blueprint.characters,
+    castNames,
+  }))
+  return {
+    findings: [...terminalFindings, ...expandedFindings, ...unregisteredFindings]
+      .filter(item => !activeExemptions.has(item.stableFactKey)),
+    exemptions,
+    castNames,
+  }
 }

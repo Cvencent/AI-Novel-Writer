@@ -340,6 +340,49 @@ export function findSynopsisCastMismatches(input: SynopsisChapterCastInput): Con
 
   return findings.slice(0, 4)
 }
+/**
+ * 蓝图角色名单里**不在角色卡名册**的具名角色（issue #42）。
+ *
+ * 真实事故：第 11 章蓝图与正文一致地引入「任九」（4 次出场、3 句台词，承担本章关键对话），
+ * 但 characters 表里没有这个人。后果不是「龙套没建档」这么轻：定稿后的角色状态回写以
+ * characters 行为锚点，没卡就没处写；一致性检查器只按名册取角色，他永远在检查盲区；
+ * 下一章起草时「上一章谁跟他说过什么」对他是空白，只能临时发挥。
+ *
+ * 这里只做**可见性**（作者写前就能看到），不自动建卡：自动生成的卡会带着凭空捏造的身份
+ * 与定位进入后续所有提示词，那比缺卡更糟。
+ */
+export interface UnregisteredCastInput {
+  chapterNumber: number
+  blueprintCharacters: readonly string[]
+  /** characters 表里的在册角色名（retired=0）。 */
+  castNames: readonly string[]
+}
+
+export function findUnregisteredBlueprintCast(input: UnregisteredCastInput): ConsistencyFinding[] {
+  const cast = new Set(input.castNames.map(name => normalizedKeyPart(castDisplayName(name))))
+  const findings: ConsistencyFinding[] = []
+  for (const raw of input.blueprintCharacters) {
+    const name = castDisplayName(raw)
+    const key = normalizedKeyPart(name)
+    if (!name || !key || cast.has(key)) continue
+    findings.push({
+      stableFactKey: `blueprint-cast:unregistered:${input.chapterNumber}:${key}`,
+      severity: 'warning',
+      sourceChapter: input.chapterNumber,
+      evidence: `第${input.chapterNumber}章蓝图角色「${name}」不在角色卡名册（${input.castNames.join('、') || '空'}）`,
+      issue: {
+        zhCN: `本章蓝图把「${name}」列为出场角色，但角色卡里没有这个人：定稿后不会为他回写状态，一致性检查也覆盖不到他，下一章起草时对他的记忆是空白。`,
+        enUS: `This chapter's blueprint casts “${name}”, who has no character card. No state will be written for them after finalization, consistency checks skip them, and the next chapter starts with no memory of them.`,
+      },
+      suggestion: {
+        zhCN: `要保留这个角色，就在「角色名单」里为「${name}」建卡（姓名 + 定位即可），并把本章标为他的首次出场；只当一次性路人时，请把蓝图与正文里的名字换成无名的身份称呼（如「账房伙计」）。`,
+        enUS: `To keep them, add “${name}” to the character roster (name plus role) and mark this chapter as their first appearance. For a walk-on, replace the name in the blueprint and prose with a role label instead.`,
+      },
+    })
+  }
+  return findings.slice(0, 4)
+}
+
 export function mergeConsistencyFindingsIntoReview(
   review: ReviewLike,
   findings: readonly ConsistencyFinding[],

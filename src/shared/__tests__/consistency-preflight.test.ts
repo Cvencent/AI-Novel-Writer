@@ -4,6 +4,7 @@ import {
   findBlueprintContinuityRisks,
   findExpandedContinuityRisks,
   findSynopsisCastMismatches,
+  findUnregisteredBlueprintCast,
   mergeConsistencyFindingsIntoReview,
   synopsisSceneCharacters,
 } from '../consistency-preflight'
@@ -238,5 +239,36 @@ describe('findSynopsisCastMismatches (issue #27)', () => {
     expect(findings.map(item => item.issue.zhCN).join('\n')).toContain('陈阿水')
     expect(findings.map(item => item.issue.zhCN).join('\n')).not.toContain('潮生号后舱验票台')
     expect(findings.map(item => item.issue.zhCN).join('\n')).not.toContain('码头酒棚')
+  })
+})
+
+// issue #42：第 11 章蓝图与正文一致地引入「任九」（4 次出场、3 句台词），但角色卡里没有这个人。
+// 下游全部收不到他：状态回写没有锚点、一致性检查只按名册取角色、下一章起草对他一片空白。
+describe('findUnregisteredBlueprintCast (issue #42)', () => {
+  const castNames = ['周叙', '温珩', '陆敬堂', '阿茂', '陈阿水', '柯有顺', '陶有根', '邵德昌']
+
+  it('蓝图角色不在名册时给出可见性提示，并说明后果与两条出路', () => {
+    const findings = findUnregisteredBlueprintCast({ chapterNumber: 11, blueprintCharacters: ['周叙', '任九', '温珩'], castNames })
+    expect(findings).toHaveLength(1)
+    expect(findings[0]).toMatchObject({ severity: 'warning', sourceChapter: 11 })
+    expect(findings[0]!.issue.zhCN).toContain('任九')
+    expect(findings[0]!.issue.zhCN).toContain('角色卡里没有这个人')
+    // 出路：建卡，或换成无名的身份称呼
+    expect(findings[0]!.suggestion.zhCN).toContain('建卡')
+    expect(findings[0]!.suggestion.zhCN).toContain('身份称呼')
+    expect(findings[0]!.stableFactKey).toContain('unregistered')
+  })
+
+  it('全部在册时不产生提示（正常章节不打扰作者）', () => {
+    expect(findUnregisteredBlueprintCast({ chapterNumber: 12, blueprintCharacters: ['周叙', '温珩'], castNames })).toEqual([])
+  })
+
+  it('每章最多 4 条，避免一次性挤占上下文', () => {
+    const findings = findUnregisteredBlueprintCast({
+      chapterNumber: 13,
+      blueprintCharacters: ['周叙', '甲一', '乙二', '丙三', '丁四', '戊五'],
+      castNames,
+    })
+    expect(findings).toHaveLength(4)
   })
 })
