@@ -226,3 +226,46 @@ describe('chapter Markdown outline contract', () => {
     }
   })
 })
+
+// issue #44：#21 的修复只接通「带覆盖说明行」那一半。bare-prefix 分支里同时要求
+// 「用当前总章数渲染相等（必然带说明行）」与「用 range.from-1 渲染相等（必然不带）」，
+// 两项互斥、永远抛错——真实书稿写满到当时总章数、事后调大总章数就会撞上。
+describe('bare prefix 续写（issue #44）', () => {
+  const chapters = [1, 2, 3].map(n => `## 第${n}章：标题${n}\n第${n}章正文。`).join('\n\n')
+  const bareSynopsis = `# 细纲\n\n${chapters}`
+  const source = (totalChapters: number) => ({ synopsis: bareSynopsis, totalChapters, writingLanguage: 'zh-CN' as const })
+
+  it('末尾没有说明行、总章数被调大时，仍然判为可续写', () => {
+    // 写满到 3 章、事后把总章数改成 4
+    expect(plotOutlineConfirmedPrefix(source(4), { from: 4, to: 4 })).toBe(chapters)
+    expect(plotOutlineRangeEffect(source(4), { from: 4, to: 4 })).toEqual({ kind: 'continue', after: 3 })
+    expect(plotOutlineNextChapter(source(4))).toBe(4)
+  })
+
+  it('带说明行的那一半不能被修坏（#21 的原修复）', () => {
+    const withTail = renderPlotOutlineSynopsis(chapters, 3, { totalChapters: 4, writingLanguage: 'zh-CN' })
+    const sourceWithTail = { synopsis: withTail, totalChapters: 4, writingLanguage: 'zh-CN' as const }
+    expect(plotOutlineConfirmedPrefix(sourceWithTail, { from: 4, to: 4 })).toBe(chapters)
+    expect(plotOutlineNextChapter(sourceWithTail)).toBe(4)
+  })
+
+  it('全书确实已经写完时不误判为可续写', () => {
+    // 3 章正文 + 总章数 3：没有第 4 章可写，nextChapter 回退为 1 是既有语义
+    expect(plotOutlineNextChapter(source(3))).toBe(1)
+  })
+
+  it('越界范围仍被拒（range.from > 总章数）', () => {
+    expect(() => plotOutlineConfirmedPrefix(source(3), { from: 4, to: 4 })).toThrow('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
+  })
+
+  it('章号断档时不得当成 bare prefix 放行', () => {
+    const gapped = { synopsis: `# 细纲\n\n## 第1章：一\n正文一。\n\n## 第3章：三\n正文三。`, totalChapters: 4, writingLanguage: 'zh-CN' as const }
+    expect(plotOutlineRangeEffect(gapped, { from: 4, to: 4 })).toMatchObject({ kind: 'invalid' })
+  })
+
+  it('后面确实还有条目时前缀只到空缺前，不把后续章节当成前缀', () => {
+    const withLater = { synopsis: `${bareSynopsis}\n\n## 第9章：多出来的\n多余正文。`, totalChapters: 9, writingLanguage: 'zh-CN' as const }
+    // 第 9 章已在正文里：第 4 章是补空缺，前缀只能是第 1–3 章
+    expect(plotOutlineConfirmedPrefix(withLater, { from: 4, to: 4 })).toBe(chapters)
+  })
+})

@@ -344,9 +344,15 @@ export function plotOutlineConfirmedPrefix(expected: PlotOutlineRangeSource, ran
     return prefix
   }
   // bare-prefix 仅在「真的在续写」时接受：range.from 不超过全书章数，
-  // 且 coveredTo（before 末尾）紧邻 range.from（不跳章）。
+  // 且原文除标题外只有这些章节（没有多余内容）。
+  //
+  // 这里**不能**再用当前总章数去重新渲染比对（issue #44）：那样渲染必然补上
+  // 「已覆盖至第 N 章（全书 M 章）」说明行，而 bare-prefix 的定义就是「末尾没有这一行」，
+  // 两项要求互斥 → 分支永远抛错。真实书稿的第 12 章细纲因此续不出来
+  // （#21 当时只修好了「带说明行」那一半）。
+  // 能证明「正文就是这批章节」的判据只有一条：按 range.from - 1 渲染（此时不产生说明行）
+  // 后与原文逐字相等。
   if (!barePrefix || range.from > expected.totalChapters
-    || renderPlotOutlineSynopsis(barePrefix, range.from - 1, expected) !== expected.synopsis
     || renderPlotOutlineSynopsis(barePrefix, range.from - 1,
       { ...expected, totalChapters: range.from - 1 }) !== expected.synopsis) {
     throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
