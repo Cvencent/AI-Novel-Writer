@@ -1,10 +1,10 @@
-import { useState, useEffect, useLayoutEffect, useRef } from 'react'
-import { Save, Settings2, Zap, Eye, EyeOff, ChevronDown, RefreshCw, RotateCcw } from 'lucide-react'
+import { useState, useEffect, useId, useLayoutEffect, useRef } from 'react'
+import { Save, Settings2, Zap, Eye, EyeOff, ChevronDown, RotateCcw } from 'lucide-react'
 import { useLLMStore } from '../../stores/llm-store'
 import type { DiscoveredModel, ModelDiscoveryErrorCode, ModelProfile } from '../../shared/ipc-channels'
 import { LOW_VRAM_EMBEDDING_OPTIONS, normalizeEmbeddingOptions } from '../../shared/embedding-options'
 import type { ModelCapabilities, ProviderPreset } from '../../shared/provider-presets'
-import { resolveModelProfileBudgetCapabilities } from '../../shared/provider-presets'
+import { hasRequiredApiKey, isLocalModelEndpoint, parseHttpEndpoint, resolveModelProfileBudgetCapabilities } from '../../shared/provider-presets'
 import { applyModelProfileSelection, DEFAULT_GENERATION_OUTPUT_TOKENS, modelCapabilitySource } from '../../shared/model-profile-draft'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
@@ -14,6 +14,7 @@ import { cn } from '../../lib/utils'
 import { useLocaleStore } from '../../stores/locale-store'
 import { ModelReasoningOverrideSettings, ModelCapabilitySources, ProjectCreativeStrategySettings } from './ReasoningPolicySettings'
 import { openModelProviderResource } from './model-provider-resource'
+import { ModelNameField } from './ModelNameField'
 
 /** 模型编辑表单 */
 export function ModelForm({
@@ -31,8 +32,6 @@ export function ModelForm({
   const text = useLocaleStore(s => s.text)
   const [showKey, setShowKey] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
-  // 标记"模型标识"是否使用自定义输入模式
-  const [customModelName, setCustomModelName] = useState(false)
 
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean, error?: string } | null>(null)
@@ -144,7 +143,8 @@ export function ModelForm({
 
   /**
    * 切换服务商：从持久化预设中自动填充 baseUrl / protocol
-   * 并将模型名重置为该服务商的第一个预设模型
+   * 并将模型名重置为该服务商的第一个预设模型。
+   * API Key 一起清空：换了地址还留着旧 Key，测试连接或保存就会把旧 Key 发到新服务商。
    */
   const handleProviderChange = (provider: ModelProfile['provider']) => {
     const p = presetMap.get(provider)
@@ -155,46 +155,58 @@ export function ModelForm({
     const capabilities = isEmbedding
       ? p?.embeddingModelCapabilities?.[defaultModelName]
       : firstModel?.capabilities
-    setCustomModelName(false)
     invalidateDiscovery()
     const selection = {
       ...model,
       provider,
       protocol: (p?.protocol ?? 'openai') as 'openai' | 'gemini',
       baseUrl: p?.baseUrl ?? '',
+      apiKey: '',
       modelName: defaultModelName,
       maxTokens: capabilities?.maxOutputTokens ?? firstModel?.maxTokens ?? 4096,
       capabilities: capabilities ? { ...capabilities } : undefined,
     }
-    onChange(isEmbedding ? selection : applyModelProfileSelection(model, {
-      provider, protocol: selection.protocol, baseUrl: selection.baseUrl, modelName: selection.modelName,
-    }))
+    onChange(isEmbedding ? selection : {
+      ...applyModelProfileSelection(model, {
+        provider, protocol: selection.protocol, baseUrl: selection.baseUrl, modelName: selection.modelName,
+      }),
+      apiKey: '',
+    })
   }
 
-  /** 选择预设模型或切换到自定义输入 */
-  const handleModelSelect = (val: string) => {
-    if (val === '__custom__') {
-      setCustomModelName(true)
-      up('modelName', '')
-    } else {
-      setCustomModelName(false)
-      const matched = presetModels.find((m) => m.name === val)
-      const capabilities = matched?.capabilities
-      onChange(isEmbedding ? {
+  /** 选中一个候选：端点声明的能力优先，没有声明的字段沿用预设与手工值。 */
+  const handleModelSelect = (candidate: DiscoveredModel) => {
+    const presetModel = presetModels.find((m) => m.name === candidate.value)
+    const declared = candidate.capabilities
+    if (isEmbedding) {
+      // 向量模型按预设声明整体替换能力；端点只声明了部分字段时不改动已保存的能力。
+      const capabilities = presetModel?.capabilities
+      onChange({
         ...model,
-        modelName: val,
-        maxTokens: capabilities?.maxOutputTokens ?? matched?.maxTokens ?? model.maxTokens,
-        capabilities: capabilities ? { ...capabilities } : undefined,
-      } : applyModelProfileSelection(model, { modelName: val }))
+        modelName: candidate.value,
+        maxTokens: capabilities?.maxOutputTokens ?? presetModel?.maxTokens ?? model.maxTokens,
+        capabilities: capabilities ? { ...capabilities } : model.capabilities,
+      })
+      return
     }
+    onChange(declared
+      ? applyModelProfileSelection(model, { modelName: candidate.value }, declared)
+      : applyModelProfileSelection(model, { modelName: candidate.value }))
   }
 
 
-  // 当前模型名是否在预设列表里（决定下拉框显示）
-  const isPresetValue = presetModels.some((m) => m.name === model.modelName)
-  const selectValue = customModelName || (!isPresetValue && presetModels.length > 0)
-    ? '__custom__'
-    : model.modelName
+  /**
+   * 候选只来自端点返回的模型列表（并上预设，让预设里的模型也能被搜到）。
+   * base_url 得先是可解析的 http(s) 地址，Key 也得够用（本机地址免 Key）；
+   * 请求不可用时不报错，作者仍可手工输入任意名称。
+   */
+  const canDiscover = parseHttpEndpoint(model.baseUrl) !== null && hasRequiredApiKey(model)
+  const candidates: DiscoveredModel[] = [
+    ...discoveredModels,
+    ...presetModels
+      .filter(preset => !discoveredModels.some(discovered => discovered.value === preset.name))
+      .map(preset => ({ id: preset.name, name: preset.name, value: preset.name, capabilities: preset.capabilities })),
+  ]
 
   const handleTest = async () => {
     setTesting(true)
@@ -253,6 +265,32 @@ export function ModelForm({
               ? text('端点返回了空模型列表。请继续手工填写模型 ID。', 'The endpoint returned an empty model list. Continue with a manual model ID.')
               : null
 
+  const discoveryStatus = discoveryNoticeText
+    ? { text: discoveryNoticeText, tone: 'error' as const }
+    : !canDiscover && discoveredModels.length === 0
+      ? { text: text('填写 base_url 与 API Key 后可获取端点模型列表；也可以直接输入模型名称。', 'Enter the base_url and API key to fetch the endpoint model list, or just type a model name.'), tone: 'muted' as const }
+      : null
+
+  // 端点与 Key 从「填不全」变成「填全了」时自动拉一次列表，省掉一次手动点击。
+  // 打开已有配置本身不发请求：列表在作者展开候选时按需拉取。
+  const wasDiscoverable = useRef(canDiscover)
+  useEffect(() => {
+    const previous = wasDiscoverable.current
+    wasDiscoverable.current = canDiscover
+    if (previous || !canDiscover || discovering || discoveredModels.length > 0) return
+    const timer = setTimeout(() => void handleDiscoverModels(), 600)
+    return () => clearTimeout(timer)
+  }, [canDiscover, discovering, discoveredModels.length])
+
+  const canTest = Boolean(model.baseUrl.trim()) && hasRequiredApiKey(model)
+  /** 保存门槛与按钮灰掉的原因共用一份，免得两处判断走散。 */
+  const missingFields = [
+    ...(model.baseUrl.trim() ? [] : [text('base_url', 'base_url')]),
+    ...(hasRequiredApiKey(model) ? [] : ['API Key']),
+    ...(model.modelName.trim() ? [] : [text('模型名称', 'model name')]),
+  ]
+  const missingFieldsHintId = useId()
+
   return (
     <div
       className="rounded-xl p-5 space-y-4"
@@ -303,56 +341,7 @@ export function ModelForm({
         </div>
       </div>
 
-      {/* 模型标识：有预设时显示下拉，否则纯输入 */}
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <Label className="mb-0">{text('model（模型名称）', 'model')}</Label>
-          {presetModels.length > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                if (customModelName) {
-                  // 切回预设列表
-                  const first = presetModels[0]
-                  handleModelSelect(first.name)
-                } else {
-                  // 切换到自定义输入
-                  setCustomModelName(true)
-                  up('modelName', '')
-                }
-              }}
-              className="text-xs transition-colors"
-              style={{ color: 'var(--color-accent)' }}
-            >
-              {customModelName ? text('从列表选择', 'Choose from list') : text('手动输入', 'Enter manually')}
-            </button>
-          )}
-        </div>
-
-        {/* 有预设模型 且 未切到手动输入 → 显示下拉 */}
-        {presetModels.length > 0 && !customModelName ? (
-          <NativeSelect
-            value={selectValue}
-            onChange={(e) => handleModelSelect(e.target.value)}
-          >
-            {presetModels.map((m) => (
-              <option key={m.name} value={m.name}>{m.name}</option>
-            ))}
-            <option value="__custom__">{text('手动输入', 'Enter manually')}</option>
-          </NativeSelect>
-        ) : (
-          <div>
-            <Input
-              value={model.modelName}
-              onChange={(e) => up('modelName', e.target.value)}
-              placeholder={isEmbedding ? 'text-embedding-3-small' : 'gpt-4o'}
-              autoFocus={customModelName}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* Base URL */}
+      {/* base_url 与 API Key 放在模型名之前：模型名的候选来自这两项 */}
       <div>
         <Label>{text('base_url', 'base_url')}</Label>
         <Input
@@ -375,61 +364,32 @@ export function ModelForm({
             type={showKey ? 'text' : 'password'}
             value={model.apiKey}
             onChange={(e) => up('apiKey', e.target.value)}
-            placeholder={model.provider === 'ollama' ? text('本地部署可留空', 'Optional for local deployment') : 'sk-...'}
+            placeholder={isLocalModelEndpoint(model) ? text('本地部署可留空', 'Optional for local deployment') : 'sk-...'}
             className="pr-9"
           />
           <button
             type="button"
             onClick={() => setShowKey(!showKey)}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 transition-colors"
+            style={{ color: 'var(--color-text-muted)' }}
           >
             {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
           </button>
         </div>
       </div>
 
-      <div className="space-y-2 rounded-lg p-3" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--color-hover)' }}>
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <Label className="mb-0">{text('端点模型列表', 'Endpoint model list')}</Label>
-            <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-              {text('填写端点与 API Key 后即可获取；选择模型后再保存配置。', 'Enter the endpoint and API key to refresh, then save after choosing a model.')}
-            </p>
-          </div>
-          <Button type="button" size="sm" variant="outline" onClick={handleDiscoverModels} disabled={discovering}>
-            <RefreshCw size={13} className={discovering ? 'animate-spin' : undefined} />
-            {discovering ? text('获取中...', 'Refreshing...') : text('获取模型列表', 'Refresh model list')}
-          </Button>
-        </div>
-
-        {discoveredModels.length > 0 && (
-          <NativeSelect
-            aria-label={text('端点模型列表', 'Endpoint model list')}
-            value={discoveredModels.some(candidate => candidate.value === model.modelName) ? model.modelName : ''}
-            onChange={(event) => {
-              const value = event.target.value
-              if (!value) return
-              setCustomModelName(true)
-              if (isEmbedding) up('modelName', value)
-              else onChange(applyModelProfileSelection(model, { modelName: value },
-                discoveredModels.find(candidate => candidate.value === value)?.capabilities))
-            }}
-          >
-            <option value="">{text('选择端点返回的模型', 'Choose a model returned by the endpoint')}</option>
-            {discoveredModels.map(candidate => (
-              <option key={`${candidate.id}:${candidate.value}`} value={candidate.value}>
-                {candidate.name === candidate.id ? candidate.id : `${candidate.name} (${candidate.id})`}
-              </option>
-            ))}
-          </NativeSelect>
-        )}
-
-        {discoveryNoticeText && (
-          <p role="status" className="text-xs" style={{ color: 'var(--color-error-text)' }}>
-            {discoveryNoticeText}
-          </p>
-        )}
-      </div>
+      {/* 模型名：候选来自端点返回的列表，也可直接输入任意名称 */}
+      <ModelNameField
+        value={model.modelName}
+        placeholder={isEmbedding ? 'text-embedding-3-small' : 'gpt-4o'}
+        candidates={candidates}
+        refreshing={discovering}
+        status={discoveryStatus}
+        onInput={(next) => up('modelName', next)}
+        onSelect={(candidate) => handleModelSelect(candidate)}
+        onOpen={() => { if (canDiscover && discoveredModels.length === 0 && !discovering) void handleDiscoverModels() }}
+        onRefresh={() => void handleDiscoverModels()}
+      />
 
       {isEmbedding && model.provider === 'siliconflow' && model.modelName === 'BAAI/bge-m3' && (
         <div className="rounded-lg p-3 space-y-2" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--color-hover)' }}>
@@ -611,7 +571,7 @@ export function ModelForm({
         <Button
           variant="outline"
           onClick={handleTest}
-          disabled={testing || !model.baseUrl || (!model.apiKey && model.provider !== 'ollama')}
+          disabled={!canTest}
         >
           <Zap size={13} />
           {testing ? text('测试中...', 'Testing...') : text('测试连接', 'Test connection')}
@@ -619,13 +579,20 @@ export function ModelForm({
         <Button
           className="flex-1"
           onClick={onSave}
-          disabled={saving || !model.baseUrl.trim() || !model.modelName.trim() || (!model.apiKey.trim() && model.provider !== 'ollama')}
+          disabled={saving || missingFields.length > 0}
+          aria-describedby={missingFields.length > 0 ? missingFieldsHintId : undefined}
         >
           <Save size={13} />
           {saving ? text('保存中...', 'Saving...') : text('保存配置', 'Save configuration')}
         </Button>
         <Button variant="ghost" onClick={onCancel}>{text('取消', 'Cancel')}</Button>
       </div>
+      {missingFields.length > 0 && (
+        // 保存按钮变灰时说明还缺什么，省得作者逐个字段猜。
+        <p id={missingFieldsHintId} className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          {text(`保存前还需填写：${missingFields.join('、')}。`, `Before saving, fill in: ${missingFields.join(', ')}.`)}
+        </p>
+      )}
       {testResult && (
         <div className={`text-xs p-2 rounded ${testResult.success ? 'bg-green-500/10 text-[var(--color-success-text)] border border-green-500/20' : 'bg-red-500/10 text-[var(--color-error-text)] border border-red-500/20'} break-all`}>
           {testResult.success ? text('连接成功', 'Connection succeeded') : text(`连接失败：${testResult.error}`, `Connection failed: ${testResult.error}`)}

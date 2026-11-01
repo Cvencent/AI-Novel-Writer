@@ -9,6 +9,8 @@ function source(file: string): string {
 describe('model settings contract', () => {
   it('keeps the user-facing field vocabulary and provider options in the model form', () => {
     const settingsModal = source('src/components/settings/ModelForm.tsx')
+    // 模型名是一个合并了端点候选的输入控件，字段与标签随控件一起搬到 ModelNameField。
+    const modelNameField = source('src/components/settings/ModelNameField.tsx')
 
     for (const field of [
       ['model（模型名称）', 'model'],
@@ -16,7 +18,8 @@ describe('model settings contract', () => {
       ['API Key', 'API Key'],
       ["上下文窗口", 'Context Window'],
     ]) {
-      expect(settingsModal).toContain(`text('${field[0]}', '${field[1]}')`)
+      const scope = field[0] === 'model（模型名称）' ? modelNameField : settingsModal
+      expect(scope).toContain(`text('${field[0]}', '${field[1]}')`)
     }
 
     expect(settingsModal).toContain("text('高级设置', 'Advanced settings')")

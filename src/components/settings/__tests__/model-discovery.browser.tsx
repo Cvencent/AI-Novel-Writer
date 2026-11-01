@@ -10,6 +10,32 @@ import { useLLMStore } from '../../../stores/llm-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import StageSettings from '../../stage/settings/StageSettings'
 
+/** 比自动获取的防抖多等一点，确认这段时间里确实没有发请求。 */
+const AUTO_DISCOVERY_WAIT_MS = 800
+
+function modelNameInput(): HTMLInputElement {
+  const input = Array.from(document.querySelectorAll('input[role="combobox"]'))[0]
+  if (!(input instanceof HTMLInputElement)) throw new Error('Missing model name combobox')
+  return input
+}
+
+/** 候选列表随模型名输入框展开，选中条目按 value 定位。 */
+async function openSuggestions() {
+  await act(async () => { modelNameInput().focus() })
+  const toggle = document.querySelector<HTMLButtonElement>('[aria-label="展开候选模型"]')
+  if (toggle) await act(async () => toggle.click())
+}
+
+function suggestionOptions(): HTMLLIElement[] {
+  return Array.from(document.querySelectorAll<HTMLLIElement>('[role="option"]'))
+}
+
+async function chooseSuggestion(value: string) {
+  const option = suggestionOptions().find(candidate => candidate.textContent?.includes(value))
+  if (!option) throw new Error(`Missing suggestion ${value}`)
+  await act(async () => option.click())
+}
+
 const originalLayoutState = useLayoutStore.getState()
 const originalLLMState = useLLMStore.getState()
 const originalLocaleState = useLocaleStore.getState()
@@ -145,7 +171,11 @@ describe('model discovery settings flow', () => {
     await act(async () => {
       await page.getByRole('button', { name: /^编辑「/ }).click()
       await page.getByRole('button', { name: '获取模型列表', exact: true }).click()
-      await page.getByLabelText('端点模型列表').selectOptions(value)
+    })
+    await openSuggestions()
+    await vi.waitFor(() => expect(suggestionOptions().map(option => option.textContent)).toContain(value))
+    await chooseSuggestion(value)
+    await act(async () => {
       await expect.element(page.getByLabelText('上下文窗口', { exact: true })).toHaveValue(context)
       await page.getByLabelText('上下文窗口', { exact: true }).fill('32000')
       await page.getByRole('button', { name: '高级设置', exact: true }).click()
@@ -219,7 +249,8 @@ describe('model discovery settings flow', () => {
 
     await vi.waitFor(() => expect(discoverModels).toHaveBeenCalledWith(discoveryRequest(model)))
     expect(discoverModels.mock.calls[0]).toEqual([discoveryRequest(model)])
-    await expect.element(page.getByLabelText('端点模型列表')).toBeVisible()
+    await openSuggestions()
+    await vi.waitFor(() => expect(suggestionOptions().some(option => option.textContent?.includes("provider/model-a"))).toBe(true))
   })
 
   it('refreshes models from a new unsaved endpoint and credentials', async () => {
@@ -261,7 +292,7 @@ describe('model discovery settings flow', () => {
       baseUrl: editedBaseUrl,
       apiKey: editedApiKey,
     }))
-    await expect.element(page.getByLabelText('端点模型列表')).toBeVisible()
+    await vi.waitFor(() => expect(suggestionOptions().some(option => option.textContent?.includes('fresh-model'))).toBe(true))
   })
 
   it('allows saving a complete manual configuration without a display name', async () => {
@@ -277,6 +308,86 @@ describe('model discovery settings flow', () => {
       await page.getByRole('button', { name: '保存配置', exact: true }).click()
     })
     await vi.waitFor(() => expect(saveModel).toHaveBeenCalledWith(model))
+  })
+
+  it('clears the previous API key when the provider changes, so it never reaches the new address', async () => {
+    const model = savedProfile({ provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-openai-secret' })
+    await renderSettings(model, vi.fn())
+    await act(async () => {
+      await page.getByRole('button', { name: /^编辑「/ }).click()
+    })
+    const providerSelect = Array.from(document.querySelectorAll('select')).find(select => select.value === 'openai')
+    if (!(providerSelect instanceof HTMLSelectElement)) throw new Error('Missing provider select')
+    await act(async () => {
+      providerSelect.value = 'deepseek'
+      providerSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+
+    const apiKeyInput = Array.from(document.querySelectorAll('input[type="password"]'))[0]
+    if (!(apiKeyInput instanceof HTMLInputElement)) throw new Error('Missing API key input')
+    expect(apiKeyInput.value).toBe('')
+    const baseUrlInput = Array.from(document.querySelectorAll('input'))
+      .find(input => input.value.includes('deepseek'))
+    expect(baseUrlInput).toBeInstanceOf(HTMLInputElement)
+    // 旧 Key 不会随切换后的地址被发出去。
+    expect(document.querySelector('input[value="sk-openai-secret"]')).toBeNull()
+  })
+
+  it('starts fetching once the endpoint and key are both complete, without opening the list', async () => {
+    const discoverModels = vi.fn(async () => ({
+      success: true as const,
+      models: [{ id: 'auto-model', name: 'Auto model', value: 'auto-model' }],
+    }))
+    await renderSettings(savedProfile(), discoverModels, 'zh-CN', [], false)
+    await act(async () => {
+      await page.getByRole('button', { name: '添加模型', exact: true }).click()
+    })
+    const typeInto = async (input: HTMLInputElement, value: string) => {
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+        setter?.call(input, value)
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+    }
+    const apiKeyInput = document.querySelector('input[placeholder="sk-..."]')
+    if (!(apiKeyInput instanceof HTMLInputElement)) throw new Error('Missing API key input')
+    const baseUrlInput = Array.from(document.querySelectorAll('input'))
+      .find(input => input.value === 'https://api.openai.com')
+    if (!(baseUrlInput instanceof HTMLInputElement)) throw new Error('Missing base URL input')
+
+    await typeInto(baseUrlInput, 'api.example')
+    await typeInto(apiKeyInput, 'sk-new-key')
+    await new Promise(resolve => setTimeout(resolve, AUTO_DISCOVERY_WAIT_MS))
+    // base_url 还不是 http 地址：不发请求。
+    expect(discoverModels).not.toHaveBeenCalled()
+
+    await typeInto(baseUrlInput, 'https://gateway.invalid/v1')
+
+    await vi.waitFor(() => expect(discoverModels).toHaveBeenCalledTimes(1))
+    expect(discoverModels).toHaveBeenCalledWith(expect.objectContaining({
+      baseUrl: 'https://gateway.invalid/v1',
+      apiKey: 'sk-new-key',
+    }))
+  })
+
+  it('says what is still missing while save is unavailable', async () => {
+    await renderSettings(savedProfile(), vi.fn(), 'zh-CN', [], false)
+    await act(async () => {
+      await page.getByRole('button', { name: '添加模型', exact: true }).click()
+    })
+    const save = page.getByRole('button', { name: '保存配置', exact: true })
+    await expect.element(save).toBeDisabled()
+    await expect.element(save).toHaveAccessibleDescription('保存前还需填写：API Key。')
+
+    const apiKeyInput = document.querySelector('input[placeholder="sk-..."]')
+    if (!(apiKeyInput instanceof HTMLInputElement)) throw new Error('Missing API key input')
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      setter?.call(apiKeyInput, 'sk-new-key')
+      apiKeyInput.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await expect.element(save).toBeEnabled()
+    expect(container?.textContent).not.toContain('保存前还需填写')
   })
 
   it('clears stale capabilities for an unknown selected id and saves only after confirmation', async () => {
@@ -300,22 +411,15 @@ describe('model discovery settings flow', () => {
     const { saveModel, setDefaultModel } = await renderSettings(model, discoverModels)
     await act(async () => {
       await page.getByRole('button', { name: /^编辑「/ }).click()
-      await page.getByRole('button', { name: '获取模型列表', exact: true }).click()
     })
-
-    const discoveredSelect = document.querySelector('select[aria-label="端点模型列表"]')
-    if (!(discoveredSelect instanceof HTMLSelectElement)) throw new Error('Missing discovered model selector')
-    await act(async () => {
-      discoveredSelect.value = 'provider/model-b'
-      discoveredSelect.dispatchEvent(new Event('change', { bubbles: true }))
-    })
+    await openSuggestions()
+    await vi.waitFor(() => expect(suggestionOptions().some(option => option.textContent?.includes('provider/model-b'))).toBe(true))
+    await chooseSuggestion('provider/model-b')
 
     expect(saveModel).not.toHaveBeenCalled()
     expect(setDefaultModel).not.toHaveBeenCalled()
     expect(useLLMStore.getState().defaultModelId).toBe(model.id)
-    const manualModelInput = Array.from(document.querySelectorAll('input'))
-      .find(input => input.value === 'provider/model-b')
-    expect(manualModelInput).toBeInstanceOf(HTMLInputElement)
+    expect(modelNameInput().value).toBe('provider/model-b')
 
     await act(async () => {
       await page.getByRole('button', { name: '保存配置', exact: true }).click()
@@ -401,7 +505,7 @@ describe('model discovery settings flow', () => {
       await pendingDiscovery
     })
 
-    expect(document.querySelector('select[aria-label="端点模型列表"]')).toBeNull()
+    expect(suggestionOptions().some(option => option.textContent?.includes('stale-model'))).toBe(false)
   })
 
   it('ignores a pending discovery after switching to another saved profile', async () => {
@@ -439,7 +543,7 @@ describe('model discovery settings flow', () => {
       await pendingDiscovery
     })
 
-    expect(document.querySelector('select[aria-label="端点模型列表"]')).toBeNull()
+    expect(suggestionOptions().some(option => option.textContent?.includes('stale-first-model'))).toBe(false)
     expect(Array.from(document.querySelectorAll('input')).some(input => input.value === second.modelName)).toBe(true)
     await expect.element(page.getByRole('button', { name: '获取模型列表', exact: true })).toBeEnabled()
   })
@@ -473,7 +577,7 @@ describe('model discovery settings flow', () => {
       await pendingDiscovery
     })
 
-    expect(document.querySelector('select[aria-label="端点模型列表"]')).toBeNull()
+    expect(suggestionOptions().some(option => option.textContent?.includes('stale-closed-model'))).toBe(false)
     await expect.element(page.getByRole('button', { name: '获取模型列表', exact: true })).toBeEnabled()
   })
 
