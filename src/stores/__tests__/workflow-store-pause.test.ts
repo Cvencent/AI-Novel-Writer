@@ -803,3 +803,29 @@ describe('workflow pause at a safe step boundary', () => {
 afterEach(() => {
   vi.unstubAllGlobals()
 })
+
+// issue #48：「重试失败步骤」部分成功时整条工作流被判 failed，而旧实现只在成功分支
+// 发 WORKFLOW_COMPLETE，面板因此收不到刷新信号。WORKFLOW_SETTLED 必须在失败时也发。
+describe('WORKFLOW_SETTLED（issue #48）', () => {
+  it('工作流失败时也发出结算事件，且带 failed 状态', async () => {
+    const settled: Array<{ runId: string; status: string }> = []
+    const unsubscribe = globalEventBus.on('WORKFLOW_SETTLED', payload => {
+      settled.push({ runId: payload.runId, status: payload.status })
+    })
+    const workflow: WorkflowDefinition = {
+      type: 'chapter_creation',
+      title: '修复后处理测试',
+      projectPath,
+      projectSession: frozenSession(),
+      steps: [{
+        name: '重建后处理',
+        description: '一步失败',
+        executor: async () => { throw new Error('FINALIZATION_GENERATION_ARTIFACT_REQUIRED') },
+      }],
+    }
+    const runId = await useWorkflowStore.getState().startWorkflow(workflow)
+    expect(settled).toEqual([{ runId, status: 'failed' }])
+    expect(useWorkflowStore.getState().history[0]).toMatchObject({ status: 'failed' })
+    unsubscribe()
+  })
+})

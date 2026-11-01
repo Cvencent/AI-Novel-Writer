@@ -108,7 +108,14 @@ export function usePostProcessStatus(scope: string) {
     const unsub2 = globalEventBus.on('WORKFLOW_COMPLETE', ({ projectSession }) => {
       if (matchesCurrentProject(projectSession)) void loadStatus()
     })
-    return () => { unsub1(); unsub2() }
+    // 失败路径不发 WORKFLOW_COMPLETE（那是「成功」语义），而「重试失败步骤」在
+    // 部分成功时整条工作流被标 failed —— 面板因此永远收不到刷新信号，一直显示
+    // 重试前的快照（issue #48）。WORKFLOW_SETTLED 在**任何**终态都发，语义是
+    // 「这次运行结束了，去看落库结果」。
+    const unsub3 = globalEventBus.on('WORKFLOW_SETTLED', ({ projectSession }) => {
+      if (matchesCurrentProject(projectSession)) void loadStatus()
+    })
+    return () => { unsub1(); unsub2(); unsub3() }
   }, [loadStatus, project])
 
   const steps = status

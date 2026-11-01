@@ -96,3 +96,20 @@ describe('PostProcessSteps 面板文案 (issue #34)', () => {
     expect(source).toContain('重试失败步骤')
   })
 })
+
+// issue #48：点「重试失败步骤」后库已变、面板不变。
+// 根因：WORKFLOW_COMPLETE 只在成功分支发出；「重试」在一步失败时整条工作流被标 failed，
+// 于是面板收不到任何刷新信号。WORKFLOW_SETTLED 在任何终态都发。
+describe('后处理面板订阅 WORKFLOW_SETTLED (issue #48)', () => {
+  const source = readFileSync(new URL('../use-post-process-status.ts', import.meta.url), 'utf8')
+
+  it('订阅了结算事件，且解绑时一并清理', () => {
+    expect(source).toContain("on('WORKFLOW_SETTLED'")
+    expect(source).toContain('unsub3()')
+  })
+
+  it('注释里写明为什么不能只靠 WORKFLOW_COMPLETE', () => {
+    expect(source).toContain('失败路径')
+    expect(source).toContain('issue #48')
+  })
+})

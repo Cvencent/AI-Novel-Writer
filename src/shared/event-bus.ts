@@ -14,6 +14,8 @@ export type GlobalEventType =
   | 'REFRESH_RESOURCE'
   // --- 工作流相关 ---
   | 'WORKFLOW_COMPLETE'
+  /** 运行结束（无论成功还是失败）——给「看落库结果」的消费者用（issue #48）。 */
+  | 'WORKFLOW_SETTLED'
   | 'WORKFLOW_ERROR'
   // --- 架构后处理 ---
   | 'ARCH_POSTPROCESS_UPDATED'
@@ -45,6 +47,14 @@ export interface EventPayloadMap {
     projectSession: ProjectSessionContext
     /** 唯一工作流运行身份，用于排除同项目内的其他并发任务。 */
     runId: string
+  }
+  'WORKFLOW_SETTLED': {
+    type: string
+    projectPath: string
+    projectSession: ProjectSessionContext
+    runId: string
+    /** 终态：completed / failed / cancelled。 */
+    status: 'completed' | 'failed' | 'cancelled'
   }
   'WORKFLOW_ERROR': {
     title: string

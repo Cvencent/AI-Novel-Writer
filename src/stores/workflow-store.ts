@@ -919,6 +919,24 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
       }
     }
 
+    // 运行结束信号（issue #48）：成功路径下面已经 emit 过 WORKFLOW_COMPLETE，
+    // 但**失败**路径（步骤抛错 → catch → break）从来不发任何事件，于是「重试失败步骤」
+    // 部分成功时，面板拿不到刷新信号，一直显示重试前的快照。这里无论终态都发一次
+    // 「这次运行结束了，去看落库结果」——语义是「已结算」，不是「成功了」。
+    {
+      const settledRun = get().activeRuns.find(r => r.id === run.id)
+      if (settledRun) {
+        globalEventBus.emit('WORKFLOW_SETTLED', {
+          type: definition.type,
+          projectPath: definition.projectPath,
+          projectSession: context.projectSession,
+          runId: run.id,
+          // 取消在工作流里以 failed + 「工作流已取消」落账，这里如实映射成 failed。
+          status: settledRun.status === 'completed' ? 'completed' : 'failed',
+        })
+      }
+    }
+
     // 从活跃列表移除，存入历史
     set(s => {
       const completedRun = s.activeRuns.find(r => r.id === run.id)
