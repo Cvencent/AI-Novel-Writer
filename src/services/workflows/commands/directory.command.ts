@@ -336,11 +336,14 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
           ((batchStart - startChapter) / chapterNumbers.length) * 90,
         ))
         const previous = [...existingBlueprints, ...validatedPrefix]
+        // 上一章的章末钩子必须进这个列表（issue #20）：批块模板只有泛的「保持连贯」，
+        // 若连钩子原文都不给，模型无从回应；单章路径的 recentBlueprints 早带了 suspenseHook，
+        // 批量路径此前只带 keyEvents，两边不一致。
         const chapterList = previous.slice(-100)
           .map(chapter => promptLanguageText(
             writingLanguage,
-            `第${chapter.chapterNumber}章 ${chapter.title}：${chapter.keyEvents}`,
-            `Chapter ${chapter.chapterNumber} — ${chapter.title}: ${chapter.keyEvents}`,
+            `第${chapter.chapterNumber}章 ${chapter.title}：${chapter.keyEvents}${chapter.suspenseHook ? `（章末钩子：${chapter.suspenseHook}）` : ''}`,
+            `Chapter ${chapter.chapterNumber} — ${chapter.title}: ${chapter.keyEvents}${chapter.suspenseHook ? ` (closing hook: ${chapter.suspenseHook})` : ''}`,
           ))
           .join('\n')
         const prompt = new DirectoryPromptBuilder(template, writingLanguage)

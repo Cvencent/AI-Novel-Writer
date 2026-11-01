@@ -21,3 +21,15 @@ describe('blueprint cost rotation rules (issue #14)', () => {
     expect(blueprintSemanticGenerationContract('en-US')).toContain('recentBlueprints')
   })
 })
+
+// issue #20：钩子逐章写、下一章却整章不提。模型看得到 recentBlueprints 里的 suspenseHook，
+// 缺的是「必须接」这条硬约束——与代价轮换一样写进不可变合同。
+describe('blueprint hook carry-over rule (issue #20)', () => {
+  it('the immutable JSON contract requires addressing the previous chapter hook', () => {
+    expect(blueprintSemanticGenerationContract('zh-CN')).toContain('上一章钩子必须接')
+    expect(blueprintSemanticGenerationContract('zh-CN')).toContain('recentBlueprints')
+    expect(blueprintSemanticGenerationContract('zh-CN')).toContain('搁置')
+    expect(blueprintSemanticGenerationContract('en-US')).toContain('Hook carry-over is required')
+    expect(blueprintSemanticGenerationContract('en-US')).toContain('recentBlueprints')
+  })
+})
