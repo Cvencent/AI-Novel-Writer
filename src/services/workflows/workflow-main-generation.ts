@@ -31,6 +31,8 @@ export interface WorkflowMainGenerationRequest {
 export interface WorkflowMainGenerationRuntime extends GenerationRuntime {
   readonly mainOwned: true
   advance(selection: WorkflowMainGenerationSelection): Promise<void>
+  /** 主进程运行落账 cancelled（run 行不再永远 running）；已关闭时为空操作。 */
+  cancel(): Promise<MainGenerationRunView>
 }
 
 /** Each stage freezes its sources; all stages of the author action share main's root. */
@@ -197,6 +199,12 @@ export async function createWorkflowMainGenerationRuntime(request: WorkflowMainG
     mainOwned: true,
     async execute(operation) { try { return await operation({ session }) } finally { await close() } },
     close,
+    cancel: async () => {
+      if (closed) { await cancelPromise?.catch(() => undefined); return view }
+      await cancel()
+      if (cancelFailure) throw cancelFailure
+      return view
+    },
     async advance(selection) {
       if (closed || busy || cancelPromise || readOnlyOutline) throw new Error('GENERATION_WORKFLOW_ADVANCE_REFUSED')
       unsubscribeReasoning?.(); unsubscribeReasoning = undefined; clearReasoning()

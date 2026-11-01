@@ -226,6 +226,17 @@ export abstract class BaseWorkflowCommand<TResult = string> {
         try {
           this.assertNotCancelled(params.context)
           return await operation()
+        } catch (cause) {
+          // 命令最终失败时把主进程运行落账为 cancelled：否则 generation_runs 永远
+          // running，而 idle reaper 只收割 finishReason!==stop 的运行——模型已成功
+          // 返回（stop）后校验才抛错的运行会卡在 running 永无人收（issue #15）。
+          const mainRuntime = runtime as Partial<WorkflowMainGenerationRuntime> & { cancel?: () => Promise<unknown> }
+          if (mainRuntime.mainOwned === true && typeof mainRuntime.cancel === 'function'
+            && !params.context.cancelled) {
+            await mainRuntime.cancel()
+              .catch(() => { /* the ledger stays as-is if cancellation is refused */ })
+          }
+          throw cause
         } finally {
           this.activeGenerationExecution = null
         }
