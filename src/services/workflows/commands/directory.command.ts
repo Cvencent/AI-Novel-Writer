@@ -24,6 +24,7 @@ import {
 } from '../directory-workflow'
 import {
   blueprintSemanticGenerationContract,
+  closingShotOf,
   validateBlueprintSemanticItem,
 } from '../../../shared/blueprint-semantic-contract'
 import { requireWorkflowProjectSession, workflowUiText, workflowWritingLanguage } from '../workflow-project-session'
@@ -177,6 +178,8 @@ function buildCompactBlueprintTask(input: {
       // 上一章付过的代价也要给模型看：代价桥段跨章照抄的根因就是它不可见（issue #14）。
       costs: chapter.costsAndTurns,
       suspenseHook: chapter.suspenseHook,
+      // 最近落幅同看：收束方式跨章同构的根因同样是不可见（issue #28）。
+      closingShot: closingShotOf(chapter.keyEvents) || undefined,
     })),
     globalGuidance: input.globalGuidance,
     pacingGuidance: input.pacingGuidance,
@@ -338,12 +341,20 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
         const previous = [...existingBlueprints, ...validatedPrefix]
         // 上一章的章末钩子必须进这个列表（issue #20）：批块模板只有泛的「保持连贯」，
         // 若连钩子原文都不给，模型无从回应；单章路径的 recentBlueprints 早带了 suspenseHook，
-        // 批量路径此前只带 keyEvents，两边不一致。
+        // 批量路径此前只带 keyEvents，两边不一致。收束方式同理（issue #28）。
         const chapterList = previous.slice(-100)
           .map(chapter => promptLanguageText(
             writingLanguage,
             `第${chapter.chapterNumber}章 ${chapter.title}：${chapter.keyEvents}${chapter.suspenseHook ? `（章末钩子：${chapter.suspenseHook}）` : ''}`,
             `Chapter ${chapter.chapterNumber} — ${chapter.title}: ${chapter.keyEvents}${chapter.suspenseHook ? ` (closing hook: ${chapter.suspenseHook})` : ''}`,
+          ))
+          .join('\n')
+        // 最近 3 章的落幅单独列一段：收束方式轮换要求模型先看清刚用过什么（issue #28）。
+        const recentClosings = previous.slice(-COMPACT_RECENT_BLUEPRINTS)
+          .map(chapter => promptLanguageText(
+            writingLanguage,
+            `第${chapter.chapterNumber}章收束：${closingShotOf(chapter.keyEvents) || '（未标注）'}`,
+            `Chapter ${chapter.chapterNumber} closing shot: ${closingShotOf(chapter.keyEvents) || '(unlabelled)'}`,
           ))
           .join('\n')
         const prompt = new DirectoryPromptBuilder(template, writingLanguage)
@@ -352,7 +363,10 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
             worldbuilding: (context.data.worldbuilding as string) || '', 
             batchOutline: outlineBatchSliceForBlueprint((context.data.synopsisFull as string) || '', batchStart, batchEnd), 
             arcDirective: (context.data.arcDirective as string) || '', language: writingLanguage }))
-          .withChapterList(chapterList || promptLanguageText(writingLanguage, '（首批生成，尚无前置章节）', '(first batch; no preceding chapters)'))
+          .withChapterList(
+            (chapterList || promptLanguageText(writingLanguage, '（首批生成，尚无前置章节）', '(first batch; no preceding chapters)'))
+            + (recentClosings ? `\n\n${promptLanguageText(writingLanguage, '【最近几章的收束方式（本章不得重复同一种）】', '[Closing shots of the recent chapters (do not repeat the same one in this chapter)]')}\n${recentClosings}` : ''),
+          )
           .withNumberOfChapters(totalChapters)
           .withN(batchStart)
           .withM(batchEnd)

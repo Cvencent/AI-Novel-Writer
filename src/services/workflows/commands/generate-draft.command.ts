@@ -1,4 +1,5 @@
 import { chapterTimeContinuity } from '../../../shared/chapter-time-continuity'
+import { closingShotOf } from '../../../shared/blueprint-semantic-contract'
 import { normalizeAgeField } from '../../../shared/character-age'
 import { appErrorMessage } from '../../../i18n/app-errors'
 import { sanitizeDraftText, composeDraftVisibleContinuation, DRAFT_CONDENSE_PURPOSE, DRAFT_VISIBLE_TEXT_VERSION, isDraftVisibleTextVersion, type DraftVisibleTextVersion } from '../../../shared/draft-visible-text'
@@ -634,6 +635,9 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       '（无后续蓝图）',
       '(no future chapter blueprints)',
     )
+    // 最近几章用过的收束方式（issue #28）：起草时看得见自己刚用过什么落幅，
+    // 否则收束镜头会连续同构（本样本 14 章里 9 章以「温珩站在舱门/梯口、一言不发」收尾）。
+    let recentClosingShots = ''
     try {
       const { loadDirectoryBlueprints } = await import('../directory-workflow')
       const allBlueprints = await loadDirectoryBlueprints(expectedProjectPath, projectSession)
@@ -646,6 +650,18 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           `第${b.chapterNumber}章 ${b.title}：${b.keyEvents}`,
           `Chapter ${b.chapterNumber}: ${b.title} — ${b.keyEvents}`,
         )).join('\n')
+      }
+      const recentArr = allBlueprints
+        .filter(b => b.chapterNumber < this.chapterInfo.chapterNumber)
+        .slice(-3)
+        .map(b => ({ chapterNumber: b.chapterNumber, shot: closingShotOf(b.keyEvents) }))
+        .filter(item => item.shot)
+      if (recentArr.length > 0) {
+        recentClosingShots = promptLanguageText(
+          writingLanguage,
+          `【最近几章的收束方式（本章结尾不要再用同一种）】\n${recentArr.map(item => `第${item.chapterNumber}章：${item.shot}`).join('\n')}`,
+          `[Closing shots of the recent chapters (do not reuse the same one for this chapter's ending)]\n${recentArr.map(item => `Chapter ${item.chapterNumber}: ${item.shot}`).join('\n')}`,
+        )
       }
     } catch { /* 忽略 */ }
 
@@ -886,7 +902,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     const chapterExecutionContract = chapterExecutionContractText(writingLanguage, writerChapterInfo)
     const systemRole = `${promptBuilder.getSystemRole()}\n\n${chapterExecutionContract.rules}`
     const composeInitialPrompt = (reconciliationBlock: string) => [rewriteBlock, chapterMaterials.text, promptBuilder.build(),
-      reconciliationBlock, chapterExecutionContract.authorItems, chapterLengthContract]
+      reconciliationBlock, chapterExecutionContract.authorItems, recentClosingShots, chapterLengthContract]
       .filter(Boolean)
       .join('\n\n')
     const prompt = composeInitialPrompt('')

@@ -51,6 +51,7 @@ newCharacterCandidates is optional. When present, include only important named c
 relationships is required and may be []; every item must contain non-empty from, to, and relation fields. from and to must exactly copy full names from the same item's characters array and may not self-reference.
 costsAndTurns is required: state the concrete cost or irreversible consequence paid in this chapter (bounded, traceable). When nothing is paid, say so in one short clause. The cost must rotate: never reuse the same cost type or the same beat template as the adjacent chapters (the previous chapters' costs are in recentBlueprints); when the golden-finger's price was paid the same way last chapter, pay a different kind of price this chapter.
 foreshadowing is required: state what this chapter plants or pays off. Write none when the chapter carries none.
+Closing shot must rotate (issue #28): end keyEvents with a "【收束：类型】" label naming this chapter's closing shot, from only these types: character-action close, dialogue close, object close, time/place switch, direct question close, interior monologue. Adjacent chapters must not repeat the same closing shot, and must never end on the same character holding the same pose (standing in the doorway, saying nothing) chapter after chapter — a repeated close makes chapters indistinguishable even when every hook differs. References list the recent chapters' closing shots; read them before choosing.
 Preserve complete narrative content.
 Do not omit required fields, combine chapters, rename fields, explain, or output Markdown or code fences.`
   }
@@ -64,6 +65,7 @@ newCharacterCandidates 可选；提供时只声明由本章首次引入且预计
 relationships 必须是数组，无关系时传 []；每项必须含非空 from、to、relation，from/to 必须精确出现在同项 characters 中且不能自指。
 costsAndTurns 必填：写明本章当场付出的具体代价或不可逆后果（有限、可追溯）。确实没有付出时，用一句短话说明。代价必须轮换：不得与相邻章（上一章的代价见 recentBlueprints 的 costs 字段）使用同一种代价类型或同一个桥段模板；上一章刚付过同类代价时，本章必须换一种付法。
 foreshadowing 必填：写明本章埋下或回收的伏笔；本章没有时写 none。
+收束方式必须轮换（issue #28）：在 keyEvents 末尾用「【收束：类型】」标注本章的落幅方式，类型只能是：人物动作收束、对话收束、物件落幅、时空切换、悬念直陈、内心独白。相邻若干章不得连续使用同一种落幅，尤其不得连续让同一个角色以同一个姿态（站在舱门/梯口、一言不发）收尾——即使每章钩子各不相同，落幅同构仍会让读者分辨不出读到第几章。references 里给了最近几章的落幅沿用情况，先看清再选本章的收束方式。
 from/to 必须逐字复制同一项 characters 中的完整字符串；任一端点不在 characters 时，删除该关系或使用 []，不得发明别名、简称或补写角色。
 叙述内容须保持完整。
 不得省略必填字段、合并章节、输出近义字段、解释、Markdown 或代码围栏。`
@@ -339,4 +341,24 @@ export function decodeBlueprintAuthorPayload(payload: unknown, expectedChapterNu
 
 export function parseBlueprintAuthorResponseText(text: string, expectedChapterNumbers: readonly number[]): BlueprintAuthorItem[] {
   return decodeBlueprintAuthorPayload(parseBlueprintJsonText(text), expectedChapterNumbers)
+}
+
+/** 收束方式类型：蓝图合同要求 keyEvents 末尾标注本章落幅（issue #28）。 */
+export const BLUEPRINT_CLOSING_SHOT_TYPES = Object.freeze([
+  '人物动作收束', '对话收束', '物件落幅', '时空切换', '悬念直陈', '内心独白',
+] as const)
+
+export type BlueprintClosingShot = typeof BLUEPRINT_CLOSING_SHOT_TYPES[number]
+
+/**
+ * 从 keyEvents 里取出收束方式标注（「…【收束：物件落幅】」）。
+ *
+ * 只认合同里列出的六种类型，返回标准写法；没有标注或类型不认识时返回空串——
+ * 调用方据此要么展示「未标注」，要么把本章的落幅摘要交给起草侧，绝不猜测。
+ */
+export function closingShotOf(keyEvents: string): BlueprintClosingShot | '' {
+  const matches = [...String(keyEvents ?? '').matchAll(/【\s*收束\s*[:：]\s*([^】]{1,24})】/gu)]
+  const last = matches.at(-1)?.[1]?.trim()
+  if (!last) return ''
+  return (BLUEPRINT_CLOSING_SHOT_TYPES as readonly string[]).includes(last) ? last as BlueprintClosingShot : ''
 }

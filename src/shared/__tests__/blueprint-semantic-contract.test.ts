@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  BLUEPRINT_CLOSING_SHOT_TYPES,
+  closingShotOf,
   decodeBlueprintSemanticPayload,
   blueprintSemanticGenerationContract,
   parseBlueprintSemanticResponseText,
@@ -216,5 +218,37 @@ describe('blueprint semantic contract', () => {
       { blueprints: [validBlueprint({ chapterNumber: 5, title: '待核' }), validBlueprint({ chapterNumber: 9, title: '另一次核对' })] },
       [5, 9],
     )).toHaveLength(2)
+  })
+})
+
+// issue #28：收束镜头跨章同构（本样本 14 章里 9 章以「温珩站在舱门/梯口、一言不发」收尾）。
+// 与 #14 代价轮换同形：合同声明轮换要求，并把最近落幅摘要交给生成侧。
+describe('blueprint closing-shot rotation (issue #28)', () => {
+  it('the immutable JSON contract requires rotating the closing shot', () => {
+    expect(blueprintSemanticGenerationContract('zh-CN')).toContain('收束方式必须轮换')
+    expect(blueprintSemanticGenerationContract('zh-CN')).toContain('【收束：类型】')
+    expect(blueprintSemanticGenerationContract('zh-CN')).toContain('references')
+    expect(blueprintSemanticGenerationContract('en-US')).toContain('Closing shot must rotate')
+    expect(blueprintSemanticGenerationContract('en-US')).toContain('【收束：类型】')
+  })
+
+  it('closingShotOf reads the trailing label and returns the canonical type', () => {
+    expect(closingShotOf('周叙按上票根，墨层浮起。【收束：物件落幅】')).toBe('物件落幅')
+    expect(closingShotOf('他推门，天光洒落。【收束:对话收束】')).toBe('对话收束')
+    // 取最后一个标注（模型可能中途写一次、末尾再写一次）
+    expect(closingShotOf('【收束：时空切换】……他转身。【收束：内心独白】')).toBe('内心独白')
+  })
+
+  it('unknown or missing labels return empty instead of guessing', () => {
+    expect(closingShotOf('没有任何标注。')).toBe('')
+    expect(closingShotOf('【收束：风景描写】')).toBe('')
+    expect(closingShotOf('')).toBe('')
+  })
+
+  it('the six documented types are exactly what the parser accepts', () => {
+    for (const type of BLUEPRINT_CLOSING_SHOT_TYPES) {
+      expect(closingShotOf(`正文。【收束：${type}】`)).toBe(type)
+    }
+    expect(BLUEPRINT_CLOSING_SHOT_TYPES).toHaveLength(6)
   })
 })
