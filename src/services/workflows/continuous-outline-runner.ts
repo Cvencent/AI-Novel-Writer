@@ -41,6 +41,14 @@ export interface ContinuousOutlineProgress {
   currentBatch: { from: number; to: number } | null
   batchPercent: number
   message: string
+  /**
+   * 最近一次失败的具体原因（issue #29）。
+   *
+   * 它与 `message` 分开存：`message` 会被后续状态文案整条替换，作者只看到「连续多次失败，
+   * 已停止」这类通用句，8 秒前展示过的真实原因（「粗纲还没有铺满全书：目前覆盖到第 22 章」）
+   * 就永久丢失。面板把 lastError 单独一行常驻，直到下一次成功或作者离开。
+   */
+  lastError: string
   remainingChapters: number
   startedAt: string | null
   updatedAt: string | null
@@ -50,7 +58,7 @@ const MAX_CONSECUTIVE_FAILURES = 3
 const IDLE_PROGRESS: ContinuousOutlineProgress = Object.freeze({
   status: 'idle', totalChapters: 0, coveredChapters: 0, percent: 0,
   batchesCompleted: 0, consecutiveFailures: 0, currentBatch: null, batchPercent: 0,
-  message: '', remainingChapters: 0, startedAt: null, updatedAt: null,
+  message: '', lastError: '', remainingChapters: 0, startedAt: null, updatedAt: null,
 })
 
 type Listener = (progress: ContinuousOutlineProgress) => void
@@ -179,6 +187,34 @@ async function waitForRun(
     await sleep(1200)
   }
 }
+/**
+ * 连续失败终止句（issue #29）。
+ *
+ * 关键约束：**一批都没成功时不得说「已完成大纲已保存 / 已完成 N / total 章」**——
+ * 那在本样本上是假话，作者会以为错误已处理、大纲已存好。以「本次是否真的往前推进过」
+ * 分两种说法，两种都必须把「你现在处于什么状态、下一步该做什么」讲清楚。
+ */
+export function continuousStopMessage(input: {
+  consecutiveFailures: number
+  batchesCompleted: number
+  coveredChapters: number
+  progressedTo: number
+  totalChapters: number
+  text: (zh: string, en: string) => string
+}): string {
+  const { consecutiveFailures, batchesCompleted, coveredChapters, progressedTo, totalChapters, text } = input
+  if (batchesCompleted > 0 || progressedTo > coveredChapters) {
+    return text(
+      `连续 ${consecutiveFailures} 次失败，已安全停止。已完成 ${progressedTo} / ${totalChapters} 章，可稍后继续；原大纲不会被覆盖。`,
+      `Stopped safely after ${consecutiveFailures} consecutive failures. ${progressedTo} / ${totalChapters} chapters are done; resume later without overwriting the outline.`,
+    )
+  }
+  return text(
+    `连续 ${consecutiveFailures} 次失败，已安全停止；本次没有生成任何章节（大纲仍覆盖 ${coveredChapters} 章）。请先解决上面的失败原因再重试。`,
+    `Stopped safely after ${consecutiveFailures} consecutive failures. No chapter was generated this run (the outline still covers ${coveredChapters}). Resolve the failure above before retrying.`,
+  )
+}
+
 /** 启动连续生成。返回时循环已在后台运行；用 subscribeContinuousOutline 观察进度。 */
 export function startContinuousOutline(targetUnits?: number): void {
   const project = useProjectStore.getState().currentProject
@@ -222,7 +258,7 @@ async function runLoop(session: ProjectSessionContext, token: number, targetUnit
 
   const initial = await readProjectProgress(session)
   if (!initial) {
-    emit({ status: 'failed', message: '读取项目进度失败，无法开始连续生成。' })
+    emit({ status: 'failed', message: '读取项目进度失败，无法开始连续生成。', lastError: '读取项目进度失败，无法开始连续生成。' })
     return
   }
   emit({
@@ -233,6 +269,7 @@ async function runLoop(session: ProjectSessionContext, token: number, targetUnit
     remainingChapters: Math.max(0, initial.totalChapters - initial.coveredChapters),
     batchesCompleted: 0, consecutiveFailures: 0, batchPercent: 0,
     message: text('开始连续生成细纲…', 'Starting continuous plot-outline generation…'),
+    lastError: '',
   })
   await ensureOutlineIndexed(initial.session, initial.outlineText, message => emit({ message })).catch(() => {
     emit({ message: text('已有大纲补建检索索引失败；会继续生成，稍后可在知识库页重试。', 'Existing outlines could not be indexed; generation will continue and indexing can be retried later.') })
@@ -241,20 +278,20 @@ async function runLoop(session: ProjectSessionContext, token: number, targetUnit
   for (;;) {
     if (token !== loopToken || cancelRequested) return
     if (!isProjectSessionCurrent(session) || !isProjectSessionPath(session, session.projectPath)) {
-      emit({ status: 'failed', message: '项目已切换，连续生成已停止。' })
+      emit({ status: 'failed', message: '项目已切换，连续生成已停止。', lastError: '项目已切换，连续生成已停止。' })
       return
     }
 
     const current = await readProjectProgress(session)
     if (!current) {
-      emit({ status: 'failed', message: '读取项目进度失败，连续生成已停止。' })
+      emit({ status: 'failed', message: '读取项目进度失败，连续生成已停止。', lastError: '读取项目进度失败，连续生成已停止。' })
       return
     }
     const total = current.totalChapters
     const covered = current.coveredChapters
 
     if (total <= 0) {
-      emit({ status: 'failed', message: '全书总章数无效，无法连续生成。' })
+      emit({ status: 'failed', message: '全书总章数无效，无法连续生成。', lastError: '全书总章数无效，无法连续生成。' })
       return
     }
     if (covered >= total) {
@@ -271,7 +308,8 @@ async function runLoop(session: ProjectSessionContext, token: number, targetUnit
     const rangeKey = from + '-' + to + '@' + covered
     if (rangeKey === lastRange) { sameRangeAttempts += 1 } else { lastRange = rangeKey; sameRangeAttempts = 1 }
     if (sameRangeAttempts > 3) {
-      emit({ status: 'failed', currentBatch: null, batchPercent: 0, message: text('第 ' + from + '–' + to + ' 章连续多次未能完整保存（停在第 ' + covered + ' 章），已停止以避免无限循环；可调小每章字数或范围后重试。', 'Chapters ' + from + '-' + to + ' repeatedly failed to save completely (stalled at chapter ' + covered + '). Stopped to avoid an endless loop; try a smaller per-chapter length or range.') })
+      const stalled = text('第 ' + from + '–' + to + ' 章连续多次未能完整保存（停在第 ' + covered + ' 章），已停止以避免无限循环；可调小每章字数或范围后重试。', 'Chapters ' + from + '-' + to + ' repeatedly failed to save completely (stalled at chapter ' + covered + '). Stopped to avoid an endless loop; try a smaller per-chapter length or range.')
+      emit({ status: 'failed', currentBatch: null, batchPercent: 0, message: stalled, lastError: stalled })
       return
     }
     emit({
@@ -293,12 +331,18 @@ async function runLoop(session: ProjectSessionContext, token: number, targetUnit
       runId = receipt.runId
     } catch (error) {
       consecutiveFailures += 1
-      emit({
-        consecutiveFailures,
-        message: text('第 ' + from + '–' + to + ' 章提交失败：' + (error instanceof Error ? error.message : String(error)), 'Failed to submit chapters ' + from + '-' + to + '.'),
-      })
+      // 具体原因同时写进 lastError（常驻）与 message（被下面的终止句覆盖也不丢）——issue #29。
+      const reason = text(
+        '第 ' + from + '–' + to + ' 章提交失败：' + (error instanceof Error ? error.message : String(error)),
+        'Failed to submit chapters ' + from + '-' + to + ': ' + (error instanceof Error ? error.message : String(error)),
+      )
+      emit({ consecutiveFailures, message: reason, lastError: reason })
       if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-        emit({ status: 'failed', currentBatch: null, message: text('连续多次失败，已停止。已完成大纲已保存，可稍后继续。', 'Stopped after repeated failures. Completed chapters are saved; you can resume later.') })
+        emit({
+          status: 'failed', currentBatch: null,
+          message: continuousStopMessage({ consecutiveFailures, batchesCompleted, coveredChapters: covered,
+            progressedTo: covered, totalChapters: total, text }),
+        })
         return
       }
       await sleep(3000)
@@ -322,6 +366,7 @@ async function runLoop(session: ProjectSessionContext, token: number, targetUnit
         remainingChapters: Math.max(0, total - afterCovered),
         batchesCompleted, consecutiveFailures: 0, currentBatch: null, batchPercent: 0,
         message: text('已完成至第 ' + afterCovered + ' 章。', 'Progress saved through chapter ' + afterCovered + '.'),
+        lastError: '',
       })
     } else {
       consecutiveFailures += 1
@@ -334,14 +379,16 @@ async function runLoop(session: ProjectSessionContext, token: number, targetUnit
           '第 ' + from + '–' + to + ' 章未完成' + (result.error ? '：' + result.error : '') + '。已完成部分已保存，正在重试…',
           'Chapters ' + from + '-' + to + ' did not complete. Saved parts are kept; retrying…',
         ),
+        lastError: text(
+          '第 ' + from + '–' + to + ' 章未完成' + (result.error ? '：' + result.error : '') + '。',
+          'Chapters ' + from + '-' + to + ' did not complete' + (result.error ? ': ' + result.error : '') + '.',
+        ),
       })
       if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
         emit({
           status: 'failed',
-          message: text(
-            '连续 ' + MAX_CONSECUTIVE_FAILURES + ' 次失败，已安全停止。已完成 ' + afterCovered + ' / ' + total + ' 章，可稍后继续；原大纲不会被覆盖。',
-            'Stopped safely after ' + MAX_CONSECUTIVE_FAILURES + ' consecutive failures. ' + afterCovered + ' / ' + total + ' chapters are done; resume later without overwriting the outline.',
-          ),
+          message: continuousStopMessage({ consecutiveFailures, batchesCompleted, coveredChapters: covered,
+            progressedTo: afterCovered, totalChapters: total, text }),
         })
         return
       }

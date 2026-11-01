@@ -77,6 +77,10 @@ export default function ContinuousOutlinePanel({ targetUnits }: { targetUnits?: 
         )}
       </p>
       {progress.message && <p className="arch-continuous-message">{progress.message}</p>}
+      {/* 失败原因常驻一行：message 会被后续状态文案整条覆盖，原因不能跟着丢（issue #29）。 */}
+      {progress.lastError && progress.lastError !== progress.message && (
+        <p className="arch-continuous-message arch-continuous-error" role="status">{progress.lastError}</p>
+      )}
     </section>
   )
 }

@@ -437,6 +437,11 @@
   font: 400 var(--fs-12)/1.5 var(--font-ui);
 }
 
+/* 失败原因常驻行：比状态文案更醒目，但不用红色块压住整个面板（issue #29）。 */
+.arch-continuous-message.arch-continuous-error {
+  color: var(--danger);
+}
+
 .arch-continuous-batch {
   margin-left: var(--s-3);
 }
