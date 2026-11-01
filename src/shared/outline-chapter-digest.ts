@@ -28,6 +28,29 @@ export function outlineRecentEvent(notes: string, maxLength = 50): string {
   return stopIndex > 0 ? firstSentence.slice(0, stopIndex) : clipped
 }
 
+
+
+/**
+ * 逐角色取「要点里与该角色相关的句子」作为细纲推进的 recentEvents。
+ *
+ * 细纲要点是章级文本：同一句写给本章每个出场角色，角色卡的「最近事件」
+ * 就成了没有信息的一栏（issue #18：8 个角色 5 个同值）。规则：
+ * - 只取**提到该角色名**的句子；一句提到多人时各自都能用（说的是他们共同的事）；
+ * - 该角色没有任何专属句子时留空——宁缺毋滥，不把章级描述冒充角色事件；
+ * - 同章算出的值与他人重复（如两人始终同句）时后写者留空。
+ */
+export function outlineRecentEventForCharacter(notes: string, characterName: string,
+  taken: ReadonlySet<string>, maxLength = 50): string {
+  if (!characterName) return ''
+  const sentences = notes.replace(/\s+/gu, ' ').match(/[^。！？!?]*[。！？!?]?/gu)
+    ?.map(item => item.trim()).filter(Boolean) ?? []
+  const related = sentences.filter(sentence => sentence.includes(characterName))
+  for (const sentence of related) {
+    const event = outlineRecentEvent(sentence, maxLength)
+    if (event && !taken.has(event)) return event
+  }
+  return ''
+}
 const CHAPTER_HEADING = /^#{0,4}\s*(?:第\s*(\d+)\s*章|Chapter\s+(\d+))\s*[:：]?\s*(.*)$/u
 
 /** 从一章的 Markdown 分块中取出标题与正文。 */

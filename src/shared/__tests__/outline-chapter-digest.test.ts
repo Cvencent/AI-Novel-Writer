@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractChapterDigest, outlineRecentEvent, splitChapterBlock } from '../outline-chapter-digest'
+import { extractChapterDigest, outlineRecentEvent, outlineRecentEventForCharacter, splitChapterBlock } from '../outline-chapter-digest'
 
 const block = `## 第12章：旧仓库
 主角在旧仓库找到账册，于是确认了失踪者的行动路线。
@@ -74,5 +74,27 @@ describe('outlineRecentEvent', () => {
 
   it('空摘要返回空字符串', () => {
     expect(outlineRecentEvent('   ')).toBe('')
+  })
+
+  it('逐角色取相关句子：两角色不同句；无专属句的角色留空（issue #18）', () => {
+    const notes = '主角在验票舱核对名册，发现多出一名乘客。搭档在码头酒棚打听到了旧账的下落。双方在栈桥碰头交换消息。'
+    const taken = new Set<string>()
+    const forProtagonist = outlineRecentEventForCharacter(notes, '主角', taken)
+    const forPartner = outlineRecentEventForCharacter(notes, '搭档', taken)
+    expect(forProtagonist).toContain('验票舱')
+    expect(forPartner).toContain('码头')
+    expect(forProtagonist).not.toBe(forPartner)
+    // 没被提到的角色：留空，不冒充
+    expect(outlineRecentEventForCharacter(notes, '路人甲', taken)).toBe('')
+  })
+
+  it('同章算出的值与他人重复时后写者留空', () => {
+    const notes = '主角和搭档一起查案，两人始终同行。两人最后一起发现了真相。'
+    const taken = new Set<string>()
+    const first = outlineRecentEventForCharacter(notes, '主角', taken)
+    expect(first).not.toBe('')
+    taken.add(first)
+    const second = outlineRecentEventForCharacter(notes, '搭档', taken)
+    expect(second).toBe('')
   })
 })
