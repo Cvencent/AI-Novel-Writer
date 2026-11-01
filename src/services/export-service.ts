@@ -24,6 +24,7 @@ import {
 import type { WritingLanguage } from '../shared/writing-language'
 import { randomUUID } from '../utils/id'
 import { pluralEn } from '../shared/plural-en'
+import { plotOutlineChapterSpans } from '../shared/plot-outline-contract'
 
 
 export type ExportFormat = 'merged-md' | 'split-md' | 'txt'
@@ -230,6 +231,41 @@ function renderMarkdownChapter(
   return `${heading}\n\n${content}`
 }
 
+/**
+ * 合并导出里的大纲段（issue #57）。
+ *
+ * 三条规则：
+ * 1. **写明覆盖范围**：只覆盖前几章时，段首直接写「故事大纲（第 1–3 章；全书已定稿 21 章）」，
+ *    不让读者以为这寥寥三条概括了全书；
+ * 2. **标题降级**：大纲条目从二级标题降成三级标题——正文用一级标题，
+ *    同一文件里不再出现同名同标点的两个标题；
+ * 3. **结构提示**：大纲没覆盖到的章节直接说清「之后的章节没有对应大纲条目」，
+ *    下面是从「正文」开始的正式稿；这里不做词法清洗（那属于生成侧的事）。
+ */
+export function renderOutlineSection(synopsis: string, finalizedChapters: number, writingLanguage: WritingLanguage): string {
+  const body = String(synopsis ?? '').replace(/\r\n?/gu, '\n').trim()
+  if (!body) return ''
+  const entries = plotOutlineChapterSpans(body)
+  const covered = entries.length ? entries[entries.length - 1]!.chapter : null
+  const coveredFrom = entries.length ? entries[0]!.chapter : null
+  const title = writingLanguage === 'en-US' ? '## Story outline' : '## 故事大纲'
+  const scope = entries.length === 0
+    ? (writingLanguage === 'en-US'
+      ? '(no per-chapter entries found in the outline)'
+      : '（大纲里没有按章条目）')
+    : writingLanguage === 'en-US'
+      ? `(chapters ${coveredFrom}-${covered}; ${finalizedChapters} chapters are finalized)`
+      : `（第 ${coveredFrom}–${covered} 章；全书已定稿 ${finalizedChapters} 章）`
+  // 标题降级：只动标题行，正文逐字保留。
+  const demoted = body.replace(/^ {0,3}##(?!#)([ 	]+)/gmu, '###$1')
+  const missing = covered !== null && covered < finalizedChapters
+    ? (writingLanguage === 'en-US'
+      ? '\n\n> The outline only covers chapters ' + `${coveredFrom}-${covered}; later chapters have no outline entry. The prose below is the manuscript itself.`
+      : '\n\n> 大纲只覆盖到第 ' + `${covered} 章，之后的章节没有对应大纲条目；下面是从「正文」开始的正式稿。`)
+    : ''
+  return `${title} ${scope}` + '\n\n' + `${demoted}${missing}`
+}
+
 /** 导出全书 */
 export async function exportNovel(
   options: ExportOptions,
@@ -293,7 +329,14 @@ export async function exportNovel(
         let content = `# ${project.name}\n\n`
         content += `> ${project.novelConfig.genre} · ${project.novelConfig.targetAudience}\n\n---\n\n`
 
-        // 可选：包含大纲
+        // 可选：包含大纲（issue #57）
+        //
+        // 旧写法直接把 `project_core.synopsis` 贴进来。它只覆盖最初几章（本样本 21 章定稿、
+        // synopsis 只有第 1–3 章），于是导出文件开头是三条写作计划、紧接着又是同样标题的正文，
+        // 读者拿不准哪份是书；而这份大纲描述的有些情节正文里从未发生。
+        // 现在：① 段首写明大纲实际覆盖到第几章、全书已定稿几章；② 大纲条目降级为三级标题
+        // （正文是一级），同一文件里不再出现两种层级、两种标点的同名标题；
+        // ③ 正文段前加一条明确的分节标题，两段之间不再只隔一条分隔线。
         if (options.includeOutline) {
           const core = await ipc.invokeWithProjectSession(
             projectSession,
@@ -302,9 +345,11 @@ export async function exportNovel(
           )
           if (!isProjectSessionCurrent(projectSession)) return staleExportResult(uiLocale)
           if (core?.synopsis) {
-            content += core.synopsis + '\n\n---\n\n'
+            content += renderOutlineSection(core.synopsis, chapterContents.length, project.novelConfig.writingLanguage)
+              + '\n\n---\n\n'
           }
         }
+        content += project.novelConfig.writingLanguage === 'en-US' ? '# Chapters\n\n' : '# 正文\n\n'
 
         // 章节内容
         for (const ch of chapterContents) {
