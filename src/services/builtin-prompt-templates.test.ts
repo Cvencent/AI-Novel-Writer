@@ -113,3 +113,13 @@ describe('blueprint hook carry-over rule (issue #20)', () => {
     expect(blueprintSemanticGenerationContract('en-US')).toContain('recentBlueprints')
   })
 })
+
+// issue #47：票号编号体系四章四种写法 + 同句「编号五位，零三一七」位数矛盾。
+describe('numbering coherence dimension (issue #47)', () => {
+  it('the chapter review prompt checks pervasive numbering against itself', () => {
+    const review = BUILTIN_PROMPTS.find(template => template.key === 'consistency_check')
+    expect(review?.content).toContain('贯穿性编号')
+    expect(review?.content).toContain('位数')
+    expect(review?.content).toContain('区间')
+  })
+})

@@ -6,6 +6,7 @@ import { parseHumanConfirmedReviewSnapshot, serializeHumanConfirmedReviewSnapsho
 import { freezeChapterGoals } from '../../src/shared/chapter-goal-review'
 import { findBlueprintContinuityRisks } from '../../src/shared/consistency-preflight'
 import { findCharacterProseRepetition, findProseRepetition, proseRepetitionEvidence } from '../../src/shared/prose-repetition'
+import { findDeclaredDigitCountMismatches } from '../../src/shared/numbering-consistency'
 import type { ConsistencyFinding } from '../../src/shared/consistency-preflight'
 import { CHARACTER_STATE_TEXT_FIELDS } from '../../src/shared/character-roster'
 import { ProjectCoreRepository } from '../repositories/project-core-repository'
@@ -158,9 +159,40 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
         ...proseRepetitionFindings([...history.map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
           { chapterNumber: source.chapterNumber, content: source.content }], source.chapterNumber,
           authorCards.map(card => card.name)),
+        // 贯穿性编号的自洽（issue #47）：只做「声明 N 位、紧随数字不是 N 位」这一类——
+        // 命中即错，不需要词表。样本是本章正文（最近定稿的编号体系在前面章节里，
+        // 但「同一句自相矛盾」永远发生在当章）。
+        ...numberingFindings({ chapterNumber: source.chapterNumber, content: source.content }),
       ],
       ...(confirmation ? { confirmation } : {}), ...(recheck ? { recheck } : {}) }
   })()
+}
+
+/**
+ * 贯穿性编号的自相矛盾 → 一致性发现（issue #47）。
+ *
+ * 只报能直接机器判的一类：**声明 N 位、紧随其后的编号不是 N 位**。
+ * 真实事故里第 16 章标称「编号五位」却只写出四位（零三一七），
+ * 而那一章的推理链正架在这个编号上。
+ *
+ * 刻意不做的：比较全书编号「形式是否一致」。编号是开放集合，
+ * 「丁段一四」与「零三一七」是否同一体系，字符层判不出来（#20 的教训）。
+ */
+export function numberingFindings(chapter: { chapterNumber: number; content: string }): ConsistencyFinding[] {
+  return findDeclaredDigitCountMismatches(chapter.content).map(mismatch => ({
+    stableFactKey: `numbering:digits:${chapter.chapterNumber}:${mismatch.index}`,
+    severity: 'warning' as const,
+    sourceChapter: chapter.chapterNumber,
+    evidence: `第${chapter.chapterNumber}章：「${mismatch.evidence}」——声明 ${mismatch.declaredDigits} 位，实际写出 ${mismatch.actualDigits} 位`,
+    issue: {
+      zhCN: `编号的位数自相矛盾：这里声明「${mismatch.declaredDigits} 位」，紧随其后的编号却是 ${mismatch.actualDigits} 位。读者对账时无法判断这串数字属于哪一套编码。`,
+      enUS: `The stated digit count contradicts the number itself: this line declares ${mismatch.declaredDigits} digits, but the number that follows has ${mismatch.actualDigits}. Readers cannot tell which code system the number belongs to.`,
+    },
+    suggestion: {
+      zhCN: `二者改成一致：要么把声明改成 ${mismatch.actualDigits} 位，要么把编号补/删到 ${mismatch.declaredDigits} 位。若多处编号写法不同，建议在设定层先定一处权威编码规则（位数、是否带段号）。`,
+      enUS: `Make the two agree: either state ${mismatch.actualDigits} digits, or adjust the number to ${mismatch.declaredDigits} digits. If several forms are in use, define one authoritative code rule (digit count, prefix scheme) in the settings first.`,
+    },
+  }))
 }
 
 /**

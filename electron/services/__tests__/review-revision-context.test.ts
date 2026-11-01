@@ -11,7 +11,7 @@ import { SqliteSchemaAdapter } from '../../migrations/sqlite-schema-adapter'
 import { getProjectDb } from '../../database'
 import { ReviewRepository } from '../../repositories/review-repository'
 import { textHash } from '../../repositories/generation-run-repository'
-import { captureReviewRevisionContext, reviewRevisionRequest } from '../review-revision-context'
+import { captureReviewRevisionContext, numberingFindings, reviewRevisionRequest } from '../review-revision-context'
 vi.mock('../../database', () => ({ getProjectDb: vi.fn() }))
 const Database = createRequire(import.meta.url)('better-sqlite3') as typeof import('better-sqlite3')
 const connections: import('better-sqlite3').Database[] = []
@@ -158,4 +158,26 @@ it('accepts a reviewed current draft and same-hash archived predecessor, but ref
  expect(f.capture).toThrow('GENERATION_REVIEW_HISTORY_CHANGED')
  f.db.exec("UPDATE contents SET body='前驱正文' WHERE id=2; INSERT INTO drafts(chapter_number,version,status,content_id) VALUES(2,2,'reviewed',1)")
  expect(f.capture).toThrow('GENERATION_REVIEW_SOURCE_CHANGED')
+})
+
+// issue #47 的接线：声明位数与编号位数矛盾 → 审稿 preflight 里出现一条可定位的 warning。
+describe('numberingFindings (issue #47)', () => {
+  it('第 16 章的原文形态产出 finding，stableFactKey 带章号与位置', () => {
+    const findings = numberingFindings({
+      chapterNumber: 16,
+      content: '墨层慢慢活了。被覆盖的笔画浮出来：编号五位，零三一七，字尾收得急。',
+    })
+    expect(findings).toHaveLength(1)
+    expect(findings[0]!.severity).toBe('warning')
+    expect(findings[0]!.sourceChapter).toBe(16)
+    expect(findings[0]!.stableFactKey).toContain('numbering:digits:16')
+    expect(findings[0]!.evidence).toContain('声明 5 位，实际写出 4 位')
+    expect(findings[0]!.issue.zhCN).toContain('位数自相矛盾')
+    // 作者能照着改
+    expect(findings[0]!.suggestion.zhCN).toContain('要么把声明改成 4 位')
+  })
+
+  it('正常章节不产出 finding', () => {
+    expect(numberingFindings({ chapterNumber: 3, content: '编号五位，零三一七〇。他把票根收好。' })).toEqual([])
+  })
 })
