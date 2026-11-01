@@ -17,7 +17,9 @@ import { useLocaleStore } from '../../../stores/locale-store'
 import { useStageStore } from '../../../stores/navigation/stage-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { captureProjectSession, isProjectSessionCurrent } from '../../project-session-gate'
+import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useAnchoredLayer } from '../../ui/use-anchored-layer'
+import { Button } from '../../ui/Button'
 import SplitAction from './SplitAction'
 import WritePreflight from './WritePreflight'
 
@@ -49,6 +51,9 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
   const [knowledgeHint, setKnowledgeHint] = useState('')
   const [preflight, setPreflight] = useState<ConsistencyPreflightResult | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  // 守卫阻断时要修的是哪一章（issue #55）：主按钮据此变成「去修复定稿」，
+  // 否则弹层里一个按钮都没有，作者只能照脚注反复点同一个必然被拒绝的按钮。
+  const [repairChapter, setRepairChapter] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [starting, setStarting] = useState(false)
   const modelFieldId = useId()
@@ -106,16 +111,23 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           setKnowledgeHint('')
           setPreflight(null)
           setMessage(null)
+          setRepairChapter(null)
           close(false)
           return
         case 'preflight':
           setMessage(null)
+          setRepairChapter(null)
           setPreflight(outcome.preflight)
           show()
           return
-        default:
+        default: {
+          // authority-error 与 blocked 都走这里，但只有 blocked 可能带「该修哪一章」。
+          const blocked = outcome.kind === 'blocked' ? outcome : null
           setMessage(outcome.message)
+          setRepairChapter(blocked?.action === 'repair-finalize' ? blocked.chapterNumber ?? null : null)
           show()
+          return
+        }
       }
     } finally {
       setBusy(false)
@@ -230,9 +242,33 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
         />
       )}
       {message && <p className="stage-write-error" role="alert">{message}</p>}
-      <p className="stage-write-foot">{preflightSeen
-        ? text(`这些选项只用于本次写作。再点「${label}」将带提醒开始写；也可以在下方保存安排。`, `These options apply to this run only. Click “${label}” again to start with reminders, or save an arrangement below.`)
-        : text(`这些选项只用于本次写作，点「${label}」开始。`, `These options apply to this run only. Choose “${label}” to start.`)}</p>
+      {repairChapter !== null && (
+        <div className="stage-write-actions">
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={busy}
+            onClick={() => {
+              // 去那一章的单章视图：定稿后处理面板与「修复定稿 / 重试失败步骤」都在那里
+              // （ChapterActions → PostProcessSteps）。这里只导航，不替作者决定要不要修。
+              close(false)
+              navigate({ kind: 'chapter', chapterNumber: repairChapter })
+            }}
+          >
+            {text(`去修复第 ${repairChapter} 章的定稿后处理`, `Fix Chapter ${repairChapter} finalization`)}
+          </Button>
+          <Button variant="secondary" size="sm" disabled={busy} onClick={() => close(false)}>
+            {text('留在蓝图', 'Stay on blueprints')}
+          </Button>
+        </div>
+      )}
+      <p className="stage-write-foot">{repairChapter !== null
+        // 脚注不能承诺一个必然被拒绝的动作（issue #55）：正文让作者去修后处理，
+        // 这里却写「点它开始」——按脚注做就会回到同一个阻断，被读成「点了没反应」。
+        ? text(`这一步要先补完第 ${repairChapter} 章的定稿后处理才能继续写；补完后再点「${label}」。`, `Finish Chapter ${repairChapter} finalization post-processing before drafting; then choose “${label}” again.`)
+        : preflightSeen
+          ? text(`这些选项只用于本次写作。再点「${label}」将带提醒开始写；也可以在下方保存安排。`, `These options apply to this run only. Click “${label}” again to start with reminders, or save an arrangement below.`)
+          : text(`这些选项只用于本次写作，点「${label}」开始。`, `These options apply to this run only. Choose “${label}” to start.`)}</p>
     </SplitAction>
   )
 }

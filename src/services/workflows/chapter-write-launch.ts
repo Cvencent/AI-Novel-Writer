@@ -161,7 +161,7 @@ export type ChapterWriteOutcome =
   /** 读不出权威定稿序列，不能确定下一章。 */
   | { kind: 'authority-error'; message: string }
   /** 模型、章号、前置条件或资源冲突不满足，写明原因。 */
-  | { kind: 'blocked'; message: string }
+  | { kind: 'blocked'; message: string; action?: 'repair-finalize'; chapterNumber?: number }
   /** 一致性预检发现线索，等作者处理；exemptions 一并返回供撤销。 */
   | { kind: 'preflight'; preflight: ConsistencyPreflightResult }
   | { kind: 'started' }
@@ -209,7 +209,14 @@ export async function launchChapterWrite({
     return { kind: 'blocked', message: unavailableModel }
   }
   if (!guard.ok) {
-    return { kind: 'blocked', message: guard.message || text('前置条件未满足', 'Prerequisites are not met.') }
+    // 把守卫给出的「该修哪一章」一并带回去（issue #55）：弹层据此渲染「去修复定稿」出口，
+    // 否则作者只能照脚注重点同一个必然被拒绝的按钮。
+    return {
+      kind: 'blocked',
+      message: guard.message || text('前置条件未满足', 'Prerequisites are not met.'),
+      ...(guard.action === 'repair-finalize' ? { action: 'repair-finalize' as const } : {}),
+      ...(Number.isSafeInteger(guard.chapterNumber) ? { chapterNumber: guard.chapterNumber } : {}),
+    }
   }
 
   if (!ignoreFindingsOnce) {

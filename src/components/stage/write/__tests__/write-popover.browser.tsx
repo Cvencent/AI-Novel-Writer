@@ -41,6 +41,8 @@ let continuityProjections: unknown[]
 let exemptions: { stableFactKey: string; reason: string; revoked: boolean }[]
 let exemptionSave: () => Promise<{ success: boolean; error?: string }>
 let continuityGate: Promise<void> | null = null
+// issue #55：让守卫按「第 N 章后处理未完成」阻断，用来断言弹层给出出口。
+let blockedPreviousChapter: number | null = null
 
 const DEAD_KEEPER = [{
   draftId: 1, chapterNumber: 1, chapterTitle: '终局', chapterNotes: '老周死亡',
@@ -91,13 +93,23 @@ function model(id: string): ModelProfile {
 function installIpc() {
   const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
     if (channel === 'db:draft-authority-sequence') return {
-      status: 'continuous', lastChapterNumber: 4, nextChapterNumber: 5, duplicateChapterNumbers: [], authorityFingerprint: 'e'.repeat(64),
+      status: 'continuous', lastChapterNumber: blockedPreviousChapter ?? 4, nextChapterNumber: blockedPreviousChapter ? blockedPreviousChapter + 1 : 5,
+      duplicateChapterNumbers: [], authorityFingerprint: 'e'.repeat(64),
     }
-    if (channel === 'db:blueprint-get-all') return [BLUEPRINT]
+    if (channel === 'db:blueprint-get-all') {
+      return blockedPreviousChapter ? [BLUEPRINT, { ...BLUEPRINT, chapterNumber: blockedPreviousChapter + 1 }] : [BLUEPRINT]
+    }
     if (channel === 'db:blueprint-get') return BLUEPRINT
     if (channel === 'db:character-get-all') return [{ id: 1 }]
     if (channel === 'db:draft-get-finalized') return { chapterNumber: Number(args[0]) }
-    if (channel === 'db:post-process-get-latest-run') return null
+    if (channel === 'db:post-process-get-latest-run') {
+      if (!blockedPreviousChapter) return null
+      return { id: 'run-blocked', sourceLabel: `第${blockedPreviousChapter}章定稿`, createdAt: '', updatedAt: '', allCriticalPassed: false }
+    }
+    if (channel === 'db:post-process-get-steps') {
+      if (!blockedPreviousChapter) return []
+      return [{ stepKey: 'chapter_notes', label: '章节剧情要点', critical: true, ok: false, errorMsg: '' }]
+    }
     if (channel === 'db:continuity-list-before') {
       await continuityGate
       return continuityProjections
@@ -509,5 +521,26 @@ describe('写作此章弹层', () => {
     await expect.element(dialog.getByRole('alert')).toHaveTextContent('数据库只读')
     await expect.element(dialog.getByRole('button', { name: '保存安排' })).toBeEnabled()
     expect(startWorkflow).not.toHaveBeenCalled()
+  })
+})
+
+// issue #55：守卫阻断（上一章后处理未完成）时，弹层此前一个按钮都没有，
+// 底部脚注却还写着「点它开始」——按脚注做就回到同一个阻断，被读成「点了没反应」。
+describe('守卫阻断时的弹层出口（issue #55）', () => {
+  it('给出「去修复第 N 章的定稿后处理」，脚注不再承诺必然被拒绝的动作', async () => {
+    blockedPreviousChapter = 12
+    try {
+      const prefill = { ...blueprintWritePrefill(BLUEPRINT), chapterNumber: 13 }
+      await render(<WriteChapterPopover chapterNumber={13} blueprint={prefill} label="写第 13 章" />)
+      await act(async () => page.getByRole('button', { name: '写第 13 章' }).click())
+      const popover = page.getByRole('dialog', { name: '本次写作选项' })
+      await expect.element(popover.getByRole('button', { name: '去修复第 12 章的定稿后处理' })).toBeVisible()
+      await expect.element(popover.getByRole('button', { name: '留在蓝图' })).toBeVisible()
+      // 脚注必须改成「先补完第 12 章」，不能再说「点它就开写」
+      await expect.element(popover).toHaveTextContent('这一步要先补完第 12 章的定稿后处理才能继续写')
+      await expect.element(popover).not.toHaveTextContent('点「写第 13 章」开始')
+    } finally {
+      blockedPreviousChapter = null
+    }
   })
 })

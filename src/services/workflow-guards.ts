@@ -28,7 +28,14 @@ export interface GuardResult {
   /** 失败时的提示语（给用户看） */
   message?: string
   /** 用于跳转引导的目标动作标识 */
-  action?: 'open-config' | 'open-world-building' | 'open-blueprint'
+  action?: 'open-config' | 'open-world-building' | 'open-blueprint' | 'repair-finalize'
+  /**
+   * 守卫要修的是第几章（issue #55）：`action: 'repair-finalize'` 时是**上一章**的章号。
+   *
+   * 没有它，调用方只拿到一段文字，做不出「去修复定稿」这个按钮 ——
+   * 于是作者（和 harness）被卡在一个没有出口的弹层里，反复点同一个必然被拒绝的按钮。
+   */
+  chapterNumber?: number
 }
 
 function captureGuardProject(
@@ -334,6 +341,8 @@ export async function guardChapterWriting(
           `上下文缺失：第 ${prevChapter} 章尚未定稿！\n\n为了保证 AI 写稿时能读取到连贯的上下文（前章结尾和剧情要点），请必须先前往草稿箱完成第 ${prevChapter} 章的定稿操作。`,
           `Missing context: Chapter ${prevChapter} has not been finalized.\n\nFinalize Chapter ${prevChapter} first so AI drafting can read a continuous context, including the previous ending and plot notes.`,
         ),
+        action: 'repair-finalize',
+        chapterNumber: prevChapter,
       }
     }
 
@@ -346,9 +355,11 @@ export async function guardChapterWriting(
         ok: false,
         message: localize(
           uiLocale,
-          `第 ${prevChapter} 章的定稿后处理未完成！\n\n以下关键步骤失败：\n${failedLabels.map(f => `• ${f}`).join('\n')}\n\n请先在草稿箱中点击「修复定稿」按钮补全数据，否则后续章节的 AI 上下文将不完整。`,
-          `Chapter ${prevChapter} finalization post-processing is incomplete.\n\nFailed critical steps:\n${failedLabels.map(f => `• ${f}`).join('\n')}\n\nRepair the finalization from Drafts first, or later chapters will have incomplete AI context.`,
+          `第 ${prevChapter} 章的定稿后处理未完成！\n\n以下关键步骤失败：\n${failedLabels.map(f => `• ${f}`).join('\n')}\n\n请先补全这一步的定稿后处理，否则后续章节的 AI 上下文将不完整。`,
+          `Chapter ${prevChapter} finalization post-processing is incomplete.\n\nFailed critical steps:\n${failedLabels.map(f => `• ${f}`).join('\n')}\n\nFinish that chapter's finalization post-processing first, or later chapters will have incomplete AI context.`,
         ),
+        action: 'repair-finalize',
+        chapterNumber: prevChapter,
       }
     }
     // 如果状态文件不存在（旧版定稿）→ 兼容放行

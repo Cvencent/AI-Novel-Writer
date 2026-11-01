@@ -71,6 +71,14 @@
   color: var(--ink-3);
 }
 
+/* 守卫阻断时的出口（issue #55）：弹层此前一个按钮都没有，作者只能照脚注反复点。 */
+.stage-write-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  padding-top: var(--s-3);
+}
+
 /* ================= 一致性预检 ================= */
 .stage-preflight {
   display: flex;

@@ -16,6 +16,12 @@ vi.mock('../ipc-client', () => ({
   },
 }))
 
+/** 按 channel 分派的 IPC 桩：mock 的签名与实际调用形状不同，这里统一收口一次断言。 */
+function mockGuardIpc(handler: (channel: string, args: unknown[]) => Promise<unknown>) {
+  vi.mocked(ipc.invokeWithProjectSession).mockImplementation(((...callArgs: unknown[]) =>
+    handler(String(callArgs[1]), callArgs.slice(2))) as never)
+}
+
 const projectPath = 'C:/novels/guard-directory'
 const projectSession: ProjectSessionContext = {
   projectId: 'guard-directory',
@@ -190,3 +196,58 @@ describe('character regeneration guard locale', () => {
     expect(result.message).toContain('细纲')
   })
 
+
+// issue #55：守卫阻断「写下一章」时必须说明**该修哪一章**，否则弹层做不出出口按钮，
+// 作者只能照脚注反复点同一个必然被拒绝的按钮。
+describe('chapter workflow guard repair target (issue #55)', () => {
+  it('前一章定稿后处理未完成时给出 repair-finalize 与那一章的章号', async () => {
+    mockGuardIpc(async channel => {
+      if (channel === 'db:blueprint-get-all') return [{ chapterNumber: 12 }]
+      if (channel === 'db:character-get-all') return [{ name: '周叙' }]
+      if (channel === 'db:draft-get-finalized') return { id: 11 }
+      if (channel === 'db:post-process-get-latest-run') {
+        return { id: 'run-1', sourceLabel: '第12章定稿', createdAt: '', updatedAt: '', allCriticalPassed: false }
+      }
+      if (channel === 'db:post-process-get-steps') {
+        return [{ stepKey: 'chapter_notes', label: '章节剧情要点', critical: true, ok: false, errorMsg: '' }]
+      }
+      return null
+    })
+
+    await expect(guardChapterWriting(13, projectPath, projectSession)).resolves.toMatchObject({
+      ok: false,
+      action: 'repair-finalize',
+      chapterNumber: 12,
+    })
+  })
+
+  it('前一章尚未定稿时同样给出该修哪一章', async () => {
+    mockGuardIpc(async channel => {
+      if (channel === 'db:blueprint-get-all') return [{ chapterNumber: 12 }]
+      if (channel === 'db:character-get-all') return [{ name: '周叙' }]
+      if (channel === 'db:draft-get-finalized') return null
+      return null
+    })
+
+    await expect(guardChapterWriting(13, projectPath, projectSession)).resolves.toMatchObject({
+      ok: false,
+      action: 'repair-finalize',
+      chapterNumber: 12,
+    })
+  })
+
+  it('正常放行时不带 action（不能把出口按钮误挂上去）', async () => {
+    mockGuardIpc(async channel => {
+      if (channel === 'db:blueprint-get-all') return [{ chapterNumber: 12 }]
+      if (channel === 'db:character-get-all') return [{ name: '周叙' }]
+      if (channel === 'db:draft-get-finalized') return { id: 11 }
+      if (channel === 'db:post-process-get-latest-run') {
+        return { id: 'run-1', sourceLabel: '第12章定稿', createdAt: '', updatedAt: '', allCriticalPassed: true }
+      }
+      if (channel === 'db:post-process-get-steps') return []
+      return null
+    })
+
+    await expect(guardChapterWriting(13, projectPath, projectSession)).resolves.toEqual({ ok: true })
+  })
+})
