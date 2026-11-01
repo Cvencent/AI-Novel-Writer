@@ -106,3 +106,44 @@ describe('issue #30 宾语 / 主语归属', () => {
     expect(findConflicts(mentions)).toHaveLength(1)
   })
 })
+
+/**
+ * issue #43：单字色全部漏报——「灰风衣 vs 靛蓝短褂」判 ✓ 无冲突。
+ * 根因是 HUE_COLOR 的两条分支都要求至少两个字；中文里「灰风衣」比「灰色的风衣」更自然，
+ * 于是工具在最该命中的写法上系统性失明。修的时候必须守住 #30（深蓝硬布不是衣着）。
+ */
+describe('issue #43 单字色', () => {
+  const ch1 = '周叙穿一件靛蓝短褂。'
+
+  it('「灰风衣」必须与「靛蓝短褂」报冲突', () => {
+    const mentions = extractMentions(chaptersOf(ch1, '周叙穿灰风衣。'), ['周叙'])
+    const conflicts = findConflicts(mentions)
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0].summary).toContain('灰')
+    expect(conflicts[0].summary).toContain('靛蓝')
+  })
+
+  it('其余典型单字写法也都能命中', () => {
+    for (const sentence of ['周叙穿白风衣。', '周叙穿黑风衣。', '周叙穿灰短褂。', '周叙穿青长衫。', '周叙换了件灰短褂。', '周叙身上那件风衣是灰的。']) {
+      const mentions = extractMentions(chaptersOf(ch1, sentence), ['周叙'])
+      expect(findConflicts(mentions), sentence).toHaveLength(1)
+    }
+  })
+
+  it('「灰色风衣」与「灰风衣」是同一色，不得互判为冲突', () => {
+    const mentions = extractMentions(chaptersOf('周叙穿灰风衣。', '周叙穿灰色风衣。'), ['周叙'])
+    expect(findConflicts(mentions)).toHaveLength(0)
+  })
+
+  it('#30 那一侧不能被修坏：物件色不算衣着', () => {
+    for (const sentence of ['新底册的封面是深蓝硬布。周叙翻开内页。', '周叙把白纸压平，指关节微微泛白。', '周叙提着黑灯走过。']) {
+      const mentions = extractMentions(chaptersOf(sentence), ['周叙'])
+      expect(mentions.filter(mention => mention.attribute === 'outfit'), sentence).toHaveLength(0)
+    }
+  })
+
+  it('两字色的写法仍然正常（守 #9）', () => {
+    const mentions = extractMentions(chaptersOf('周叙穿一件靛蓝短褂。', '周叙穿深蓝外套。'), ['周叙'])
+    expect(findConflicts(mentions)).toHaveLength(1)
+  })
+})

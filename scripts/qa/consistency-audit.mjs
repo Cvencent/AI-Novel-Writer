@@ -126,7 +126,9 @@ function loadCharacters(db) {
 const COLOR_MORPHS = '白黑灰蓝红青绿黄紫棕米银墨赤绯黛褐橙粉金赭靛'
 const COLOR_MODIFIERS = '月深浅暗亮玉象牙雪天湖玄嫩老淡浓'
 const HUE_COLOR_CHARS = COLOR_MORPHS + COLOR_MODIFIERS
-const HUE_COLOR = new RegExp(`[${HUE_COLOR_CHARS}]{2}(?![${HUE_COLOR_CHARS}色])|[${COLOR_MORPHS}]色(?![色])`, 'gu')
+// issue #43 的第二处漏报：「玄色」「素色」这类**修饰字 + 色**的写法原先只认 色语素字，
+// 玄/月/银 这些修饰字拼「色」时全部落空（实测「玄色长衫」被判成「有衣着描写但认不出颜色」）。
+const HUE_COLOR = new RegExp(`[${HUE_COLOR_CHARS}]{2}(?![${HUE_COLOR_CHARS}色])|[${HUE_COLOR_CHARS}]色(?![${HUE_COLOR_CHARS}色])`, 'gu')
 const FADED_COLORS = ['泛白', '发白', '洗白', '褪色', '褪得', '泛黄', '发黄', '发黑', '磨白', '洗得发白', '洗得泛白', '洗得发黄', '洗得泛黄']
 const FADED_CHANGE_PREFIX = /(?:洗得|染得|褪得|磨得)?(?:洗|褪|泛|磨|变|染|发)(?:得|成了?)?/u
 const COLOR_ADJ = ['白色', '黑色', '灰色', '深灰', '浅灰', '银灰', '蓝色', '深蓝', '浅蓝', '红色', '暗红', '青色', '绿色', '墨绿', '黄色', '紫色', '棕色', '米色', '藏青', '卡其']
@@ -257,6 +259,42 @@ const GARMENT_NOUNS = [
 /** 衣物名词与颜色之间允许的距离（超过就认为两者不是同一处修饰关系）。 */
 const GARMENT_PROXIMITY = 12
 
+/**
+ * 单字色（issue #43）：中文里「灰风衣」「白短褂」「青长衫」比「灰色的风衣」更自然，
+ * 而 HUE_COLOR 的两条分支都要求至少两个字（`[色]{2}` 或 `[色]色`），单字色全部漏过——
+ * 工具因此在**最该命中的写法上系统性失明**。
+ *
+ * 补法必须与 #30 同一条边界：只有**紧贴衣物名词**的单字色才算衣着色，
+ * 否则「白纸」「黑灯」这类物件色会重新变成假阳性。
+ * 另支持「风衣是灰的」「短褂成了灰的」这类系表结构（衣物词后 6 字内 `是/成了/换成 + 单字色`）。
+ */
+const SINGLE_HUES = new Set([...COLOR_MORPHS])
+const SINGLE_HUE_AFTER_GARMENT = /^\s*(?:是|成了|变成|换成|染成|洗成)\s*([白黑灰蓝红青绿黄紫棕米银墨赤绯黛褐橙粉金赭靛])(?:色|的)/u
+
+/**
+ * 紧贴在衣物词前面的那个字，是不是某个两字色的一部分。
+ * 「靛蓝短褂」的「蓝」与「月白长衫」的「白」都贴着衣物词，但它们属于前面的两字色，
+ * 不能各自再记成一个独立颜色——否则同一件衣服会被算成「靛蓝 + 蓝」，进而误报冲突。
+ */
+function partOfDoubleColor(paragraph, at) {
+  if (at <= 0) return false
+  return scanHueColors(paragraph.slice(Math.max(0, at - 2), at)).some(color => color.length >= 2)
+}
+
+/** 衣物词相邻的单字色：「灰风衣」「白短褂」「风衣是灰的」。 */
+function singleHuesNearGarment(paragraph, at, nounLength) {
+  const hues = new Set()
+  const before = paragraph[at - 1]
+  // 「洗白短褂」「磨白外套」里的「白」是**状态**（洗得发白），不是这件衣服的颜色
+  // ——issue #9 的边界：状态色与固定色不得互判。前面两字是 FADED 词就跳过这个单字。
+  const fadedState = scanFadedColors(paragraph.slice(Math.max(0, at - 4), at + nounLength)).length > 0
+  if (before && SINGLE_HUES.has(before) && !partOfDoubleColor(paragraph, at) && !fadedState) hues.add(before)
+  const after = paragraph.slice(at + nounLength, at + nounLength + 8)
+  const match = SINGLE_HUE_AFTER_GARMENT.exec(after)
+  if (match?.[1]) hues.add(match[1])
+  return [...hues]
+}
+
 /** 颜色词附近是否有衣物名词（同一句内、无标点隔断）。 */
 function hasGarmentNear(paragraph, at, length) {
   const sentenceStart = Math.max(
@@ -298,7 +336,7 @@ function nearestName(namedHere, paragraph, at) {
   return best
 }
 
-function extractMentions(chapters, characterNames) {
+function extractMentions(chapters, characterNames, diagnostics = { filteredOutfitParagraphs: [] }) {
   const mentions = []
   const sortedNames = [...characterNames].sort((a, b) => b.length - a.length)
 
@@ -321,6 +359,22 @@ function extractMentions(chapters, characterNames) {
         if (!perCarrier.has(name)) perCarrier.set(name, { hues: new Set(), faded: new Set() })
         return perCarrier.get(name)
       }
+      // 单字色（issue #43）：遍历衣物名词，取紧贴它的单字色。与两字色分开走，
+      // 因为单字色的判定依赖「贴在衣物词上」这个位置关系，不能用段落级取色。
+      for (const noun of GARMENT_NOUNS) {
+        let from = 0
+        for (;;) {
+          const at = paragraph.indexOf(noun, from)
+          if (at < 0) break
+          from = at + noun.length
+          const single = singleHuesNearGarment(paragraph, at, noun.length)
+          if (!single.length) continue
+          outfitWordHit = true
+          const owner = namedHere.length ? (nearestName(namedHere, paragraph, at) ?? carrier) : carrier
+          const bucket = bucketFor(owner)
+          for (const hue of single) bucket.hues.add(hue)
+        }
+      }
       for (const word of APPEARANCE_VOCAB) {
         // 「泛白/泛黄/洗白」这类状态色也在词表里（颜色即服饰的写法），但它们不能
         // 自己证明「这是衣着描写」——否则「指关节微微泛白」就自我满足了。
@@ -340,6 +394,11 @@ function extractMentions(chapters, characterNames) {
           for (const color of found.hues) bucket.hues.add(color)
           for (const color of found.faded) bucket.faded.add(color)
         }
+      }
+      // 「这一段写了衣服，但没认出颜色」要单独计数（issue #43）：它和「真的没写衣着」
+      // 在报告里必须可区分，否则「有命中却全被丢弃」会被当成「无冲突」。
+      if (outfitWordHit && ![...perCarrier.values()].some(bucket => bucket.hues.size || bucket.faded.size)) {
+        diagnostics.filteredOutfitParagraphs.push({ chapter: chapter.chapterNumber, sentence: paragraph.slice(0, 160) })
       }
       // hue 是衣着取色的充分证据；faded（泛白/发白）只有在同一句里出现衣着词时才算衣着描写
       // ——「指关节微微泛白」也含 faded，但那不是衣着（issue 场景的防误报边界）。
@@ -383,12 +442,15 @@ function extractMentions(chapters, characterNames) {
 function findConflicts(mentions) {
   const findings = []
   const groups = new Map()
+  // 「灰色」与「灰」是同一色（issue #43）：单字色分支取到「灰」，两字分支取到「灰色」，
+  // 不归一化会被判成两条互斥描述。比较与展示统一去掉末尾的「色」。
+  const normalizeColor = value => value.replace(/色$/u, '')
   for (const mention of mentions) {
-    const colors = mention.colors ?? []
+    const colors = (mention.colors ?? []).map(normalizeColor)
     if (!colors.length) continue
     const key = `${mention.character}\u0000${mention.attribute}`
     if (!groups.has(key)) groups.set(key, [])
-    groups.get(key).push({ ...mention, colors: [...colors].sort() })
+    groups.get(key).push({ ...mention, colors: [...new Set(colors)].sort() })
   }
 
   for (const [, items] of groups) {
@@ -501,7 +563,8 @@ function main() {
     log(`快照 ${source}`)
     log(`章节 ${chapters.length} 章，角色 ${characters.length} 人`)
 
-    const mentions = extractMentions(chapters, characterNames)
+    const diagnostics = { filteredOutfitParagraphs: [] }
+    const mentions = extractMentions(chapters, characterNames, diagnostics)
     const conflicts = findConflicts(mentions)
     const cardIssues = [...crossCheckCharacterCards(characters, mentions), ...findCardGaps(characters)]
     const suspects = findSingleMentionSuspects(mentions)
@@ -513,6 +576,7 @@ function main() {
       findings: conflicts,
       cardIssues,
       suspects,
+      diagnostics: { filteredOutfitParagraphs: diagnostics.filteredOutfitParagraphs.length },
       stats: {
         mentions: mentions.length,
         conflicts: conflicts.length,
@@ -545,8 +609,16 @@ function main() {
         }
       } else {
         const outfitMentions = mentions.filter(mention => mention.attribute === 'outfit').length
+        const filtered = diagnostics.filteredOutfitParagraphs.length
         if (outfitMentions === 0) {
           console.log('⚠ 规则层没有命中任何衣着描写——0 命中不等于「无冲突」，检查器对这部作品的用词可能失明，请人工抽查')
+        } else if (filtered > 0) {
+          // issue #43：有段落写了衣服却没认出颜色时，必须点出来——否则「有命中却全被丢弃」
+          // 会被读成「无冲突」。单字色漏报正是这么被掩盖的。
+          console.log(`✓ 规则层未发现互斥描述（衣着命中 ${outfitMentions} 段），但另有 ${filtered} 段疑似衣着描写未识别出颜色，请人工抽查`)
+          for (const item of diagnostics.filteredOutfitParagraphs.slice(0, 3)) {
+            console.log(`    · 第${item.chapter}章 ${item.sentence.slice(0, 80)}`)
+          }
         } else {
           console.log(`✓ 规则层未发现互斥描述（衣着命中 ${outfitMentions} 段）`)
         }
