@@ -25,6 +25,7 @@ import * as blueprintPage from '../redesign/pages/blueprint.mjs'
 import * as chapterView from '../redesign/pages/chapter-view.mjs'
 import * as runSheet from '../redesign/pages/run-sheet.mjs'
 import * as stage from '../redesign/pages/stage.mjs'
+import { withTimeout, closeAppWithTimeout } from './harness-timeouts.mjs'
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const option = name => process.argv.find(arg => arg.startsWith(`--${name}=`))?.slice(name.length + 3)
@@ -554,9 +555,21 @@ for (let chapter = from; chapter <= to; chapter += 1) {
         missingAppearance: (characters ?? []).filter(item => !String(item.appearance ?? '').trim()).map(item => item.name),
       }
     })
+    // 收尾截图（issue #31）：必须带超时。页面已崩时 evaluate 等的是「目标可用」而非 selector，
+    // 默认超时对它无效、会永不返回；这里用 Promise.race 强制兜底，失败只记 null，不阻塞关闭。
+    report.finalScreen = await withTimeout(
+      page.evaluate(() => document.body.innerText.slice(0, 2000)),
+      15_000,
+      'finalScreen 采集',
+    ).catch(() => null)
   } finally {
-    report.finalScreen = await page.evaluate(() => document.body.innerText.slice(0, 2000)).catch(() => null)
-    await app.close().catch(() => {})
+    // 收尾只负责「一定把 app 关掉」（issue #31）。
+    //
+    // 旧写法把 page.evaluate 放在 finally 里且没给 timeout：页面已崩时它等的是
+    // 「目标可用」而不是 selector，默认超时失效、**永不返回**，于是同步阻塞在 finally 中，
+    // app.close() 永不执行 → app 占着单实例锁与 project.db → 下一轮启动被锁死。
+    // 现在：finalScreen 采集挪进带超时的 try，finally 只做有超时兜底的关闭。
+    await closeAppWithTimeout(app, { log })
   }
 }
 
@@ -631,20 +644,46 @@ async function runAudit() {
   }
 }
 
+// 兜底（issue #31）：任何时候进程要退出，报告都得先落盘。
+// 收尾章节里若还有未加超时的 await 挂住，这个钩子仍会把已收集的部分写下去。
+process.on('exit', () => { try { writeReport() } catch { /* 退出路径照旧 */ } })
+process.on('uncaughtException', error => {
+  report.fatal = String(error?.stack ?? error).slice(0, 2000)
+  try { writeReport() } catch { /* 忽略 */ }
+  process.exit(1)
+})
+process.on('SIGINT', () => {
+  try { writeReport() } catch { /* 忽略 */ }
+  process.exit(130)
+})
+
 try {
   await main()
 } catch (error) {
   report.fatal = String(error).slice(0, 2000)
   log('fatal', report.fatal)
 } finally {
-  report.audit = await runAudit()
+  // 落盘必须在任何可能挂住的收尾动作之前（issue #31）：报告写不下去，
+  // 这一轮就等于白跑——作者/巡检看不到 failedSteps、stalled 与截图。
+  writeReport()
+  // 审计本身可能很慢（大量输出时 spawnSync 的 timeout 不可靠）；套一层硬超时，
+  // 超时只记 null，不再拖住收尾。
+  report.audit = await withTimeout(runAudit(), 6 * 60_000, 'runAudit').catch(error => {
+    log('审计未在超时内完成:', String(error?.message ?? error).slice(0, 200))
+    return { ok: false, error: 'timeout' }
+  })
+  writeReport()
+  log('报告', REPORT_PATH)
+  log('失败步骤', report.failedSteps.length ? report.failedSteps.join(' / ') : '无')
+  if (report.audit?.findings?.length) log('一致性冲突', report.audit.findings.length)
+  process.exitCode = report.failedSteps.length || report.audit?.findings?.length ? 1 : 0
+}
+
+/** 幂等落盘（issue #31）：收尾任何一步都可能挂住，报告必须先落地。 */
+function writeReport() {
   report.finishedAt = new Date().toISOString()
   report.failedSteps = report.steps.filter(item => !item.ok).map(item => item.name)
   report.stalled = report.steps.filter(item => /停滞/.test(item.error ?? '')).map(item => item.name)
   fs.mkdirSync(path.dirname(REPORT_PATH), { recursive: true })
   fs.writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2))
-  log('报告', REPORT_PATH)
-  log('失败步骤', report.failedSteps.length ? report.failedSteps.join(' / ') : '无')
-  if (report.audit?.findings?.length) log('一致性冲突', report.audit.findings.length)
-  process.exitCode = report.failedSteps.length || report.audit?.findings?.length ? 1 : 0
 }
