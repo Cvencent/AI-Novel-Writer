@@ -454,16 +454,23 @@ async function main() {
       const hasRange = new RegExp(`^## 第${to}章`, 'mu').test(synopsis)
       if (hasRange) return { skipped: true, synopsisLength: synopsis.length }
       await arch.open(page)
-      await arch.page(page).getByRole('button', { name: '继续生成架构' }).click()
-      await arch.selectOnly(page, ['synopsis'])
-      await arch.setRange(page, 1, to)
-      await arch.startGenerate(page)
+      // 入口按状态选（issue #46）：五节全确认后主按钮是禁用的「下一步：章节蓝图」，
+      // 「继续生成架构」在那一刻不存在；连续生成自己按「已有末章 + 1」算范围，不会重写已写章节。
+      const entry = await arch.continueSynopsis(page)
+      // 兜底路径（走了对话框）才需要确认范围；默认值已是「接在最后一章之后」，
+      // 这里显式再算一次，避免默认值退回 1–5 把已写好的细纲整批覆盖（issue #46 的第二处危险）。
+      if (entry === 'dialog') {
+        const blocks = [...synopsis.matchAll(/^## 第(\d+)章/gmu)].map(m => Number(m[1]))
+        const nextFrom = blocks.length ? Math.max(...blocks) + 1 : 1
+        await arch.setRange(page, nextFrom, Math.max(nextFrom, to))
+        await arch.startGenerate(page)
+      }
       const value = await pollUntilOrStall(page, async () => {
         const current = await invokeSession(page, session, 'db:project-core-get', session.projectPath)
         return new RegExp(`^## 第${to}章`, 'mu').test(String(current?.synopsis ?? '')) ? current : null
-      }, { label: `细纲 1–${to}`, stallMs: 5 * 60_000 })
+      }, { label: `细纲 ${from}–${to}`, stallMs: 5 * 60_000 })
       const blocks = [...String(value.synopsis).matchAll(/^## 第(\d+)章/gmu)].map(m => Number(m[1]))
-      return { synopsisLength: value.synopsis.length, chapters: blocks }
+      return { entry, synopsisLength: value.synopsis.length, chapters: blocks }
     })
 
     await step(`确保蓝图 ${from}–${to}`, async () => {

@@ -57,3 +57,33 @@ export async function openCast(page) {
   await section(page, 'characters').getByRole('button', { name: '打开角色名单' }).click()
   await castRoster(page).waitFor({ state: 'visible' })
 }
+
+/**
+ * 续写细纲（issue #46）：五节都已确认时，架构页的主按钮是**禁用的**「下一步：章节蓝图」，
+ * 硬点「继续生成架构」会等满默认超时——那个按钮在这个状态下根本不存在。
+ *
+ * 按状态选入口，与作者实际会做的动作一致：
+ * 1. 「一键生成全部剩余细纲」（细纲未覆盖全书时才有）：连续按批生成，自己算范围，不覆盖已写章节；
+ * 2. 否则走「更多操作 → 一次生成全部剩余大纲…」，范围由对话框默认值（= 已有末章 + 1）给出。
+ *
+ * 无论走哪条，都**不显式填 1–to**：那会把已写好的章节整批重写（issue #46 的第二处危险）。
+ * 返回实际走的入口，失败时把当时的按钮文案带进错误里，便于下一轮定位。
+ */
+export async function continueSynopsis(page, { timeout = 180_000 } = {}) {
+  const continuous = page.getByRole('button', { name: '一键生成全部剩余细纲' })
+  if (await continuous.count() > 0) {
+    await continuous.first().click({ timeout })
+    return 'continuous'
+  }
+  await openSectionMenu(page, 'synopsis')
+  const entry = page.getByRole('menuitem', { name: /^一次生成全部剩余大纲/ })
+  try {
+    await entry.waitFor({ state: 'visible', timeout: 15_000 })
+  } catch (error) {
+    const buttons = await page.getByRole('button').allInnerTexts().catch(() => [])
+    throw new Error(`细纲续写入口不存在；当前按钮：${buttons.join(' | ')}`)
+  }
+  await entry.click({ timeout })
+  await dialog(page).waitFor({ state: 'visible', timeout: 15_000 })
+  return 'dialog'
+}

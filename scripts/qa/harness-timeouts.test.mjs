@@ -12,6 +12,8 @@ import { closeAppWithTimeout, withTimeout } from './harness-timeouts.mjs'
 import { review } from '../redesign/pages/chapter-view.mjs'
 // issue #39：运行侧页成功后不自己收起，下一步会被它挡住。
 import * as runSheet from '../redesign/pages/run-sheet.mjs'
+// issue #46：细纲续写入口按状态选，不能硬点不存在的按钮。
+import { continueSynopsis } from '../redesign/pages/architecture.mjs'
 
 /** 只提供 review() 用到的三个选择器与 waitFor，不拉起真实浏览器。 */
 function fakeReviewPage({ visible = false } = {}) {
@@ -121,5 +123,66 @@ describe('run-sheet.closeIfOpen', () => {
     const f = fakeSheetPage({ visible: () => true, hidden: () => false })
     expect(await runSheet.closeIfOpen(f.page)).toBe(false)   // 点了但假 page 的 hidden 仍为 false
     expect(f.clicks).toEqual(['close'])
+  })
+})
+
+/**
+ * issue #46：user-sim 的「确保细纲」硬点「继续生成架构」，但五节全确认时那个按钮不存在
+ * （主按钮是禁用的「下一步：章节蓝图」），于是每轮白等 120 秒；旧代码还会填范围 1–to，
+ * 一旦成功就把已写好的 1–11 章整批重写。
+ * continueSynopsis 必须按状态选入口，并且两条路都不显式覆盖已写章节。
+ */
+describe('architecture.continueSynopsis', () => {
+  /** 只实现 continueSynopsis 用到的三个选择器：顶部按钮、section 的更多操作、菜单项、对话框。 */
+  const fakePage = ({ continuous, menuEntry }) => {
+    const clicks = []
+    const buttonTexts = continuous
+      ? ['一键生成全部剩余细纲']
+      : ['下一步：章节蓝图', 'AI 生成架构']
+    const continuousButton = {
+      count: async () => (continuous ? 1 : 0),
+      first: () => ({ click: async () => { clicks.push('continuous') } }),
+    }
+    const menuButton = { click: async () => { clicks.push('menu') } }
+    const entry = {
+      waitFor: async () => { if (!menuEntry) throw new Error('no entry') },
+      click: async () => { clicks.push('entry') },
+    }
+    const dialog = { waitFor: async () => { clicks.push('dialog') } }
+    const allButtons = { allInnerTexts: async () => buttonTexts }
+    const region = { getByRole: (role, options) => (options?.name === '「情节大纲」的更多操作' ? menuButton : allButtons) }
+    const rootLocator = {
+      locator: () => ({ getByRole: (role, options) => (options?.name === '一键生成全部剩余细纲' ? continuousButton : region) }),
+      getByRole: (role, options) => (options?.name === '一键生成全部剩余细纲' ? continuousButton : region),
+    }
+    const page = {
+      getByRole: (role, options) => {
+        if (role === 'button' && options?.name === '一键生成全部剩余细纲') return continuousButton
+        if (role === 'menuitem') return entry
+        if (role === 'dialog') return dialog
+        if (role === 'button') return allButtons
+        if (role === 'region') return region
+        return { waitFor: async () => {}, isVisible: async () => false, locator: () => ({}) }
+      },
+    }
+    page.locator = selector => (selector === '.stage' ? rootLocator : { locator: () => rootLocator, getByRole: rootLocator.getByRole })
+    return { page, clicks }
+  }
+
+  it('有「一键生成全部剩余细纲」时优先走连续生成（范围由应用自己算，不覆盖已写章节）', async () => {
+    const f = fakePage({ continuous: true, menuEntry: true })
+    await expect(continueSynopsis(f.page)).resolves.toBe('continuous')
+    expect(f.clicks).toEqual(['continuous'])
+  })
+
+  it('没有连续生成入口时走「更多操作 → 一次生成全部剩余大纲…」', async () => {
+    const f = fakePage({ continuous: false, menuEntry: true })
+    await expect(continueSynopsis(f.page)).resolves.toBe('dialog')
+    expect(f.clicks).toEqual(['menu', 'entry', 'dialog'])
+  })
+
+  it('两个入口都不在时抛出带按钮清单的错误（不再只给 Timeout）', async () => {
+    const f = fakePage({ continuous: false, menuEntry: false })
+    await expect(continueSynopsis(f.page)).rejects.toThrow(/细纲续写入口不存在；当前按钮：/)
   })
 })
