@@ -186,3 +186,38 @@ describe('architecture.continueSynopsis', () => {
     await expect(continueSynopsis(f.page)).rejects.toThrow(/细纲续写入口不存在；当前按钮：/)
   })
 })
+
+/**
+ * issue #50：`.stage-capsule[aria-expanded="true"]` 只在「有运行且侧页展开」时存在。
+ * 直接 click 会等满默认超时（120 秒）再抛错，被 .catch 吞掉后就变成「每轮白等 120 秒却打 ✓」。
+ * collapseCapsule 必须先数元素再点，并把点不动的原因回报给调用方。
+ */
+describe('run-sheet.collapseCapsule (issue #50)', () => {
+  const fakeCapsulePage = ({ count, clickFails = false }) => {
+    const clicks = []
+    const locator = {
+      count: async () => count,
+      first: () => ({ click: async () => { clicks.push('click'); if (clickFails) throw new Error('intercepted') } }),
+    }
+    return { page: { locator: () => locator }, clicks }
+  }
+
+  it('胶囊不存在时立即返回 no-capsule（不再等满超时）', async () => {
+    const f = fakeCapsulePage({ count: 0 })
+    expect(await runSheet.collapseCapsule(f.page)).toBe('no-capsule')
+    expect(f.clicks).toEqual([])
+  })
+
+  it('胶囊存在时点它并回报 collapsed', async () => {
+    const f = fakeCapsulePage({ count: 1 })
+    expect(await runSheet.collapseCapsule(f.page)).toBe('collapsed')
+    expect(f.clicks).toEqual(['click'])
+  })
+
+  it('胶囊在但点不动时回报原因，而不是静默吞掉', async () => {
+    const f = fakeCapsulePage({ count: 1, clickFails: true })
+    const outcome = await runSheet.collapseCapsule(f.page)
+    expect(outcome).toContain('failed:')
+    expect(outcome).toContain('intercepted')
+  })
+})

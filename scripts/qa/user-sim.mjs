@@ -476,7 +476,10 @@ async function main() {
     await step(`确保蓝图 ${from}–${to}`, async () => {
       const session = await sessionOf(app)
       await blueprintPage.open(page)
-      await page.locator('.stage-capsule[aria-expanded="true"]').click().catch(() => {})
+      // 先判断再点（issue #50）：胶囊只在「有运行且侧页展开」时存在，
+      // 直接 click 会等满默认超时（120 秒）并抛错，吞掉后就变成「白等 120 秒却打 ✓」。
+      const collapsed = await runSheet.collapseCapsule(page)
+      if (collapsed !== 'no-capsule' && collapsed !== 'collapsed') log(`  收起运行胶囊未成功：${collapsed}`)
       const existing = await invokeSession(page, session, 'db:blueprint-get-all', session.projectPath)
       const missing = []
       for (let chapter = from; chapter <= to; chapter += 1) {
@@ -498,7 +501,9 @@ for (let chapter = from; chapter <= to; chapter += 1) {
         const session = await sessionOf(app)
         await stage.stageButton(page, '蓝图').click()
         await blueprintPage.plan(page).waitFor({ state: 'visible', timeout: 60_000 })
-        await page.locator('.stage-capsule[aria-expanded="true"]').click().catch(() => {})
+        // 同上：按状态判断，不靠超时兜底，也不吞错（issue #50）。
+        const collapsed = await runSheet.collapseCapsule(page)
+        if (collapsed !== 'no-capsule' && collapsed !== 'collapsed') log(`  收起运行胶囊未成功：${collapsed}`)
 
         // 以按钮文字为准：应用始终把「权威下一章」摆在主按钮上，
         // 若它和 harness 认为的 chapter 不同，说明前面某一章还没定稿，

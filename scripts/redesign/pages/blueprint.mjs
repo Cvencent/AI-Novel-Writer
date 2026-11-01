@@ -12,10 +12,14 @@ export const popover = page => page.getByRole('dialog', { name: '本次写作选
 export const preflight = page => popover(page).getByRole('region', { name: '一致性预检' })
 export const emptyHeading = page => page.getByRole('heading', { name: '还没有章节蓝图' })
 
-/** 从流程脊进入蓝图阶段，等章节规划或空状态出现。 */
-export async function open(page) {
-  await stage.stageButton(page, '蓝图').click()
-  await plan(page).or(emptyHeading(page)).waitFor({ state: 'visible' })
+/**
+ * 从流程脊进入蓝图阶段，等章节规划或空状态出现。
+ * 等待时长显式给出（issue #50 建议 3）：默认 setDefaultTimeout(120s) 会让一个隐性卡顿
+ * 白白吃掉 120 秒，而蓝图页出现只需十几秒；超时信息里带上当时的路径，便于下一轮定位。
+ */
+export async function open(page, { timeout = 30_000 } = {}) {
+  await stage.stageButton(page, '蓝图').click({ timeout })
+  await plan(page).or(emptyHeading(page)).waitFor({ state: 'visible', timeout })
 }
 
 /** 主按钮直接按蓝图开始写，不弹表单。 */

@@ -38,6 +38,25 @@ export async function closeIfOpen(page, timeout = 15_000) {
   return sheet(page).waitFor({ state: 'hidden', timeout }).then(() => true).catch(() => false)
 }
 
+/**
+ * 收起运行侧页（issue #50）：有运行且侧页展开时胶囊才带 `aria-expanded="true"`，
+ * 平时这个选择器**匹配不到任何元素**——直接 click 会等满默认超时（120 秒）再抛错，
+ * 而调用方若用 .catch 吞掉，就变成「每轮固定白等 120 秒却打 ✓」。
+ *
+ * 所以这里先数元素再点，点不动就如实回报（不吞错），调用方据此决定是否记一行日志。
+ */
+export async function collapseCapsule(page, timeout = 5_000) {
+  const capsule = page.locator('.stage-capsule[aria-expanded="true"]')
+  if (await capsule.count().catch(() => 0) === 0) return 'no-capsule'
+  try {
+    await capsule.first().click({ timeout })
+    return 'collapsed'
+  } catch (error) {
+    // 胶囊在但点不动：保留原因，别让下面的步骤以「莫名点不动」的形式失败。
+    return `failed:${error instanceof Error ? error.message : String(error)}`
+  }
+}
+
 /** 没有进行中的运行、上一次运行已完成。侧页在运行开始时自动展开，作者没关它就一直在。 */
 export async function waitForRunDone(page, timeout = 90_000) {
   // 确认门（如「确认采用角色提议」）出现时先点确认，再继续等完成。
