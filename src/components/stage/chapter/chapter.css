@@ -247,6 +247,14 @@
   color: var(--ink-3);
 }
 
+/* issue #34：关键步骤全过、非关键步骤一步没跑时，面板会显示「已完成」，
+   但后续章节读的是旧的角色状态与事实账本——必须明说，否则作者只会一直等。 */
+.stage-ch-post-note {
+  margin: var(--s-2) 0 0;
+  font: 400 var(--fs-12)/1.5 var(--font-ui);
+  color: var(--danger);
+}
+
 .stage-ch-plan-grid {
   display: grid;
   grid-template-columns: 88px minmax(0, 1fr);

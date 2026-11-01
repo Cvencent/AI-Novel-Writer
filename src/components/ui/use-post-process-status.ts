@@ -21,13 +21,38 @@ export function isRunInterrupted(run: Pick<PostProcessStatus, 'createdAt' | 'upd
 const INTERRUPTED_RUN_GRACE_MS = 2 * 60_000
 
 /**
+ * 这一步自己一次都没跑过，而整次运行早已停下（issue #34）。
+ *
+ * 判据分层：`isRunInterrupted` 判的是「整次运行有没有推进过」，而关键步骤全通过时它直接
+ * 返回 false——于是「关键步骤跑完、非关键步骤一步没跑」这种形态落进 pending，界面一直写
+ * 「处理中」，也没有重试入口（本样本第 12/13/15 章都是这个形态，角色状态因此落后 6 章）。
+ * 这里换一个锚点：一步都没跑的步骤 + 运行账目已停顿超过宽限 = 不会再有人跑它。
+ */
+export function isStepStranded(
+  step: PostProcessStatus['steps'][string],
+  run: Pick<PostProcessStatus, 'createdAt' | 'updatedAt'>,
+  now = Date.now(),
+): boolean {
+  if (step.ok) return false
+  if (Number(step.attemptCount) > 0 || Boolean(step.error?.trim())
+    || Boolean(step.lastAttemptAt?.trim()) || Boolean(step.completedAt?.trim())) return false
+  const anchor = new Date(run.updatedAt || run.createdAt).getTime()
+  if (!Number.isFinite(anchor)) return false
+  return now - anchor > INTERRUPTED_RUN_GRACE_MS
+}
+
+/**
  * A fresh post-process run persists every step before it attempts any of them.
  * The database default is `ok = false`, so distinguish that pending shape from
  * a failed attempt by requiring durable failure evidence. A stale never-advanced
  * run (app killed mid-run) is reported as interrupted instead of spinning on
  * 「处理中」forever.
  */
-export function getStepPresentation(step: PostProcessStatus['steps'][string], runInterrupted = false): StepPresentation {
+export function getStepPresentation(
+  step: PostProcessStatus['steps'][string],
+  runInterrupted = false,
+  stepStranded = false,
+): StepPresentation {
   if (step.ok) return 'success'
 
   const hasFailureEvidence = Number(step.attemptCount) > 0
@@ -35,7 +60,7 @@ export function getStepPresentation(step: PostProcessStatus['steps'][string], ru
     || Boolean(step.lastAttemptAt?.trim())
     || Boolean(step.completedAt?.trim())
 
-  return hasFailureEvidence || runInterrupted ? 'failed' : 'pending'
+  return hasFailureEvidence || runInterrupted || stepStranded ? 'failed' : 'pending'
 }
 
 /**
@@ -87,7 +112,15 @@ export function usePostProcessStatus(scope: string) {
   }, [loadStatus, project])
 
   const steps = status
-    ? Object.entries(status.steps).map(([key, step]) => ({ key, step, presentation: getStepPresentation(step, isRunInterrupted(status)) }))
+    ? Object.entries(status.steps).map(([key, step]) => {
+      const stranded = isStepStranded(step, status)
+      return {
+        key,
+        step,
+        stranded,
+        presentation: getStepPresentation(step, isRunInterrupted(status), stranded),
+      }
+    })
     : []
   return { status, loading, steps, runInterrupted: status ? isRunInterrupted(status) : false }
 }

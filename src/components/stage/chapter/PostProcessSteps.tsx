@@ -64,16 +64,20 @@ export default function PostProcessSteps({ chapterNumber, draftId, publication, 
       retry: onRetryPublication,
       retryLabel: text('重新写入正文', 'Write again'),
     }] : []),
-    ...steps.map(({ key, step, presentation }) => ({
+    ...steps.map(({ key, step, presentation, stranded }) => ({
       key,
       label: step.label,
       presentation,
       detail: presentation === 'success'
         ? text('完成', 'Done')
         : presentation === 'pending' ? text('处理中', 'In progress')
-          : runInterrupted && !step.error?.trim()
-            ? text('上次运行被中断，未执行到这一步', 'The previous run was interrupted before this step')
-            : step.error || text('失败', 'Failed'),
+          : step.error?.trim()
+            ? step.error
+            : stranded || runInterrupted
+              // 关键步骤全过时 isRunInterrupted 为假，但这一步一次都没跑过（issue #34）：
+              // 后处理是进程内工作流，运行账目已停顿，不会再有人跑它。
+              ? text('上次运行到此结束，这一步没有执行', 'The previous run stopped before this step')
+              : text('失败', 'Failed'),
       retry: () => onRetryStep(key),
       retryLabel: text('重试', 'Retry'),
     })),
@@ -81,6 +85,7 @@ export default function PostProcessSteps({ chapterNumber, draftId, publication, 
   if (rows.length === 0) return null
   const done = rows.filter(row => row.presentation === 'success').length
   const stepFailed = steps.some(row => row.presentation === 'failed')
+  const interruptedSteps = steps.filter(row => row.stranded).length
 
   return (
     <section className="stage-ch-post" aria-label={text('定稿后处理', 'Post-finalization steps')}>
@@ -95,6 +100,16 @@ export default function PostProcessSteps({ chapterNumber, draftId, publication, 
           </Button>
         )}
       </div>
+      {interruptedSteps > 0 && (
+        // issue #34：关键步骤全过时面板会显示「后处理已完成」，但非关键步骤可能一步都没跑过。
+        // 不额外提示的话，作者只会一直等——而这些步骤不会再自己跑起来。
+        <p className="stage-ch-post-note" role="status">
+          {text(
+            `有 ${interruptedSteps} 步上次没执行到，后续章节读到的是旧的角色状态与事实账本。请点「重试失败步骤」补齐。`,
+            `${interruptedSteps} step(s) never ran last time, so later chapters read stale character state and continuity facts. Use “Retry failed steps” to fill them in.`,
+          )}
+        </p>
+      )}
       <ol className="stage-ch-post-steps">
         {rows.map(row => (
           <li key={row.key} className="stage-ch-post-step" data-state={row.presentation}>
