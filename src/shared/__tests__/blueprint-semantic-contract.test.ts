@@ -273,6 +273,21 @@ describe('blueprint staging and reaction rotation (issue #32 / #33)', () => {
   })
 })
 
+// issue #35：只有 suspenseHook 这一条通道被承诺承接；上一章正文里当众说出口的其他悬置
+// 承诺（替班／交付／返回／闭嘴）整章无人提起。
+describe('blueprint predecessor-commitment carry-over (issue #35)', () => {
+  it('the immutable contract extends carry-over beyond the recorded hook', () => {
+    const zh = blueprintSemanticGenerationContract('zh-CN')
+    expect(zh).toContain('钩子以外的悬置承诺也要接')
+    expect(zh).toContain('替班')
+    expect(zh).toContain('明确搁置')
+    const en = blueprintSemanticGenerationContract('en-US')
+    expect(en).toContain('Pending decisions outside the hook must also carry over')
+    expect(en).toContain('take a shift')
+    expect(en).toContain('defer it explicitly')
+  })
+})
+
 // issue #36：代价要留账——本样本四次「遗忘」代价都在同章 320 字内自愈，蓝图阶段就已
 // 把「怎么找回来」写进了代价字段，起草只是执行。
 describe('blueprint cost ledger (issue #36)', () => {

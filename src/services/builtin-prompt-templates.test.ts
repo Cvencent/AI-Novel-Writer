@@ -49,6 +49,22 @@ describe('blueprint staging & reaction rotation rules (issue #32 / #33)', () => 
   })
 })
 
+// issue #35：只有 suspenseHook 有下游通道，上一章正文里的其他悬置承诺没人接。
+describe('predecessor commitment rules (issue #35)', () => {
+  const full = BUILTIN_PROMPTS.find(template => template.key === 'chapter_blueprint')
+  const chunk = BUILTIN_PROMPTS.find(template => template.key === 'chapter_blueprint_chunk')
+
+  it('both blueprint templates require carrying over non-hook pending commitments', () => {
+    expect(full?.content).toContain('【前驱承诺必须接】')
+    expect(chunk?.content).toContain('【前驱承诺必须接】')
+    expect(full?.content).toContain('搁置了什么')
+  })
+
+  it('the immutable contract states it too', () => {
+    expect(blueprintSemanticGenerationContract('zh-CN')).toContain('钩子以外的悬置承诺也要接')
+  })
+})
+
 // issue #36：代价写了却被当场抹平（四次「遗忘」都在 320 字内自愈）。
 describe('cost ledger rules (issue #36)', () => {
   const full = BUILTIN_PROMPTS.find(template => template.key === 'chapter_blueprint')

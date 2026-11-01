@@ -13,8 +13,8 @@ export function draftShortOutlinePrompt(language: WritingLanguage, sourcePrompt:
 export function draftShortOutlineBlock(language: WritingLanguage, text: string): string {
   if (!text.trim()) throw new Error('GENERATION_DRAFT_SHORT_OUTLINE_FAILED')
   return language === 'en-US'
-    ? `[Generated short outline — plan, not evidence]\nThis organizes the original goals only. Author facts, constraints and actual prior prose take priority; the plan establishes no fact.\n${text.trim()}\n[End generated short outline]`
-    : `【生成短细纲：计划，不是事实依据】\n仅用于组织原目标；作者事实、约束和实际前文优先，计划不确立任何事实。\n${text.trim()}\n【生成短细纲结束】`
+    ? `[Generated short outline — plan, not evidence]\nThis organizes the original goals only. Author facts, constraints and actual prior prose take priority; the plan establishes no fact.\n${text.trim()}\n[Predecessor items are binding (issue #35)] The bullets above that describe what the predecessor already did come from actual prior prose; the rest is plan. Every predecessor item — a decision someone stated aloud, a promised shift/handover/return, an instruction to stay silent — must land in this chapter's prose: advance it, twist it, or defer it explicitly and say why. Passing over it with a line like "he did not take it up" is not a landing. Only the recorded suspense hook is guaranteed to carry downstream, so treat the rest as things the reader is still holding.\n[End generated short outline]`
+    : `【生成短细纲：计划，不是事实依据】\n仅用于组织原目标；作者事实、约束和实际前文优先，计划不确立任何事实。\n${text.trim()}\n【前驱条目必须落地（issue #35）】上面「前驱已完成」那几条来自实际前文（其余是计划）：其中每一项——人物当众说出口的决定、答应下的替班／交付／返回、要求谁闭嘴——本章正文都必须有落点：推进它、反转它，或明确写出搁置与理由；仅用「没接那句」一笔带过不算落点。只有登记在案的 suspenseHook 有下游通道，其余要靠本章自己兑现。\n【生成短细纲结束】`
 }
 
 export function stripDraftShortOutlineBlock(prompt: string, output: string): string | null {
