@@ -21,7 +21,11 @@ export function outlineRecentEvent(notes: string, maxLength = 50): string {
   if (!normalized) return ''
   const firstSentence = (/^[^。！？!?]*[。！？!?]/u.exec(normalized)?.[0] ?? normalized).trim()
   if (firstSentence.length <= maxLength) return firstSentence
-  return `${firstSentence.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`
+  // 超长时在句末标点处截断，不产生「…」半句（issue #18）。
+  const clipped = firstSentence.slice(0, maxLength)
+  const lastStop = Math.max(clipped.lastIndexOf('。'), clipped.lastIndexOf('！'), clipped.lastIndexOf('？'), clipped.lastIndexOf('；'))
+  const stopIndex = lastStop >= Math.floor(maxLength / 2) ? lastStop + 1 : 0
+  return stopIndex > 0 ? firstSentence.slice(0, stopIndex) : clipped
 }
 
 const CHAPTER_HEADING = /^#{0,4}\s*(?:第\s*(\d+)\s*章|Chapter\s+(\d+))\s*[:：]?\s*(.*)$/u
@@ -54,10 +58,16 @@ function firstSentences(text: string, count: number): string {
 /**
  * 抽取摘要。人物名由调用方传入已知名单，避免把普通词误判成人名。
  */
+/** 章节签头段（「**场景与出场人物**：…」这类粗体标签行）：是场景清单不是情节，不进摘要。 */
+const HEADER_LINE = /^\*?\*?(?:场景与出场人物|场景|出场人物)\*?\*?\s*[:：]/u
+
 export function extractChapterDigest(block: string, knownCharacterNames: readonly string[]): OutlineChapterDigest {
   const { body } = splitChapterBlock(block)
   const characterNames = [...new Set(knownCharacterNames.filter(name => name.trim().length >= 2 && body.includes(name)))]
-  const notes = firstSentences(body, 4)
+  // 剥离签头行再取首句：否则「场景与出场人物」清单会顶掉真实情节成为所有出场角色
+  // 共用的 recentEvents（issue #18：6/8 角色拿到同一句 50 字签头残段）。
+  const narrativeBody = body.split(/\n+/u).filter(line => !HEADER_LINE.test(line.trim())).join('\n')
+  const notes = firstSentences(narrativeBody, 4)
   // 事实：取含转折/结果词的句子，最多 3 条，作为可检索的连续性锚点。
   const facts = (body.match(/[^。！？!?]*[。！？!?]/gu) ?? [])
     .map(item => item.replace(/\s+/gu, ' ').trim())

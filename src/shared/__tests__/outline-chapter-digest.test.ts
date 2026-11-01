@@ -46,11 +46,30 @@ describe('outlineRecentEvent', () => {
       .toBe('**场景与出场人物**：大厅。')
   })
 
-  it('超长时截断并加省略号', () => {
+  it('超长且无中间句末标点时硬截（不加省略号半句，issue #18）', () => {
     const long = `${'甲'.repeat(80)}。`
     const result = outlineRecentEvent(long, 50)
-    expect(result.endsWith('…')).toBe(true)
     expect(result.length).toBeLessThanOrEqual(50)
+    expect(result.endsWith('…')).toBe(false)
+  })
+
+  it('超长但在限长内有句末标点时截到句末（issue #18）', () => {
+    const text = '第一句话比较长一些要占掉不少的字符位置。第二句。'
+    const result = outlineRecentEvent(text, 30)
+    expect(result).toBe('第一句话比较长一些要占掉不少的字符位置。')
+  })
+
+  it('剥离签头行后再取摘要（issue #18）', () => {
+    const block = [
+      '## 第8章：淡出的半径',
+      '',
+      '**场景与出场人物**：雾津港行会茶棚、潮生号验票舱；验票船工·主角、搭档·老前辈。',
+      '',
+      '主角在验票舱核对名册，发现多出一名乘客。于是他把这一页折了角。',
+    ].join('\n')
+    const digest = extractChapterDigest(block, ['主角'])
+    expect(digest.chapterNotes.startsWith('**场景与出场人物**')).toBe(false)
+    expect(digest.chapterNotes).toContain('核对名册')
   })
 
   it('空摘要返回空字符串', () => {
