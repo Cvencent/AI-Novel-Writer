@@ -6,15 +6,64 @@
 
 **你的角色是「一个真实用户在写小说」**：像作者一样建书、定设定、铺粗纲、生成蓝图、一章一章写正文、审稿、定稿。你不是在跑单元测试，你是在替用户先用一遍。用你**亲眼看到的界面现象、读到的正文文本、数据库里的落库结果**判断好坏。
 
-## 本轮时长预算
+## 本轮时长预算（硬上限 25 分钟）
 
-单轮总时长不要超过 50 分钟。步骤跑不完就按现有结果出结论，不要为了跑完全流程拖到两小时。真实写长篇会超时，**默认只写 2–3 章**。
+**单轮硬上限 25 分钟。**超时就按已有结果出结论，不要拖。
+
+为了守住这个预算，固定开销必须压掉：
+
+1. **只推进 1 章**：`node scripts/qa/user-sim.mjs --chapters=1 --words=700`。**不要传 3 章。**
+   写一章 = 细纲 + 蓝图 + 正文三次真实模型请求，再加定稿后处理链，单章就可能占掉 5–10 分钟。
+2. **细纲/蓝图提前铺到 +2 章**，别把窗口花在补前置上。
+3. **崩溃只记录不主动复现**：看到 `Network service crashed or was terminated` /
+   `GPU process exited unexpectedly: exit_code=143` / `PAGE CRASH`，
+   **不要**为判断「算不算产品缺陷」再冷启动 + 空转 5 分钟 soak（那是每轮 30+ 分钟纯等待）。
+   记进小结与 `qa-issue-ledger` 的线索区，等干净环境或装了新版本时一次性复现再决定立案。
+4. **探针启动前统一清实例 + 删端口文件**（两个不同的失败面，缺一就会白跑 launch）：
+
+   ```powershell
+   Get-CimInstance Win32_Process -Filter "Name='AI小说作家.exe'" |
+     Where-Object { $_.CommandLine -like '*user-sim*' } |
+     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+   ```
+   ```bash
+   rm -f .qa/user-sim/userData/DevToolsActivePort
+   ```
+   前者防单实例锁（表现 `Target page closed`），后者防 Playwright `Process failed to launch!`。
+5. **探针里写 Windows 路径一律用 `String.raw`**，直接写单反斜杠会被当成转义序列，
+   报 `Invalid Unicode escape sequence`，表现同样是「launch 失败」：
+
+   ```js
+   const EXE = String.raw`F:\aiNovel\ai-novel-writer\AI小说作家.exe`
+   ```
+
+## 判「崩溃」之前必做的一件事（2026-11-01 19:20 血泪教训）
+
+**看到 `Network service crashed or was terminated` / `GPU process exited unexpectedly: exit_code=143` /
+`PAGE CRASH` / `Target page, context or browser has been closed`，先别当产品缺陷——先查安装目录的 mtime：**
+
+```powershell
+(Get-Item 'F:\aiNovel\ai-novel-writer\resources\app.asar').LastWriteTime
+(Get-Item 'F:\aiNovel\ai-novel-writer\AI小说作家.exe').LastWriteTime
+```
+
+若这两个时间在崩溃前几分钟内，就是**修 issue 卡正在覆盖安装**，不是产品 bug。
+
+原理：修 issue 卡必须 `robocopy /MIR` 覆盖安装才能交付，这会**就地替换正在运行的 exe 与全部
+`.pak` / `.dll` / `app.asar`**。主进程还在跑（`exitCode=null`），但网络/GPU 子进程按旧映像启动后与新映像失配，
+于是报出与「真崩溃」**一字不差**的错误。我曾为此把六次外部干扰当成产品缺陷，白查了两轮。
+
+纪律：
+- **崩溃先对齐 mtime，再谈立案。** 落在安装窗口内 → 直接判环境干扰，本轮不再复现。
+- 修 issue 卡在 :55 起跑且有 100 分钟预算，所以 **:55 之后启动模拟器随时可能被中途替换**。
+  跑模拟器前若发现 asar mtime 距今 < 10 分钟，说明它刚装过：要么等下一轮，要么本轮只做只读巡检。
+- 崩溃的真实判据只有一条：**安装目录 mtime 没动、且可重复**，才值得立案。
 
 ## 第一件事：跑隔离的用户模拟
 
 ```bash
 cd F:\aiNovelWriter\repo
-node scripts/qa/user-sim.mjs --chapters=3 --words=700 --report=.runtime/qa/sim-$(date +%H%M).json
+node scripts/qa/user-sim.mjs --chapters=1 --words=700 --report=.runtime/qa/sim-$(date +%H%M).json
 ```
 
 跑之前先确认 8790 通道活着：`curl -s -m 10 http://127.0.0.1:8790/v1/models -H "Authorization: Bearer test_key" -o /dev/null -w "%{http_code}"`，不是 200 就跳过本轮并在小结里记「通道不可用」，**不要建 issue**。
@@ -92,6 +141,9 @@ node scripts/qa/consistency-audit.mjs --project "<模拟器这轮的作品目录
 - 不 `git commit`、不推代码、不发版、不装应用——那是另一张卡的事。
 - 不 kill 用户正在运行的 app 进程。你自己启动的模拟器进程自己管（退出时确认清理）。
 - 仓库工作区可能有并行会话的未提交改动：只读，不要动。
+- **崩溃不 soak**：只记录，不主动做「冷启动 + 空转 5 分钟」的复现实验（见上方时长预算第 3 条）。
+- 每次启动隔离实例前，**必须先确认没有残留的 `user-sim` 实例并删掉 `DevToolsActivePort`**；
+  分不清「产品崩溃」和「单实例锁/端口文件残留」会把一轮时间全浪费在 launch 失败上。
 
 ## 收尾
 
