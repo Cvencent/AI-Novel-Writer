@@ -5,7 +5,7 @@ import type { PrepareReviewRevisionRequest, ReviewMaterialIdentity, ReviewRevisi
 import { parseHumanConfirmedReviewSnapshot, serializeHumanConfirmedReviewSnapshot } from '../../src/shared/human-confirmed-review'
 import { freezeChapterGoals } from '../../src/shared/chapter-goal-review'
 import { findBlueprintContinuityRisks } from '../../src/shared/consistency-preflight'
-import { findProseRepetition, proseRepetitionEvidence } from '../../src/shared/prose-repetition'
+import { findCharacterProseRepetition, findProseRepetition, proseRepetitionEvidence } from '../../src/shared/prose-repetition'
 import type { ConsistencyFinding } from '../../src/shared/consistency-preflight'
 import { CHARACTER_STATE_TEXT_FIELDS } from '../../src/shared/character-roster'
 import { ProjectCoreRepository } from '../repositories/project-core-repository'
@@ -156,7 +156,8 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
         // 维度对「同构写法」0 命中（本样本 19 份报告只报出 1 条逐字复写），这里用可机器判的
         // 分布判据补上——样本是**最近定稿正文 + 本章正文**，正是审稿该看的范围。
         ...proseRepetitionFindings([...history.map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
-          { chapterNumber: source.chapterNumber, content: source.content }], source.chapterNumber),
+          { chapterNumber: source.chapterNumber, content: source.content }], source.chapterNumber,
+          authorCards.map(card => card.name)),
       ],
       ...(confirmation ? { confirmation } : {}), ...(recheck ? { recheck } : {}) }
   })()
@@ -172,21 +173,37 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
 export function proseRepetitionFindings(
   chapters: ReadonlyArray<{ chapterNumber: number; content: string }>,
   currentChapter: number,
+  castNames: readonly string[] = [],
 ): ConsistencyFinding[] {
-  return findProseRepetition(chapters).map(hit => {
+  // 全书口径（主角式）与按角色口径（配角式）各跑一遍（issue #49）：配角的出场章数远小于全书章数，
+  // 按全书归一他永远达不到阈值——那是分母选错了，不是写法不固定。
+  const hits = [
+    ...findProseRepetition(chapters),
+    ...(castNames.length ? findCharacterProseRepetition(chapters, castNames) : []),
+  ]
+  const seen = new Set<string>()
+  return hits.filter(hit => {
+    const key = hit.scope?.kind === 'character' ? `${hit.kind}:${hit.scope.character}` : `${hit.kind}:book`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  }).map(hit => {
     const isStillness = hit.kind === 'stillness'
+    // 按角色口径时把角色名写进结论，作者才知道说的是谁。
+    const subject = hit.scope?.kind === 'character' ? `「${hit.scope.character}」的` : ''
+    const englishSubject = hit.scope?.kind === 'character' ? `${hit.scope.character}'s ` : "The protagonist's "
     return {
-      stableFactKey: `prose:${hit.kind}:${currentChapter}`,
+      stableFactKey: `prose:${hit.kind}${hit.scope?.kind === 'character' ? `:${hit.scope.character}` : ''}:${currentChapter}`,
       severity: 'warning' as const,
       sourceChapter: currentChapter,
       evidence: proseRepetitionEvidence(hit),
       issue: {
         zhCN: isStillness
-          ? `人物反应被写成了固定短句：${hit.chapters.length} 章都用同一批否定式微动作（没动／没答／没应／没说话）表达受挫或被追问，读者能预判角色的反应。`
-          : `核心戏的场景装置被固定复用了：${hit.chapters.length} 章都用同一套「地点＋起手动作」搭戏（如舱底＋拧水隔＋票根蘸水），读者一看起手就知道接下来会发生什么。`,
+          ? `人物反应被写成了固定短句：${subject}${hit.chapters.length} 章都用同一批否定式微动作（没动／没答／没应／没说话）表达受挫或被追问，读者能预判角色的反应。`
+          : `核心戏的场景装置被固定复用了：${subject}${hit.chapters.length} 章都用同一套「地点＋起手动作」搭戏（如舱底＋拧水隔＋票根蘸水），读者一看起手就知道接下来会发生什么。`,
         enUS: isStillness
-          ? `Character reactions have become a fixed formula: ${hit.chapters.length} chapters express setback or being questioned with the same negated micro-phrases, so readers can predict the reaction.`
-          : `The core scene's staging repeats: ${hit.chapters.length} chapters set it up with the same place-plus-opening-action, so readers know what follows from the opening beat.`,
+          ? `${englishSubject}reactions have become a fixed formula: ${hit.chapters.length} chapters express setback or being questioned with the same negated micro-phrases, so readers can predict the reaction.`
+          : `${englishSubject}core scene's staging repeats: ${hit.chapters.length} chapters set it up with the same place-plus-opening-action, so readers know what follows from the opening beat.`,
       },
       suggestion: {
         zhCN: isStillness

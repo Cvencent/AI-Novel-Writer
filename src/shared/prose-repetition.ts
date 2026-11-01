@@ -35,6 +35,11 @@ export interface ProseRepetitionHit {
   chapters: number[]
   /** 具体命中的短语及各自章数，供作者核对。 */
   phrases: Array<{ phrase: string; chapters: number[] }>
+  /**
+   * 这条命中是**按全书**算的还是**按某个角色的出场章**算的（issue #49）。
+   * 配角出场章少，按全书章数归一永远达不到阈值——那不是「写法不固定」，是分母选错了。
+   */
+  scope?: { kind: 'book' } | { kind: 'character'; character: string; appearances: number }
 }
 
 export interface ProseRepetitionOptions {
@@ -42,6 +47,11 @@ export interface ProseRepetitionOptions {
   minChapters?: number
   /** 覆盖率阈值：同一族覆盖的章数占样本比例达到它才算「固定写法」。 */
   coverageRatio?: number
+  /**
+   * 按角色归一时，单个角色的出场章数下限（issue #49）。
+   * 4 章是「有资格谈固定写法」的最低值；低于它的配角样本太少，比例意义不大。
+   */
+  minCharacterChapters?: number
 }
 
 function scanFamily(
@@ -49,6 +59,7 @@ function scanFamily(
   phrases: readonly string[],
   chapters: readonly ProseRepetitionChapter[],
   coverageRatio: number,
+  scope: ProseRepetitionHit['scope'],
 ): ProseRepetitionHit | null {
   const covered = new Set<number>()
   const phraseHits: Array<{ phrase: string; chapters: number[] }> = []
@@ -59,13 +70,13 @@ function scanFamily(
     phraseHits.push({ phrase, chapters: hit })
   }
   // 覆盖率用「并集覆盖了多少章」而不是「短语命中多少次」：读者感到固定的是**每章都来一下**。
-  // 注意这里只与「样本章数的比例」比，不再与 minChapters 取大——minChapters 管的是
-  // 「样本够不够判」（见 findProseRepetition 的入口判断），不是覆盖下限。
+  // 分母由调用方决定（全书章数 / 该角色的出场章数，issue #49），这里只做比例判断。
   if (covered.size < Math.ceil(chapters.length * coverageRatio)) return null
   return {
     kind,
     chapters: [...covered].sort((left, right) => left - right),
     phrases: phraseHits.sort((left, right) => right.chapters.length - left.chapters.length),
+    ...(scope ? { scope } : {}),
   }
 }
 
@@ -81,13 +92,45 @@ export function findProseRepetition(
   const coverageRatio = options.coverageRatio ?? 0.6
   if (usable.length < minChapters) return []
   return [
-    scanFamily('stillness', STILLNESS_PHRASES, usable, coverageRatio),
-    scanFamily('staging', STAGING_PHRASES, usable, coverageRatio),
+    scanFamily('stillness', STILLNESS_PHRASES, usable, coverageRatio, { kind: 'book' }),
+    scanFamily('staging', STAGING_PHRASES, usable, coverageRatio, { kind: 'book' }),
   ].filter((hit): hit is ProseRepetitionHit => hit !== null)
+}
+
+/**
+ * 配角视角的跨章重复（issue #49）：「全叔 5/6 章都蹲着收绳」「林棠 9/10 章都在柜台」，
+ * 按全书章数归一他永远差好几章——配角的固定起手动作在数学上不可能被检出，而这恰恰是
+ * 最容易让读者出戏的写法（一个只有 6 场戏的配角，5 场都在干同一件事）。
+ *
+ * 分母改成**该角色的出场章数**：只拿「提到这个角色」的章当样本，
+ * 出场章数 ≥ minCharacterChapters（默认 4）才判，覆盖率同样要过六成。
+ * 词族沿用既有两族（stillness / staging）——它们是「动作 + 起手」的原型，
+ * 对配角同样成立；不新造开放词表，避免 #20 那类词法假阳性。
+ */
+export function findCharacterProseRepetition(
+  chapters: readonly ProseRepetitionChapter[],
+  characterNames: readonly string[],
+  options: ProseRepetitionOptions = {},
+): ProseRepetitionHit[] {
+  const usable = chapters.filter(item => Number.isSafeInteger(item.chapterNumber) && typeof item.content === 'string' && item.content.trim())
+  const minCharacterChapters = options.minCharacterChapters ?? 4
+  const coverageRatio = options.coverageRatio ?? 0.6
+  const hits: ProseRepetitionHit[] = []
+  for (const character of [...new Set(characterNames.map(name => name.trim()).filter(Boolean))]) {
+    const appeared = usable.filter(item => item.content.includes(character))
+    if (appeared.length < minCharacterChapters) continue
+    const scope = { kind: 'character' as const, character, appearances: appeared.length }
+    for (const hit of [
+      scanFamily('stillness', STILLNESS_PHRASES, appeared, coverageRatio, scope),
+      scanFamily('staging', STAGING_PHRASES, appeared, coverageRatio, scope),
+    ]) if (hit) hits.push(hit)
+  }
+  return hits
 }
 
 /** 命中族 → 可读证据串（供 findings 的 evidence 字段）。 */
 export function proseRepetitionEvidence(hit: ProseRepetitionHit): string {
   const top = hit.phrases.slice(0, 4).map(item => `${item.phrase}（${item.chapters.length} 章）`).join('、')
-  return `第 ${hit.chapters.join('、')} 章共 ${hit.chapters.length} 章命中同一族写法；高频短语：${top}`
+  const scope = hit.scope?.kind === 'character' ? `（${hit.scope.character} 出场 ${hit.scope.appearances} 章）` : ''
+  return `第 ${hit.chapters.join('、')} 章共 ${hit.chapters.length} 章命中同一族写法${scope}；高频短语：${top}`
 }

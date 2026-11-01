@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { findProseRepetition, proseRepetitionEvidence, STAGING_PHRASES, STILLNESS_PHRASES } from '../prose-repetition'
+import { findCharacterProseRepetition, findProseRepetition, proseRepetitionEvidence, STAGING_PHRASES, STILLNESS_PHRASES } from '../prose-repetition'
 
 // issue #32（场景装置固定复用）/ #33（人物反应固定短句）：同一套写法在相邻章反复。
 // 判据用**跨章分布**而不是出现次数——本样本「没动」14 章里 9 次、每章恰好一次。
@@ -97,5 +97,44 @@ describe('词表来源可核对', () => {
     expect(STILLNESS_PHRASES).toContain('没答')
     expect(STAGING_PHRASES).toContain('拧开水隔')
     expect(STAGING_PHRASES).toContain('蘸了舷壁')
+  })
+})
+// issue #49：配角出场章少，按全书章数归一永远达不到六成——「全叔 5/6 章都蹲着收绳」
+// 在数学上不可能被检出。分母改成「该角色的出场章数」。
+describe('findCharacterProseRepetition: 按出场章归一（issue #49）', () => {
+  // 18 章，配角只在 6 章出场，其中 5 章都有同一个否定式微动作。
+  const book = Array.from({ length: 18 }, (_, index) => {
+    const chapter = index + 1
+    const base = `第${chapter}章：周叙在验票舱核对名册，写了${chapter}个不同的字。`
+    const withSupport = [8, 9, 10, 14, 18].includes(chapter)
+      ? `全叔蹲在舱里补缆，周叙问他下一班，全叔没答。`
+      : chapter === 13 ? '全叔在码头点数，抬头答了一句。' : ''
+    return ch(chapter, `${base}${withSupport}`)
+  })
+
+  it('全书口径不触发（6/18 远不到 60%），这正是本条的根因', () => {
+    expect(findProseRepetition(book)).toEqual([])
+  })
+
+  it('按角色口径触发，并标明是谁、出场几章', () => {
+    const hits = findCharacterProseRepetition(book, ['全叔', '周叙'])
+    const support = hits.find(hit => hit.scope?.kind === 'character' && hit.scope.character === '全叔')
+    expect(support).toBeTruthy()
+    expect(support!.kind).toBe('stillness')
+    expect(support!.scope).toMatchObject({ kind: 'character', character: '全叔', appearances: 6 })
+    expect(support!.chapters).toEqual([8, 9, 10, 14, 18])
+    expect(proseRepetitionEvidence(support!)).toContain('全叔 出场 6 章')
+  })
+
+  it('出场章数不足下限时不判（样本太少，比例无意义）', () => {
+    const thin = Array.from({ length: 12 }, (_, index) => ch(index + 1,
+      index < 3 ? '全叔没答。' : `第${index + 1}章无非配角内容。`))
+    expect(findCharacterProseRepetition(thin, ['全叔'])).toEqual([])
+  })
+
+  it('配角写法各异时不误报', () => {
+    const varied = Array.from({ length: 12 }, (_, index) => ch(index + 1,
+      index < 6 ? `全叔${['抬头看天', '把绳收好', '退了半步', '点了点数', '把缆挂好', '擦了擦手'][index]}。` : `第${index + 1}章无关正文。`))
+    expect(findCharacterProseRepetition(varied, ['全叔'])).toEqual([])
   })
 })
