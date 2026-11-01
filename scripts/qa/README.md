@@ -44,3 +44,10 @@ node scripts/qa/user-sim.mjs --chapters=3 --words=700
 ## 建 issue 的去重
 
 建之前必须 `gh issue list --state all --limit 100` 搜同主题，已有就评论补充证据而不是新建。
+## 并发会话的工作区独占（issue #54）
+
+两个会话同时用默认隔离区会互相踩踏：后启动的那个会清掉前一个的 `temp/`（实测触发 `EBUSY: resource busy or locked`），两边还会撞同一份 `userData` 的 Electron 单实例锁（`Process failed to launch!`），报错写进同一份报告。
+
+- `scripts/qa/run-lock.mjs` 提供工作区独占锁：拿不到就**明确退出**（退出码 2），并把报告写到 `<报告名>-refused-<pid>.json`，**不覆盖正在跑的那个会话的报告**。
+- 死进程留下的锁会自动接管（判据是信号 0 探活）；拿到锁后才清 `userData` 里残留的 `SingletonLock / SingletonCookie / lockfile / DevToolsActivePort`——即本机手动删的那一步，范围只限 `--work-root` 下的目录。
+- 想并行两个会话，就各自传 `--work-root` 与 `--report`（本来就是支持的）。

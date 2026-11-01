@@ -26,6 +26,7 @@ import * as chapterView from '../redesign/pages/chapter-view.mjs'
 import * as runSheet from '../redesign/pages/run-sheet.mjs'
 import * as stage from '../redesign/pages/stage.mjs'
 import { withTimeout, closeAppWithTimeout } from './harness-timeouts.mjs'
+import { acquireRunLock, clearStaleElectronHandles } from './run-lock.mjs'
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const option = name => process.argv.find(arg => arg.startsWith(`--${name}=`))?.slice(name.length + 3)
@@ -308,6 +309,26 @@ async function main() {
   const exe = resolveExe()
   report.exe = exe
   const roots = ensureWorkspace()
+  // 工作区独占（issue #54）：并发会话共用默认隔离区时会互相删 temp、撞同一份 userData 的
+  // Electron 单实例锁，报错还会写进同一份报告。这里拿不到锁就明确退出，而不是静默共享。
+  const lock = acquireRunLock(roots.root, { log: (...args) => log(...args) })
+  if (!lock.ok) {
+    report.fatal = `工作区被另一个会话占用（pid ${lock.holder.pid}，自 ${lock.holder.startedAt}）：${roots.root}。`
+      + ' 换一个 --work-root，或等它结束后重试。'
+    // 不能写默认报告路径（issue #54）：那个文件正被**运行中的那个会话**持有，
+    // 覆盖它等于把对方的结论抹掉。写到并行的 refused 文件里，事后可查。
+    reportTarget = refusedReportPath()
+    writeReport()
+    log('✗', report.fatal)
+    log('报告', reportTarget)
+    process.exitCode = 2
+    return
+  }
+  activeLock = lock
+  report.runLock = { pid: lock.lock.pid, workRoot: roots.root }
+  // 拿到独占锁之后才清残留句柄（确认没有别的会话在跑）：这是本机手动删 DevToolsActivePort
+  // 那一步的自动化（issue #54），范围只限 --work-root 下的 userData。
+  report.staleElectronHandles = clearStaleElectronHandles(roots.userData, { log: (...args) => log(...args) })
   pruneTemp(roots)
   seedGlobalConfig(roots)
   report.workRoot = roots.root
@@ -666,9 +687,17 @@ async function runAudit() {
   }
 }
 
+// 工作区独占锁（issue #54）：进程退出时释放，别把下一轮挡死。
+let activeLock = null
+// 报告落盘目标：被工作区锁挡下时切到 refused 文件，避免覆盖正在跑的那个会话的报告（issue #54）。
+let reportTarget = REPORT_PATH
+
 // 兜底（issue #31）：任何时候进程要退出，报告都得先落盘。
 // 收尾章节里若还有未加超时的 await 挂住，这个钩子仍会把已收集的部分写下去。
-process.on('exit', () => { try { writeReport() } catch { /* 退出路径照旧 */ } })
+process.on('exit', () => {
+  try { activeLock?.release() } catch { /* 锁已失效就留着，让死进程判据处理 */ }
+  try { writeReport() } catch { /* 退出路径照旧 */ }
+})
 process.on('uncaughtException', error => {
   report.fatal = String(error?.stack ?? error).slice(0, 2000)
   try { writeReport() } catch { /* 忽略 */ }
@@ -688,6 +717,10 @@ try {
   // 落盘必须在任何可能挂住的收尾动作之前（issue #31）：报告写不下去，
   // 这一轮就等于白跑——作者/巡检看不到 failedSteps、stalled 与截图。
   writeReport()
+  // 审计（只读，跑在别的目录）之前就释放工作区锁：审计可能要几分钟，
+  // 而它不需要独占工作区——早放锁让下一个会话不必空等（issue #54）。
+  try { activeLock?.release() } catch { /* 忽略 */ }
+  activeLock = null
   // 审计本身可能很慢（大量输出时 spawnSync 的 timeout 不可靠）；套一层硬超时，
   // 超时只记 null，不再拖住收尾。
   report.audit = await withTimeout(runAudit(), 6 * 60_000, 'runAudit').catch(error => {
@@ -695,17 +728,23 @@ try {
     return { ok: false, error: 'timeout' }
   })
   writeReport()
-  log('报告', REPORT_PATH)
+  log('报告', reportTarget)
   log('失败步骤', report.failedSteps.length ? report.failedSteps.join(' / ') : '无')
   if (report.audit?.findings?.length) log('一致性冲突', report.audit.findings.length)
-  process.exitCode = report.failedSteps.length || report.audit?.findings?.length ? 1 : 0
+  // 已在更早的分支里定过的非零退出码不能被覆盖（issue #54：被锁挡下的会话要退出码 2）。
+  if (!process.exitCode) process.exitCode = report.failedSteps.length || report.audit?.findings?.length ? 1 : 0
 }
 
 /** 幂等落盘（issue #31）：收尾任何一步都可能挂住，报告必须先落地。 */
-function writeReport() {
+/** 被工作区锁挡下时的报告路径：与默认报告并存，不覆盖正在跑的那个会话。 */
+function refusedReportPath() {
+  return REPORT_PATH.replace(/\.json$/u, '') + `-refused-${process.pid}.json`
+}
+
+function writeReport(target = reportTarget) {
   report.finishedAt = new Date().toISOString()
   report.failedSteps = report.steps.filter(item => !item.ok).map(item => item.name)
   report.stalled = report.steps.filter(item => /停滞/.test(item.error ?? '')).map(item => item.name)
-  fs.mkdirSync(path.dirname(REPORT_PATH), { recursive: true })
-  fs.writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2))
+  fs.mkdirSync(path.dirname(target), { recursive: true })
+  fs.writeFileSync(target, JSON.stringify(report, null, 2))
 }
