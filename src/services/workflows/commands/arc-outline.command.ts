@@ -165,6 +165,42 @@ export class GenerateArcOutlineCommand extends BaseWorkflowCommand<string> {
       (roster?.entries ?? []).map((entry: { name: string; role?: string }) => [entry.name, entry.role]),
     )
 
+    // 已定稿章节的事实账本：正文里已经发生的事是粗纲的硬约束。
+    // 「先写正文、后补粗纲」是允许的顺序——粗纲对这部分只能概括已发生的情节，
+    // 不得把写完的事排到「第 X 夜才发生」（issue #11 的三处硬冲突全源于此）。
+    let finalizedFactsBlock = ''
+    try {
+      const projections = await ipc.invokeWithProjectSession(
+        projectSession, 'db:continuity-list-before', from + 1, expectedProjectPath,
+      ) as Array<{ chapterNumber: number; sourceStatus?: string; facts?: Array<{ statement?: string; evidence?: string }> }>
+      const finalizedChapters = (projections ?? []).filter(projection => projection.sourceStatus !== 'stale')
+      const factLines = finalizedChapters.flatMap(projection => (projection.facts ?? [])
+        .map(fact => [fact.statement?.trim(), fact.evidence?.trim()].find(Boolean))
+        .filter((line): line is string => Boolean(line))
+        .map(line => (line.length > 120 ? `${line.slice(0, 119)}…` : line))
+        .map(line => `第${projection.chapterNumber}章：${line}`))
+      if (finalizedChapters.length > 0) {
+        const range = `${Math.min(...finalizedChapters.map(projection => projection.chapterNumber))}–${Math.max(...finalizedChapters.map(projection => projection.chapterNumber))}`
+        callbacks.log(text(
+          `检测到第 ${range} 章已有定稿正文，粗纲将遵从其中已发生的情节。`,
+          `Chapters ${range} already have finalized prose; the arc outline will follow what happened there.`,
+        ))
+        finalizedFactsBlock = promptLanguageText(writingLanguage,
+          `【已定稿章节（第 ${range} 章）的事实——这些事已经发生，是全书既定历史，优先级高于以下一切创作指示】\n`
+          + `${factLines.slice(0, 24).join('\n')}\n\n`
+          + `硬性要求：\n`
+          + `1. 覆盖第 ${range} 章的粗纲内容只能概括上面这些已发生的情节与设定，不得另起炉灶、不得把它们改排到更晚的章节；\n`
+          + `2. 人物的资历、关系与能力觉醒时点以已定稿正文为准（例如正文里能力第一次使用发生在第 1 章，粗纲不得写成第 5 章才觉醒）；\n`
+          + `3. 之后的段落从这些事实自然生长，衔接既有时线。`,
+          `[Facts from finalized chapters (${range}) — these events already happened and are the book's established history; they outrank every instruction below]\n`
+          + `${factLines.slice(0, 24).map(line => line.replace(/^第(\d+)章：/u, 'Ch.$1: ')).join('\n')}\n\n`
+          + `Hard requirements:\n`
+          + `1. Arc content covering chapters ${range} may only summarize the events and setups above; never reinvent them or reschedule them to later chapters;\n`
+          + `2. Characters' seniority, relationships, and the timing of first ability use follow the finalized prose (e.g. if an ability was first used in chapter 1, the outline must not move it to chapter 5);\n`
+          + `3. Later segments grow out of these facts and stay on the established timeline.`)
+      }
+    } catch { /* Optional derived index may be unavailable; the outline then runs without it. */ }
+
     callbacks.log(text(`正在生成第 ${from} 章起的粗纲…`, `Generating the arc segment starting at chapter ${from}…`))
 
     // 前情上下文：全量索引 + 锚点摘要 + 最近段——每一段都看得见前面所有发生的事。
@@ -195,6 +231,7 @@ export class GenerateArcOutlineCommand extends BaseWorkflowCommand<string> {
       promptLanguageText(writingLanguage,
         `【核心大纲（全书方向，必须遵守）】` + nl + (this.snapshot.novelConfig.coreOutline || `（未填写）`),
         `[Core outline (book-level direction, must follow)]` + nl + (this.snapshot.novelConfig.coreOutline || `(not provided)`)),
+      finalizedFactsBlock,
       arcIndex ? arcIndex : '',
       priorArcSummary ? promptLanguageText(writingLanguage,
         `【最近 3 段的完整内容（衔接它们写，不要重复其内容）】\n${priorArcSummary}`,

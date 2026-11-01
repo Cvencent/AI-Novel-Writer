@@ -15,6 +15,7 @@ vi.mock('../../../ipc-client', () => ({
       }
       if (channel === 'db:arc-outline-list') return []
       if (channel === 'db:character-roster-read') return { entries: [] }
+      if (channel === 'db:continuity-list-before') return []
       if (channel === 'db:arc-outline-save') return { success: true }
       throw new Error('unexpected channel ' + channel)
     }),
@@ -97,6 +98,63 @@ function dependenciesFor(completeWithLease: GenerationRuntimeEnvironment['comple
 const goodSegment = `## 第1–24章：灯塔异动
 beat: setup
 主角发现失踪者都指向废弃灯塔，支线是海事档案室的制度阻力，世界观里的潮汐规则参与因果。`
+
+describe('GenerateArcOutlineCommand finalized-facts injection (issue #11)', () => {
+  it('injects finalized chapter facts as a hard constraint above the creation instructions', async () => {
+    const mocked = await import('../../../ipc-client')
+    const invoke = mocked.ipc.invokeWithProjectSession as unknown as ReturnType<typeof vi.fn>
+    invoke.mockImplementation(async (_session: unknown, channel: string) => {
+      if (channel === 'db:project-core-get') {
+        return { premise: '# 故事前提\n\n主角追查灯塔失踪案。', worldbuilding: '# 世界观\n\n旧港与海事制度。' }
+      }
+      if (channel === 'db:arc-outline-list') return []
+      if (channel === 'db:character-roster-read') return { entries: [{ name: '周叙', role: 'protagonist' }] }
+      if (channel === 'db:continuity-list-before') {
+        return [{
+          chapterNumber: 1, sourceStatus: 'current',
+          facts: [{ statement: '周叙在开船前核对吃水线刻痕，发现舱内实载比记录多一人。', evidence: '' }],
+        }]
+      }
+      if (channel === 'db:arc-outline-save') return { success: true }
+      throw new Error('unexpected channel ' + channel)
+    })
+    const completeWithLease = vi.fn<GenerationRuntimeEnvironment['completeWithLease']>()
+      .mockResolvedValue({ content: goodSegment, finishReason: 'stop' })
+    const command = new GenerateArcOutlineCommand(snapshot, dependenciesFor(completeWithLease))
+
+    await command.execute({ step: {}, context, callbacks })
+    const firstCall = completeWithLease.mock.calls[0]?.[0] as unknown as { messages: readonly { content: string }[] }
+    const prompt = firstCall.messages.map(message => message.content).join('\n')
+    expect(prompt).toContain('已定稿章节')
+    expect(prompt).toContain('周叙在开船前核对吃水线刻痕')
+    expect(prompt).toContain('不得把它们改排到更晚的章节')
+    expect(prompt.indexOf('已定稿章节')).toBeLessThan(prompt.indexOf('生成下一段'))
+  })
+
+  it('runs without the facts block when no finalized chapters exist', async () => {
+    const mocked = await import('../../../ipc-client')
+    const invoke = mocked.ipc.invokeWithProjectSession as unknown as ReturnType<typeof vi.fn>
+    invoke.mockReset()
+    invoke.mockImplementation(async (_session: unknown, channel: string) => {
+      if (channel === 'db:project-core-get') {
+        return { premise: '# 故事前提\n\n主角追查灯塔失踪案。', worldbuilding: '# 世界观\n\n旧港与海事制度。' }
+      }
+      if (channel === 'db:arc-outline-list') return []
+      if (channel === 'db:character-roster-read') return { entries: [] }
+      if (channel === 'db:continuity-list-before') return []
+      if (channel === 'db:arc-outline-save') return { success: true }
+      throw new Error('unexpected channel ' + channel)
+    })
+    const completeWithLease = vi.fn<GenerationRuntimeEnvironment['completeWithLease']>()
+      .mockResolvedValue({ content: goodSegment, finishReason: 'stop' })
+    const command = new GenerateArcOutlineCommand(snapshot, dependenciesFor(completeWithLease))
+
+    await command.execute({ step: {}, context, callbacks })
+    const firstCall = completeWithLease.mock.calls[0]?.[0] as unknown as { messages: readonly { content: string }[] }
+    const prompt = firstCall.messages.map(message => message.content).join('\n')
+    expect(prompt).not.toContain('已定稿章节')
+  })
+})
 
 describe('GenerateArcOutlineCommand content-contract retry', () => {
   it('retries once with the rejected sample when the first reply has no parseable heading, then succeeds', async () => {
