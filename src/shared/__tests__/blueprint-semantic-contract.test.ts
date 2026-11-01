@@ -302,6 +302,20 @@ describe('blueprint prop handoff ledger (issue #38)', () => {
   })
 })
 
+// issue #19：同一章蓝图一边让叶九收走账本，一边又让周叙溯读那一栏，
+// 正文只好用「待核栏的铁页他早背下来了」圆场——读取实物被偷换成记忆复现。
+describe('blueprint intra-chapter prop coherence (issue #19)', () => {
+  it('the immutable contract forbids taking an object away and reading it in one chapter', () => {
+    const zh = blueprintSemanticGenerationContract('zh-CN')
+    expect(zh).toContain('同一章内不得自相矛盾')
+    expect(zh).toContain('一边又让同一方读取或使用它')
+    expect(zh).toContain('凭记忆复现')
+    const en = blueprintSemanticGenerationContract('en-US')
+    expect(en).toContain('Never contradict yourself inside one chapter')
+    expect(en).toContain('never let remembering substitute for reading the physical object')
+  })
+})
+
 // issue #36：代价要留账——本样本四次「遗忘」代价都在同章 320 字内自愈，蓝图阶段就已
 // 把「怎么找回来」写进了代价字段，起草只是执行。
 describe('blueprint cost ledger (issue #36)', () => {
