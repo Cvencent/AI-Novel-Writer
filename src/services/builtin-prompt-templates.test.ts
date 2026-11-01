@@ -65,6 +65,24 @@ describe('predecessor commitment rules (issue #35)', () => {
   })
 })
 
+// issue #38：关键道具凭空换手（第 15 章被拒交的油纸包，第 16 章从主角怀里掏出来）。
+describe('prop handoff rules (issue #38)', () => {
+  const full = BUILTIN_PROMPTS.find(template => template.key === 'chapter_blueprint')
+  const chunk = BUILTIN_PROMPTS.find(template => template.key === 'chapter_blueprint_chunk')
+
+  it('both blueprint templates require an on-page handoff for key objects', () => {
+    expect(full?.content).toContain('【关键道具必须当面易手】')
+    expect(chunk?.content).toContain('【关键道具必须当面易手】')
+    expect(full?.content).toContain('从怀里摸出')
+  })
+
+  it('the chapter review prompt has a prop-handoff dimension', () => {
+    const review = BUILTIN_PROMPTS.find(template => template.key === 'consistency_check')
+    expect(review?.content).toContain('道具交接')
+    expect(review?.content).toContain('没有交接动作的情况下换了持有者')
+  })
+})
+
 // issue #36：代价写了却被当场抹平（四次「遗忘」都在 320 字内自愈）。
 describe('cost ledger rules (issue #36)', () => {
   const full = BUILTIN_PROMPTS.find(template => template.key === 'chapter_blueprint')

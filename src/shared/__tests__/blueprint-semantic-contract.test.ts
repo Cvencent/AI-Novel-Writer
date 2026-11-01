@@ -288,6 +288,20 @@ describe('blueprint predecessor-commitment carry-over (issue #35)', () => {
   })
 })
 
+// issue #38：关键道具没有交接账——第 15 章温珩当面拒绝交出油纸包，第 16 章直接从周叙怀里摸出来，
+// 而且第 16 章蓝图自己写着「温珩推过来的」（正文里并没有这个动作）。
+describe('blueprint prop handoff ledger (issue #38)', () => {
+  it('the immutable contract requires an on-page handoff', () => {
+    const zh = blueprintSemanticGenerationContract('zh-CN')
+    expect(zh).toContain('关键道具必须当面易手')
+    expect(zh).toContain('从怀里摸出')
+    expect(zh).toContain('不得因为蓝图写了「某人推过来」就把物件当成本方已有')
+    const en = blueprintSemanticGenerationContract('en-US')
+    expect(en).toContain('Key objects must change hands on the page')
+    expect(en).toContain('the reader only believes what happened on the page')
+  })
+})
+
 // issue #36：代价要留账——本样本四次「遗忘」代价都在同章 320 字内自愈，蓝图阶段就已
 // 把「怎么找回来」写进了代价字段，起草只是执行。
 describe('blueprint cost ledger (issue #36)', () => {
