@@ -1,6 +1,6 @@
 import type { ProjectSessionContext } from '../shared/ipc-channels'
 import type { BlueprintForPreflight, ConsistencyExemption, ConsistencyFinding } from '../shared/consistency-preflight'
-import { findBlueprintContinuityRisks, findExpandedContinuityRisks, findUnregisteredBlueprintCast } from '../shared/consistency-preflight'
+import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuityRisks, findUnregisteredBlueprintCast } from '../shared/consistency-preflight'
 import { ipc } from './ipc-client'
 
 export interface ConsistencyPreflightResult {
@@ -59,8 +59,18 @@ export async function readConsistencyPreflight(
     blueprintCharacters: blueprint.characters,
     castNames,
   }))
+  // 在册角色缺外貌锚点（issue #40）：与 #42 同一层——都是「角色卡不完整会让下游静默失明」。
+  // 这里只在**还没写外貌**的角色上提示一次，作者补上后自然消失。
+  const appearanceGaps = findAppearanceGaps({
+    chapterNumber: currentChapter,
+    cast: (Array.isArray(roster?.entries) ? roster.entries : []).map(entry => ({
+      name: typeof entry.name === 'string' ? entry.name : '',
+      role: typeof entry.role === 'string' ? entry.role : undefined,
+      appearance: typeof entry.appearance === 'string' ? entry.appearance : '',
+    })),
+  })
   return {
-    findings: [...terminalFindings, ...expandedFindings, ...unregisteredFindings]
+    findings: [...terminalFindings, ...expandedFindings, ...unregisteredFindings, ...appearanceGaps]
       .filter(item => !activeExemptions.has(item.stableFactKey)),
     exemptions,
     castNames,

@@ -341,6 +341,45 @@ export function findSynopsisCastMismatches(input: SynopsisChapterCastInput): Con
   return findings.slice(0, 4)
 }
 /**
+ * 在册角色缺外貌锚点（issue #40）。
+ *
+ * 真实事故：AI 新建的「邵德昌」在第 8、9 章各有戏（茶棚谈判、带人堵舱口），
+ * 但 `create_character` 只要求名字（其余字段后补），创建后没有任何一步回填，
+ * 角色卡 `appearance` 一直为空。后果：
+ * - 起草时每个角色的 `appearance` 都会进提示（`generate-draft` 的 characterProfiles），
+ *   空值等于把这个角色交给模型每次即兴——同一配角两章之间长相漂移；
+ * - 一致性检查只对有锚点的角色做跨章冲突判断，没锚点的角色永远漏过。
+ *
+ * 这里只做**可见性**（作者在名单/写前提示里看到“该补了”），不自动生成外貌：
+ * 凭空捏造的外貌会进入后续所有提示词，且与作者心里的形象冲突——那比留空更难发现。
+ */
+export interface AppearanceGapInput {
+  cast: ReadonlyArray<{ name: string; role?: string; appearance?: string }>
+  /** 本章要写的章号（findings 的 sourceChapter 用）。 */
+  chapterNumber: number
+}
+
+export function findAppearanceGaps(input: AppearanceGapInput): ConsistencyFinding[] {
+  return input.cast
+    .filter(entry => entry.name.trim() && !String(entry.appearance ?? '').trim())
+    .map(entry => ({
+      stableFactKey: `character:appearance-gap:${entry.name.trim()}`,
+      severity: 'warning' as const,
+      sourceChapter: input.chapterNumber,
+      evidence: `角色「${entry.name.trim()}」的角色卡没有外貌字段`,
+      issue: {
+        zhCN: `角色卡「${entry.name.trim()}」没有外貌：写正文时没有可依据的固定锚点，每章的长相只能即兴，跨章漂移与一致性检查盲区都由此而来。`,
+        enUS: `“${entry.name.trim()}” has no appearance on their card, so there is no fixed anchor when drafting; their looks are improvised per chapter, and consistency checks cannot cover them.`,
+      },
+      suggestion: {
+        zhCN: `在「角色名单」里给「${entry.name.trim()}」补一段外貌（一两句即可：身形、惯常衣着、显眼标志），之后各章沿用；他已在正文出场时，可照已写过的描写回填，不要另起一套外形。`,
+        enUS: `Add an appearance line for “${entry.name.trim()}” on the character roster (one or two sentences: build, usual clothing, a distinctive mark) and reuse it; if they already appeared, backfill from what the prose described instead of inventing a new look.`,
+      },
+    }))
+    .slice(0, 6)
+}
+
+/**
  * 蓝图角色名单里**不在角色卡名册**的具名角色（issue #42）。
  *
  * 真实事故：第 11 章蓝图与正文一致地引入「任九」（4 次出场、3 句台词，承担本章关键对话），

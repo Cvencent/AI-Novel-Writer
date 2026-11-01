@@ -51,8 +51,8 @@ async function commitRoster(
 
 export const createCharacterTool = buildAgentTool({
   name: 'create_character',
-  description: '在角色名单里新增一个角色。当剧情需要新人物出场时调用。只需给出名字，其余字段可以后补。',
-  descriptionEn: 'Add a new character to the roster. Call this when the plot needs a new character to appear. A name is enough; other fields can be filled later.',
+  description: '在角色名单里新增一个角色。当剧情需要新人物出场时调用。一次性路人只需给出名字；主角／反派／配角请同时给出 appearance（一两句：身形、惯常衣着、显眼标志），否则他每一章的长相只能即兴、跨章容易漂移。',
+  descriptionEn: 'Add a new character to the roster. Call this when the plot needs a new character to appear. A walk-on needs only a name; for protagonist/antagonist/supporting also pass appearance (one or two sentences: build, usual clothing, a distinctive mark), otherwise their looks are improvised per chapter and drift across chapters.',
   source: 'builtin',
   requiresConfirmation: false,
   // 写入工具：必须显式 false，否则 buildAgentTool 会按 requiresConfirmation 误标为只读。
@@ -95,7 +95,18 @@ export const createCharacterTool = buildAgentTool({
     const withId = assignCharacterIdForNewCard(card, () => randomUUID())
     await commitRoster(project.path, projectSession, snapshot, `agent-create-character:${name}:${Date.now()}`, [...cards, withId])
     assertAgentProjectCurrent(context)
-    return { success: true, content: text(`已新增角色「${name}」。`, `Character "${name}" was added.`) }
+    // 承重角色没给外貌时把「待补」说出来（issue #40）：角色卡的 appearance 会进起草提示，
+    // 留空等于把这个角色的长相交给模型每章即兴。路人（minor）不提示，避免刷噪声。
+    const needsAppearance = card.role !== 'minor' && !card.appearance
+    return {
+      success: true,
+      content: needsAppearance
+        ? text(
+            `已新增角色「${name}」。他还没有外貌：请补一句（身形、惯常衣着、显眼标志）再让他出场，否则各章的长相会漂。`,
+            `Character "${name}" was added. They have no appearance yet: add one line (build, usual clothing, a distinctive mark) before they appear, or their looks will drift between chapters.`,
+          )
+        : text(`已新增角色「${name}」。`, `Character "${name}" was added.`),
+    }
   },
 })
 

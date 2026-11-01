@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  findAppearanceGaps,
   findBlueprintContinuityRisks,
   findExpandedContinuityRisks,
   findSynopsisCastMismatches,
@@ -270,5 +271,46 @@ describe('findUnregisteredBlueprintCast (issue #42)', () => {
       castNames,
     })
     expect(findings).toHaveLength(4)
+  })
+})
+
+// issue #40：AI 新建的邵德昌在第 8、9 章各有戏，角色卡 appearance 一直为空——
+// 起草时 appearance 会进提示，留空等于把这个角色的长相交给模型每章即兴。
+describe('findAppearanceGaps (issue #40)', () => {
+  const cast = [
+    { name: '周叙', role: 'protagonist', appearance: '三十上下，靛蓝短褂。' },
+    { name: '邵德昌', role: 'supporting', appearance: '' },
+    { name: '陆敬堂', role: 'antagonist', appearance: '   ' },
+    { name: '陈阿水', role: 'minor', appearance: '瘦小，袖口磨白。' },
+    { name: '  ', role: 'minor', appearance: '' },
+  ]
+
+  it('只有缺外貌的在册角色被报出，空名与已填的不报', () => {
+    const findings = findAppearanceGaps({ cast, chapterNumber: 12 })
+    expect(findings.map(finding => finding.evidence)).toEqual([
+      '角色「邵德昌」的角色卡没有外貌字段',
+      '角色「陆敬堂」的角色卡没有外貌字段',
+    ])
+    expect(findings.every(finding => finding.severity === 'warning' && finding.sourceChapter === 12)).toBe(true)
+    // 补上外貌后同一个角色不再出现（提示自愈）
+    expect(findAppearanceGaps({ cast: [{ name: '邵德昌', role: 'supporting', appearance: '花白须，玄色长衫。' }], chapterNumber: 12 })).toEqual([])
+  })
+
+  it('stableFactKey 按角色名唯一，便于逐条豁免', () => {
+    const findings = findAppearanceGaps({ cast, chapterNumber: 12 })
+    expect(findings.map(finding => finding.stableFactKey)).toEqual([
+      'character:appearance-gap:邵德昌',
+      'character:appearance-gap:陆敬堂',
+    ])
+  })
+
+  it('建议里给的是「照已写过的描写回填」，不是让人另编一套外形', () => {
+    const [finding] = findAppearanceGaps({ cast: [{ name: '邵德昌', role: 'supporting', appearance: '' }], chapterNumber: 12 })
+    expect(finding!.suggestion.zhCN).toContain('不要另起一套外形')
+  })
+
+  it('一次性上限 6 条，不刷屏', () => {
+    const many = Array.from({ length: 9 }, (_, index) => ({ name: `路人${index}`, role: 'minor', appearance: '' }))
+    expect(findAppearanceGaps({ cast: many, chapterNumber: 1 })).toHaveLength(6)
   })
 })

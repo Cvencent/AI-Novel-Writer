@@ -198,7 +198,11 @@ export default function CharacterProfile({ projectKey }: { projectKey: string })
                 )}
               </Field>
             </div>
-            {textArea('appearance', text('外貌', 'Appearance'), 3)}
+            {/* issue #40：外貌为空时给一句说明——它会进起草提示，留空等于让模型每章即兴。 */}
+            {textArea('appearance', text('外貌', 'Appearance'), 3,
+              card && !String(card.appearance ?? '').trim()
+                ? text('还没有外貌：写正文时没有可依据的固定锚点，建议补一两句（身形、惯常衣着、显眼标志）', 'No appearance yet: drafting has no fixed anchor. Add one or two sentences (build, usual clothing, a distinctive mark).')
+                : text('一两句即可，各章沿用', 'One or two sentences; reuse them in every chapter'))}
             {textArea('personality', text('性格', 'Personality'), 3)}
             {textArea('background', text('背景', 'Background'), 4)}
             {textArea('motivation', text('动机', 'Motivation'), 3)}
