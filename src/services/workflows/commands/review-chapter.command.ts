@@ -168,6 +168,9 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
     const recovery = await this.readRecovery(params)
     const artifact = recovery.latestArtifact
     const handle = params.context.mainGenerationRunHandle
+    // issue #26 根因是输出上限（8192）必然让报告截断；上限已按实测提到 24k。
+    // 这里仍要求说完才提交：截断产物即便「看着像 JSON」，M03 迁移验证器也不接受，
+    // 放宽这条等于改迁移不变量，不做。
     if (!artifact || !handle || recovery.latestArtifactFinishReason !== 'stop') throw new Error('GENERATION_REVIEW_ARTIFACT_REQUIRED')
     if (!prepared.context.recheck) parseReviewGenerationResult(this.stripThinkingTags(artifact.text))
     return ipc.invokeWithProjectSession(requireWorkflowProjectSession(params.context), 'review-revision:commit-review', {
