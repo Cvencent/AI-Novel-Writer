@@ -1,5 +1,5 @@
 import { chapterTimeContinuity } from '../../../shared/chapter-time-continuity'
-import { closingShotOf } from '../../../shared/blueprint-semantic-contract'
+import { closingShotOf, stagingOf } from '../../../shared/blueprint-semantic-contract'
 import { normalizeAgeField } from '../../../shared/character-age'
 import { appErrorMessage } from '../../../i18n/app-errors'
 import { sanitizeDraftText, composeDraftVisibleContinuation, DRAFT_CONDENSE_PURPOSE, DRAFT_VISIBLE_TEXT_VERSION, isDraftVisibleTextVersion, type DraftVisibleTextVersion } from '../../../shared/draft-visible-text'
@@ -651,16 +651,20 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           `Chapter ${b.chapterNumber}: ${b.title} — ${b.keyEvents}`,
         )).join('\n')
       }
+      // 收束方式（#28）与场景装置（#32）一起给：两者都是「同一套写法反复用」的形态，
+      // 起草时看不见就会逐章复用。
       const recentArr = allBlueprints
         .filter(b => b.chapterNumber < this.chapterInfo.chapterNumber)
         .slice(-3)
-        .map(b => ({ chapterNumber: b.chapterNumber, shot: closingShotOf(b.keyEvents) }))
-        .filter(item => item.shot)
+        .map(b => ({ chapterNumber: b.chapterNumber, shot: closingShotOf(b.keyEvents), staging: stagingOf(b.keyEvents) }))
+        .filter(item => item.shot || item.staging)
       if (recentArr.length > 0) {
+        const lines = recentArr.map(item => `第${item.chapterNumber}章：收束 ${item.shot || '（未标注）'}；装置 ${item.staging || '（未标注）'}`)
+        const enLines = recentArr.map(item => `Chapter ${item.chapterNumber}: closing shot ${item.shot || '(unlabelled)'}; staging ${item.staging || '(unlabelled)'}`)
         recentClosingShots = promptLanguageText(
           writingLanguage,
-          `【最近几章的收束方式（本章结尾不要再用同一种）】\n${recentArr.map(item => `第${item.chapterNumber}章：${item.shot}`).join('\n')}`,
-          `[Closing shots of the recent chapters (do not reuse the same one for this chapter's ending)]\n${recentArr.map(item => `Chapter ${item.chapterNumber}: ${item.shot}`).join('\n')}`,
+          `【最近几章的收束方式与场景装置（本章都不要重复）】\n${lines.join('\n')}`,
+          `[Closing shots and staging of the recent chapters (repeat neither in this chapter)]\n${enLines.join('\n')}`,
         )
       }
     } catch { /* 忽略 */ }

@@ -25,6 +25,7 @@ import {
 import {
   blueprintSemanticGenerationContract,
   closingShotOf,
+  stagingOf,
   validateBlueprintSemanticItem,
 } from '../../../shared/blueprint-semantic-contract'
 import { requireWorkflowProjectSession, workflowUiText, workflowWritingLanguage } from '../workflow-project-session'
@@ -180,6 +181,8 @@ function buildCompactBlueprintTask(input: {
       suspenseHook: chapter.suspenseHook,
       // 最近落幅同看：收束方式跨章同构的根因同样是不可见（issue #28）。
       closingShot: closingShotOf(chapter.keyEvents) || undefined,
+      // 场景装置同看：同一套「地点＋起手动作」反复搭的根因也是不可见（issue #32）。
+      staging: stagingOf(chapter.keyEvents) || undefined,
     })),
     globalGuidance: input.globalGuidance,
     pacingGuidance: input.pacingGuidance,

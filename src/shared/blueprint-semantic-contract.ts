@@ -52,6 +52,8 @@ relationships is required and may be []; every item must contain non-empty from,
 costsAndTurns is required: state the concrete cost or irreversible consequence paid in this chapter (bounded, traceable). When nothing is paid, say so in one short clause. The cost must rotate: never reuse the same cost type or the same beat template as the adjacent chapters (the previous chapters' costs are in recentBlueprints); when the golden-finger's price was paid the same way last chapter, pay a different kind of price this chapter.
 foreshadowing is required: state what this chapter plants or pays off. Write none when the chapter carries none.
 Closing shot must rotate (issue #28): end keyEvents with a "【收束：类型】" label naming this chapter's closing shot, from only these types: character-action close, dialogue close, object close, time/place switch, direct question close, interior monologue. Adjacent chapters must not repeat the same closing shot, and must never end on the same character holding the same pose (standing in the doorway, saying nothing) chapter after chapter — a repeated close makes chapters indistinguishable even when every hook differs. References list the recent chapters' closing shots; read them before choosing.
+Staging must rotate (issue #32): also end keyEvents with a "【装置：地点＋起手动作】" label naming how this chapter's core scene is set up (e.g. "舱底＋拧水隔"). The same place-plus-opening-action pair must not repeat in adjacent chapters — especially for a recurring ability scene (the golden-finger read, an examination, an audit), change the setting and the opening move; never run the same "back aboard → down to the hold → turn the water lock → dip the stub" sequence chapter after chapter.
+Character reactions must vary (issue #33): do not express the same character's reaction to questioning, setback, or threat with the same negated micro-phrase (did not move / did not answer / said nothing) chapter after chapter. When they stay silent, show it differently — a bodily action, a glance, breathing, the work in their hands, or cut away to another moment — and do not make "asked a question → the other party answers nothing" your every chapter's closing beat.
 Preserve complete narrative content.
 Do not omit required fields, combine chapters, rename fields, explain, or output Markdown or code fences.`
   }
@@ -66,6 +68,8 @@ relationships 必须是数组，无关系时传 []；每项必须含非空 from�
 costsAndTurns 必填：写明本章当场付出的具体代价或不可逆后果（有限、可追溯）。确实没有付出时，用一句短话说明。代价必须轮换：不得与相邻章（上一章的代价见 recentBlueprints 的 costs 字段）使用同一种代价类型或同一个桥段模板；上一章刚付过同类代价时，本章必须换一种付法。
 foreshadowing 必填：写明本章埋下或回收的伏笔；本章没有时写 none。
 收束方式必须轮换（issue #28）：在 keyEvents 末尾用「【收束：类型】」标注本章的落幅方式，类型只能是：人物动作收束、对话收束、物件落幅、时空切换、悬念直陈、内心独白。相邻若干章不得连续使用同一种落幅，尤其不得连续让同一个角色以同一个姿态（站在舱门/梯口、一言不发）收尾——即使每章钩子各不相同，落幅同构仍会让读者分辨不出读到第几章。references 里给了最近几章的落幅沿用情况，先看清再选本章的收束方式。
+场景装置必须轮换（issue #32）：在 keyEvents 末尾另用「【装置：地点＋起手动作】」标注本章核心戏的搭建方式（如「舱底＋拧水隔」「码头售票口＋翻票根」）。同一套「地点＋起手动作」不得与相邻章重复——尤其是能力使用场景（金手指、验尸、查账这类每章都要来一次的动作），必须换场合、换起手，不得连续多章都是「回船上→进舱底→拧水隔→蘸水」。references 里给了最近几章的装置，先看清再选。
+人物反应必须换写法（issue #33）：同一人物面对追问、受挫、被威胁时的反应，不得连续多章都用同一批否定式短句（没动／没答／没应／没说话／一言不发）表达。该沉默时换一种呈现——身体动作、视线、呼吸、手上的活、换一个时间点切走——也不要把「提问→对方不回答」当成每章的固定收场动作。
 from/to 必须逐字复制同一项 characters 中的完整字符串；任一端点不在 characters 时，删除该关系或使用 []，不得发明别名、简称或补写角色。
 叙述内容须保持完整。
 不得省略必填字段、合并章节、输出近义字段、解释、Markdown 或代码围栏。`
@@ -341,6 +345,12 @@ export function decodeBlueprintAuthorPayload(payload: unknown, expectedChapterNu
 
 export function parseBlueprintAuthorResponseText(text: string, expectedChapterNumbers: readonly number[]): BlueprintAuthorItem[] {
   return decodeBlueprintAuthorPayload(parseBlueprintJsonText(text), expectedChapterNumbers)
+}
+
+/** 场景装置标注（「…【装置：舱底＋拧水隔】」）：蓝图合同要求标出核心戏的搭建方式（issue #32）。 */
+export function stagingOf(keyEvents: string): string {
+  const matches = [...String(keyEvents ?? '').matchAll(/【\s*装置\s*[:：]\s*([^】]{1,40})】/gu)]
+  return matches.at(-1)?.[1]?.trim() ?? ''
 }
 
 /** 收束方式类型：蓝图合同要求 keyEvents 末尾标注本章落幅（issue #28）。 */

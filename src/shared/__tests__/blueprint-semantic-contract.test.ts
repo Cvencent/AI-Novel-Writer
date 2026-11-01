@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BLUEPRINT_CLOSING_SHOT_TYPES,
   closingShotOf,
+  stagingOf,
   decodeBlueprintSemanticPayload,
   blueprintSemanticGenerationContract,
   parseBlueprintSemanticResponseText,
@@ -250,5 +251,24 @@ describe('blueprint closing-shot rotation (issue #28)', () => {
       expect(closingShotOf(`正文。【收束：${type}】`)).toBe(type)
     }
     expect(BLUEPRINT_CLOSING_SHOT_TYPES).toHaveLength(6)
+  })
+})
+
+// issue #32 / #33：场景装置与人物反应句式同样要轮换（同一套写法在相邻章反复）。
+describe('blueprint staging and reaction rotation (issue #32 / #33)', () => {
+  it('the immutable contract requires rotating staging and reaction wording', () => {
+    expect(blueprintSemanticGenerationContract('zh-CN')).toContain('场景装置必须轮换')
+    expect(blueprintSemanticGenerationContract('zh-CN')).toContain('【装置：')
+    expect(blueprintSemanticGenerationContract('zh-CN')).toContain('人物反应必须换写法')
+    expect(blueprintSemanticGenerationContract('zh-CN')).toContain('没动／没答／没应')
+    expect(blueprintSemanticGenerationContract('en-US')).toContain('Staging must rotate')
+    expect(blueprintSemanticGenerationContract('en-US')).toContain('Character reactions must vary')
+  })
+
+  it('stagingOf reads the trailing label; missing labels return empty', () => {
+    expect(stagingOf('周叙进舱底拧水隔。【装置：舱底＋拧水隔】')).toBe('舱底＋拧水隔')
+    expect(stagingOf('【装置:码头售票口＋翻票根】他核对名册。')).toBe('码头售票口＋翻票根')
+    expect(stagingOf('没有标注。')).toBe('')
+    expect(stagingOf('')).toBe('')
   })
 })
