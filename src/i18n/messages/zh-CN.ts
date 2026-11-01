@@ -10,5 +10,6 @@ export const zhCN = {
   'error.projectStoragePathUnsupported': '项目路径过深，部分本地存储不可用。请将整个项目文件夹移动到更靠近磁盘根目录的位置（例如 D:\\Novels），然后重试。',
   'error.projectLegacyImportRequired': '这是旧版项目，请通过“导入旧项目”创建新版副本后继续。旧项目会保留。',
   'error.projectRootRequired': `请选择项目根目录，也就是包含 ${CANONICAL_PROJECT_DIRECTORY}/project.json 的小说文件夹；不要选择它的上级文件夹。`,
+  'error.connectionTestTimeout': '{seconds} 秒内没有收到响应。请检查网络或代理后重试。',
   'error.unknown': '发生错误：{message}',
 } satisfies Record<MessageKey, string>

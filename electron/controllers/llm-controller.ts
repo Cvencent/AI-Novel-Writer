@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow } from 'electron'
+import { ipcMain, BrowserWindow, app } from 'electron'
 import {
   readJsonFile,
   tryReadJsonFile,
@@ -21,6 +21,8 @@ import {
   ModelExecutionLeaseRegistry,
 } from '../services/model-execution-lease'
 import { ModelDiscoveryService } from '../services/model-discovery-service'
+import { isLocalModelEndpoint } from '../../src/shared/provider-presets'
+import { mainT } from '../i18n'
 
 interface ActiveStream {
   controller: AbortController
@@ -29,6 +31,14 @@ interface ActiveStream {
 
 const activeStreams = new Map<string, ActiveStream>()
 const CONNECTION_TEST_MAX_TOKENS = 1024
+const LOCAL_CONNECTION_TEST_TIMEOUT_MS = 120_000
+const CLOUD_CONNECTION_TEST_TIMEOUT_MS = 30_000
+
+/** 本机模型冷启动要先把权重载入显存，常常超过 30 秒；云端卡住多是网络或代理问题，早点报出来。 */
+function connectionTestTimeoutMs(model: ModelProfile): number {
+  return isLocalModelEndpoint(model) ? LOCAL_CONNECTION_TEST_TIMEOUT_MS : CLOUD_CONNECTION_TEST_TIMEOUT_MS
+}
+
 const CLOSED_EXECUTION_LEASE_TOMBSTONE_TTL_MS = 5 * 60_000
 
 function loadModelConfigs(): ModelProfile[] {
@@ -407,33 +417,47 @@ export function registerLLMController() {
     model: ModelProfile,
     creativeStrategy: LLMRequest['creativeStrategy'] = 'auto',
   ) => {
+    // 网络卡住时 undici 默认要等 300 秒才报 fetch failed；连接测试自己的截止时间会真正取消请求。
+    const timeoutMs = connectionTestTimeoutMs(model)
+    const deadline = new AbortController()
+    const timer = setTimeout(() => deadline.abort(), timeoutMs)
+    const timedOut = () => ({
+      success: false as const,
+      error: mainT(app.getLocale(), 'error.connectionTestTimeout', { seconds: timeoutMs / 1000 }),
+    })
     try {
       applyProxyConfig()
-      
+
       const messages = [{ role: 'user', content: 'Say "hello" and nothing else.' }]
       const provider = LLMFactory.getProvider(model)
-      
+
       let result = { success: true, error: undefined as undefined | string }
       if (model.purposes?.includes('embedding')) {
         const { generateEmbeddings } = await import('../embedding')
-        await generateEmbeddings(['hello'], model.protocol, model)
+        await generateEmbeddings(['hello'], model.protocol, model, undefined, undefined, deadline.signal)
       } else {
         const res = await provider.generate(
           model,
           messages,
-          resolveGenerationParameters(model, {
-            // 推理模型可能先消耗 reasoning tokens；预算过小会把可用连接误判为截断失败。
-            maxTokens: CONNECTION_TEST_MAX_TOKENS,
-            reasoningStage: 'general',
-            creativeStrategy,
-          }),
+          {
+            ...resolveGenerationParameters(model, {
+              // 推理模型可能先消耗 reasoning tokens；预算过小会把可用连接误判为截断失败。
+              maxTokens: CONNECTION_TEST_MAX_TOKENS,
+              reasoningStage: 'general',
+              creativeStrategy,
+            }),
+            signal: deadline.signal,
+          },
         )
+        if (deadline.signal.aborted) return timedOut()
         result = { success: res.success, error: res.error }
       }
-      
+
       return { success: result.success, error: result.error }
     } catch (error) {
-      return { success: false, error: String(error) }
+      return deadline.signal.aborted ? timedOut() : { success: false, error: String(error) }
+    } finally {
+      clearTimeout(timer)
     }
   })
 

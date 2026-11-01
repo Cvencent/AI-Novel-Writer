@@ -15,12 +15,19 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('electron', () => ({
+  app: { getLocale: () => 'zh-CN' },
   BrowserWindow: { fromWebContents: vi.fn(() => ({ webContents: { send: mocks.send } })) },
   ipcMain: {
     handle: vi.fn((channel: string, handler: IpcHandler) => {
       mocks.handlers.set(channel, handler)
     }),
   },
+}))
+
+vi.mock('../../i18n', () => ({
+  mainT: (locale: string, key: string, params: { seconds?: number } = {}) =>
+    `${locale}:${key}:${String(params.seconds)}`,
+  mainText: (locale: string, zhCNText: string) => `${locale}:${zhCNText}`,
 }))
 
 vi.mock('../../utils/config-utils', () => ({
@@ -119,6 +126,71 @@ beforeEach(() => {
 })
 
 describe('llm connection test', () => {
+  it('gives the probe a deadline so a stuck network cannot hold it for the undici default', async () => {
+    let seen: AbortSignal | undefined
+    mocks.generate.mockImplementation(async (
+      _model: ModelProfile,
+      _messages: unknown,
+      options: { signal?: AbortSignal },
+    ) => {
+      seen = options.signal
+      return { success: true, content: 'hello', finishReason: 'stop' }
+    })
+
+    await expect(connectionHandler()({}, deepSeekModel)).resolves.toEqual({ success: true, error: undefined })
+    expect(seen).toBeInstanceOf(AbortSignal)
+    expect(seen?.aborted).toBe(false)
+  })
+
+  it('reports a timeout in the interface language when the deadline aborts the probe', async () => {
+    vi.useFakeTimers()
+    try {
+      mocks.generate.mockImplementation((_model: ModelProfile, _messages: unknown, options: { signal?: AbortSignal }) =>
+        new Promise((_, reject) => {
+          options.signal?.addEventListener('abort', () => reject(new Error('This operation was aborted')))
+        }))
+
+      const pending = connectionHandler()({}, deepSeekModel) as Promise<{ success: boolean, error?: string }>
+      await vi.advanceTimersByTimeAsync(30_000)
+
+      await expect(pending).resolves.toEqual({ success: false, error: 'zh-CN:error.connectionTestTimeout:30' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('gives a local endpoint the longer cold-start deadline', async () => {
+    vi.useFakeTimers()
+    try {
+      const localModel: ModelProfile = {
+        ...deepSeekModel,
+        id: 'ollama-qwen',
+        provider: 'ollama',
+        baseUrl: 'http://127.0.0.1:11434/v1',
+        apiKey: '',
+      }
+      mocks.models = [localModel]
+      mocks.generate.mockImplementation((_model: ModelProfile, _messages: unknown, options: { signal?: AbortSignal }) =>
+        new Promise((_, reject) => {
+          options.signal?.addEventListener('abort', () => reject(new Error('This operation was aborted')))
+        }))
+
+      const pending = connectionHandler()({}, localModel) as Promise<{ success: boolean, error?: string }>
+      // 云端 30 秒的截止时间不该落在本机模型上。
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(mocks.generate).toHaveBeenCalledTimes(1)
+      let settled = false
+      void pending.finally(() => { settled = true })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(settled).toBe(false)
+
+      await vi.advanceTimersByTimeAsync(90_000)
+      await expect(pending).resolves.toEqual({ success: false, error: 'zh-CN:error.connectionTestTimeout:120' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('uses the configured profile temperature for a generic connection probe', async () => {
     const genericModel: ModelProfile = {
       ...deepSeekModel,

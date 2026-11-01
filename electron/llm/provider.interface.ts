@@ -25,6 +25,8 @@ export interface LLMGenerateOptions {
    * process default.
    */
   conversationId?: string
+  /** Optional caller deadline; a connection test aborts a request stuck on the network. */
+  signal?: AbortSignal
 }
 
 export interface LLMStreamOptions extends LLMGenerateOptions {

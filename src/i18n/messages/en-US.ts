@@ -8,6 +8,7 @@ export const enUS = {
   'error.projectStoragePathUnsupported': 'The project path is too deep for some local storage. Move the entire project folder closer to the drive root (for example, D:\\Novels), then try again.',
   'error.projectLegacyImportRequired': 'This is a legacy project. Use Import legacy project to create a new copy. The original is kept.',
   'error.projectRootRequired': `Select the project root folder that contains ${CANONICAL_PROJECT_DIRECTORY}/project.json, not its parent folder.`,
+  'error.connectionTestTimeout': 'No response within {seconds} seconds. Check your network or proxy, then try again.',
   'error.unknown': 'Something went wrong: {message}',
 } as const
 

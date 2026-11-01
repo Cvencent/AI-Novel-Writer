@@ -244,6 +244,7 @@ function buildOpenAIEmbeddingUrl(baseUrl: string): string {
 export async function embedOpenAI(
   texts: string[],
   model: { baseUrl: string; apiKey: string; modelName?: string },
+  signal?: AbortSignal,
 ): Promise<number[][]> {
   const ollamaCompatibleBaseUrl = ollamaOpenAIEmbeddingBaseUrl(model.baseUrl)
   if (ollamaCompatibleBaseUrl) {
@@ -265,6 +266,7 @@ export async function embedOpenAI(
       model: embeddingModel,
       input: texts,
     }),
+    signal,
   })
 
   if (!res.ok) {
@@ -279,6 +281,7 @@ export async function embedOpenAI(
 export async function embedGemini(
   texts: string[],
   model: { baseUrl: string; apiKey: string; modelName?: string },
+  signal?: AbortSignal,
 ): Promise<number[][]> {
   const embeddingModel = model.modelName || 'text-embedding-004'
   const baseUrl = model.baseUrl.replace(/\/$/, '')
@@ -298,6 +301,7 @@ export async function embedGemini(
       'x-goog-api-key': model.apiKey,
     },
     body: JSON.stringify({ requests }),
+    signal,
   })
 
   if (!res.ok) {
@@ -315,6 +319,7 @@ export async function generateEmbeddings(
   model: { baseUrl: string; apiKey: string; modelName?: string },
   configuredBatchSize?: number,
   assertActive?: () => void,
+  signal?: AbortSignal,
 ): Promise<number[][]> {
   // 空文本处理
   if (texts.length === 0) return []
@@ -332,8 +337,8 @@ export async function generateEmbeddings(
     assertActive?.()
     const batch = texts.slice(i, i + batchSize)
     const embeddings = protocol === 'gemini'
-      ? await embedGemini(batch, model)
-      : await embedOpenAI(batch, model)
+      ? await embedGemini(batch, model, signal)
+      : await embedOpenAI(batch, model, signal)
     assertActive?.()
     results.push(...embeddings)
   }
