@@ -106,7 +106,7 @@ interface JsonLexicalEvidence {
   containers: string
 }
 
-function lexicalEvidence(source: string): JsonLexicalEvidence | undefined {
+export function lexicalEvidence(source: string): JsonLexicalEvidence | undefined {
   const scalars: string[] = []
   let containers = ''
   let index = 0
@@ -125,19 +125,34 @@ function lexicalEvidence(source: string): JsonLexicalEvidence | undefined {
       const start = index
       index += 1
       let escaped = false
+      let sawBareLineBreak = false
       while (index < source.length) {
         const current = source[index]
         if (!escaped && current === '"') {
           index += 1
           const raw = source.slice(start, index)
+          // 模型偶发在 JSON 字符串里写裸 CRLF/LF/TAB（语法坏、语法修复可修的典型形态）。
+          // 保真比较时把它们等价化为对应转义序列——这不是改写事实（issue #23）。
+          const comparable = sawBareLineBreak
+            ? raw.replace(/\r\n/gu, '\\r\\n')
+              .replace(/(?<!\r)\n/gu, '\\n')
+              .replace(/\t/gu, '\\t')
+            : raw
           try {
-            scalars.push(`s:${JSON.stringify(JSON.parse(raw))}`)
+            scalars.push(`s:${JSON.stringify(JSON.parse(comparable))}`)
           } catch {
             return undefined
           }
           break
         }
-        if (!escaped && current.charCodeAt(0) < 0x20) return undefined
+        if (!escaped && current.charCodeAt(0) < 0x20) {
+          if (current === '\r' || current === '\n' || current === '\t') {
+            sawBareLineBreak = true
+            index += 1
+            continue
+          }
+          return undefined
+        }
         if (escaped) escaped = false
         else if (current === '\\') escaped = true
         index += 1
