@@ -10,6 +10,8 @@ import { closeAppWithTimeout, withTimeout } from './harness-timeouts.mjs'
 // 审稿等待时长回归（issue #37）：review() 此前写死 60 秒，而实测审稿要 178–191 秒，
 // 于是 user-sim 每轮把「生成慢」判成「界面不出审稿报告」、同一章被反复重写 12 版。
 import { review } from '../redesign/pages/chapter-view.mjs'
+// issue #39：运行侧页成功后不自己收起，下一步会被它挡住。
+import * as runSheet from '../redesign/pages/run-sheet.mjs'
 
 /** 只提供 review() 用到的三个选择器与 waitFor，不拉起真实浏览器。 */
 function fakeReviewPage({ visible = false } = {}) {
@@ -89,5 +91,35 @@ describe('closeAppWithTimeout (issue #31)', () => {
     const result = await closeAppWithTimeout(app, { ms: 120, log: message => logs.push(message) })
     expect(result).toMatchObject({ closed: 'failed', pid: -1 })          // pid 不合法 → 只记日志、不 kill
     expect(logs.join('\n')).toContain('app.close 未在超时内完成')
+  })
+})
+/**
+ * issue #39 的 harness 侧：粗纲续生成成功后运行侧页不会自己收起，下一步
+ * 「确保蓝图」会因为它挡着而直接失败（本轮 3 个步骤全废）。
+ * closeIfOpen 必须是「开着就收、收着就返回 true」的幂等动作。
+ */
+describe('run-sheet.closeIfOpen', () => {
+  const fakeSheetPage = ({ visible, hidden }) => {
+    const clicks = []
+    const sheet = {
+      isVisible: async () => visible(),
+      waitFor: async () => {
+        if (!hidden()) throw new Error('Timeout')
+      },
+      getByRole: () => ({ count: async () => 1, first: () => ({ click: async () => { clicks.push('close'); visible(false) } }) }),
+    }
+    return { page: { getByRole: () => sheet, keyboard: { press: async () => {} } }, clicks }
+  }
+
+  it('侧页已收起时不动作，直接返回 true', async () => {
+    const f = fakeSheetPage({ visible: () => false, hidden: () => true })
+    expect(await runSheet.closeIfOpen(f.page)).toBe(true)
+    expect(f.clicks).toEqual([])
+  })
+
+  it('侧页开着时点「收起运行侧页」并确认它真的收起', async () => {
+    const f = fakeSheetPage({ visible: () => true, hidden: () => false })
+    expect(await runSheet.closeIfOpen(f.page)).toBe(false)   // 点了但假 page 的 hidden 仍为 false
+    expect(f.clicks).toEqual(['close'])
   })
 })

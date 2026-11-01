@@ -429,6 +429,9 @@ async function main() {
         const coveredNow = (list ?? []).reduce((max, item) => Math.max(max, item.toChapter), 0)
         return coveredNow >= wanted ? list : null
       }, { timeoutMs: ARC_TIMEOUT_MS, intervalMs: 5000, label: '粗纲铺满全书', stallMs: 5 * 60_000 })
+      // 粗纲成功后运行侧页不会自己收起（issue #39）：作者会点「收起」，harness 也必须收，
+      // 否则下一步「确保蓝图」的前置检查与按钮点击全被这个侧页挡着。
+      await runSheet.closeIfOpen(page)
       return { segments: arcs.length, coveredTo: arcs.at(-1)?.toChapter }
     })
 

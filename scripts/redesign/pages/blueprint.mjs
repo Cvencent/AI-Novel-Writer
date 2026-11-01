@@ -46,10 +46,12 @@ export async function openGenerate(page) {
 
 /**
  * 生成第 from～to 章蓝图（指定范围，保留已有），返回是否经过「架构还不完整」。
- * 运行开始时运行侧页自动展开，以它为「生成已开始」；侧页先开着就分不出来，所以要求调用前收起。
+ * 运行开始时运行侧页自动展开，以它为「生成已开始」；侧页先开着就分不出来。
+ * 因此调用前先把它收起——这正是作者会做的动作，也让上一步（粗纲续生成）
+ * 留下的侧页不会把本轮后续步骤全挡死（issue #39）。
  */
 export async function generateRange(page, from, to) {
-  if (await runSheet.sheet(page).isVisible()) throw new Error('generateRange 要求运行侧页先收起，否则分不出生成是否已开始')
+  if (await runSheet.sheet(page).isVisible()) await runSheet.closeIfOpen(page)
   await openGenerate(page)
   const dialog = generateDialog(page)
   await dialog.getByLabel('蓝图起始章').fill(String(from))

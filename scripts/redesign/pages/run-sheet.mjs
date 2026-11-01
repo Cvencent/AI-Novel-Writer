@@ -25,6 +25,19 @@ export async function openFromPalette(page) {
   await waitUntilOpen(page)
 }
 
+/**
+ * 收起运行侧页（作者会做的动作）。侧页在运行开始时自动展开，运行结束后不会自己收起，
+ * 所以下一步要它让位时必须显式收——否则后续按钮全被它挡着（issue #39）。
+ * 返回是否真的收起：本来就收着 → true；开着 → 点「收起运行侧页」，不行再 Escape。
+ */
+export async function closeIfOpen(page, timeout = 15_000) {
+  if (!await sheet(page).isVisible().catch(() => false)) return true
+  const closeButton = sheet(page).getByRole('button', { name: /^(收起运行侧页|Close run sheet)$/ })
+  if (await closeButton.count() > 0) await closeButton.first().click({ timeout }).catch(() => {})
+  if (await sheet(page).isVisible().catch(() => false)) await page.keyboard.press('Escape')
+  return sheet(page).waitFor({ state: 'hidden', timeout }).then(() => true).catch(() => false)
+}
+
 /** 没有进行中的运行、上一次运行已完成。侧页在运行开始时自动展开，作者没关它就一直在。 */
 export async function waitForRunDone(page, timeout = 90_000) {
   // 确认门（如「确认采用角色提议」）出现时先点确认，再继续等完成。
