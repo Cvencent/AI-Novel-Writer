@@ -33,10 +33,14 @@ export async function versions(page) {
   return items.map(item => item.split('\n')[0])
 }
 
-/** AI 审稿并等审稿侧页展开（侧页与「按 N 项意见修稿」只在审稿写回后出现）。 */
-export async function review(page) {
+/**
+ * AI 审稿并等审稿侧页展开（侧页与「按 N 项意见修稿」只在审稿写回后出现）。
+ * 等待时长必须可配（issue #37）：实测审稿要 178–191 秒，写死 60 秒会把「生成慢」误判成
+ * 「界面不出审稿报告」——user-sim 因此每轮判失败，同一章被反复重写。
+ */
+export async function review(page, { timeoutMs = 60_000 } = {}) {
   await view(page).getByRole('button', { name: 'AI 审稿', exact: true }).click()
-  await reviewSheet(page).waitFor({ state: 'visible', timeout: 60_000 })
+  if (timeoutMs > 0) await reviewSheet(page).waitFor({ state: 'visible', timeout: timeoutMs })
 }
 
 export const reviseButton = page => view(page).getByRole('button', { name: /^按 \d+ 项意见修稿$/ })

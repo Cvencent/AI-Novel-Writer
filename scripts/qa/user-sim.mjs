@@ -520,8 +520,10 @@ for (let chapter = from; chapter <= to; chapter += 1) {
         // 已有审稿记录的稿，面板会自己出现；没有就先点「AI 审稿」。
         // 审稿实测量级是几分钟（本轮首章审稿用了 5 分多），等待必须给足，
         // 否则会把「生成慢」误报成「界面不出审稿报告」。
+        // 注意 review() 内部的等待也要传同一时长（issue #37）：它此前写死 60 秒，
+        // 会在下面这句可配等待生效之前先超时，把 REVIEW_SHEET_TIMEOUT_MS 架空。
         if (!await chapterView.reviewSheet(page).isVisible().catch(() => false)) {
-          await chapterView.review(page)
+          await chapterView.review(page, { timeoutMs: REVIEW_SHEET_TIMEOUT_MS })
         }
         await chapterView.reviewSheet(page).waitFor({ state: 'visible', timeout: REVIEW_SHEET_TIMEOUT_MS })
         const excerpt = await chapterView.reviewSheet(page).innerText().catch(() => '')

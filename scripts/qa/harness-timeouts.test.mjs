@@ -7,6 +7,48 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { closeAppWithTimeout, withTimeout } from './harness-timeouts.mjs'
+// 审稿等待时长回归（issue #37）：review() 此前写死 60 秒，而实测审稿要 178–191 秒，
+// 于是 user-sim 每轮把「生成慢」判成「界面不出审稿报告」、同一章被反复重写 12 版。
+import { review } from '../redesign/pages/chapter-view.mjs'
+
+/** 只提供 review() 用到的三个选择器与 waitFor，不拉起真实浏览器。 */
+function fakeReviewPage({ visible = false } = {}) {
+  const waits = []
+  const sheet = {
+    waitFor: async options => {
+      waits.push(options)
+      if (!visible) throw new Error(`locator.waitFor: Timeout ${options.timeout}ms exceeded.`)
+    },
+    isVisible: async () => visible,
+  }
+  const clicks = []
+  const button = { click: async () => { clicks.push('ai-review') } }
+  const viewLocator = { getByRole: () => button }
+  const rootLocator = { locator: () => viewLocator }
+  return { page: { locator: () => rootLocator, getByRole: () => sheet }, waits, clicks }
+}
+
+describe('chapter-view.review wait budget (issue #37)', () => {
+  it('默认仍等 60 秒（不动其它场景脚本的既有行为）', async () => {
+    const f = fakeReviewPage()
+    await expect(review(f.page)).rejects.toThrow('Timeout 60000ms exceeded')
+    expect(f.waits).toEqual([{ state: 'visible', timeout: 60_000 }])
+    expect(f.clicks).toEqual(['ai-review'])
+  })
+
+  it('调用方给了时长就照调用方的等——这正是 user-sim 需要的那条路', async () => {
+    const f = fakeReviewPage()
+    await expect(review(f.page, { timeoutMs: 12 * 60_000 })).rejects.toThrow('Timeout 720000ms exceeded')
+    expect(f.waits).toEqual([{ state: 'visible', timeout: 720_000 }])
+  })
+
+  it('timeoutMs=0 表示点完就返回，不等待（给外层统一等待的调用方用）', async () => {
+    const f = fakeReviewPage()
+    await expect(review(f.page, { timeoutMs: 0 })).resolves.toBeUndefined()
+    expect(f.waits).toEqual([])
+    expect(f.clicks).toEqual(['ai-review'])
+  })
+})
 
 const never = () => new Promise(() => {})
 
