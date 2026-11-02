@@ -13,6 +13,9 @@ import { normalizeChapterWordsTarget } from './chapter-creation-parameters'
 import { localize } from '../../i18n/core'
 import type { Locale } from '../../i18n/types'
 import { useLocaleStore } from '../../stores/locale-store'
+// 章节工作流的步骤原来没有任何传输重试（issue #85）：同一次网络抖动，细纲能扛过去
+// （架构工作流四个步骤都被 withTransientRetry 包住），起草却在第一步就整章失败。
+import { withTransientRetry } from './transient-retry'
 
 // ==========================================
 // 1. 结构与类型导出 (保留对外的向后兼容)
@@ -270,8 +273,15 @@ export function createChapterWorkflow(
         ),
         executor: async (step, context, callbacks) => {
           const { GenerateDraftCommand } = await import('./commands/generate-draft.command')
-          const cmd = new GenerateDraftCommand(frozenChapterInfo)
-          return cmd.execute({ step, context, callbacks })
+          // 通道失败自动重试（issue #85）：报告里起草的第一步（短细纲）9 秒失败后
+          // 整章没写出来，而这类失败多是瞬时的，直接重发通常就过。
+          // 每轮**新建命令**（与架构工作流的 withTransientRetry 同一写法）：
+          // 复用同一个命令实例会把上一轮的执行期状态带进下一轮。
+          return withTransientRetry(
+            () => new GenerateDraftCommand(frozenChapterInfo).execute({ step, context, callbacks }),
+            line => callbacks.log(line),
+            { isCancelled: () => context.cancelled },
+          )
         },
       },
     ],
@@ -405,16 +415,20 @@ export function createReviewOnlyWorkflow(
         ),
         executor: async (step, context, callbacks) => {
           const { ReviewChapterCommand } = await import('./commands/review-chapter.command')
-          const cmd = new ReviewChapterCommand({
-            draftPath: frozenParams.draftPath,
-            draftContent: frozenParams.draftContent,
-            sourceDraft: frozenParams.sourceDraft,
-            chapterNumber: frozenParams.chapterNumber,
-            reviewFocus: frozenParams.reviewFocus,
-            reviewCycleId: frozenParams.reviewCycleId,
-            expectedMergedHash: frozenParams.expectedMergedHash,
-          })
-          return cmd.execute({ step, context, callbacks })
+          // 审稿是最重的一步（报告里 32s/56s 各失败一次），通道抖动重发一次往往就过。
+          return withTransientRetry(
+            () => new ReviewChapterCommand({
+              draftPath: frozenParams.draftPath,
+              draftContent: frozenParams.draftContent,
+              sourceDraft: frozenParams.sourceDraft,
+              chapterNumber: frozenParams.chapterNumber,
+              reviewFocus: frozenParams.reviewFocus,
+              reviewCycleId: frozenParams.reviewCycleId,
+              expectedMergedHash: frozenParams.expectedMergedHash,
+            }).execute({ step, context, callbacks }),
+            line => callbacks.log(line),
+            { isCancelled: () => context.cancelled },
+          )
         },
       },
     ],
@@ -456,14 +470,19 @@ export function createFinalizeWorkflow(
         ),
         executor: async (step, context, callbacks) => {
           const { FinalizeChapterCommand } = await import('./commands/finalize-chapter.command')
-          const cmd = new FinalizeChapterCommand({
-            draftPath: params.draftPath,
-            draftContent: params.draftContent,
-            chapterNumber: params.chapterNumber,
-            chapterInfo,
-            snapshot: params.snapshot,
-          })
-          return cmd.execute({ step, context, callbacks })
+          // 定稿后处理是报告里最常撞通道失败的链路（角色状态 47s、章节笔记 28s/44s），
+          // 而它跑在「本章不会再变」的时点——一次网络抖动就整步失败代价最大。
+          return withTransientRetry(
+            () => new FinalizeChapterCommand({
+              draftPath: params.draftPath,
+              draftContent: params.draftContent,
+              chapterNumber: params.chapterNumber,
+              chapterInfo,
+              snapshot: params.snapshot,
+            }).execute({ step, context, callbacks }),
+            line => callbacks.log(line),
+            { isCancelled: () => context.cancelled },
+          )
         },
       },
     ],

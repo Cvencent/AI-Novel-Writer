@@ -156,6 +156,46 @@ export function presentWorkflowFailure(
     }
   }
 
+  // 通道失败要和其他失败区分开（issue #85）。原来这里只在审稿一条链路上做了细分，
+  // 其余（定稿后处理 / 细纲 / 起草）掉到最后的通用「工作流未完成」——作者看不出
+  // 「是网络/上游的问题」还是「自己的内容有问题」，也就不知道该不该直接重试。
+  // 判据用**诊断**（endReason=failed 且没有任何有效输出）而不是关键词匹配文案。
+  if (activity?.diagnostics?.endReason === 'failed') {
+    const diagnostic = activity.diagnostics
+    const code = diagnostic.causeCode ?? diagnostic.errorCode
+    const zh = locale === 'zh-CN'
+    const reason = !diagnostic.visibleEvents
+      // 没有任何可见输出 = 请求在产出前就断了：这是纯粹的通道问题。
+      ? code === 'UND_ERR_BODY_TIMEOUT' || code === 'UND_ERR_HEADERS_TIMEOUT' || code === 'UND_ERR_CONNECT_TIMEOUT' || code === 'ETIMEDOUT'
+        ? (zh ? '与模型的连接超时，本次未收到任何输出。属于网络或上游服务的瞬时问题。'
+          : 'The connection to the model timed out before any output arrived. This is a transient network or upstream problem.')
+        : ['UND_ERR_SOCKET', 'ECONNRESET', 'ERR_STREAM_PREMATURE_CLOSE', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN'].includes(code ?? '')
+          ? (zh ? '与模型的连接中断，本次未收到任何输出。属于网络或上游服务的瞬时问题。'
+            : 'The connection to the model was interrupted before any output arrived. This is a transient network or upstream problem.')
+          : diagnostic.httpStatus && diagnostic.httpStatus >= 400
+            ? (zh ? `模型服务返回 HTTP ${diagnostic.httpStatus}，本次未收到输出。`
+              : `The model service returned HTTP ${diagnostic.httpStatus}, so no output was received.`)
+            : (zh ? '与模型的连接失败，本次未收到任何输出。'
+              : 'The connection to the model failed and no output was received.')
+      : (zh ? '生成过程中与模型的连接断开，本次结果不完整。'
+        : 'The connection to the model dropped mid-generation, so this result is incomplete.')
+    const details = [
+      `${zh ? '耗时' : 'elapsed'} ${Math.max(0, Math.round(diagnostic.elapsedMs / 1000))}${zh ? '秒' : 's'}`,
+      ...(typeof diagnostic.httpStatus === 'number' ? [`HTTP ${diagnostic.httpStatus}`] : []),
+      ...(code ? [`${code}`] : []),
+    ].join(' · ')
+    return {
+      heading: zh ? '与模型的连接失败' : 'Connection to the model failed',
+      reason,
+      persistence: zh
+        ? `这一步没有产出结果，未保存任何内容；已完成的章节不受影响。（${details}）`
+        : `This step produced no result and saved nothing; finished chapters are unaffected. (${details})`,
+      guidance: zh
+        ? '多为瞬时故障，直接重试通常即可。若连续失败，请检查本机到模型的网络或上游服务状态。'
+        : 'These are usually transient; retrying normally succeeds. If it keeps failing, check the network path or the upstream service.',
+    }
+  }
+
   if (failureCode === 'content_filter') {
     return locale === 'zh-CN'
       ? {

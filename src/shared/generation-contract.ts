@@ -30,6 +30,42 @@ export function safeTransportError(error: unknown): Pick<GenerationTransportDiag
   }
 }
 
+/**
+ * 把一次传输失败的可判定事实压成**一行可存的诊断**（issue #85）。
+ *
+ * 为什么需要它：`llm_calls.error_message` 原来只写裸码（`GENERATION_PROVIDER_FAILED`），
+ * 而报告实测这一列在四个链路上都出现过、每条都长这样 —— 作者与维护者都看不出
+ * 「超时 / 被掐断 / 上游 5xx / 鉴权失败」的区别，也就无法判断该不该重试。
+ * 这里只暴露**结构化字段**，绝不拷贝 error.message 或 HTTP body：provider 的错误正文
+ * 可能带 URL、key 与提示词全文（与 `safeTransportError` 同一条约定）。
+ *
+ * 形如：`FAILED end=failed phase=stream elapsed=56123ms firstResp=4200ms http=502 code=UND_ERR_BODY_TIMEOUT`
+ * 只写**有值**的那几段，短且可 grep。
+ */
+export function formatTransportDiagnostics(
+  diagnostics: GenerationTransportDiagnostics | undefined,
+  prefix = 'FAILED',
+): string {
+  if (!diagnostics) return prefix
+  const parts: string[] = [prefix]
+  if (diagnostics.endReason) parts.push(`end=${diagnostics.endReason}`)
+  if (diagnostics.phase) parts.push(`phase=${diagnostics.phase}`)
+  parts.push(`elapsed=${Math.max(0, Math.round(diagnostics.elapsedMs))}ms`)
+  if (diagnostics.firstResponseMs !== null && diagnostics.firstResponseMs !== undefined) {
+    parts.push(`firstResp=${Math.max(0, Math.round(diagnostics.firstResponseMs))}ms`)
+  }
+  if (diagnostics.lastOutputMs !== null && diagnostics.lastOutputMs !== undefined) {
+    parts.push(`lastOut=${Math.max(0, Math.round(diagnostics.lastOutputMs))}ms`)
+  }
+  if (typeof diagnostics.httpStatus === 'number') parts.push(`http=${diagnostics.httpStatus}`)
+  // 归类的传输码优先于底层 errorName：后者（如「TypeError」）对「该不该重试」几乎无用。
+  const transportCode = diagnostics.causeCode ?? diagnostics.errorCode
+  if (transportCode) parts.push(`code=${transportCode}`)
+  else if (diagnostics.errorName) parts.push(`err=${diagnostics.errorName}`)
+  if (diagnostics.visibleEvents) parts.push(`visible=${diagnostics.visibleEvents}`)
+  return parts.join(' ')
+}
+
 export interface RootAction extends ProjectEpoch {
   rootActionId: string; operation: string; uiActionNonce: string; frozenInputHash: string
   status: 'active' | 'paused' | 'cancelled' | 'sealed'

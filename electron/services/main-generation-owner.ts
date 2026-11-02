@@ -7,7 +7,7 @@ import { generationOutputContract, type GenerationAuthorInput } from '../../src/
 import type { MainGenerationExecuteReceipt, MainGenerationRunHandle, MainGenerationRunSummary, MainGenerationRunView, MainGenerationSnapshot } from '../../src/services/generation/generation-runtime'
 import type { ModelProfile, ModelExecutionLeaseReceipt, LLMFinishReason } from '../../src/shared/ipc-channels'
 import type { CreativeStrategy } from '../../src/shared/reasoning-types'
-import { tokenLiability } from '../../src/shared/generation-contract'
+import { tokenLiability, formatTransportDiagnostics, type GenerationTransportDiagnostics } from '../../src/shared/generation-contract'
 import { DRAFT_RECONCILE_PURPOSE, stripDraftReconciliationBlock } from '../../src/shared/draft-reconciliation'
 import { DRAFT_SHORT_OUTLINE_PURPOSE, draftShortOutlineBlock, stripDraftShortOutlineBlock } from '../../src/shared/draft-short-outline'
 import { GenerationRunRepository, textHash, type DurableGenerationRun, type RunBinding, type GenerationExecutionReceipt } from '../repositories/generation-run-repository'
@@ -86,13 +86,17 @@ async function dispatchProvider(value: unknown, options: Parameters<GenerationRu
   let evidence: ProviderUsageEvidence | null = null
   let finishReason: LLMFinishReason | null = null
   let failureCode: string | null = null
+  // 最近一次 provider 诊断（issue #85）：「超时 / 被掐断 / 上游 5xx」这类可判定事实
+  // 都在这里。原来只记裸码 `GENERATION_PROVIDER_FAILED`，作者看不出该不该重试。
+  let lastDiagnostics: GenerationTransportDiagnostics | undefined
   const startedAt = Date.now()
   try {
     await LLMFactory.getProvider(model).generateStream(model, task.messages.map(message => ({ ...message })), {
       ...plan.options, conversationId, signal: options.signal, visibleOnly: true,
       onChunk: text => options.onVisible({ kind: 'delta', text }),
       onReasoning: options.onReasoning,
-      onDiagnostics: options.onDiagnostics,
+      // 转发给上层的同时留一份给失败记录用（诊断只暴露结构化字段，不含 provider 正文）。
+      onDiagnostics: value => { lastDiagnostics = value; options.onDiagnostics?.(value) },
       onUsageEvidence: value => { evidence = value },
       onDone: (text, _usage, reason) => { options.onVisible({ kind: 'cumulative', text }); finishReason = reason },
       onError: error => {
@@ -115,7 +119,10 @@ async function dispatchProvider(value: unknown, options: Parameters<GenerationRu
         totalTokens: usage?.totalTokens ?? null,
         durationMs: Math.max(0, Date.now() - startedAt),
         success: failureCode === null && finishReason !== null,
-        errorMessage: failureCode ?? (finishReason && finishReason !== 'stop' ? `finish:${finishReason}` : undefined),
+        // 失败时把可判定的传输事实一起存下来（issue #85）：只有裸码等于没法诊断。
+        errorMessage: failureCode
+          ? formatTransportDiagnostics(lastDiagnostics, failureCode)
+          : (finishReason && finishReason !== 'stop' ? `finish:${finishReason}` : undefined),
       })
     } catch { /* statistics only */ }
   }

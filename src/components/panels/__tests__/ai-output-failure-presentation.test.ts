@@ -99,3 +99,70 @@ it.each([
   expect(presentation.persistence).toBe('本次未保存完整审稿报告，原稿保留。')
   expect(presentation.guidance).toContain('重新审稿会重新调用模型')
 })
+
+// issue #85：通道失败原来只有审稿这一条链路被识别，其余（定稿后处理/细纲/起草）
+// 掉到通用「工作流未完成」，作者看不出该不该直接重试。
+describe('transport failure is distinguishable on every link (issue #85)', () => {
+  const diagnostics = (over: Record<string, unknown> = {}) => ({
+    startedAt: 0, elapsedMs: 56000, firstResponseMs: null, lastResponseMs: null, lastOutputMs: null,
+    phase: 'stream' as const, endReason: 'failed' as const, visibleEvents: 0, reasoningEvents: 0, ...over,
+  })
+
+  it('says the connection failed, not that the workflow simply "did not finish"', () => {
+    // operation 不是审稿，走的是新的通用通道分支。
+    const presentation = presentWorkflowFailure(undefined, '模型请求失败。', 'zh-CN', true, undefined,
+      { operation: 'chapter-draft-short-outline', diagnostics: diagnostics() })
+    expect(presentation.heading).toBe('与模型的连接失败')
+    expect(presentation.heading).not.toBe('工作流未完成')
+    expect(presentation.reason).toContain('与模型的连接失败')
+    // 出路必须可执行：多为瞬时故障，直接重试。
+    expect(presentation.guidance).toContain('直接重试通常即可')
+  })
+
+  it('names a timeout as a timeout when there was a classified code', () => {
+    const presentation = presentWorkflowFailure(undefined, 'x', 'zh-CN', true, undefined,
+      { operation: 'finalized-character-state', diagnostics: diagnostics({ causeCode: 'ETIMEDOUT' }) })
+    expect(presentation.reason).toContain('连接超时')
+  })
+
+  it('names an interrupted connection as interrupted', () => {
+    const presentation = presentWorkflowFailure(undefined, 'x', 'zh-CN', true, undefined,
+      { operation: 'plot-outline:chapter:19:normal', diagnostics: diagnostics({ errorCode: 'ECONNRESET' }) })
+    expect(presentation.reason).toContain('连接中断')
+  })
+
+  it('reports an upstream HTTP status when that is what was observed', () => {
+    const presentation = presentWorkflowFailure(undefined, 'x', 'zh-CN', true, undefined,
+      { operation: 'chapter-draft', diagnostics: diagnostics({ httpStatus: 502, phase: 'response' }) })
+    expect(presentation.reason).toContain('HTTP 502')
+    // 细节里也回放可判定事实，方便作者反馈时复制。
+    expect(presentation.persistence).toContain('HTTP 502')
+    expect(presentation.persistence).toContain('56秒')
+  })
+
+  it('says the result is incomplete when the connection dropped after output began', () => {
+    const presentation = presentWorkflowFailure(undefined, 'x', 'zh-CN', true, undefined,
+      { operation: 'chapter-draft', diagnostics: diagnostics({ visibleEvents: 12, lastOutputMs: 40000 }) })
+    expect(presentation.reason).toContain('连接断开')
+    expect(presentation.reason).not.toContain('未收到任何输出')
+  })
+
+  it('explains it in English for the English locale', () => {
+    const presentation = presentWorkflowFailure(undefined, 'x', 'en-US', true, undefined,
+      { operation: 'chapter-draft', diagnostics: diagnostics({ causeCode: 'ECONNRESET' }) })
+    expect(presentation.heading).toBe('Connection to the model failed')
+    expect(presentation.guidance).toContain('usually transient')
+  })
+
+  it('does not claim a transport failure when the run merely ended without diagnostics', () => {
+    // 没有诊断（例如内容类失败）时绝不能误报成通道问题。
+    const presentation = presentWorkflowFailure('length', 'AI output reached this request length limit', 'zh-CN', true)
+    expect(presentation.heading).not.toBe('与模型的连接失败')
+  })
+
+  it('keeps a completed-but-cancelled run from being reported as a connection failure', () => {
+    const presentation = presentWorkflowFailure(undefined, 'x', 'zh-CN', true, undefined,
+      { operation: 'chapter-draft', diagnostics: diagnostics({ endReason: 'cancelled' }) })
+    expect(presentation.heading).not.toBe('与模型的连接失败')
+  })
+})
