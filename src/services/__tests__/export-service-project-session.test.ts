@@ -415,9 +415,77 @@ describe('exportNovel project session ownership', () => {
       .filter(([channel]) => channel === 'fs:grant-write-file')
       .map(call => call[2] as string)
     expect(writes.filter(file => file.startsWith(`${first.path}/`)).sort())
-      .toEqual([`${first.path}/chapter_1.md`, `${first.path}/chapter_2.md`])
+      .toEqual([`${first.path}/chapter_01.md`, `${first.path}/chapter_02.md`])
     expect(writes.filter(file => file.startsWith(`${second.path}/`)))
-      .toEqual([`${second.path}/chapter_1.md`])
+      .toEqual([`${second.path}/chapter_01.md`])
+  })
+
+  it('honours includeOutline for split-md by writing an outline file (issue #56)', async () => {
+    // 原来只有 merged-md 读了 options.includeOutline，split-md 与 txt 从头到尾没有出现过
+    // 这个字段——而对话框里那个勾是默认勾选的，用户以为大纲跟着走了。
+    const writes: string[] = []
+    vi.mocked(ipc.invoke).mockImplementation(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'fs:grant-write-file') {
+        writes.push(args[1] as string)
+        return { success: true } as never
+      }
+      if (channel === 'fs:grant-mkdir') return { success: true } as never
+      return { success: true } as never
+    })
+    vi.mocked(ipc.invokeWithProjectSession).mockImplementation((async (_session: ProjectSessionContext, channel: string) => {
+      if (channel === 'db:draft-export-snapshot') {
+        return [
+          { draftId: 7, chapterNumber: 1, version: 2, title: '开端', content: '正文一', ...authority(7) },
+          { draftId: 9, chapterNumber: 4, version: 1, title: '转折', content: '正文四', ...authority(9) },
+        ] as never
+      }
+      if (channel === 'db:project-core-get') {
+        return { synopsis: ['## 第1章：开端', '', '目的：开场。'].join(String.fromCharCode(10)) } as never
+      }
+      if (channel === 'db:draft-export-authority-current') return true as never
+      return true as never
+    }) as never)
+
+    const result = await exportNovel(
+      { format: 'split-md', grantId: 'export-grant', includeOutline: true },
+      projectSnapshot,
+      projectSession,
+    )
+
+    expect(result).toMatchObject({ success: true })
+    // 大纲写成一个独立文件，文件名用 00 前缀保证排在第一章之前。
+    expect(writes.some(file => file.endsWith('/outline_00.md'))).toBe(true)
+    // 章节文件零填充到最大章号的位数。
+    expect(writes.some(file => file.endsWith('/chapter_01.md'))).toBe(true)
+    expect(writes.some(file => file.endsWith('/chapter_04.md'))).toBe(true)
+    // 目录名不再是内部 UUID。
+    expect(writes.every(file => !/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/u.test(file))).toBe(true)
+  })
+
+  it('does not write an outline file when the option is off or there is no outline (issue #56)', async () => {
+    const writes: string[] = []
+    vi.mocked(ipc.invoke).mockImplementation(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'fs:grant-write-file') { writes.push(args[1] as string); return { success: true } as never }
+      return { success: true } as never
+    })
+    vi.mocked(ipc.invokeWithProjectSession).mockImplementation((async (_session: ProjectSessionContext, channel: string) => {
+      if (channel === 'db:draft-export-snapshot') {
+        return [{ draftId: 7, chapterNumber: 1, version: 2, title: '开端', content: '正文一', ...authority(7) }] as never
+      }
+      // 项目没有大纲
+      if (channel === 'db:project-core-get') return { synopsis: '' } as never
+      return true as never
+    }) as never)
+
+    const off = await exportNovel({ format: 'split-md', grantId: 'export-grant' }, projectSnapshot, projectSession)
+    expect(off).toMatchObject({ success: true })
+    expect(writes.some(file => file.endsWith('outline_00.md'))).toBe(false)
+
+    writes.length = 0
+    const empty = await exportNovel({ format: 'split-md', grantId: 'export-grant', includeOutline: true }, projectSnapshot, projectSession)
+    // 勾着但项目没有大纲：不算失败，也不写空文件。
+    expect(empty).toMatchObject({ success: true })
+    expect(writes.some(file => file.endsWith('outline_00.md'))).toBe(false)
   })
 
   it.each([
@@ -475,12 +543,12 @@ describe('exportNovel project session ownership', () => {
       projectSession,
     )).resolves.toEqual({
       success: false,
-      error: expect.stringMatching(/重新确认导出.*已确认写入: Project A-[^/]+\/chapter_1\.md.*可能已写入: 无/u),
+      error: expect.stringMatching(/重新确认导出.*已确认写入: Project A（分章 [^/]+）\/chapter_01\.md.*可能已写入: 无/u),
     })
     expect(vi.mocked(ipc.invoke).mock.calls
       .filter(([channel]) => channel === 'fs:grant-write-file')
       .map(call => call[2]))
-      .toEqual([expect.stringMatching(/^Project A-[^/]+\/chapter_1\.md$/u)])
+      .toEqual([expect.stringMatching(/^Project A（分章 [^/]+）\/chapter_01\.md$/u)])
   })
 
   it('reports files already written when a split export fails partway through', async () => {
@@ -500,15 +568,15 @@ describe('exportNovel project session ownership', () => {
       projectSession,
     )).resolves.toEqual({
       success: false,
-      error: expect.stringMatching(/已确认写入: Project A-[^/]+\/chapter_1\.md.*可能已写入: 无.*确定写入失败: Project A-[^/]+\/chapter_2\.md/u),
+      error: expect.stringMatching(/已确认写入: Project A（分章 [^/]+）\/chapter_01\.md.*可能已写入: 无.*确定写入失败: Project A（分章 [^/]+）\/chapter_02\.md/u),
     })
 
     const writePaths = vi.mocked(ipc.invoke).mock.calls
       .filter(([channel]) => channel === 'fs:grant-write-file')
       .map(call => call[2])
     expect(writePaths).toEqual([
-      expect.stringMatching(/^Project A-[^/]+\/chapter_1\.md$/u),
-      expect.stringMatching(/^Project A-[^/]+\/chapter_2\.md$/u),
+      expect.stringMatching(/^Project A（分章 [^/]+）\/chapter_01\.md$/u),
+      expect.stringMatching(/^Project A（分章 [^/]+）\/chapter_02\.md$/u),
     ])
   })
 
@@ -533,15 +601,15 @@ describe('exportNovel project session ownership', () => {
       projectSession,
     )).resolves.toEqual({
       success: false,
-      error: expect.stringMatching(/已确认写入: Project A-[^/]+\/chapter_1\.md.*可能已写入: Project A-[^/]+\/chapter_2\.md.*确定写入失败: 无.*不要盲目重试/u),
+      error: expect.stringMatching(/已确认写入: Project A（分章 [^/]+）\/chapter_01\.md.*可能已写入: Project A（分章 [^/]+）\/chapter_02\.md.*确定写入失败: 无.*不要盲目重试/u),
     })
 
     expect(vi.mocked(ipc.invoke).mock.calls
       .filter(([channel]) => channel === 'fs:grant-write-file')
       .map(call => call[2]))
       .toEqual([
-        expect.stringMatching(/^Project A-[^/]+\/chapter_1\.md$/u),
-        expect.stringMatching(/^Project A-[^/]+\/chapter_2\.md$/u),
+        expect.stringMatching(/^Project A（分章 [^/]+）\/chapter_01\.md$/u),
+        expect.stringMatching(/^Project A（分章 [^/]+）\/chapter_02\.md$/u),
       ])
   })
 
@@ -563,7 +631,7 @@ describe('exportNovel project session ownership', () => {
       projectSession,
     )).resolves.toEqual({
       success: false,
-      error: expect.stringMatching(/项目会话.*chapter_1\.md/u),
+      error: expect.stringMatching(/项目会话.*chapter_01\.md/u),
     })
 
     expect(vi.mocked(ipc.invoke).mock.calls
@@ -589,7 +657,7 @@ describe('exportNovel project session ownership', () => {
       projectSession,
     )).resolves.toEqual({
       success: false,
-      error: expect.stringMatching(/项目会话.*chapter_1\.md/u),
+      error: expect.stringMatching(/项目会话.*chapter_01\.md/u),
     })
   })
 })

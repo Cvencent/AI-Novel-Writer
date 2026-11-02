@@ -138,12 +138,12 @@ describe('authoritative finalized export integration', () => {
     expect(first).toMatchObject({ success: true })
     if (!first.path) throw new Error('Expected first export path')
 
-    expect(fs.readFileSync(path.join(exportPath, first.path, 'chapter_1.md'), 'utf8'))
+    expect(fs.readFileSync(path.join(exportPath, first.path, 'chapter_01.md'), 'utf8'))
       .toBe(`# 第1章 ${facts[0].title}\n\n${facts[0].content}`)
-    expect(fs.readFileSync(path.join(exportPath, first.path, 'chapter_4.md'), 'utf8'))
+    expect(fs.readFileSync(path.join(exportPath, first.path, 'chapter_04.md'), 'utf8'))
       .toBe(`# 第4章 ${facts[1].title}\n\n${facts[1].content}`)
     expect(fs.readdirSync(path.join(exportPath, first.path)).sort())
-      .toEqual(['chapter_1.md', 'chapter_4.md'])
+      .toEqual(['chapter_01.md', 'chapter_04.md'])
 
     db.prepare("UPDATE drafts SET status = 'archived' WHERE chapter_number = 4").run()
     const second = await exportNovel(
@@ -161,6 +161,6 @@ describe('authoritative finalized export integration', () => {
     expect(second.path).not.toBe(first.path)
     if (!second.path) throw new Error('Expected second export path')
     expect(fs.readdirSync(path.join(exportPath, second.path)))
-      .toEqual(['chapter_1.md'])
+      .toEqual(['chapter_01.md'])
   }, 15_000)
 })

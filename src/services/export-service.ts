@@ -22,7 +22,6 @@ import {
   sameProjectSessionContext,
 } from '../shared/project-session-context'
 import type { WritingLanguage } from '../shared/writing-language'
-import { randomUUID } from '../utils/id'
 import { pluralEn } from '../shared/plural-en'
 import { plotOutlineChapterSpans } from '../shared/plot-outline-contract'
 
@@ -266,6 +265,69 @@ export function renderOutlineSection(synopsis: string, finalizedChapters: number
   return `${title} ${scope}` + '\n\n' + `${demoted}${missing}`
 }
 
+/**
+ * 分章导出目录名里的时间戳（issue #56）。
+ *
+ * 用本地时间而不是 UUID：UUID 对用户是噪音，而时间戳既保证「每次导出是新目录」
+ * （不残留上一次的章），又能让人看懂这是哪一次的导出。
+ * 形如 `20261102-153012`（精确到秒）。
+ *
+ * 必须精确到秒：同一分钟内连导两次是常见操作（改一处再导一次看效果），
+ * 分钟级粒度会让两次落到同一目录——那正是「上一次的章残留在本次产物里」的老问题，
+ * 而授权通道没有删除目录的能力，只能靠目录名不同来保证干净。
+ */
+function exportStamp(drafts: readonly FinalizedDraftExportSnapshot[], now = new Date()): string {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+  // 后缀取**本次导出内容的短哈希**，不是随机数：同一批定稿重复导出会落到同一目录
+  // （覆盖干净，不再并存两个目录）；内容变了才换目录（不会把上一次的章留在里面）。
+  // 只取 6 位hex，是给人看的标识而不是内部 UUID。
+  let seed = 0
+  for (const draft of drafts) {
+    const input = `${draft.chapterNumber}:${draft.contentHash};`
+    for (let index = 0; index < input.length; index += 1) {
+      seed = (seed * 31 + input.charCodeAt(index)) % 0xffffffff
+    }
+  }
+  return `${stamp}-${seed.toString(16).padStart(6, '0')}`
+}
+
+/**
+ * 三种格式共用的「故事大纲」写入（issue #56）。
+ *
+ * 原来只有合并 Markdown 读了 `options.includeOutline`，split-md 与 txt 从头到尾
+ * 没有出现过这个字段——而对话框里那个勾是**默认已勾选**的，用户以为大纲跟着走了。
+ *
+ * 返回：
+ *  - `null`  —— 选项关闭，或项目没有大纲（无需写、也不算失败）；
+ *  - `string` —— 出错说明（调用方直接当失败结果返回）；
+ *  - `true`   —— 已写入。
+ */
+async function writeOutlineFile(
+  relativePath: string,
+  grantId: string,
+  project: ExportProjectSnapshot,
+  chapters: number,
+  projectSession: ProjectSessionContext,
+  uiLocale: 'zh-CN' | 'en-US',
+): Promise<null | true | { success: false; error: string }> {
+  const core = await ipc.invokeWithProjectSession(
+    projectSession,
+    'db:project-core-get',
+    projectSession.projectPath,
+  ).catch(() => null)
+  if (!isProjectSessionCurrent(projectSession)) return staleExportResult(uiLocale)
+  if (!core?.synopsis?.trim()) return null
+  const content = renderOutlineSection(core.synopsis, chapters, project.novelConfig.writingLanguage)
+  const writeResult = await ipc.invoke('fs:grant-write-file', grantId, relativePath, content)
+  requireExportWriteSuccess(
+    writeResult,
+    uiLocale === 'en-US' ? 'Write outline file' : '写入大纲文件',
+    uiLocale === 'en-US' ? 'Failed to write the outline file.' : '写入大纲文件失败。',
+  )
+  return true
+}
+
 /** 导出全书 */
 export async function exportNovel(
   options: ExportOptions,
@@ -294,10 +356,15 @@ export async function exportNovel(
     ))
     const authorityReceipt = exportAuthorityReceipt(frozenDrafts)
     if (!isProjectSessionCurrent(projectSession)) return staleExportResult(uiLocale)
+    // 章节文件名零填充（issue #56）：`chapter_2.md` 排在 `chapter_10.md` 之后，
+    // 21 章就已经乱序，100 章会整层乱掉；外部工具（pandoc/Calibre/脚本）按文件名
+    // 拼接正文时，顺序一错就是正本错。按**最大章号的位数**补零，
+    // 不做固定 3 位——否则 12 章的书写出 chapter_001.md 反而不自然。
+    const digits = Math.max(2, String(Math.max(...frozenDrafts.map(draft => draft.chapterNumber), 1)).length)
     const chapterContents = frozenDrafts.map(draft => ({
       chapterNumber: draft.chapterNumber,
       title: draft.title.trim(),
-      name: `chapter_${draft.chapterNumber}.md`,
+      name: `chapter_${String(draft.chapterNumber).padStart(digits, '0')}.md`,
       content: draft.content,
       markdownContent: renderMarkdownChapter(
         draft.chapterNumber,
@@ -380,8 +447,15 @@ export async function exportNovel(
       }
 
       case 'split-md': {
-        // 每章一个 Markdown
-        const splitDir = `${projectFileStem}-${randomUUID()}`
+        // 每章一个 Markdown。
+        //
+        // 目录名不再带内部 UUID（issue #56）：原来写的是 `${projectFileStem}-${randomUUID()}`，
+        // 内部 run 标识直接落进用户的文件系统，同一目标目录里连导两次就并存两个看不懂的目录。
+        // 但仍然必须**每次导出都是新目录**——否则上一次导出的章（比如后来被移除/归档的
+        // 第 4 章）会留在目录里冒充本次的产物（`export-service-integration` 里有一条
+        // 用例专门守这个属性，而授权通道没有删除目录的能力）。
+        // 折中：用可读的时间戳做后缀，人看得懂、每次又都不同。
+        const splitDir = `${projectFileStem}（分章 ${exportStamp(frozenDrafts)}）`
         const authorityCurrent = await ipc.invokeWithProjectSession(
           projectSession,
           'db:draft-export-authority-current',
@@ -397,6 +471,21 @@ export async function exportNovel(
           text('创建导出目录', 'Create export directory'),
           text('创建导出目录失败', 'Failed to create the export directory.'),
         )
+
+        // 「包含故事大纲」在分章导出里原来被静默忽略（issue #56）：只有 merged-md
+        // 读了 options.includeOutline，split-md 与 txt 从来没有出现过这个字段——
+        // 而分章导出恰恰是最需要大纲的那一种（作者常拿分章文件做逐章对照）。
+        // 现在写一个独立的大纲文件，文件名用 00 前缀保证排在第一章之前。
+        if (options.includeOutline) {
+          const outlineFile = `${splitDir}/outline_00.md`
+          const written = await writeOutlineFile(
+            outlineFile, options.grantId, project, chapterContents.length, projectSession, uiLocale)
+          if (written && typeof written === 'object') return written
+          if (written === true) writtenSplitFiles.push(outlineFile)
+          if (!isProjectSessionCurrent(projectSession)) {
+            return staleSplitExportResult(uiLocale, writtenSplitFiles)
+          }
+        }
 
         for (const ch of chapterContents) {
           const stillCurrent = await ipc.invokeWithProjectSession(
@@ -428,8 +517,24 @@ export async function exportNovel(
       }
 
       case 'txt': {
-        // 纯文本（去除 Markdown 格式）
+        // 纯文本（去除 Markdown 格式）。
+        // 「包含故事大纲」原来在这里也被静默忽略（issue #56）。TXT 没有目录结构，
+        // 所以把大纲接在书名之后、正文之前，并像合并模式那样写明覆盖范围。
         let content = `${project.name}\n${'='.repeat(project.name.length * 2)}\n\n`
+        if (options.includeOutline) {
+          const core = await ipc.invokeWithProjectSession(
+            projectSession, 'db:project-core-get', projectSession.projectPath,
+          ).catch(() => null)
+          if (!isProjectSessionCurrent(projectSession)) return staleExportResult(uiLocale)
+          if (core?.synopsis?.trim()) {
+            const outline = renderOutlineSection(
+              core.synopsis, chapterContents.length, project.novelConfig.writingLanguage)
+              .replace(/^#{1,6}\s+/gmu, '')
+              .replace(/\*\*(.*?)\*\*/gu, '$1')
+              .trim()
+            content += `${outline}\n\n${'-'.repeat(40)}\n\n`
+          }
+        }
 
         for (const ch of chapterContents) {
           // 简单去除 Markdown 标记
