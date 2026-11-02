@@ -1,7 +1,8 @@
 import type { ProjectSessionContext } from '../shared/ipc-channels'
 import type { BlueprintForPreflight, ConsistencyExemption, ConsistencyFinding } from '../shared/consistency-preflight'
 import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuityRisks,
-  findNearCastNameFindings, findOversizedBlueprintKeyEvents, findUnregisteredBlueprintCast } from '../shared/consistency-preflight'
+  findNearCastNameFindings, findOversizedBlueprintKeyEvents, findUnregisteredBlueprintCast,
+  findDialogueOpenerConvergence, findOpeningShapeConvergence } from '../shared/consistency-preflight'
 import { DEFAULT_CHAPTER_WORDS_TARGET } from './workflows/chapter-creation-parameters'
 import { ipc } from './ipc-client'
 
@@ -91,9 +92,26 @@ export async function readConsistencyPreflight(
     keyEvents: blueprint.keyEvents,
     targetWordsPerChapter,
   }))
+  // 章首句式收敛（issue #71）与同一线索的揭示句式（issue #72）：两者都读**已定稿正文**，
+  // 而这里正是起草/写前能拿到最近定稿的位置。取最近若干章 + 本章正在写的这一章。
+  // 原来 `chapter-shape.ts` 只在生成细纲时打一行日志，正文写作阶段完全没人看章首。
+  const recentProse = (await ipc.invokeWithProjectSession(
+    session, 'db:draft-export-snapshot', session.projectPath,
+  ).catch(() => [])) as Array<{ chapterNumber: number; content: string }>
+  const proseSample = [
+    ...recentProse
+      .filter(row => Number.isSafeInteger(row.chapterNumber) && row.chapterNumber < currentChapter)
+      .sort((left, right) => left.chapterNumber - right.chapterNumber)
+      .slice(-6)
+      .map(row => ({ chapterNumber: row.chapterNumber, content: String(row.content ?? '') })),
+  ]
+  const openingFindings = proseSample.length === 0 ? [] : [
+    ...findOpeningShapeConvergence({ chapters: proseSample, castNames, currentChapter }),
+    ...findDialogueOpenerConvergence({ chapters: proseSample, castNames, currentChapter }),
+  ]
   return {
     findings: [...terminalFindings, ...expandedFindings, ...unregisteredFindings, ...appearanceGaps,
-      ...nearNameFindings, ...keyEventsLengthFindings]
+      ...nearNameFindings, ...keyEventsLengthFindings, ...openingFindings]
       .filter(item => !activeExemptions.has(item.stableFactKey)),
     exemptions,
     castNames,

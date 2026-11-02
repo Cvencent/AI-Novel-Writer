@@ -2,6 +2,11 @@ import type { FinalizedContinuityProjection } from './finalized-continuity'
 import { blueprintKeyEventsOversize } from './blueprint-length'
 import { foreshadowingKeywords, type ForeshadowingCommitment } from './foreshadowing-commitments'
 import {
+  chapterOpeningOf,
+  findDialogueOpenerConvergence as findDialogueOpenerHits,
+  openingConvergence,
+} from './chapter-opening'
+import {
   chapterEndingProfile,
   closingLabelConflicts,
   ultimatumStreak,
@@ -781,6 +786,78 @@ export function findUndeliveredForeshadowing(input: ForeshadowingDueCheck): Cons
       },
     }]
   })
+}
+
+/**
+ * 章首句式收敛（issue #71）。
+ *
+ * 前几轮补的是章末（#28/#65/#66）与正文内部（#32/#33/#49），**章首这一轴一直是空的**。
+ * 实测样本 28 章有 19 章以「时间/地点状语 + 主句」开篇，句式一次没变；而产品里
+ * 唯一的章首检测（`chapter-shape.ts`）只认 4 条词表模式，这 28 章一个都没认出来，
+ * 而且只在生成细纲时打一行日志——正文写作阶段没有任何环节看章首。
+ *
+ * 判据是结构性的：第一个小句里没有在册角色、也不以人称代词起头，就算场景起手。
+ * 不枚举「天蒙蒙亮 / 靠埠前」这类词，换一本书仍然成立。
+ */
+export interface ChapterOpeningStreakInput {
+  /** 最近的定稿正文（含本章），升序或任意顺序。 */
+  chapters: ReadonlyArray<{ chapterNumber: number; content: string }>
+  castNames: readonly string[]
+  /** findings 的 sourceChapter 用（通常是当前章）。 */
+  currentChapter: number
+}
+
+export function findOpeningShapeConvergence(input: ChapterOpeningStreakInput): ConsistencyFinding[] {
+  const openings = input.chapters
+    .map(chapter => chapterOpeningOf(chapter.chapterNumber, chapter.content, input.castNames))
+  const window = openingConvergence(openings)
+  if (window.length === 0) return []
+  const range = `${window[0]!.chapterNumber}–${window[window.length - 1]!.chapterNumber}`
+  const samples = window.slice(0, 3).map(item => `第${item.chapterNumber}章「${item.clause}」`).join('、')
+  return [{
+    stableFactKey: `chapter-opening:scene-first:${window[window.length - 1]!.chapterNumber}`,
+    severity: 'warning' as const,
+    sourceChapter: input.currentChapter,
+    evidence: `第 ${range} 章连续 ${window.length} 章都以「时间/地点状语 + 主句」起手：${samples}`,
+    issue: {
+      zhCN: `最近 ${window.length} 章（第 ${range} 章）的**开篇句**是同一个句式：先给时间或地点状语，主句在后。开篇句是读者每章第一眼看到的东西——连着十几章这样开场，正文还没读进去就先感到腻，连载里这种地方最容易掉收藏。这几章的场景其实各不相同，缺的只是句式轮换。`,
+      enUS: `${window.length} chapters in a row (chapters ${range}) open with the same construction: a time or place adverbial first, the main clause after. The opening line is the first thing a reader sees in every chapter; a dozen chapters of the same opening wears thin before the prose even starts. These chapters already use different settings — only the sentence shape is repeating.`,
+    },
+    suggestion: {
+      zhCN: `换一种开篇：直接以动作或对白切入（「跳板还没落稳，周叙就拎着风灯下了船」）、以人物的判断或疑问起手、从一个正在发生的细节冷开场（一件物、一个声音、一句没头没尾的话），或从上一章的余波接进来。不必每章都先交代时间地点——读者能从上下文推出来。`,
+      enUS: `Open differently: cut straight into an action or a line of dialogue, start with a character's judgement or question, cold-open on one concrete detail (an object, a sound, a fragment of speech), or pick up the previous chapter's aftermath. Not every chapter needs its time and place established first — readers infer it.`,
+    },
+  }]
+}
+
+/**
+ * 同一线索的揭示句式在多章重复（issue #72）。
+ *
+ * 样本：隐藏主线的每一次推进都用「你爸当年也……」+ 立刻收口，5 章同一句式、
+ * 后半句各不相同。`prose-repetition.ts` 的词表只有动作类（没动/没答/蘸水），
+ * 审稿的「跨章重复」维度只抓逐字复写，都对这一族 0 命中。
+ *
+ * 判据同样是结构性的：按对白第一小句的前几字归组，取组内的**最长公共前缀**。
+ * 换亲属称谓、换线索，前缀会自己长成新的起手语，不需要改代码。
+ */
+export function findDialogueOpenerConvergence(input: ChapterOpeningStreakInput): ConsistencyFinding[] {
+  const hits = findDialogueOpenerHits(input.chapters)
+  if (hits.length === 0) return []
+  const [widest] = hits
+  return [{
+    stableFactKey: `chapter-opening:dialogue-opener:${widest!.opener}`,
+    severity: 'warning' as const,
+    sourceChapter: input.currentChapter,
+    evidence: `第 ${widest!.chapters.join('、')} 章的对白都以「${widest!.opener}」起手（共 ${widest!.chapters.length} 章）；另有 ${Math.max(0, hits.length - 1)} 组同类起手语`,
+    issue: {
+      zhCN: `有 ${widest!.chapters.length} 章的长辈/对手开口第一句都是「${widest!.opener}……」，后半句各不相同。同一条线索的每一次推进都用同一个动作「抛半句 + 收口」时，读者记不住哪一章知道了什么，只记得「又一次有人提了一句」。线索本身的信息增量被句式替代了。`,
+      enUS: `In ${widest!.chapters.length} chapters, the elder or the antagonist opens with the same words — “${widest!.opener}” — with a different tail each time. When every advance of a thread uses the same move (drop half a sentence, then withdraw), readers stop tracking what they learned where and only remember that someone hinted again. The sentence shape replaces the actual information gain.`,
+    },
+    suggestion: {
+      zhCN: `换投放方式：让线索从物证、行动或第三方的反应里露出来（一页账、一个没说出口的动作、别人对他的态度变了），而不是又由同一个长辈开口；也可以让这次把话说完——信息一次给足，比第五次抛半句更有推进力。若确实要保持「说不下去」的感觉，换个场合或换个说话人，别让「长辈开口 = 你爸当年也」成为读者的预判。`,
+      enUS: `Deliver the thread a different way: let it surface through an object, an action, or a third party's reaction (a ledger page, an unfinished gesture, a change in how others treat him) rather than the same elder speaking. Or let them finish the sentence this time — one complete revelation advances more than a fifth half-sentence. If the unable-to-say-it beat matters, change the setting or the speaker so that “an elder speaks = another 你爸当年也” does not become the reader's expectation.`,
+    },
+  }]
 }
 
 export function mergeConsistencyFindingsIntoReview(

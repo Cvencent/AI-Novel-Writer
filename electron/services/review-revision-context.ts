@@ -9,7 +9,11 @@ import { findCharacterProseRepetition, findProseRepetition, proseRepetitionEvide
 import { findDeclaredDigitCountMismatches } from '../../src/shared/numbering-consistency'
 import { findCrossChapterAssertionReversals, findClosingLabelConflicts, findUltimatumStreak } from '../../src/shared/consistency-preflight'
 import { closingShotOf } from '../../src/shared/blueprint-semantic-contract'
-import { findUndeliveredForeshadowing } from '../../src/shared/consistency-preflight'
+import {
+  findDialogueOpenerConvergence,
+  findOpeningShapeConvergence,
+  findUndeliveredForeshadowing,
+} from '../../src/shared/consistency-preflight'
 import { foreshadowingDueAt, parseForeshadowingCommitments } from '../../src/shared/foreshadowing-commitments'
 import { findAbilityReuseContradictions } from '../../src/shared/ability-budget'
 import type { ConsistencyFinding } from '../../src/shared/consistency-preflight'
@@ -195,6 +199,22 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
           chapterNumber: source.chapterNumber,
           content: source.content,
           commitments: foreshadowingDueAt(parseForeshadowingCommitments(BlueprintRepository.getAll(db)), source.chapterNumber),
+        }),
+        // 章首句式收敛（issue #71）：前几轮补的是章末（#28/#65/#66）与正文内部
+        // （#32/#33/#49），章首这一轴一直是空的。样本 = 最近定稿 + 本章。
+        ...findOpeningShapeConvergence({
+          chapters: [...history.slice(-5).map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
+            { chapterNumber: source.chapterNumber, content: source.content }],
+          castNames: authorCards.map(card => card.name),
+          currentChapter: source.chapterNumber,
+        }),
+        // 同一线索的揭示句式在多章重复（issue #72）：样本里隐藏主线每次都靠
+        // 「你爸当年也…」+ 收口推进，5 章同一句式而后半句各不相同。
+        ...findDialogueOpenerConvergence({
+          chapters: [...history.map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
+            { chapterNumber: source.chapterNumber, content: source.content }],
+          castNames: authorCards.map(card => card.name),
+          currentChapter: source.chapterNumber,
         }),
         ...findUltimatumStreak({
           chapters: [...history.slice(-4).map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
