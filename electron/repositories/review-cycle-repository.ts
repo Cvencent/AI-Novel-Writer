@@ -238,6 +238,19 @@ function locateUnique(source: string, quote: string): { start: number; end: numb
   return start >= 0 && source.indexOf(quote, start + 1) < 0 ? { start, end: start + quote.length } : null
 }
 
+/**
+ * 把一条审稿意见锚定到源稿（issue #7）。
+ *
+ * 旧判据是 `targetId !== null && span !== null`——**只有目标型意见才会被锚定**。
+ * 正常审稿的文笔/连贯性意见没有 stableFactKey，于是 `targetId` 恒为 null，
+ * 于是 `status` 直接落成 `unverified`，于是 `recheckContext` 整条跳过、
+ * `disposition` 返回 `not-required`、合并后**永远不会复验**。
+ * 实测两章的共同问题（数字链条、时段冲突）全是普通意见，一条都没进复验。
+ *
+ * 但原稿的引用句明明能在源稿里唯一定位——这才是「能不能复验」的真正依据。
+ * 现在：**引文能唯一定位就锚定**，`targetId` 只用于目标验收那一路。
+ * 确实定位不到原文的意见仍然落成 `unverified`（那才是「不可复验」的本来含义）。
+ */
 function finding(input: {
   source: ReviewCycleSource
   sourceText: string
@@ -251,14 +264,17 @@ function finding(input: {
   logicalIdentity: string
 }): M03FindingDescriptor {
   const span = input.quote === null ? null : locateUnique(input.sourceText, input.quote)
-  const anchored = input.targetId !== null && span !== null
+  const anchored = span !== null
   const descriptor: M03FindingDescriptor = {
     findingId: '',
     source: { ...input.source, span: anchored ? { ...span, unit: 'utf16-code-unit' } : null },
     excerptHash: anchored ? hash(input.quote!) : null,
     occurrence: anchored ? 1 : null,
     category: input.category,
-    targetId: anchored ? input.targetId : null,
+    // 非目标型意见仍然带 targetId（schema 的 CHECK 要求锚定行必须有 target_id）。
+    // 用 `free:<序号>` 而不是 stableFactKey：它只用来满足不变式与复验回执的配对，
+    // 不参与目标验收（那一路读的是 stableFactKey / goalId）。
+    targetId: anchored ? (input.targetId ?? `free:${input.logicalIdentity}`) : null,
     kind: input.kind,
     problemText: input.problemText,
     expectedText: input.expectedText ?? null,

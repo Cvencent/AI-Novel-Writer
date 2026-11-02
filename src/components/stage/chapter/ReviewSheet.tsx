@@ -23,7 +23,10 @@ function FindingStatus({ item, checklist }: { item: EditableReviewItem; checklis
     : status === 'unresolved' ? text('复验：未解决', 'Recheck: unresolved')
       : status === 'unknown' ? text('复验：待核实', 'Recheck: unknown')
         : status === 'author-waived' ? text('作者选择不修改', 'Author chose not to revise')
-          : status === 'unverified' ? text('复验：未验证', 'Recheck: unverified')
+          // unverified 的真实含义是「引文定位不到原文」——这条**本来就不能自动复验**，
+          // 不是「还没跑」（issue #7）。旧文案「复验：未验证」让作者无法区分
+          // 「还没跑 / 跑失败了 / 这条根本不会跑」三种情况。
+          : status === 'unverified' ? text('这条没定位到原文，无法自动复验', 'Not located in the original draft — cannot be auto-rechecked')
             : null
   return label ? <span className="stage-ch-issue-status" data-status={status}>{label}</span> : null
 }

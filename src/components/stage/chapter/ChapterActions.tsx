@@ -312,11 +312,25 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
 
   const recheck = checklist.cycle?.revisionStatus === 'merge-committed' ? checklist.cycle : null
   const resolved = recheck?.findings.filter(finding => finding.status === 'resolved').length ?? 0
+  // 「不可复验」与「复验已跳过」要分开（issue #7）：原来 not-required 一律显示
+  // 「修稿已合并，可以定稿」，用户会以为复验跑过了。
+  // unverified = 引文定位不到原文（本来就不能自动复验）；其余未解决项才是「该复验但没跑」。
+  const unverifiable = recheck?.findings.filter(finding => finding.status === 'unverified').length ?? 0
+  const outstanding = recheck ? recheck.findings.length - resolved - unverifiable : 0
   const revisedHint = recheck?.recheckDisposition === 'completed'
     ? text(`复验完成：${resolved} / ${recheck.findings.length} 项意见已解决`, `Recheck done: ${resolved} of ${recheck.findings.length} ${pluralEn(recheck.findings.length, 'note')} resolved`)
     : recheck?.recheckDisposition === 'required'
       ? text('合并后复验还没完成，可在审稿报告里重试', 'The post-merge recheck is incomplete; retry it in the review report')
-      : text('修稿已合并，可以定稿', 'The revision is merged and ready to finalize')
+      : outstanding > 0
+        // 有该复验却没进复验集合的意见：说明这一轮没有启动复验，不能只说「可以定稿」。
+        ? text(`修稿已合并；还有 ${outstanding} 项意见未复验，可在审稿报告里重试`,
+          `Revision merged; ${outstanding} ${pluralEn(outstanding, 'note')} still unverified — retry in the review report`)
+        : recheck && unverifiable > 0
+          // 全部未解决项都是「引文定位不到原文」：这时没有可自动复验的东西。
+          // 要么复验已跑完，要么本来就没有可复验的意见——两种都如实说明。
+          ? text(`修稿已合并；另有 ${unverifiable} 项意见未定位到原文，无法自动复验`,
+            `Revision merged; ${unverifiable} ${pluralEn(unverifiable, 'note')} could not be located in the original draft, so they cannot be auto-rechecked`)
+          : text('修稿已合并，可以定稿', 'The revision is merged and ready to finalize')
 
   const bar = (() => {
     switch (stage) {

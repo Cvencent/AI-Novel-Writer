@@ -415,12 +415,75 @@ describe('ReviewCycleRepository.create', () => {
       expect(rows.find(row => row.target_id === 'goal-unknown')).toMatchObject({ kind: 'objective', status: 'unknown',
         span_start: source.indexOf('未知证据'), span_end: source.indexOf('未知证据') + '未知证据'.length })
       expect(rows.find(row => row.target_id === 'fact:stable')).toMatchObject({ kind: 'objective', status: 'unresolved' })
+      // issue #7：普通（文笔/连贯性）意见只要引文能在源稿里唯一定位，就应当锚定并进入
+      // 复验集合。旧判据要求 targetId 非空，于是所有普通意见恒落成 unverified、
+      // 合并后永不复验——这个测试原先断言的正是那个（错的）行为。
+      const literary = rows.filter(row => row.kind === 'literary')
+      expect(literary).toHaveLength(2)
+      for (const row of literary) {
+        expect(row).toMatchObject({ status: 'unresolved', span_start: source.indexOf('目标完成'),
+          span_end: source.indexOf('目标完成') + '目标完成'.length, span_unit: 'utf16-code-unit',
+          excerpt_hash: hash('目标完成'), occurrence: 1 })
+        // 非目标型意见也要带上 target_id：schema 的 CHECK 要求锚定行必须有它，
+        // 复验回执按 (findingId, targetId) 配对。
+        expect(typeof row.target_id).toBe('string')
+        expect(String(row.target_id)).toMatch(/^free:/u)
+      }
+      // 只有「确实定位不到原文」的意见才是不可复验的。
       const unverified = rows.filter(row => row.status === 'unverified')
-      expect(unverified).toHaveLength(3)
-      for (const row of unverified) expect(row).toMatchObject({ span_start: null, span_end: null, span_unit: null,
+      expect(unverified).toHaveLength(1)
+      expect(unverified[0]).toMatchObject({ kind: 'objective', span_start: null, span_end: null, span_unit: null,
         excerpt_hash: null, occurrence: null, target_id: null })
-      expect(unverified.filter(row => row.kind === 'literary')).toHaveLength(2)
     } finally { db.close() }
+  })
+
+  it('anchors plain literary findings and lets them enter the post-merge recheck (issue #7)', () => {
+    const db = fixture()
+    // 实测第 2 章的两条真问题都是普通意见（数字链条、时段冲突），都没有 stableFactKey。
+    const source = '三十二张票，上船三十二个人，跳板空下来时只过去三十一张脸。'
+    const seeded = seed(db, { key: 'literary-recheck', source,
+      frozenGoals: { chapterNumber: 1, coverage: 'complete', items: [] },
+      model: { summary: '发现问题', items: [
+        { category: '剧情连贯性', severity: 'warning',
+          description: '上船人数与下表人数对不上。', quote: '上船三十二个人' },
+      ], goalReviews: [] } })
+    const cycle = create(db, seeded.call)
+
+    const row = db.prepare('SELECT status,span_start,span_end,span_unit,excerpt_hash,occurrence,target_id,kind FROM review_findings WHERE cycle_id=?')
+      .get(cycle.cycleId) as { status: string; span_start: number | null; span_end: number | null; span_unit: string | null
+        excerpt_hash: string | null; occurrence: number | null; target_id: string | null; kind: string }
+    // 旧行为：普通意见 targetId 恒为 null → 整行落成 unverified、span 全空、永不进复验。
+    expect(row.kind).toBe('literary')
+    expect(row.status).toBe('unresolved')
+    expect(row.span_start).toBe(source.indexOf('上船三十二个人'))
+    expect(row.span_end).toBe(source.indexOf('上船三十二个人') + '上船三十二个人'.length)
+    expect(row.span_unit).toBe('utf16-code-unit')
+    expect(row.occurrence).toBe(1)
+    // schema 的 CHECK 要求锚定行带 target_id；它只用于配对，不参与目标验收。
+    expect(String(row.target_id)).toMatch(/^free:/u)
+
+    // 作者确认后合并：复验必须真的启动（旧行为 disposition 恒为 not-required）。
+    const snapshot = { kind: 'human-confirmed-review', schemaVersion: 2, cycleId: cycle.cycleId,
+      sourceReviewId: seeded.reviewId,
+      sourceDraft: { id: seeded.draftId, chapterNumber: 1, version: 1, status: 'draft', content: source },
+      summary: '作者确认', authorGuidance: '', items: [{
+        findingId: (db.prepare('SELECT finding_id FROM review_findings WHERE cycle_id=?').pluck().get(cycle.cycleId)) as string,
+        category: '剧情连贯性', severity: 'warning', description: '上船人数与下表人数对不上。',
+        decision: 'apply', origin: 'ai',
+      }] }
+    const revision = seedRevision(db, seeded, { key: 'literary-recheck-revision', snapshot })
+    revision.attach.cycleId = cycle.cycleId
+    db.transaction(() => ReviewCycleRepository.attachGeneratedRevision(revision.attach, db))()
+    const mergedContent = '三十三张票，上船三十三个人，跳板空下来时只过去三十二张脸。'
+    const item = { seeded, cycle, revision, mergedContent,
+      mergedHash: mergeRows(db, { seeded, cycle, revision }, mergedContent) }
+    db.transaction(() => ReviewCycleRepository.commitMergedRevision({ revisionId: revision.revisionId,
+      mergedHash: item.mergedHash }, db))()
+
+    const plan = ReviewCycleRepository.planRecheck(cycle.cycleId, db)
+    expect(plan.disposition).toBe('required')
+    expect(plan.context?.findings).toHaveLength(1)
+    expect(plan.context?.findings[0]!.sourceExcerpt).toBe('上船三十二个人')
   })
 
   it('fails closed for duplicate objective quotes and multi-evidence goals', () => {
