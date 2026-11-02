@@ -172,6 +172,10 @@ describe('FinalizeChapterCommand blueprint character fallback', () => {
           }
         case 'db:blueprint-update-notes':
           return { success: true, updated: true }
+        // issue #62：事实账本这一步现在要求「确实落库」，桩必须给出可回读的记录。
+        case 'db:writing-intelligence-commit-build':
+        case 'db:writing-intelligence-commit-get':
+          return { facts: [], characterStates: [], foreshadowing: [], quality: { weightedScore: 100, blockingCount: 0 }, contentHash: 'c'.repeat(64) }
         case 'db:character-roster-read':
           return { status: 'empty', revision: 0, entries: [] }
         default:

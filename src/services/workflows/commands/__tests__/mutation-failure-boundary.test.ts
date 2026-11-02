@@ -317,6 +317,13 @@ describe('workflow mutation failure boundaries', () => {
       if (channel === 'db:finalization-link-knowledge-document' || channel === 'db:continuity-save-finalized') return { success: true }
       if (channel === 'db:blueprint-update-notes') return { success: true }
       if (channel === 'db:character-roster-read') return { status: 'empty', revision: 0, entries: [] }
+      // issue #62：章节事实账本这一步现在要求「确实落库」，桩必须给出可回读的记录。
+      if (channel === 'db:writing-intelligence-commit-build') {
+        return { facts: [], characterStates: [], foreshadowing: [], quality: { weightedScore: 100, blockingCount: 0 }, contentHash: 'c'.repeat(64) }
+      }
+      if (channel === 'db:writing-intelligence-commit-get') {
+        return { facts: [], characterStates: [], foreshadowing: [], quality: { weightedScore: 100, blockingCount: 0 }, contentHash: 'c'.repeat(64) }
+      }
       throw new Error(`unexpected IPC: ${channel}`)
     })
     stubVelaIpc(invoke)
@@ -1482,5 +1489,53 @@ describe('workflow mutation failure boundaries', () => {
 
     expect(generateStream).toHaveBeenCalledTimes(2)
     expect(invoke.mock.calls.map(([channel]) => channel)).not.toContain('db:review-create')
+  })
+})
+
+// issue #62：这一章的事实账本没有落库，但界面显示「章节事实账本 完成」——
+// 状态与产物脱节。旧实现把「建账本」整个包在 try/catch 里，失败只写一行日志就返回成功。
+describe('章节事实账本不得假成功 (issue #62)', () => {
+  const commitSteps = () => {
+    const complete = vi.fn(async () => '本章剧情要点')
+    return testFrozenCharacterSteps('定稿正文', { ...testPostProcessGeneration(), complete }, 1)
+  }
+
+  it('建账本抛错时这一步必须判失败，并把原因写进错误（不再静默成功）', async () => {
+    const invoke = vi.fn(async (channel: string) => {
+      if (channel === 'db:writing-intelligence-commit-build') throw new Error('CHAPTER_COMMIT_CONTINUITY_REQUIRED')
+      throw new Error(`unexpected IPC: ${channel}`)
+    })
+    stubVelaIpc(invoke)
+    const step = commitSteps().find(candidate => candidate.key === 'chapter_commit')!
+    await expect(step.executor(callbacks(), context())).rejects.toThrow('事实账本没有落库')
+    await expect(step.executor(callbacks(), context())).rejects.toThrow('CHAPTER_COMMIT_CONTINUITY_REQUIRED')
+    // 错误里给可执行出路（先让章节剧情要点成功 / 点重试）
+    await expect(step.executor(callbacks(), context())).rejects.toThrow('重试')
+  })
+
+  it('建账本报成功但库里读不到对应记录时也判失败（状态与产物不得脱节）', async () => {
+    const invoke = vi.fn(async (channel: string) => {
+      if (channel === 'db:writing-intelligence-commit-build') {
+        return { facts: [], characterStates: [], foreshadowing: [], quality: { weightedScore: 0, blockingCount: 0 }, contentHash: 'a'.repeat(64) }
+      }
+      if (channel === 'db:writing-intelligence-commit-get') {
+        return { facts: [], characterStates: [], foreshadowing: [], quality: { weightedScore: 0, blockingCount: 0 }, contentHash: 'b'.repeat(64) }
+      }
+      throw new Error(`unexpected IPC: ${channel}`)
+    })
+    stubVelaIpc(invoke)
+    const step = commitSteps().find(candidate => candidate.key === 'chapter_commit')!
+    await expect(step.executor(callbacks(), context())).rejects.toThrow('状态与产物脱节')
+  })
+
+  it('确实落库时通过', async () => {
+    const stored = { facts: [{ kind: 'event', statement: '事实', evidence: '出处' }], characterStates: [], foreshadowing: [], quality: { weightedScore: 90, blockingCount: 0 }, contentHash: 'c'.repeat(64) }
+    const invoke = vi.fn(async (channel: string) => {
+      if (channel === 'db:writing-intelligence-commit-build' || channel === 'db:writing-intelligence-commit-get') return stored
+      throw new Error(`unexpected IPC: ${channel}`)
+    })
+    stubVelaIpc(invoke)
+    const step = commitSteps().find(candidate => candidate.key === 'chapter_commit')!
+    await expect(step.executor(callbacks(), context())).resolves.toBeUndefined()
   })
 })

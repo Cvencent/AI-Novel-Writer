@@ -349,24 +349,53 @@ export function buildFinalizePostProcessSteps(
       if (!context || context.cancelled) throw new Error('GENERATION_WORKFLOW_CANCELLED')
       if (finalizedDraftId === undefined || !finalizedSource) throw new Error('CHAPTER_COMMIT_FINALIZED_SOURCE_REQUIRED')
       const projectSession = requireWorkflowProjectSession(context)
+      // issue #62：旧实现把「建账本」整个包在 try/catch 里，失败只写一行日志就当成功 ——
+      // 界面因此显示「章节事实账本 完成」，而 chapter_commits 里根本没有这一章的行
+      // （本样本第 12 章：chapter_notes 失败 → 连续性快照缺失 → 建账本必然抛错，却被吞掉）。
+      // 现在：失败如实判失败（这一步是非关键步，不会因此挡住整本书），并把原因写进步骤错误。
+      let commit: {
+        facts: readonly unknown[]
+        characterStates: readonly unknown[]
+        foreshadowing: readonly unknown[]
+        quality: { weightedScore: number }
+        contentHash: string
+      }
       try {
-        const commit = await ipc.invokeWithProjectSession(
+        commit = await ipc.invokeWithProjectSession(
           projectSession,
           'db:writing-intelligence-commit-build',
           chapterNumber,
           finalizedDraftId,
           _project.path,
         )
-        callbacks.log(text(
-          `章节事实已提交：${commit.facts.length} 条事实、${commit.characterStates.length} 项角色状态、${commit.foreshadowing.length} 条伏笔，质量分 ${commit.quality.weightedScore.toFixed(1)}。`,
-          `Chapter facts committed: ${commit.facts.length} facts, ${commit.characterStates.length} character states, ${commit.foreshadowing.length} foreshadowing items, quality ${commit.quality.weightedScore.toFixed(1)}.`,
-        ))
       } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error)
         callbacks.log(text(
-          `章节事实账本暂不可用，后处理其余部分继续：${String(error)}`,
-          `The chapter fact ledger was unavailable; the rest of post-processing continues: ${String(error)}`,
+          `章节事实账本构建失败：${reason}`,
+          `Building the chapter fact ledger failed: ${reason}`,
+        ))
+        throw new Error(text(
+          `事实账本没有落库：${reason}。可用「重试」重跑这一步；若提示缺少连续性快照，请先让「章节剧情要点」成功。`,
+          `The fact ledger was not written: ${reason}. Use Retry for this step; if it reports a missing continuity snapshot, make “Chapter plot notes” succeed first.`,
         ))
       }
+      // 成功也必须**确实落库**（issue #62 建议 1）：状态与产物不得脱节。
+      const stored = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:writing-intelligence-commit-get',
+        chapterNumber,
+        _project.path,
+      ).catch(() => null)
+      if (!stored || stored.contentHash !== commit.contentHash) {
+        throw new Error(text(
+          '事实账本步骤报成功，但库里没有对应记录（状态与产物脱节）。请点「重试」重跑这一步。',
+          'The fact-ledger step reported success, but no matching row is stored. Use Retry to run this step again.',
+        ))
+      }
+      callbacks.log(text(
+        `章节事实已提交：${commit.facts.length} 条事实、${commit.characterStates.length} 项角色状态、${commit.foreshadowing.length} 条伏笔，质量分 ${commit.quality.weightedScore.toFixed(1)}。`,
+        `Chapter facts committed: ${commit.facts.length} facts, ${commit.characterStates.length} character states, ${commit.foreshadowing.length} foreshadowing items, quality ${commit.quality.weightedScore.toFixed(1)}.`,
+      ))
     },
   })
   return steps
