@@ -11,6 +11,8 @@ export async function runFinalizationGeneration(options: {
   modelId: () => string
   parentRootActionId?: string
   retryOf?: FinalizedCharacterArtifact
+  /** 作者显式重试：允许为同一槽位新开一次尝试（issue #59）。 */
+  restart?: boolean
   cancelled: () => boolean
   onHandle?: (handle: MainGenerationRunHandle) => void
 }) {
@@ -35,12 +37,16 @@ export async function runFinalizationGeneration(options: {
     if (options.cancelled()) throw new Error('GENERATION_WORKFLOW_CANCELLED')
     recovery = await ipc.invokeWithProjectSession(session, 'finalization-generation:begin', {
       slot: options.slot, modelId: recovery?.modelId ?? options.modelId(), ...(options.parentRootActionId ? { parentRootActionId: options.parentRootActionId } : {}),
+      ...(options.restart ? { restart: true } : {}),
     })
     validate(recovery)
     options.onHandle?.(recovery.view.handle)
     if (options.cancelled()) { await cancel(); throw new Error('GENERATION_WORKFLOW_CANCELLED') }
     if (recovery.effect) return recovery.effect
-    if (recovery.sourceStatus !== 'current' || recovery.view.status === 'cancelled') throw new Error('FINALIZATION_GENERATION_SOURCE_CHANGED')
+    // issue #59：定稿后处理重试不该被「源指纹必须等于当前源」挡住——定稿之后蓝图/细纲/角色
+    // 通常已经变过，这条校验对任何跨多次编辑的旧 run 都必然失败。begin 会在这种情形下按
+    // **当前源重建**绑定（= 一次新的生成）并把 restorable 标出来；只有连重建都不可行时才拒绝。
+    if (recovery.view.status === 'cancelled') throw new Error('FINALIZATION_GENERATION_SOURCE_CHANGED')
     let candidates = recovery.view.candidates ?? recovery.view.artifacts
     let candidate = candidates.at(-1)
     if (options.retryOf || !candidate || options.slot.stepKey === 'character_cards' && candidate.status === 'completed' && candidate.compositionEligible === true) {

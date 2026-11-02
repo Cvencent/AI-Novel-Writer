@@ -31,10 +31,26 @@ export class FinalizationGeneration {
   }
   retryable(run: DurableGenerationRun): boolean {
     if (this.readEffect(run)) return false
-    const context = readFinalizationGenerationContext(run), budget = this.runs.budget(run.rootActionId)
+    // 先过一遍上下文校验：上下文损坏时不应进入重跑（那也是「重试必然失败」的一种）。
+    const context = readFinalizationGenerationContext(run)
+    const budget = this.runs.budget(run.rootActionId)
     if (budget.attempts.some(attempt => ['reserved', 'dispatch-marked'].includes(attempt.status))) return false
     return budget.root.status === 'cancelled' || context.slot.stepKey === 'chapter_notes'
       && !isDeepStrictEqual(finalizationNotesBaseline(this.db, context.slot), context.notesBaseline)
+  }
+  /**
+   * 能不能为同一个槽位**新开一次尝试**（issue #59）。
+   *
+   * 与 `retryable` 的区别：那个判据回答「重开这个槽位时是否该复用旧 run」，
+   * 它被 slot 重复打开/恢复导航复用，必须保守；这里是作者在面板上**显式点「重试」**的路径，
+   * 允许为同一个槽位新开 run（历史与已封存效果都保留）。
+   * 仍然守住的底线：已封存效果不再跑（readEffect 为真时返回 false），有在途请求也不跑。
+   */
+  canRestart(run: DurableGenerationRun): boolean {
+    if (this.readEffect(run)) return false
+    readFinalizationGenerationContext(run)
+    const budget = this.runs.budget(run.rootActionId)
+    return !budget.attempts.some(attempt => ['reserved', 'dispatch-marked'].includes(attempt.status))
   }
   require(handle: MainGenerationRunHandle): DurableGenerationRun {
     if (!handle || Object.keys(handle).some(key => !['projectId', 'epoch', 'rootActionId', 'runId'].includes(key))) throw new Error('GENERATION_RUN_IDENTITY_MISMATCH')

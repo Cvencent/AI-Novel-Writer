@@ -718,3 +718,31 @@ it('resume 等待期间失败 artifact 被丢弃后，不得按旧快照发修�
  await expect(executing).rejects.toThrow('GENERATION_FINALIZATION_ARTIFACT_INVALID')
  expect(f.dispatch).toHaveBeenCalledTimes(3)
 })
+
+// issue #59：定稿后处理掉队后「重试失败步骤」永远补不回来。
+// 两条错误互锁：chapter_notes 报 SOURCE_CHANGED（旧 run 的源指纹必然与当前源不等），
+// character_cards 报 PREDECESSOR_REQUIRED（前驱没落账）。作者点完所有官方按钮仍写不下去。
+it('显式重试不受「源指纹已变」阻挡：定稿后项目源变过，重试仍能落账 (issue #59)', async () => {
+  const f = await generated()
+  const handle = f.recovery.view.handle
+  // 模拟「定稿之后作品源继续演进」：后续章节流程改了蓝图标题（不是作者改要点，
+  // 因此 notesBaseline 不变——那一条保护仍然生效）。
+  f.db.prepare("UPDATE blueprints SET title=? WHERE chapter_number=1").run('后续流程改过的标题')
+  // 读恢复时仍如实报告来源冲突（作者该知道），但它不该成为重试的拦路石。
+  expect(f.owner.readFinalizationGeneration({ slot: f.slot })?.sourceStatus).toBe('conflict')
+  const receipt = await f.owner.executeFinalizationGeneration({ handle })
+  const committed = f.owner.commitFinalizationGeneration({ handle, artifact: f.artifactOf(receipt) })
+  expect(committed.stepKey).toBe(f.slot.stepKey)
+})
+
+it('显式 restart 允许为同一槽位新开一次尝试，已封存效果不再重跑 (issue #59)', async () => {
+  const f = await generated()
+  const oldRunId = f.recovery.view.handle.runId
+  const restarted = f.owner.beginFinalizationGeneration({ slot: f.slot, modelId: 'synthetic', restart: true })
+  expect(restarted.view.handle.runId).not.toBe(oldRunId)
+  const receipt = await f.owner.executeFinalizationGeneration({ handle: restarted.view.handle })
+  f.owner.commitFinalizationGeneration({ handle: restarted.view.handle, artifact: f.artifactOf(receipt) })
+  // 已封存效果后再 request restart：不得新开（canRestart 为假），直接回放封存效果。
+  const replay = f.owner.beginFinalizationGeneration({ slot: f.slot, modelId: 'synthetic', restart: true })
+  expect(replay.effect?.stepKey).toBe(f.slot.stepKey)
+})

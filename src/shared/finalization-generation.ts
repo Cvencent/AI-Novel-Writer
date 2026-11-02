@@ -35,7 +35,7 @@ export interface FinalizationGenerationRecovery {
 }
 export interface FinalizationGenerationChannels {
   'finalization-generation:read': { args: [{ slot: FinalizationGenerationSlot }]; return: FinalizationGenerationRecovery | null }
-  'finalization-generation:begin': { args: [{ slot: FinalizationGenerationSlot; modelId: string; parentRootActionId?: string }]; return: FinalizationGenerationRecovery }
+  'finalization-generation:begin': { args: [{ slot: FinalizationGenerationSlot; modelId: string; parentRootActionId?: string; /** 作者显式重试：允许为同一槽位新开一次尝试（issue #59）。 */ restart?: boolean }]; return: FinalizationGenerationRecovery }
   'finalization-generation:execute': { args: [{ handle: MainGenerationRunHandle; retryOf?: FinalizedCharacterArtifact }]; return: MainGenerationExecuteReceipt }
   'finalization-generation:commit': { args: [{ handle: MainGenerationRunHandle; artifact: FinalizedCharacterArtifact }]; return: FinalizationGenerationEffect }
   'finalization-generation:cancel': { args: [{ handle: MainGenerationRunHandle }]; return: MainGenerationRunView }

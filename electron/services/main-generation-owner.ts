@@ -441,13 +441,13 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     preparations.set(preparationId, { binding, knowledgeSnapshot: structuredClone(knowledgeSnapshot) })
     return { preparationId, knowledgeSnapshot: structuredClone(knowledgeSnapshot), selectedDrafts }
   }
-  const begin = (selection: (BeginGenerationRequest | AgentBeginSelection) & { editorInlineInput?: EditorInlineInput; finalizationGenerationSlot?: FinalizationGenerationSlot; graphGenerationInput?: GraphGenerationInput; graphGenerationKey?: string; legacyRosterKey?: string }, batchInitialization = false, agentInitialization = false, editorInitialization = false, finalizationInitialization = false, graphInitialization = false, legacyInitialization = false): MainGenerationRunView => {
+  const begin = (selection: (BeginGenerationRequest | AgentBeginSelection) & { editorInlineInput?: EditorInlineInput; finalizationGenerationSlot?: FinalizationGenerationSlot; finalizationRestart?: boolean; graphGenerationInput?: GraphGenerationInput; graphGenerationKey?: string; legacyRosterKey?: string }, batchInitialization = false, agentInitialization = false, editorInitialization = false, finalizationInitialization = false, graphInitialization = false, legacyInitialization = false): MainGenerationRunView => {
     assertCurrent()
     if (!selection || typeof selection.operation !== 'string' || !/^[a-z0-9][a-z0-9:_-]{0,127}$/u.test(selection.operation)
       || !Array.isArray(selection.promptKeys) || selection.promptKeys.length === 0
       || Object.hasOwn(selection, 'parentRootActionId') && (typeof selection.parentRootActionId !== 'string' || !selection.parentRootActionId.trim())
       || typeof selection.uiActionNonce !== 'string' || !selection.uiActionNonce.trim() || selection.uiActionNonce.length > 256
-      || Object.keys(selection).some(key => !['operation', 'uiActionNonce', 'modelId', 'chapterNumber', 'selectedDraftIds', 'selectedFinalizedDraftIds', 'selectedBlueprintChapterNumbers', 'promptKeys', 'skillStages', 'authorInputs', 'output', 'outputOverrides', 'parentRootActionId', 'continueDirectoryOperationId', 'batchId', 'batchIntent', 'preparationId', 'finalizedCharacterContextId', 'reviewRevisionContextId', 'agentWorkflowRegistrationId', 'materialDecision', 'importSlot', 'importExecution', ...(agentInitialization ? ['agentInput', 'agentSession'] : []), ...(editorInitialization ? ['editorInlineInput'] : []), ...(finalizationInitialization ? ['finalizationGenerationSlot'] : []), ...(graphInitialization ? ['graphGenerationInput', 'graphGenerationKey'] : []), ...(legacyInitialization ? ['legacyRosterKey'] : [])].includes(key))) throw new Error('GENERATION_BEGIN_INVALID')
+      || Object.keys(selection).some(key => !['operation', 'uiActionNonce', 'modelId', 'chapterNumber', 'selectedDraftIds', 'selectedFinalizedDraftIds', 'selectedBlueprintChapterNumbers', 'promptKeys', 'skillStages', 'authorInputs', 'output', 'outputOverrides', 'parentRootActionId', 'continueDirectoryOperationId', 'batchId', 'batchIntent', 'preparationId', 'finalizedCharacterContextId', 'reviewRevisionContextId', 'agentWorkflowRegistrationId', 'materialDecision', 'importSlot', 'importExecution', ...(agentInitialization ? ['agentInput', 'agentSession'] : []), ...(editorInitialization ? ['editorInlineInput'] : []), ...(finalizationInitialization ? ['finalizationGenerationSlot', 'finalizationRestart'] : []), ...(graphInitialization ? ['graphGenerationInput', 'graphGenerationKey'] : []), ...(legacyInitialization ? ['legacyRosterKey'] : [])].includes(key))) throw new Error('GENERATION_BEGIN_INVALID')
     if (selection.operation === 'editor-inline' && !editorInitialization) throw new Error('GENERATION_EDITOR_ADMISSION_REQUIRED')
     if (['finalized-chapter-notes', 'finalized-character-state'].includes(selection.operation) && !finalizationInitialization) throw new Error('GENERATION_FINALIZATION_ADMISSION_REQUIRED')
     if (Object.values(graphOperations).includes(selection.operation as typeof graphOperations[keyof typeof graphOperations]) && !graphInitialization) throw new Error('GENERATION_GRAPH_ADMISSION_REQUIRED')
@@ -538,7 +538,10 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
       }
       if (selection.finalizationGenerationSlot) {
         const existing = finalizations.find(selection.finalizationGenerationSlot)
-        if (existing && !finalizations.retryable(existing)) return existing
+        // issue #59：作者显式重试时不要在这里短路复用旧 run —— 旧 run 的尝试已失败、
+        // 产不出新候选，复用只会让「点重试」永远补不回来。
+        if (existing && !finalizations.retryable(existing)
+          && !(selection.finalizationRestart === true && finalizations.canRestart(existing))) return existing
         if (selection.parentRootActionId) repository.activateRootForCommittedStage(selection.parentRootActionId, binding)
       }
       if (batch) repository.activateRootForCommittedStage(batch.rootHandle.rootActionId, binding)
@@ -1057,10 +1060,66 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     return { view: viewOf(run), context, modelId: modelReceipt(run.binding).modelId, sourceStatus: current ? 'current' : 'conflict',
       attemptCount: deps.database.prepare('SELECT COUNT(*) FROM generation_attempts WHERE run_id=?').pluck().get(run.runId) as number, ...(effect ? { effect } : {}) }
   }
-  const assertFinalizationSources = (run: DurableGenerationRun) => {
+  /**
+   * 定稿后处理的落账准入（issue #59）。
+   *
+   * 旧实现要求「旧 run 的源指纹仍等于按当前源重建出来的指纹」。定稿那一跑之后，作品源
+   * （蓝图 / 细纲 / 角色）通常已经变过（后续章节继续生成），于是**这条对任何跨多次编辑的
+   * 旧 run 都必然失败** —— 作者点「重试失败步骤」永远拿 `FINALIZATION_GENERATION_SOURCE_CHANGED`，
+   * 而 `chapter_notes` 失败又让 `character_cards` 拿 `PREDECESSOR_REQUIRED`，两条互锁，
+   * 后处理永远补不齐、写下一章被守卫挡死。
+   *
+   * 这里改成按**权威来源**判：定稿后处理读的是**定稿时刻的快照**，它已经冻结在 binding 的
+   * `finalizationGenerationContext` 里并逐字哈希校验（见 readFinalizationGenerationContext）。
+   * 所以准入只需要确认「这次运行仍然有效」（项目/epoch 当前、根没有被取消），
+   * 不再要求「全项目的其他源一个字没变」——那从来不是这类任务的前提。
+   * 「作者后改不被覆盖」的保护留在 commit 内部（notesBaseline 校验与角色字段的作者来源检查）。
+   */
+  /** 通用的「来源仍是当前」准入（graph / legacy-roster 等仍用它）。 */
+  const assertSourcesCurrentForRun = (run: DurableGenerationRun) => {
     assertCurrent()
     if (repository.budget(run.rootActionId).root.status === 'cancelled') throw new Error('GENERATION_ACTION_CANCELLED')
     if (!compareGenerationSourceBindings(run.binding, deps.rebuildBinding(run.binding, currentModelReceipt(run.binding)))) throw new Error('GENERATION_SOURCE_CHANGED')
+  }
+  /**
+   * 定稿后处理的落账准入（issue #59）。
+   *
+   * 旧实现要求「旧 run 的源指纹仍等于按当前源重建出来的指纹」。定稿那一跑之后，作品源
+   * （蓝图 / 细纲 / 角色）通常已经变过（后续章节继续生成），于是**这条对任何跨多次编辑的
+   * 旧 run 都必然失败** —— 作者点「重试失败步骤」永远拿 `FINALIZATION_GENERATION_SOURCE_CHANGED`，
+   * 而 `chapter_notes` 失败又让 `character_cards` 拿 `PREDECESSOR_REQUIRED`，两条互锁，
+   * 后处理永远补不齐、写下一章被守卫挡死。
+   *
+   * 改成按**权威来源**判：定稿后处理读的是**定稿时刻的快照**，它冻结在 binding 的
+   * `finalizationGenerationContext` 里并逐字哈希校验（`readFinalizationGenerationContext` 会
+   * 校验哈希、槽位、来源身份与正文哈希）。所以准入只需要「这次运行仍然有效」+「冻结上下文自洽」。
+   * 注意不要比较 `run.binding.epoch` 与当前 epoch：重启后 epoch 必然变，而后处理要能在重启后继续
+   * （上下文里存的是 `finalizationGenerationOriginEpoch`）。
+   * 「作者后改不被覆盖」的保护留在 commit 内部（notesBaseline 校验与角色字段的作者来源检查）。
+   */
+  const assertFinalizationSources = (run: DurableGenerationRun) => {
+    assertCurrent()
+    if (repository.budget(run.rootActionId).root.status === 'cancelled') throw new Error('GENERATION_ACTION_CANCELLED')
+    // 这一条对所有后处理运行都成立（包括图形/旧名单），保持不变。
+    if (run.binding.sourceManifest.operation !== 'finalized-chapter-notes'
+      && run.binding.sourceManifest.operation !== 'finalized-character-state'
+      && !compareGenerationSourceBindings(run.binding, deps.rebuildBinding(run.binding, currentModelReceipt(run.binding))))
+      throw new Error('GENERATION_SOURCE_CHANGED')
+    // 定稿两步走**权威来源**判据（见函数注释）：冻结上下文自洽 + 这次要写的那份定稿仍是当前定稿。
+    const context = readFinalizationGenerationContext(run)
+    // 仍然必须挡住「这次后处理要写的那份定稿已经不是当前定稿」——作者在定稿后改了正文、
+    // 或定稿被新版取代时必须拒绝落账（旧行为里由「重建全部来源指纹再比对」间接挡住，
+    // 那条同时也会因**无关来源**变化而误拒，见上）。
+    const { source } = context.slot
+    const latest = deps.database.prepare("SELECT id FROM drafts WHERE chapter_number=? AND status='finalized' ORDER BY version DESC,id DESC LIMIT 1")
+      .pluck().get(source.chapterNumber)
+    const receipt = deps.database.prepare('SELECT finalization_id,chapter_number,content_hash,content_snapshot FROM finalization_outbox WHERE draft_id=?')
+      .get(source.draftId) as { finalization_id: string; chapter_number: number; content_hash: string; content_snapshot: string } | undefined
+    const body = receipt && deps.database.prepare('SELECT body FROM contents WHERE id=(SELECT content_id FROM drafts WHERE id=?)').pluck().get(source.draftId) as string | undefined
+    if (latest !== source.draftId || !receipt || receipt.chapter_number !== source.chapterNumber
+      || receipt.finalization_id !== source.finalizationId || receipt.content_hash !== source.contentHash
+      || body !== receipt.content_snapshot || receipt.content_hash !== textHash(String(body ?? '')))
+      throw new Error('GENERATION_FINALIZED_SOURCE_NOT_CURRENT')
   }
   const graphRecovery = (run: DurableGenerationRun): GraphGenerationRecovery => {
     assertCurrent()
@@ -1076,7 +1135,7 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
       }
     }
     let current = false
-    try { assertFinalizationSources(run); current = true } catch { /* Historical context/result does not require current sources or model. */ }
+    try { assertSourcesCurrentForRun(run); current = true } catch { /* Historical context/result does not require current sources or model. */ }
     return { view: viewOf(run), modelId: modelReceipt(run.binding).modelId, context, effects, attemptCount: attempts.length,
       sourceStatus: current ? 'current' : 'conflict', ...(artifact && result ? { artifact, result } : {}) }
   }
@@ -1084,7 +1143,7 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     assertCurrent()
     const context = readLegacyRosterGenerationContext(run), proposal = legacyRosters.proposal(run), artifact = legacyRosters.artifactFor(run)
     let current = false
-    try { assertFinalizationSources(run); current = true } catch { /* Preserve original candidate/proposal when author facts or model change. */ }
+    try { assertSourcesCurrentForRun(run); current = true } catch { /* Preserve original candidate/proposal when author facts or model change. */ }
     return { view: viewOf(run), modelId: modelReceipt(run.binding).modelId, context, sourceStatus: current ? 'current' : 'conflict',
       attemptCount: deps.database.prepare('SELECT COUNT(*) FROM generation_attempts WHERE run_id=?').pluck().get(run.runId) as number,
       ...(artifact ? {artifact} : {}), ...(proposal ? {proposal} : {}) }
@@ -1153,7 +1212,7 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     stageLegacyRosterGeneration: (request: LegacyRosterGenerationChannels['legacy-roster:stage']['args'][0]) => {
       assertCurrent()
       if (!request || Object.keys(request).some(key => !['handle','artifact'].includes(key))) throw new Error('GENERATION_LEGACY_REQUEST_INVALID')
-      return legacyRosters.stage(request.handle,request.artifact,assertFinalizationSources)
+      return legacyRosters.stage(request.handle,request.artifact,assertSourcesCurrentForRun)
     },
     cancelLegacyRosterGeneration: (request: LegacyRosterGenerationChannels['legacy-roster:cancel']['args'][0]) => {
       assertCurrent()
@@ -1198,7 +1257,7 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     confirmGraphGeneration: (request: GraphGenerationChannels['graph-generation:confirm']['args'][0]) => {
       assertCurrent()
       if (!request || Object.keys(request).some(key => !['handle', 'artifact', 'index'].includes(key))) throw new Error('GENERATION_GRAPH_REQUEST_INVALID')
-      return graphs.confirm(request.handle, request.artifact, request.index, assertFinalizationSources)
+      return graphs.confirm(request.handle, request.artifact, request.index, assertSourcesCurrentForRun)
     },
     cancelGraphGeneration: (request: GraphGenerationChannels['graph-generation:cancel']['args'][0]) => {
       assertCurrent()
@@ -1215,9 +1274,12 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     },
     beginFinalizationGeneration: (request: FinalizationGenerationChannels['finalization-generation:begin']['args'][0]) => {
       assertCurrent()
-      if (!request || Object.keys(request).some(key => !['slot', 'modelId', 'parentRootActionId'].includes(key))) throw new Error('GENERATION_FINALIZATION_SLOT_INVALID')
+      if (!request || Object.keys(request).some(key => !['slot', 'modelId', 'parentRootActionId', 'restart'].includes(key))) throw new Error('GENERATION_FINALIZATION_SLOT_INVALID')
       const { slot } = request, prior = finalizations.find(slot)
-      if (prior && !finalizations.retryable(prior)) return finalizationRecovery(prior)
+      // 作者显式点「重试」时允许为同一槽位新开一次尝试（issue #59）：旧实现里 `retryable` 为假就
+      // 直接复用旧 run，而旧 run 的尝试已经失败、无法再产出新候选 —— 于是「点重试」永远补不回来。
+      if (prior && !finalizations.retryable(prior) && !(request.restart === true && finalizations.canRestart(prior)))
+        return finalizationRecovery(prior)
       const sibling = finalizations.find({ source: slot.source, stepKey: slot.stepKey === 'chapter_notes' ? 'character_cards' : 'chapter_notes' })
       const predecessor = prior ?? sibling
       let parentRootActionId = predecessor && repository.budget(predecessor.rootActionId).root.status !== 'cancelled' ? predecessor.rootActionId : undefined
@@ -1239,7 +1301,8 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
         modelId: selectedModelId, chapterNumber: slot.source.chapterNumber, selectedDraftIds: [], selectedFinalizedDraftIds: [slot.source.draftId],
         promptKeys: [characterStep ? 'update_character_cards' : 'generate_chapter_notes'], skillStages: ['review'], output: characterStep ? 'structured-data' : 'visible-text',
         authorInputs: [{ id: 'finalized-character-context', text: JSON.stringify(prepared.context) }],
-        ...(characterStep ? { finalizedCharacterContextId: prepared.contextId } : {}), ...(parentRootActionId ? { parentRootActionId } : {}), finalizationGenerationSlot: slot }, false, false, false, true)
+        ...(characterStep ? { finalizedCharacterContextId: prepared.contextId } : {}), ...(parentRootActionId ? { parentRootActionId } : {}),
+        finalizationGenerationSlot: slot, ...(request.restart === true ? { finalizationRestart: true } : {}) }, false, false, false, true)
       return finalizationRecovery(repository.get(view.handle.runId))
     },
     executeFinalizationGeneration: async (request: FinalizationGenerationChannels['finalization-generation:execute']['args'][0]) => {
