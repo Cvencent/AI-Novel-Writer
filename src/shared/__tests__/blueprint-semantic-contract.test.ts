@@ -12,6 +12,7 @@ import {
   joinBlueprintLabels,
 } from '../blueprint-semantic-contract'
 import { StructuredContractDiagnostic } from '../structured-contract-diagnostic'
+import { timeAnchorOf } from '../chapter-time-anchor'
 
 function validBlueprint(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   const chapterNumber = typeof overrides.chapterNumber === 'number' ? overrides.chapterNumber : 1
@@ -380,8 +381,38 @@ describe('character entrance rotation (issue #81)', () => {
   })
 })
 
+// issue #84：章级时间推进从来没被表达过——链路上没有任何一处产出时点，
+// 起草契约的「同一天紧接」默认于是永远生效。这里给蓝图加一个必填的时点标注。
+describe('chapter time anchor (issue #84)', () => {
+  it('requires each blueprint to label when the chapter happens', () => {
+    const zh = blueprintSemanticGenerationContract('zh-CN')
+    expect(zh).toContain('时点必须写明')
+    expect(zh).toContain('【时点：…】')
+    // 要说明「不标它跨日就永远写不出来」，而不是只说「请标注」。
+    expect(zh).toContain('同一天紧接')
+    // 给出可执行的取值示例。
+    expect(zh).toContain('次日清晨')
+    const en = blueprintSemanticGenerationContract('en-US')
+    expect(en).toContain('State the time anchor')
+    expect(en).toContain('the next morning')
+    expect(en).toContain('only place in the pipeline that produces a time anchor')
+  })
+})
+
 describe('machine-read labels are separable from editable prose (issue #65)', () => {
   const keyEvents = '周叙把签收联叠进风灯罩。【收束：物件落幅】【装置：跳板口＋把笔撂在移交单上】'
+
+  it('also treats the time anchor as a machine-read label (issue #84)', () => {
+    // 时点标注与收束/装置同类：下游用 `timeAnchorOf` 读它，作者手改正文时不能把它改坏。
+    const withTime = '周叙把签收联叠进风灯罩。【收束：物件落幅】【时点：次日清晨】'
+    const { prose, labels } = splitBlueprintLabels(withTime)
+    expect(prose).toBe('周叙把签收联叠进风灯罩。')
+    // 顺序按「剥离次序」：时点先剥 → 排在前面（#65 那三个标注的次序本来就未约定）。
+    expect(labels).toEqual(['【时点：次日清晨】', '【收束：物件落幅】'])
+    // 往返之后仍可读——否则作者一编辑，起草路径的时点就丢了。
+    expect(timeAnchorOf(joinBlueprintLabels(prose, labels))).toBe('次日清晨')
+    expect(closingShotOf(joinBlueprintLabels(prose, labels))).toBe('物件落幅')
+  })
 
   it('splits the labels out of the prose used by the editor', () => {
     const { prose, labels } = splitBlueprintLabels(keyEvents)

@@ -1,10 +1,19 @@
 import { writingLanguageText, type WritingLanguage } from './writing-language'
 
-/** Keep the established drafting contract byte-for-byte across its consumers. */
+/**
+ * 时间承接契约（issue #84 加了「以本章时点为准」这一条）。
+ *
+ * 原文只说「作者没有写明跨日时视为同一天」——而链路上**没有任何一处产出时点**
+ * （见 `chapter-time-anchor.ts` 头部），于是那个默认永远生效，跨日永远写不出来。
+ * 现在本章蓝图 `keyEvents` 末端的「【时点：…】」就是那个时点；有它时必须按它换算，
+ * 没有时才退回同一天。
+ *
+ * 其余措辞保持与既有消费者**逐字一致**（审稿路径也注入它）。
+ */
 export function chapterTimeContinuity(language: WritingLanguage): string {
   return writingLanguageText(language,
-    "【时间承接】本章紧接上一章结尾：作者没有写明跨日或时间间隔时，视为同一天内的紧接发展，上一章事件就发生在不久之前，不得写成“昨天”“昨夜”“前一天”。已定稿事件的时点以定稿原文和【本章写作方向】里的时点说明为准，本章提到这些事件时须按该时点换算（例如定稿写“黄昏”、本章时点为“同日深夜”，则那些事件发生在“黄昏时”“傍晚那会儿”；定稿写“傍晚”、本章时点为“次日上午”，则写“昨晚”“昨天傍晚”）。",
-    "[Time continuity] This chapter follows directly on the previous chapter's ending: when the author states no day change or time gap, treat it as a continuation within the same day; events of the previous chapter happened a little while ago and must not be written as \"yesterday\", \"last night\", or \"the day before\". The time of finalized events is fixed by the finalized text and by the time stated in [Chapter brief]; when this chapter mentions those events, convert their time accordingly (for example, if the finalized text says \"dusk\" and this chapter is \"late the same night\", those events happened \"at dusk\" or \"earlier this evening\"; if it says \"evening\" and this chapter is \"the next morning\", write \"last night\" or \"yesterday evening\").")
+    "【时间承接】本章紧接上一章结尾：**以本章蓝图 keyEvents 末端「【时点：…】」标注的时点为准**——标了跨日或时间间隔（如「次日清晨」「三日后」）时，本章就是那一天，上一章事件按该间隔回指（「昨晚」「三天前」），并在正文里写出这次时间推进的依据；标了同一天内的时点（如「当夜」「同日深夜」）时按同一天换算。**只有当作者与本章蓝图都没有写明跨日或时间间隔时**，才视为同一天内的紧接发展，上一章事件就发生在不久之前，不得写成“昨天”“昨夜”“前一天”。已定稿事件的时点以定稿原文和【本章写作方向】里的时点说明为准，本章提到这些事件时须按该时点换算（例如定稿写“黄昏”、本章时点为“同日深夜”，则那些事件发生在“黄昏时”“傍晚那会儿”；定稿写“傍晚”、本章时点为“次日上午”，则写“昨晚”“昨天傍晚”）。",
+    "[Time continuity] This chapter follows directly on the previous chapter's ending: **take the time from this chapter's blueprint keyEvents `【时点: …】` label** \u2014 if it states a day change or gap (\"the next morning\", \"three days later\"), this chapter is that day; refer to the previous chapter's events across that gap (\"last night\", \"three days ago\") and show the passage of time on the page. If it states a time within the same day (\"the same night\", \"late that night\"), convert accordingly. **Only when neither the author nor this chapter's blueprint states a day change or gap** does it count as a continuation within the same day: events of the previous chapter happened a little while ago and must not be written as \"yesterday\", \"last night\", or \"the day before\". The time of finalized events is fixed by the finalized text and by the time stated in [Chapter brief]; when this chapter mentions those events, convert their time accordingly (for example, if the finalized text says \"dusk\" and this chapter is \"late the same night\", those events happened \"at dusk\" or \"earlier this evening\"; if it says \"evening\" and this chapter is \"the next morning\", write \"last night\" or \"yesterday evening\").")
 }
 
 export function reviewTimeContinuity(language: WritingLanguage): string {

@@ -28,6 +28,8 @@ import {
   stagingOf,
   validateBlueprintSemanticItem,
 } from '../../../shared/blueprint-semantic-contract'
+// 时点标注（issue #84）：读法与 #28 的收束、#32 的装置同源。
+import { timeAnchorOf } from '../../../shared/chapter-time-anchor'
 import { requireWorkflowProjectSession, workflowUiText, workflowWritingLanguage } from '../workflow-project-session'
 import { blueprintBoundedInput, outlineBatchSliceForBlueprint } from '../../../shared/blueprint-input'
 import { promptLanguageText } from '../../prompt-language'
@@ -248,6 +250,9 @@ function buildCompactBlueprintTask(input: {
       closingShot: closingShotOf(chapter.keyEvents) || undefined,
       // 场景装置同看：同一套「地点＋起手动作」反复搭的根因也是不可见（issue #32）。
       staging: stagingOf(chapter.keyEvents) || undefined,
+      // 时点同看（issue #84）：上一章发生在什么时候不给模型看，它就没有依据判断本章
+      // 该不该跨日——而链路上没有别处产出时点，起草契约的「同一天紧接」默认会永远生效。
+      timeAnchor: timeAnchorOf(chapter.keyEvents) || undefined,
       // 钩子形态同看（issue #66）：最近几章的钩子全写成条件/警告句时，正文只能照着
       // 收成通牒——这个分布不进去，模型就没有依据去轮换。
       hookForm: chapter.suspenseHook

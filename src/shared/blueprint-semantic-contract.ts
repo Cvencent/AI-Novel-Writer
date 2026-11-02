@@ -1,6 +1,9 @@
 import { StructuredContractDiagnostic } from './structured-contract-diagnostic'
 import { CHARACTER_ROLES, type CharacterRole } from './character-role'
 import type { WritingLanguage } from './writing-language'
+// 时点标注的形态常量与读标注的 `timeAnchorOf` 同源（issue #84）——
+// `splitBlueprintLabels` 拆的与下游读的必须是同一个正则，否则两边会慢慢漂开。
+import { BLUEPRINT_TIME_ANCHOR_LABEL_PATTERN } from './chapter-time-anchor'
 
 export interface BlueprintRelationshipFact {
   from: string
@@ -55,7 +58,7 @@ relationships is required and may be []; every item must contain non-empty from,
 costsAndTurns is required: state the concrete cost or irreversible consequence paid in this chapter (bounded, traceable). When nothing is paid, say so in one short clause. The cost must rotate: never reuse the same cost type or the same beat template as the adjacent chapters (the previous chapters' costs are in recentBlueprints); when the golden-finger's price was paid the same way last chapter, pay a different kind of price this chapter. The cost must leave a ledger (issue #36): whatever is written in costsAndTurns must still be unpaid at the end of this chapter — a forgotten fact may not be recovered for free in the same chapter, a lost item may not be picked back up two sentences later, and an injury, deadline, or exposure risk may not evaporate on the next page. To recover or lift a loss, the character must pay another price (read again, ask someone, expose their position, give something up) and that new price must be written down too. Never write the recovery into the cost field itself ("forgot where the stub was, felt along the water lock and found it" is not a cost).
 foreshadowing is required: state what this chapter plants or pays off. Write none when the chapter carries none.
 Closing shot must rotate (issue #28): end keyEvents with a "【收束：类型】" label naming this chapter's closing shot, from only these types: character-action close, dialogue close, object close, time/place switch, direct question close, interior monologue. Adjacent chapters must not repeat the same closing shot, and must never end on the same character holding the same pose (standing in the doorway, saying nothing) chapter after chapter — a repeated close makes chapters indistinguishable even when every hook differs. References list the recent chapters' closing shots; read them before choosing.
-Staging must rotate (issue #32): also end keyEvents with a "【装置：地点＋起手动作】" label naming how this chapter's core scene is set up (e.g. "舱底＋拧水隔"). The same place-plus-opening-action pair must not repeat in adjacent chapters — especially for a recurring ability scene (the golden-finger read, an examination, an audit), change the setting and the opening move; never run the same "back aboard → down to the hold → turn the water lock → dip the stub" sequence chapter after chapter.
+Staging must rotate (issue #32): also end keyEvents with a "【装置：地点＋起手动作】" label naming how this chapter's core scene is set up (e.g. "舱底＋拧水隔"). The same place-plus-opening-action pair must not repeat in adjacent chapters — especially for a recurring ability scene (the golden-finger read, an examination, an audit), change the setting and the opening move; never run the same "back aboard → down to the hold → turn the water lock → dip the stub" sequence chapter after chapter. State the time anchor (issue #84): also end keyEvents with a "【时点: …】" label saying *when* this chapter happens (e.g. "the same night (directly after the previous chapter)", "the next morning", "three days later"). This is the only place in the pipeline that produces a time anchor — without it the drafting contract's "same day" default always applies and a day change can never be written (in a 34-chapter sample book "next day / the following day / half a month" appeared 0 times, while "last night" was used across 11 chapters with no referent). When several chapters in a row happen on the same night with no time anchor, readers read them as one night repeating.
 Character reactions must vary (issue #33): do not express the same character's reaction to questioning, setback, or threat with the same negated micro-phrase (did not move / did not answer / said nothing) chapter after chapter. When they stay silent, show it differently — a bodily action, a glance, breathing, the work in their hands, or cut away to another moment — and do not make "asked a question → the other party answers nothing" your every chapter's closing beat. Entrance actions must rotate (issue #82): do not start chapter after chapter by having a character crouch, stoop or bend to enter the scene — in the sample book 19 of 26 chapters began with someone crouching (40 times overall; a supporting character had 10 of his 11 chapters crouching), so by chapter 10 the reader can predict "he is about to crouch down and do something", and the characters stop being distinguishable by what they do. When you write how a character comes into this scene, change that one fixed move: let them stand, walk, speak first, be busy with something else, or be called over — make *how* they do the thing an identifying trait.
 Preserve complete narrative content.
 Do not omit required fields, combine chapters, rename fields, explain, or output Markdown or code fences.`
@@ -74,7 +77,7 @@ relationships 必须是数组，无关系时传 []；每项必须含非空 from�
 costsAndTurns 必填：写明本章当场付出的具体代价或不可逆后果（有限、可追溯）。确实没有付出时，用一句短话说明。代价必须轮换：不得与相邻章（上一章的代价见 recentBlueprints 的 costs 字段）使用同一种代价类型或同一个桥段模板；上一章刚付过同类代价时，本章必须换一种付法。代价必须留账（issue #36）：写进 costsAndTurns 的必须是「付出去、且在本章没有被抹平」的代价——遗忘的信息不得在本章内被无偿想起，丢失的东西不得隔一句就捡回，伤势、时限、暴露风险不得下一段就消失。角色要找回或解除损失，必须付出另一笔代价（再溯读一次、求人提醒、暴露行踪、放弃别的东西），并把这一笔也写清；严禁把「怎么找回来」写进代价字段（「忘了存根藏在哪一侧，摸了半条水隔才找着」这种写法等于没有代价）。
 foreshadowing 必填：写明本章埋下或回收的伏笔；本章没有时写 none。
 收束方式必须轮换（issue #28）：在 keyEvents 末尾用「【收束：类型】」标注本章的落幅方式，类型只能是：人物动作收束、对话收束、物件落幅、时空切换、悬念直陈、内心独白。相邻若干章不得连续使用同一种落幅，尤其不得连续让同一个角色以同一个姿态（站在舱门/梯口、一言不发）收尾——即使每章钩子各不相同，落幅同构仍会让读者分辨不出读到第几章。references 里给了最近几章的落幅沿用情况，先看清再选本章的收束方式。
-场景装置必须轮换（issue #32）：在 keyEvents 末尾另用「【装置：地点＋起手动作】」标注本章核心戏的搭建方式（如「舱底＋拧水隔」「码头售票口＋翻票根」）。同一套「地点＋起手动作」不得与相邻章重复——尤其是能力使用场景（金手指、验尸、查账这类每章都要来一次的动作），必须换场合、换起手，不得连续多章都是「回船上→进舱底→拧水隔→蘸水」。references 里给了最近几章的装置，先看清再选。
+场景装置必须轮换（issue #32）：在 keyEvents 末尾另用「【装置：地点＋起手动作】」标注本章核心戏的搭建方式（如「舱底＋拧水隔」「码头售票口＋翻票根」）。同一套「地点＋起手动作」不得与相邻章重复——尤其是能力使用场景（金手指、验尸、查账这类每章都要来一次的动作），必须换场合、换起手，不得连续多章都是「回船上→进舱底→拧水隔→蘸水」。references 里给了最近几章的装置，先看清再选。时点必须写明（issue #84）：在 keyEvents 末尾另用「【时点：…】」标注本章发生在**什么时候**（例：「当夜（紧接上一章）」「次日清晨」「三日后」「同日深夜」）。这是全链路唯一产出时间推进的地方——不标它，起草契约的「同一天紧接」默认就永远生效，跨日永远写不出来（实测一本 34 章的书「次日/翌日/第二天/半个月」合计 0 次，「昨夜」在 11 章里指代不明）。连续多章都发生在同一夜且不标时点时，读者会读成同一夜反复。
 人物反应必须换写法（issue #33）：同一人物面对追问、受挫、被威胁时的反应，不得连续多章都用同一批否定式短句（没动／没答／没应／没说话／一言不发）表达。该沉默时换一种呈现——身体动作、视线、呼吸、手上的活、换一个时间点切走——也不要把「提问→对方不回答」当成每章的固定收场动作。人物进场动作必须轮换（issue #82）：不得连续多章都让角色以同一个低身姿态（蹲／半蹲／俯身／弯腰／屈膝）进入场景——样本里 26 章有 19 章都从「某人蹲下」开始（全书 40 次、配角 11 章出场里 10 章同段含「蹲」），读者读到第 10 章左右就能预判「下一段他要蹲下来做点什么」，角色的区分度也被抹掉。写这个角色怎么进这一场戏时，换掉那套固定动作：让他站着／走着／先出声／手里正忙着别的事／被人叫住进场，把「他怎么做这件事」写成可辨认这个人的信息。
 from/to 必须逐字复制同一项 characters 中的完整字符串；任一端点不在 characters 时，删除该关系或使用 []，不得发明别名、简称或补写角色。
 叙述内容须保持完整。
@@ -367,16 +370,24 @@ export function stagingOf(keyEvents: string): string {
  * 说它是机器读的。界面因此要把两者分开显示——正文进编辑框，标注以只读形式展示，
  * 保存时再原样拼回去。
  *
- * 只认合同里那两个标注形态；正文里偶然出现的其他【】不动（可能是作者自己的写法）。
+ * 只认合同里的那三个标注形态；正文里偶然出现的其他【】不动（可能是作者自己的写法）。
  */
 export function splitBlueprintLabels(keyEvents: string): { prose: string; labels: string[] } {
   const source = String(keyEvents ?? '')
   const labels: string[] = []
   const prose = source
+    // 时点（issue #84）：与收束/装置同为机器读的标注，一并拆出、一并拼回。
+    // 用 `chapter-time-anchor.ts` 的常量而不是就地再写一遍正则——两处形态必须同源，
+    // 否则读标注的 `timeAnchorOf` 与拆标注的这里会慢慢漂开。
+    .replace(BLUEPRINT_TIME_ANCHOR_LABEL_PATTERN, (match) => {
+      labels.push(match.trim())
+      return ''
+    })
     .replace(/\s*【\s*(?:收束|装置)\s*[:：][^】]{0,60}】/gu, (match) => {
       labels.push(match.trim())
       return ''
     })
+    .replace(/^\s+/u, '')
     .trim()
   return { prose, labels }
 }

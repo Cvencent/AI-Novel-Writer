@@ -37,6 +37,7 @@ import {
   numberingFindings,
 } from './consistency-preflight'
 import { proseRepetitionFindings } from './prose-repetition'
+import { findUndatedStreakFindings } from './chapter-time-anchor'
 import { closingShotOf } from './blueprint-semantic-contract'
 import { foreshadowingDueAt, parseForeshadowingCommitments } from './foreshadowing-commitments'
 
@@ -154,7 +155,13 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
     return auditAssertionReversals(before, chapter, castNames)
   })
 
-  return [...closingLabel, ...numbering, ...ability, ...repetition, ...undelivered, ...ultimatum, ...reversal]
+  // 章级时间推进（第 7 项之上的新增轴，issue #84）：连续多章没有任何跨日交代。
+  // 窗口取**全部已定稿章**——「这一段从来没人交代过」本身就是累积证据，
+  // 只看最近 12 章反而会把长段的开头切掉、报出「最近 12 章没交代」这种半句话。
+  const undatedStreak = findUndatedStreakFindings(chapters, nextChapter)
+
+  return [...closingLabel, ...numbering, ...ability, ...repetition, ...undelivered,
+    ...ultimatum, ...reversal, ...undatedStreak]
 }
 
 /**

@@ -1,5 +1,7 @@
 import { chapterTimeContinuity } from '../../../shared/chapter-time-continuity'
 import { closingShotOf, stagingOf } from '../../../shared/blueprint-semantic-contract'
+// 时点标注（issue #84）：读法与 #28 的收束、#32 的装置同源。
+import { timeAnchorOf } from '../../../shared/chapter-time-anchor'
 import {
   foreshadowingDueAt,
   parseForeshadowingCommitments,
@@ -662,20 +664,23 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           `Chapter ${b.chapterNumber}: ${b.title} — ${b.keyEvents}`,
         )).join('\n')
       }
-      // 收束方式（#28）与场景装置（#32）一起给：两者都是「同一套写法反复用」的形态，
-      // 起草时看不见就会逐章复用。
+      // 收束方式（#28）、场景装置（#32）与时点（#84）一起给：三者都是「不可见就会逐章
+      // 复用/丢失」的形态。时点尤其要紧——`chapter-time-continuity` 的默认是「同一天
+      // 紧接」，上一章的时点不给模型看，它就没有依据判断本章该不该跨日（那本书 34 章
+      // 「次日/翌日/第二天」合计 0 次，正是这一层从没被提供过）。
       const recentArr = allBlueprints
         .filter(b => b.chapterNumber < this.chapterInfo.chapterNumber)
         .slice(-3)
-        .map(b => ({ chapterNumber: b.chapterNumber, shot: closingShotOf(b.keyEvents), staging: stagingOf(b.keyEvents) }))
-        .filter(item => item.shot || item.staging)
+        .map(b => ({ chapterNumber: b.chapterNumber, shot: closingShotOf(b.keyEvents),
+          staging: stagingOf(b.keyEvents), time: timeAnchorOf(b.keyEvents) }))
+        .filter(item => item.shot || item.staging || item.time)
       if (recentArr.length > 0) {
-        const lines = recentArr.map(item => `第${item.chapterNumber}章：收束 ${item.shot || '（未标注）'}；装置 ${item.staging || '（未标注）'}`)
-        const enLines = recentArr.map(item => `Chapter ${item.chapterNumber}: closing shot ${item.shot || '(unlabelled)'}; staging ${item.staging || '(unlabelled)'}`)
+        const lines = recentArr.map(item => `第${item.chapterNumber}章：时点 ${item.time || '（未标注）'}；收束 ${item.shot || '（未标注）'}；装置 ${item.staging || '（未标注）'}`)
+        const enLines = recentArr.map(item => `Chapter ${item.chapterNumber}: time ${item.time || '(unlabelled)'}; closing shot ${item.shot || '(unlabelled)'}; staging ${item.staging || '(unlabelled)'}`)
         recentClosingShots = promptLanguageText(
           writingLanguage,
-          `【最近几章的收束方式与场景装置（本章都不要重复）】\n${lines.join('\n')}`,
-          `[Closing shots and staging of the recent chapters (repeat neither in this chapter)]\n${enLines.join('\n')}`,
+          `【最近几章的时点、收束方式与场景装置（收束与装置本章都不要重复）】\n${lines.join('\n')}\n本章的时点由本章蓝图的「【时点：…】」标注决定；若它标了跨日或时间间隔，正文要写出这次时间推进的依据。`,
+          `[Time, closing shots and staging of the recent chapters (repeat neither closing shot nor staging in this chapter)]\n${enLines.join('\n')}\nThis chapter's time is set by its blueprint's 【时点: …】 label; if it states a day change or gap, show that passage of time on the page.`,
         )
       }
       // 前几章付过的代价（issue #36）：起草时知道主角上一章刚失去/暴露/许下什么，

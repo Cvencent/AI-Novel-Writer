@@ -341,7 +341,8 @@ const FINALIZED_FACT_PRECEDENCE = {
     noRetroactiveExecution: '不得把已撤回、取消或被取代的计划追溯写成已执行',
     newAction: '作者或本章蓝图要求在本章发生的事件，必须在本章通过具体行动及其实际后果发生；复述、确认或记账前章已发生的结果不能替代本章要求发生的动作或结果',
     actionConsistency: '付款、收回、失去等状态改变必须按事件先后写清',
-    timeRuleStart: '本章紧接上一章结尾：作者没有写明跨日或时间间隔时，视为同一天内的紧接发展',
+    // issue #84：时间承接契约改成「以本章蓝图的【时点】标注为准」，未标注时才退回同日。
+    timeRuleStart: '【时间承接】本章紧接上一章结尾：**以本章蓝图 keyEvents 末端「【时点：…】」标注的时点为准**',
     timeRuleEnd: '则写“昨晚”“昨天傍晚”）。',
     lengthContract: '【本章篇幅合同】',
   },
@@ -355,7 +356,7 @@ const FINALIZED_FACT_PRECEDENCE = {
     noRetroactiveExecution: 'never retroactively portray a withdrawn, cancelled, or superseded plan as executed',
     newAction: 'Events required by the author or this chapter blueprint to happen in this chapter must happen through concrete action and actual consequence here; merely repeating, confirming, or accounting for an outcome already completed in an earlier chapter cannot replace the action or outcome required in this chapter',
     actionConsistency: 'Keep the order and result of paying, recovering, or losing money or property consistent',
-    timeRuleStart: "This chapter follows directly on the previous chapter's ending: when the author states no day change or time gap",
+    timeRuleStart: "[Time continuity] This chapter follows directly on the previous chapter's ending: **take the time from this chapter's blueprint keyEvents `【时点: …】` label**",
     timeRuleEnd: '"earlier this evening"; if it says "evening" and this chapter is "the next morning", write "last night" or "yesterday evening").',
     lengthContract: '[Chapter length contract]',
   },
