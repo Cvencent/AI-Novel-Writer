@@ -135,6 +135,9 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
       content: chapter.content,
       // 不扣「已在上下文里的章」：这里就是要拿全部指向该章的承诺来核对。
       commitments: foreshadowingDueAt(commitments, chapter.chapterNumber, { alreadyInContextChapters: 0 }),
+      // 全量已定稿正文当样本，量出检索词的可区分度（issue #88）：
+      // 「名字」这类全书通用的词不该被当成「这件事被写到了」的证据。
+      corpus: chapters.map(item => item.content),
     }))
 
   // 通牒式收尾连胜（#66）：只报**尾部**连续段，所以样本取最近几章即可。

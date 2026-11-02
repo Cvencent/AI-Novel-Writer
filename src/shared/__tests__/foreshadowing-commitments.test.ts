@@ -6,7 +6,9 @@ import {
   parseForeshadowingCommitments,
   foreshadowingDueAt,
   foreshadowingKeywords,
+  keywordVariants,
   renderForeshadowingDue,
+  selectDiscriminatingKeywords,
 } from '../foreshadowing-commitments'
 import { findUndeliveredForeshadowing } from '../consistency-preflight'
 
@@ -279,5 +281,63 @@ describe('quote handling cannot silently regress (issue #70)', () => {
     for (const source of sources.slice(1)) {
       expect(foreshadowingKeywords(source)).toEqual(base)
     }
+  })
+})
+
+// issue #88：承诺的检索词不能只是「整段带定语的短语」，也不能全局只留 3 个。
+// 实测那本书 3 条到期承诺 / 6 个目标章**全部 0 命中**，其中第 15 章那条是明确已兑现的
+// 假阳性（正文第一段就写了「撬痕」）；与此同时每章固定重报 4 条。
+describe('foreshadowingKeywords produces searchable centre words (issue #88)', () => {
+  it('does not cap the list at 3: a promise often names three things in separate clauses', () => {
+    // 「回收 X；埋下 Y；为第 19–22 章 Z」——真正被承诺的那一件常在第四个之后。
+    const promise = '回收第11章“只剩最后一次溯读机会”、第7章“空额”与第10章“徐哥”的伏笔；'
+      + '埋下：存根背面靛蓝旧字与温珩短褂同源，指向隐藏主线；'
+      + '叶九靠埠前要把整本航次账改净，逼出下一夜行动；'
+      + '周叙把证据藏到搭档找不到的地方，为第22夜接榫。'
+    const keywords = foreshadowingKeywords(promise)
+    expect(keywords.length).toBeGreaterThan(3)
+    // 排在第四件事上的那个承诺（「逼出下一夜行动」）也必须进得了检索词——
+    // 这正是旧实现 `.slice(0, 3)` 会丢掉的，丢了它就永远不可能被核对。
+    expect(keywords).toContain('逼出下一夜行动')
+  })
+
+  it('offers the centre word as a variant, not only the whole attributive phrase', () => {
+    // 「水隔边的新撬痕」→ 正文只会写「撬痕」；只给整段就永远命不中。
+    expect(keywordVariants('水隔边的新撬痕')).toContain('撬痕')
+    expect(keywordVariants('短褂头一行父亲的名字')).toContain('名字')
+    expect(keywordVariants('缺小指的指印')).toContain('指印')
+  })
+})
+
+// issue #88：变体必须按**可区分度**筛过，否则普通词会把真锚点挤掉。
+// 判据用**文档频率**（量出来的），不写词表——本仓吃过词表过拟合的亏（#30/#43/#70）。
+describe('selectDiscriminatingKeywords (issue #88)', () => {
+  const corpus = [
+    '周叙把名字写在册上。', '他又念了一遍名字。', '名字栏空着。', '名字被涂掉了。',
+    '这一章没有提到那件事。', '名字的事他没再想。', '几页之后名字清楚了。', '名字是添上去的。',
+    '周叙把铜尺插进撬痕，往外一别。', '其余都是别的句子。',
+  ]
+
+  it('drops a variant that appears all over the book (it cannot be evidence of anything)', () => {
+    // 「名字」出现在 8/10 章 → 保留它等于「永远不报」。
+    const selected = selectDiscriminatingKeywords(['短褂头一行父亲的名字'], corpus)
+    expect(selected).not.toContain('名字')
+  })
+
+  it('keeps a variant that points at one specific thing', () => {
+    // 「撬痕」只出现在 1/10 章 → 它才是能证明「这件事被写了」的锚点。
+    expect(selectDiscriminatingKeywords(['水隔边的新撬痕'], corpus)).toContain('撬痕')
+  })
+
+  it('never returns a fragment that starts with a stripped attributive 「的」', () => {
+    // 「的手势」这类残片正文里不会出现，留着只会占名额把真锚点挤掉。
+    for (const keyword of selectDiscriminatingKeywords(['林棠临别比出的手势'], corpus)) {
+      expect(keyword.startsWith('的')).toBe(false)
+    }
+  })
+
+  it('falls back to the whole segment when the corpus is too small to measure', () => {
+    // 样本不足时比例没有意义——与其它判据「样本不足不判」同一口径。
+    expect(selectDiscriminatingKeywords(['水隔边的新撬痕'], ['一章'])).toEqual(['水隔边的新撬痕'])
   })
 })

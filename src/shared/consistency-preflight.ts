@@ -1,6 +1,6 @@
 import type { FinalizedContinuityProjection } from './finalized-continuity'
 import { blueprintKeyEventsOversize } from './blueprint-length'
-import { foreshadowingKeywords, type ForeshadowingCommitment } from './foreshadowing-commitments'
+import { foreshadowingKeywords, selectDiscriminatingKeywords, type ForeshadowingCommitment } from './foreshadowing-commitments'
 import { findAnnihilatedPropRevival, findRepeatPropTermination } from './prop-termination'
 import { findRepeatedEntranceShots } from './entrance-shot'
 import { findLossRestatement } from './loss-restatement'
@@ -803,12 +803,21 @@ export interface ForeshadowingDueCheck {
   content: string
   /** 指向本章的承诺。 */
   commitments: readonly ForeshadowingCommitment[]
+  /**
+   * 已知正文样本（写前预检传全部定稿章）：用来**量出**检索词的可区分度（issue #88）。
+   *
+   * 不给就退回整段比对（旧行为）——那会把「短褂头一行父亲的名字」这种带定语的短语
+   * 拿去 `includes`，正文字面不可能出现，于是恒定报未送达。
+   */
+  corpus?: readonly string[]
 }
 
 export function findUndeliveredForeshadowing(input: ForeshadowingDueCheck): ConsistencyFinding[] {
   if (!input.content.trim()) return []
+  const corpus = input.corpus ?? []
   return input.commitments.flatMap(commitment => {
-    const keywords = foreshadowingKeywords(commitment.text)
+    // 检索词取「有区分度的变体」（issue #88）：中心词 + 按文档频率筛掉全书通用词。
+    const keywords = selectDiscriminatingKeywords(foreshadowingKeywords(commitment.text), corpus)
     // 抽不出检索词就不判：词都抽不出来，说明这段文本不是可核对的承诺。
     if (keywords.length === 0) return []
     if (keywords.some(keyword => input.content.includes(keyword))) return []

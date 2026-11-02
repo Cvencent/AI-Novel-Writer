@@ -142,10 +142,11 @@ describe('findUndatedStreakFindings (issue #84)', () => {
     expect(finding.suggestion.enUS.length).toBeGreaterThan(20)
   })
 
-  it('keys the finding on the streak range so it clears once time is stated', () => {
+  it('keys the finding on the streak start so it clears once time is stated', () => {
     const book = Array.from({ length: 12 }, (_, index) => ch(index + 1, '天亮，他蹲在桩边。'))
     const [first] = findUndatedStreakFindings(book, 13)
-    expect(first!.stableFactKey).toBe('chapter-time:undated:1:12')
+    // key 只带首章（issue #89）：带末章会让它每写一章就换一个，ack 永远对不上。
+    expect(first!.stableFactKey).toBe('chapter-time:undated:1')
     // 作者在第 6 章补上日界后，这一段不再成立 → 提示消失。
     const fixed = book.map(item => item.chapterNumber === 6 ? ch(6, '三日后，他来了。') : item)
     expect(findUndatedStreakFindings(fixed, 13)).toEqual([])
@@ -174,5 +175,33 @@ describe('timeAnchorOf: 蓝图时点标注（issue #84）', () => {
 
   it('takes the last label when the model wrote two', () => {
     expect(timeAnchorOf('【时点：当夜】【时点：次日】')).toBe('次日')
+  })
+})
+// issue #89：这条判据的 key 原来带**末章号**，而 #79 的「我已知，稍后处理」是按 key 精确匹配
+// 过滤的 —— key 每写一章就换一个（末章号 +1），于是那条**正确**的提醒永远关不掉。
+// 实测那本书 38 章零跨日交代，连写 37/38/39 三章三次原样重报，ack 落的是 `1:38`、
+// 下一章算出 `1:39`。恰恰是「回改 30 多章日界不可能一章内做完」的这类提醒最需要这个出口。
+describe('undated-streak key must not roll with the last chapter (issue #89)', () => {
+  const undated = (length: number) =>
+    Array.from({ length }, (_, index) => ({ chapterNumber: index + 1, content: `第${index + 1}章：天亮，他蹲在桩边。` }))
+
+  it('keeps the same key as the book advances, so one acknowledgement silences it', () => {
+    const at38 = findUndatedStreakFindings(undated(38), 39)[0]!
+    const at39 = findUndatedStreakFindings(undated(39), 40)[0]!
+    expect(at38.stableFactKey).toBe('chapter-time:undated:1')
+    expect(at39.stableFactKey).toBe(at38.stableFactKey)
+  })
+
+  it('still keys on the first chapter of the streak, so a different streak is a different finding', () => {
+    // 前半段补了日界 → 这一段从第 5 章起算，是**另一件事**，应得到另一个 key。
+    const chapters = undated(20).map(item =>
+      item.chapterNumber === 4 ? { chapterNumber: 4, content: '三日后，船靠了埠。' } : item)
+    expect(findUndatedStreakFindings(chapters, 21)[0]!.stableFactKey).toBe('chapter-time:undated:5')
+  })
+
+  it('disappears once the time progression is actually written down', () => {
+    const fixed = undated(12).map(item =>
+      item.chapterNumber === 6 ? { chapterNumber: 6, content: '三日后，船靠了埠。' } : item)
+    expect(findUndatedStreakFindings(fixed, 13)).toEqual([])
   })
 })

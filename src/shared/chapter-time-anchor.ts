@@ -210,10 +210,16 @@ export function findUndatedStreakFindings(
     const timeWordsEn = streak.timeOfDayWords.slice(0, 4)
       .map(item => `${item.phrase} (${item.chapters.length})`).join(', ')
     return {
-      // key 带**这一段的首章**：作者把这段时间推进补上后，下一次扫描这一段就不再出现，
-      // 提示自然消失；带末章则会让同一条提示随着新章继续往后滚动（与 #79 的教训相反，
-      // 这里「消失」靠的是判据本身不再成立，而不是 ack）。
-      stableFactKey: `chapter-time:undated:${streak.chapters[0]}:${streak.chapters[streak.chapters.length - 1]}`,
+      // key **只带这一段的首章**，不带末章（issue #89 修正）。
+      //
+      // 原来的注释只考虑「怎么让提示自然消失」（补上日界后这一段不再成立），
+      // 漏了同一行上还挂着 #79 的「我已知，稍后处理」按钮：**判据会随新章滚动，key 就不能带末章号**。
+      // 实测那本书 38 章零跨日交代，末章号每写一章 +1 → key 从 `...:1:38` 变成 `...:1:39`
+      // → 上一章 ack 过的 key 对不上 → 提醒原样重报，按钮等于失效。
+      // 而这一条恰恰是**最需要「稍后处理」**的（回改 30 多章的日界不可能一章内做完）。
+      // 带首章仍是稳定的：这一段从第 1 章起就一直没交代过，作者真做了什么（补了日界、
+      // 或那些章被改写），判据本身就不再成立，提示自然消失——两条路都通。
+      stableFactKey: `chapter-time:undated:${streak.chapters[0]}`,
       severity: 'warning' as const,
       sourceChapter: currentChapter,
       evidence: timeWords
