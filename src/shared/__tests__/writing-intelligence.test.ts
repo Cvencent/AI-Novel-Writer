@@ -74,3 +74,66 @@ describe('writing intelligence contracts', () => {
     expect(estimateUsageCost({ promptTokens: 1000, completionTokens: 500, inputPerMillion: null, outputPerMillion: 8 })).toBeNull()
   })
 })
+
+describe('voice profile evidence limits (issue #67)', () => {
+  const roster = [{ characterId: 'char-1', name: '周叙' }, { characterId: 'char-2', name: '温珩' }]
+  // 一条正文，含足够多的独有句子供引文核对。
+  const prose = [
+    '周叙把存根按进水隔下面。',
+    '周叙说：“这一班次我不签。”',
+    '温珩没答，只把缆绳又绕了一圈。',
+    '温珩说：“那你今晚别下船。”',
+    '周叙低头看拇指，红还没洗掉。',
+    '温珩把灯芯剪短了一截。',
+    '周叙把签收联叠进风灯罩。',
+    '温珩转身进了舱底。',
+  ].join(String.fromCharCode(10) + String.fromCharCode(10))
+
+  const profile = (name: string, id: string, evidence: string[]) => ({
+    characterId: id, characterName: name, summary: '克制', sentenceStyle: '短句',
+    vocabulary: '少形容词', dialogueHabits: [], emotionalTells: '紧张时整理袖口', avoid: [], evidence,
+  })
+
+  it('truncates evidence above the limit instead of discarding the whole reply', () => {
+    // 实测模型给「周叙」写了 7 条引文（上限 5），旧实现整批作废、0 条落库。
+    const seven = ['周叙把存根按进水隔下面。', '周叙说：“这一班次我不签。”', '周叙低头看拇指，红还没洗掉。',
+      '周叙把签收联叠进风灯罩。', '温珩转身进了舱底。', '温珩把灯芯剪短了一截。', '温珩没答，只把缆绳又绕了一圈。']
+    const parsed = parseVoiceProfilesResponse(
+      JSON.stringify({ profiles: [profile('周叙', 'char-1', seven)] }), roster, prose,
+    )
+    expect(parsed).toHaveLength(1)
+    expect(parsed[0]!.evidence).toHaveLength(5)
+    expect(parsed[0]!.evidence[0]).toBe(seven[0])
+  })
+
+  it('keeps the other characters when one of them is unusable', () => {
+    // 旧实现一个角色不合规就整批 throw：这里第 2 个角色引文全是编造的。
+    const parsed = parseVoiceProfilesResponse(JSON.stringify({ profiles: [
+      profile('周叙', 'char-1', ['周叙把存根按进水隔下面。']),
+      profile('温珩', 'char-2', ['他从来没有说过这句话。']),
+    ] }), roster, prose)
+    expect(parsed.map(item => item.characterName)).toEqual(['周叙'])
+  })
+
+  it('drops only the quotes that are not in the prose, keeping the verifiable ones', () => {
+    const parsed = parseVoiceProfilesResponse(JSON.stringify({ profiles: [profile('周叙', 'char-1', [
+      '周叙把存根按进水隔下面。', '这句正文里没有。', '周叙说：“这一班次我不签。”',
+    ])] }), roster, prose)
+    expect(parsed[0]!.evidence).toEqual(['周叙把存根按进水隔下面。', '周叙说：“这一班次我不签。”'])
+  })
+
+  it('accepts a quote that the model re-wrapped across lines', () => {
+    // 模型常把换行改写为单空格；归一化后仍能对上就算逐字证据（旧实现在此判定失败）。
+    const wrapped = '周叙把存根按进水隔下面。 周叙说：“这一班次我不签。”'
+    const parsed = parseVoiceProfilesResponse(
+      JSON.stringify({ profiles: [profile('周叙', 'char-1', [wrapped])] }), roster, prose,
+    )
+    expect(parsed[0]!.evidence).toEqual([wrapped])
+  })
+
+  it('fails only when no character can be saved, and names the reasons', () => {
+    expect(() => parseVoiceProfilesResponse(JSON.stringify({ profiles: [
+      profile('未知角色', 'char-9', ['x']),
+    ] }), roster, prose)).toThrow(/WRITING_INTELLIGENCE_VOICE_PROFILES_INVALID/)
+  })
+})

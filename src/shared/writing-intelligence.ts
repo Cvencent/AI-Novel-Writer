@@ -138,10 +138,31 @@ function optionalText(value: unknown, field: string, max: number): string {
   return value.trim()
 }
 
+/**
+ * 字符串列表字段的解析。
+ *
+ * **超上限时截断，不整份丢弃**（issue #67）：这些字段都是「多给几条更好」的形态
+ * （evidence 引文、dialogueHabits、avoid、scenes.characters）。原来的实现在超限时
+ * 直接 throw，于是模型给「周叙」写了 7 条引文（上限 5）就把**整份 4 个角色的声音
+ * 档案**全部作废、一条不落库——作者等 40 秒、烧 1.3 万 prompt token，换回一行
+ * 内部错误码，而且重试必然复现（输入没变，模型还会这么写）。
+ *
+ * 提示词里从来没有写过这个上限，模型无从知道；即使写了，让一次超限毁掉全部成果
+ * 也是错的取舍。真正该硬拒的只有「一条都没有」（由各调用点自己判）。
+ *
+ * 超过 `maxLength` 的单条仍然抛错：那是单条内容畸形（例如把整段正文塞进来），
+ * 不是「多写了几条」，截断它反而会产出半个引文。
+ */
 function stringList(value: unknown, field: string, maxItems: number, maxLength: number): string[] {
   if (value === undefined || value === null) return []
-  if (!Array.isArray(value) || value.length > maxItems) throw new Error(`WRITING_INTELLIGENCE_LIST_INVALID:${field}`)
-  return value.map((item, index) => text(item, `${field}[${index}]`, maxLength))
+  if (!Array.isArray(value)) throw new Error(`WRITING_INTELLIGENCE_LIST_INVALID:${field}`)
+  const withinLimit = value.slice(0, maxItems)
+  const parsed = withinLimit.map((item, index) => text(item, `${field}[${index}]`, maxLength))
+  if (value.length > maxItems) {
+    // 不静默：调用方与日志能看到这次截断过多少条（便于把上限写进提示词）。
+    console.warn(`[writing-intelligence] ${field}: ${value.length} items, truncated to ${maxItems}`)
+  }
+  return parsed
 }
 
 function positiveInteger(value: unknown, field: string): number {
@@ -221,6 +242,27 @@ export function parseEditorialPanelResponse(content: string): EditorialPanelRevi
   }
 }
 
+/** 归一化空白后判断引文是否真的出自正文（issue #67）。 */
+function quoteFoundInProse(quote: string, sourceContent: string): boolean {
+  if (sourceContent.includes(quote)) return true
+  // 模型常把正文里的换行/多空格改写成单空格；归一化后仍能找到就算逐字证据。
+  const collapse = (value: string) => value.replace(/\s+/gu, ' ').trim()
+  return collapse(sourceContent).includes(collapse(quote))
+}
+
+/**
+ * 角色声音档案解析（issue #67）。
+ *
+ * 旧实现有两处「一处不合规、整份作废」：`evidence` 超 5 条直接抛错（整批 4 个角色
+ * 一起丢），以及「引文必须在正文里**恰好**出现一次」的强校验（出现两次就作废，
+ * 而重复的引文同样是逐字证据）。实测作者等 40 秒、烧 1.3 万 prompt token，换回一行
+ * 内部错误码，且重试必然复现。
+ *
+ * 现在的取舍：**能救的救，救不了的只丢那一个角色**。
+ * - 引文逐条筛：不在正文里的去掉，保留可核对的那些；
+ * - 一个角色连一条可核对引文都没有 → 跳过它（记 warn），其余照常；
+ * - 全部角色都跳过才抛错——那时确实没有可保存的内容，需要作者看到原因。
+ */
 export function parseVoiceProfilesResponse(
   content: string,
   allowedCharacters: readonly { characterId: string; name: string }[],
@@ -232,32 +274,42 @@ export function parseVoiceProfilesResponse(
     : null
   if (!rows || rows.length < 1 || rows.length > 20) throw new Error('WRITING_INTELLIGENCE_VOICE_PROFILES_INVALID')
   const seen = new Set<string>()
-  return rows.map((row, index) => {
-    if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error(`WRITING_INTELLIGENCE_VOICE_INVALID:${index}`)
-    const value = row as Record<string, unknown>
-    const characterName = text(value.characterName, `profiles[${index}].characterName`, 100)
-    const providedId = value.characterId === undefined ? '' : text(value.characterId, `profiles[${index}].characterId`, 120)
-    const matches = allowedCharacters.filter(character => providedId ? character.characterId === providedId : character.name === characterName)
-    if (matches.length !== 1 || matches[0]!.name !== characterName) throw new Error('WRITING_INTELLIGENCE_VOICE_CHARACTER_MISMATCH')
-    const character = matches[0]!
-    if (seen.has(character.characterId)) throw new Error('WRITING_INTELLIGENCE_VOICE_DUPLICATE')
-    seen.add(character.characterId)
-    const evidence = stringList(value.evidence, `profiles[${index}].evidence`, 5, 240)
-    if (evidence.length === 0 || evidence.some(quote => sourceContent.split(quote).length !== 2)) {
-      throw new Error('WRITING_INTELLIGENCE_VOICE_EVIDENCE_INVALID')
-    }
-    return {
-      characterId: character.characterId,
-      characterName,
-      summary: text(value.summary, `profiles[${index}].summary`, 300),
-      sentenceStyle: text(value.sentenceStyle, `profiles[${index}].sentenceStyle`, 240),
-      vocabulary: text(value.vocabulary, `profiles[${index}].vocabulary`, 240),
-      dialogueHabits: stringList(value.dialogueHabits, `profiles[${index}].dialogueHabits`, 8, 160),
-      emotionalTells: text(value.emotionalTells, `profiles[${index}].emotionalTells`, 240),
-      avoid: stringList(value.avoid, `profiles[${index}].avoid`, 8, 160),
-      evidence,
+  const profiles: CharacterVoiceProfile[] = []
+  const skipped: string[] = []
+  rows.forEach((row, index) => {
+    try {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error(`WRITING_INTELLIGENCE_VOICE_INVALID:${index}`)
+      const value = row as Record<string, unknown>
+      const characterName = text(value.characterName, `profiles[${index}].characterName`, 100)
+      const providedId = value.characterId === undefined ? '' : text(value.characterId, `profiles[${index}].characterId`, 120)
+      const matches = allowedCharacters.filter(character => providedId ? character.characterId === providedId : character.name === characterName)
+      if (matches.length !== 1 || matches[0]!.name !== characterName) throw new Error('WRITING_INTELLIGENCE_VOICE_CHARACTER_MISMATCH')
+      const character = matches[0]!
+      if (seen.has(character.characterId)) throw new Error('WRITING_INTELLIGENCE_VOICE_DUPLICATE')
+      // 引文逐条筛：留下真的能在正文里找到的（归一化空白后比对，重复出现也算数）。
+      const evidence = stringList(value.evidence, `profiles[${index}].evidence`, 5, 240)
+        .filter(quote => quoteFoundInProse(quote, sourceContent))
+      if (evidence.length === 0) throw new Error('WRITING_INTELLIGENCE_VOICE_EVIDENCE_INVALID')
+      seen.add(character.characterId)
+      profiles.push({
+        characterId: character.characterId,
+        characterName,
+        summary: text(value.summary, `profiles[${index}].summary`, 300),
+        sentenceStyle: text(value.sentenceStyle, `profiles[${index}].sentenceStyle`, 240),
+        vocabulary: text(value.vocabulary, `profiles[${index}].vocabulary`, 240),
+        dialogueHabits: stringList(value.dialogueHabits, `profiles[${index}].dialogueHabits`, 8, 160),
+        emotionalTells: text(value.emotionalTells, `profiles[${index}].emotionalTells`, 240),
+        avoid: stringList(value.avoid, `profiles[${index}].avoid`, 8, 160),
+        evidence,
+      })
+    } catch (error) {
+      // 单个角色不合规不再毁掉整批（issue #67）：记下原因，继续解析其余角色。
+      skipped.push(`${String((error as Error)?.message ?? error)}`)
     }
   })
+  if (skipped.length > 0) console.warn(`[writing-intelligence] voice profiles skipped: ${skipped.join(', ')}`)
+  if (profiles.length === 0) throw new Error(`WRITING_INTELLIGENCE_VOICE_PROFILES_INVALID:${skipped.join('|') || 'no-profiles'}`)
+  return profiles
 }
 
 function jsonSafeArray(value: unknown, field: string): unknown[] {

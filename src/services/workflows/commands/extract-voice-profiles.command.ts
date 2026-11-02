@@ -4,7 +4,7 @@ import { requireWorkflowProjectSession, workflowWritingLanguage } from '../workf
 import { promptLanguageText } from '../../prompt-language'
 import { hashAuthorText } from '../../../shared/source-ref'
 import { buildVoiceProfilePrompt } from '../../../shared/writing-intelligence-prompts'
-import { parseVoiceProfilesResponse, type CharacterVoiceProfileRecord } from '../../../shared/writing-intelligence'
+import { parseVoiceProfilesResponse, type CharacterVoiceProfile, type CharacterVoiceProfileRecord } from '../../../shared/writing-intelligence'
 
 export interface ExtractVoiceProfilesParams {
   chapterNumber: number
@@ -51,7 +51,22 @@ export class ExtractVoiceProfilesCommand extends BaseWorkflowCommand<CharacterVo
       { responseFormat: { type: 'json_object' }, purpose: 'extract-character-voices', reasoningStage: 'review', writingSkillStage: 'review' },
       context,
     )
-    const parsed = parseVoiceProfilesResponse(completion.content, allowed, draft.content)
+    // 解析失败时把内部错误码换成作者能读懂、能行动的一句话（issue #67）：原来直接把
+    // `WRITING_INTELLIGENCE_LIST_INVALID:profiles[0].evidence` 原样贴给作者。注意单个角色
+    // 不合规已经不会再让整批作废（见 parseVoiceProfilesResponse），走到这里的只剩
+    // 「一个角色都没能保存下来」这一种。
+    let parsed: CharacterVoiceProfile[]
+    try {
+      parsed = parseVoiceProfilesResponse(completion.content, allowed, draft.content)
+    } catch (error) {
+      const detail = String((error as Error)?.message ?? error)
+      callbacks.log(promptLanguageText(language, `角色声音解析失败：${detail}`, `Voice profile parsing failed: ${detail}`))
+      throw new Error(promptLanguageText(
+        language,
+        '这次模型的输出里，没有一个角色的引文能在本章正文中逐字对上，因此没有保存任何档案。可重试一次；若仍失败，请确认本章正文确实包含这些角色的对白或动作描写，或改从另一章提取。',
+        'None of the characters in this reply had a quote matching this chapter verbatim, so no profile was saved. Retry once; if it fails again, check that the chapter really contains these characters\' dialogue or actions, or extract from another chapter.',
+      ))
+    }
     const contentHash = await hashAuthorText(draft.content)
     const profiles = parsed.map(profile => ({ ...profile, sourceDraftId: this.params.draftId, contentHash, updatedAt: '' }))
     const saved = await ipc.invokeWithProjectSession(session, 'db:writing-intelligence-voices-save', this.params.draftId, contentHash, profiles, session.projectPath)
