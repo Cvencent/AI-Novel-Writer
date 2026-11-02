@@ -2,7 +2,8 @@ import type { ProjectSessionContext } from '../shared/ipc-channels'
 import type { BlueprintForPreflight, ConsistencyExemption, ConsistencyFinding } from '../shared/consistency-preflight'
 import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuityRisks,
   findNearCastNameFindings, findOversizedBlueprintKeyEvents, findUnregisteredBlueprintCast,
-  findDialogueOpenerConvergence, findOpeningShapeConvergence } from '../shared/consistency-preflight'
+  findDialogueOpenerConvergence, findOpeningShapeConvergence,
+  findDesignTimelineConflicts } from '../shared/consistency-preflight'
 import { DEFAULT_CHAPTER_WORDS_TARGET } from './workflows/chapter-creation-parameters'
 import { ipc } from './ipc-client'
 
@@ -109,9 +110,21 @@ export async function readConsistencyPreflight(
     ...findOpeningShapeConvergence({ chapters: proseSample, castNames, currentChapter }),
     ...findDialogueOpenerConvergence({ chapters: proseSample, castNames, currentChapter }),
   ]
+  // 设定层时间锚点冲突（issue #2）：发生在架构阶段、会顺着链路往下传，
+  // 所以放在起草/写前预检里——这是作者还来得及改设定的时候。
+  const core = await ipc.invokeWithProjectSession(
+    session, 'db:project-core-get', session.projectPath,
+  ).catch(() => null)
+  const timelineFindings = core
+    ? findDesignTimelineConflicts({
+        premise: String((core as { premise?: string }).premise ?? ''),
+        worldbuilding: String((core as { worldbuilding?: string }).worldbuilding ?? ''),
+        charactersArch: String((core as { charactersArch?: string }).charactersArch ?? ''),
+      })
+    : []
   return {
     findings: [...terminalFindings, ...expandedFindings, ...unregisteredFindings, ...appearanceGaps,
-      ...nearNameFindings, ...keyEventsLengthFindings, ...openingFindings]
+      ...nearNameFindings, ...keyEventsLengthFindings, ...openingFindings, ...timelineFindings]
       .filter(item => !activeExemptions.has(item.stableFactKey)),
     exemptions,
     castNames,

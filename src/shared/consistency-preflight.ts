@@ -2,6 +2,11 @@ import type { FinalizedContinuityProjection } from './finalized-continuity'
 import { blueprintKeyEventsOversize } from './blueprint-length'
 import { foreshadowingKeywords, type ForeshadowingCommitment } from './foreshadowing-commitments'
 import {
+  designSections,
+  findTimelineAnchorConflicts,
+  type TimelineSection,
+} from './timeline-anchors'
+import {
   chapterOpeningOf,
   findDialogueOpenerConvergence as findDialogueOpenerHits,
   openingConvergence,
@@ -858,6 +863,52 @@ export function findDialogueOpenerConvergence(input: ChapterOpeningStreakInput):
       enUS: `Deliver the thread a different way: let it surface through an object, an action, or a third party's reaction (a ledger page, an unfinished gesture, a change in how others treat him) rather than the same elder speaking. Or let them finish the sentence this time — one complete revelation advances more than a fifth half-sentence. If the unable-to-say-it beat matters, change the setting or the speaker so that “an elder speaks = another 你爸当年也” does not become the reader's expectation.`,
     },
   }]
+}
+
+/**
+ * 设定层时间锚点冲突（issue #2）。
+ *
+ * 实测样本：同一套「故事前提 / 世界观 / 角色图谱」里「父亲落水」既在十年前
+ * （前提、周叙角色卡）又在二十年前（说温珩二十年不换那件「父亲落水那夜穿走的」
+ * 靛蓝短褂）。三处生成件全部踩中，说明没有任何机制去固定这条时间锚。
+ *
+ * 危急之处在于它发生在**架构阶段**——正是后续蓝图、正文、角色状态抽取的输入，
+ * 会顺着链路往下传；而现有检查只抓「角色外貌/身体状态」这类可枚举属性。
+ *
+ * 判据是结构性的：同一条名词片段被配上两个不同的时间量。不枚举事件词，
+ * 换一本书仍成立。只比**设定层**三段（前提/世界观/角色图谱）——正文里的
+ * 「十年前那晚」是回指，混进来只会制造假阳性。
+ */
+export interface DesignTimelineInput {
+  premise: string
+  worldbuilding: string
+  charactersArch: string
+  /** findings 的 sourceChapter 用；架构阶段没有章号，按 1 记账。 */
+  chapterNumber?: number
+}
+
+export function findDesignTimelineConflicts(input: DesignTimelineInput): ConsistencyFinding[] {
+  const sections: TimelineSection[] = designSections(input)
+  const conflicts = findTimelineAnchorConflicts(sections)
+  const chapter = input.chapterNumber ?? 1
+  return conflicts.slice(0, 3).map(conflict => {
+    const [low, high] = [conflict.durations[0]!, conflict.durations[conflict.durations.length - 1]!]
+    const samples = conflict.durations.join(' / ')
+    return {
+      stableFactKey: `timeline:design-anchor:${conflict.anchors.join('|')}`,
+      severity: 'warning' as const,
+      sourceChapter: chapter,
+      evidence: `设定层里「${conflict.anchors.join('、')}」被配了两个时间：${samples} 年（出现在「${conflict.sources.join('」「')}」）`,
+      issue: {
+        zhCN: `同一条设定被写成了两个时间：${conflict.anchors.join('、')}一带在设定里同时是 ${low} 年和 ${high} 年（${conflict.sources.join('、')}）。同一件事不可能既过去 ${low} 年又过去 ${high} 年。设定崩塌是长篇读者最早弃书的理由，而且它发生在架构阶段——会顺着蓝图、正文、角色状态抽取一路传下去，改一处要牵动全部已写章节。`,
+        enUS: `One fact is dated twice: the ${conflict.anchors.join(', ')} passage is both ${low} and ${high} years ago across ${conflict.sources.join(', ')}. The same event cannot be both ${low} and ${high} years in the past. Setting contradictions are the earliest reason long-form readers drop a book, and this one sits in the architecture stage — it propagates into blueprints, prose, and character-state extraction, so fixing it later touches every written chapter.`,
+      },
+      suggestion: {
+        zhCN: `先定一个权威年份，再让另外两处服从它：锚是「${conflict.anchors[0]}」。若想让两处都成立，就必须把它们拆成两件事（例如「落水」是 ${low} 年前，而那件短褂在此之前已被穿了 ${high} 年），并把这句话明确写进设定，而不是让读者自己圆。`,
+        enUS: `Pick one authoritative date and make the other passages defer to it; the anchor is “${conflict.anchors[0]}”. If both must hold, split them into two distinct facts (for example: the drowning was ${low} years ago, and the garment had already been worn for ${high} years before that) and say so explicitly instead of leaving readers to reconcile it.`,
+      },
+    }
+  })
 }
 
 export function mergeConsistencyFindingsIntoReview(
