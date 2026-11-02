@@ -50,6 +50,7 @@ import {
   blueprintKeyEventsProseText,
   countBlueprintKeyEventsUnits,
 } from '../../../shared/blueprint-length'
+import { HOOK_FORM_TEXT, hookFormOf } from '../../../shared/chapter-ending'
 
 type CreateDirectoryGenerationRuntime = NonNullable<WorkflowGenerationRuntimeDependencies['createRuntime']>
 
@@ -242,6 +243,11 @@ function buildCompactBlueprintTask(input: {
       closingShot: closingShotOf(chapter.keyEvents) || undefined,
       // 场景装置同看：同一套「地点＋起手动作」反复搭的根因也是不可见（issue #32）。
       staging: stagingOf(chapter.keyEvents) || undefined,
+      // 钩子形态同看（issue #66）：最近几章的钩子全写成条件/警告句时，正文只能照着
+      // 收成通牒——这个分布不进去，模型就没有依据去轮换。
+      hookForm: chapter.suspenseHook
+        ? HOOK_FORM_TEXT[hookFormOf(chapter.suspenseHook)][input.writingLanguage === 'en-US' ? 'enUS' : 'zhCN']
+        : undefined,
     })),
     globalGuidance: input.globalGuidance,
     pacingGuidance: input.pacingGuidance,
@@ -414,11 +420,13 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
           ))
           .join('\n')
         // 最近 3 章的落幅单独列一段：收束方式轮换要求模型先看清刚用过什么（issue #28）。
+        // 钩子的**语用形态**一并列出（issue #66）：后段 5 章的 suspenseHook 全写成
+        // 「条件＋后果」两句，正文只能跟着收成通牒——模型看不见这个分布就无从轮换。
         const recentClosings = previous.slice(-COMPACT_RECENT_BLUEPRINTS)
           .map(chapter => promptLanguageText(
             writingLanguage,
-            `第${chapter.chapterNumber}章收束：${closingShotOf(chapter.keyEvents) || '（未标注）'}`,
-            `Chapter ${chapter.chapterNumber} closing shot: ${closingShotOf(chapter.keyEvents) || '(unlabelled)'}`,
+            `第${chapter.chapterNumber}章收束：${closingShotOf(chapter.keyEvents) || '（未标注）'}；钩子形态：${HOOK_FORM_TEXT[hookFormOf(chapter.suspenseHook)].zhCN}`,
+            `Chapter ${chapter.chapterNumber} closing shot: ${closingShotOf(chapter.keyEvents) || '(unlabelled)'}; hook form: ${HOOK_FORM_TEXT[hookFormOf(chapter.suspenseHook)].enUS}`,
           ))
           .join('\n')
         const prompt = new DirectoryPromptBuilder(template, writingLanguage)
@@ -429,7 +437,7 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
             arcDirective: (context.data.arcDirective as string) || '', language: writingLanguage }))
           .withChapterList(
             (chapterList || promptLanguageText(writingLanguage, '（首批生成，尚无前置章节）', '(first batch; no preceding chapters)'))
-            + (recentClosings ? `\n\n${promptLanguageText(writingLanguage, '【最近几章的收束方式（本章不得重复同一种）】', '[Closing shots of the recent chapters (do not repeat the same one in this chapter)]')}\n${recentClosings}` : ''),
+            + (recentClosings ? `\n\n${promptLanguageText(writingLanguage, '【最近几章的收束方式与钩子形态（本章都不要重复；连续三章不得都以条件/警告句收尾）】', '[Recent closing shots and hook forms (repeat neither; never close three chapters in a row on a conditional or threatening line)]')}\n${recentClosings}` : ''),
           )
           .withNumberOfChapters(totalChapters)
           .withN(batchStart)
