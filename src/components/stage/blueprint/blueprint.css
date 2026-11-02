@@ -357,6 +357,28 @@
   border-color: var(--accent);
 }
 
+/* 机器读的标注（【收束：…】【装置：…】）从可编辑正文里拆出来只读展示（issue #65）：
+   它们给下游做轮换判断，作者手改正文时不该连它们一起改坏。 */
+.stage-bp-labels {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: 8px;
+}
+
+.stage-bp-label {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--ink-3);
+  font-size: var(--fs-11);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
 /* ================= 生成蓝图与批量创作对话框 ================= */
 .stage-dialog:has(.stage-bp-dialog-body) {
   width: 580px;

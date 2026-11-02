@@ -2,6 +2,7 @@ import { useId, useState, type KeyboardEvent } from 'react'
 import { MoreHorizontal, X } from 'lucide-react'
 import type { ChapterBlueprint } from '../../../services/workflows/directory-workflow'
 import { chapterRoleOptions, chapterRoleSelectValue } from '../../../shared/chapter-role'
+import { joinBlueprintLabels, splitBlueprintLabels } from '../../../shared/blueprint-semantic-contract'
 import { sqliteTime } from '../../../shared/sqlite-time'
 import type { ChapterRow } from '../../../stores/navigation/stage-progress'
 import { useLocaleStore } from '../../../stores/locale-store'
@@ -49,6 +50,9 @@ export default function BlueprintCard({ blueprint, row, saving, onField, onSave,
   }
 
   const status = row?.running ? CHAPTER_RUNNING_TEXT : CHAPTER_PHASE_TEXT[row?.phase ?? 'todo']
+  const conflict = splitBlueprintLabels(blueprint.keyEvents)
+  const conflictProse = conflict.prose
+  const conflictLabels = conflict.labels
 
   return (
     <section className="stage-bp-card" aria-label={text(`第 ${number} 章蓝图`, `Chapter ${number} blueprint`)}>
@@ -124,8 +128,23 @@ export default function BlueprintCard({ blueprint, row, saving, onField, onSave,
 
         <div className="stage-bp-pair">
           <div className="stage-bp-field">
-            <label htmlFor={ids.conflict}>{text('冲突与转折', 'Conflict and turn')}</label>
-            <textarea id={ids.conflict} className="stage-bp-ctl" rows={3} value={blueprint.keyEvents} onChange={event => onField('keyEvents', event.target.value)} />
+            <label htmlFor={ids.conflict}>
+              {text('冲突与转折', 'Conflict and turn')}
+              {/* 收束/装置标注是给下游读的（#28/#32），不属于作者要改的叙事内容：
+                  单独只读展示，编辑框里只留正文，保存时再拼回去（issue #65）。 */}
+              {conflictLabels.length > 0 && (
+                <span className="stage-bp-labels" aria-label={text('机器读的标注', 'Machine-read labels')}>
+                  {conflictLabels.map(label => <span key={label} className="stage-bp-label">{label}</span>)}
+                </span>
+              )}
+            </label>
+            <textarea
+              id={ids.conflict}
+              className="stage-bp-ctl"
+              rows={3}
+              value={conflictProse}
+              onChange={event => onField('keyEvents', joinBlueprintLabels(event.target.value, conflictLabels))}
+            />
           </div>
           <div className="stage-bp-field">
             <label htmlFor={ids.hook}>{text('悬念钩子', 'Suspense hook')}</label>
