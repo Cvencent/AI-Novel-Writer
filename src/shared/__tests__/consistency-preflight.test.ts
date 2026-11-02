@@ -214,6 +214,54 @@ describe('findBlueprintContinuityRisks', () => {
     expect(messages).not.toContain('沈舟')
     expect(new Set(findings.map(item => item.stableFactKey)).size).toBe(findings.length)
   })
+  // issue #86：反派「陆敬堂」连续 6 章缺席，预警本身是对的，但**作者关不掉它**——
+  // key 里带了当前章号，每章都变，ack（#79 的「我已知，稍后处理」）只静音当章。
+  describe('cast absence key is stable across chapters (issue #86)', () => {
+    const absentAt = (currentChapter: number) => findExpandedContinuityRisks({
+      currentChapter,
+      blueprints: [
+        { chapterNumber: 13, characters: ['陆敬堂'], descriptionText: '陆敬堂扣下存根。' },
+        { chapterNumber: currentChapter - 1, characters: ['周叙'], descriptionText: '周叙核舱。' },
+      ],
+      cast: [{ name: '陆敬堂', role: 'antagonist', motivation: '压下查册' }],
+      threads: [],
+    }).find(finding => finding.stableFactKey.startsWith('cast:absent:'))
+
+    it('does not change the key as the book advances, so one ack permanently silences it', () => {
+      const at20 = absentAt(20)
+      const at21 = absentAt(21)
+      expect(at20).toBeDefined()
+      expect(at21).toBeDefined()
+      // 同一件事（同一个人的同一次缺席）在后续章节必须是**同一个 key**，
+      // 否则作者在预检弹层里点一次「我已知」也只能管当章。
+      expect(at21!.stableFactKey).toBe(at20!.stableFactKey)
+    })
+
+    it('does change the key once the character actually returns, so a new absence is a new warning', () => {
+      // 他回来之后再次缺席，`last` 变了 → 新 key → 值得再报一次。
+      const beforeReturn = findExpandedContinuityRisks({
+        currentChapter: 21,
+        blueprints: [
+          { chapterNumber: 13, characters: ['陆敬堂'], descriptionText: '陆敬堂扣下存根。' },
+          { chapterNumber: 20, characters: ['陆敬堂'], descriptionText: '陆敬堂封了匣子。' },
+        ],
+        cast: [{ name: '陆敬堂', role: 'antagonist', motivation: '压下查册' }],
+        threads: [],
+      }).find(finding => finding.stableFactKey.startsWith('cast:absent:'))
+      expect(beforeReturn).toBeUndefined()
+    })
+
+    it('offers both executable exits instead of only asking the author to "confirm"', () => {
+      // #86 的建议 1（与 #55/#69 同一教训）：只说「确认支线是否被遗忘」等于没给动作，
+      // 作者当时就是点了「带提醒继续写」直接往下走。
+      const finding = absentAt(20)!
+      expect(finding.suggestion.zhCN).toContain('让他回来')
+      expect(finding.suggestion.zhCN).toContain('写明他的退场')
+      expect(finding.suggestion.enUS).toContain('bring them back')
+      expect(finding.suggestion.enUS).toContain('write the exit')
+    })
+  })
+
   it('maps deterministic findings into the existing review item shape', () => {
     const finding = findBlueprintContinuityRisks(projection, {
       chapterNumber: 2, title: '重逢', role: '发展', purpose: '顾舟归来', keyEvents: '顾舟敲门',

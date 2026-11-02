@@ -234,15 +234,21 @@ export function findExpandedContinuityRisks(input: {
       })
     } else if (input.currentChapter - last > 5) {
       push({
-        stableFactKey: `cast:absent:${normalizedKeyPart(character.name)}:${last}:${input.currentChapter}`,
+        // key **不能带当前章号**（issue #86）：否则它每章都变，作者点了「我已知，稍后处理」
+        // （#79 的 ack）也只能静音当章，下一章又是一条新提醒 —— 实测那本书的反派
+        // 「陆敬堂」从第 20 章起连报 6 章、谁也关不掉，于是这条**正确**的预警被训练成噪声。
+        // 带 `last` 是对的：他一旦真的回来，`last` 变化 → key 变化 → 新的缺席才算新问题。
+        stableFactKey: `cast:absent:${normalizedKeyPart(character.name)}:${last}`,
         severity: 'warning', sourceChapter: last, evidence: `${character.name} last scheduled in chapter ${last}`,
         issue: {
           zhCN: `主要角色“${character.name}”已连续 ${input.currentChapter - last} 章没有进入蓝图（上次第${last}章）。请确认支线是否被遗忘。`,
           enUS: `Major character “${character.name}” has been absent from the chapter plan for ${input.currentChapter - last} chapters (last: chapter ${last}). Check whether their thread was forgotten.`,
         },
         suggestion: {
-          zhCN: '安排一次状态推进、远程影响或短暂登场，避免人物线断档。',
-          enUS: 'Schedule a state advance, off-page consequence, or brief appearance so the character thread does not disappear.',
+          // 出路要给**两个都可执行**的分支（issue #86 的建议 1，与 #55/#69 同一教训：
+          // 只说「确认是否被遗忘」等于没给动作——作者当时按了「带提醒继续写」就往下走了）。
+          zhCN: `二选一：①让他回来——安排一次状态推进、远程影响或短暂登场；②他这条线就是收束了——在正文里写明他的退场及其原因（像样本第 18 章对配角邵德昌做的「搬去码头另一头养老，不再提查册的事」那样），别让读者以为作者忘了。两种情况都要落到正文，不要在预检弹层里点「继续」了事。`,
+          enUS: `Pick one: (1) bring them back \u2014 schedule a state advance, an off-page consequence, or a brief appearance; (2) their thread really is closed \u2014 write the exit and its cause into the prose (as the sample book did for a supporting character in chapter 18: "moved to the other end of the docks to retire, and stopped bringing up the ledger"), so readers do not think the author forgot. Either way it must land on the page; do not just click "continue" on the preflight notice.`,
         },
       })
     }
