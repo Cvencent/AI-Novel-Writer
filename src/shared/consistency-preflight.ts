@@ -4,6 +4,8 @@ import { foreshadowingKeywords, type ForeshadowingCommitment } from './foreshado
 import { findAnnihilatedPropRevival, findRepeatPropTermination } from './prop-termination'
 import { findRepeatedEntranceShots } from './entrance-shot'
 import { findLossRestatement } from './loss-restatement'
+import { findAbilityReuseContradictions } from './ability-budget'
+import { findDeclaredDigitCountMismatches } from './numbering-consistency'
 import {
   designSections,
   findTimelineAnchorConflicts,
@@ -1163,4 +1165,79 @@ export function mergeConsistencyFindingsIntoReview(
     sourceChapter: finding.sourceChapter,
   }))
   return { ...review, items: [...(Array.isArray(review.items) ? review.items : []), ...mapped] }
+}
+
+// --- 以下三项由审稿路径移到 shared（issue #83）：写前预检与审稿共用同一份实现 ---
+
+/**
+ * 能力／资源上限的自相矛盾 → 一致性发现（issue #51）。
+ *
+ * 只报能直接机器判的那一类：**同一章内先声明资源用尽、随后又成功使用**。
+ * 跨章的「还剩几次」需要一个结构化消耗账字段（本轮未做，见 issue 评论）。
+ */
+export function abilityBudgetFindings(chapter: { chapterNumber: number; content: string }): ConsistencyFinding[] {
+  return findAbilityReuseContradictions(chapter.content).map(contradiction => ({
+    stableFactKey: `ability-budget:reuse:${chapter.chapterNumber}:${contradiction.index}`,
+    severity: 'warning' as const,
+    sourceChapter: chapter.chapterNumber,
+    evidence: `第${chapter.chapterNumber}章：「${contradiction.declaration}」→ 随后「${contradiction.reuse}」`,
+    issue: {
+      zhCN: `能力的上限被自己作废了：这里刚声明资源已经用尽（「${contradiction.declaration.slice(0, 40)}…」），紧接着又成功用了一次。读者据此会认为这套限制不作数，前面的取舍也就不成立。`,
+      enUS: `A stated limit is voided inside the same passage: the text declares the resource exhausted, then the ability succeeds again a few lines later. Readers conclude the constraint does not hold, which voids every earlier trade-off built on it.`,
+    },
+    suggestion: {
+      zhCN: '三选一：把用尽声明挪到这次使用之后；写出恢复条件（换班次、补水、换物件）并说明为什么这次还能读；或删掉这次使用。别让两句留在同一段里自相抵消。',
+      enUS: 'Pick one: move the exhaustion statement after this use; write the recovery condition (new shift, refill, another object) and why this read is still possible; or drop this use. Do not leave both claims in the same passage canceling each other.',
+    },
+  }))
+}
+
+/**
+ * 跨章「断言反转」→ 一致性发现（issue #52）。
+ *
+ * 真实事故：第 16 章正文断定「笔压没抖一下……叶九的手」，第 19 章正文又断定「不是叶九的手」，
+ * 而第 19 章整章推理（「温珩的名字是被添上去的」）立在后一句上。定稿后本章只读，
+ * 这类冲突只能靠后面的章节打补丁，越补越绕——所以要在写这一章时就摆出来。
+ *
+ * 判据刻意窄（见 findCrossChapterAssertionReversals 的注释）：短语必须含在册角色名、
+ * 逐字相同、且方向是「前章断言 → 本章否定」。这是证据提示，不是禁止条款。
+ */
+export function assertionReversalFindings(
+  earlier: ReadonlyArray<{ chapterNumber: number; content: string }>,
+  current: { chapterNumber: number; content: string },
+  castNames: readonly string[],
+): ConsistencyFinding[] {
+  if (!castNames.length) return []
+  return findCrossChapterAssertionReversals({
+    castNames,
+    earlier: earlier.map(item => ({ chapterNumber: item.chapterNumber, text: item.content, label: '正文' })),
+    current: { chapterNumber: current.chapterNumber, text: current.content },
+  })
+}
+
+/**
+ * 贯穿性编号的自相矛盾 → 一致性发现（issue #47）。
+ *
+ * 只报能直接机器判的一类：**声明 N 位、紧随其后的编号不是 N 位**。
+ * 真实事故里第 16 章标称「编号五位」却只写出四位（零三一七），
+ * 而那一章的推理链正架在这个编号上。
+ *
+ * 刻意不做的：比较全书编号「形式是否一致」。编号是开放集合，
+ * 「丁段一四」与「零三一七」是否同一体系，字符层判不出来（#20 的教训）。
+ */
+export function numberingFindings(chapter: { chapterNumber: number; content: string }): ConsistencyFinding[] {
+  return findDeclaredDigitCountMismatches(chapter.content).map(mismatch => ({
+    stableFactKey: `numbering:digits:${chapter.chapterNumber}:${mismatch.index}`,
+    severity: 'warning' as const,
+    sourceChapter: chapter.chapterNumber,
+    evidence: `第${chapter.chapterNumber}章：「${mismatch.evidence}」——声明 ${mismatch.declaredDigits} 位，实际写出 ${mismatch.actualDigits} 位`,
+    issue: {
+      zhCN: `编号的位数自相矛盾：这里声明「${mismatch.declaredDigits} 位」，紧随其后的编号却是 ${mismatch.actualDigits} 位。读者对账时无法判断这串数字属于哪一套编码。`,
+      enUS: `The stated digit count contradicts the number itself: this line declares ${mismatch.declaredDigits} digits, but the number that follows has ${mismatch.actualDigits}. Readers cannot tell which code system the number belongs to.`,
+    },
+    suggestion: {
+      zhCN: `二者改成一致：要么把声明改成 ${mismatch.actualDigits} 位，要么把编号补/删到 ${mismatch.declaredDigits} 位。若多处编号写法不同，建议在设定层先定一处权威编码规则（位数、是否带段号）。`,
+      enUS: `Make the two agree: either state ${mismatch.actualDigits} digits, or adjust the number to ${mismatch.declaredDigits} digits. If several forms are in use, define one authoritative code rule (digit count, prefix scheme) in the settings first.`,
+    },
+  }))
 }

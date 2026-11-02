@@ -5,9 +5,21 @@ import type { PrepareReviewRevisionRequest, ReviewMaterialIdentity, ReviewRevisi
 import { parseHumanConfirmedReviewSnapshot, serializeHumanConfirmedReviewSnapshot } from '../../src/shared/human-confirmed-review'
 import { freezeChapterGoals } from '../../src/shared/chapter-goal-review'
 import { findBlueprintContinuityRisks } from '../../src/shared/consistency-preflight'
-import { findCharacterProseRepetition, findProseRepetition, proseRepetitionEvidence } from '../../src/shared/prose-repetition'
-import { findDeclaredDigitCountMismatches } from '../../src/shared/numbering-consistency'
-import { findCrossChapterAssertionReversals, findClosingLabelConflicts, findUltimatumStreak } from '../../src/shared/consistency-preflight'
+import { proseRepetitionFindings } from '../../src/shared/prose-repetition'
+// issue #83：这三项的实现已移到 `src/shared/consistency-preflight.ts`（写前预检与审稿
+// 共用同一份）。这里既在本文件内调用、又要保持既有 import 路径不变，所以「import + re-export」。
+import {
+  abilityBudgetFindings,
+  assertionReversalFindings,
+  findClosingLabelConflicts,
+  findUltimatumStreak,
+  numberingFindings,
+} from '../../src/shared/consistency-preflight'
+export {
+  abilityBudgetFindings,
+  assertionReversalFindings,
+  numberingFindings,
+}
 import { closingShotOf } from '../../src/shared/blueprint-semantic-contract'
 import {
   findDialogueOpenerConvergence,
@@ -15,8 +27,6 @@ import {
   findUndeliveredForeshadowing,
 } from '../../src/shared/consistency-preflight'
 import { foreshadowingDueAt, parseForeshadowingCommitments } from '../../src/shared/foreshadowing-commitments'
-import { findAbilityReuseContradictions } from '../../src/shared/ability-budget'
-import type { ConsistencyFinding } from '../../src/shared/consistency-preflight'
 import { CHARACTER_STATE_TEXT_FIELDS } from '../../src/shared/character-roster'
 import { ProjectCoreRepository } from '../repositories/project-core-repository'
 import { CharacterRepository } from '../repositories/character-repository'
@@ -224,131 +234,4 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
       ],
       ...(confirmation ? { confirmation } : {}), ...(recheck ? { recheck } : {}) }
   })()
-}
-
-/**
- * 能力／资源上限的自相矛盾 → 一致性发现（issue #51）。
- *
- * 只报能直接机器判的那一类：**同一章内先声明资源用尽、随后又成功使用**。
- * 跨章的「还剩几次」需要一个结构化消耗账字段（本轮未做，见 issue 评论）。
- */
-export function abilityBudgetFindings(chapter: { chapterNumber: number; content: string }): ConsistencyFinding[] {
-  return findAbilityReuseContradictions(chapter.content).map(contradiction => ({
-    stableFactKey: `ability-budget:reuse:${chapter.chapterNumber}:${contradiction.index}`,
-    severity: 'warning' as const,
-    sourceChapter: chapter.chapterNumber,
-    evidence: `第${chapter.chapterNumber}章：「${contradiction.declaration}」→ 随后「${contradiction.reuse}」`,
-    issue: {
-      zhCN: `能力的上限被自己作废了：这里刚声明资源已经用尽（「${contradiction.declaration.slice(0, 40)}…」），紧接着又成功用了一次。读者据此会认为这套限制不作数，前面的取舍也就不成立。`,
-      enUS: `A stated limit is voided inside the same passage: the text declares the resource exhausted, then the ability succeeds again a few lines later. Readers conclude the constraint does not hold, which voids every earlier trade-off built on it.`,
-    },
-    suggestion: {
-      zhCN: '三选一：把用尽声明挪到这次使用之后；写出恢复条件（换班次、补水、换物件）并说明为什么这次还能读；或删掉这次使用。别让两句留在同一段里自相抵消。',
-      enUS: 'Pick one: move the exhaustion statement after this use; write the recovery condition (new shift, refill, another object) and why this read is still possible; or drop this use. Do not leave both claims in the same passage canceling each other.',
-    },
-  }))
-}
-
-/**
- * 跨章「断言反转」→ 一致性发现（issue #52）。
- *
- * 真实事故：第 16 章正文断定「笔压没抖一下……叶九的手」，第 19 章正文又断定「不是叶九的手」，
- * 而第 19 章整章推理（「温珩的名字是被添上去的」）立在后一句上。定稿后本章只读，
- * 这类冲突只能靠后面的章节打补丁，越补越绕——所以要在写这一章时就摆出来。
- *
- * 判据刻意窄（见 findCrossChapterAssertionReversals 的注释）：短语必须含在册角色名、
- * 逐字相同、且方向是「前章断言 → 本章否定」。这是证据提示，不是禁止条款。
- */
-export function assertionReversalFindings(
-  earlier: ReadonlyArray<{ chapterNumber: number; content: string }>,
-  current: { chapterNumber: number; content: string },
-  castNames: readonly string[],
-): ConsistencyFinding[] {
-  if (!castNames.length) return []
-  return findCrossChapterAssertionReversals({
-    castNames,
-    earlier: earlier.map(item => ({ chapterNumber: item.chapterNumber, text: item.content, label: '正文' })),
-    current: { chapterNumber: current.chapterNumber, text: current.content },
-  })
-}
-
-/**
- * 贯穿性编号的自相矛盾 → 一致性发现（issue #47）。
- *
- * 只报能直接机器判的一类：**声明 N 位、紧随其后的编号不是 N 位**。
- * 真实事故里第 16 章标称「编号五位」却只写出四位（零三一七），
- * 而那一章的推理链正架在这个编号上。
- *
- * 刻意不做的：比较全书编号「形式是否一致」。编号是开放集合，
- * 「丁段一四」与「零三一七」是否同一体系，字符层判不出来（#20 的教训）。
- */
-export function numberingFindings(chapter: { chapterNumber: number; content: string }): ConsistencyFinding[] {
-  return findDeclaredDigitCountMismatches(chapter.content).map(mismatch => ({
-    stableFactKey: `numbering:digits:${chapter.chapterNumber}:${mismatch.index}`,
-    severity: 'warning' as const,
-    sourceChapter: chapter.chapterNumber,
-    evidence: `第${chapter.chapterNumber}章：「${mismatch.evidence}」——声明 ${mismatch.declaredDigits} 位，实际写出 ${mismatch.actualDigits} 位`,
-    issue: {
-      zhCN: `编号的位数自相矛盾：这里声明「${mismatch.declaredDigits} 位」，紧随其后的编号却是 ${mismatch.actualDigits} 位。读者对账时无法判断这串数字属于哪一套编码。`,
-      enUS: `The stated digit count contradicts the number itself: this line declares ${mismatch.declaredDigits} digits, but the number that follows has ${mismatch.actualDigits}. Readers cannot tell which code system the number belongs to.`,
-    },
-    suggestion: {
-      zhCN: `二者改成一致：要么把声明改成 ${mismatch.actualDigits} 位，要么把编号补/删到 ${mismatch.declaredDigits} 位。若多处编号写法不同，建议在设定层先定一处权威编码规则（位数、是否带段号）。`,
-      enUS: `Make the two agree: either state ${mismatch.actualDigits} digits, or adjust the number to ${mismatch.declaredDigits} digits. If several forms are in use, define one authoritative code rule (digit count, prefix scheme) in the settings first.`,
-    },
-  }))
-}
-
-/**
- * 正文层重复 → 一致性发现（issue #32 / #33）。
- *
- * 只在「同一族短语覆盖了六成以上样本章」时才报，且样本 ≥ 8 章；本机 9 章定稿样本
- * （写法各异）覆盖 2/9 不触发——这是刻意的保守阈值，避免给作者刷噪声。
- * stableFactKey 带章号与族名，便于作者在一致性豁免里逐条关掉。
- */
-export function proseRepetitionFindings(
-  chapters: ReadonlyArray<{ chapterNumber: number; content: string }>,
-  currentChapter: number,
-  castNames: readonly string[] = [],
-): ConsistencyFinding[] {
-  // 全书口径（主角式）与按角色口径（配角式）各跑一遍（issue #49）：配角的出场章数远小于全书章数，
-  // 按全书归一他永远达不到阈值——那是分母选错了，不是写法不固定。
-  const hits = [
-    ...findProseRepetition(chapters),
-    ...(castNames.length ? findCharacterProseRepetition(chapters, castNames) : []),
-  ]
-  const seen = new Set<string>()
-  return hits.filter(hit => {
-    const key = hit.scope?.kind === 'character' ? `${hit.kind}:${hit.scope.character}` : `${hit.kind}:book`
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  }).map(hit => {
-    const isStillness = hit.kind === 'stillness'
-    // 按角色口径时把角色名写进结论，作者才知道说的是谁。
-    const subject = hit.scope?.kind === 'character' ? `「${hit.scope.character}」的` : ''
-    const englishSubject = hit.scope?.kind === 'character' ? `${hit.scope.character}'s ` : "The protagonist's "
-    return {
-      stableFactKey: `prose:${hit.kind}${hit.scope?.kind === 'character' ? `:${hit.scope.character}` : ''}:${currentChapter}`,
-      severity: 'warning' as const,
-      sourceChapter: currentChapter,
-      evidence: proseRepetitionEvidence(hit),
-      issue: {
-        zhCN: isStillness
-          ? `人物反应被写成了固定短句：${subject}${hit.chapters.length} 章都用同一批否定式微动作（没动／没答／没应／没说话）表达受挫或被追问，读者能预判角色的反应。`
-          : `核心戏的场景装置被固定复用了：${subject}${hit.chapters.length} 章都用同一套「地点＋起手动作」搭戏（如舱底＋拧水隔＋票根蘸水），读者一看起手就知道接下来会发生什么。`,
-        enUS: isStillness
-          ? `${englishSubject}reactions have become a fixed formula: ${hit.chapters.length} chapters express setback or being questioned with the same negated micro-phrases, so readers can predict the reaction.`
-          : `${englishSubject}core scene's staging repeats: ${hit.chapters.length} chapters set it up with the same place-plus-opening-action, so readers know what follows from the opening beat.`,
-      },
-      suggestion: {
-        zhCN: isStillness
-          ? '换一种呈现方式表达沉默与受挫（身体动作、视线、呼吸、手上的活），也不要每章都用「提问→对方不回答」收场。'
-          : '换场合与起手动作搭这一场戏；同一套装置不要连着多章用。',
-        enUS: isStillness
-          ? 'Show silence and setback another way (bodily action, gaze, breathing, the work in their hands), and stop ending every chapter on "asked a question, got no answer".'
-          : 'Change the setting and the opening action for this scene; do not reuse the same staging across adjacent chapters.',
-      },
-    }
-  })
 }

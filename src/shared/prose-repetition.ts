@@ -13,6 +13,8 @@
  * 保守到什么程度：阈值取样本章数的六成，且要求样本 ≥ 8 章；
  * 实测本机 9 章定稿样本（另一本、写法各异）覆盖 2/9，**不触发**——不会给作者刷噪声。
  */
+import type { ConsistencyFinding } from './consistency-preflight'
+
 export interface ProseRepetitionChapter {
   chapterNumber: number
   content: string
@@ -133,4 +135,63 @@ export function proseRepetitionEvidence(hit: ProseRepetitionHit): string {
   const top = hit.phrases.slice(0, 4).map(item => `${item.phrase}（${item.chapters.length} 章）`).join('、')
   const scope = hit.scope?.kind === 'character' ? `（${hit.scope.character} 出场 ${hit.scope.appearances} 章）` : ''
   return `第 ${hit.chapters.join('、')} 章共 ${hit.chapters.length} 章命中同一族写法${scope}；高频短语：${top}`
+}
+
+/**
+ * 正文层重复 → 一致性发现（issue #32 / #33 / #49）。
+ *
+ * **这是唯一实现**：审稿路径（`electron/services/review-revision-context.ts`）与
+ * 写前预检（`src/services/consistency-preflight.ts`）共用它（issue #83）。
+ * 原来它只在审稿路径被调用，而实测那本书 23 章没有审稿报告——这批检测因此在
+ * 真实使用中一次都没触发过。移到这里是为了让 renderer 侧也能 import。
+ *
+ * 只在「同一族短语覆盖了六成以上样本章」时才报，且样本 ≥ 8 章；本机 9 章定稿样本
+ * （写法各异）覆盖 2/9 不触发——这是刻意的保守阈值，避免给作者刷噪声。
+ * stableFactKey 带章号与族名，便于作者在一致性豁免里逐条关掉。
+ */
+export function proseRepetitionFindings(
+  chapters: ReadonlyArray<{ chapterNumber: number; content: string }>,
+  currentChapter: number,
+  castNames: readonly string[] = [],
+): ConsistencyFinding[] {
+  // 全书口径（主角式）与按角色口径（配角式）各跑一遍（issue #49）：配角的出场章数远小于全书章数，
+  // 按全书归一他永远达不到阈值——那是分母选错了，不是写法不固定。
+  const hits = [
+    ...findProseRepetition(chapters),
+    ...(castNames.length ? findCharacterProseRepetition(chapters, castNames) : []),
+  ]
+  const seen = new Set<string>()
+  return hits.filter(hit => {
+    const key = hit.scope?.kind === 'character' ? `${hit.kind}:${hit.scope.character}` : `${hit.kind}:book`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  }).map(hit => {
+    const isStillness = hit.kind === 'stillness'
+    // 按角色口径时把角色名写进结论，作者才知道说的是谁。
+    const subject = hit.scope?.kind === 'character' ? `「${hit.scope.character}」的` : ''
+    const englishSubject = hit.scope?.kind === 'character' ? `${hit.scope.character}'s ` : "The protagonist's "
+    return {
+      stableFactKey: `prose:${hit.kind}${hit.scope?.kind === 'character' ? `:${hit.scope.character}` : ''}:${currentChapter}`,
+      severity: 'warning' as const,
+      sourceChapter: currentChapter,
+      evidence: proseRepetitionEvidence(hit),
+      issue: {
+        zhCN: isStillness
+          ? `人物反应被写成了固定短句：${subject}${hit.chapters.length} 章都用同一批否定式微动作（没动／没答／没应／没说话）表达受挫或被追问，读者能预判角色的反应。`
+          : `核心戏的场景装置被固定复用了：${subject}${hit.chapters.length} 章都用同一套「地点＋起手动作」搭戏（如舱底＋拧水隔＋票根蘸水），读者一看起手就知道接下来会发生什么。`,
+        enUS: isStillness
+          ? `${englishSubject}reactions have become a fixed formula: ${hit.chapters.length} chapters express setback or being questioned with the same negated micro-phrases, so readers can predict the reaction.`
+          : `${englishSubject}core scene's staging repeats: ${hit.chapters.length} chapters set it up with the same place-plus-opening-action, so readers know what follows from the opening beat.`,
+      },
+      suggestion: {
+        zhCN: isStillness
+          ? '换一种呈现方式表达沉默与受挫（身体动作、视线、呼吸、手上的活），也不要每章都用「提问→对方不回答」收场。'
+          : '换场合与起手动作搭这一场戏；同一套装置不要连着多章用。',
+        enUS: isStillness
+          ? 'Show silence and setback another way (bodily action, gaze, breathing, the work in their hands), and stop ending every chapter on "asked a question, got no answer".'
+          : 'Change the setting and the opening action for this scene; do not reuse the same staging across adjacent chapters.',
+      },
+    }
+  })
 }

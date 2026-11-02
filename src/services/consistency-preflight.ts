@@ -6,6 +6,7 @@ import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuit
   findDesignTimelineConflicts, findMissingCastInArch,
   findRepeatPropTerminationFindings, findLossRestatementFindings,
   findPropRevivalFindings, findEntranceShotFindings } from '../shared/consistency-preflight'
+import { auditFinalizedProse } from '../shared/finalized-prose-audit'
 import { DEFAULT_CHAPTER_WORDS_TARGET } from './workflows/chapter-creation-parameters'
 import { ipc } from './ipc-client'
 
@@ -113,13 +114,13 @@ export async function readConsistencyPreflight(
   const recentProse = (await ipc.invokeWithProjectSession(
     session, 'db:draft-export-snapshot', session.projectPath,
   ).catch(() => [])) as Array<{ chapterNumber: number; content: string }>
-  const proseSample = [
-    ...recentProse
-      .filter(row => Number.isSafeInteger(row.chapterNumber) && row.chapterNumber < currentChapter)
-      .sort((left, right) => left.chapterNumber - right.chapterNumber)
-      .slice(-6)
-      .map(row => ({ chapterNumber: row.chapterNumber, content: String(row.content ?? '') })),
-  ]
+  // 已定稿正文的规范视图：只留本章之前的章、按章号升序、content 归一成字符串。
+  // 各检测按自己的窗口从这里切（与 prop-termination 的 PROP_WINDOW 同一做法）。
+  const historyProse = recentProse
+    .filter(row => Number.isSafeInteger(row.chapterNumber) && row.chapterNumber < currentChapter)
+    .sort((left, right) => left.chapterNumber - right.chapterNumber)
+    .map(row => ({ chapterNumber: row.chapterNumber, content: String(row.content ?? '') }))
+  const proseSample = historyProse.slice(-6)
   const openingFindings = proseSample.length === 0 ? [] : [
     ...findOpeningShapeConvergence({ chapters: proseSample, castNames, currentChapter }),
     ...findDialogueOpenerConvergence({ chapters: proseSample, castNames, currentChapter }),
@@ -173,6 +174,23 @@ export async function readConsistencyPreflight(
       .filter(Boolean),
     currentChapter,
   })
+  // 全章体检（issue #83）：收束标注（#65）／编号位数（#47）／能力上限（#51）／
+  // 正文层跨章重复（#32/#33/#49）／伏笔未送达（#68）／通牒式收尾连胜（#66）／
+  // 跨章断言反转（#52）——这 7 项原来**只接在审稿路径**上，而实测那本书 23 章
+  // 没有审稿报告，于是它们在真实使用中一次都没露过面。写前预检已经有一份
+  // 「已定稿正文 + 全书蓝图 + 名册」的输入，正好够跑（#71/#72 是同类先例）。
+  //
+  // 注意只喂**已定稿章**：要写的那一章此刻还没有正文，所以这里报出的语义是
+  // 「过去这些章已经存在这样的问题」，而不是「你正要写的这一章有问题」。
+  const finalizedProseAuditFindings = auditFinalizedProse({
+    chapters: historyProse,
+    castNames,
+    blueprints: (Array.isArray(allBlueprints) ? allBlueprints : []).map(blueprint => ({
+      chapterNumber: blueprint.chapterNumber,
+      keyEvents: blueprint.keyEvents,
+      foreshadowing: blueprint.foreshadowing,
+    })),
+  })
   const propRevivalFindings = recentProse.length === 0 ? [] : findPropRevivalFindings({
     chapters: recentProse
       .filter(row => Number.isSafeInteger(row.chapterNumber) && row.chapterNumber < currentChapter)
@@ -197,7 +215,7 @@ export async function readConsistencyPreflight(
     findings: [...terminalFindings, ...expandedFindings, ...unregisteredFindings, ...appearanceGaps,
       ...nearNameFindings, ...keyEventsLengthFindings, ...openingFindings, ...timelineFindings,
       ...missingArchCastFindings, ...propTerminationFindings, ...lossRestatementFindings,
-      ...propRevivalFindings, ...entranceShotFindings]
+      ...propRevivalFindings, ...entranceShotFindings, ...finalizedProseAuditFindings]
       .filter(item => !activeExemptions.has(item.stableFactKey))
       .filter(item => !acknowledgedKeys.has(item.stableFactKey)),
     exemptions,

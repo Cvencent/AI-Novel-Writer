@@ -155,8 +155,17 @@ export function foreshadowingKeywords(text: string): string[] {
     .replace(QUOTED_SPAN, ' ')
   const segments = stripped
     .split(/[，,。；;：:、\s（）()【】\[\]]+/u)
+    // 并列结构要拆成**原子**（issue #83）：承诺常写成
+    //   「埋下水隔边的新撬痕与全叔那句『这日子你碰不得』」
+    // 剥掉引号后整段成了「水隔边的新撬痕与全叔那句」。可正文只会写「水隔边的新撬痕」，
+    // 绝不会把这半句话连起来写——于是整段拿去检索**永远命不中**，正文明明兑现了
+    // 也照报（实测第 15 章写了「撬痕」，仍被判未送达）。这与 #70 是同一类缺陷：
+    // 检索词自带一种正文不可能出现的形态。按并列连词拆开后两侧各自成词，即可命中。
+    .flatMap(piece => piece.split(/[与和及并]/u))
     .map(segment => segment.replace(/^(?:埋下|埋设|留待|留扣|留白|为|与|把|将|给|待|回收|接榫|照应|呼应|铺垫|预告|以及|和|并)+/u, '').trim())
     .filter(segment => segment.length >= 2 && segment.length <= 12)
+    // 「X与那句」拆出的「那句」这类指示残片：单独出现没有区分度，丢掉。
+    .filter(segment => !/^[那句这个那些这种其]+$/u.test(segment))
     .filter(segment => !GENERIC_FRAGMENTS.has(segment))
     // 兜底（issue #70）：嵌套或未成对的引号会让某一段没被整段剥掉。含引号的片段
     // 自带引号，正文里永远不可能出现——绝不能放它去比对，否则整条承诺变永久假阳性。
