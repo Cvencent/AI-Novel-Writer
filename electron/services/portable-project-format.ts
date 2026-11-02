@@ -5,13 +5,13 @@ import { SqliteSchemaAdapter } from '../migrations/sqlite-schema-adapter'
 import fieldPolicyDocument from './portable-project-field-policy.json'
 
 export const PORTABLE_PROJECT_FORMAT_VERSION = 1 as const
-export const PORTABLE_SOURCE_SCHEMA_VERSION = 9 as const
+export const PORTABLE_SOURCE_SCHEMA_VERSION = 10 as const
 
 export type PortableFieldDisposition = 'preserve-domain' | 'historical-nonreplayable'
   | 'redacted-projection' | 'exclude-machine-authority' | 'rebuild-stale'
   | 'validated-relative' | 'avatar-asset'
 
-export type PortableFieldOrigin = 'signed-s01' | 'm01-m05-delta' | 'm06-delta' | 'm07-delta' | 'm08-delta' | 'arc-delta' | 'registered-donor'
+export type PortableFieldOrigin = 'signed-s01' | 'm01-m05-delta' | 'm06-delta' | 'm07-delta' | 'm08-delta' | 'm09-delta' | 'arc-delta' | 'registered-donor'
 
 export interface PortableFieldPolicy {
   disposition: PortableFieldDisposition
@@ -32,6 +32,8 @@ const deltaTables = new Set<string>(fieldPolicyDocument.deltaTables)
 const m06Tables = new Set<string>(fieldPolicyDocument.m06Tables)
 const m07Fields = new Set<string>(fieldPolicyDocument.m07Fields)
 const m08Tables = new Set<string>(fieldPolicyDocument.m08Tables)
+// M09（issue #79）：预检提醒的 ack 状态。与 M08 同形，按 delta 表登记。
+const m09Tables = new Set<string>((fieldPolicyDocument as typeof fieldPolicyDocument & { m09Tables?: string[] }).m09Tables ?? [])
 const arcTables = new Set<string>((fieldPolicyDocument as typeof fieldPolicyDocument & { arcTables?: string[] }).arcTables ?? [])
 const optionalTables = new Set<string>((fieldPolicyDocument as typeof fieldPolicyDocument & { optionalTables?: string[] }).optionalTables ?? [])
 const deltaCharacterFields = new Set<string>(fieldPolicyDocument.deltaCharacterFields)
@@ -53,7 +55,7 @@ function loadFieldPolicy(): ReadonlyMap<string, PortableFieldPolicy> {
       const rule = rules[code]
       const key = `${table}.${field}`
       const delta = optionalFields.has(key) || deltaTables.has(table) || m06Tables.has(table)
-        || m07Fields.has(key) || m08Tables.has(table) || arcTables.has(table)
+        || m07Fields.has(key) || m08Tables.has(table) || m09Tables.has(table) || arcTables.has(table)
         || table === 'characters' && deltaCharacterFields.has(field)
       const signedDisposition = delta ? null : signedOverrides[key] ?? signedDefaults[code]
       if (!field || !rule || rule.length !== 3 || !PORTABLE_FIELD_DISPOSITIONS.has(rule[0])
@@ -63,7 +65,8 @@ function loadFieldPolicy(): ReadonlyMap<string, PortableFieldPolicy> {
       }
       result.set(key, Object.freeze({ disposition: rule[0], validator: rule[1], consumer: rule[2],
         origin: optionalFields.has(key) ? 'registered-donor'
-          : m08Tables.has(table) ? 'm08-delta'
+          : m09Tables.has(table) ? 'm09-delta'
+            : m08Tables.has(table) ? 'm08-delta'
             : arcTables.has(table) ? 'arc-delta'
               : m07Fields.has(key) ? 'm07-delta'
                 : m06Tables.has(table) ? 'm06-delta' : delta ? 'm01-m05-delta' : 'signed-s01', signedDisposition }))
@@ -136,7 +139,8 @@ export interface PortableProjectManifestEntry {
 
 export interface PortableProjectManifest {
   formatVersion: 1
-  sourceSchemaVersion: 9
+  // 用常量而不是字面量：加迁移时只改一处（issue #79 的 M09 就在这里被绊过）。
+  sourceSchemaVersion: typeof PORTABLE_SOURCE_SCHEMA_VERSION
   originProjectId: string
   snapshotGeneration: string
   createdAt: string

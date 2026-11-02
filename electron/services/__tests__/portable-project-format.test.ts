@@ -9,6 +9,7 @@ import { closeProjectDatabase, createProjectDatabase, getProjectDb, initProjectD
 import { createCanonicalProjectManifest } from '../../../src/shared/project-format'
 import {
   DEFAULT_PORTABLE_ARCHIVE_LIMITS,
+  PORTABLE_SOURCE_SCHEMA_VERSION,
   assertPortableSourceSchema,
   getPortableFieldPolicy,
   listPortableFieldPolicyKeys,
@@ -48,7 +49,8 @@ function manifest(overrides: Record<string, unknown> = {}): Record<string, unkno
   const byteSize = 512 * 1024 * 1024
   return {
     formatVersion: 1,
-    sourceSchemaVersion: 9,
+    // 用常量而不是字面量：加迁移时只改一处（M09 让这个字面量过期过一次）。
+    sourceSchemaVersion: PORTABLE_SOURCE_SCHEMA_VERSION,
     originProjectId: 'origin-project',
     snapshotGeneration: 'generation-0001',
     createdAt: '2026-09-20T00:00:00.000Z',
@@ -71,22 +73,22 @@ afterEach(() => {
 })
 
 describe('portable v9 field policy', () => {
-  it('与实际当前registry双向精确匹配57表524字段，并包含arc与blueprint sync两个lazy表', () => {
+  it('与实际当前registry双向精确匹配58表526字段，并包含arc与blueprint sync两个lazy表', () => {
     const { database } = openCurrent()
-    expect(database.pragma('user_version', { simple: true })).toBe(9)
+    expect(database.pragma('user_version', { simple: true })).toBe(10)
     const tables = database.prepare("SELECT name FROM pragma_table_list WHERE schema='main' AND type='table' AND name NOT LIKE 'sqlite_%'")
       .all() as Array<{ name: string }>
     const fieldCount = tables.reduce((count, table) => count
       + (database.prepare(`PRAGMA table_info("${table.name}")`).all() as unknown[]).length, 0)
-    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 57, fields: 524 })
-    expect(assertPortableSourceSchema(database)).toEqual({ tables: 57, fields: 524 })
+    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 58, fields: 526 })
+    expect(assertPortableSourceSchema(database)).toEqual({ tables: 58, fields: 526 })
     expect(getPortableFieldPolicy('review_cycle_merges', 'cycle_id').disposition).toBe('historical-nonreplayable')
     expect(getPortableFieldPolicy('review_cycle_merges', 'body').disposition).toBe('historical-nonreplayable')
     expect(listPortableFieldPolicyKeys()).toContain('blueprint_commit_operations.operation_id')
     expect(listPortableFieldPolicyKeys()).toContain('blueprint_character_sync_operations.operation_id')
   })
 
-  it('把签署S01基线35表356字段逐项投影，并精确增加M01-M05/M06/M07/M08的字段', () => {
+  it('把签署S01基线35表356字段逐项投影，并精确增加M01-M05/M06/M07/M08/M09的字段', () => {
     const signed = JSON.parse(fs.readFileSync(path.resolve(
       'docs/research/novel-quality-modernization/s01-storage-contract.json'), 'utf8')) as {
       fieldDispositions: Array<{ table: string; field: string; portableDisposition: string }>
@@ -108,7 +110,7 @@ describe('portable v9 field policy', () => {
     const baseline = new Set(signed.fieldDispositions.map(field => `${field.table}.${field.field}`))
     const baselineTables = new Set(signed.fieldDispositions.map(field => field.table))
     const added = listPortableFieldPolicyKeys().filter(key => !baseline.has(key))
-    expect(added).toHaveLength(169)
+    expect(added).toHaveLength(171)
     expect(getPortableFieldPolicy('characters', 'avatar')).toMatchObject({
       origin: 'registered-donor', disposition: 'exclude-machine-authority', signedDisposition: null,
     })
@@ -176,7 +178,8 @@ describe('portable v9 field policy', () => {
         if (mode === 'extra-table') mutate.exec('CREATE TABLE future_portable_data(id TEXT)')
         if (mode === 'extra-field') mutate.exec('ALTER TABLE contents ADD COLUMN future_payload TEXT')
         if (mode === 'unregistered-avatar') mutate.exec('ALTER TABLE characters ADD COLUMN avatar TEXT')
-        if (mode === 'higher-version') mutate.pragma('user_version = 10')
+        // 当前版本是 10（M09）；探测「更高版本」要用 11，否则会被当成合法schema。
+        if (mode === 'higher-version') mutate.pragma('user_version = 11')
         if (mode === 'lower-version') mutate.pragma('user_version = 5')
         if (mode === 'legacy-v6') {
           mutate.exec('DROP TABLE review_cycle_merges')
@@ -205,7 +208,7 @@ describe('portable v9 field policy', () => {
         .all() as Array<{ name: string }>
       const fields = tables.reduce((count, table) => count
         + (database.prepare(`PRAGMA table_info("${table.name}")`).all() as unknown[]).length, 0)
-      expect({ tables: tables.length, fields }).toEqual({ tables: 57, fields: 524 })
+      expect({ tables: tables.length, fields }).toEqual({ tables: 58, fields: 526 })
       expect(() => assertPortableSourceSchema(database)).toThrow('PORTABLE_SCHEMA_UNSUPPORTED')
     } finally { database.close() }
     expect(fs.readFileSync(project.databasePath)).toEqual(before)
@@ -296,7 +299,7 @@ describe('portable manifest v1', () => {
   })
 
   it('拒绝未知格式、非法hash、非安全整数和声明总量不符', () => {
-    expect(() => parsePortableProjectManifest(manifest({ sourceSchemaVersion: 10 }))).toThrow('PORTABLE_SCHEMA_UNSUPPORTED')
+    expect(() => parsePortableProjectManifest(manifest({ sourceSchemaVersion: 11 }))).toThrow('PORTABLE_SCHEMA_UNSUPPORTED')
     expect(() => parsePortableProjectManifest(manifest({ sourceSchemaVersion: 6 }))).toThrow('PORTABLE_SCHEMA_UNSUPPORTED')
     expect(() => parsePortableProjectManifest(manifest({ entries: [{
       path: '正文/a.txt', byteSize: 1, sha256: 'A'.repeat(64), disposition: 'author-content',

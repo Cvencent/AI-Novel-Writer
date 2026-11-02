@@ -71,7 +71,7 @@ import { WritingIntelligenceRepository } from '../repositories/writing-intellige
 // 沿用的旧表
 import { LLMHistoryRepository } from '../repositories/llm-repository'
 import { SummaryRepository } from '../repositories/summary-repository'
-import { ConsistencyExemptionRepository } from '../repositories/consistency-exemption-repository'
+import { ConsistencyAcknowledgementRepository, ConsistencyExemptionRepository } from '../repositories/consistency-exemption-repository'
 import { NarrativeThreadRepository } from '../repositories/narrative-thread-repository'
 import { PlotTreeRepository } from '../repositories/plot-tree-repository'
 import { RecoveryCandidateRepository } from '../repositories/recovery-candidate-repository'
@@ -124,6 +124,9 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:review-create',
   'db:consistency-exemption-save',
   'db:consistency-exemption-revoke',
+  'db:consistency-ack-list',
+  'db:consistency-ack-save',
+  'db:consistency-ack-revoke',
   'db:post-process-create-run',
   'db:post-process-mark-step-ok',
   'db:post-process-mark-step-failed',
@@ -1155,6 +1158,32 @@ export function registerDatabaseController() {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
       ConsistencyExemptionRepository.revoke(stableFactKey)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // 预检提醒的「我已知，稍后处理」（issue #79）。
+  ipcMain.handle('db:consistency-ack-list', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return ConsistencyAcknowledgementRepository.list()
+  })
+
+  ipcMain.handle('db:consistency-ack-save', async (_event, stableFactKey: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      ConsistencyAcknowledgementRepository.acknowledge(stableFactKey)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('db:consistency-ack-revoke', async (_event, stableFactKey: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      ConsistencyAcknowledgementRepository.unacknowledge(stableFactKey)
       return { success: true }
     } catch (error) {
       return { success: false, error: String(error) }

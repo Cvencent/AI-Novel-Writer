@@ -26,6 +26,17 @@ export interface ConsistencyExemption {
   revoked: boolean
 }
 
+/**
+ * 预检提醒的「我已知，稍后处理」（issue #79）。
+ *
+ * 与 `ConsistencyExemption` 分开：那条表示「这是我刻意这么写的」，
+ * 这条只表示「我知道，回头再处理」——作者需要一个不污染「刻意安排」台账的口径。
+ */
+export interface ConsistencyAcknowledgement {
+  stableFactKey: string
+  acknowledgedAt: string
+}
+
 export interface ConsistencyFinding {
   stableFactKey: string
   severity: 'warning'
@@ -756,7 +767,7 @@ export function findUltimatumStreak(input: ChapterEndingStreakInput): Consistenc
   return [{
     stableFactKey: `chapter-ending:ultimatum-streak:${streak[streak.length - 1]!.chapterNumber}`,
     severity: 'warning' as const,
-    sourceChapter: input.currentChapter,
+    sourceChapter: streak[streak.length - 1]!.chapterNumber,
     evidence: `第 ${ranges} 章连续 ${streak.length} 章都以条件/警告式台词收尾；末两章：${sample}`,
     issue: {
       zhCN: `连续 ${streak.length} 章（第 ${ranges} 章）都以一句「二选一/警告/条件」的台词收尾。画面换了、人物换了、钩子文本也不重复，但读者关掉每一章时听到的是同一个声音——悬念被形式化，压迫感反而变钝。这种收法还会改人物形象：本来靠沉默与动作表态的角色，反复开口撂狠话。`,
@@ -838,7 +849,10 @@ export function findOpeningShapeConvergence(input: ChapterOpeningStreakInput): C
   return [{
     stableFactKey: `chapter-opening:scene-first:${window[window.length - 1]!.chapterNumber}`,
     severity: 'warning' as const,
-    sourceChapter: input.currentChapter,
+    // 证据落在**已定稿的那几章**里，不是正在写的这一章（issue #79）：
+    // 写成 currentChapter 会让每条提醒都以「来源：第 N 章」开头，看起来像本章的问题，
+    // 而实际上章号集合全在 6–12 章之前。
+    sourceChapter: window[window.length - 1]!.chapterNumber,
     evidence: `第 ${range} 章连续 ${window.length} 章都以「时间/地点状语 + 主句」起手：${samples}`,
     issue: {
       zhCN: `最近 ${window.length} 章（第 ${range} 章）的**开篇句**是同一个句式：先给时间或地点状语，主句在后。开篇句是读者每章第一眼看到的东西——连着十几章这样开场，正文还没读进去就先感到腻，连载里这种地方最容易掉收藏。这几章的场景其实各不相同，缺的只是句式轮换。`,
@@ -868,7 +882,8 @@ export function findDialogueOpenerConvergence(input: ChapterOpeningStreakInput):
   return [{
     stableFactKey: `chapter-opening:dialogue-opener:${widest!.opener}`,
     severity: 'warning' as const,
-    sourceChapter: input.currentChapter,
+    // 证据章号集合才是读者要去看的地方（issue #79）。
+    sourceChapter: widest!.chapters[widest!.chapters.length - 1]!,
     evidence: `第 ${widest!.chapters.join('、')} 章的对白都以「${widest!.opener}」起手（共 ${widest!.chapters.length} 章）；另有 ${Math.max(0, hits.length - 1)} 组同类起手语`,
     issue: {
       zhCN: `有 ${widest!.chapters.length} 章的长辈/对手开口第一句都是「${widest!.opener}……」，后半句各不相同。同一条线索的每一次推进都用同一个动作「抛半句 + 收口」时，读者记不住哪一章知道了什么，只记得「又一次有人提了一句」。线索本身的信息增量被句式替代了。`,
@@ -1013,7 +1028,7 @@ export function findRepeatPropTerminationFindings(input: RepeatPropTerminationIn
   return findRepeatPropTermination(input.chapters).map(hit => ({
     stableFactKey: `prop:repeat-termination:${hit.prop}`,
     severity: 'warning' as const,
-    sourceChapter: input.currentChapter,
+    sourceChapter: hit.chapters[hit.chapters.length - 1]!,
     evidence: `「${hit.prop}」在第 ${hit.chapters.join('、')} 章各被处理掉一次：${hit.excerpts[0]?.slice(0, 50) ?? ''}`,
     issue: {
       zhCN: `同一件物证「${hit.prop}」在第 ${hit.chapters.join('、')} 章各被终结过一次（毁掉／交出／收走）。已经没了的东西在后面的章里又被取出来处理一遍，读者读到的是同一件事被做了两次——而且这两次通常还各自被写成同一件后果的因，等于那件后果也废了。`,
@@ -1046,7 +1061,7 @@ export function findLossRestatementFindings(input: LossRestatementInput): Consis
   return findLossRestatement(input.chapters).map(hit => ({
     stableFactKey: `continuity:loss-restatement:${hit.referent}`,
     severity: 'warning' as const,
-    sourceChapter: input.currentChapter,
+    sourceChapter: hit.chapters[hit.chapters.length - 1]!,
     evidence: `「${hit.referent}」的缺失在第 ${hit.chapters.join('、')} 章各被当新损失宣告一次：${hit.excerpt.slice(0, 50)}`,
     issue: {
       zhCN: `同一笔记忆缺失（「${hit.referent}」）在第 ${hit.chapters.join('、')} 章各被宣告了一次，每次读起来都像刚发生的损失。金手指的代价是这本书张力的来源，同一笔被反复宣告，读者学到的是「这个代价可以重复计价」——后面再写「他又忘了一件事」就没有分量了。`,
@@ -1078,7 +1093,7 @@ export function findPropRevivalFindings(input: PropRevivalInput): ConsistencyFin
   return findAnnihilatedPropRevival(input.chapters).map(hit => ({
     stableFactKey: `prop:revival:${hit.prop}`,
     severity: 'warning' as const,
-    sourceChapter: input.currentChapter,
+    sourceChapter: hit.appearedAt[hit.appearedAt.length - 1]!,
     evidence: `「${hit.prop}」在第 ${hit.annihilatedAt} 章被写没了（${hit.annihilationExcerpt.slice(0, 40)}），`
       + `第 ${hit.appearedAt.join('、')} 章又以可取用形态出现（${hit.appearanceExcerpt.slice(0, 40)}），中间没有重新获得的动作`,
     issue: {

@@ -1,5 +1,5 @@
 import type { ProjectSessionContext } from '../shared/ipc-channels'
-import type { BlueprintForPreflight, ConsistencyExemption, ConsistencyFinding } from '../shared/consistency-preflight'
+import type { BlueprintForPreflight, ConsistencyAcknowledgement, ConsistencyExemption, ConsistencyFinding } from '../shared/consistency-preflight'
 import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuityRisks,
   findNearCastNameFindings, findOversizedBlueprintKeyEvents, findUnregisteredBlueprintCast,
   findDialogueOpenerConvergence, findOpeningShapeConvergence,
@@ -12,6 +12,8 @@ import { ipc } from './ipc-client'
 export interface ConsistencyPreflightResult {
   findings: ConsistencyFinding[]
   exemptions: ConsistencyExemption[]
+  /** 已确认「我已知，稍后处理」的提醒（issue #79）：不再出现在 findings 里，但界面可列出。 */
+  acknowledgements: ConsistencyAcknowledgement[]
   /** 在册角色名（retired=0）：细纲↔蓝图角色比对用（issue #27）。 */
   castNames: string[]
 }
@@ -22,9 +24,13 @@ export async function readConsistencyPreflight(
   /** 本章正文目标字数：蓝图「冲突与转折」的长度口径随它缩放（issue #64）。 */
   targetWordsPerChapter: number = DEFAULT_CHAPTER_WORDS_TARGET,
 ): Promise<ConsistencyPreflightResult> {
-  const exemptions = await ipc.invokeWithProjectSession(
-    session, 'db:consistency-exemption-list', session.projectPath,
-  )
+  const [exemptions, acknowledgements] = await Promise.all([
+    ipc.invokeWithProjectSession(session, 'db:consistency-exemption-list', session.projectPath),
+    // issue #79：ack 过的提醒不再重报。stable_fact_key 跨章稳定，所以点一次
+    // 「我已知，稍后处理」就永久静音——这正是作者此前缺的那个非承诺性出口。
+    ipc.invokeWithProjectSession(session, 'db:consistency-ack-list', session.projectPath).catch(() => []),
+  ])
+  const acknowledgedKeys = new Set(acknowledgements.map(item => item.stableFactKey))
   const [roster, allBlueprints, threads] = await Promise.all([
     ipc.invokeWithProjectSession(session, 'db:character-roster-read', session.projectPath).catch(() => null),
     ipc.invokeWithProjectSession(session, 'db:blueprint-get-all', session.projectPath).catch(() => []),
@@ -176,8 +182,10 @@ export async function readConsistencyPreflight(
       ...nearNameFindings, ...keyEventsLengthFindings, ...openingFindings, ...timelineFindings,
       ...missingArchCastFindings, ...propTerminationFindings, ...lossRestatementFindings,
       ...propRevivalFindings]
-      .filter(item => !activeExemptions.has(item.stableFactKey)),
+      .filter(item => !activeExemptions.has(item.stableFactKey))
+      .filter(item => !acknowledgedKeys.has(item.stableFactKey)),
     exemptions,
+    acknowledgements,
     castNames,
   }
 }

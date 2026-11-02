@@ -11,15 +11,30 @@ interface WritePreflightProps {
   onRerun: () => void
   onSave: (stableFactKey: string, reason: string) => void
   onRevoke: (stableFactKey: string) => void
+  /** 「我已知，稍后处理」（issue #79）：与「保存安排」分开，只表示知道，不表示刻意为之。 */
+  onAcknowledge: (stableFactKey: string) => void
+  onUnacknowledge: (stableFactKey: string) => void
 }
 
-/** 写作弹层里的一致性预检：线索提醒只作提示，作者可以保存为刻意安排、带提醒继续写，或改蓝图后重检；已保存的安排可以撤销。 */
-export default function WritePreflight({ preflight, busy, onIgnoreOnce, onRerun, onSave, onRevoke }: WritePreflightProps) {
+/**
+ * 写作弹层里的一致性预检（issue #79）。
+ *
+ * 三个出口各自的语义，作者此前只有前两个可用：
+ *  1. 「保存安排」——**我刻意这么写的**（进 `consistency_exemptions`，会列进「已保存安排」）；
+ *  2. 「我已知，稍后处理」——**知道是真问题、回头再改**（进 `consistency_acknowledgements`）。
+ *     这是本轮新增的第三个口径：没有它时，作者面对历史旧账要么每章点一次
+ *     「带提醒继续写」，要么把缺点记成好事。
+ *  3. 「带提醒继续写」——本次不处理，也不落任何状态（仍然是一次性的）。
+ */
+export default function WritePreflight({
+  preflight, busy, onIgnoreOnce, onRerun, onSave, onRevoke, onAcknowledge, onUnacknowledge,
+}: WritePreflightProps) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
   const [reasons, setReasons] = useState<Record<string, string>>({})
   const { findings } = preflight
   const saved = preflight.exemptions.filter(exemption => !exemption.revoked)
+  const acknowledged = preflight.acknowledgements
 
   return (
     <section className="stage-preflight" aria-label={text('一致性预检', 'Consistency preflight')}>
@@ -50,6 +65,9 @@ export default function WritePreflight({ preflight, busy, onIgnoreOnce, onRerun,
               <Button variant="secondary" size="sm" disabled={busy || !reason.trim()} onClick={() => onSave(finding.stableFactKey, reason)}>
                 {text('保存安排', 'Save arrangement')}
               </Button>
+              <Button variant="text" size="sm" disabled={busy} onClick={() => onAcknowledge(finding.stableFactKey)}>
+                {text('我已知，稍后处理', 'Noted — deal with it later')}
+              </Button>
             </div>
           </div>
         )
@@ -68,6 +86,20 @@ export default function WritePreflight({ preflight, busy, onIgnoreOnce, onRerun,
               <span>{exemption.reason}</span>
               <Button variant="text" size="sm" disabled={busy} onClick={() => onRevoke(exemption.stableFactKey)}>
                 <RotateCcw size={13} aria-hidden />{text('撤销', 'Revoke')}
+              </Button>
+            </div>
+          ))}
+        </details>
+      )}
+      {/* 这些与「已保存安排」分开展示：它们是「已知未改」，不是「刻意为之」（issue #79）。 */}
+      {acknowledged.length > 0 && (
+        <details className="stage-preflight-saved">
+          <summary>{text(`已标记稍后处理（${acknowledged.length}）`, `Noted for later (${acknowledged.length})`)}</summary>
+          {acknowledged.map(item => (
+            <div key={item.stableFactKey} className="stage-preflight-exemption">
+              <span>{item.stableFactKey}</span>
+              <Button variant="text" size="sm" disabled={busy} onClick={() => onUnacknowledge(item.stableFactKey)}>
+                <RotateCcw size={13} aria-hidden />{text('恢复提醒', 'Show again')}
               </Button>
             </div>
           ))}

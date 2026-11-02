@@ -78,7 +78,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     if (!session) return
     void ipc.invokeWithProjectSession(session, 'db:consistency-exemption-list', session.projectPath).then(exemptions => {
       if (isProjectSessionCurrent(session) && exemptions.some(item => !item.revoked)) {
-        setPreflight(current => current ?? { findings: [], exemptions, castNames: [] })
+        setPreflight(current => current ?? { findings: [], exemptions, acknowledgements: [], castNames: [] })
       }
     }).catch(() => undefined)
   }, [open])
@@ -169,6 +169,27 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     } : null)
   }
 
+  /**
+   * 「我已知，稍后处理」（issue #79）：与「保存安排」分开，不落 `consistency_exemptions`。
+   * stable_fact_key 跨章稳定，所以 ack 一次就永久静音——这正是作者此前缺的第三个口径。
+   * ack 后接着开写（与 saveArrangement 同一路径），作者不必再多点一次。
+   */
+  const acknowledgeFinding = async (stableFactKey: string) => {
+    const done = await changeArrangement(text('标记稍后处理失败', 'Could not note it for later.'),
+      session => ipc.invokeWithProjectSession(session, 'db:consistency-ack-save', stableFactKey, session.projectPath))
+    if (done) await start(false, done)
+  }
+
+  const unacknowledgeFinding = async (stableFactKey: string) => {
+    const done = await changeArrangement(text('恢复该提醒失败', 'Could not show this reminder again.'),
+      session => ipc.invokeWithProjectSession(session, 'db:consistency-ack-revoke', stableFactKey, session.projectPath))
+    if (!done) return
+    setPreflight(current => current ? {
+      ...current,
+      acknowledgements: current.acknowledgements.filter(item => item.stableFactKey !== stableFactKey),
+    } : null)
+  }
+
   const showPreflight = preflight && (preflight.findings.length > 0 || preflight.exemptions.some(item => !item.revoked))
   // 预检提醒已经展示过一次后，主按钮再点就是「带提醒开写」：预检只是证据提示，
   // 不该让作者在同一个按钮上反复弹层（弹层页脚明明写着「点『写第 N 章』开始」）。
@@ -239,6 +260,8 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           onRerun={() => void start(false)}
           onSave={(key, reason) => void saveArrangement(key, reason)}
           onRevoke={key => void revokeArrangement(key)}
+          onAcknowledge={key => void acknowledgeFinding(key)}
+          onUnacknowledge={key => void unacknowledgeFinding(key)}
         />
       )}
       {message && <p className="stage-write-error" role="alert">{message}</p>}

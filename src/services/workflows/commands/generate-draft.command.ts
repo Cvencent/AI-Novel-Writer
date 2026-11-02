@@ -859,7 +859,7 @@ ${dueForeshadowing}`
       foreshadowing: this.chapterInfo.foreshadowing,
       userGuidance: this.chapterInfo.userGuidance ?? '',
       notes: '',
-    }], targetChars).catch(() => ({ findings: [], exemptions: [], castNames: [] as string[] }))
+    }], targetChars).catch(() => ({ findings: [], exemptions: [], acknowledgements: [], castNames: [] as string[] }))
     // 细纲本章 ↔ 蓝图角色的双向差集（issue #27）：蓝图漏人、蓝图排了细纲没提的人
     // 都是「静默换人」的前兆，必须在起草提示里点名，否则模型会照着蓝图写另一个人。
     const castMismatchFindings = findSynopsisCastMismatches({

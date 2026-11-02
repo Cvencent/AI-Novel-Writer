@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 9,
+  "schemaVersion": 10,
   "rules": {
     "D": ["preserve-domain", "signed-domain-value", "portable-domain-copy"],
     "H": ["historical-nonreplayable", "nonreplayable-history", "portable-history-projector"],
@@ -19,6 +19,7 @@
   "m06Tables": ["review_cycle_merges"],
   "m07Fields": ["blueprints.costs_and_turns", "blueprints.foreshadowing"],
   "m08Tables": ["blueprint_scene_plans", "chapter_commits", "character_voice_profiles", "draft_quality_reviews"],
+  "m09Tables": ["consistency_acknowledgements"],
   "arcTables": ["arc_outlines", "outline_segment_bindings"],
   "optionalTables": ["arc_outlines", "outline_segment_bindings"],
   "optionalFields": ["characters.avatar"],
@@ -97,6 +98,7 @@
     "character_voice_profiles": {"character_id":"H","source_draft_id":"H","content_hash":"H","profile_json":"H","updated_at":"H"},
     "characters": {"character_id":"D","legacy_key":"D","static_provenance":"D","identity_revision":"D","retired":"D","name":"D","role":"D","gender":"D","age":"D","appearance":"D","personality":"D","background":"D","abilities":"D","motivation":"D","relationships":"D","arc":"D","notes":"D","avatar":"X","cs_location":"D","cs_power_level":"D","cs_physical_state":"D","cs_mental_state":"D","cs_key_items":"D","cs_recent_events":"D","cs_updated_at_chapter":"D","cs_provenance":"D","created_at":"D","updated_at":"D"},
     "consistency_exemptions": {"stable_fact_key":"D","reason":"D","revoked":"D"},
+    "consistency_acknowledgements": {"stable_fact_key":"D","acknowledged_at":"D"},
     "contents": {"id":"D","body":"D","created_at":"D"},
     "continuity_projection_meta": {"id":"D","generation":"D","stale_from_chapter":"D"},
     "draft_quality_reviews": {"draft_id":"H","chapter_number":"H","content_hash":"H","panel_json":"H","weighted_score":"H","blocking_count":"H","reviewed_at":"H"},

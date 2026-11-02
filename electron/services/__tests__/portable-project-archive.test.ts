@@ -10,6 +10,7 @@ import {
   type PortableArchiveSource,
 } from '../portable-project-archive'
 import type { PortableProjectManifest, PortableProjectManifestEntry } from '../portable-project-format'
+import { PORTABLE_SOURCE_SCHEMA_VERSION } from '../portable-project-format'
 
 interface RawZipEntry {
   name: string | Buffer
@@ -91,7 +92,8 @@ function manifest(entries: PortableProjectManifestEntry[], overrides: Partial<Po
   const total = entries.reduce((sum, item) => sum + item.byteSize, 0)
   return {
     formatVersion: 1,
-    sourceSchemaVersion: 9,
+    // 用常量而不是字面量：加迁移时只改一处（M09 让这个字面量过期过一次）。
+    sourceSchemaVersion: PORTABLE_SOURCE_SCHEMA_VERSION,
     originProjectId: 'origin-project',
     snapshotGeneration: 'generation-1',
     createdAt: '2026-09-20T00:00:00.000Z',

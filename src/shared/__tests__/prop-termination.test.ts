@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { findAnnihilatedPropRevival, findRepeatPropTermination } from '../prop-termination'
+import { findPropRevivalFindings, findRepeatPropTerminationFindings } from '../consistency-preflight'
 
 /** issue #73 报告里的两章原文（照抄，把判据钉在真实样本上）。 */
 const CH27 = '全叔活动了一下胳膊，走到绞盘边蹲下。绳圈上三个结，他一个一个解开，解得很慢。解完，把绳头往滚筒底下一塞。'
@@ -176,5 +177,30 @@ describe('issue #78: 被写死的物证又自己回来', () => {
     ])
     expect(hits).toHaveLength(1)
     expect(hits[0]!.prop).toBe('原页')
+  })
+})
+
+describe('issue #79: 提醒必须指向证据所在的章，而不是正在写的这一章', () => {
+  it('names the evidence chapters on the prop-termination finding', () => {
+    const chapters = [
+      { chapterNumber: 27, content: '绳圈上三个结，他一个一个解开，解得很慢。' },
+      { chapterNumber: 29, content: '露出底下压死的三个结。剪子伸进去，一下，一下，一下。' },
+    ]
+    // currentChapter 是 31（正在写的章），而证据在第 27/29 章。
+    const [finding] = findRepeatPropTerminationFindings({ chapters, currentChapter: 31 })
+    expect(finding!.sourceChapter).toBe(29)
+    expect(finding!.sourceChapter).not.toBe(31)
+    expect(finding!.evidence).toContain('第 27、29 章')
+  })
+
+  it('names the revival chapter on the prop-revival finding', () => {
+    const chapters = [
+      { chapterNumber: 21, content: ['票根表面起毛，纸芯吸饱了水，一按就塌。第三下，纸面从中间酥开，碎成几片，沾在他掌心的茧上，一捻就烂。', '没了。'].join(String.fromCharCode(10)) },
+      { chapterNumber: 28, content: '他从怀里摸出空白票根，蘸水压上去。' },
+    ]
+    const [finding] = findPropRevivalFindings({ chapters, currentChapter: 31 })
+    // 证据的最后一章是 28（它又出现的那一章），不是正在写的 31。
+    expect(finding!.sourceChapter).toBe(28)
+    expect(finding!.evidence).toContain('第 21 章被写没了')
   })
 })

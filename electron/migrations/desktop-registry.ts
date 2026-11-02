@@ -10,11 +10,12 @@ import { createM00Migration } from './m00-baseline'
 import { initializeLegacyBaselineSchema, applyBaselineTables } from './baseline-schema'
 import { addBlueprintExtendedColumns, ensureBaselineBlueprintTables } from './baseline-blueprint-schema'
 import { applyM08WritingIntelligence, verifyM08WritingIntelligence } from './m08-writing-intelligence'
+import { applyM09PreflightAck, verifyM09PreflightAck } from './m09-preflight-ack'
 import { SqliteSchemaAdapter, sqliteSchemaFingerprint } from './sqlite-schema-adapter'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3') as typeof import('better-sqlite3')
-export const CURRENT_DESKTOP_SCHEMA_VERSION = 9
+export const CURRENT_DESKTOP_SCHEMA_VERSION = 10
 let installed: MigrationRegistry | undefined
 
 function installKnownDonorAvatarColumn(db: import('better-sqlite3').Database): void {
@@ -114,11 +115,23 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
         && verifyM08WritingIntelligence(native(db))
         && verifyM02CharacterIdentity(native(db)) && verifyM03ReviewCycle(native(db)),
     }
-    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08], [
+    // M09: 预检提醒的「我已知，稍后处理」状态（issue #79），与刻意安排分开存储。
+    for (const db of references) db.transaction(() => applyM09PreflightAck(db))()
+    const preflightAckSchemas = schemas(10)
+    const preflightAckFingerprints = new Set(preflightAckSchemas.map(item => item.fingerprint))
+    const m09 = {
+      id: 'M09' as const, from: 9, to: 10, owner: 'QA',
+      migrate: (db: SchemaReader) => applyM09PreflightAck(native(db)),
+      verify: (db: SchemaReader) => preflightAckFingerprints.has(sqliteSchemaFingerprint(native(db)))
+        && verifyM09PreflightAck(native(db))
+        && verifyM08WritingIntelligence(native(db))
+        && verifyM02CharacterIdentity(native(db)) && verifyM03ReviewCycle(native(db)),
+    }
+    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08, m09], [
       ...sourceSchemas, ...baselineSchemas.map(schema => ({ ...schema, version: 0 })),
       ...baselineSchemas, ...generationSchemas, ...identitySchemas,
       ...reviewCycleSchemas, ...importEffectSchemas, ...characterAssetSchemas, ...mergeSnapshotSchemas,
-      ...extendedBlueprintSchemas, ...writingIntelligenceSchemas,
+      ...extendedBlueprintSchemas, ...writingIntelligenceSchemas, ...preflightAckSchemas,
     ])
     return installed
   } finally { reference.close(); donor.close() }

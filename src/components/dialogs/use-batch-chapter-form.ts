@@ -100,7 +100,7 @@ export function useBatchChapterForm({ isOpen, startChapterNumber, onClose }: Bat
     void ipc.invokeWithProjectSession(session, 'db:consistency-exemption-list', session.projectPath)
       .then(exemptions => {
         if (isProjectSessionCurrent(session) && exemptions.some(item => !item.revoked)) {
-          setConsistencyPreflight({ findings: [], exemptions, castNames: [] })
+          setConsistencyPreflight({ findings: [], exemptions, acknowledgements: [], castNames: [] })
         }
       })
   }, [currentProject, isOpen])
@@ -268,11 +268,35 @@ export function useBatchChapterForm({ isOpen, startChapterNumber, onClose }: Bat
     } : null)
   }
 
+  // 「我已知，稍后处理」（issue #79）：与「保存安排」分开——只表示知道，不表示刻意为之。
+  // ack 一次即永久静音（stable_fact_key 跨章稳定），所以这里不回写 preflight 状态，
+  // 只把这条从当前列表里去掉，避免同一章内继续显示。
+  const acknowledgeFinding = async (stableFactKey: string) => {
+    const done = await changeArrangement(text('标记稍后处理', 'Note for later'),
+      session => ipc.invokeWithProjectSession(session, 'db:consistency-ack-save', stableFactKey, session.projectPath))
+    if (!done) return
+    setConsistencyPreflight(current => current ? {
+      ...current,
+      findings: current.findings.filter(item => item.stableFactKey !== stableFactKey),
+      acknowledgements: [...current.acknowledgements, { stableFactKey, acknowledgedAt: '' }],
+    } : null)
+  }
+
+  const unacknowledgeFinding = async (stableFactKey: string) => {
+    const done = await changeArrangement(text('恢复该提醒', 'Show this reminder again'),
+      session => ipc.invokeWithProjectSession(session, 'db:consistency-ack-revoke', stableFactKey, session.projectPath))
+    if (!done) return
+    setConsistencyPreflight(current => current ? {
+      ...current,
+      acknowledgements: current.acknowledgements.filter(item => item.stableFactKey !== stableFactKey),
+    } : null)
+  }
+
   return {
     text, currentProject, chapterCount, setChapterCount, chapterWordsTarget, setChapterWordsTarget, error, setError, starting,
     completionMode, setCompletionMode, qualityGateScore, setQualityGateScore, confirmingAutoFinalize, setConfirmingAutoFinalize, authorityError, authorityLoading,
     consistencyPreflight, generationModels, selectedGenerationModelId, setGenerationModelId, modelSelectionError,
-    normalizedCount, start, end, handleStart, saveArrangement, revokeArrangement,
+    normalizedCount, start, end, handleStart, saveArrangement, revokeArrangement, acknowledgeFinding, unacknowledgeFinding,
   }
 }
 

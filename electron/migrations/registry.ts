@@ -12,9 +12,12 @@ export const MIGRATION_LANE = Object.freeze([
   // WP2: blueprint extended columns (turn/cost + foreshadowing).
   Object.freeze({ id: 'M07', from: 7, to: 8, owner: 'WP2' }),
   Object.freeze({ id: 'M08', from: 8, to: 9, owner: 'WI' }),
+  // QA: preflight reminder acknowledgements (issue #79). Separate from the
+  // "intentional arrangement" ledger, see m09-preflight-ack.ts.
+  Object.freeze({ id: 'M09', from: 9, to: 10, owner: 'QA' }),
 ] as const)
 
-export const LATEST_SCHEMA_VERSION = 9
+export const LATEST_SCHEMA_VERSION = 10
 export type { MigrationId } from '../../src/shared/project-storage'
 
 /** This adapter is supplied for an already authorized, exclusive staging DB by S04.

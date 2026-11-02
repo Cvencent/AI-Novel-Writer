@@ -41,7 +41,7 @@ import type {
   SaveFinalizedContinuityRequest,
 } from './finalized-continuity'
 import type { DraftSourceDependency } from './draft-source-dependency'
-import type { ConsistencyExemption } from './consistency-preflight'
+import type { ConsistencyAcknowledgement, ConsistencyExemption } from './consistency-preflight'
 import type {
   NarrativeThreadEvent,
   NarrativeThreadEventInput,
@@ -1190,6 +1190,10 @@ export interface DatabaseChannels {
     return: FinalizedSourceReadResult
   }
   'db:consistency-exemption-list': { args: [expectedProjectPath: string]; return: ConsistencyExemption[] }
+  /** 预检提醒的「我已知，稍后处理」（issue #79）：与刻意安排分开，ack 一次永久静音。 */
+  'db:consistency-ack-list': { args: [expectedProjectPath: string]; return: ConsistencyAcknowledgement[] }
+  'db:consistency-ack-save': { args: [stableFactKey: string, expectedProjectPath: string]; return: { success: boolean; error?: string } }
+  'db:consistency-ack-revoke': { args: [stableFactKey: string, expectedProjectPath: string]; return: { success: boolean; error?: string } }
   'db:consistency-exemption-save': {
     args: [stableFactKey: string, reason: string, expectedProjectPath: string]
     return: { success: boolean; error?: string }
