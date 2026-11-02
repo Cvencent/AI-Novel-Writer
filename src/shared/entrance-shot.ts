@@ -94,16 +94,45 @@ export interface ChapterProse {
 }
 
 /**
- * 收集每章每个角色的**登场段**（本章第一次提到他的那一段）。
+ * 「进场动作 + 穿戴」的实体登场标记（issue #87 的根因修复）。
  *
- * 用**段落**而不是单句：报告里 22 字逐字的那一对（ch9↔ch10）是
+ * 为什么需要它：把「本章第一次提到该名字的段」当作登场段是**错的**——
+ * 宿主章里「先提名、后到场」是常态（回忆、他人提及、点名喊人、档案里先出现），
+ * 于是真正的登场段被整段跳过。实测那本书（36 章）：
  *
- *   ch9   舱门口有赤脚踩木板的声响。温珩站在那儿，靛蓝短褂下摆往下滴。
- *   ch10  舱门口有赤脚踩木板的声响。温珩站在那儿。靛蓝短褂，没出声。
+ *   ch7  第 9 段（回忆引述）「……温珩说"一直空着"。」 ← 旧判据取这一段
+ *        第 16 段（实体登场）「温珩站在舱门口，赤脚，靛蓝短褂下摆垂着。」 ← 该取这一段
+ *   ch9  第 13 段（全叔台词里点名）「"……原本不属于温珩。"」 ← 旧判据取这一段
+ *        第 24 段（实体登场）「舱门口有赤脚踩木板的声响。温珩站在那儿，靛蓝短褂下摆往下滴。」
  *
- * 共有的「舱门口有赤脚踩木板的声响」在**前一句**里，而角色名在第二句——
+ * 旧判据因此把 ch7↔ch14 比成「他手」（2 字、不报），而两段**实体登场**是 13 字。
+ * 更糟的是它对「越复杂的写法越瞎」：越爱用回忆/他人提及的章，越命中不到。
+ *
+ * 判据是**结构**不是词表：段里同时出现 ①该角色名 ②进场动作（站/进来/走/蹲/靠/坐…）
+ * ③穿戴或随身物（短褂/长衫/围裙/袖口/下摆/赤脚/公文包…）。三条缺一不可，
+ * 免得「他记得温珩说过话」这种既无动作又无穿戴的段被误当成登场。
+ */
+const ENTRANCE_ACTION = /(?:站在|站定|站到|进来|走进|走入|走到|走在|进来|进舱|进来|踏进|跨进|迈|从[^，。]{0,6}走进|蹲在|蹲下|靠着|靠在|倚在|坐在|来到|赶到|出现|进了|推门|掀帘|上场|到了)/u
+const ENTRANCE_DRESS = /(?:短褂|长衫|绸褂|围裙|袖口|袖子|下摆|领口|衣襟|赤脚|光脚|靴|鞋|帽|公文包|竹尺|烟盒|风灯|缆绳|手里的|手里攥|手里拿|捏着|抱着|肩上|胳膊上|手里)/u
+
+/** 这一段是不是「实体登场」（角色名 + 进场动作 + 穿戴/随身物同段）。 */
+export function isEntranceParagraph(paragraph: string, name: string): boolean {
+  const text = String(paragraph ?? '')
+  if (!text.includes(name)) return false
+  return ENTRANCE_ACTION.test(text) && ENTRANCE_DRESS.test(text)
+}
+
+/**
+ * 收集每章每个角色的**登场段**（优先取「实体登场」那一段，issue #87）。
+ *
+ * 取段顺序（同一章内）：
+ *   ① 第一个「实体登场」段（角色名 + 进场动作 + 穿戴/随身物同段）—— 最准；
+ *   ② 找不到时退回「第一个出现该名字的段」—— 保底，避免整章没有任何命中
+ *      （有些章确实只靠对白/回忆交代一个角色，那也仍是本章给他的位置）。
+ *
+ * 用**段落**而不是单句：22 字逐字的那一对（ch9↔ch10）共有的
+ * 「舱门口有赤脚踩木板的声响」在**前一句**里，角色名在第二句——
  * 按单句取会把那半句丢掉，22 字逐字就只剩 6 字、落不到门槛上。
- * 报告说的位置也正是「首次出现那一段」。
  */
 export function characterEntrances(
   chapters: readonly ChapterProse[],
@@ -123,19 +152,16 @@ export function characterEntrances(
       .split(/\n\s*\n/u)
       .map(block => block.trim())
       .filter(Boolean)
-    const seen = new Set<string>()
-    for (let index = 0; index < paragraphs.length; index += 1) {
-      const paragraph = paragraphs[index]!
-      // 一段里可能同时首次提到两个人：各记一条。
-      for (const name of names) {
-        if (seen.has(name)) continue
-        if (!paragraph.includes(name)) continue
-        seen.add(name)
-        entrances.push({
-          character: name, chapterNumber: chapter.chapterNumber,
-          sentence: paragraph, sentenceIndex: index + 1,
-        })
-      }
+    for (const name of names) {
+      // ① 实体登场优先。
+      let index = paragraphs.findIndex(paragraph => isEntranceParagraph(paragraph, name))
+      // ② 退回「第一次出现」。
+      if (index < 0) index = paragraphs.findIndex(paragraph => paragraph.includes(name))
+      if (index < 0) continue
+      entrances.push({
+        character: name, chapterNumber: chapter.chapterNumber,
+        sentence: paragraphs[index]!, sentenceIndex: index + 1,
+      })
     }
   }
   return entrances
@@ -196,9 +222,24 @@ export function findRepeatedEntranceShots(
       })
     }
   }
-  return results
-    .sort((left, right) => right.chapters.length - left.chapters.length
-      || right.commonSubstring.length - left.commonSubstring.length
-      || left.character.localeCompare(right.character))
-    .slice(0, 4)
+  // 排序后**按角色分配名额**再封顶（issue #87）：直接 `.slice(0, 4)` 会让同一个角色的
+  // 多组挤掉别的角色整组——实测全名册调用只出 4 组，而逐角色跑能出 7 组（林棠、
+  // 邵广海第二组、温珩 ch12↔13 被挤掉）。写前预检传的就是**全部在册角色**，
+  // 所以被挤掉的正好是「不主动去查就看不见」的那几组。
+  const ranked = results.sort((left, right) => right.chapters.length - left.chapters.length
+    || right.commonSubstring.length - left.commonSubstring.length
+    || left.character.localeCompare(right.character))
+  // 每个角色先各取一组（各自最重的那组），再按原顺序补第二组——保证角色覆盖面优先于
+  // 单角色条数。上限是**条数**而不是「角色数」，与「最多报 N 条提醒」的既有口径一致。
+  const MAX_RESULTS = 8
+  const firstOfCharacter: EntranceRepetition[] = []
+  const rest: EntranceRepetition[] = []
+  const claimed = new Set<string>()
+  for (const hit of ranked) {
+    if (!claimed.has(hit.character)) {
+      claimed.add(hit.character)
+      firstOfCharacter.push(hit)
+    } else rest.push(hit)
+  }
+  return [...firstOfCharacter, ...rest].slice(0, MAX_RESULTS)
 }

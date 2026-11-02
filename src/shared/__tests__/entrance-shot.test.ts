@@ -4,6 +4,7 @@ import {
   ENTRANCE_COMMON_MIN,
   characterEntrances,
   findRepeatedEntranceShots,
+  isEntranceParagraph,
   longestCommonSubstring,
   stripForComparison,
 } from '../entrance-shot'
@@ -48,6 +49,42 @@ describe('characterEntrances', () => {
       ['周叙', '温珩'],
     )
     expect(entrances.map(item => item.character).sort()).toEqual(['周叙', '温珩'])
+  })
+
+  // issue #87 根因：旧判据取「本章第一个提到该名字的段」，于是「先提名、后到场」
+  // （回忆、他人台词里点名）会把真正的登场段整段跳过。实测那本书 ch7/ch9 就是这样。
+  it('takes the ACTUAL entrance paragraph, not the first paragraph that merely names them (issue #87)', () => {
+    const [entrance] = characterEntrances(chapters([[7,
+      // 回忆引述：先提到名字，人不在场。
+      '他手停住了。温珩说“一直空着”。\n\n'
+      // 实体登场：名字 + 进场动作 + 穿戴同段。
+      + '温珩站在舱门口，赤脚，靛蓝短褂下摆垂着。']]), ['温珩'])
+    expect(entrance!.sentenceIndex).toBe(2)
+    expect(entrance!.sentence).toContain('站在舱门口')
+    expect(entrance!.sentence).not.toContain('一直空着')
+  })
+
+  it('also skips a paragraph that only names them inside someone else’s line (issue #87)', () => {
+    const [entrance] = characterEntrances(chapters([[9,
+      '“是从水里捞上来的。”全叔把绳梢塞进绳圈，“原本不属于温珩。”\n\n'
+      + '舱门口有赤脚踩木板的声响。温珩站在那儿，靛蓝短褂下摆往下滴。']]), ['温珩'])
+    expect(entrance!.sentenceIndex).toBe(2)
+    expect(entrance!.sentence).toContain('舱门口有赤脚踩木板的声响')
+  })
+
+  it('falls back to the first mention when the chapter never shows them entering', () => {
+    // 保底：有的章确实只靠对白/回忆交代一个角色，那也仍是本章给他的位置。
+    const [entrance] = characterEntrances(chapters([[3, '他记得温珩说过一句话。']]), ['温珩'])
+    expect(entrance!.sentenceIndex).toBe(1)
+    expect(entrance!.sentence).toContain('温珩')
+  })
+
+  it('does not treat a naming with neither action nor dress as an entrance', () => {
+    // 判据三条缺一不可：名字 + 进场动作 + 穿戴/随身物。
+    expect(isEntranceParagraph('他记得温珩说过话。', '温珩')).toBe(false)
+    expect(isEntranceParagraph('温珩站在门口。', '温珩')).toBe(false) // 无穿戴
+    expect(isEntranceParagraph('靛蓝短褂下摆垂着。', '温珩')).toBe(false) // 无人名
+    expect(isEntranceParagraph('温珩站在舱门口，赤脚，靛蓝短褂下摆垂着。', '温珩')).toBe(true)
   })
 
   it('ignores chapters with no cast mention', () => {
@@ -116,5 +153,30 @@ describe('findRepeatedEntranceShots (issue #81)', () => {
 
   it('reports nothing without a cast roster', () => {
     expect(findRepeatedEntranceShots(chapters([[9, CH9], [10, CH10]]))).toEqual([])
+  })
+
+  // issue #87：写前预检传的是**全部在册角色**，而旧实现末尾直接 `.slice(0, 4)`——
+  // 同一个角色的多组会把别的角色整组挤掉（实测全名册只出 4 组、逐角色能出 7 组）。
+  it('gives every character a slot before a second group from the same character (issue #87)', () => {
+    // 实测形状：那本书全名册调用只出 4 组、**整段丢掉了林棠这个角色**，
+    // 因为它的一组被温珩的两组（子串更长、排名更前）挤出了 `.slice(0, 4)`。
+    // 这里照这个形状搭：温珩两组排最前，另外四个角色各一组。
+    const long1 = '温珩站在梯口，赤脚，靛蓝短褂的袖口卷到肘弯，手里攥着缆绳。'
+    const long2 = '温珩站在舱门口，赤脚，靛蓝短褂的下摆还湿着，手里攥着缆绳。'
+    const book = chapters([
+      [1, long1], [5, long1],           // 温珩组一（子串最长 → 排第 1）
+      [12, long2], [13, long2],          // 温珩组二（子串次长 → 排第 2，与组一相隔 11 章不算同一链）
+      [3, '邵广海靠着柜台，绸褂敞着领口。'], [9, '邵广海靠着柜台，绸褂敞着领口。'],
+      [4, '林棠蹲在台阶上，指尖染着复写纸的紫。'], [10, '林棠蹲在台阶上，指尖染着复写纸的紫。'],
+      [6, '全叔蹲在桩边，旧油布围裙歪到一边。'], [11, '全叔蹲在桩边，旧油布围裙歪到一边。'],
+      [7, '柯明远夹着黑皮公文包，袖口扣得整齐。'], [14, '柯明远夹着黑皮公文包，袖口扣得整齐。'],
+    ])
+    const names = ['温珩', '邵广海', '林棠', '全叔', '柯明远']
+    const hits = findRepeatedEntranceShots(book, { castNames: names })
+    // 五个角色一个都不能少——旧实现会在这里丢掉一个（实测丢的是林棠）。
+    expect(new Set(hits.map(hit => hit.character))).toEqual(new Set(names))
+    // 且每个角色的第一组先占名额，温珩的第二组排在所有角色的首组之后。
+    expect(hits.slice(0, 5).map(hit => hit.character))
+      .toEqual(expect.arrayContaining(names))
   })
 })
