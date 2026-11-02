@@ -9,6 +9,7 @@ import {
   normalizeFinalizeSyncOutlineEntry,
 } from '../../../shared/finalize-sync-contract'
 import type { BlueprintData } from '../../../../electron/repositories/blueprint-repository'
+import { plotOutlineChapterSpans } from '../../../shared/plot-outline-contract'
 
 /** 用定稿正文校正该章细纲与蓝图：正文是权威，AI 只修真实且实质的偏差，直接写库。 */
 export class FinalizeSyncCommand extends BaseWorkflowCommand<string> {
@@ -33,10 +34,28 @@ export class FinalizeSyncCommand extends BaseWorkflowCommand<string> {
     callbacks.log(text('正在读取该章细纲与蓝图...', 'Reading the chapter outline and blueprint...'))
     const core = await ipc.invokeWithProjectSession(projectSession, 'db:project-core-get', expectedProjectPath)
     const synopsis = core?.synopsis || ''
-    const outlineEntry = extractOutlineEntry(synopsis, this.chapterNumber)
-    if (!outlineEntry) throw new Error(text('细纲里没有这一章的条目，无法校正。', 'The chapter outline has no entry for this chapter.'))
+    // issue #61：旧实现只认 `project_core.synopsis`，而很多项目的这份大纲只覆盖前几章
+    // （本样本 22 章定稿、synopsis 只有第 1–3 章），于是第 4 章以后点这个入口必然失败，
+    // 而且失败只有一句断言、没有任何出路。现在：没有细纲条目时**只校正蓝图**，
+    // 并在日志里说清「本章不在情节大纲里，细纲未改动」。
+    const outlineEntry = extractOutlineEntry(synopsis, this.chapterNumber) ?? ''
+    const coveredChapters = plotOutlineChapterSpans(synopsis).map(span => span.chapter)
+    const coveredRange = coveredChapters.length
+      ? `第 ${coveredChapters[0]}–${coveredChapters[coveredChapters.length - 1]} 章`
+      : (writingLanguage === 'en-US' ? '(empty)' : '（空）')
     const blueprint = await ipc.invokeWithProjectSession(projectSession, 'db:blueprint-get', this.chapterNumber, expectedProjectPath) as BlueprintData | null
-    if (!blueprint) throw new Error(text('这一章还没有蓝图，无法校正。', 'This chapter has no blueprint.'))
+    if (!blueprint) {
+      throw new Error(text(
+        `这一章既没有蓝图、也不在情节大纲里（大纲目前覆盖 ${coveredRange}），没有可校正的内容。请先生成第 ${this.chapterNumber} 章蓝图。`,
+        `This chapter has neither a blueprint nor an entry in the plot outline (the outline covers ${coveredRange}). Generate the chapter blueprint first.`,
+      ))
+    }
+    if (!outlineEntry) {
+      callbacks.log(text(
+        `本章不在「情节大纲」里（大纲目前覆盖 ${coveredRange}），本次只校正蓝图，细纲不改动。`,
+        `This chapter is not in the plot outline (it covers ${coveredRange}), so only the blueprint will be corrected.`,
+      ))
+    }
 
     callbacks.log(text('AI 正在对比定稿正文与细纲、蓝图...', 'The model is comparing the finalized prose with the outline and blueprint...'))
     const completion = await this.callLLMResult(
@@ -61,11 +80,17 @@ export class FinalizeSyncCommand extends BaseWorkflowCommand<string> {
 
     const titleMatch = /^##\s*第\s*\d+\s*章[：:]?\s*([^\n]*)/.exec(plan.outlineEntry)
     const dbTitle = blueprint.title || (titleMatch?.[1]?.trim() ?? '')
-    const normalizedEntry = normalizeFinalizeSyncOutlineEntry(plan.outlineEntry, this.chapterNumber, dbTitle)
+    // 只有原本就有细纲条目时才写回细纲：没有条目时 `replacePlotOutlineChapter` 会拒绝，
+    // 而「凭空补一条细纲」不是这个功能的职责（那会把没写过的章节塞进大纲）。
+    const normalizedEntry = outlineEntry && plan.outlineEntry.trim()
+      ? normalizeFinalizeSyncOutlineEntry(plan.outlineEntry, this.chapterNumber, dbTitle)
+      : ''
 
     callbacks.log(text('正在写回细纲与蓝图...', 'Writing the corrected outline and blueprint...'))
-    const outlineResult = await ipc.invokeWithProjectSession(projectSession, 'db:stage-review-apply-outline', this.chapterNumber, normalizedEntry, expectedProjectPath)
-    requireIpcSuccess(outlineResult as { success: boolean; error?: string }, text('写回细纲失败', 'Failed to write the corrected outline'))
+    if (normalizedEntry) {
+      const outlineResult = await ipc.invokeWithProjectSession(projectSession, 'db:stage-review-apply-outline', this.chapterNumber, normalizedEntry, expectedProjectPath)
+      requireIpcSuccess(outlineResult as { success: boolean; error?: string }, text('写回细纲失败', 'Failed to write the corrected outline'))
+    }
     const patch: Record<string, unknown> = { chapterNumber: this.chapterNumber }
     if (plan.blueprint.role !== undefined) patch.role = plan.blueprint.role
     if (plan.blueprint.purpose !== undefined) patch.purpose = plan.blueprint.purpose
@@ -78,7 +103,10 @@ export class FinalizeSyncCommand extends BaseWorkflowCommand<string> {
     requireIpcSuccess(blueprintResult as { success: boolean; error?: string }, text('写回蓝图失败', 'Failed to write the corrected blueprint'))
 
     for (const note of plan.notes) callbacks.log(text(`差异：${note}`, `Difference: ${note}`))
-    callbacks.log(text(`第 ${this.chapterNumber} 章细纲与蓝图已按定稿正文校正。`, `Chapter ${this.chapterNumber} outline and blueprint were aligned with the finalized prose.`))
+    callbacks.log(normalizedEntry
+      ? text(`第 ${this.chapterNumber} 章细纲与蓝图已按定稿正文校正。`, `Chapter ${this.chapterNumber} outline and blueprint were aligned with the finalized prose.`)
+      : text(`第 ${this.chapterNumber} 章蓝图已按定稿正文校正（本章不在情节大纲里，细纲未改动）。`,
+        `Chapter ${this.chapterNumber} blueprint was aligned with the finalized prose (this chapter is not in the plot outline, so the outline was left unchanged).`))
     return normalizedEntry
   }
 }

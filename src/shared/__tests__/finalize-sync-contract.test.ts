@@ -19,8 +19,21 @@ describe('extractFinalizeSyncPlan', () => {
     expect(plan?.notes).toHaveLength(1)
   })
 
-  it('returns null without outlineEntry and keeps only provided blueprint fields', () => {
-    expect(extractFinalizeSyncPlan('{"blueprint":{"role":"x"}}')).toBeNull()
+  it('parses a blueprint-only plan when the chapter has no outline entry (issue #61)', () => {
+    // 旧实现把「没有 outlineEntry」当成解析失败，于是「本章不在情节大纲里」与
+    // 「模型输出无法解析」混成同一个错误，用户看不出该做什么。
+    const plan = extractFinalizeSyncPlan('{"outlineEntry":"","blueprint":{"role":"x"},"notes":["只改蓝图"]}')
+    expect(plan?.outlineEntry).toBe('')
+    expect(plan?.blueprint.role).toBe('x')
+    expect(plan?.notes).toEqual(['只改蓝图'])
+  })
+
+  it('returns null for a payload that is not a plan object at all', () => {
+    expect(extractFinalizeSyncPlan('不是 JSON')).toBeNull()
+    expect(extractFinalizeSyncPlan('[1,2,3]')).toBeNull()
+  })
+
+  it('keeps only provided blueprint fields', () => {
     const plan = extractFinalizeSyncPlan('{"outlineEntry":"## 第1章：a\n正文","blueprint":{}}')
     expect(plan?.blueprint.role).toBeUndefined()
   })
@@ -46,5 +59,21 @@ describe('outline helpers', () => {
       blueprint: { role: 'r', purpose: 'p', keyEvents: 'k', characters: [], suspenseHook: '', costsAndTurns: '', foreshadowing: '' },
       language: 'zh-CN',
     })).toContain('定稿正文是权威')
+  })
+  it('prompt asks for blueprint-only corrections when the outline has no entry (issue #61)', () => {
+    const prompt = buildFinalizeSyncPrompt({
+      chapterNumber: 4, finalizedContent: '正文', outlineEntry: '',
+      blueprint: { role: 'r', purpose: 'p', keyEvents: 'k', characters: [], suspenseHook: '', costsAndTurns: '', foreshadowing: '' },
+      language: 'zh-CN',
+    })
+    expect(prompt).toContain('本章在「情节大纲」里没有条目')
+    expect(prompt).toContain('outlineEntry 一律留空字符串')
+    expect(prompt).not.toContain('【当前细纲条目】')
+    // 有细纲条目时不出现「只校正蓝图」的措辞。
+    expect(buildFinalizeSyncPrompt({
+      chapterNumber: 4, finalizedContent: '正文', outlineEntry: '细纲',
+      blueprint: { role: 'r', purpose: 'p', keyEvents: 'k', characters: [], suspenseHook: '', costsAndTurns: '', foreshadowing: '' },
+      language: 'zh-CN',
+    })).not.toContain('本章在「情节大纲」里没有条目')
   })
 })

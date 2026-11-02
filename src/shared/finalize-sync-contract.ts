@@ -39,17 +39,30 @@ export function buildFinalizeSyncPrompt(input: {
     `costsAndTurns: ${input.blueprint.costsAndTurns}`,
     `foreshadowing: ${input.blueprint.foreshadowing}`,
   ].join('\n')
+  // 该章没有细纲条目时只校正蓝图（issue #61）：这类项目的大纲字段往往只覆盖前几章，
+  // 但每章都有蓝图；把它当「没有可校正的东西」直接拒掉会让这个入口对多数章不可用。
+  const blueprintOnly = !input.outlineEntry.trim()
   return [
-    en
-      ? `The finalized prose of chapter ${input.chapterNumber} has drifted from its chapter outline and blueprint. Compare them and output corrections that make the outline and blueprint match the prose.`
-      : `第 ${input.chapterNumber} 章的定稿正文与该章细纲、蓝图存在偏差。请对比三者，输出让细纲与蓝图与定稿正文一致的修正。`,
-    en
-      ? 'Rules: the finalized prose is authoritative. Only report a difference when it is real and material; keep everything that already matches. outlineEntry must be the complete replacement for the chapter entry including its "## Chapter N: title" heading and every required section, written as plain "Section: content" lines without # sub-headings. blueprint fields follow the same field names; characters is a string array. Output JSON only: {"outlineEntry": "...", "blueprint": {...}, "notes": ["..."]}.'
-      : '规则：定稿正文是权威。只有真实且实质的偏差才修；已经一致的内容原样保留。outlineEntry 必须是该章条目的完整替换文本，包含 "## 第N章：标题" 标题行与全部必备小节，小节写成"小节名：内容"的普通行，不要用 # 小标题。blueprint 字段沿用同名字段；characters 是字符串数组。只输出 JSON：{"outlineEntry": "...", "blueprint": {...}, "notes": ["..."]}。',
+    blueprintOnly
+      ? (en
+        ? `The finalized prose of chapter ${input.chapterNumber} has drifted from its blueprint. This chapter has no entry in the plot outline, so only the blueprint can be corrected. Output corrections that make the blueprint match the prose.`
+        : `第 ${input.chapterNumber} 章的定稿正文与该章蓝图存在偏差。本章在「情节大纲」里没有条目，因此只校正蓝图。请输出让蓝图与定稿正文一致的修正。`)
+      : (en
+        ? `The finalized prose of chapter ${input.chapterNumber} has drifted from its chapter outline and blueprint. Compare them and output corrections that make the outline and blueprint match the prose.`
+        : `第 ${input.chapterNumber} 章的定稿正文与该章细纲、蓝图存在偏差。请对比三者，输出让细纲与蓝图与定稿正文一致的修正。`),
+    blueprintOnly
+      ? (en
+        ? 'Rules: the finalized prose is authoritative. Only report a difference when it is real and material; keep everything that already matches. Do not invent an outline entry: set outlineEntry to an empty string and fill only the blueprint fields (same field names; characters is a string array). Output JSON only: {"outlineEntry": "", "blueprint": {...}, "notes": ["..."]}.'
+        : '规则：定稿正文是权威。只有真实且实质的偏差才修；已经一致的内容原样保留。不要凭空补写细纲条目：outlineEntry 一律留空字符串，只填写 blueprint 的字段（沿用同名字段；characters 是字符串数组）。只输出 JSON：{"outlineEntry": "", "blueprint": {...}, "notes": ["..."]}。')
+      : (en
+        ? 'Rules: the finalized prose is authoritative. Only report a difference when it is real and material; keep everything that already matches. outlineEntry must be the complete replacement for the chapter entry including its "## Chapter N: title" heading and every required section, written as plain "Section: content" lines without # sub-headings. blueprint fields follow the same field names; characters is a string array. Output JSON only: {"outlineEntry": "...", "blueprint": {...}, "notes": ["..."]}.'
+        : '规则：定稿正文是权威。只有真实且实质的偏差才修；已经一致的内容原样保留。outlineEntry 必须是该章条目的完整替换文本，包含 "## 第N章：标题" 标题行与全部必备小节，小节写成"小节名：内容"的普通行，不要用 # 小标题。blueprint 字段沿用同名字段；characters 是字符串数组。只输出 JSON：{"outlineEntry": "...", "blueprint": {...}, "notes": ["..."]}。'),
     en ? '[Finalized prose]' : '【定稿正文】',
     input.finalizedContent,
-    en ? '[Current chapter outline entry]' : '【当前细纲条目】',
-    input.outlineEntry,
+    ...(blueprintOnly ? [] : [
+      en ? '[Current chapter outline entry]' : '【当前细纲条目】',
+      input.outlineEntry,
+    ]),
     en ? '[Current blueprint]' : '【当前蓝图】',
     blueprintText,
   ].join('\n\n')
@@ -67,7 +80,6 @@ export function extractFinalizeSyncPlan(raw: string): FinalizeSyncPlan | null {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null
   const record = payload as Record<string, unknown>
   const outlineEntry = typeof record.outlineEntry === 'string' ? record.outlineEntry.trim() : ''
-  if (!outlineEntry) return null
   const blueprintSource = record.blueprint && typeof record.blueprint === 'object' && !Array.isArray(record.blueprint)
     ? record.blueprint as Record<string, unknown> : {}
   const blueprint: FinalizeSyncBlueprintPatch = { chapterNumber: 0 }
