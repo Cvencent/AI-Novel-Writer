@@ -4,7 +4,8 @@ import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuit
   findNearCastNameFindings, findOversizedBlueprintKeyEvents, findUnregisteredBlueprintCast,
   findDialogueOpenerConvergence, findOpeningShapeConvergence,
   findDesignTimelineConflicts, findMissingCastInArch,
-  findRepeatPropTerminationFindings, findLossRestatementFindings } from '../shared/consistency-preflight'
+  findRepeatPropTerminationFindings, findLossRestatementFindings,
+  findPropRevivalFindings } from '../shared/consistency-preflight'
 import { DEFAULT_CHAPTER_WORDS_TARGET } from './workflows/chapter-creation-parameters'
 import { ipc } from './ipc-client'
 
@@ -152,6 +153,16 @@ export async function readConsistencyPreflight(
   // 会漏掉第一组。
   // 只取最近 12 章：判据是两两比较，全书拿进来对长篇是 O(n²)。
   // 12 章足够覆盖「最多三次宣告、每次间隔 ≤4 章」的最坏情况。
+  // 已被写死的物证又回来（issue #78）：窗口要覆盖「消亡章 → 再现章」的跨度，
+  // 实测样本是 21 章消亡、28/30 章再现，只看最近 6 章会漏掉。
+  const propRevivalFindings = recentProse.length === 0 ? [] : findPropRevivalFindings({
+    chapters: recentProse
+      .filter(row => Number.isSafeInteger(row.chapterNumber) && row.chapterNumber < currentChapter)
+      .sort((left, right) => left.chapterNumber - right.chapterNumber)
+      .slice(-16)
+      .map(row => ({ chapterNumber: row.chapterNumber, content: String(row.content ?? '') })),
+    currentChapter,
+  })
   const lossRestatementFindings = recentProse.length === 0 ? [] : findLossRestatementFindings({
     chapters: recentProse
       .filter(row => Number.isSafeInteger(row.chapterNumber) && row.chapterNumber < currentChapter)
@@ -163,7 +174,8 @@ export async function readConsistencyPreflight(
   return {
     findings: [...terminalFindings, ...expandedFindings, ...unregisteredFindings, ...appearanceGaps,
       ...nearNameFindings, ...keyEventsLengthFindings, ...openingFindings, ...timelineFindings,
-      ...missingArchCastFindings, ...propTerminationFindings, ...lossRestatementFindings]
+      ...missingArchCastFindings, ...propTerminationFindings, ...lossRestatementFindings,
+      ...propRevivalFindings]
       .filter(item => !activeExemptions.has(item.stableFactKey)),
     exemptions,
     castNames,

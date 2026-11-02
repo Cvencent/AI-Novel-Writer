@@ -1,7 +1,7 @@
 import type { FinalizedContinuityProjection } from './finalized-continuity'
 import { blueprintKeyEventsOversize } from './blueprint-length'
 import { foreshadowingKeywords, type ForeshadowingCommitment } from './foreshadowing-commitments'
-import { findRepeatPropTermination } from './prop-termination'
+import { findAnnihilatedPropRevival, findRepeatPropTermination } from './prop-termination'
 import { findLossRestatement } from './loss-restatement'
 import {
   designSections,
@@ -1055,6 +1055,39 @@ export function findLossRestatementFindings(input: LossRestatementInput): Consis
     suggestion: {
       zhCN: `后续章再提这件事时，要么写成**延续**（带上「仍然没想起来」「还是空的」这类承接词，读者读到的是他一直没想起来），要么写成**新的获取尝试**（再溯读一次、求人提醒、换个法子查）并把这次尝试的代价落账。不要每次都用「他记得 X，Y 空着」重新宣告一遍。`,
       enUS: `When later chapters revisit this, write it as **continuation** (use carry-over wording such as “still has not remembered”), or as a **new attempt to recover it** (re-reading, asking someone, another route) and record that attempt's cost. Do not re-announce it each time with “he remembers X, but Y is blank”.`,
+    },
+  }))
+}
+
+/**
+ * 已被写死的物证又自己回来了（issue #78）。
+ *
+ * 实测样本：主角唯一的溯读工具「空白票根」在第 21 章被写碎、第 22 章正文自己承认
+ * 「票根昨夜泡碎了，他读不了」，第 23–27 章对它的下落一个字都没有，
+ * 第 28、30 章又「从怀里摸出空白票根」压上去读——没有任何取得动作。
+ *
+ * 与 #73 互补：那条管「同一件东西被终结两次」，这条管「只有一次终结、但后面自行复活」。
+ */
+export interface PropRevivalInput {
+  chapters: ReadonlyArray<{ chapterNumber: number; content: string }>
+  /** findings 的 sourceChapter 用（通常是当前章）。 */
+  currentChapter: number
+}
+
+export function findPropRevivalFindings(input: PropRevivalInput): ConsistencyFinding[] {
+  return findAnnihilatedPropRevival(input.chapters).map(hit => ({
+    stableFactKey: `prop:revival:${hit.prop}`,
+    severity: 'warning' as const,
+    sourceChapter: input.currentChapter,
+    evidence: `「${hit.prop}」在第 ${hit.annihilatedAt} 章被写没了（${hit.annihilationExcerpt.slice(0, 40)}），`
+      + `第 ${hit.appearedAt.join('、')} 章又以可取用形态出现（${hit.appearanceExcerpt.slice(0, 40)}），中间没有重新获得的动作`,
+    issue: {
+      zhCN: `物证「${hit.prop}」在第 ${hit.annihilatedAt} 章被不可逆地写没了，第 ${hit.appearedAt.join('、')} 章又直接拿出来用，中间没有任何「重新获得」的动作（新领、向谁讨一张、用什么代价换回来）。读者记得住「它没了」这件事——尤其当作者用一整段甚至一个独立短句把它写死的时候——后面又见它回到怀里，是长篇里最容易让人弃书的那类矛盾。`,
+      enUS: `The prop “${hit.prop}” was irreversibly destroyed in chapter ${hit.annihilatedAt} and is used again in chapter ${hit.appearedAt.join(', ')} with no acquisition step in between (no new one, no asking someone, no price paid). Readers remember that it was gone — especially when the text made a point of it — and seeing it back in hand is the kind of contradiction that makes people drop a long serial.`,
+    },
+    suggestion: {
+      zhCN: `二选一：写出它怎么回来的（谁给的、用什么换的、剩下的一角），并把这次取得写成正文动作；或者改后面的章——它已经不在了，那几章该处理的是**缺少它**的后果（用什么替代、因此失去了什么）。`,
+      enUS: `Either show how it came back (who provided it, what was traded, a surviving fragment) as an on-page action, or rewrite the later chapters: it is gone, so what those chapters should dramatise is the consequence of not having it.`,
     },
   }))
 }
