@@ -1,6 +1,7 @@
 import type { FinalizedContinuityProjection } from './finalized-continuity'
 import { blueprintKeyEventsOversize } from './blueprint-length'
 import { foreshadowingKeywords, type ForeshadowingCommitment } from './foreshadowing-commitments'
+import { findRepeatPropTermination } from './prop-termination'
 import {
   designSections,
   findTimelineAnchorConflicts,
@@ -158,6 +159,16 @@ export interface CastContinuityFact {
 export interface BlueprintContinuitySchedule {
   chapterNumber: number
   characters: readonly string[]
+  /**
+   * 蓝图里除 `characters` 之外会写人名的字段（keyEvents / purpose / costsAndTurns /
+   * suspenseHook / foreshadowing），拼成一段文本（issue #74）。
+   *
+   * 出场判定必须同时看它：实测样本里叶九在**第 24、25、26、28 章的蓝图描述里都在**
+   * （第 24、28 章还是情节支点），只是没被列进 `characters` 数组，于是一条
+   * 「已连续 7 章没有进入蓝图」的假警报被报了出来——作者照着它去查，会发现
+   * 人明明在。同一口径 #42/#58 已经用过（蓝图描述里出现的人名也是出场）。
+   */
+  descriptionText?: string
 }
 
 export interface NarrativeThreadContinuityRisk {
@@ -184,8 +195,12 @@ export function findExpandedContinuityRisks(input: {
   const schedules = input.blueprints.filter(item => item.chapterNumber > 0 && item.chapterNumber <= input.currentChapter)
   for (const character of input.cast) {
     if (!['protagonist', 'antagonist'].includes(character.role)) continue
+    const characterKey = normalizedKeyPart(character.name)
     const appearances = schedules
-      .filter(item => item.characters.some(name => normalizedKeyPart(name) === normalizedKeyPart(character.name)))
+      // 数组里列了，或描述文本里写了，都算「进了蓝图」（issue #74）。
+      // 只读数组会把「描述里有他、数组里没他」这种最常见的漏列报成「整章缺席」。
+      .filter(item => item.characters.some(name => normalizedKeyPart(name) === characterKey)
+        || normalizedKeyPart(item.descriptionText ?? '').includes(characterKey))
       .map(item => item.chapterNumber)
       .sort((left, right) => left - right)
     const last = appearances.at(-1)
@@ -973,6 +988,41 @@ export function findMissingCastInArch(input: MissingCastInArchInput): Consistenc
       },
     }]
   }).slice(0, 6)
+}
+
+/**
+ * 同一件物证被终结两次（issue #73）。
+ *
+ * 实测样本：主线唯一的物证「三个结」在第 27 章被「一个一个解开」，
+ * 第 29 章又「露出底下压死的三个结」再剪一遍，两次都被写成同一件事的后果。
+ *
+ * 蓝图层的【同章道具不得自相矛盾】（#19）只管**同一章内**，跨章的
+ * 「已经没了的东西又被取出」从来没人看。这里补上。
+ *
+ * 判据是结构性的：对同一个名词，问它是否在**不同的章**里各自被一个终结动作处理过。
+ * 不枚举剧情，换一件物证照样成立。
+ */
+export interface RepeatPropTerminationInput {
+  chapters: ReadonlyArray<{ chapterNumber: number; content: string }>
+  /** findings 的 sourceChapter 用（通常是当前章）。 */
+  currentChapter: number
+}
+
+export function findRepeatPropTerminationFindings(input: RepeatPropTerminationInput): ConsistencyFinding[] {
+  return findRepeatPropTermination(input.chapters).map(hit => ({
+    stableFactKey: `prop:repeat-termination:${hit.prop}`,
+    severity: 'warning' as const,
+    sourceChapter: input.currentChapter,
+    evidence: `「${hit.prop}」在第 ${hit.chapters.join('、')} 章各被处理掉一次：${hit.excerpts[0]?.slice(0, 50) ?? ''}`,
+    issue: {
+      zhCN: `同一件物证「${hit.prop}」在第 ${hit.chapters.join('、')} 章各被终结过一次（毁掉／交出／收走）。已经没了的东西在后面的章里又被取出来处理一遍，读者读到的是同一件事被做了两次——而且这两次通常还各自被写成同一件后果的因，等于那件后果也废了。`,
+      enUS: `The same prop “${hit.prop}” is disposed of once in each of chapters ${hit.chapters.join(', ')} (destroyed, handed over, or taken away). Something already gone cannot be produced and disposed of again; readers see the same beat happen twice, and both are usually written as the cause of the same consequence — which voids that consequence too.`,
+    },
+    suggestion: {
+      zhCN: `二选一：把后一次改成**仍旧不存在**的写法（它已经不在了，这一章该处理的是「找不到」或「缺少它」的后果），或者说明它中间是怎么回来的（谁还回来、付出什么代价）。别让同一件东西被处理两遍。`,
+      enUS: `Either make the later chapter reflect that it is gone (its absence is the thing to dramatize), or show explicitly how it came back — who returned it, at what price. Do not let one object be disposed of twice.`,
+    },
+  }))
 }
 
 export function mergeConsistencyFindingsIntoReview(

@@ -136,6 +136,56 @@ describe('findBlueprintContinuityRisks', () => {
     expect(ignored).toEqual([])
   })
 
+  it('counts a cast member named only in the blueprint description as scheduled (issue #74)', () => {
+    // 报告里的真实形态：叶九在第 24/25/26/28 章的蓝图**描述**里都在
+    // （第 24、28 章还是情节支点），只是没被列进 characters 数组。
+    // 旧判据只读数组，于是报出「已连续 7 章没有进入蓝图」——作者去查会发现人明明在。
+    const blueprints = [
+      { chapterNumber: 22, characters: ['周叙', '叶九'] },
+      { chapterNumber: 24, characters: ['周叙', '温珩', '柯明远'],
+        descriptionText: '存根连正面的模糊指印一并化尽，叶九缺半节小指的印子再没有实物可对' },
+      { chapterNumber: 25, characters: ['周叙', '柯明远', '林棠', '温珩'],
+        descriptionText: '林棠从墙缝递出一张纸片，低声说叶九天没亮就进了公司档案房' },
+      { chapterNumber: 26, characters: ['周叙', '全叔', '柯明远', '温珩', '林棠'],
+        descriptionText: '叶九今晚清库前要把档案房旧册挪走' },
+      { chapterNumber: 28, characters: ['周叙', '全叔', '温珩'],
+        descriptionText: '补笔稳匀属叶九' },
+    ]
+    const findings = findExpandedContinuityRisks({
+      currentChapter: 29,
+      blueprints,
+      cast: [{ name: '叶九', role: 'antagonist', motivation: '清掉档案房旧册' }],
+      threads: [],
+    })
+    // 第 28 章描述里有他 → 最近一次是第 28 章，不是第 22 章，且不该报缺席。
+    expect(findings.filter(finding => finding.stableFactKey.startsWith('cast:absent:'))).toEqual([])
+    expect(findings.filter(finding => finding.stableFactKey.startsWith('cast:never-appeared:'))).toEqual([])
+
+    // 反证：把描述文本抽掉（回到旧判据的输入），假警报就出现了。
+    const bare = findExpandedContinuityRisks({
+      currentChapter: 29,
+      blueprints: blueprints.map(({ chapterNumber, characters }) => ({ chapterNumber, characters })),
+      cast: [{ name: '叶九', role: 'antagonist', motivation: '清掉档案房旧册' }],
+      threads: [],
+    })
+    expect(bare.some(finding => finding.stableFactKey.startsWith('cast:absent:'))).toBe(true)
+  })
+
+  it('still reports a genuinely absent cast member when neither array nor description names them', () => {
+    const findings = findExpandedContinuityRisks({
+      currentChapter: 29,
+      blueprints: [
+        { chapterNumber: 22, characters: ['叶九'], descriptionText: '叶九在档案房。' },
+        { chapterNumber: 28, characters: ['周叙'], descriptionText: '周叙把页按在湿板上蘸水溯读。' },
+      ],
+      cast: [{ name: '叶九', role: 'antagonist', motivation: '清掉旧册' }],
+      threads: [],
+    })
+    const absent = findings.find(finding => finding.stableFactKey.startsWith('cast:absent:'))
+    expect(absent).toBeDefined()
+    expect(absent!.evidence).toBe('叶九 last scheduled in chapter 22')
+  })
+
   it('reports absent, never-appeared, thin-cast, and overdue thread risks without duplicating AI review work', () => {
     const findings = findExpandedContinuityRisks({
       currentChapter: 8,

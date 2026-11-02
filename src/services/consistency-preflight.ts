@@ -3,7 +3,8 @@ import type { BlueprintForPreflight, ConsistencyExemption, ConsistencyFinding } 
 import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuityRisks,
   findNearCastNameFindings, findOversizedBlueprintKeyEvents, findUnregisteredBlueprintCast,
   findDialogueOpenerConvergence, findOpeningShapeConvergence,
-  findDesignTimelineConflicts, findMissingCastInArch } from '../shared/consistency-preflight'
+  findDesignTimelineConflicts, findMissingCastInArch,
+  findRepeatPropTerminationFindings } from '../shared/consistency-preflight'
 import { DEFAULT_CHAPTER_WORDS_TARGET } from './workflows/chapter-creation-parameters'
 import { ipc } from './ipc-client'
 
@@ -40,6 +41,12 @@ export async function readConsistencyPreflight(
     blueprints: (Array.isArray(allBlueprints) ? allBlueprints : []).map(blueprint => ({
       chapterNumber: blueprint.chapterNumber,
       characters: Array.isArray(blueprint.characters) ? blueprint.characters : [],
+      // 出场判定也要看描述文本（issue #74）：只读 characters 数组会把
+      // 「描述里有他、数组里没他」报成整章缺席。
+      descriptionText: [
+        blueprint.keyEvents, blueprint.purpose, blueprint.costsAndTurns ?? '',
+        blueprint.suspenseHook, blueprint.foreshadowing ?? '',
+      ].filter(Boolean).join(' '),
     })),
     cast: (Array.isArray(roster?.entries) ? roster.entries : []).map(entry => ({
       name: entry.name,
@@ -135,10 +142,15 @@ export async function readConsistencyPreflight(
         cast: rosterEntries,
       })
     : []
+  // 同一件物证被终结两次（issue #73）：与 #71/#72 共用同一份最近定稿正文样本。
+  const propTerminationFindings = proseSample.length === 0 ? [] : findRepeatPropTerminationFindings({
+    chapters: proseSample,
+    currentChapter,
+  })
   return {
     findings: [...terminalFindings, ...expandedFindings, ...unregisteredFindings, ...appearanceGaps,
       ...nearNameFindings, ...keyEventsLengthFindings, ...openingFindings, ...timelineFindings,
-      ...missingArchCastFindings]
+      ...missingArchCastFindings, ...propTerminationFindings]
       .filter(item => !activeExemptions.has(item.stableFactKey)),
     exemptions,
     castNames,
