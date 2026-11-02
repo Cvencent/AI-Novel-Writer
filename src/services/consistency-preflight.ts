@@ -3,7 +3,7 @@ import type { BlueprintForPreflight, ConsistencyExemption, ConsistencyFinding } 
 import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuityRisks,
   findNearCastNameFindings, findOversizedBlueprintKeyEvents, findUnregisteredBlueprintCast,
   findDialogueOpenerConvergence, findOpeningShapeConvergence,
-  findDesignTimelineConflicts } from '../shared/consistency-preflight'
+  findDesignTimelineConflicts, findMissingCastInArch } from '../shared/consistency-preflight'
 import { DEFAULT_CHAPTER_WORDS_TARGET } from './workflows/chapter-creation-parameters'
 import { ipc } from './ipc-client'
 
@@ -122,9 +122,23 @@ export async function readConsistencyPreflight(
         charactersArch: String((core as { charactersArch?: string }).charactersArch ?? ''),
       })
     : []
+  // 角色名单里的角色没进「人物群像」（issue #3）：名单有、卡片有、群像没有，
+  // 而群像才是作者在架构阶段真正会读会改的那份。与 #42/#58 同一形态——都是
+  // 「下游可见性」，只是这一条的文档是架构层的群像而不是蓝图。
+  const rosterEntries = (Array.isArray(roster?.entries) ? roster.entries : [])
+    .map(entry => ({ name: typeof entry.name === 'string' ? entry.name : '',
+      role: typeof entry.role === 'string' ? entry.role : undefined }))
+    .filter(entry => entry.name.trim())
+  const missingArchCastFindings = core
+    ? findMissingCastInArch({
+        charactersArch: String((core as { charactersArch?: string }).charactersArch ?? ''),
+        cast: rosterEntries,
+      })
+    : []
   return {
     findings: [...terminalFindings, ...expandedFindings, ...unregisteredFindings, ...appearanceGaps,
-      ...nearNameFindings, ...keyEventsLengthFindings, ...openingFindings, ...timelineFindings]
+      ...nearNameFindings, ...keyEventsLengthFindings, ...openingFindings, ...timelineFindings,
+      ...missingArchCastFindings]
       .filter(item => !activeExemptions.has(item.stableFactKey)),
     exemptions,
     castNames,

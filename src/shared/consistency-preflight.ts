@@ -911,6 +911,70 @@ export function findDesignTimelineConflicts(input: DesignTimelineInput): Consist
   })
 }
 
+/**
+ * 角色名单里的角色没有出现在「人物群像」里（issue #3）。
+ *
+ * 实测样本：角色名单 6 人，但架构生成的「人物群像」（characters_arch）只有 4 个条目——
+ * 少掉的是**两个反派**（沈砚、陆秉文）。这两个人是整条冲突链的施压方，卡片其实齐的
+ * （有外貌、有定位），却只在别人的「关系」行里被提一句。
+ *
+ * 用户在原 issue 里的原话点出了要害：「三处对不上——名单有、卡片有、群像没有」。
+ * 群像才是作者在架构阶段真正会读、会改的那份文档。
+ *
+ * 判据是**按角色的名单完整性**，不解析群像的 Markdown 结构：
+ * 对每个在册角色，问「群像里有没有以他名字为主语的独立段落」。
+ * 只要名字在群像里出现过，就算有（不要求它在 `##` 标题里——作者可能写成
+ * 「## 反派：沈砚」或「## 沈砚」，两种都要算数）。
+ *
+ * 只报**实质缺人**：名字在群像里完全找不到才算缺。带 `role` 时把定位写进证据，
+ * 让作者知道缺的是主角还是反派——本样本缺的正是两位 antagonist。
+ */
+export interface MissingCastInArchInput {
+  charactersArch: string
+  cast: ReadonlyArray<{ name: string; role?: string }>
+  /** findings 的 sourceChapter 用；架构阶段没有章号，按 1 记账。 */
+  chapterNumber?: number
+}
+
+/** 群像里是否出现过这个名字（去空白后包含即可，不要求是标题）。 */
+function archMentionsCast(charactersArch: string, name: string): boolean {
+  const normalized = normalizedKeyPart(castDisplayName(name))
+  if (!normalized) return false
+  const haystack = normalizedKeyPart(charactersArch)
+  return haystack.includes(normalized)
+}
+
+export function findMissingCastInArch(input: MissingCastInArchInput): ConsistencyFinding[] {
+  const arch = String(input.charactersArch ?? '')
+  // 群像为空时整份文档都还没写，报「每个人都缺」没有意义：
+  // 那是「还没生成」而不是「漏了人」。交给架构生成自己的流程。
+  if (!arch.trim()) return []
+  const chapter = input.chapterNumber ?? 1
+  const seen = new Set<string>()
+  return input.cast.flatMap(entry => {
+    const name = castDisplayName(entry.name)
+    const key = normalizedKeyPart(name)
+    if (!name || !key || seen.has(key)) return []
+    seen.add(key)
+    if (archMentionsCast(arch, name)) return []
+    const role = String(entry.role ?? '').trim()
+    return [{
+      stableFactKey: `architecture:cast-missing-in-arch:${key}`,
+      severity: 'warning' as const,
+      sourceChapter: chapter,
+      evidence: `角色名单里有${role ? `「${name}」（${role}）` : `「${name}」`}，但「人物群像」里找不到这个名字`,
+      issue: {
+        zhCN: `角色名单里有${role ? `「${name}」（${role}）` : `「${name}」`}，但架构生成的「人物群像」里没有这个人的条目。名单有、卡片有可能、群像没有——而群像才是作者在架构阶段真正会读会改的那份。缺一个施压方（反派）尤其要命：他在正文里没有动机、没有口癖、没有行为锚点，每章只能临场发挥，跨章漂移与一致性检查的盲区都由此而来。`,
+        enUS: `“${name}”${role ? ` (${role})` : ''} is on the character roster but has no entry in the generated character group portrait — the document authors actually read and edit at the architecture stage. Missing an antagonist is the worst case: without motivation, speech habits, or behavioural anchors, they are improvised in every chapter, which is where cross-chapter drift and consistency blind spots come from.`,
+      },
+      suggestion: {
+        zhCN: `在「人物群像」里为「${name}」补一段（哪怕三五行：他要什么、他挡在谁前面、他说话的调子）。他已经在正文或关系行里出现过的话，照已写的内容回填，不要另起一套设定。`,
+        enUS: `Add a paragraph for “${name}” to the character group portrait — three to five lines is enough: what they want, whom they block, how they talk. If they already appear in the prose or in a relationship line, backfill from what was written instead of inventing a new version.`,
+      },
+    }]
+  }).slice(0, 6)
+}
+
 export function mergeConsistencyFindingsIntoReview(
   review: ReviewLike,
   findings: readonly ConsistencyFinding[],

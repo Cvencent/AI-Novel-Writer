@@ -5,6 +5,7 @@ import {
   findBlueprintContinuityRisks,
   findCrossChapterAssertionReversals,
   findExpandedContinuityRisks,
+  findMissingCastInArch,
   findNearCastNameFindings,
   findSynopsisCastMismatches,
   findUnregisteredBlueprintCast,
@@ -408,5 +409,80 @@ describe('near-cast name findings are actionable and stay muted once confirmed (
     expect(finding!.suggestion.zhCN).toContain('建卡')
     expect(finding!.suggestion.enUS).toContain('Save arrangement')
     expect(finding!.suggestion.enUS).not.toContain('as an alias')
+  })
+})
+
+describe('findMissingCastInArch (issue #3)', () => {
+  // 报告里的两份数据（原文照抄）：名单 6 人，群像只有 4 个条目。
+  const ROSTER = [
+    { name: '周叙', role: 'protagonist' },
+    { name: '温珩', role: 'supporting' },
+    { name: '沈砚', role: 'antagonist' },
+    { name: '陆秉文', role: 'antagonist' },
+    { name: '林晚', role: 'supporting' },
+    { name: '顾棠', role: 'supporting' },
+  ]
+  const ARCH = [
+    '## 主角：周叙',
+    '他想查清父亲那趟航次的真相。',
+    '',
+    '## 配角：林晚',
+    '她在售票口做活，记得每个熟客。',
+    '',
+    '## 配角：温珩',
+    '穿同一件靛蓝短褂，话少。',
+    '',
+    '## 配角：顾棠',
+    '档案房的年轻文员。',
+  ].join(String.fromCharCode(10))
+
+  it('flags the two antagonists the group portrait omits', () => {
+    const findings = findMissingCastInArch({ charactersArch: ARCH, cast: ROSTER })
+    expect(findings.map(finding => finding.evidence)).toEqual([
+      expect.stringContaining('沈砚'),
+      expect.stringContaining('陆秉文'),
+    ])
+    // 角色定位要进证据与结论：缺的是两位施压方，作者一眼能看到严重性。
+    expect(findings[0]!.evidence).toContain('antagonist')
+    expect(findings[0]!.issue.zhCN).toContain('施压方')
+    expect(findings[0]!.stableFactKey).toBe('architecture:cast-missing-in-arch:沈砚')
+  })
+
+  it('does not flag anyone when the portrait covers the roster', () => {
+    const complete = `${ARCH}
+## 反派：沈砚
+渡运站主事，笑时只看人不看眼。
+## 反派：陆秉文
+账房，常年戴铜框老花镜。`
+    expect(findMissingCastInArch({ charactersArch: complete, cast: ROSTER })).toEqual([])
+  })
+
+  it('counts a bare name heading as coverage', () => {
+    // 作者可能写成「## 沈砚」而不是「## 反派：沈砚」，两种都要算有。
+    expect(findMissingCastInArch({
+      charactersArch: ['## 沈砚', '主事。'].join(String.fromCharCode(10)),
+      cast: [{ name: '沈砚' }],
+    })).toEqual([])
+  })
+
+  it('says nothing when the group portrait has not been generated yet', () => {
+    // 群像为空是「还没生成」，不是「漏了人」——报「每个人都缺」没有意义。
+    expect(findMissingCastInArch({ charactersArch: '', cast: ROSTER })).toEqual([])
+    expect(findMissingCastInArch({ charactersArch: '   ', cast: ROSTER })).toEqual([])
+  })
+
+  it('gives an actionable fix rather than just naming the gap', () => {
+    const [finding] = findMissingCastInArch({ charactersArch: ARCH, cast: ROSTER })
+    expect(finding!.suggestion.zhCN).toContain('补一段')
+    expect(finding!.suggestion.zhCN).toContain('不要另起一套设定')
+    expect(finding!.suggestion.enUS).toContain('Add a paragraph')
+  })
+
+  it('caps the report so a large roster cannot flood the panel', () => {
+    const big = Array.from({ length: 12 }, (_, index) => ({ name: `角色${index}`, role: 'supporting' }))
+    expect(findMissingCastInArch({
+      charactersArch: ['## 周叙', '主线。'].join(String.fromCharCode(10)),
+      cast: big,
+    }).length).toBeLessThanOrEqual(6)
   })
 })
