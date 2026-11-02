@@ -41,7 +41,9 @@
     "preview": "vite preview",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "release:local": "node scripts/release-local.mjs"
+    "release:local": "node scripts/release-local.mjs",
+    "test:affected": "node scripts/qa/affected-tests.mjs --run",
+    "test:affected:fast": "node scripts/qa/affected-tests.mjs --run --fast"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.0",
