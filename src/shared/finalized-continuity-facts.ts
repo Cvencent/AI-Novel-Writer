@@ -138,11 +138,23 @@ function evidenceExcerpt(content: string, statement: string, entities: readonly 
   // 同章内已经被别的陈述用掉的句子直接排除（issue #63）：出处一栏必须能反查，
   // 同一句话当多条事实的出处等于没有出处。找不到未用过的句子时宁可留空（该条不进事实）。
   const available = used ? sentences.filter(sentence => !used.has(sentence)) : sentences
-  const candidates = factEntities.length > 0
-    ? available.filter(sentence => factEntities.some(entity => sentence.includes(entity)))
-    : available
-  const ranked = candidates
-    .map((sentence) => {
+  /**
+   * 候选池**不再按角色名硬筛**（issue #76）。
+   *
+   * #63 收紧判据时用的是「只要陈述里出现角色名，候选池就只保留含该角色名的句子」。
+   * 但中文小说最要紧的那句常常是**台词或省略主语的短句**，里面没有角色名：
+   *
+   *   陈述：邵德昌主张"手写原件有次级效力"……最终收手，说"同批的，都下船"
+   *   正文：「手写原件有次级效力。这一格，得我们签。」   ← 16/38 信号，唯一合格的一句
+   *        邵德昌两根手指压在页边。                      ← 0/38，含角色名
+   *
+   * 合格那句因为不含角色名被提前排除，于是整章 27 条要点只落库 1 条
+   * （把角色名换成人称代词后立刻涨到 9 条，说明限制来自这道硬筛而不是重叠阈值）。
+   *
+   * 现在改成**两级**：含角色名的句子优先（更可能切题），一条都不合格时回退到全句池。
+   * 两级都必须过同一套重叠/独立支撑判据——放宽的只是池子，不是标准。
+   */
+  const scoreSentence = (sentence: string) => {
       const sentenceSignals = textBigrams(sentence)
       const matchedIndexes = signalList
         .map((signal, index) => sentenceSignals.has(signal) ? index : -1)
@@ -159,11 +171,22 @@ function evidenceExcerpt(content: string, statement: string, entities: readonly 
         score: matchedIndexes.length,
         supported: matchedIndexes.length === signalList.length || coverage >= EVIDENCE_COVERAGE_HIGH || independentlySupported,
       }
-    })
-    .sort((left, right) => right.score - left.score)
-  const matched = ranked.find(candidate => candidate.score >= overlapFloor && candidate.supported
-    && candidate.score >= EVIDENCE_MIN_MATCHED)?.sentence
-  return matched ?? ''
+    }
+  const qualifies = (candidate: { score: number; supported: boolean }) => (
+    candidate.score >= overlapFloor && candidate.supported && candidate.score >= EVIDENCE_MIN_MATCHED
+  )
+  const pickBest = (pool: readonly string[]): string => {
+    const ranked = pool.map(scoreSentence).sort((left, right) => right.score - left.score)
+    return ranked.find(qualifies)?.sentence ?? ''
+  }
+  const entityPool = factEntities.length > 0
+    ? available.filter(sentence => factEntities.some(entity => sentence.includes(entity)))
+    : available
+  const preferred = pickBest(entityPool)
+  if (preferred) return preferred
+  // 回退：含角色名的句子一条都不合格时，允许用不含角色名的句子（issue #76）。
+  // 已经是同一个池子时不必重复排一遍。
+  return entityPool.length === available.length ? '' : pickBest(available)
 }
 
 /**
@@ -275,5 +298,15 @@ export function buildFinalizedContinuityFacts(
       : []
   })
   // 先去重再截断（issue #41）：重复项占满 12 条名额会把真正独特的事实挤出去。
-  return dedupeContinuityFacts(facts).slice(0, CONTINUITY_FACT_LIMIT)
+  const kept = dedupeContinuityFacts(facts).slice(0, CONTINUITY_FACT_LIMIT)
+  // 丢弃要留痕（issue #76）：实测第 14 章 27 条要点只剩 1 条，而全链路没有任何提示——
+  // 作者只会觉得「这一章账本怎么这么少」。大比例丢弃时记一条 warn，
+  // 让这类问题在下一次排查时看得见（界面侧的计数不在本函数职责内）。
+  if (statements.length >= 8 && kept.length * 4 <= statements.length) {
+    console.warn(
+      `[continuity-facts] chapter ${chapterNumber}: ${statements.length} statements -> ${kept.length} facts`
+      + ` (${facts.length} had evidence before dedupe/limit); check whether the prose really supports them`,
+    )
+  }
+  return kept
 }

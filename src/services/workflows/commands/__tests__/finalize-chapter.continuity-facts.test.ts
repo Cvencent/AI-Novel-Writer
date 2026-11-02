@@ -14,6 +14,44 @@ describe('buildFinalizedContinuityFacts', () => {
     }])
   })
 
+  it('falls back to sentences without the character name when those are the only ones that support it (issue #76)', () => {
+    // 实测第 14 章：27 条要点只落库 1 条。原因是候选池按角色名硬筛，而中文正文里
+    // 支撑陈述的常常是**台词或省略主语的短句**，不含角色名。
+    const notes = '邵德昌说手写原件有次级效力'
+    const body = [
+      '邵德昌沉默不语。',              // 含角色名，但零支撑
+      '“手写原件有次级效力。”',        // 不含角色名，唯一真正支撑的一句
+    ].join(String.fromCharCode(10) + String.fromCharCode(10))
+
+    const facts = buildFinalizedContinuityFacts(14, notes, body, ['周叙', '邵德昌'])
+
+    expect(facts).toHaveLength(1)
+    expect(facts[0]!.evidence).toBe('“手写原件有次级效力。”')
+  })
+
+  it('still prefers a qualifying sentence that names the character (issue #76)', () => {
+    // 两级池子的顺序不能反：含角色名且合格时必须优先用它。
+    const notes = '邵德昌把手写原件放在桌上'
+    const body = [
+      '邵德昌把手写原件放在桌上。',    // 含角色名且合格 → 应当选它
+      '“手写原件在你手边。”',
+    ].join(String.fromCharCode(10) + String.fromCharCode(10))
+
+    const [fact] = buildFinalizedContinuityFacts(14, notes, body, ['周叙', '邵德昌'])
+    expect(fact!.evidence).toBe('邵德昌把手写原件放在桌上。')
+  })
+
+  it('still omits a note whose only candidates are unrelated (issue #63 guard intact)', () => {
+    // 回退放宽的是**池子**，不是标准：不相干的句子照样不能当出处。
+    const notes = '邵德昌主张手写原件有次级效力'
+    const body = [
+      '邵德昌沉默不语。',
+      '货舱伙计说短褂先生这两天夜夜在船尾写什么。',
+    ].join(String.fromCharCode(10) + String.fromCharCode(10))
+
+    expect(buildFinalizedContinuityFacts(14, notes, body, ['周叙', '邵德昌'])).toEqual([])
+  })
+
   it('classifies an explicit character death as character state', () => {
     const finalizedContent = '韩峥被洪水卷入排水井，当场死亡。'
 
