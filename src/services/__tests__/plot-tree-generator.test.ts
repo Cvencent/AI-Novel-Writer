@@ -91,6 +91,12 @@ function sources(): PlotTreeSourceBundle {
       title: 'The empty safe',
       purpose: 'Launch the investigation',
       keyEvents: 'The clerk discovers the missing ledger.',
+    }, {
+      // 第 2 章未定稿：本文件的计划事件落在它上面（issue #60）。
+      chapterNumber: 2,
+      title: 'The forger surfaces',
+      purpose: 'Trace the ledger',
+      keyEvents: 'The clerk follows the forger.',
     }],
     finalizedChapters: [{
       draftId: 41,
@@ -114,10 +120,11 @@ const modelResponse = {
     summary: 'The clerk follows the missing ledger to its forger.',
     events: [
       {
+        // 计划事件要落在未定稿的章上（issue #60）：第 1 章在 finalizedChapters 里。
         status: 'planned',
-        chapterNumber: 1,
+        chapterNumber: 2,
         summary: 'The investigation begins.',
-        sources: [{ type: 'blueprint', chapterNumber: 1 }],
+        sources: [{ type: 'blueprint', chapterNumber: 2 }],
       },
       {
         status: 'occurred',
@@ -227,8 +234,9 @@ describe('plot tree AI boundary', () => {
       tracks: [{
         ...modelResponse.tracks[0],
         events: [{
-          status: 'planned', chapterNumber: 2, summary: 'Invented event.',
-          sources: [{ type: 'blueprint', chapterNumber: 2 }],
+          // 第 3 章没有蓝图：这才是「引用了不存在的来源」（issue #60 之后第 2 章已有蓝图）。
+          status: 'planned', chapterNumber: 3, summary: 'Invented event.',
+          sources: [{ type: 'blueprint', chapterNumber: 3 }],
         }],
       }],
     }), sources())).toThrow(/source|来源/u)

@@ -380,6 +380,13 @@ export function assertPlotTreeSnapshot(
       if (!event.sources.every(source => (
         sourceSupportsEvent(source, event.status, event.chapterNumber, sources)
       ))) throw new Error('剧情树事件状态与来源不匹配')
+      // 已定稿的章不得标成「蓝图计划」（issue #60）：实测第 2、6、10、14、16 章已经定稿、
+      // 作者真写过了，却因为要点快照缺失被整章标成 planned——「回看故事走向」恰好在最需要
+      // 它的时候说谎。放在这里而不是只挡模型输出：normalize 通道与确定性兜底也得过同一道闸。
+      if (event.status === 'planned'
+        && sources.finalizedChapters.some(chapter => chapter.chapterNumber === event.chapterNumber)) {
+        throw new Error('剧情树事件把已定稿章节标成了计划')
+      }
     }
   }
   return assertPlotTreeSnapshotChapterBounds(snapshot, sources)

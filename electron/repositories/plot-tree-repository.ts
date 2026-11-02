@@ -51,7 +51,12 @@ export class PlotTreeRepository {
                NULLIF(summary_snapshots.chapter_notes, ''),
                CASE WHEN TRIM(COALESCE(blueprints.notes_updated_at, '')) <> ''
                  THEN blueprints.notes ELSE '' END
-             ) AS summary
+             ) AS summary,
+             -- 章节要点缺失时的兜底（issue #60）：定稿正文才是「已经写过的情节」的权威。
+             -- 原来这三处都没有正文兜底，于是没有 summary_snapshots 行的章（实测第 2/6/10/14/16 章）
+             -- 在模型眼里只剩蓝图文本，树就把它们全标成 planned——已经写过的章在故事线视图里说谎。
+             -- 只截前 400 字：它的用途是「让模型知道这些章真有正文」，不是替代要点。
+             COALESCE((SELECT substr(contents.body, 1, 400) FROM contents WHERE contents.id = drafts.content_id), '') AS body_excerpt
       FROM drafts
       LEFT JOIN finalization_outbox ON finalization_outbox.draft_id = drafts.id
       LEFT JOIN summary_snapshots ON summary_snapshots.draft_id = drafts.id
@@ -70,6 +75,7 @@ export class PlotTreeRepository {
       chapter_number: number
       title: string
       summary: string
+      body_excerpt: string
     }>
     const narrativeThreads = NarrativeThreadRepository.list(db).map(thread => ({
       id: thread.id,
@@ -97,7 +103,8 @@ export class PlotTreeRepository {
       draftId: row.draft_id,
       chapterNumber: row.chapter_number,
       title: row.title,
-      summary: row.summary,
+      // 要点缺失时用定稿正文兜底（issue #60），而不是留空让调用方退回蓝图。
+      summary: row.summary.trim() ? row.summary : row.body_excerpt,
     }))
     const facts = {
       writingLanguage: resolveWritingLanguage(core.writing_language),

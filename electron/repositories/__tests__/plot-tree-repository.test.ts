@@ -48,6 +48,13 @@ function seedFacts() {
       'Mara finds a street missing from every official map.',
       'Mara keeps the altered map.', datetime('now'))
   `).run()
+  // 第 2 章尚未定稿：本文件的计划事件都落在它上面，因为已定稿章不得标 planned（issue #60）。
+  db.prepare(`
+    INSERT INTO blueprints (
+      chapter_number, title, purpose, key_events, notes, notes_updated_at
+    ) VALUES (2, 'The next lead', 'Trace the erased street',
+      'Mara plans to trace the erased street.', '', '')
+  `).run()
 
   const finalized = FinalizedDraftImportRepository.commit(projectRoot, {
     operationId: 'plot-tree-finalized-source',
@@ -119,7 +126,12 @@ describe('PlotTreeRepository', () => {
       chapters: [{ chapterNumber: 1, title: 'Legacy chapter', content: 'Finalized text.', wordCount: 2 }],
     })
 
-    expect(PlotTreeRepository.read().finalizedChapters[0]?.summary).toBe('')
+    const summary = PlotTreeRepository.read().finalizedChapters[0]?.summary ?? ''
+    // 蓝图里的「Planning-only note」是计划、不是已发生的事实：不能当要点用（旧行为）。
+    expect(summary).not.toContain('Planning-only note')
+    // 但要点缺失时必须回退到**定稿正文**（issue #60）：这一章已经写过了，
+    // 留空会让调用方退回蓝图，把已定稿章标成「蓝图计划」。
+    expect(summary).toBe('Finalized text.')
   })
 
   it('keeps extracted legacy blueprint notes as a finalized-summary fallback', () => {
@@ -138,6 +150,64 @@ describe('PlotTreeRepository', () => {
       .toBe('Extracted finalized summary')
   })
 
+  it('refuses to store a finalized chapter as a blueprint plan (issue #60)', () => {
+    const ids = seedFacts()
+    const sources = PlotTreeRepository.read()
+    // 第 1 章已定稿（seedFacts），把它标成 planned 正是实测第 2/6/10/14/16 章的问题形态。
+    expect(() => PlotTreeRepository.save({
+      version: 1,
+      generatedAt: '2030-01-02T03:04:05.000Z',
+      writingLanguage: 'en-US',
+      sourceRevision: sources.sourceRevision,
+      tracks: [{
+        id: 'main', title: 'Main plot', role: 'main', startChapter: 1, endChapter: 2,
+        summary: 'The verified main plot.',
+        events: [{
+          status: 'planned', chapterNumber: 1, summary: 'Mara notices the erased street.',
+          sources: [{ type: 'blueprint', chapterNumber: 1 }],
+        }],
+      }],
+    }, sources.sourceRevision)).toThrow(/已定稿章节标成了计划/u)
+
+    // 同一份快照改成 occurred（带定稿来源）就能存下来。
+    const stored = PlotTreeRepository.save({
+      version: 1,
+      generatedAt: '2030-01-02T03:04:05.000Z',
+      writingLanguage: 'en-US',
+      sourceRevision: sources.sourceRevision,
+      tracks: [{
+        id: 'main', title: 'Main plot', role: 'main', startChapter: 1, endChapter: 2,
+        summary: 'The verified main plot.',
+        events: [{
+          status: 'occurred', chapterNumber: 1, summary: 'Mara keeps the altered map.',
+          sources: [{ type: 'finalized-chapter', draftId: ids.draftId, chapterNumber: 1 }],
+        }],
+      }],
+    }, sources.sourceRevision)
+    expect(stored.tracks[0]!.events[0]).toMatchObject({ status: 'occurred', chapterNumber: 1 })
+  })
+
+  it('falls back to the finalized prose when a chapter has no extracted notes (issue #60)', () => {
+    const db = getProjectDb()!
+    // 只有蓝图、没有 summary_snapshots 行 —— 实测第 2/6/10/14/16 章的形态。
+    db.prepare(`
+      INSERT INTO blueprints (chapter_number, title, purpose, key_events)
+      VALUES (1, 'No notes yet', 'Open the story', 'A clue appears on the wall.')
+    `).run()
+    FinalizedDraftImportRepository.commit(projectRoot, {
+      operationId: 'plot-tree-body-fallback',
+      chapters: [{
+        chapterNumber: 1, title: 'No notes yet',
+        content: 'Mara reads the clue and writes it down before dawn.',
+        wordCount: countDraftUnits('Mara reads the clue and writes it down before dawn.'),
+      }],
+    })
+
+    // 要点缺失时用定稿正文兜底，而不是留空让调用方退回蓝图。
+    expect(PlotTreeRepository.read().finalizedChapters[0]?.summary)
+      .toBe('Mara reads the clue and writes it down before dawn.')
+  })
+
   it('clears only the derived plot-tree snapshot', () => {
     seedFacts()
     const sources = PlotTreeRepository.read()
@@ -147,11 +217,12 @@ describe('PlotTreeRepository', () => {
       writingLanguage: 'en-US',
       sourceRevision: sources.sourceRevision,
       tracks: [{
-        id: 'main', title: 'Main plot', role: 'main', startChapter: 1, endChapter: 1,
+        id: 'main', title: 'Main plot', role: 'main', startChapter: 1, endChapter: 2,
         summary: 'The verified main plot.',
         events: [{
-          status: 'planned', chapterNumber: 1, summary: 'The opening.',
-          sources: [{ type: 'blueprint', chapterNumber: 1 }],
+          // 第 1 章已定稿，计划事件只能落在未定稿的章（issue #60）。
+          status: 'planned', chapterNumber: 2, summary: 'The opening.',
+          sources: [{ type: 'blueprint', chapterNumber: 2 }],
         }],
       }],
     }
@@ -174,7 +245,7 @@ describe('PlotTreeRepository', () => {
         title: 'The altered map',
         purpose: 'Start the investigation',
         keyEvents: 'Mara finds a street missing from every official map.',
-      }],
+      }, expect.objectContaining({ chapterNumber: 2, title: 'The next lead' })],
       finalizedChapters: [{
         draftId: ids.draftId,
         chapterNumber: 1,
@@ -203,10 +274,11 @@ describe('PlotTreeRepository', () => {
         summary: 'Mara follows the conspiracy behind the altered city map.',
         events: [
           {
+            // 计划事件必须落在**尚未定稿**的章上（issue #60）：第 1 章在 seedFacts 里已定稿。
             status: 'planned',
-            chapterNumber: 1,
-            summary: 'Mara notices the erased street.',
-            sources: [{ type: 'blueprint', chapterNumber: 1 }],
+            chapterNumber: 2,
+            summary: 'Mara plans to trace the erased street.',
+            sources: [{ type: 'blueprint', chapterNumber: 2 }],
           },
           {
             status: 'occurred',
@@ -246,11 +318,12 @@ describe('PlotTreeRepository', () => {
       writingLanguage: 'en-US',
       sourceRevision: sources.sourceRevision,
       tracks: [{
-        id: 'main', title: 'Main plot', role: 'main', startChapter: 1, endChapter: 1,
+        id: 'main', title: 'Main plot', role: 'main', startChapter: 1, endChapter: 2,
         summary: 'The verified main plot.',
         events: [{
-          status: 'planned', chapterNumber: 1, summary: 'The opening.',
-          sources: [{ type: 'blueprint', chapterNumber: 1 }],
+          // 第 1 章已定稿，计划事件只能落在未定稿的章（issue #60）。
+          status: 'planned', chapterNumber: 2, summary: 'The opening.',
+          sources: [{ type: 'blueprint', chapterNumber: 2 }],
         }],
       }],
     }
@@ -281,11 +354,12 @@ describe('PlotTreeRepository', () => {
       generatedAt: '2020-01-02T03:04:05.000Z',
       writingLanguage: 'en-US',
       tracks: [{
-        id: 'main', title: 'Main plot', role: 'main', startChapter: 1, endChapter: 1,
+        id: 'main', title: 'Main plot', role: 'main', startChapter: 1, endChapter: 2,
         summary: 'The verified main plot.',
         events: [{
-          status: 'planned', chapterNumber: 1, summary: 'The opening.',
-          sources: [{ type: 'blueprint', chapterNumber: 1 }],
+          // 第 1 章已定稿，计划事件只能落在未定稿的章（issue #60）。
+          status: 'planned', chapterNumber: 2, summary: 'The opening.',
+          sources: [{ type: 'blueprint', chapterNumber: 2 }],
         }],
       }],
     }
@@ -350,11 +424,12 @@ describe('PlotTreeRepository', () => {
       writingLanguage: 'en-US',
       sourceRevision: sources.sourceRevision,
       tracks: [{
-        id: 'main', title: 'Main plot', role: 'main', startChapter: 1, endChapter: 1,
+        id: 'main', title: 'Main plot', role: 'main', startChapter: 1, endChapter: 2,
         summary: 'The verified main plot.',
         events: [{
-          status: 'planned', chapterNumber: 1, summary: 'The opening.',
-          sources: [{ type: 'blueprint', chapterNumber: 1 }],
+          // 第 1 章已定稿，计划事件只能落在未定稿的章（issue #60）。
+          status: 'planned', chapterNumber: 2, summary: 'The opening.',
+          sources: [{ type: 'blueprint', chapterNumber: 2 }],
         }],
       }],
     }
@@ -383,8 +458,8 @@ describe('PlotTreeRepository', () => {
         id: 'main', title: 'Main plot', role: 'main', startChapter: 1, endChapter: 2,
         summary: 'The verified main plot.',
         events: [{
-          status: 'planned', chapterNumber: 1, summary: 'The verified opening.',
-          sources: [{ type: 'blueprint', chapterNumber: 1 }],
+          status: 'planned', chapterNumber: 2, summary: 'The verified opening.',
+          sources: [{ type: 'blueprint', chapterNumber: 2 }],
         }],
       }],
     }
@@ -395,9 +470,13 @@ describe('PlotTreeRepository', () => {
       generatedAt: '2030-01-02T04:00:00.000Z',
       tracks: [{
         ...valid.tracks[0]!,
+        endChapter: 3,
         events: [{
-          status: 'planned', chapterNumber: 2, summary: 'Invented event.',
-          sources: [{ type: 'blueprint', chapterNumber: 2 }],
+          // 第 3 章没有任何蓝图：这条来源必须被判定为不存在（issue #60 之后第 2 章
+          // 已有蓝图，不能再拿它当「编造的来源」）。范围 1–3 仍在来源边界内，
+          // 这样命中的是「来源不存在」而不是「超出轨道范围」。
+          status: 'planned', chapterNumber: 3, summary: 'Invented event.',
+          sources: [{ type: 'blueprint', chapterNumber: 3 }],
         }],
       }],
     }, sourceRevision)).toThrow(/source|来源/u)
@@ -413,11 +492,12 @@ describe('PlotTreeRepository', () => {
       writingLanguage: 'en-US',
       sourceRevision: sources.sourceRevision,
       tracks: [{
-        id: 'main', title: 'Main plot', role: 'main', startChapter: 1, endChapter: 1,
+        id: 'main', title: 'Main plot', role: 'main', startChapter: 1, endChapter: 2,
         summary: 'The verified main plot.',
         events: [{
-          status: 'planned', chapterNumber: 1, summary: 'The opening.',
-          sources: [{ type: 'blueprint', chapterNumber: 1 }],
+          // 第 1 章已定稿，计划事件只能落在未定稿的章（issue #60）。
+          status: 'planned', chapterNumber: 2, summary: 'The opening.',
+          sources: [{ type: 'blueprint', chapterNumber: 2 }],
         }],
       }],
     }
@@ -439,11 +519,12 @@ describe('PlotTreeRepository', () => {
       writingLanguage: 'en-US',
       sourceRevision: '0'.repeat(64),
       tracks: [{
-        id: 'main', title: 'Main plot', role: 'main', startChapter: 1, endChapter: 1,
+        id: 'main', title: 'Main plot', role: 'main', startChapter: 1, endChapter: 2,
         summary: 'The verified main plot.',
         events: [{
-          status: 'planned', chapterNumber: 1, summary: 'The opening.',
-          sources: [{ type: 'blueprint', chapterNumber: 1 }],
+          // 第 1 章已定稿，计划事件只能落在未定稿的章（issue #60）。
+          status: 'planned', chapterNumber: 2, summary: 'The opening.',
+          sources: [{ type: 'blueprint', chapterNumber: 2 }],
         }],
       }],
     }
@@ -458,11 +539,11 @@ describe('PlotTreeRepository', () => {
       generatedAt: '2029-01-02T03:04:05.000Z',
       writingLanguage: 'en-US',
       tracks: [{
-        id: 'main', title: 'Legacy plot', role: 'main', startChapter: 1, endChapter: 1,
+        id: 'main', title: 'Legacy plot', role: 'main', startChapter: 1, endChapter: 2,
         summary: 'A legacy snapshot remains visible until refreshed.',
         events: [{
-          status: 'planned', chapterNumber: 1, summary: 'The old opening.',
-          sources: [{ type: 'blueprint', chapterNumber: 1 }],
+          status: 'planned', chapterNumber: 2, summary: 'The old opening.',
+          sources: [{ type: 'blueprint', chapterNumber: 2 }],
         }],
       }],
     }
@@ -489,8 +570,8 @@ describe('PlotTreeRepository', () => {
         id: 'main', title: 'Broken plot', role: 'main', startChapter: 2, endChapter: 1,
         summary: 'The invalid structure must stay hidden.',
         events: [{
-          status: 'planned', chapterNumber: 1, summary: 'Invalid range.',
-          sources: [{ type: 'blueprint', chapterNumber: 1 }],
+          status: 'planned', chapterNumber: 2, summary: 'Invalid range.',
+          sources: [{ type: 'blueprint', chapterNumber: 2 }],
         }],
       }],
     }))
@@ -508,8 +589,9 @@ describe('PlotTreeRepository', () => {
         id: 'main', title: 'Broken range', role: 'main', startChapter: 1,
         endChapter: 4_294_967_296, summary: 'Must not reach the renderer.',
         events: [{
-          status: 'planned', chapterNumber: 1, summary: 'The opening.',
-          sources: [{ type: 'blueprint', chapterNumber: 1 }],
+          // 第 1 章已定稿，计划事件只能落在未定稿的章（issue #60）。
+          status: 'planned', chapterNumber: 2, summary: 'The opening.',
+          sources: [{ type: 'blueprint', chapterNumber: 2 }],
         }],
       }],
     }
@@ -520,7 +602,7 @@ describe('PlotTreeRepository', () => {
 
     expect(read.snapshot).toBeNull()
     expect(read.storedSnapshotInvalid).toBe(true)
-    expect(read.blueprints).toHaveLength(1)
+    expect(read.blueprints).toHaveLength(2)
     expect(read.finalizedChapters).toHaveLength(1)
     expect(db.prepare("SELECT plot_tree_snapshot FROM project_core WHERE id = 'main'").get())
       .toEqual({ plot_tree_snapshot: raw })
@@ -536,8 +618,9 @@ describe('PlotTreeRepository', () => {
         id: 'main', title: 'Broken range', role: 'main', startChapter: 1,
         endChapter: 4_294_967_296, summary: 'Must not reach the renderer.',
         events: [{
-          status: 'planned', chapterNumber: 1, summary: 'The opening.',
-          sources: [{ type: 'blueprint', chapterNumber: 1 }],
+          // 第 1 章已定稿，计划事件只能落在未定稿的章（issue #60）。
+          status: 'planned', chapterNumber: 2, summary: 'The opening.',
+          sources: [{ type: 'blueprint', chapterNumber: 2 }],
         }],
       }],
     }
