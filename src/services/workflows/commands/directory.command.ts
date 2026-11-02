@@ -44,7 +44,12 @@ import {
 import { readAuthoritativeNextChapter } from '../../authoritative-chapter-sequence'
 import { localizeNovelConfigFacts } from '../../../shared/novel-config-localization'
 import { normalizeChapterWordsTarget } from '../chapter-creation-parameters'
-import { draftTargetUnitRange } from '../../../shared/draft-units'
+import { countDraftUnits, draftTargetUnitRange } from '../../../shared/draft-units'
+import {
+  blueprintKeyEventsBudget,
+  blueprintKeyEventsProseText,
+  countBlueprintKeyEventsUnits,
+} from '../../../shared/blueprint-length'
 
 type CreateDirectoryGenerationRuntime = NonNullable<WorkflowGenerationRuntimeDependencies['createRuntime']>
 
@@ -145,11 +150,62 @@ function blueprintCapacityGenerationContract(
   targetWords: number,
 ): string {
   const { minimum: lowerBound, maximum: upperBound } = draftTargetUnitRange(targetWords)
-  return promptLanguageText(
+  // 长度口径排在容量合同**之前**：容量合同是这条提示的收尾（既有测试与调用口径都要求
+  // 它落在最后一句），而长度口径属于「怎么写这个字段」，先说完再收束更自然。
+  return `${blueprintKeyEventsLengthContract(writingLanguage, targetWords)}\n\n${promptLanguageText(
     writingLanguage,
     `【章节容量合同】\n每章正文目标约 ${targetWords} 字，可接受范围 ${lowerBound}–${upperBound} 字；据此控制情节点容量。作者指定事件与字数目标均为权威事实，不得删除、改写或擅自调整。合并 role、purpose、keyEvents、架构与前章列表中对同一事件的重复表述，只计一个语义事件；不擅自增加独立事件，也不为凑字数补事件。背景设定只作为约束和参考；除非作者指定事件明确要求，不得把全部背景逐项演成场景。JSON 输出合同不变；容量兼容时，keyEvents 只写能在上述范围内完整演绎的推进与结果。若语义去重后仍不兼容，保留作者指定事件，并在现有 keyEvents 字符串中简短指出“容量冲突：…”供作者调整；不新增字段、不代替作者取舍，也不写章节正文。`,
     `[Chapter capacity contract]\nTarget about ${targetWords} words per chapter, with an acceptable range of ${lowerBound}-${upperBound}; size the plot-point load accordingly. Author-specified events and the word target are authoritative facts: do not delete, rewrite, or adjust them. Merge duplicate descriptions of the same event across role, purpose, keyEvents, architecture, and the preceding chapter list, counting them as one semantic event; do not invent independent events or add events to fill space. Background facts are constraints and references, not a requirement to dramatize every fact as a scene unless an author-specified event requires it. Keep the JSON output contract unchanged. When capacity is compatible, keyEvents should state only the progression and outcome that can be fully dramatized within this range. If semantic deduplication still leaves an incompatible load, preserve the author-specified events and briefly state "Capacity conflict: ..." in the existing keyEvents string for the author to adjust; add no field, make no choice for the author, and do not write chapter prose.`,
+  )}`
+}
+
+/**
+ * 蓝图「冲突与转折」（keyEvents）的长度口径（issue #64）。
+ *
+ * 实测这本书写 25 章后，keyEvents 从均值 253 字涨到 429 字（第 25 章 510 字，
+ * 而同章正文只有 630 汉字）——蓝图里已经排好台词与动作顺序，起草只剩扩写，
+ * 「蓝图 → 正文」这一层就没了。批量路径此前只有 JSON 形状注释里的「100字左右」，
+ * 单章模板又写「100-150 字」，两条口径还不一致。
+ *
+ * 这里只做**生成侧目标**（与单章模板同一口径），不设落库硬闸：不可变合同里有
+ * 「作者指定事件为权威、不得删除」的条款，一个硬上限会把它推翻，也会让长事件的
+ * 章节反复被拒稿。真正的长度上限仍然由合同层保留为空（见
+ * BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST），长度问题走可见性提示（写前预检）。
+ */
+function blueprintKeyEventsLengthContract(
+  writingLanguage: NonNullable<CommandExecuteParams['context']['writingLanguage']>,
+  targetWords: number,
+): string {
+  const budget = blueprintKeyEventsBudget(targetWords)
+  return promptLanguageText(
+    writingLanguage,
+    `【蓝图长度口径】每章 keyEvents（冲突与转折）控制在约 ${budget.target} 字以内（上限 ${budget.max} 字），信息密度必须极高：写清谁做了什么、结果如何、代价是什么，不写台词原文、不写动作顺序、不写感官细节——那些是正文的活。作者明确指定的事件不得删除；确实放不下时按语义合并同一事件，不要另起小节，也不要在字段里写解释。costsAndTurns、foreshadowing 同样各控制在两句以内。`,
+    `[Blueprint length] Keep each chapter's keyEvents (conflict and turn) within about ${budget.target} characters (hard ceiling ${budget.max}) and make every clause carry information: who acts, what the outcome is, what it costs. Do not transcribe dialogue, sequence of actions, or sensory detail — that is the prose's job. Never delete an author-specified event; if space is tight, merge descriptions of the same event rather than adding a new beat, and never write an explanation inside the field. Keep costsAndTurns and foreshadowing to at most two sentences each.`,
   )
+}
+
+/**
+ * 把「上一章的蓝图」按长度口径截断后再进上下文（issue #64）。
+ *
+ * 只用于 references/有界事实里的历史蓝图，不碰任何落库内容。两个标注
+ * （`【收束：…】`/`【装置：…】`）不进截断计数，但必须原样留在尾部——下游读它们
+ * 做轮换判断（issue #28/#32），丢了下一次生成就会以为上一章「未标注」。
+ * 截断点是句末，尽量不切在句子中间。
+ */
+function clipBlueprintKeyEventsForContext(keyEvents: string, targetWordsPerChapter: number): string {
+  const budget = blueprintKeyEventsBudget(targetWordsPerChapter)
+  const full = String(keyEvents ?? '')
+  if (countBlueprintKeyEventsUnits(full) <= budget.max) return full
+  const prose = blueprintKeyEventsProseText(full)
+  const labels = (String(full).match(/【\s*(?:收束|装置)\s*[:：][^】]{0,60}】/gu) ?? []).join('')
+  const parts = prose.split(/(?<=[。！？；])/u).filter(part => part.trim())
+  let kept = ''
+  for (const part of parts) {
+    if (countDraftUnits(kept + part) > budget.max) break
+    kept += part
+  }
+  const clipped = kept.trim() || Array.from(prose).slice(0, budget.max).join('')
+  return labels ? `${clipped}${labels}` : clipped
 }
 
 function buildCompactBlueprintTask(input: {
@@ -175,7 +231,10 @@ function buildCompactBlueprintTask(input: {
     recentBlueprints: input.previous.slice(-COMPACT_RECENT_BLUEPRINTS).map(chapter => ({
       chapterNumber: chapter.chapterNumber,
       title: chapter.title,
-      keyEvents: chapter.keyEvents,
+      // 上一章的规划文本按长度口径截断（issue #64）：实测最近 3 章的 keyEvents 全文
+      // （后段每章 400–500 字）会整段进入下一次生成，成本逐章累积；而「上一章发生了什么」
+      // 由标题、钩子、代价、收束、装置这几个短字段已经表达得足够。标注保留（下游要读）。
+      keyEvents: clipBlueprintKeyEventsForContext(chapter.keyEvents, input.wordsPerChapter),
       // 上一章付过的代价也要给模型看：代价桥段跨章照抄的根因就是它不可见（issue #14）。
       costs: chapter.costsAndTurns,
       suspenseHook: chapter.suspenseHook,
@@ -345,11 +404,13 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
         // 上一章的章末钩子必须进这个列表（issue #20）：批块模板只有泛的「保持连贯」，
         // 若连钩子原文都不给，模型无从回应；单章路径的 recentBlueprints 早带了 suspenseHook，
         // 批量路径此前只带 keyEvents，两边不一致。收束方式同理（issue #28）。
+        // 这里按长度口径截断每章（issue #64）：最近 100 章的 keyEvents 全文会整段进上下文，
+        // 后段每章 400–500 字时仅这一项就是数万字，成本逐章累积。
         const chapterList = previous.slice(-100)
           .map(chapter => promptLanguageText(
             writingLanguage,
-            `第${chapter.chapterNumber}章 ${chapter.title}：${chapter.keyEvents}${chapter.suspenseHook ? `（章末钩子：${chapter.suspenseHook}）` : ''}`,
-            `Chapter ${chapter.chapterNumber} — ${chapter.title}: ${chapter.keyEvents}${chapter.suspenseHook ? ` (closing hook: ${chapter.suspenseHook})` : ''}`,
+            `第${chapter.chapterNumber}章 ${chapter.title}：${clipBlueprintKeyEventsForContext(chapter.keyEvents, wordsPerChapter)}${chapter.suspenseHook ? `（章末钩子：${chapter.suspenseHook}）` : ''}`,
+            `Chapter ${chapter.chapterNumber} — ${chapter.title}: ${clipBlueprintKeyEventsForContext(chapter.keyEvents, wordsPerChapter)}${chapter.suspenseHook ? ` (closing hook: ${chapter.suspenseHook})` : ''}`,
           ))
           .join('\n')
         // 最近 3 章的落幅单独列一段：收束方式轮换要求模型先看清刚用过什么（issue #28）。

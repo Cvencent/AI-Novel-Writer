@@ -161,6 +161,7 @@ export function useBatchChapterForm({ isOpen, startChapterNumber, onClose }: Bat
           const preflight = await readConsistencyPreflight(
             projectSession,
             blueprints.filter((blueprint): blueprint is NonNullable<typeof blueprint> => !!blueprint),
+            frozenChapterWordsTarget,
           )
           if (!isProjectSessionCurrent(projectSession)) return
           setConsistencyPreflight(preflight)

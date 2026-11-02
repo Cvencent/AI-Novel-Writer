@@ -443,6 +443,79 @@ describe('GenerateDirectoryCommand', () => {
     }
   })
 
+  it('carries the keyEvents length budget in every production request (issue #64)', async () => {
+    // 实测这本书写到 25 章后 keyEvents 涨到 500+ 字（同章正文 630 汉字）：批量路径此前
+    // 只在 JSON 形状注释里写「100字左右」，单章模板又写「100-150 字」，两条口径不一致。
+    stubIpcInvoke(successfulCommitHandler())
+    const observedTasks: GenerationTask[] = []
+    const session = generationSession(async task => {
+      observedTasks.push(task)
+      return {
+        status: 'completed',
+        content: JSON.stringify({ blueprints: [modelBlueprint(1)] }),
+        finishReason: 'stop',
+        receipt: generationReceipt(observedTasks.length, 'stop', task.purpose),
+      }
+    })
+    const command = new GenerateDirectoryCommand(
+      { mode: 'full', count: 1 },
+      {
+        ...projectSnapshot,
+        novelConfig: { ...projectSnapshot.novelConfig, totalChapters: 1, wordsPerChapter: 3000 },
+      },
+      { createRuntime: vi.fn(async () => testRuntime(session)) },
+    )
+
+    await command.execute({ step: {}, context: workflowContext(), callbacks: stepCallbacks() })
+
+    const user = observedTasks.at(-1)?.messages.find(message => message.role === 'user')?.content ?? ''
+    // 目标 3000 字/章 → 目标 200 字、上限 400 字（blueprintKeyEventsBudget 的上界）。
+    expect(user).toContain('每章 keyEvents（冲突与转折）控制在约 200 字以内（上限 400 字）')
+    expect(user).toContain('不写台词原文、不写动作顺序、不写感官细节')
+    // 「作者指定事件不得删除」必须与长度口径同处一段，否则模型会为了字数删事件。
+    expect(user).toContain('作者明确指定的事件不得删除')
+  })
+
+  it('clips the previous chapters keyEvents before they enter the next request (issue #64)', async () => {
+    stubIpcInvoke(successfulCommitHandler())
+    const observedTasks: GenerationTask[] = []
+    const session = generationSession(async task => {
+      observedTasks.push(task)
+      return {
+        status: 'completed',
+        content: JSON.stringify({ blueprints: [modelBlueprint(2)] }),
+        finishReason: 'stop',
+        receipt: generationReceipt(observedTasks.length, 'stop', task.purpose),
+      }
+    })
+    const longKeyEvents = `${'周叙在舱底拧开水隔，蘸水读出那段墨层。'.repeat(40)}【收束：物件落幅】【装置：舱底＋拧水隔】`
+    const context = {
+      ...workflowContext(),
+      data: {
+        ...workflowContext().data,
+        existingBlueprints: [blueprint(1, { keyEvents: longKeyEvents })],
+      },
+    }
+    const command = new GenerateDirectoryCommand(
+      { mode: 'append', startChapter: 2, count: 1 },
+      {
+        ...projectSnapshot,
+        novelConfig: { ...projectSnapshot.novelConfig, totalChapters: 2, wordsPerChapter: 3000 },
+      },
+      { createRuntime: vi.fn(async () => testRuntime(session)) },
+    )
+
+    await command.execute({ step: {}, context, callbacks: stepCallbacks() })
+
+    const user = observedTasks.at(-1)?.messages.find(message => message.role === 'user')?.content ?? ''
+    // 上限 400 字：上一章那 760 字的规划文本必须被截断后再进上下文。
+    expect(user).not.toContain(longKeyEvents)
+    expect(user).toContain('第1章')
+    // 截断后两个机器读标注仍要在：下游靠它们做轮换判断（issue #28/#32）。
+    expect(user).toContain('【收束：物件落幅】')
+    expect(user).toContain('【装置：舱底＋拧水隔】')
+  })
+
   it('sends English blueprint instructions through the provider request for an English project', async () => {
     stubIpcInvoke(successfulCommitHandler())
     const observedTasks: GenerationTask[] = []

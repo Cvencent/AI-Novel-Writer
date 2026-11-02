@@ -233,7 +233,7 @@ export async function launchChapterWrite({
         foreshadowing: form.foreshadowing,
         userGuidance: form.userGuidance,
         notes: '',
-      }])
+      }], normalizeChapterWordsTarget(form.wordsTarget, wordsPerChapter))
       if (!isProjectSessionCurrent(session)) return { kind: 'stale' }
       if (preflight.findings.length > 0) return { kind: 'preflight', preflight }
     } catch {

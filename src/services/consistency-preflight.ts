@@ -1,7 +1,8 @@
 import type { ProjectSessionContext } from '../shared/ipc-channels'
 import type { BlueprintForPreflight, ConsistencyExemption, ConsistencyFinding } from '../shared/consistency-preflight'
 import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuityRisks,
-  findNearCastNameFindings, findUnregisteredBlueprintCast } from '../shared/consistency-preflight'
+  findNearCastNameFindings, findOversizedBlueprintKeyEvents, findUnregisteredBlueprintCast } from '../shared/consistency-preflight'
+import { DEFAULT_CHAPTER_WORDS_TARGET } from './workflows/chapter-creation-parameters'
 import { ipc } from './ipc-client'
 
 export interface ConsistencyPreflightResult {
@@ -14,6 +15,8 @@ export interface ConsistencyPreflightResult {
 export async function readConsistencyPreflight(
   session: ProjectSessionContext,
   blueprints: readonly BlueprintForPreflight[],
+  /** 本章正文目标字数：蓝图「冲突与转折」的长度口径随它缩放（issue #64）。 */
+  targetWordsPerChapter: number = DEFAULT_CHAPTER_WORDS_TARGET,
 ): Promise<ConsistencyPreflightResult> {
   const exemptions = await ipc.invokeWithProjectSession(
     session, 'db:consistency-exemption-list', session.projectPath,
@@ -81,8 +84,16 @@ export async function readConsistencyPreflight(
       blueprint.foreshadowing ?? '',
     ].join('\n'),
   }))
+  // 蓝图「冲突与转折」长成了准正文（issue #64）：只做可见性提示，不改写也不拦稿
+  // （合同层写明作者指定事件为权威、不得删除，硬上限会推翻它）。
+  const keyEventsLengthFindings = blueprints.flatMap(blueprint => findOversizedBlueprintKeyEvents({
+    chapterNumber: blueprint.chapterNumber,
+    keyEvents: blueprint.keyEvents,
+    targetWordsPerChapter,
+  }))
   return {
-    findings: [...terminalFindings, ...expandedFindings, ...unregisteredFindings, ...appearanceGaps, ...nearNameFindings]
+    findings: [...terminalFindings, ...expandedFindings, ...unregisteredFindings, ...appearanceGaps,
+      ...nearNameFindings, ...keyEventsLengthFindings]
       .filter(item => !activeExemptions.has(item.stableFactKey)),
     exemptions,
     castNames,

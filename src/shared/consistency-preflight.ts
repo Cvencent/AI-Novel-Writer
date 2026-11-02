@@ -1,4 +1,5 @@
 import type { FinalizedContinuityProjection } from './finalized-continuity'
+import { blueprintKeyEventsOversize } from './blueprint-length'
 
 export interface ConsistencyExemption {
   stableFactKey: string
@@ -603,6 +604,44 @@ export function findUnregisteredBlueprintCast(input: UnregisteredCastInput): Con
     })
   }
   return findings.slice(0, 4)
+}
+
+/**
+ * 蓝图「冲突与转折」长成了准正文（issue #64）。
+ *
+ * 实测这本书写到 25 章后 keyEvents 从均值 253 字涨到 429 字，第 25 章 510 字，
+ * 而同章正文只有 630 汉字（蓝图 = 正文的 81%）：里面已经排好台词与动作顺序，
+ * 起草只剩扩写，「蓝图 → 正文」这一层就没了。
+ *
+ * 这里只做**可见性**，不改写、不拦稿：合同层明确「作者指定事件为权威、不得删除」，
+ * 一条硬上限会推翻它，也会让事件确实很长的章反复被拒稿。作者看到计数后自己决定
+ * 是精简还是保留（本样本后段章节普遍超标，作者很可能确实想要这么长）。
+ */
+export interface BlueprintKeyEventsLengthInput {
+  chapterNumber: number
+  keyEvents: string
+  /** 本章正文目标字数（蓝图长度口径随它缩放）。 */
+  targetWordsPerChapter: number
+}
+
+export function findOversizedBlueprintKeyEvents(input: BlueprintKeyEventsLengthInput): ConsistencyFinding[] {
+  const oversize = blueprintKeyEventsOversize(input.keyEvents, input.targetWordsPerChapter)
+  if (!oversize) return []
+  const { units, budget } = oversize
+  return [{
+    stableFactKey: `blueprint:key-events-length:${input.chapterNumber}`,
+    severity: 'warning' as const,
+    sourceChapter: input.chapterNumber,
+    evidence: `第${input.chapterNumber}章蓝图「冲突与转折」约 ${units} 字（口径：目标 ${budget.target} 字、上限 ${budget.max} 字）`,
+    issue: {
+      zhCN: `本章「冲突与转折」约 ${units} 字，已经超出蓝图该有的篇幅（目标约 ${budget.target} 字、上限 ${budget.max} 字）。蓝图是提纲，不是正文：写到这个长度通常意味着台词与动作顺序都被排好了，起草时只剩扩写——作者改蓝图等于改正文，两边一旦不一致也没有地方会提示。这段文本还会整段进入后续每次生成的上下文，成本逐章累积。`,
+      enUS: `This chapter's “conflict and turn” runs about ${units} characters, well past what a blueprint should hold (target about ${budget.target}, ceiling ${budget.max}). A blueprint is an outline, not prose: at this length the dialogue and action order are usually already fixed, so drafting has nothing left to do — editing the blueprint becomes editing the chapter, and no check would tell you if the two drift apart. The whole passage also enters every later request, so the cost accumulates.`,
+    },
+    suggestion: {
+      zhCN: `精简到「谁做了什么、结果如何、代价是什么」：删掉台词原文、动作顺序与感官细节，那些留给正文；同一件事被拆成好几笔的，合并成一笔。确实放不下就把这段留在正文里，不要在蓝图里预演整场戏。`,
+      enUS: `Trim it to who acts, what the outcome is, and what it costs: drop transcribed dialogue, step-by-step action, and sensory detail — those belong to the prose. Merge repeated descriptions of the same event. If the material genuinely does not fit, leave it to the chapter rather than pre-staging the whole scene in the blueprint.`,
+    },
+  }]
 }
 
 export function mergeConsistencyFindingsIntoReview(
