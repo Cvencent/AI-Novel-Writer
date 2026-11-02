@@ -219,7 +219,8 @@ export async function readConsistencyPreflight(
     findings: [...terminalFindings, ...expandedFindings, ...unregisteredFindings, ...appearanceGaps,
       ...nearNameFindings, ...keyEventsLengthFindings, ...openingFindings, ...timelineFindings,
       ...missingArchCastFindings, ...propTerminationFindings, ...lossRestatementFindings,
-      ...propRevivalFindings, ...entranceShotFindings, ...finalizedProseAuditFindings]
+      ...propRevivalFindings, ...entranceShotFindings,
+      ...finalizedProseAuditFindings]
       .filter(item => !activeExemptions.has(item.stableFactKey))
       .filter(item => !acknowledgedKeys.has(item.stableFactKey)),
     exemptions,

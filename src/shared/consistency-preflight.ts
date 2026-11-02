@@ -3,6 +3,10 @@ import { blueprintKeyEventsOversize } from './blueprint-length'
 import { foreshadowingKeywords, selectDiscriminatingKeywords, type ForeshadowingCommitment } from './foreshadowing-commitments'
 import { findAnnihilatedPropRevival, findRepeatPropTermination } from './prop-termination'
 import { findRepeatedEntranceShots } from './entrance-shot'
+// 段落起手主语（issue #94）：与 #81 同族但读的是**每一段的第一个词**。
+import { findParagraphOpenerConvergence } from './paragraph-opener'
+// 物件过手动作的固定化（issue #95）：折好→塞进某处 这一套三拍。
+import { DESTINATION_LABELS, findHandoverConvergence } from './prop-handover'
 import { findLossRestatement } from './loss-restatement'
 import { findAbilityReuseContradictions } from './ability-budget'
 import { findDeclaredDigitCountMismatches } from './numbering-consistency'
@@ -1164,6 +1168,91 @@ export function findEntranceShotFindings(input: EntranceShotInput): ConsistencyF
       enUS: `Change what the entrance tells us: whether they are tired, whether the clothes are dry, what is in their hands, who they stand beside, whether they speak or act first. A character's first appearance must not repeat the same posture-plus-clothing formula in adjacent chapters. One chapter in the sample already manages it — the freed-up words are exactly where new information could go.`,
     },
   }))
+}
+
+export interface ParagraphOpenerInput {
+  chapters: ReadonlyArray<{ chapterNumber: number; content: string }>
+  castNames: readonly string[]
+  /** findings 的 sourceChapter 用（通常是当前章）。 */
+  currentChapter: number
+}
+
+/**
+ * 段落起手固定化 → 一致性发现（issue #94）。
+ *
+ * 位置轴补位：章首（#71）、登场句（#81）、核心戏（#32/#33）、章末（#28/#65/#66）之后，
+ * **每一段的第一个词**是产品里零覆盖的第四层。
+ */
+export function findParagraphOpenerFindings(input: ParagraphOpenerInput): ConsistencyFinding[] {
+  return findParagraphOpenerConvergence(input.chapters, input.castNames).map(hit => {
+    const who = hit.opener.kind === 'cast' ? `「${hit.opener.name}」` : `「${hit.opener.word}」`
+    const share = (hit.count / hit.narrativeTotal * 100).toFixed(0)
+    const runSample = hit.longestRun.slice(0, 3)
+      .map(item => `第${item.chapterNumber}章第${item.paragraphIndex}段「${item.text.slice(0, 32)}…」`).join('；')
+    return {
+      // key 锚在「谁起手」上，不带章号（#86/#89 的教训：带章号的 key 永远关不掉）。
+      stableFactKey: `paragraph-opener:${hit.opener.kind === 'cast' ? hit.opener.name : hit.opener.word}`,
+      severity: 'warning' as const,
+      sourceChapter: input.currentChapter,
+      evidence: `叙述段以${who}起手 ${hit.count}/${hit.narrativeTotal} = ${share}%`
+        + (hit.longestRun.length >= 3 ? `；最长连续 ${hit.longestRun.length} 段：${runSample}` : ''),
+      issue: {
+        zhCN: `段落起手被写成了固定格式：${hit.narrativeTotal} 个叙述段里有 **${hit.count} 段（${share}%）以${who}开头**`
+          + (hit.longestRun.length >= 3 ? `，并出现过连续 ${hit.longestRun.length} 段同一起手（${runSample}）` : '')
+          + `。读者读到的不是「文笔差」，而是**视角一直钉在同一个人肩上**：每段先确认「谁在做」，再给「做了什么」。长篇里这种节奏比套话更磨人——套话能删，段首主语是整章的骨骼。`,
+        enUS: `Paragraph openings have become a fixed format: ${hit.count} of ${hit.narrativeTotal} narrative paragraphs (${share}%) begin with ${hit.opener.kind === 'cast' ? hit.opener.name : 'the same pronoun'}`
+          + (hit.longestRun.length >= 3 ? `, including a run of ${hit.longestRun.length} consecutive paragraphs` : '')
+          + `. Readers do not perceive bad prose; they perceive the camera pinned to one shoulder — each paragraph confirms who is acting before saying what happens. In a long serial that rhythm wears more than cliché does.`,
+      },
+      suggestion: {
+        zhCN: `换掉一部分段首主语：把**宾语提到主语位置**（「票根从内襟抽出来，压在桌面上」）、用**动作或时间起手**（「三下，停，再两下。」「开航前一刻钟，……」）、或让**环境先动**（「灯芯爆了一下。」）。规则是：同一章内连续三段以上不得以同一个人名或代词起手。`,
+        enUS: `Vary the opener: promote the object to subject position ("the stub came out of his coat and went flat on the table"), open on an action or a time ("three taps, a pause, two more"), or let the setting move first ("the wick popped"). Rule: no more than two consecutive narrative paragraphs in a chapter may open on the same name or pronoun.`,
+      },
+    }
+  })
+}
+
+export interface PropHandoverInput {
+  chapters: ReadonlyArray<{ chapterNumber: number; content: string }>
+  currentChapter: number
+}
+
+/**
+ * 物件过手动作固定化 → 一致性发现（issue #95）。
+ *
+ * 判据是**结构性的**：折叠动作 + 收纳动词 + 目的地类三要素同句，按目的地**类别**
+ * 归并（衣内／容器／场所），按**跨章覆盖率**判（同一套动作覆盖了多少章），
+ * 不枚举具体动词与具体目的地。
+ */
+export function findPropHandoverFindings(input: PropHandoverInput): ConsistencyFinding[] {
+  return findHandoverConvergence(input.chapters).map(hit => {
+    const share = (hit.chapters.length / hit.chapterTotal * 100).toFixed(0)
+    const dominant = hit.dominantDestination ? DESTINATION_LABELS[hit.dominantDestination] : null
+    const distribution = hit.byDestination
+      .map(item => `${DESTINATION_LABELS[item.destination].zhCN} ${item.chapters.length} 章`)
+      .join('、')
+    const sample = hit.samples.slice(0, 3)
+      .map(item => `第${item.chapterNumber}章「${item.excerpt.slice(0, 40)}…」`).join('；')
+    return {
+      // key 锚在「哪一种过手动作」上，不带章号（#86/#89 的教训：带章号的 key 关不掉）。
+      stableFactKey: `prop-handover:fold-stow${hit.dominantDestination ? `:${hit.dominantDestination}` : ''}`,
+      severity: 'warning' as const,
+      sourceChapter: input.currentChapter,
+      evidence: `「折好→收进某处」这一套动作覆盖 ${hit.chapters.length}/${hit.chapterTotal} 章（${share}%），共 ${hit.sentenceCount} 句；目的地分布：${distribution}`,
+      issue: {
+        zhCN: `物件的过手动作被写成了同一套：${hit.chapterTotal} 章里有 **${hit.chapters.length} 章（${share}%）**都是「折好→塞进某处」，共 ${hit.sentenceCount} 句`
+          + (dominant ? `，其中以${dominant.zhCN}最多` : '')
+          + `。三步骨架（出示→核验→折好收起）一次没变：${sample}。读者读到中段之后，纸件再重要也不再有重量——因为「重要」的表达方式已经被用完了；更要紧的是它**掩盖了人物的区别**：立场完全不同的几个人，收纸的动作都是同一个。`,
+        enUS: `Handling of a document has collapsed into one formula: ${hit.chapters.length} of ${hit.chapterTotal} chapters (${share}%) all run "fold → stow", ${hit.sentenceCount} sentences in total`
+          + (dominant ? `, most often ${dominant.enUS}` : '')
+          + `. The three-beat skeleton (produce → inspect → fold away) never changes: ${sample}. By mid-book the paper stops carrying weight, because the way "important" is expressed has been used up — and worse, it flattens the characters: people on opposite sides all put the paper away the same way.`,
+      },
+      suggestion: {
+        zhCN: `换掉其中两环：**换搬运方式**（压、锁、钉、烧、撕、交给第三方、当场揉掉）、**换目的地**（不放进身上也不放进包，而是压在某件东西底下、塞进别人的手里、留在原处）、或让**物件在过手时被改变**（撕掉一角、被水洇、被换掉）。连续两章的过手动作不得同形。`,
+        enUS: `Change two of the three beats: change the handling (press, lock, nail, burn, tear, hand to a third party, crumple on the spot), change the destination (not on the body and not in the bag — under something, into someone else's hand, left where it is), or let the object be altered in transit (a corner torn, ink bled, swapped). Consecutive chapters must not repeat the same handover shape.`,
+      },
+    }
+  })
 }
 
 export function mergeConsistencyFindingsIntoReview(
