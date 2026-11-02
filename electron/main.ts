@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { registerIPCHandlers } from './ipc-handlers'
 import { registerMCPHandlers } from './mcp/mcp-ipc-bridge'
 import { mainT } from './i18n'
@@ -32,6 +32,7 @@ import {
   preventRendererNavigation,
 } from './services/official-homepage-navigation'
 import { configureSingleInstanceRuntime } from './services/single-instance-runtime'
+import { forceNewInstanceRequested } from './services/single-instance-recovery'
 import { installWindowCloseGuard } from './controllers/window-controller'
 import { registerStartupController } from './controllers/startup-controller'
 import { resolveGlobalDataRoots } from './services/app-data-locator'
@@ -94,6 +95,21 @@ const applicationInstanceAccepted = configureSingleInstanceRuntime({
   quit: () => app.quit(),
   onSecondInstance: listener => { app.on('second-instance', () => listener()) },
   getWindow: () => win,
+  // issue #90：本实例窗口黑屏/不可见时，用户再双击会被静默拒绝（exitCode=0、无提示）。
+  // 这里给一个原生对话框，一次点击就能「关掉它并重开」——把死局变成一次点击。
+  recovery: {
+    recoverByRestart: () => {
+      // 先 restart 再 exit：relaunch 会排在本次退出之后，锁与 userData 随之释放。
+      app.relaunch()
+      app.exit(0)
+    },
+    // 0 是「重新打开」。同步弹框：这是启动早期，异步等待会让进程静默退出的窗口期变长。
+    askToRestart: options => dialog.showMessageBoxSync(options) === 0,
+    log: line => { try { console.log(line) } catch { /* 日志失败不能影响启动 */ } },
+    locale: 'zh-CN',
+  },
+  // CLI 逃生开关：对话框都渲染不出来时，支持/高级用户可以跳过单实例检查直接启动。
+  forceNewInstance: forceNewInstanceRequested(process.argv),
 })
 let releaseSmokeStage = 'not-requested'
 let releaseSmokeTimeout: NodeJS.Timeout | undefined
