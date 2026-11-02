@@ -55,10 +55,13 @@ describe('findNearCastNames (issue #58)', () => {
     })
     expect(finding!.severity).toBe('warning')
     expect(finding!.sourceChapter).toBe(21)
-    expect(finding!.stableFactKey).toBe('blueprint-cast:near-name:21:柯阅')
+    // key 不带章号（issue #69）：同一个署名在后续章节重复出现时不再重报，
+    // 确认过一次就能全书静音。
+    expect(finding!.stableFactKey).toBe('blueprint-cast:near-name:柯明远:柯阅')
     expect(finding!.evidence).toContain('柯明远')
-    // 两条出路：补别名 / 建卡
-    expect(finding!.suggestion.zhCN).toContain('角色别名')
+    // 两条出路都必须是产品里真的做得到的动作（issue #69）：
+    // 「保存安排」是预检弹层里现成的按钮，「建卡」在角色名单里做得到。
+    expect(finding!.suggestion.zhCN).toContain('保存安排')
     expect(finding!.suggestion.zhCN).toContain('建卡')
   })
 

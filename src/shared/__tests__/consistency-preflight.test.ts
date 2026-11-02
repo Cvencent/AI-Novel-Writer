@@ -5,6 +5,7 @@ import {
   findBlueprintContinuityRisks,
   findCrossChapterAssertionReversals,
   findExpandedContinuityRisks,
+  findNearCastNameFindings,
   findSynopsisCastMismatches,
   findUnregisteredBlueprintCast,
   mergeConsistencyFindingsIntoReview,
@@ -377,5 +378,35 @@ describe('findCrossChapterAssertionReversals (issue #52)', () => {
     })
     expect(findings).toHaveLength(2)   // 两章各一条（同一断言在两章都说过）
     expect(new Set(findings.map(finding => finding.stableFactKey)).size).toBe(2)
+  })
+})
+
+describe('near-cast name findings are actionable and stay muted once confirmed (issue #69)', () => {
+  const input = (chapterNumber: number) => ({
+    chapterNumber,
+    // 判据只认**引号里**的名字（「柯阅」）：正文里直接写名字不算，因为那可能是任意词。
+    descriptionText: '周叙掀盖，抽出航次账。“你写的。「柯阅」。”',
+    castNames: ['柯明远', '周叙'],
+  })
+
+  it('reports the near name once per pair, not once per chapter', () => {
+    // 原来 stableFactKey 带章号：同一个署名（实测第 21/22/26 章）每章都重报一次。
+    const first = findNearCastNameFindings(input(22))
+    const later = findNearCastNameFindings(input(26))
+    expect(first.map(finding => finding.stableFactKey)).toEqual(later.map(finding => finding.stableFactKey))
+    expect(first[0]!.stableFactKey).toBe('blueprint-cast:near-name:柯明远:柯阅')
+  })
+
+  it('points at actions that exist in the product', () => {
+    const [finding] = findNearCastNameFindings(input(22))
+    // 出路一必须是「保存安排」（预检弹层里真有这个按钮），不能再写「角色别名」——
+    // 全仓没有加别名的入口。
+    expect(finding!.suggestion.zhCN).toContain('保存安排')
+    expect(finding!.suggestion.zhCN).toContain('说明为何属于刻意安排')
+    expect(finding!.suggestion.zhCN).not.toContain('角色别名里')
+    // 出路二（建卡）在角色名单里确实做得到，保留。
+    expect(finding!.suggestion.zhCN).toContain('建卡')
+    expect(finding!.suggestion.enUS).toContain('Save arrangement')
+    expect(finding!.suggestion.enUS).not.toContain('as an alias')
   })
 })

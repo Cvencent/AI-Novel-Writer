@@ -514,9 +514,17 @@ export interface NearCastInput {
   castNames: readonly string[]
 }
 
+/**
+ * 描述文字里「与在册角色仅一字之差」的名字（issue #58）。
+ *
+ * `stableFactKey` **不带章号**（issue #69）：原来带章号，于是同一个署名第二次出现时
+ * 又报一次，作者又没有「已确认是同一人」的状态可以标记——一本书里只要出现一次
+ * 花押/署名，后续每一章都会重复弹同一条，且无法消音。改成按「名字 + 疑似角色」
+ * 记账：确认过一次之后全书静音。
+ */
 export function findNearCastNameFindings(input: NearCastInput): ConsistencyFinding[] {
   return findNearCastNames(input.descriptionText, input.castNames).map(({ name, near }) => ({
-    stableFactKey: `blueprint-cast:near-name:${input.chapterNumber}:${name}`,
+    stableFactKey: `blueprint-cast:near-name:${near}:${name}`,
     severity: 'warning' as const,
     sourceChapter: input.chapterNumber,
     evidence: `第${input.chapterNumber}章蓝图的事件描述里出现「${name}」，与在册角色「${near}」仅一字之差`,
@@ -524,9 +532,12 @@ export function findNearCastNameFindings(input: NearCastInput): ConsistencyFindi
       zhCN: `蓝图里出现了与在册角色「${near}」只差一个字的名字「${name}」，但角色名单里没有这个人、也没有声明这是「${near}」的另一种写法。读者无法判断这是同一人的花押/署名，还是另一个人；若之后把它当独立角色用，就会凭空长出一个从未建立的人物。`,
       enUS: `The blueprint names “${name}”, one character away from the cast member “${near}”, yet no one by that name is on the roster and nothing declares it a variant spelling of “${near}”. Readers cannot tell whether it is the same person, and using it later would create a character that was never established.`,
     },
+    // 出路必须是产品里**真的存在**的动作（issue #69）：原来第一条写「在角色别名里加上」，
+    // 而全仓没有任何加别名的入口（character_aliases 只在自己内部被写：建卡写自身 name、
+    // 改名把旧名置为历史别名）。作者照着提示找不到按钮，只剩「带提醒继续写」，提示就等于噪音。
     suggestion: {
-      zhCN: `二选一：确认是同一人，就在角色别名里给「${near}」加上「${name}」（并说明依据，例如署名/花押）；确实是新角色，就在角色名单里为「${name}」建卡，并把本章标为他的首次出场。`,
-      enUS: `Either confirm it is the same person — add “${name}” as an alias of “${near}” with the reason (a signature, a seal) — or treat it as a new character: add “${name}” to the roster and mark this chapter as their first appearance.`,
+      zhCN: `二选一：确认是同一人，就在下方「说明为何属于刻意安排」里写下依据（例如「「${name}」是「${near}」在两章里的署名」）并点「保存安排」——这条提醒之后全书不再重复弹；确实是新角色，就在角色名单里为「${name}」建卡，并把本章标为他的首次出场。`,
+      enUS: `Either confirm it is the same person by writing the reason below (for example, ““${name}” is ${near}’s signature in these chapters”) and choosing Save arrangement — that stops this reminder for the rest of the book — or treat it as a new character: add “${name}” to the roster and mark this chapter as their first appearance.`,
     },
   }))
 }
