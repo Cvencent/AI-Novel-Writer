@@ -363,6 +363,21 @@ describe('character entrance rotation (issue #81)', () => {
     expect(en).toContain('posture + place + clothing')
     expect(en).toContain('whether they are tired')
   })
+
+  // issue #82：低身起手动作（蹲/俯身/弯腰）的轮换——与 #81 的登场「穿戴」同构问题
+  // 相邻但不同轴：#81 管的是「同一套姿态＋地点＋穿戴反复」，本条管的是**动作本身**
+  // 被当成每场戏的固定起手（26 章里 19 章都从「某人蹲下」开始）。
+  it('requires entrance *actions* to rotate, not just the clothing formula (issue #82)', () => {
+    const zh = blueprintSemanticGenerationContract('zh-CN')
+    expect(zh).toContain('人物进场动作必须轮换')
+    expect(zh).toContain('低身姿态')
+    // 给出可执行的替代动作，而不是只说「别重复」。
+    expect(zh).toContain('让他站着')
+    const en = blueprintSemanticGenerationContract('en-US')
+    expect(en).toContain('Entrance actions must rotate')
+    expect(en).toContain('crouch')
+    expect(en).toContain('let them stand')
+  })
 })
 
 describe('machine-read labels are separable from editable prose (issue #65)', () => {

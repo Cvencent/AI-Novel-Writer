@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { findCharacterProseRepetition, findProseRepetition, proseRepetitionEvidence, STAGING_PHRASES, STILLNESS_PHRASES } from '../prose-repetition'
+import { findCharacterProseRepetition, findProseRepetition, proseRepetitionEvidence, proseRepetitionFindings, POSTURE_PHRASES, STAGING_PHRASES, STILLNESS_PHRASES } from '../prose-repetition'
 
 // issue #32（场景装置固定复用）/ #33（人物反应固定短句）：同一套写法在相邻章反复。
 // 判据用**跨章分布**而不是出现次数——本样本「没动」14 章里 9 次、每章恰好一次。
@@ -92,11 +92,137 @@ describe('findProseRepetition: 反面样本（不得误报）', () => {
 })
 
 describe('词表来源可核对', () => {
-  it('两族短语都取自 issue 的逐章证据，且非空', () => {
+  it('三族短语都取自 issue 的逐章证据，且非空', () => {
     expect(STILLNESS_PHRASES).toContain('没动')
     expect(STILLNESS_PHRASES).toContain('没答')
     expect(STAGING_PHRASES).toContain('拧开水隔')
     expect(STAGING_PHRASES).toContain('蘸了舷壁')
+    expect(POSTURE_PHRASES).toContain('蹲')
+  })
+})
+
+// issue #82：「蹲」这类**肯定式低身起手**是进入每一场戏的标准动作，而旧的两族
+// （否定式反应 / 溯读装置）对它 0 命中。实测样本 26 章里含「蹲」19 章 = 73%，
+// 配角全叔出场 11 章有 10 章同段含「蹲」。
+describe('POSTURE_PHRASES: 低身起手动作（issue #82）', () => {
+  const book = [
+    ch(1, '温珩正蹲在船舷边系缆绳，赤脚踩着湿木板。'),
+    ch(2, '“全叔。”周叙蹲到他旁边，“你昨天第三句话。”'),
+    ch(3, '三年前那本在中间。他蹲下来，把风灯搁在膝盖旁边。'),
+    ch(4, '全叔蹲在舱里补缆，背对梯口。'),
+    ch(5, '周叙蹲在铺位前核舱，风灯挂上钉。'),
+    ch(6, '全叔蹲在绞盘边，膝头搭着一圈新搓的绳。'),
+    ch(7, '他蹲到铺位前，把存根和那张货单并排摆开。'),
+    ch(8, '全叔蹲在桩边，绳圈上三个结塞在底下。'),
+    ch(9, '周叙蹲回舵板前，把航次账翻到那一页。'),
+    ch(10, '船尾横着缆绳，全叔蹲在桩边绕绳圈。'),
+    ch(11, '周叙走进售票口，把名册摊在柜台上。'),
+    ch(12, '他在舱门口站住，听岸上的人声隔着船壳传过来。'),
+  ]
+
+  it('「蹲」覆盖六成以上章 → 报出 posture（旧词表对它 0 命中）', () => {
+    const hits = findProseRepetition(book)
+    const posture = hits.find(hit => hit.kind === 'posture')
+    expect(posture).toBeTruthy()
+    expect(posture!.chapters.length).toBeGreaterThanOrEqual(8)
+    expect(posture!.phrases.some(item => item.phrase === '蹲')).toBe(true)
+    expect(proseRepetitionEvidence(posture!)).toContain('蹲')
+    expect(proseRepetitionEvidence(posture!)).toMatch(/\d+ 章/)
+  })
+
+  it('旧两族在同一份样本上不误报（新增一族，未改动旧判据）', () => {
+    const hits = findProseRepetition(book)
+    expect(hits.some(hit => hit.kind === 'stillness')).toBe(false)
+    expect(hits.some(hit => hit.kind === 'staging')).toBe(false)
+  })
+
+  it('单字条目自动覆盖 蹲在/蹲到/蹲下/蹲回/蹲着/半蹲 各种字形', () => {
+    for (const form of ['蹲在', '蹲到', '蹲下', '蹲回', '蹲着', '半蹲']) {
+      const forms = ['船舷边', '舱角', '桩边', '铺位前', '舵板前', '绞盘边', '水隔旁', '船尾']
+        .map((place, index) => ch(index + 1, `第${index + 1}章：全叔${form}${place}。`))
+      expect(findProseRepetition(forms).some(hit => hit.kind === 'posture')).toBe(true)
+    }
+  })
+
+  it('只写「站着/坐着/走着」不报（通用姿态，收了会让这一族永远触发）', () => {
+    // 刻意的边界：实测「站」在同一本书覆盖 23/26 = 88%——收进来等于零信息。
+    const acts = ['站着等', '坐着看', '走着过去', '站着听', '坐着算', '走着回来',
+      '站着盯', '坐着写', '走着过去', '站着问', '坐着想', '走着搬']
+    const generic = acts.map((act, index) => ch(index + 1, `第${index + 1}章：他${act}。`))
+    expect(findProseRepetition(generic).some(hit => hit.kind === 'posture')).toBe(false)
+  })
+
+  it('按角色归一时同样检出（配角分母口径，issue #49）', () => {
+    const withSupport = Array.from({ length: 16 }, (_, index) => {
+      const n = index + 1
+      const support = [3, 6, 9, 12, 15].includes(n)
+        ? '全叔蹲在桩边绕绳圈，周叙站着没说话。'
+        : n === 7 ? '全叔在码头点数，抬头答了一句。' : ''
+      return ch(n, `第${n}章：周叙在验票舱核对名册，写了${n}个不同的字。${support}`)
+    })
+    const hits = findCharacterProseRepetition(withSupport, ['全叔', '周叙'])
+    const posture = hits.find(hit => hit.kind === 'posture'
+      && hit.scope?.kind === 'character' && hit.scope.character === '全叔')
+    expect(posture).toBeTruthy()
+    expect(posture!.scope).toMatchObject({ kind: 'character', character: '全叔', appearances: 6 })
+    expect(posture!.chapters).toEqual([3, 6, 9, 12, 15])
+  })
+})
+
+// issue #82 的连带问题：新增一族后，同一种写法的「全书口径 + 每个角色口径」会各报一条。
+// 实测那本书「蹲」覆盖 19/26 章、7 个角色的命中章集都是它的子集 —— 不去重就是 8 条
+// 几乎一样的提示（book + 每个角色一条），而重复项正是作者学会无视整个预检的起点（#30）。
+// 判据用**章号集合的包含关系**（同 #75），不是子串。
+describe('同族命中按章号集合包含关系归并（issue #82）', () => {
+  it('角色命中章集与全书完全相同 → 只报全书那一条（不带角色名）', () => {
+    const book = Array.from({ length: 12 }, (_, index) => ch(index + 1,
+      `第${index + 1}章：周叙蹲在铺位前核舱，写了${index + 1}个字。`))
+    const posture = proseRepetitionFindings(book, 13, ['周叙'])
+      .filter(finding => finding.stableFactKey.startsWith('prose:posture'))
+    expect(posture.map(finding => finding.stableFactKey)).toEqual(['prose:posture:13'])
+  })
+
+  it('角色命中章集是全书命中的真子集 → 也只报全书那一条', () => {
+    // 全书 12 章里有 10 章含「蹲」（够 60%）；周叙只在其中 5 章出场、5 章都含蹲。
+    const book = Array.from({ length: 12 }, (_, index) => {
+      const n = index + 1
+      const squat = n <= 10
+      const hasZhou = [1, 3, 5, 7, 9].includes(n)
+      return ch(n, `${hasZhou ? '周叙' : '旁白'}${squat ? '蹲在铺位前核舱。' : '翻着名册。'}`)
+    })
+    const keys = proseRepetitionFindings(book, 13, ['周叙']).map(finding => finding.stableFactKey)
+    expect(keys).toContain('prose:posture:13')
+    expect(keys).not.toContain('prose:posture:周叙:13')
+  })
+
+  it('配角命中章集不被全书包含（全书口径根本没产出）→ 角色那条必须保留（守 #49）', () => {
+    const book = Array.from({ length: 16 }, (_, index) => {
+      const n = index + 1
+      const support = [3, 6, 9, 12, 15].includes(n) ? '全叔蹲在桩边绕绳圈。' : ''
+      return ch(n, `第${n}章：周叙在验票舱核对名册。${support}`)
+    })
+    const keys = proseRepetitionFindings(book, 17, ['全叔', '周叙']).map(finding => finding.stableFactKey)
+    expect(keys).toContain('prose:posture:全叔:17')
+    expect(keys).not.toContain('prose:posture:17')
+  })
+
+  it('三族各自独立归并，互不影响', () => {
+    const book = Array.from({ length: 12 }, (_, index) => ch(index + 1,
+      `第${index + 1}章：周叙蹲在铺位前核舱，问他一句，他${index === 11 ? '抬头答了' : '没动'}。`))
+    const keys = proseRepetitionFindings(book, 13, ['周叙']).map(finding => finding.stableFactKey)
+    expect(keys).toContain('prose:posture:13')
+    expect(keys.some(key => key.startsWith('prose:stillness'))).toBe(true)
+  })
+
+  it('posture 的结论文案要和 stillness/staging 不同（作者读得懂是哪一类）', () => {
+    const book = Array.from({ length: 12 }, (_, index) => ch(index + 1,
+      `第${index + 1}章：周叙蹲在铺位前核舱，写了${index + 1}个字。`))
+    const finding = proseRepetitionFindings(book, 13, [])
+      .find(item => item.stableFactKey.startsWith('prose:posture'))
+    expect(finding).toBeTruthy()
+    expect(finding!.issue.zhCN).toContain('姿态')
+    expect(finding!.issue.enUS).toContain('posture')
+    expect(finding!.suggestion.zhCN.length).toBeGreaterThan(10)
   })
 })
 // issue #49：配角出场章少，按全书章数归一永远达不到六成——「全叔 5/6 章都蹲着收绳」
