@@ -23,6 +23,12 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  assertInstallSucceeded,
+  countInstallDirInstancesScript,
+  robocopyArgs,
+  stopInstallDirInstancesScript,
+} from './release-local-install.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repositoryRoot = path.resolve(path.dirname(scriptPath), '..')
@@ -69,6 +75,29 @@ function timed(label, fn) {
 const version = JSON.parse(readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8')).version
 const unpackedDir = path.join(repositoryRoot, 'release', version, 'win-unpacked')
 
+/**
+ * 关掉**安装目录**里正在运行的实例（覆盖安装前必须做）。
+ *
+ * 只按可执行文件路径精确匹配，`F:\aiNovelWriter\qa-run\*` 下的隔离副本不受影响
+ * ——那些是 QA harness 自己的实例，不属于本次覆盖安装的范围。
+ * 没有实例时静默返回（首次安装）。
+ */
+function stopInstallDirInstances() {
+  const target = path.join(INSTALL_DIR, 'AI小说作家.exe')
+  const result = spawnSync('powershell', ['-NoProfile', '-Command', stopInstallDirInstancesScript(target)], {
+    cwd: repositoryRoot, encoding: 'utf8', windowsHide: true,
+  })
+  if (result.error) throw result.error
+  // 关完之后给文件系统一点时间释放句柄，否则 robocopy 仍会撞上「正在使用」。
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const still = spawnSync('powershell', ['-NoProfile', '-Command', countInstallDirInstancesScript(target)], {
+      cwd: repositoryRoot, encoding: 'utf8', windowsHide: true,
+    })
+    if (String(still.stdout ?? '').trim() === '0') break
+    spawnSync('powershell', ['-NoProfile', '-Command', 'Start-Sleep -Milliseconds 500'], { windowsHide: true })
+  }
+}
+
 if (!skipChecks) {
   timings.push(['clean:build', run('pnpm', ['run', 'clean:build'])])
   timings.push(['typecheck', run('pnpm', ['run', 'typecheck'])])
@@ -95,12 +124,24 @@ timings.push(['verify:win-package', run('pnpm', ['run', 'verify:win-package'])])
 
 if (doInstall) {
   timed('robocopy → install dir', () => {
-    // robocopy 的退出码 0–7 都是成功（1=有复制，2=有额外文件…），8+ 才是错误。
-    const result = spawnSync('robocopy', [unpackedDir, INSTALL_DIR, '/MIR', '/NFL', '/NDL', '/NJH', '/NP'], {
+    // 先关掉**安装目录**里正在运行的实例：robocopy /MIR 要覆盖 `better_sqlite3.node`
+    // 等原生文件，被运行中的进程锁住时会「错误 32 · 另一个程序正在使用此文件」，
+    // 然后按 /R 重试到天荒地老（实测卡了 19 分钟、0 个文件）。只关安装目录的实例，
+    // QA 隔离副本（F:\aiNovelWriter\qa-run\*）不动。
+    stopInstallDirInstances()
+    const result = spawnSync('robocopy', robocopyArgs(unpackedDir, INSTALL_DIR), {
       cwd: repositoryRoot, encoding: 'utf8', windowsHide: true,
     })
     if (result.error) throw result.error
-    if ((result.status ?? 0) >= 8) throw new Error(`robocopy failed (${result.status})`)
+    // 退出码 <8 也只表示「没有致命错误」，仍可能有文件没复制成功（这次就是），
+    // 所以再核对装出来的 asar 与打包产物逐字节一致。
+    const copiedAsar = path.join(INSTALL_DIR, 'resources', 'app.asar')
+    assertInstallSucceeded({
+      status: result.status,
+      actualAsarBytes: existsSync(copiedAsar) ? statSync(copiedAsar).size : null,
+      expectedAsarBytes: statSync(path.join(unpackedDir, 'resources', 'app.asar')).size,
+      installDir: INSTALL_DIR,
+    })
   })
 }
 
