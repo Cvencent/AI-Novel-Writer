@@ -67,38 +67,102 @@ function textBigrams(value: string): Set<string> {
   }))
 }
 
-function evidenceExcerpt(content: string, statement: string, entities: readonly string[]): string {
-  const sentences = content
-    .split(/(?<=[。！？.!?])|\n+/u)
-    .map(sentence => sentence.trim())
-    .filter(Boolean)
+/**
+ * 正文切句（issue #63）：与 `segmentChapterNotes` 同一套**引号感知**切分，只是用在正文上。
+ *
+ * 旧实现直接按 `(?<=[。！？.!?])|
++` 切，于是「”末页我名字旁边那格多着一个人。」这种
+ * **以收引号开头的残片**也会成为候选，被选出来当作「出处」——出处在引号内部被截断了。
+ * 这里逐字符扫描：进出 “…”「…」『…』"…" 时关闭切分；仍以收引号/标点开头的残片并回上一条。
+ */
+export function splitProseSentences(content: string): string[] {
+  const parts: string[] = []
+  let current = ''
+  let quoteDepth = 0
+  for (const character of String(content ?? '')) {
+    if ('“「『"'.includes(character)) quoteDepth += 1
+    else if ('”」』"'.includes(character)) quoteDepth = Math.max(0, quoteDepth - 1)
+    if (character === '\n') {
+      if (current.trim()) parts.push(current.trim())
+      current = ''
+      continue
+    }
+    current += character
+    if (quoteDepth === 0 && /[。！？.!?]/u.test(character)) {
+      if (current.trim()) parts.push(current.trim())
+      current = ''
+    }
+  }
+  if (current.trim()) parts.push(current.trim())
+  const merged: string[] = []
+  for (const part of parts) {
+    const isFragment = /^[”』」"’|，、；：!?]/u.test(part)
+    if (isFragment && merged.length > 0) merged[merged.length - 1] += part
+    else merged.push(part)
+  }
+  return merged
+}
+
+/**
+ * 出处必须真的支撑陈述（issue #63）。
+ *
+ * 旧实现只要候选句里出现「角色名」就算合格（`minimumScore = 1`），于是
+ * 「货舱伙计说短褂先生这两天夜夜在船尾写什么」被当成「夹缝里那截纸边」的出处——
+ * 实测 26% 的条目指向了不相干的原文。
+ *
+ * 现在要求候选句与陈述（去掉角色名后的部分）共享足够多的二元组：
+ * 至少 `max(2, 陈述信号数的四分之一)`，且必须是**独立支撑**（命中的信号在陈述里不连续成一段，
+ * 否则只是碰巧共享一个短语）。
+ */
+const EVIDENCE_OVERLAP_FLOOR = 0.25
+const EVIDENCE_MIN_MATCHED = 2
+/** 覆盖率高于这个比例时不再要求「信号有间隔」：等长引文只差句首语气字也是同一句。 */
+const EVIDENCE_COVERAGE_HIGH = 0.75
+
+/**
+ * 挑一句正文原句作为出处。
+ *
+ * `used` 用于**同章内不得复用同一句**（issue #63：旧实现 36% 的 evidence 在同章内重复，
+ * 一句话被当成三条不同事实的出处）。优先选未被用过的句子；确实找不到就留空——
+ * 出处不可定位的条目不该假装有出处（留空后该条不会成为事实，见 buildFinalizedContinuityFacts）。
+ */
+function evidenceExcerpt(content: string, statement: string, entities: readonly string[], used?: ReadonlySet<string>): string {
+  const sentences = splitProseSentences(content)
   const factEntities = entities.filter(entity => statement.includes(entity))
   const statementWithoutEntities = [...factEntities]
     .sort((left, right) => right.length - left.length)
     .reduce((text, entity) => text.split(entity).join(' '), statement)
   const signals = textBigrams(statementWithoutEntities)
   const signalList = [...signals]
+  const overlapFloor = Math.max(EVIDENCE_MIN_MATCHED, Math.ceil(signals.size * EVIDENCE_OVERLAP_FLOOR))
+  // 同章内已经被别的陈述用掉的句子直接排除（issue #63）：出处一栏必须能反查，
+  // 同一句话当多条事实的出处等于没有出处。找不到未用过的句子时宁可留空（该条不进事实）。
+  const available = used ? sentences.filter(sentence => !used.has(sentence)) : sentences
   const candidates = factEntities.length > 0
-    ? sentences.filter(sentence => factEntities.some(entity => sentence.includes(entity)))
-    : sentences
+    ? available.filter(sentence => factEntities.some(entity => sentence.includes(entity)))
+    : available
   const ranked = candidates
     .map((sentence) => {
       const sentenceSignals = textBigrams(sentence)
       const matchedIndexes = signalList
         .map((signal, index) => sentenceSignals.has(signal) ? index : -1)
         .filter(index => index >= 0)
+      // 「独立支撑」= 命中的信号在陈述里不是连续挤在一处（否则只是碰巧共享一个短语）。
       const independentlySupported = matchedIndexes.some((index, matchIndex) => (
         matchIndex > 0 && index - matchedIndexes[matchIndex - 1] > 1
       ))
+      // 覆盖面够高（≥ 3/4）同样算支撑：等长引文的唯一差别常常是句首一个语气字
+      // （「周叙问“…”」里角色名被剥掉后只剩一个「问」），旧判据会因此整条丢弃。
+      const coverage = signalList.length === 0 ? 0 : matchedIndexes.length / signalList.length
       return {
         sentence,
         score: matchedIndexes.length,
-        supported: matchedIndexes.length === signalList.length || independentlySupported,
+        supported: matchedIndexes.length === signalList.length || coverage >= EVIDENCE_COVERAGE_HIGH || independentlySupported,
       }
     })
     .sort((left, right) => right.score - left.score)
-  const minimumScore = factEntities.length > 0 ? 1 : 2
-  const matched = ranked.find(candidate => candidate.score >= minimumScore && candidate.supported)?.sentence
+  const matched = ranked.find(candidate => candidate.score >= overlapFloor && candidate.supported
+    && candidate.score >= EVIDENCE_MIN_MATCHED)?.sentence
   return matched ?? ''
 }
 
@@ -188,9 +252,12 @@ export function buildFinalizedContinuityFacts(
 ): FinalizedContinuityFact[] {
   const entities = [...new Set([...chapterEntities, ...(identityContext?.characters.map(item => item.displayNameSnapshot) ?? [])].map(entity => entity.trim()).filter(Boolean))]
   const statements = segmentChapterNotes(chapterNotes)
+  // 同一章内一句正文不得被复用为多条事实的出处（issue #63）：36% 的 evidence 曾重复。
+  const usedEvidence = new Set<string>()
   const facts = statements.flatMap(statement => {
     const factEntities = entities.filter(entity => statement.includes(entity)).slice(0, 8)
-    const evidence = evidenceExcerpt(finalizedContent, statement, factEntities)
+    const evidence = evidenceExcerpt(finalizedContent, statement, factEntities, usedEvidence)
+    if (evidence) usedEvidence.add(evidence)
     const characterRefs = identityContext ? factEntities.flatMap(entity => {
       const candidates = identityContext.characters.filter(item => item.displayNameSnapshot === entity)
       return candidates.length === 1 ? [{ characterId: candidates[0].characterId, displayNameSnapshot: candidates[0].displayNameSnapshot }] : []

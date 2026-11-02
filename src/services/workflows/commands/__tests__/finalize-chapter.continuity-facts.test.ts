@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { EN_US_BUILTIN_PROMPTS } from '../../../prompt-language'
 import { BUILTIN_PROMPTS } from '../../../prompt-templates'
-import { segmentChapterNotes } from '../../../../shared/finalized-continuity-facts'
+import { segmentChapterNotes, splitProseSentences } from '../../../../shared/finalized-continuity-facts'
 import { buildFinalizedContinuityFacts } from '../finalize-chapter.command'
 
 describe('buildFinalizedContinuityFacts', () => {
@@ -210,5 +210,60 @@ describe('事实账本去重 (issue #41)', () => {
     expect(facts).toHaveLength(12)
     expect(facts.filter(fact => fact.statement.includes('夹缝'))).toHaveLength(1)
     expect(facts.some(fact => fact.statement === unique.at(-1))).toBe(true)
+  })
+})
+
+// issue #63：出处（evidence）必须真的支撑陈述、必须能在本章正文里原样定位、
+// 同章内不得把同一句当成多条事实的出处。旧实现 26% 与陈述无关、36% 同章重复、
+// 还会截断在引号内部（候选来自「按句号切、引号内也切」的残片）。
+describe('事实出处可信度 (issue #63)', () => {
+  const content = [
+    '周叙把票根按上舱板，指尖在潮气里重描“待核”那一栏。',
+    '第一层墨浮起来——叶九的，横折收得急。',
+    '他往下压，票根磕在铁页楔口，一行字浮出来：笔画生，横折收得急，跟刚才读出的一模一样。',
+    '他把票根收回怀里，数字还剩在脑子里，写不进账，也念不给人听。',
+  ].join('')
+
+  it('出处必须是正文里原样可定位的句子（含引号整句，不切在引号内部）', () => {
+    const notes = [
+      '周叙在潮气里重描“待核”那一栏，第一层墨浮起来是叶九的。',
+      '他往下压时读到笔画生、横折收得急的一行字。',
+    ].join('\n')
+    const facts = buildFinalizedContinuityFacts(1, notes, content, ['周叙', '叶九'])
+    expect(facts.length).toBeGreaterThan(0)
+    for (const fact of facts) {
+      const inner = fact.evidence.replace(/^[“”「」『』"']+|[“”」『』"']+$/gu, '').trim()
+      expect(inner.length).toBeGreaterThan(0)
+      // 原样可定位：去掉首尾引号后仍是正文子串
+      expect(content.includes(inner)).toBe(true)
+      // 不切在引号内部：出处不以收引号开头
+      expect(fact.evidence.startsWith('”')).toBe(false)
+    }
+  })
+
+  it('同章内一句正文只能作为一条事实的出处（不得复用）', () => {
+    // 三条要点都能匹配到「票根磕在铁页楔口」那一句；只能有一条用它。
+    const notes = [
+      '他往下压票根，读到写着笔画生的那行字。',
+      '票根磕在铁页楔口，一行字浮出来。',
+      '那行字的笔画生、横折收得急。',
+    ].join('\n')
+    const facts = buildFinalizedContinuityFacts(2, notes, content, ['周叙'])
+    const evidences = facts.map(fact => fact.evidence)
+    expect(new Set(evidences).size).toBe(evidences.length)
+  })
+
+  it('出处与陈述毫无共同内容时不产出该条（宁缺毋滥，不再拿不相干的句子充数）', () => {
+    const notes = '货舱伙计较过三遍船票，确认少了两个人。'
+    const facts = buildFinalizedContinuityFacts(3, notes, content, ['周叙'])
+    // 正文里没有「伙计核对船票」这件事：不得拿「票根按上舱板」之类不相干的句子当出处
+    expect(facts).toEqual([])
+  })
+
+  it('引号内的候选不再被当成独立句子（正文切句引号感知）', () => {
+    const dialogue = '周叙问“三天前谁动过账？”，温珩合上记录本，说“再核下去，今晚船就别想开。”'
+    const sentences = splitProseSentences(dialogue)
+    expect(sentences).toHaveLength(1)
+    expect(sentences[0]).toBe(dialogue)
   })
 })
