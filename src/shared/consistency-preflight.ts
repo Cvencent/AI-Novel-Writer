@@ -2,6 +2,7 @@ import type { FinalizedContinuityProjection } from './finalized-continuity'
 import { blueprintKeyEventsOversize } from './blueprint-length'
 import { foreshadowingKeywords, type ForeshadowingCommitment } from './foreshadowing-commitments'
 import { findRepeatPropTermination } from './prop-termination'
+import { findLossRestatement } from './loss-restatement'
 import {
   designSections,
   findTimelineAnchorConflicts,
@@ -1021,6 +1022,39 @@ export function findRepeatPropTerminationFindings(input: RepeatPropTerminationIn
     suggestion: {
       zhCN: `二选一：把后一次改成**仍旧不存在**的写法（它已经不在了，这一章该处理的是「找不到」或「缺少它」的后果），或者说明它中间是怎么回来的（谁还回来、付出什么代价）。别让同一件东西被处理两遍。`,
       enUS: `Either make the later chapter reflect that it is gone (its absence is the thing to dramatize), or show explicitly how it came back — who returned it, at what price. Do not let one object be disposed of twice.`,
+    },
+  }))
+}
+
+/**
+ * 同一笔遗忘被跨章重新宣告（issue #75）。
+ *
+ * 金手指代价是「每溯读一次，墨吞掉一段记忆」，而同一笔缺失被跨章宣告三遍，
+ * 每次都当新损失写——代价因此变成可重复计价。蓝图合同的「代价必须留账」（#36）
+ * 只管章内，`prose-repetition` 的词表是动作词，都对遗忘句 0 命中。
+ *
+ * 判据结构性：找「记得 + 缺失」同处出现的句子，再取不同章缺失句里的**公共子串**
+ * 作为「同一件东西」。#75 的关键是**没有承接词**——带「仍然没想起来」的章不算重述。
+ */
+export interface LossRestatementInput {
+  chapters: ReadonlyArray<{ chapterNumber: number; content: string }>
+  /** findings 的 sourceChapter 用（通常是当前章）。 */
+  currentChapter: number
+}
+
+export function findLossRestatementFindings(input: LossRestatementInput): ConsistencyFinding[] {
+  return findLossRestatement(input.chapters).map(hit => ({
+    stableFactKey: `continuity:loss-restatement:${hit.referent}`,
+    severity: 'warning' as const,
+    sourceChapter: input.currentChapter,
+    evidence: `「${hit.referent}」的缺失在第 ${hit.chapters.join('、')} 章各被当新损失宣告一次：${hit.excerpt.slice(0, 50)}`,
+    issue: {
+      zhCN: `同一笔记忆缺失（「${hit.referent}」）在第 ${hit.chapters.join('、')} 章各被宣告了一次，每次读起来都像刚发生的损失。金手指的代价是这本书张力的来源，同一笔被反复宣告，读者学到的是「这个代价可以重复计价」——后面再写「他又忘了一件事」就没有分量了。`,
+      enUS: `The same memory loss (“${hit.referent}”) is announced once in each of chapters ${hit.chapters.join(', ')}, each time reading like a fresh loss. When a power's cost is repeatedly re-charged for the same thing, readers learn that the cost is repeatable — and later "he forgot something again" beats land with no weight.`,
+    },
+    suggestion: {
+      zhCN: `后续章再提这件事时，要么写成**延续**（带上「仍然没想起来」「还是空的」这类承接词，读者读到的是他一直没想起来），要么写成**新的获取尝试**（再溯读一次、求人提醒、换个法子查）并把这次尝试的代价落账。不要每次都用「他记得 X，Y 空着」重新宣告一遍。`,
+      enUS: `When later chapters revisit this, write it as **continuation** (use carry-over wording such as “still has not remembered”), or as a **new attempt to recover it** (re-reading, asking someone, another route) and record that attempt's cost. Do not re-announce it each time with “he remembers X, but Y is blank”.`,
     },
   }))
 }

@@ -4,7 +4,7 @@ import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuit
   findNearCastNameFindings, findOversizedBlueprintKeyEvents, findUnregisteredBlueprintCast,
   findDialogueOpenerConvergence, findOpeningShapeConvergence,
   findDesignTimelineConflicts, findMissingCastInArch,
-  findRepeatPropTerminationFindings } from '../shared/consistency-preflight'
+  findRepeatPropTerminationFindings, findLossRestatementFindings } from '../shared/consistency-preflight'
 import { DEFAULT_CHAPTER_WORDS_TARGET } from './workflows/chapter-creation-parameters'
 import { ipc } from './ipc-client'
 
@@ -147,10 +147,23 @@ export async function readConsistencyPreflight(
     chapters: proseSample,
     currentChapter,
   })
+  // 同一笔遗忘被跨章重新宣告（issue #75）：同样读最近定稿正文。窗口比物证那条放宽
+  // 到 8 章——报告里的两组分别跨了 4 章（19→23）与 2 章（23→25），只看最近 6 章
+  // 会漏掉第一组。
+  // 只取最近 12 章：判据是两两比较，全书拿进来对长篇是 O(n²)。
+  // 12 章足够覆盖「最多三次宣告、每次间隔 ≤4 章」的最坏情况。
+  const lossRestatementFindings = recentProse.length === 0 ? [] : findLossRestatementFindings({
+    chapters: recentProse
+      .filter(row => Number.isSafeInteger(row.chapterNumber) && row.chapterNumber < currentChapter)
+      .sort((left, right) => left.chapterNumber - right.chapterNumber)
+      .slice(-12)
+      .map(row => ({ chapterNumber: row.chapterNumber, content: String(row.content ?? '') })),
+    currentChapter,
+  })
   return {
     findings: [...terminalFindings, ...expandedFindings, ...unregisteredFindings, ...appearanceGaps,
       ...nearNameFindings, ...keyEventsLengthFindings, ...openingFindings, ...timelineFindings,
-      ...missingArchCastFindings, ...propTerminationFindings]
+      ...missingArchCastFindings, ...propTerminationFindings, ...lossRestatementFindings]
       .filter(item => !activeExemptions.has(item.stableFactKey)),
     exemptions,
     castNames,
