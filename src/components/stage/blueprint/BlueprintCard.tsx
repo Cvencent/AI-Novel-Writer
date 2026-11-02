@@ -2,7 +2,7 @@ import { useId, useState, type KeyboardEvent } from 'react'
 import { MoreHorizontal, X } from 'lucide-react'
 import type { ChapterBlueprint } from '../../../services/workflows/directory-workflow'
 import { chapterRoleOptions, chapterRoleSelectValue } from '../../../shared/chapter-role'
-import { joinBlueprintLabels, splitBlueprintLabels } from '../../../shared/blueprint-semantic-contract'
+import { BLUEPRINT_CLOSING_SHOT_TYPES, blueprintLabelKind, joinBlueprintLabels, splitBlueprintLabels } from '../../../shared/blueprint-semantic-contract'
 import { sqliteTime } from '../../../shared/sqlite-time'
 import type { ChapterRow } from '../../../stores/navigation/stage-progress'
 import { useLocaleStore } from '../../../stores/locale-store'
@@ -53,6 +53,31 @@ export default function BlueprintCard({ blueprint, row, saving, onField, onSave,
   const conflict = splitBlueprintLabels(blueprint.keyEvents)
   const conflictProse = conflict.prose
   const conflictLabels = conflict.labels
+  // 标注可改可删（issue #91）：原来是纯只读 chip，作者既改不掉旧标注、也没法让新标注生效
+  // （他只能写在正文里，而 `joinBlueprintLabels` 会把旧的拼在后面、下游 `.at(-1)` 恒读旧值）。
+  const replaceLabel = (index: number, raw: string) => {
+    const next = [...conflictLabels]
+    const text = raw.trim()
+    // 清空 = 删除这一条。
+    if (!text) next.splice(index, 1)
+    else next[index] = text
+    onField('keyEvents', joinBlueprintLabels(conflictProse, next))
+  }
+  /** 取某一类标注的当前值（下拉的 current value）；没有则空串。 */
+  const labelValueOfKind = (kind: '时点' | '收束') => {
+    for (const label of conflictLabels) {
+      if (blueprintLabelKind(label) !== kind) continue
+      const value = label.replace(/^【\s*[^：:]+\s*[:：]\s*/u, '').replace(/】$/u, '').trim()
+      if (value) return value
+    }
+    return ''
+  }
+  /** 改某一类标注的值（下拉）：没有同类就追加一条。 */
+  const setLabelOfKind = (kind: '时点' | '收束', value: string) => {
+    const next = conflictLabels.filter(label => blueprintLabelKind(label) !== kind)
+    if (value) next.push(`【${kind}：${value}】`)
+    onField('keyEvents', joinBlueprintLabels(conflictProse, next))
+  }
 
   return (
     <section className="stage-bp-card" aria-label={text(`第 ${number} 章蓝图`, `Chapter ${number} blueprint`)}>
@@ -133,8 +158,26 @@ export default function BlueprintCard({ blueprint, row, saving, onField, onSave,
               {/* 收束/装置标注是给下游读的（#28/#32），不属于作者要改的叙事内容：
                   单独只读展示，编辑框里只留正文，保存时再拼回去（issue #65）。 */}
               {conflictLabels.length > 0 && (
-                <span className="stage-bp-labels" aria-label={text('机器读的标注', 'Machine-read labels')}>
-                  {conflictLabels.map(label => <span key={label} className="stage-bp-label">{label}</span>)}
+                <span className="stage-bp-labels" aria-label={text('机器读的标注（可编辑）', 'Machine-read labels (editable)')}>
+                  {conflictLabels.map((label, index) => (
+                    <span key={`${label}-${index}`} className="stage-bp-label">
+                      {/* 可编辑而不是只读（issue #91）：预检让作者「按正文实际落幅改标注」，
+                          但只读 chip 让这句话做不到——他改不了旧标注，写在正文里新标注又压不过旧的。 */}
+                      <input
+                        className="stage-bp-label-input"
+                        value={label}
+                        aria-label={text(`标注 ${index + 1}`, `Label ${index + 1}`)}
+                        onChange={event => replaceLabel(index, event.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="stage-bp-label-remove"
+                        aria-label={text(`删除标注 ${label}`, `Remove label ${label}`)}
+                        title={text('删除这条标注', 'Remove this label')}
+                        onClick={() => replaceLabel(index, '')}
+                      >×</button>
+                    </span>
+                  ))}
                 </span>
               )}
             </label>
@@ -145,6 +188,17 @@ export default function BlueprintCard({ blueprint, row, saving, onField, onSave,
               value={conflictProse}
               onChange={event => onField('keyEvents', joinBlueprintLabels(event.target.value, conflictLabels))}
             />
+            {/* 收束用合同里的 6 种类型做下拉（issue #91 建议 1）：减少手打错值导致下游读不到。 */}
+            <label className="stage-bp-label-select">
+              {text('收束方式', 'Closing shot')}
+              <select
+                value={labelValueOfKind('收束')}
+                onChange={event => setLabelOfKind('收束', event.target.value)}
+              >
+                <option value="">{text('（未标注）', '(unlabelled)')}</option>
+                {BLUEPRINT_CLOSING_SHOT_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+              </select>
+            </label>
           </div>
           <div className="stage-bp-field">
             <label htmlFor={ids.hook}>{text('悬念钩子', 'Suspense hook')}</label>

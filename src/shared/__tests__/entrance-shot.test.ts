@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import {
   ENTRANCE_COMMON_MIN,
+  ENTRANCE_MAX_GAP,
+  ENTRANCE_WINDOW_CHAPTERS,
   characterEntrances,
   findRepeatedEntranceShots,
   isEntranceParagraph,
@@ -178,5 +180,36 @@ describe('findRepeatedEntranceShots (issue #81)', () => {
     // 且每个角色的第一组先占名额，温珩的第二组排在所有角色的首组之后。
     expect(hits.slice(0, 5).map(hit => hit.character))
       .toEqual(expect.arrayContaining(names))
+  })
+})
+
+// issue #92：判据允许相隔 `ENTRANCE_MAX_GAP`(=8) 章配对、链子还能更长，
+// 而写前预检原来硬编码 `slice(-10)` —— 实测 39 章的书**全书 7 组**、10 章窗口 **0 组**。
+// 窗口滑过去就永久静音，而预检标题仍显示正数条数（作者以为检查过了）。
+describe('the caller window must cover the judge semantics (issue #92)', () => {
+  it('exposes a window that is at least 2×ENTRANCE_MAX_GAP so a multi-link chain fits', () => {
+    expect(ENTRANCE_WINDOW_CHAPTERS).toBeGreaterThanOrEqual(ENTRANCE_MAX_GAP * 2)
+  })
+
+  it('keeps a two-link chain that a 10-chapter window would cut', () => {
+    // 复现那本书的形状：同一角色在第 7、12、14 章各登场一次（相邻间隔 ≤ ENTRANCE_MAX_GAP），
+    // 后面还有 12 章别的戏。只喂最近 10 章会把第 7 章切掉、第一对配对随之消失。
+    const book = chapters([
+      [7, '温珩站在舱门口，赤脚，靛蓝短褂下摆垂着。'],
+      [12, '温珩站在梯口，赤脚，靛蓝短褂。'],
+      [14, '温珩站在舱门口，赤脚，靛蓝短褂的下摆还湿着。'],
+      ...Array.from({ length: 12 }, (_, index) => [15 + index, `第${15 + index}章：别人在做别的事。`] as [number, string]),
+    ])
+    const full = findRepeatedEntranceShots(book, { castNames: ['温珩'] })
+    expect(full.length).toBeGreaterThan(0)
+    expect(full[0]!.chapters).toContain(7)
+
+    // 旧窗口（10 章）看不到第 7 章——那条链的第一环已经滑出窗口。
+    const narrowed = findRepeatedEntranceShots(book.slice(-10), { castNames: ['温珩'] })
+    expect(narrowed.every(hit => !hit.chapters.includes(7))).toBe(true)
+
+    // 新窗口覆盖到第 7 章。
+    const widened = findRepeatedEntranceShots(book.slice(-ENTRANCE_WINDOW_CHAPTERS), { castNames: ['温珩'] })
+    expect(widened.some(hit => hit.chapters.includes(7))).toBe(true)
   })
 })

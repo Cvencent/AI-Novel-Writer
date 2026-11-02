@@ -392,10 +392,45 @@ export function splitBlueprintLabels(keyEvents: string): { prose: string; labels
   return { prose, labels }
 }
 
-/** 把正文与标注拼回 keyEvents（与 `splitBlueprintLabels` 互逆）。 */
+/** 机器读的标注类别（同类别只应有一条：下游按类别取值）。 */
+export type BlueprintLabelKind = '时点' | '收束' | '装置'
+
+/** 取一条标注的类别；不是三类标注则返回 null。 */
+export function blueprintLabelKind(label: string): BlueprintLabelKind | null {
+  const match = /^【\s*(时点|收束|装置)\s*[:：]/u.exec(String(label ?? '').trim())
+  return match ? match[1] as BlueprintLabelKind : null
+}
+
+/**
+ * 把正文与标注拼回 keyEvents（与 `splitBlueprintLabels` 互逆）。
+ *
+ * ⚠️ **同类别只保留一条，且正文里那条优先**（issue #91）。
+ *
+ * 原来的实现是「正文 + 所有旧标注直接拼接」。而作者能写字的只有正文框（标注是只读 chip），
+ * 于是他照预检提示在正文里写下的新标注会**排在旧标注前面**，库里因此出现
+ * 「【收束：物件落幅】【收束：悬念直陈】」这种同类并存；三个下游读取函数全部取
+ * `matches.at(-1)` —— **读到的永远是那条旧的**，作者以为改好了，其实一点没生效
+ * （实测：正文写【收束：物件落幅】，`closingShotOf` 仍返回「悬念直陈」）。
+ *
+ * 现在按类别归并：正文里写了的类别以正文为准，同名旧标注被丢弃；正文没写的类别
+ * 才用传入的 chip 补上（作者只改了正文、没动 chip 时行为不变）。
+ */
 export function joinBlueprintLabels(prose: string, labels: readonly string[]): string {
-  const body = String(prose ?? '').trim()
-  const suffix = labels.map(label => label.trim()).filter(Boolean).join('')
+  // 正文里可能已经带着作者手写的标注——先按类别收出来。
+  const split = splitBlueprintLabels(prose)
+  const chosen = new Map<BlueprintLabelKind, string>()
+  // chip（界面拆出来的）先入，正文里的**后入覆盖**：作者的手写优先。
+  const order: Array<{ kind: BlueprintLabelKind | null; text: string }> = []
+  for (const label of labels) order.push({ kind: blueprintLabelKind(label), text: String(label).trim() })
+  for (const label of split.labels) order.push({ kind: blueprintLabelKind(label), text: String(label).trim() })
+  const extras: string[] = []
+  for (const item of order) {
+    if (!item.text) continue
+    if (!item.kind) { extras.push(item.text); continue }
+    chosen.set(item.kind, item.text)   // 后出现的同类覆盖先出现的
+  }
+  const body = split.prose.trim()
+  const suffix = [...chosen.values(), ...extras].join('')
   return suffix ? `${body}${suffix}` : body
 }
 

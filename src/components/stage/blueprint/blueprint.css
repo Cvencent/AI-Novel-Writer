@@ -357,8 +357,10 @@
   border-color: var(--accent);
 }
 
-/* 机器读的标注（【收束：…】【装置：…】）从可编辑正文里拆出来只读展示（issue #65）：
-   它们给下游做轮换判断，作者手改正文时不该连它们一起改坏。 */
+/* 机器读的标注（【收束：…】【装置：…】【时点：…】）从可编辑正文里拆出来单独展示（issue #65）：
+   它们给下游做轮换判断，作者手改正文时不该连它们一起改坏。
+   但**必须可改可删**（issue #91）：预检让作者「按正文实际落幅改标注」，只读 chip 让这句话做不到——
+   他改不了旧标注，而写在正文里的新标注会被拼在旧的后面，下游 `.at(-1)` 恒读旧值。 */
 .stage-bp-labels {
   display: inline-flex;
   flex-wrap: wrap;
@@ -369,14 +371,72 @@
 .stage-bp-label {
   display: inline-flex;
   align-items: center;
+  gap: 2px;
   height: 20px;
-  padding: 0 8px;
+  padding: 0 4px 0 8px;
   border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   color: var(--ink-3);
   font-size: var(--fs-11);
   font-weight: 400;
   white-space: nowrap;
+}
+
+/* 标注本体是可编辑输入（issue #91）：宽度跟着内容走，看起来仍像 chip。 */
+.stage-bp-label-input {
+  min-width: 140px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
+
+.stage-bp-label-input:focus {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-radius: var(--radius-pill);
+}
+
+.stage-bp-label-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: var(--fs-11);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.stage-bp-label-remove:hover {
+  background: color-mix(in srgb, var(--danger, #d33) 18%, transparent);
+  color: var(--ink-1);
+}
+
+/* 收束方式下拉（issue #91 建议 1）：合同里的 6 种类型，减少手打错值。 */
+.stage-bp-label-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  color: var(--ink-3);
+  font-size: var(--fs-11);
+}
+
+.stage-bp-label-select select {
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-1);
+  font-size: var(--fs-11);
 }
 
 /* ================= 生成蓝图与批量创作对话框 ================= */

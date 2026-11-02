@@ -6,6 +6,7 @@ import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuit
   findDesignTimelineConflicts, findMissingCastInArch,
   findRepeatPropTerminationFindings, findLossRestatementFindings,
   findPropRevivalFindings, findEntranceShotFindings } from '../shared/consistency-preflight'
+import { ENTRANCE_WINDOW_CHAPTERS } from '../shared/entrance-shot'
 import { auditFinalizedProse } from '../shared/finalized-prose-audit'
 import { DEFAULT_CHAPTER_WORDS_TARGET } from './workflows/chapter-creation-parameters'
 import { ipc } from './ipc-client'
@@ -163,11 +164,14 @@ export async function readConsistencyPreflight(
   // 已被写死的物证又回来（issue #78）：窗口要覆盖「消亡章 → 再现章」的跨度，
   // 实测样本是 21 章消亡、28/30 章再现，只看最近 6 章会漏掉。
   // 人物登场句同构（issue #81）：这一位置此前三组检测都看不到（章首/章末/核心戏）。
+  // 窗口用判据自己导出的 `ENTRANCE_WINDOW_CHAPTERS`（issue #92）——原来这里硬编码 10，
+  // 而判据允许相隔 8 章配对、链子还能更长：实测 39 章的书全书 7 组、10 章窗口 **0 组**，
+  // 窗口一滑过去就永久静音，而预检标题仍显示正数条数（作者以为检查过了）。
   const entranceShotFindings = recentProse.length === 0 ? [] : findEntranceShotFindings({
     chapters: recentProse
       .filter(row => Number.isSafeInteger(row.chapterNumber) && row.chapterNumber < currentChapter)
       .sort((left, right) => left.chapterNumber - right.chapterNumber)
-      .slice(-10)
+      .slice(-ENTRANCE_WINDOW_CHAPTERS)
       .map(row => ({ chapterNumber: row.chapterNumber, content: String(row.content ?? '') })),
     castNames: (Array.isArray(roster?.entries) ? roster.entries : [])
       .map(entry => (typeof entry.name === 'string' ? entry.name.trim() : ''))

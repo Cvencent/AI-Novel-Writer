@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   BLUEPRINT_CLOSING_SHOT_TYPES,
+  blueprintLabelKind,
   closingShotOf,
   stagingOf,
   decodeBlueprintSemanticPayload,
@@ -443,5 +444,57 @@ describe('machine-read labels are separable from editable prose (issue #65)', ()
     const { prose, labels } = splitBlueprintLabels('他先【收束：对话收束】再推门。')
     expect(prose).toBe('他先再推门。')
     expect(labels).toEqual(['【收束：对话收束】'])
+  })
+})
+
+// issue #91：标注是只读 chip，作者改不掉；而他能写字的正文框里新写的标注会被拼在
+// **旧标注后面**，下游三个读取函数全部取 `matches.at(-1)` ⇒ **读到的永远是旧值**。
+// 实测：正文写【收束：物件落幅】，`closingShotOf` 仍返回「悬念直陈」。
+describe('an author-written label replaces the old one of the same kind (issue #91)', () => {
+  it('lets the closing shot written in prose win over the stored chip', () => {
+    const stored = '温珩把舵轮扶正，一直没对人讲。【收束：悬念直陈】【装置：舵舱＋凑水盂湿气读票】'
+    const { prose, labels } = splitBlueprintLabels(stored)
+    // 作者只能在正文框写字 → 新标注落在正文里
+    const saved = joinBlueprintLabels(`${prose}\n【收束：物件落幅】`, labels)
+    expect(closingShotOf(saved)).toBe('物件落幅')
+    // 同类的旧标注被丢掉，不是并存
+    expect(saved.match(/【收束/g)?.length).toBe(1)
+    // 别的类别不受影响
+    expect(stagingOf(saved)).toBe('舵舱＋凑水盂湿气读票')
+    expect(saved.match(/【装置/g)?.length).toBe(1)
+  })
+
+  it('does the same for the time anchor', () => {
+    const stored = '上午周叙赶回船上。【时点：同日上午】【收束：人物动作收束】'
+    const { prose, labels } = splitBlueprintLabels(stored)
+    const saved = joinBlueprintLabels(`【时点：次日清晨】${prose}`, labels)
+    expect(timeAnchorOf(saved)).toBe('次日清晨')
+    expect(saved.match(/【时点/g)?.length).toBe(1)
+  })
+
+  it('keeps the stored label when the author did not touch that kind', () => {
+    // 作者只改了正文、没提标注时，行为与旧实现一致（chip 原样保留）。
+    const stored = '周叙把签收联叠进风灯罩。【收束：物件落幅】【装置：跳板口＋把笔撂在移交单上】'
+    const { prose, labels } = splitBlueprintLabels(stored)
+    const saved = joinBlueprintLabels(`${prose}（作者补的一句）`, labels)
+    expect(closingShotOf(saved)).toBe('物件落幅')
+    expect(stagingOf(saved)).toBe('跳板口＋把笔撂在移交单上')
+    expect(saved).toContain('作者补的一句')
+  })
+
+  it('classifies the three label kinds so the UI can group them', () => {
+    expect(blueprintLabelKind('【时点：次日清晨】')).toBe('时点')
+    expect(blueprintLabelKind('【收束：物件落幅】')).toBe('收束')
+    expect(blueprintLabelKind('【装置：舱底＋拧水隔】')).toBe('装置')
+    expect(blueprintLabelKind('【备注】')).toBe(null)
+  })
+
+  it('deleting a label (empty string) removes only that one', () => {
+    const stored = '正文。【收束：对话收束】【装置：码头＋翻票根】'
+    const { prose, labels } = splitBlueprintLabels(stored)
+    const kept = labels.filter(label => !label.includes('收束'))
+    const saved = joinBlueprintLabels(prose, kept)
+    expect(closingShotOf(saved)).toBe('')
+    expect(stagingOf(saved)).toBe('码头＋翻票根')
   })
 })
