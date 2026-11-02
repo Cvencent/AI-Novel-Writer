@@ -15,6 +15,7 @@
  *   5. 伏笔承诺未在目标章落地（#68）——读承诺 + 目标章正文
  *   6. 连续多章通牒式收尾（#66）——读相邻多章正文
  *   7. 跨章断言反转（#52）——读前章 + 后章正文（历史回看）
+ *   8. 「AI 味」配额（#93）——比喻／生理反应／段尾总结／平均句长，配额取自起草清单原文
  *
  * 与审稿路径的差别只有一处，而且是刻意的：审稿把**本章正文**也放进样本
  * （那正是审稿的对象），而写前预检喂进来的全是**已定稿章**——因为要写的那一章
@@ -37,6 +38,8 @@ import {
   numberingFindings,
 } from './consistency-preflight'
 import { proseRepetitionFindings } from './prose-repetition'
+// 「AI 味」的可机器判子集（issue #93）：超配额、段尾总结腔、平均句长。
+import { proseFlavorFindings } from './prose-flavor'
 import { findUndatedStreakFindings } from './chapter-time-anchor'
 import { closingShotOf } from './blueprint-semantic-contract'
 import { foreshadowingDueAt, parseForeshadowingCommitments } from './foreshadowing-commitments'
@@ -158,13 +161,18 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
     return auditAssertionReversals(before, chapter, castNames)
   })
 
+  // 「AI 味」配额（issue #93）：比喻／生理反应／段尾总结／平均句长。
+  // 用的是**起草清单里那套配额原文**，于是起草侧禁的与审稿侧报的是同一件事。
+  // 只喂单章即可判定（配额是章内的），样本取 auditSample。
+  const proseFlavor = proseFlavorFindings(auditSample, nextChapter)
+
   // 章级时间推进（第 7 项之上的新增轴，issue #84）：连续多章没有任何跨日交代。
   // 窗口取**全部已定稿章**——「这一段从来没人交代过」本身就是累积证据，
   // 只看最近 12 章反而会把长段的开头切掉、报出「最近 12 章没交代」这种半句话。
   const undatedStreak = findUndatedStreakFindings(chapters, nextChapter)
 
   return [...closingLabel, ...numbering, ...ability, ...repetition, ...undelivered,
-    ...ultimatum, ...reversal, ...undatedStreak]
+    ...ultimatum, ...reversal, ...undatedStreak, ...proseFlavor]
 }
 
 /**
