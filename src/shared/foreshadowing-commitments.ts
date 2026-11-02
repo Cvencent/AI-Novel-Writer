@@ -122,23 +122,46 @@ export function foreshadowingDueAt(
  */
 /**
  * 只带通用叙事动词、不带具体信息的片段：它们在任何一章的正文里都可能出现，
- * 拿去做「本章有没有兑现」的检索只会产生假命中。''
+ * 拿去做「本章有没有兑现」的检索只会产生假命中。
  */
 const GENERIC_FRAGMENTS = new Set([
   '揭开', '留扣', '留白', '回收', '接榫', '照应', '呼应', '铺垫', '预告', '埋下', '埋设',
   '留待', '反转', '留扣子', '解开', '兑现', '落扣', '起承', '承接', '说明', '交代',
 ])
 
+/**
+ * 引号类（issue #70）。必须同时覆盖排印弯引号、直角引号与 ASCII 引号。
+ *
+ * 用 `\u` 转义写而不是字面量：U+2018/2019/201C/201D 与 ASCII 引号在源码里
+ * 肉眼几乎不可分。本函数第一版就是把 ASCII 双引号连写两遍（`[「『""]`）、
+ * 漏掉 U+201C/U+201D，于是 18 章用弯引号的承诺变成「自带引号的检索词」——
+ * 正文永远命不中，提示永久假阳性且作者无法消掉。转义写法让这种错误看得见。
+ */
+const QUOTE_CHARS = '\u0022\u0027\u2018\u2019\u201c\u201d\u300c\u300d\u300e\u300f'
+
+/** 一段被引号包起来的文字（含两侧引号），整段剥掉。 */
+const QUOTED_SPAN = new RegExp(`[${QUOTE_CHARS}][^${QUOTE_CHARS}]{1,60}[${QUOTE_CHARS}]`, 'gu')
+
+/** 任何引号类字符（含未成对出现的）；片段里出现即判该片段不可用。 */
+const HAS_QUOTE = new RegExp(`[${QUOTE_CHARS}]`, 'u')
+
+/** 明显的连接/语气残片：以它们起头或收尾的片段不是实体词。 */
+const CONNECTOR_EDGE = /^(?:与|和|及|并|的|了|是|在|把|将|被)|(?:与|和|及|并|的)$/u
+
 export function foreshadowingKeywords(text: string): string[] {
   const stripped = String(text ?? '')
     .replace(/第\s*\d{1,4}\s*(?:[—\-~～]|至|到)?\s*\d{0,4}\s*[章夜晚]/gu, ' ')
     // 引号里常是模型编造的前文原话：不能拿来当检索词，先去壳。
-    .replace(/[「『""]([^」』""]{1,60})[」』""]/gu, ' ')
+    .replace(QUOTED_SPAN, ' ')
   const segments = stripped
     .split(/[，,。；;：:、\s（）()【】\[\]]+/u)
     .map(segment => segment.replace(/^(?:埋下|埋设|留待|留扣|留白|为|与|把|将|给|待|回收|接榫|照应|呼应|铺垫|预告|以及|和|并)+/u, '').trim())
     .filter(segment => segment.length >= 2 && segment.length <= 12)
     .filter(segment => !GENERIC_FRAGMENTS.has(segment))
+    // 兜底（issue #70）：嵌套或未成对的引号会让某一段没被整段剥掉。含引号的片段
+    // 自带引号，正文里永远不可能出现——绝不能放它去比对，否则整条承诺变永久假阳性。
+    .filter(segment => !HAS_QUOTE.test(segment))
+    .filter(segment => !CONNECTOR_EDGE.test(segment))
   // 长片段更有区分度：优先 4 字以上，不足时再补 2–3 字的。
   const long = segments.filter(segment => segment.length >= 4)
   return [...new Set([...long, ...segments])].slice(0, 3)

@@ -177,3 +177,107 @@ describe('findUndeliveredForeshadowing (issue #68)', () => {
     expect(findUndeliveredForeshadowing({ chapterNumber: 15, content: '  ', commitments: promise })).toEqual([])
   })
 })
+
+describe('foreshadowingKeywords handles every quote style (issue #70)', () => {
+  // 报告里的原句：18 章用弯引号，2 章用 ASCII 撇号，3 章用直角引号。
+  const curved = '埋下存根背面的靛蓝旧字“只剩最后一次溯读机会”与温珩短褂同源'
+  // 用 charCode 拼 ASCII 撇号，避免在单引号字符串里和转义打架。
+  const apostrophe = String.fromCharCode(39)
+  const ascii = `埋下水隔边的新撬痕与全叔那句${apostrophe}这日子你碰不得${apostrophe}，留待第15章揭开。`
+  const corner = '埋下存根背面的靛蓝旧字「只剩最后一次溯读机会」与温珩短褂同源'
+  const straight = '埋下存根背面的靛蓝旧字"只剩最后一次溯读机会"与温珩短褂同源'
+
+  it('strips typographic curved quotes instead of gluing them into a keyword', () => {
+    // 旧实现把 U+201C/U+201D 漏在字符类外，整段（含引号）成了一个永远命不中的检索词。
+    const keywords = foreshadowingKeywords(curved)
+    expect(keywords.length).toBeGreaterThan(0)
+    expect(keywords.every(word => !/[“”]/u.test(word))).toBe(true)
+    expect(keywords.join(' ')).toContain('靛蓝旧字')
+  })
+
+  it('treats curved, corner and straight quotes the same way', () => {
+    expect(foreshadowingKeywords(curved)).toEqual(foreshadowingKeywords(corner))
+    expect(foreshadowingKeywords(curved)).toEqual(foreshadowingKeywords(straight))
+  })
+
+  it('strips ascii apostrophes and never returns a fragment with one', () => {
+    const keywords = foreshadowingKeywords(ascii)
+    expect(keywords.every(word => !word.includes("'"))).toBe(true)
+    // 「原本不属于温珩'与」这种带撇号又带连接词的碎片必须被丢掉。
+    expect(keywords.every(word => !/[‘’]/u.test(word))).toBe(true)
+  })
+
+  it('drops fragments that still carry a quote after the bulk strip', () => {
+    // 未成对/嵌套引号无法整段剥掉时，残留片段必须被丢弃，而不是拿去比对。
+    const keywords = foreshadowingKeywords('埋下靛蓝旧字”与温珩短褂同源')
+    expect(keywords.every(word => !/[“”]/u.test(word))).toBe(true)
+  })
+
+  it('does not keep fragments that merely start or end with a connector', () => {
+    const keywords = foreshadowingKeywords('埋下与存根背面与、短褂浮字')
+    expect(keywords).toContain('短褂浮字')
+    expect(keywords.every(word => !/^与|与$/u.test(word))).toBe(true)
+  })
+
+  it('the reported bp13 promise no longer yields quoted keywords', () => {
+    const bp13 = '回收第11章“只剩最后一次溯读机会”、第7章“空额”与第10章“徐哥”的伏笔；埋下：存根背面靛蓝旧字与温珩短褂同源，指向隐藏主线；周叙把证据藏到搭档找不到的地方，与第22夜“把存根藏到搭档找不到、把头也搜不着的地方”接榫。'
+    const keywords = foreshadowingKeywords(bp13)
+    expect(keywords.every(word => !/[“”]/u.test(word))).toBe(true)
+    // 旧实现抽出的三个词全带引号；现在必须至少有一个能在正常正文里出现的实体词。
+    expect(keywords.length).toBeGreaterThan(0)
+  })
+})
+
+describe('findUndeliveredForeshadowing clears once the prose names the thing (issue #70)', () => {
+  const curvedPromise = [{ plantsAt: 13, paysOffAt: [22], text: '埋下存根背面的靛蓝旧字“只剩最后一次溯读机会”与温珩短褂同源' }]
+
+  it('stops reporting when the finalized prose writes the matter out in plain words', () => {
+    // 作者按语义补写（不带引号）必须能消掉提示——旧实现里唯一能消掉的办法是连引号一起抄。
+    expect(findUndeliveredForeshadowing({
+      chapterNumber: 22,
+      // 正文按语义把这件事写出来（不含引号）：检索词是「存根背面的靛蓝旧字」，
+      // 正文里出现即可，不需要连原话抄一遍。
+      content: '周叙翻过存根。存根背面的靛蓝旧字还在，他只剩最后一次溯读机会。',
+      commitments: curvedPromise,
+    })).toEqual([])
+  })
+
+  it('still reports when the chapter never touches it', () => {
+    expect(findUndeliveredForeshadowing({
+      chapterNumber: 22,
+      content: '柯明远把笔帽拧上，按了补人；不按，船停。',
+      commitments: curvedPromise,
+    })).toHaveLength(1)
+  })
+})
+
+describe('quote handling cannot silently regress (issue #70)', () => {
+  const sources = [
+    '埋下存根背面的靛蓝旧字“只剩最后一次溯读机会”与温珩短褂同源',
+    '埋下存根背面的靛蓝旧字「只剩最后一次溯读机会」与温珩短褂同源',
+    '埋下存根背面的靛蓝旧字『只剩最后一次溯读机会』与温珩短褂同源',
+    '埋下存根背面的靛蓝旧字"只剩最后一次溯读机会"与温珩短褂同源',
+  ]
+
+  it('never returns a keyword containing any quote character', () => {
+    // 这是 issue #70 的本质：任何一个引号类字符漏在剥壳之外，都会造出
+    // 「自带引号、正文永远命不中」的检索词（提示永久假阳性且作者消不掉）。
+    const codePoints = [0x22, 0x27, 0x2018, 0x2019, 0x201c, 0x201d, 0x300c, 0x300d, 0x300e, 0x300f]
+    const quoteChars = codePoints.map(code => String.fromCodePoint(code))
+    for (const source of sources) {
+      for (const keyword of foreshadowingKeywords(source)) {
+        for (const quote of quoteChars) {
+          expect(keyword).not.toContain(quote)
+        }
+      }
+    }
+  })
+
+  it('yields the same plain keywords for all four quoting styles', () => {
+    const base = foreshadowingKeywords(sources[0])
+    expect(base.length).toBeGreaterThan(0)
+    for (const source of sources.slice(1)) {
+      expect(foreshadowingKeywords(source)).toEqual(base)
+    }
+  })
+})
