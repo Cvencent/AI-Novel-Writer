@@ -7,7 +7,8 @@ import { freezeChapterGoals } from '../../src/shared/chapter-goal-review'
 import { findBlueprintContinuityRisks } from '../../src/shared/consistency-preflight'
 import { findCharacterProseRepetition, findProseRepetition, proseRepetitionEvidence } from '../../src/shared/prose-repetition'
 import { findDeclaredDigitCountMismatches } from '../../src/shared/numbering-consistency'
-import { findCrossChapterAssertionReversals } from '../../src/shared/consistency-preflight'
+import { findCrossChapterAssertionReversals, findClosingLabelConflicts, findUltimatumStreak } from '../../src/shared/consistency-preflight'
+import { closingShotOf } from '../../src/shared/blueprint-semantic-contract'
 import { findAbilityReuseContradictions } from '../../src/shared/ability-budget'
 import type { ConsistencyFinding } from '../../src/shared/consistency-preflight'
 import { CHARACTER_STATE_TEXT_FIELDS } from '../../src/shared/character-roster'
@@ -175,6 +176,21 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
           { chapterNumber: source.chapterNumber, content: source.content },
           authorCards.map(card => card.name),
         ),
+        // 蓝图自报的收束类型与正文最后一幕不符（issue #65）：10 章有 7 章不符，
+        // 而下一章正是拿这个标签做「不得重复上一章落幅」（#28）——标错等于把轮换
+        // 约束建立在假信息上。只核对能可靠判断的三对（对话/物件/动作），其余不比。
+        ...findClosingLabelConflicts(
+          currentBlueprint && currentBlueprint.keyEvents
+            ? [{ chapterNumber: source.chapterNumber, label: closingShotOf(currentBlueprint.keyEvents), content: source.content }]
+            : [],
+        ),
+        // 连续几章都以「通牒式台词」收尾（issue #66）：与 #28 的「画面同构」不同，
+        // 这是**语用**收敛——每章都有人用一句话把主角逼到二选一。样本 = 最近定稿 + 本章。
+        ...findUltimatumStreak({
+          chapters: [...history.slice(-4).map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
+            { chapterNumber: source.chapterNumber, content: source.content }],
+          currentChapter: source.chapterNumber,
+        }),
       ],
       ...(confirmation ? { confirmation } : {}), ...(recheck ? { recheck } : {}) }
   })()

@@ -235,3 +235,68 @@ describe('abilityBudgetFindings (issue #51)', () => {
     })).toEqual([])
   })
 })
+
+describe('章末收束体检（issue #65 / #66）', () => {
+  /** 造一本已定稿若干章的书，正文末段各按需要给。 */
+  function bookWithEndings(endings: ReadonlyArray<{ chapter: number; body: string }>) {
+    const f = fixture()
+    // 基础 fixture 已经放了第 2 章的一稿；本组测试自建章节，先清掉它避免 (chapter,version) 撞唯一键。
+    f.db.exec('DELETE FROM drafts WHERE id=1')
+    const insert = f.db.prepare('INSERT INTO contents(id,body) VALUES(?,?)')
+    const insertDraft = f.db.prepare("INSERT INTO drafts(id,chapter_number,version,status,content_id) VALUES(?,?,?, 'finalized', ?)")
+    for (const [index, ending] of endings.entries()) {
+      const contentId = 100 + index
+      const draftId = 100 + index
+      insert.run(contentId, ending.body)
+      insertDraft.run(draftId, ending.chapter, 1, contentId)
+    }
+    return f
+  }
+
+  it('标记蓝图标注与正文实际落幅不符（issue #65）', () => {
+    // 第 25 章：蓝图标「物件落幅」，正文却收在温珩的警告台词上。
+    const ending = ['他把签收联和纸片叠进风灯罩。', '温珩把最后一圈绳从桩上抹下来：“那你今晚别下船。”'].join(String.fromCharCode(10) + String.fromCharCode(10))
+    const f = bookWithEndings([{ chapter: 25, body: ending }])
+    f.db.exec(`INSERT INTO blueprints(chapter_number,title,key_events) VALUES(25,'末章','周叙把笔撂下。【收束：物件落幅】')`)
+    Object.assign(f.request, {
+      draftId: 100,
+      expectedDraft: { chapterNumber: 25, version: 1, status: 'finalized', contentHash: textHash(ending) },
+    })
+    const findings = f.capture().preflightFindings.filter(item => item.stableFactKey.startsWith('chapter-ending:'))
+    const mismatch = findings.find(item => item.stableFactKey === 'chapter-ending:label-mismatch:25')
+    expect(mismatch).toBeDefined()
+    expect(mismatch!.evidence).toContain('物件落幅')
+    expect(mismatch!.evidence).toContain('收在台词里')
+  })
+
+  it('连续三章通牒式收尾时报出整条链（issue #66）', () => {
+    const ending = (line: string) => line
+    const f = bookWithEndings([
+      { chapter: 1, body: '铺垫。' },
+      { chapter: 2, body: ending('周叙推门进去。') },
+      { chapter: 3, body: ending('“但你泡了，它就化了。”') },
+      { chapter: 4, body: ending('“不签，箱子当场扣下。今夜别想开船。”') },
+      { chapter: 5, body: ending('“那你今晚别下船。”') },
+    ])
+    Object.assign(f.request, {
+      draftId: 104,
+      expectedDraft: { chapterNumber: 5, version: 1, status: 'finalized', contentHash: textHash('“那你今晚别下船。”') },
+    })
+    const streak = f.capture().preflightFindings.find(item => item.stableFactKey === 'chapter-ending:ultimatum-streak:5')
+    expect(streak).toBeDefined()
+    expect(streak!.evidence).toContain('第 3–5 章连续 3 章')
+  })
+
+  it('收束正常时不产生这两类发现', () => {
+    const f = bookWithEndings([
+      { chapter: 1, body: '铺垫。' },
+      { chapter: 2, body: '周叙推门进去。' },
+      { chapter: 3, body: '“路上小心。”' },
+    ])
+    Object.assign(f.request, {
+      draftId: 102,
+      expectedDraft: { chapterNumber: 3, version: 1, status: 'finalized', contentHash: textHash('“路上小心。”') },
+    })
+    expect(f.capture().preflightFindings.filter(item => item.stableFactKey.startsWith('chapter-ending:'))).toEqual([])
+  })
+})

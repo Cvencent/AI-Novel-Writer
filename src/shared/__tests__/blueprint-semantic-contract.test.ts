@@ -8,6 +8,8 @@ import {
   blueprintSemanticGenerationContract,
   parseBlueprintSemanticResponseText,
   validateBlueprintSemanticItem,
+  splitBlueprintLabels,
+  joinBlueprintLabels,
 } from '../blueprint-semantic-contract'
 import { StructuredContractDiagnostic } from '../structured-contract-diagnostic'
 
@@ -329,5 +331,57 @@ describe('blueprint cost ledger (issue #36)', () => {
     expect(en).toContain('The cost must leave a ledger')
     expect(en).toContain('another price')
     expect(en).toContain('Never write the recovery into the cost field itself')
+  })
+})
+
+describe('hook pragmatic rotation (issue #66)', () => {
+  it('requires the hook form to rotate instead of closing on an ultimatum every chapter', () => {
+    const zh = blueprintSemanticGenerationContract('zh-CN')
+    expect(zh).toContain('语用方式必须轮换')
+    expect(zh).toContain('连续三章也不得都以条件/警告句收尾')
+    const en = blueprintSemanticGenerationContract('en-US')
+    expect(en).toContain('pragmatic form must rotate')
+    expect(en).toContain('three consecutive chapters must never all close on a conditional or threatening line')
+  })
+
+  it('lists concrete alternative hook forms so the model is not left guessing', () => {
+    const zh = blueprintSemanticGenerationContract('zh-CN')
+    expect(zh).toContain('未解的具体疑问')
+    expect(zh).toContain('一件尚未解释的物证')
+  })
+})
+
+describe('machine-read labels are separable from editable prose (issue #65)', () => {
+  const keyEvents = '周叙把签收联叠进风灯罩。【收束：物件落幅】【装置：跳板口＋把笔撂在移交单上】'
+
+  it('splits the labels out of the prose used by the editor', () => {
+    const { prose, labels } = splitBlueprintLabels(keyEvents)
+    expect(prose).toBe('周叙把签收联叠进风灯罩。')
+    expect(labels).toEqual(['【收束：物件落幅】', '【装置：跳板口＋把笔撂在移交单上】'])
+  })
+
+  it('keeps the labels readable for downstream rotation checks after the round trip', () => {
+    const { prose, labels } = splitBlueprintLabels(keyEvents)
+    const rejoined = joinBlueprintLabels(`${prose}（作者补的一句）`, labels)
+    expect(closingShotOf(rejoined)).toBe('物件落幅')
+    expect(stagingOf(rejoined)).toBe('跳板口＋把笔撂在移交单上')
+    expect(rejoined).toContain('作者补的一句')
+  })
+
+  it('leaves a plain keyEvents untouched', () => {
+    expect(splitBlueprintLabels('周叙推门进屋。')).toEqual({ prose: '周叙推门进屋。', labels: [] })
+    expect(joinBlueprintLabels('周叙推门进屋。', [])).toBe('周叙推门进屋。')
+  })
+
+  it('does not strip unrelated brackets the author may have written', () => {
+    const { prose, labels } = splitBlueprintLabels('他盯着那页【备注】出神。')
+    expect(prose).toBe('他盯着那页【备注】出神。')
+    expect(labels).toEqual([])
+  })
+
+  it('survives a label the model wrote mid-sentence', () => {
+    const { prose, labels } = splitBlueprintLabels('他先【收束：对话收束】再推门。')
+    expect(prose).toBe('他先再推门。')
+    expect(labels).toEqual(['【收束：对话收束】'])
   })
 })

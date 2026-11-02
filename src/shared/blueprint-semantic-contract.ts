@@ -44,7 +44,7 @@ export function blueprintSemanticGenerationContract(writingLanguage: WritingLang
     return `[Immutable blueprint JSON contract]
 Output {"blueprints":[...]} only. Every item must contain all of these fields: ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.requiredFields.join(', ')}.
 chapterNumber must cover every target chapter exactly once, without duplicates or out-of-range values. title, role, purpose, keyEvents, and suspenseHook must be non-empty strings. title must be unique across the whole book: never reuse a title from an earlier chapter (recentBlueprints/chapter_list), and keyEvents must not replay a scene already written in a finalized chapter.
-suspenseHook is always required; even without a mystery, state one concrete unresolved decision, threat, revelation, or consequence that creates forward pressure.
+suspenseHook is always required; even without a mystery, state one concrete unresolved decision, threat, revelation, or consequence that creates forward pressure. Its **pragmatic form must rotate** (issue #66): do not end every chapter with someone forcing the protagonist into a binary choice (sign or the ship is impounded, do not go ashore tonight, you take my place). Recent chapters' hook forms are listed in references — read what was just used. Available forms: an open question, a newly exposed fact, a forced decision, an approaching deadline, a shift in someone's attitude, an unexplained piece of evidence. Adjacent chapters must not use the same form, and three consecutive chapters must never all close on a conditional or threatening line: with setting, speaker, and wording all different, readers still hear the same voice at every chapter end, which formalises the suspense and blunts it.
 Hook carry-over is required (issue #20): this chapter must explicitly address the previous chapter's suspenseHook (its name/person/object/decision is in recentBlueprints). Continue it, twist it, or settle it — and if it is deliberately deferred, say so and why in this chapter's keyEvents. Never silently switch to an unrelated topic: a hook whose line is simply dropped reads to the reader as a broken promise.
 Pending decisions outside the hook must also carry over (issue #35): the previous chapter's prose usually leaves more than one thing hanging — someone promised to take a shift, hand over an object, come back at a stated time, keep quiet, or stand in for another. Only the recorded suspenseHook is guaranteed to be handled downstream. When references/the material list a predecessor item the previous chapter's prose left open, this chapter must either advance it, twist it, or defer it explicitly in keyEvents (saying what is deferred and why). A decision a character stated aloud and that no later chapter ever mentions reads to the reader as an unfinished thread.
 Key objects must change hands on the page (issue #38): prose, not the blueprint, decides who holds an object. When a key object was refused, seized, or ended in another character's hands in the previous chapter, this chapter may not simply have the viewpoint character produce it — keyEvents must show the handoff (who gives it to whom, under what condition) or another seizure. Never describe an object as "already in his pocket" because the blueprint said it was handed over: the reader only believes what happened on the page.
@@ -63,7 +63,7 @@ Do not omit required fields, combine chapters, rename fields, explain, or output
   return `【不可变蓝图 JSON 合同】
 只输出 {"blueprints":[...]}，每项必须完整包含：${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.requiredFields.join('、')}。
 chapterNumber 必须覆盖本批每个目标章节且不得重复或越界；title、role、purpose、keyEvents、suspenseHook 必须是非空字符串。title 必须全书唯一：不得复用已有章节的标题（见 recentBlueprints/chapter_list），keyEvents 不得重演已定稿章节里已经写过的场景。
-suspenseHook 始终必填；即使本章没有谜团，也要写明一个制造推进压力的具体未决决定、威胁、揭示或后果。
+suspenseHook 始终必填；即使本章没有谜团，也要写明一个制造推进压力的具体未决决定、威胁、揭示或后果。钩子的**语用方式必须轮换**（issue #66）：不要每章都写成「有人用一句话把主角逼到一个二选一」（不签就扣船、今晚别下船、你替我上）。references 里给了最近几章的钩子类型，先看清刚用过什么。可用的形态：未解的具体疑问、刚暴露的新事实、被迫作出的选择、一个正在逼近的时点、某人态度的一次转变、一件尚未解释的物证。相邻两章不得重复同一种形态，连续三章也不得都以条件/警告句收尾——画面与人物都换了、钩子文本也不重复，读者却会在每章末尾听到同一个声音，悬念因此被形式化。
 上一章钩子必须接（issue #20）：本章必须显式回应上一章的 suspenseHook（其具名的人/物/决定见 recentBlueprints）——继续推进、反转或了结皆可；确实要搁置时，必须在本章 keyEvents 里写明「搁置了什么、为什么」。不得默默换成无关话题：钩子点名的人或决定在本章再不出现，读者读到的是「上一个坑没人埋」。
 钩子以外的悬置承诺也要接（issue #35）：上一章正文留下的悬置事情通常不止一件——谁答应替班、谁答应交出某物、谁说了明晚再来、要求谁闭嘴、谁被点名顶替。目前只有登记在案的 suspenseHook 有下游通道，其余全凭模型自觉。当材料/参考里列出「上一章正文留下而尚未落地的承诺或决定」时，本章必须继续推进、反转或在 keyEvents 里明确搁置（写明搁置了什么、为什么）。一个人物当众说出口的决定，后续章节整章不提，读者读到的是「这条线断了」。
 关键道具必须当面易手（issue #38）：谁持有物件由正文决定，不由蓝图决定。上一章某件关键物件被拒绝交出、被夺走、或结尾仍在他人手上时，本章不得直接写成本视角人物「从怀里摸出」——必须在 keyEvents 里写出交接动作（谁交给谁、在什么条件下）或另一次夺取。不得因为蓝图写了「某人推过来」就把物件当成本方已有：读者只认页面上发生过的动作。蓝图自身也不要写「温珩推过来的油纸包」这种原文里并不存在的既成事实。
@@ -357,6 +357,35 @@ export function parseBlueprintAuthorResponseText(text: string, expectedChapterNu
 export function stagingOf(keyEvents: string): string {
   const matches = [...String(keyEvents ?? '').matchAll(/【\s*装置\s*[:：]\s*([^】]{1,40})】/gu)]
   return matches.at(-1)?.[1]?.trim() ?? ''
+}
+
+/**
+ * 把机器读的标注从 keyEvents 正文里拆出来（issue #65）。
+ *
+ * 标注是下游读的（`closingShotOf` / `stagingOf`），但它被写进了作者可编辑的
+ * 「冲突与转折」框末尾：作者手改这一段时会把标注一起改坏或删掉，而没有任何提示
+ * 说它是机器读的。界面因此要把两者分开显示——正文进编辑框，标注以只读形式展示，
+ * 保存时再原样拼回去。
+ *
+ * 只认合同里那两个标注形态；正文里偶然出现的其他【】不动（可能是作者自己的写法）。
+ */
+export function splitBlueprintLabels(keyEvents: string): { prose: string; labels: string[] } {
+  const source = String(keyEvents ?? '')
+  const labels: string[] = []
+  const prose = source
+    .replace(/\s*【\s*(?:收束|装置)\s*[:：][^】]{0,60}】/gu, (match) => {
+      labels.push(match.trim())
+      return ''
+    })
+    .trim()
+  return { prose, labels }
+}
+
+/** 把正文与标注拼回 keyEvents（与 `splitBlueprintLabels` 互逆）。 */
+export function joinBlueprintLabels(prose: string, labels: readonly string[]): string {
+  const body = String(prose ?? '').trim()
+  const suffix = labels.map(label => label.trim()).filter(Boolean).join('')
+  return suffix ? `${body}${suffix}` : body
 }
 
 /** 收束方式类型：蓝图合同要求 keyEvents 末尾标注本章落幅（issue #28）。 */

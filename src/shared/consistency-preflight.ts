@@ -1,5 +1,11 @@
 import type { FinalizedContinuityProjection } from './finalized-continuity'
 import { blueprintKeyEventsOversize } from './blueprint-length'
+import {
+  chapterEndingProfile,
+  closingLabelConflicts,
+  ultimatumStreak,
+  type ChapterEndingProfile,
+} from './chapter-ending'
 
 export interface ConsistencyExemption {
   stableFactKey: string
@@ -640,6 +646,87 @@ export function findOversizedBlueprintKeyEvents(input: BlueprintKeyEventsLengthI
     suggestion: {
       zhCN: `精简到「谁做了什么、结果如何、代价是什么」：删掉台词原文、动作顺序与感官细节，那些留给正文；同一件事被拆成好几笔的，合并成一笔。确实放不下就把这段留在正文里，不要在蓝图里预演整场戏。`,
       enUS: `Trim it to who acts, what the outcome is, and what it costs: drop transcribed dialogue, step-by-step action, and sensory detail — those belong to the prose. Merge repeated descriptions of the same event. If the material genuinely does not fit, leave it to the chapter rather than pre-staging the whole scene in the blueprint.`,
+    },
+  }]
+}
+
+/**
+ * 蓝图自报的收束类型与正文最后一幕不符（issue #65）。
+ *
+ * #28 让每章在 keyEvents 末尾标「【收束：类型】」，下一章靠这些标签做「不得重复
+ * 上一章落幅」。实测 10 章有 7 章不符（第 25 章标「物件落幅」而正文收在温珩的
+ * 警告台词上），于是轮换约束建立在假信息上——标错还比不标更糟，因为它看起来可信。
+ *
+ * 只核对能可靠判定的三对：对话收束 ↔ 收在台词里、物件落幅/人物动作收束 ↔ 收在叙述里。
+ * 「悬念直陈/内心独白/时空切换」不承诺收在台词还是叙述里，硬比一定产生假阳性。
+ */
+export interface ClosingLabelInput {
+  chapterNumber: number
+  /** 蓝图 keyEvents 里的收束标注（`closingShotOf` 的结果，未标注传空串）。 */
+  label: string
+  /** 本章定稿正文。 */
+  content: string
+}
+
+export function findClosingLabelConflicts(input: readonly ClosingLabelInput[]): ConsistencyFinding[] {
+  return input.flatMap(item => {
+    if (!item.label.trim() || !item.content.trim()) return []
+    const profile = chapterEndingProfile(item.chapterNumber, item.content)
+    if (!closingLabelConflicts(item.label, profile)) return []
+    const actual = profile.closesOnDialogue ? '收在台词里' : '收在叙述里'
+    const actualEn = profile.closesOnDialogue ? 'closes inside a line of dialogue' : 'closes on narration'
+    return [{
+      stableFactKey: `chapter-ending:label-mismatch:${item.chapterNumber}`,
+      severity: 'warning' as const,
+      sourceChapter: item.chapterNumber,
+      evidence: `第${item.chapterNumber}章蓝图标注「${item.label}」，而正文末句${actual}：${profile.lastSentence.slice(0, 60)}`,
+      issue: {
+        zhCN: `本章蓝图标注的收束方式是「${item.label}」，但正文最后一幕${actual}。这个标注不是给人看的装饰：下一章生成时会拿它做「不得重复上一章落幅」的判断（issue #28），标错等于把轮换约束建立在假信息上——看起来可信，反而比不标更难发现。`,
+        enUS: `This chapter's blueprint declares the closing shot “${item.label}”, but the prose's final beat ${actualEn}. The label is not decoration: the next chapter uses it to avoid repeating the previous closing shot (issue #28), so a wrong label makes that constraint rest on false information — harder to notice than no label at all.`,
+      },
+      suggestion: {
+        zhCN: `按正文实际落幅改标注（正文是权威）：收在台词里就写「对话收束」，收在叙述里就写「物件落幅」或「人物动作收束」。若正文本身想换一种收法，就改正文再改标注，别只改标注。`,
+        enUS: `Correct the label to match the prose, which is authoritative: use “dialogue close” when it ends inside a line of speech, otherwise “object close” or “character-action close”. If you wanted a different ending, change the prose first and then the label — never just the label.`,
+      },
+    }]
+  })
+}
+
+/**
+ * 连续几章都以「通牒式台词」收尾（issue #66）。
+ *
+ * 与 #28 不是同一条：#28 管画面（同一个角色、同一个姿态），这条管**语用**——
+ * 每章都有人用一句话把主角逼到一个二选一。本样本 25 章里末段含对白的 7 章有
+ * 6 章是这种收法，且全在第 15 章之后：画面换了、人物换了、钩子文本也不重复，
+ * 读者关掉这一章时听到的还是同一个声音。
+ */
+export interface ChapterEndingStreakInput {
+  /** 最近几章的定稿正文（升序或任意顺序，本函数会排序）。 */
+  chapters: ReadonlyArray<{ chapterNumber: number; content: string }>
+  /** findings 的 sourceChapter 用（通常是当前章）。 */
+  currentChapter: number
+}
+
+export function findUltimatumStreak(input: ChapterEndingStreakInput): ConsistencyFinding[] {
+  const profiles: ChapterEndingProfile[] = input.chapters
+    .filter(item => item.content.trim())
+    .map(item => chapterEndingProfile(item.chapterNumber, item.content))
+  const streak = ultimatumStreak(profiles)
+  if (streak.length === 0) return []
+  const ranges = `${streak[0]!.chapterNumber}–${streak[streak.length - 1]!.chapterNumber}`
+  const sample = streak.slice(-2).map(item => `第${item.chapterNumber}章「${item.lastSentence.slice(0, 40)}」`).join('、')
+  return [{
+    stableFactKey: `chapter-ending:ultimatum-streak:${streak[streak.length - 1]!.chapterNumber}`,
+    severity: 'warning' as const,
+    sourceChapter: input.currentChapter,
+    evidence: `第 ${ranges} 章连续 ${streak.length} 章都以条件/警告式台词收尾；末两章：${sample}`,
+    issue: {
+      zhCN: `连续 ${streak.length} 章（第 ${ranges} 章）都以一句「二选一/警告/条件」的台词收尾。画面换了、人物换了、钩子文本也不重复，但读者关掉每一章时听到的是同一个声音——悬念被形式化，压迫感反而变钝。这种收法还会改人物形象：本来靠沉默与动作表态的角色，反复开口撂狠话。`,
+      enUS: `${streak.length} chapters in a row (chapters ${ranges}) end on a conditional or threatening line. The setting, the speaker, and the hook text all change, yet every chapter closes on the same voice — which formalises the suspense and blunts it. It also distorts characterisation: someone established as terse and physical starts delivering ultimatums.`,
+    },
+    suggestion: {
+      zhCN: `换一种收法。可用的落幅：物件/动作收尾（把态度写在动作里）、留白（停在未说出口的话上）、切到另一条线、把决定留到下一章开头再生效。若这一章确实需要一句狠话，至少让它不是末句——后面再落一笔别的。`,
+      enUS: `Close differently: end on an object or an action that carries the attitude, leave a beat unsaid, cut to another thread, or let the decision land at the start of the next chapter. If this chapter truly needs the hard line, at least do not make it the final sentence — land something else after it.`,
     },
   }]
 }
