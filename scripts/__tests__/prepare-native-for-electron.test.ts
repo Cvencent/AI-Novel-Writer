@@ -19,12 +19,45 @@ describe('prepare native dependencies for Electron development', () => {
   it('returns immediately when better-sqlite3 already loads in Electron', async () => {
     const probe = vi.fn().mockReturnValue({ ok: true, diagnostic: '' })
     const rebuild = vi.fn()
+    const restoreFromCache = vi.fn()
 
-    await expect(ensureElectronNativeBinding({ probe, rebuild })).resolves.toEqual({
+    await expect(ensureElectronNativeBinding({ probe, rebuild, restoreFromCache })).resolves.toEqual({
       repaired: false,
+      fromCache: false,
     })
     expect(probe).toHaveBeenCalledOnce()
+    // 已经能加载时连缓存都不该看：一次探测就够。
+    expect(restoreFromCache).not.toHaveBeenCalled()
     expect(rebuild).not.toHaveBeenCalled()
+  })
+
+  it('restores the Electron ABI from cache instead of rebuilding', async () => {
+    const probe = vi.fn()
+      .mockReturnValueOnce({ ok: false, diagnostic: 'ABI mismatch' })
+      .mockReturnValueOnce({ ok: true, diagnostic: '' })
+    const rebuild = vi.fn()
+
+    await expect(ensureElectronNativeBinding({
+      probe,
+      rebuild,
+      restoreFromCache: () => true,
+    })).resolves.toEqual({ repaired: true, fromCache: true })
+    expect(rebuild).not.toHaveBeenCalled()
+  })
+
+  it('falls back to rebuilding when the cache misses or restores an unusable binary', async () => {
+    const probe = vi.fn()
+      .mockReturnValueOnce({ ok: false, diagnostic: 'ABI mismatch' })
+      .mockReturnValueOnce({ ok: false, diagnostic: 'still broken' })
+      .mockReturnValueOnce({ ok: true, diagnostic: '' })
+    const rebuild = vi.fn().mockResolvedValue(undefined)
+
+    await expect(ensureElectronNativeBinding({
+      probe,
+      rebuild,
+      restoreFromCache: () => true,
+    })).resolves.toEqual({ repaired: true, fromCache: false })
+    expect(rebuild).toHaveBeenCalledOnce()
   })
 
   it('rebuilds only after an Electron ABI mismatch and verifies the repaired binding', async () => {
@@ -36,8 +69,9 @@ describe('prepare native dependencies for Electron development', () => {
       .mockReturnValueOnce({ ok: true, diagnostic: '' })
     const rebuild = vi.fn().mockResolvedValue(undefined)
 
-    await expect(ensureElectronNativeBinding({ probe, rebuild })).resolves.toEqual({
+    await expect(ensureElectronNativeBinding({ probe, rebuild, restoreFromCache: () => false })).resolves.toEqual({
       repaired: true,
+      fromCache: false,
     })
     expect(rebuild).toHaveBeenCalledOnce()
     expect(probe).toHaveBeenCalledTimes(2)
@@ -52,6 +86,7 @@ describe('prepare native dependencies for Electron development', () => {
     await expect(ensureElectronNativeBinding({
       probe,
       rebuild: vi.fn().mockResolvedValue(undefined),
+      restoreFromCache: () => false,
     })).rejects.toThrow('ERR_DLOPEN_FAILED')
   })
 })

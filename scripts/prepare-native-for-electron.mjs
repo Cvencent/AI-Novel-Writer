@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { restore, save } from './native-abi-cache.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repositoryRoot = path.resolve(path.dirname(scriptPath), '..')
@@ -41,9 +42,14 @@ async function rebuildElectronNativeBinding() {
 export async function ensureElectronNativeBinding({
   probe = probeElectronNativeBinding,
   rebuild = rebuildElectronNativeBinding,
+  restoreFromCache = () => restore('electron'),
 } = {}) {
   const initial = probe()
-  if (initial.ok) return { repaired: false }
+  if (initial.ok) return { repaired: false, fromCache: false }
+
+  // 先试 ABI 缓存（发布加速）：命中时只是一次文件复制，不必 @electron/rebuild 现编。
+  // 缓存条目按 (better-sqlite3 版本, electron 版本) 命名，恢复时校验 size 与 hash。
+  if (restoreFromCache() && probe().ok) return { repaired: true, fromCache: true }
 
   console.log(`Preparing better-sqlite3 for Electron ${electronVersion}...`)
   await rebuild()
@@ -53,12 +59,16 @@ export async function ensureElectronNativeBinding({
       `better-sqlite3 still cannot load in Electron ${electronVersion}: ${repaired.diagnostic || 'unknown native module error'}`,
     )
   }
-  return { repaired: true }
+  // 现编成功后存回缓存，下一轮直接命中。
+  try { save('electron') } catch { /* 缓存只是优化，不承担正确性 */ }
+  return { repaired: true, fromCache: false }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
   const result = await ensureElectronNativeBinding()
-  console.log(result.repaired
-    ? `Rebuilt and verified better-sqlite3 for Electron ${electronVersion}`
-    : `Verified better-sqlite3 for Electron ${electronVersion}`)
+  console.log(!result.repaired
+    ? `Verified better-sqlite3 for Electron ${electronVersion}`
+    : result.fromCache
+      ? `Restored better-sqlite3 for Electron ${electronVersion} from ABI cache`
+      : `Rebuilt and verified better-sqlite3 for Electron ${electronVersion}`)
 }

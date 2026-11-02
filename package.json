@@ -15,7 +15,7 @@
     "dev": "vite",
     "clean:build": "node scripts/clean-build-output.mjs",
     "prepare:native-node": "node scripts/prepare-native-for-node.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit --incremental --tsBuildInfoFile .runtime/tsc/typecheck.tsbuildinfo",
     "check:i18n": "node scripts/check-i18n-coverage.mjs",
     "test": "vitest run",
     "test:browser": "vitest run --config vitest.browser.config.ts",
@@ -40,7 +40,8 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0 && node scripts/check-color-literals.mjs",
     "preview": "vite preview",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "release:local": "node scripts/release-local.mjs"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.0",
