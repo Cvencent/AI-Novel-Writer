@@ -1,5 +1,6 @@
 import type { FinalizedContinuityProjection } from './finalized-continuity'
 import { blueprintKeyEventsOversize } from './blueprint-length'
+import { foreshadowingKeywords, type ForeshadowingCommitment } from './foreshadowing-commitments'
 import {
   chapterEndingProfile,
   closingLabelConflicts,
@@ -729,6 +730,46 @@ export function findUltimatumStreak(input: ChapterEndingStreakInput): Consistenc
       enUS: `Close differently: end on an object or an action that carries the attitude, leave a beat unsaid, cut to another thread, or let the decision land at the start of the next chapter. If this chapter truly needs the hard line, at least do not make it the final sentence — land something else after it.`,
     },
   }]
+}
+
+/**
+ * 早先承诺的伏笔在本章没有落地（issue #68）。
+ *
+ * 蓝图 `foreshadowing` 里写明「留待第 15 章揭开」之后，原来没有任何环节回头核对
+ * 第 15 章到底写没写（26 章实测 4 条远期承诺 3 条在目标章 0 命中）。判据刻意做得窄：
+ * 只问「本章正文里能不能检索到这条承诺的任一实体词」，命中一个就算落地——
+ * 目的是把「完全没提」的那几条捞出来，不是判断兑现得好不好。
+ */
+export interface ForeshadowingDueCheck {
+  chapterNumber: number
+  /** 本章定稿/起草正文。 */
+  content: string
+  /** 指向本章的承诺。 */
+  commitments: readonly ForeshadowingCommitment[]
+}
+
+export function findUndeliveredForeshadowing(input: ForeshadowingDueCheck): ConsistencyFinding[] {
+  if (!input.content.trim()) return []
+  return input.commitments.flatMap(commitment => {
+    const keywords = foreshadowingKeywords(commitment.text)
+    // 抽不出检索词就不判：词都抽不出来，说明这段文本不是可核对的承诺。
+    if (keywords.length === 0) return []
+    if (keywords.some(keyword => input.content.includes(keyword))) return []
+    return [{
+      stableFactKey: `foreshadowing:undelivered:${commitment.plantsAt}:${input.chapterNumber}`,
+      severity: 'warning' as const,
+      sourceChapter: input.chapterNumber,
+      evidence: `第 ${commitment.plantsAt} 章承诺「${commitment.text.slice(0, 60)}」，第 ${input.chapterNumber} 章正文里检索不到 ${keywords.join('、')}`,
+      issue: {
+        zhCN: `第 ${commitment.plantsAt} 章的蓝图写下「留待第 ${input.chapterNumber} 章」的伏笔，但本章正文里找不到与它相关的任何实体（${keywords.join('、')}）。读者记着的是没兑现的那一个：承诺过的扣子被别的东西顶替，比一开始就不埋更伤。`,
+        enUS: `Chapter ${commitment.plantsAt}'s blueprint promised to pay this off in chapter ${input.chapterNumber}, but the prose contains none of the promise's anchors (${keywords.join(', ')}). Readers remember the thread that never paid off; a promise replaced by something else is worse than no promise at all.`,
+      },
+      suggestion: {
+        zhCN: `二选一：在本章补上这件事（哪怕只是一句带过，也要让人能检索到）；或者把这条伏笔明确降级——回第 ${commitment.plantsAt} 章的蓝图里改写它，说明已经由别的方式了结。不要两头都不动。`,
+        enUS: `Either realize it in this chapter (a single clause that makes it findable is enough), or explicitly retire it: edit chapter ${commitment.plantsAt}'s blueprint to say the matter was settled another way. Do not leave both ends untouched.`,
+      },
+    }]
+  })
 }
 
 export function mergeConsistencyFindingsIntoReview(

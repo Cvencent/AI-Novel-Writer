@@ -1,5 +1,10 @@
 import { chapterTimeContinuity } from '../../../shared/chapter-time-continuity'
 import { closingShotOf, stagingOf } from '../../../shared/blueprint-semantic-contract'
+import {
+  foreshadowingDueAt,
+  parseForeshadowingCommitments,
+  renderForeshadowingDue,
+} from '../../../shared/foreshadowing-commitments'
 import { normalizeAgeField } from '../../../shared/character-age'
 import { appErrorMessage } from '../../../i18n/app-errors'
 import { sanitizeDraftText, composeDraftVisibleContinuation, DRAFT_CONDENSE_PURPOSE, DRAFT_VISIBLE_TEXT_VERSION, isDraftVisibleTextVersion, type DraftVisibleTextVersion } from '../../../shared/draft-visible-text'
@@ -689,6 +694,21 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           `[Costs already paid in the recent chapters (do not recover them for free, and do not pay the same price again)]\n${enCostLines.join('\n')}\nIf this chapter must recover what a cost took away, or lift a loss, show another price the character pays for it; never dissolve a cost with a reminder, a convenient gesture, or the very next action.`,
         )}`
       }
+      // 早先章节点名本章的伏笔承诺（issue #68）：原来这里只取最近 3 章的代价/落幅，
+      // 而「必须埋下或回收的伏笔」只取本章自己的 foreshadowing——写在第 13 章的
+      // 「与第 22 夜接榫」永远送不到第 22 章的起草。这里按**承诺**取数补上。
+      const dueForeshadowing = renderForeshadowingDue({
+        commitments: foreshadowingDueAt(
+          parseForeshadowingCommitments(allBlueprints),
+          this.chapterInfo.chapterNumber,
+          { alreadyInContextChapters: 3 },
+        ),
+        targetChapter: this.chapterInfo.chapterNumber,
+        language: writingLanguage,
+      })
+      if (dueForeshadowing) recentClosingShots += `
+
+${dueForeshadowing}`
     } catch { /* 忽略 */ }
 
     const template = await resolvePromptTemplate(templateKey, projectSession, writingLanguage)

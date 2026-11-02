@@ -516,6 +516,46 @@ describe('GenerateDirectoryCommand', () => {
     expect(user).toContain('【装置：舱底＋拧水隔】')
   })
 
+  it('carries a promise written many chapters earlier into the target chapter (issue #68)', async () => {
+    stubIpcInvoke(successfulCommitHandler())
+    const observedTasks: GenerationTask[] = []
+    const session = generationSession(async task => {
+      observedTasks.push(task)
+      return {
+        status: 'completed',
+        content: JSON.stringify({ blueprints: [modelBlueprint(22)] }),
+        finishReason: 'stop',
+        receipt: generationReceipt(observedTasks.length, 'stop', task.purpose),
+      }
+    })
+    // 第 13 章写下的远期承诺，目标第 22 章；埋设章离目标章 9 章远，
+    // 原来「只带最近 3 章」的取数永远够不到它。
+    const context = {
+      ...workflowContext(),
+      data: {
+        ...workflowContext().data,
+        existingBlueprints: [
+          blueprint(13, { foreshadowing: '与第22夜「把存根藏到搭档找不到的地方」接榫。' }),
+          blueprint(21, { foreshadowing: '留待第23章揭开。' }),
+        ],
+      },
+    }
+    const command = new GenerateDirectoryCommand(
+      { mode: 'append', startChapter: 22, count: 1 },
+      { ...projectSnapshot, novelConfig: { ...projectSnapshot.novelConfig, totalChapters: 30, wordsPerChapter: 800 } },
+      { createRuntime: vi.fn(async () => testRuntime(session)) },
+    )
+
+    await command.execute({ step: {}, context, callbacks: stepCallbacks() })
+
+    const user = observedTasks.at(-1)?.messages.find(message => message.role === 'user')?.content ?? ''
+    expect(user).toContain('早先章节点名本章的承诺')
+    expect(user).toContain('第 13 章埋下')
+    expect(user).toContain('接榫')
+    // 指向第 23 章的那条不该出现在第 22 章的请求里。
+    expect(user).not.toContain('留待第23章揭开')
+  })
+
   it('sends English blueprint instructions through the provider request for an English project', async () => {
     stubIpcInvoke(successfulCommitHandler())
     const observedTasks: GenerationTask[] = []

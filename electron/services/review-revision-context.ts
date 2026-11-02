@@ -9,6 +9,8 @@ import { findCharacterProseRepetition, findProseRepetition, proseRepetitionEvide
 import { findDeclaredDigitCountMismatches } from '../../src/shared/numbering-consistency'
 import { findCrossChapterAssertionReversals, findClosingLabelConflicts, findUltimatumStreak } from '../../src/shared/consistency-preflight'
 import { closingShotOf } from '../../src/shared/blueprint-semantic-contract'
+import { findUndeliveredForeshadowing } from '../../src/shared/consistency-preflight'
+import { foreshadowingDueAt, parseForeshadowingCommitments } from '../../src/shared/foreshadowing-commitments'
 import { findAbilityReuseContradictions } from '../../src/shared/ability-budget'
 import type { ConsistencyFinding } from '../../src/shared/consistency-preflight'
 import { CHARACTER_STATE_TEXT_FIELDS } from '../../src/shared/character-roster'
@@ -186,6 +188,14 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
         ),
         // 连续几章都以「通牒式台词」收尾（issue #66）：与 #28 的「画面同构」不同，
         // 这是**语用**收敛——每章都有人用一句话把主角逼到二选一。样本 = 最近定稿 + 本章。
+        // 早先章节点名本章的伏笔没有落地（issue #68）：蓝图里写明「留待第 N 章揭开」
+        // 之后，原来没有任何环节回头核对第 N 章到底写没写。这里用全量蓝图解析承诺，
+        // 只保留指向本章的，再问正文里能否检索到它的实体词。
+        ...findUndeliveredForeshadowing({
+          chapterNumber: source.chapterNumber,
+          content: source.content,
+          commitments: foreshadowingDueAt(parseForeshadowingCommitments(BlueprintRepository.getAll(db)), source.chapterNumber),
+        }),
         ...findUltimatumStreak({
           chapters: [...history.slice(-4).map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
             { chapterNumber: source.chapterNumber, content: source.content }],

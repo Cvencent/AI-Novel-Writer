@@ -51,6 +51,11 @@ import {
   countBlueprintKeyEventsUnits,
 } from '../../../shared/blueprint-length'
 import { HOOK_FORM_TEXT, hookFormOf } from '../../../shared/chapter-ending'
+import {
+  foreshadowingDueAt,
+  parseForeshadowingCommitments,
+  renderForeshadowingDue,
+} from '../../../shared/foreshadowing-commitments'
 
 type CreateDirectoryGenerationRuntime = NonNullable<WorkflowGenerationRuntimeDependencies['createRuntime']>
 
@@ -251,6 +256,13 @@ function buildCompactBlueprintTask(input: {
     })),
     globalGuidance: input.globalGuidance,
     pacingGuidance: input.pacingGuidance,
+    // 早先章节点名本章的承诺（issue #68）：原来只带「最近 3 章」，于是写在第 13 章
+    // 的「与第 22 夜接榫」永远送不到第 22 章。这里按**承诺**取数，不只是按位置。
+    foreshadowingDue: foreshadowingDueAt(
+      parseForeshadowingCommitments(input.previous),
+      input.chapterNumber,
+      { alreadyInContextChapters: COMPACT_RECENT_BLUEPRINTS },
+    ).map(commitment => ({ plantsAt: commitment.plantsAt, text: commitment.text })),
   }
   const prompt = [
     promptLanguageText(input.writingLanguage, '仅根据下列有界事实生成该章完整蓝图。', 'Build the complete chapter blueprint from only the bounded facts below.'),
@@ -271,6 +283,18 @@ function buildCompactBlueprintTask(input: {
         )]
       : []),
     promptLanguageText(input.writingLanguage, `必须且只能返回 chapterNumber=${input.chapterNumber} 的一项。`, `Return exactly one item whose chapterNumber is ${input.chapterNumber}.`),
+
+    // 早先章节点名本章的承诺（issue #68）：写在 facts 里是给模型看的结构化数据，
+    // 这里再单独成段，让它不会被 JSON 的噪声盖住。
+    renderForeshadowingDue({
+      commitments: foreshadowingDueAt(
+        parseForeshadowingCommitments(input.previous),
+        input.chapterNumber,
+        { alreadyInContextChapters: COMPACT_RECENT_BLUEPRINTS },
+      ),
+      targetChapter: input.chapterNumber,
+      language: input.writingLanguage === 'en-US' ? 'en-US' : 'zh-CN',
+    }),
 
     blueprintCapacityGenerationContract(input.writingLanguage, input.wordsPerChapter),
   ].join('\n')
@@ -449,6 +473,20 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
           .build()
           + `\n\n${blueprintSemanticGenerationContract(writingLanguage)}`
           + `\n\n${blueprintCapacityGenerationContract(writingLanguage, wordsPerChapter)}`
+          // 早先章节点名本批各章的承诺（issue #68）：这一批可能覆盖多章，逐章渲染。
+          // 取数按**承诺**而非「最近 N 章」——写在十几章前的「留待第 15 章揭开」
+          // 必须在这一批第 15 章生成时出现在上下文里。
+          + (() => {
+            const all = parseForeshadowingCommitments(previous)
+            const blocks = chapterNumbers
+              .map(chapterNumber => renderForeshadowingDue({
+                commitments: foreshadowingDueAt(all, chapterNumber, { alreadyInContextChapters: COMPACT_RECENT_BLUEPRINTS }),
+                targetChapter: chapterNumber,
+                language: writingLanguage === 'en-US' ? 'en-US' : 'zh-CN',
+              }))
+              .filter(Boolean)
+            return blocks.length > 0 ? `\n\n${blocks.join('\n\n')}` : ''
+          })()
 
         return {
           purpose: 'chapter-blueprint-directory',
