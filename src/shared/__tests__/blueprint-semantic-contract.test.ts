@@ -351,6 +351,20 @@ describe('hook pragmatic rotation (issue #66)', () => {
   })
 })
 
+describe('character entrance rotation (issue #81)', () => {
+  it('requires entrances to vary instead of the same posture-plus-clothing formula', () => {
+    const zh = blueprintSemanticGenerationContract('zh-CN')
+    expect(zh).toContain('人物登场不得同构')
+    expect(zh).toContain('姿态＋地点＋穿戴')
+    // 给出可执行的替代信息，而不是只说「别重复」。
+    expect(zh).toContain('他累不累')
+    const en = blueprintSemanticGenerationContract('en-US')
+    expect(en).toContain('Entrances must not repeat')
+    expect(en).toContain('posture + place + clothing')
+    expect(en).toContain('whether they are tired')
+  })
+})
+
 describe('machine-read labels are separable from editable prose (issue #65)', () => {
   const keyEvents = '周叙把签收联叠进风灯罩。【收束：物件落幅】【装置：跳板口＋把笔撂在移交单上】'
 

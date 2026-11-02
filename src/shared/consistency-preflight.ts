@@ -2,6 +2,7 @@ import type { FinalizedContinuityProjection } from './finalized-continuity'
 import { blueprintKeyEventsOversize } from './blueprint-length'
 import { foreshadowingKeywords, type ForeshadowingCommitment } from './foreshadowing-commitments'
 import { findAnnihilatedPropRevival, findRepeatPropTermination } from './prop-termination'
+import { findRepeatedEntranceShots } from './entrance-shot'
 import { findLossRestatement } from './loss-restatement'
 import {
   designSections,
@@ -1108,6 +1109,42 @@ export function findPropRevivalFindings(input: PropRevivalInput): ConsistencyFin
     suggestion: {
       zhCN: `二选一：写出它怎么回来的（谁给的、用什么换的、剩下的一角），并把这次取得写成正文动作；或者改后面的章——它已经不在了，那几章该处理的是**缺少它**的后果（用什么替代、因此失去了什么）。`,
       enUS: `Either show how it came back (who provided it, what was traded, a surviving fragment) as an on-page action, or rewrite the later chapters: it is gone, so what those chapters should dramatise is the consequence of not having it.`,
+    },
+  }))
+}
+
+/**
+ * 人物登场句的跨章同构（issue #81）。
+ *
+ * 「同一套写法」的三组检测分别只看**章首**（#71/#72）、**章末**（#65/#66）、
+ * **正文核心戏**（#32/#33），而人物「怎么登场」那一段落在章中间——三组都看不到。
+ * 实测样本温珩出场 30 章，11 章的首次出现段直接带同一套穿戴，其中两对是逐字复写
+ * （22 字、13 字）。登场句是每场戏的开机键，同构比收尾收敛更伤。
+ *
+ * 判据**无词表**（本仓在 #30/#43/#70/#80 反复吃过词表过拟合的亏）：不比「有哪些穿戴词」，
+ * 而是问同一角色的登场段在不同章里字面有多像——去标点后取最长公共子串。
+ */
+export interface EntranceShotInput {
+  chapters: ReadonlyArray<{ chapterNumber: number; content: string }>
+  castNames: readonly string[]
+  /** findings 的 sourceChapter 用（通常是当前章）。 */
+  currentChapter: number
+}
+
+export function findEntranceShotFindings(input: EntranceShotInput): ConsistencyFinding[] {
+  return findRepeatedEntranceShots(input.chapters, { castNames: input.castNames }).map(hit => ({
+    stableFactKey: `entrance:repeat:${hit.character}`,
+    severity: 'warning' as const,
+    // 证据落在**最后命中那一章**（issue #79 的口径：不写成正在写的章）。
+    sourceChapter: hit.chapters[hit.chapters.length - 1]!,
+    evidence: `「${hit.character}」在第 ${hit.chapters.join('、')} 章的登场段逐字重合 ${hit.commonSubstring.length} 字：「${hit.commonSubstring.slice(0, 40)}」`,
+    issue: {
+      zhCN: `「${hit.character}」在第 ${hit.chapters.join('、')} 章的登场段几乎逐字相同（去标点后重合 ${hit.commonSubstring.length} 字：「${hit.commonSubstring.slice(0, 30)}」）。人物登场是读者每章重建画面的锚点，同一个角色几十章里都用同一句「站在某处、穿着某样」交代，画面就不再提供信息，读者会跳过这一段。它比章末收敛更伤——收尾每章只出现一次，登场句是**每场戏的开机键**。`,
+      enUS: `“${hit.character}” enters almost word for word the same way in chapters ${hit.chapters.join(', ')} (${hit.commonSubstring.length} identical characters after stripping punctuation). An entrance is how readers rebuild the scene each chapter; the same line about standing somewhere in the same clothes stops carrying information and gets skipped. It hurts more than a repeated closing shot — the entrance is the start button of every scene.`,
+    },
+    suggestion: {
+      zhCN: `换这次登场要交代的东西：他累不累、衣服干没干、手里拿着什么、跟谁站在一起、是先出声还是先动手。**同一个角色连续几章的首次出现不得用同一套姿态＋穿戴交代**。样本里已有一章写成「肩上搭着那件洗白的短褂」，说明换得动——被换掉的十几个字正是本可以写信息的地方。`,
+      enUS: `Change what the entrance tells us: whether they are tired, whether the clothes are dry, what is in their hands, who they stand beside, whether they speak or act first. A character's first appearance must not repeat the same posture-plus-clothing formula in adjacent chapters. One chapter in the sample already manages it — the freed-up words are exactly where new information could go.`,
     },
   }))
 }
