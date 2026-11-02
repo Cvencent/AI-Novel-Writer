@@ -168,6 +168,10 @@ export async function readConsistencyPreflight(
       .slice(-16)
       .map(row => ({ chapterNumber: row.chapterNumber, content: String(row.content ?? '') })),
     currentChapter,
+    // 人不是道具（issue #80）：抽取器要名册才能排除角色名。
+    castNames: (Array.isArray(roster?.entries) ? roster.entries : [])
+      .map(entry => (typeof entry.name === 'string' ? entry.name.trim() : ''))
+      .filter(Boolean),
   })
   const lossRestatementFindings = recentProse.length === 0 ? [] : findLossRestatementFindings({
     chapters: recentProse

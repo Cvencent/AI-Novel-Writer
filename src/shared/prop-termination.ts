@@ -44,6 +44,9 @@ const ANNIHILATION_DECLARATIONS = Object.freeze(['没了', '再也没有', '不�
 /** 「可取用」的形态（issue #78）：没有获得动作就直接使用。 */
 const USABLE_APPEARANCE = Object.freeze([
   '摸出', '取出', '拿出', '掏出', '抽出', '压上', '递到', '蘸水压',
+  // 蘸潮/蘸水（issue #80 实测）：ch30「他把票根蘸了潮，压上去」——票根在动词之前，
+  // 且与「压上」之间被逗号隔开；只认后置宾语会漏掉这条 #78 的真阳性。
+  '蘸了潮', '蘸潮', '蘸了水',
 ] as const)
 
 /** 「重新获得」的动作：出现它说明这件东西是**重新拿到**的，不是自行复活。 */
@@ -102,6 +105,57 @@ function isNounLikeAnchor(token: string, action: string): boolean {
 /** 单纯的名词性片段（不看动作）：#78 的抽取用同一口径。 */
 function isPlainNounAnchor(token: string): boolean {
   return !/^[的了着把将在和与及]|(?:的|了|着)$/u.test(token)
+}
+
+/**
+ * 物证候选：名词性片段，且**不是角色名**（issue #80）。
+ *
+ * 抽取器此前不接收名册，于是「周叙」这样的主角名被当成一件「在 ch3 被写没了、
+ * ch4 又复活」的道具——真实书稿上 4/4 假阳性、其中 1 条是主角名。
+ * 人不是道具：名册里的名字（含片段包含关系，例如名册有「周叙」时「周叙」与其
+ * 子串都排除）直接丢弃。
+ *
+ * 刻意**不做**「场所/职务」的反向词表（报告建议 2 自己也不建议）：那是词表，
+ * 换一本书就失效。场所类噪声由「必须是动作宾语」这条（建议 3）兜住。
+ */
+function isNounLikeProp(token: string, cast: ReadonlySet<string>): boolean {
+  if (!isPlainNounAnchor(token)) return false
+  if (cast.has(token)) return false
+  // 「周叙」在名册里时，「周叙」两字窗口与其更短子串都不该当道具；
+  // 反过来名册里是短名（「全叔」）而候选更长（「全叔那」）时也要排除。
+  for (const name of cast) {
+    if (name.includes(token) || token.includes(name)) return false
+  }
+  return true
+}
+
+/**
+ * 「可取用形态」动词**宾语**在句中的起始位置（issue #80 建议 3）。
+ *
+ * 分析到动词为止的**最长宾语片段**：中文里宾语在动词之后（「摸出票夹」），
+ * 也常见「把 X 摸出」的处置式（宾语在动词前）。两种都返回。
+ *
+ * 只按「动作词同句出现」判时，中文的「主体 + 动词」句子天然满足消亡上下文 +
+ * 可用形态两个条件，于是主语（角色名）也被当成可取用的道具——这正是 #80 的
+ * 主要假阳性来源。
+ */
+function usableObjectSpans(sentence: string): Array<{ start: number; end: number }> {
+  const spans: Array<{ start: number; end: number }> = []
+  for (const marker of USABLE_APPEARANCE) {
+    for (let index = sentence.indexOf(marker); index >= 0; index = sentence.indexOf(marker, index + 1)) {
+      // 动词之后的连续 CJK 串就是宾语（可能带定语：「空白票根」）。
+      const after = sentence.slice(index + marker.length)
+      const object = /^[\u4e00-\u9fa5]+/u.exec(after)?.[0]
+      if (object) spans.push({ start: index + marker.length, end: index + marker.length + object.length })
+      // 处置式：「把 X 摸出」——查询动词前最近的「把/将」之后的内容。
+      // 宾语与动词之间可能隔着逗号和短句（「把票根蘸了潮，压上」），所以回溯 8 字
+      // 而不是要求紧邻，否则 #78 的 ch30 真阳性会漏掉。
+      const before = sentence.slice(0, index)
+      const disposal = /(?:把|将)([\u4e00-\u9fa5]{1,8})$/u.exec(before)
+      if (disposal?.[1]) spans.push({ start: before.length - disposal[1].length, end: before.length })
+    }
+  }
+  return spans
 }
 
 /** 某句里出现的终结动作。 */
@@ -239,7 +293,7 @@ export interface PropRevival {
  * 只看宣告句本身会得到零个物证名（「没了」只有两个字）。所以独立宣告句要
  * **回看前一句**——这正是报告建议 2 说的「出现『没了。』这类独立短句」也要算数。
  */
-function annihilatedPropsInChapter(content: string): Map<string, string> {
+function annihilatedPropsInChapter(content: string, cast: ReadonlySet<string>): Map<string, string> {
   const props = new Map<string, string>()
   const sentences = splitProseSentences(String(content ?? ''))
   for (let index = 0; index < sentences.length; index += 1) {
@@ -259,7 +313,7 @@ function annihilatedPropsInChapter(content: string): Map<string, string> {
       for (const length of PROP_WINDOW_WITH_SHORT) {
         for (let start = 0; start + length <= run[0].length; start += 1) {
           const token = run[0].slice(start, start + length)
-          if (!isPlainNounAnchor(token)) continue
+          if (!isNounLikeProp(token, cast)) continue
           // 含终结动作的片段是动宾短语，不是物证名（#77 的同一口径）。
           if (actions.some(action => token.includes(action))) continue
           if (!props.has(token)) props.set(token, evidence)
@@ -285,9 +339,13 @@ export const PROP_REVIVAL_MAX_GAP = 12
  */
 export function findAnnihilatedPropRevival(
   chapters: readonly ChapterProse[],
-  options: { maxGap?: number } = {},
+  options: { maxGap?: number; castNames?: readonly string[] } = {},
 ): PropRevival[] {
   const maxGap = options.maxGap ?? PROP_REVIVAL_MAX_GAP
+  // 角色名册（issue #80）：抽取器此前不接收它，于是「周叙」这样的**主角名**被当成
+  // 一件「在 ch3 被写没了、ch4 又复活」的道具——真实书稿上 4/4 假阳性。
+  // 人不是道具，直接排除。
+  const cast = new Set((options.castNames ?? []).map(name => String(name).trim()).filter(Boolean))
   const ordered = [...chapters]
     .filter(chapter => Number.isSafeInteger(chapter.chapterNumber) && String(chapter.content ?? '').trim())
     .sort((left, right) => left.chapterNumber - right.chapterNumber)
@@ -297,15 +355,22 @@ export function findAnnihilatedPropRevival(
   for (const chapter of ordered) {
     const entry = { props: new Set<string>(), reacquired: new Set<string>(), excerpt: new Map<string, string>() }
     for (const sentence of splitProseSentences(String(chapter.content))) {
-      const usable = USABLE_APPEARANCE.some(marker => sentence.includes(marker))
       const reacquired = REACQUISITION_ACTIONS.some(marker => sentence.includes(marker))
-      if (!usable && !reacquired) continue
+      // 「可取用」必须是**宾语**（issue #80 建议 3）：不只是动作词同句出现，
+      // 而是该词就是那个动作的宾语（「摸出票夹」里的「票夹」）。
+      // 只按同句出现判时，中文里「主体 + 动词」的句子天然满足两个条件——
+      // 「周叙摸出票夹」里的主语「周叙」于是也被当成一件可取用的道具。
+      const usableObjects = usableObjectSpans(sentence)
+      if (usableObjects.length === 0 && !reacquired) continue
       for (const run of sentence.matchAll(/[\u4e00-\u9fa5]+/gu)) {
         for (const length of PROP_WINDOW_WITH_SHORT) {
           for (let start = 0; start + length <= run[0].length; start += 1) {
             const token = run[0].slice(start, start + length)
-            if (!isPlainNounAnchor(token)) continue
-            if (usable) {
+            if (!isNounLikeProp(token, cast)) continue
+            // 候选只要**落在宾语区间内**即可，不要求从区间起点开始：
+            // 「从怀里摸出空白票根」的宾语是「空白票根」，「票根」落在其中（#78 的真阳性）。
+            const tokenStart = sentence.indexOf(token)
+            if (usableObjects.some(span => tokenStart >= span.start && tokenStart < span.end)) {
               entry.props.add(token)
               if (!entry.excerpt.has(token)) entry.excerpt.set(token, sentence)
             }
@@ -319,7 +384,7 @@ export function findAnnihilatedPropRevival(
 
   const raw: Array<PropRevival & { chapters: number[]; excerpts: string[] }> = []
   for (const chapter of ordered) {
-    for (const [prop, annihilationExcerpt] of annihilatedPropsInChapter(String(chapter.content))) {
+    for (const [prop, annihilationExcerpt] of annihilatedPropsInChapter(String(chapter.content), cast)) {
       const appearedAt: number[] = []
       let appearanceExcerpt = ''
       for (const later of ordered) {

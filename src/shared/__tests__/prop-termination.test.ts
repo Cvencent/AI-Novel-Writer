@@ -204,3 +204,65 @@ describe('issue #79: 提醒必须指向证据所在的章，而不是正在写�
     expect(finding!.evidence).toContain('第 21 章被写没了')
   })
 })
+
+describe('issue #80: 人不当道具、可用形态必须是宾语', () => {
+  it('never reports a cast member as a resurrected prop', () => {
+    // 报告的真实形态：角色名是动作的**主语**（「周叙摸出票夹」），
+    // 旧实现只要求动作词同句出现，于是主语也被当成可取用的道具。
+    const chapters = [
+      { chapterNumber: 3, content: '温珩没答。周叙站在跳板口。' },
+      { chapterNumber: 4, content: '周叙摸出票夹，翻开。账房那边的灯还亮着。' },
+      { chapterNumber: 5, content: '周叙抬头看了一眼天。' },
+      { chapterNumber: 8, content: '周叙从怀里摸出票夹。' },
+    ]
+    const hits = findAnnihilatedPropRevival(chapters, {
+      castNames: ['周叙', '温珩', '全叔', '林棠', '柯明远'],
+    })
+    // 名册里的角色名一律不得出现——报告里 4 条误报有 1 条正是主角名。
+    for (const hit of hits) {
+      expect(hit.prop).not.toBe('周叙')
+      expect(hit.prop).not.toBe('温珩')
+    }
+  })
+
+  it('rejects a cast member even when it sits inside the extraction window', () => {
+    // 「周叙把票根压死在掌心里」——「周叙」落在动作前 12 字窗口内。
+    const chapters = [
+      { chapterNumber: 3, content: '周叙把票根压死在掌心里。' },
+      { chapterNumber: 5, content: '周叙摸出票根，压上去。' },
+    ]
+    const withCast = findAnnihilatedPropRevival(chapters, { castNames: ['周叙'] })
+    expect(withCast.map(hit => hit.prop)).toEqual(['票根'])
+    const withoutCast = findAnnihilatedPropRevival(chapters)
+    // 反证：不给名册时才会有非道具候选混进来（这条差距就是本轮修的东西）。
+    expect(withoutCast.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('requires the usable word to take the candidate as its object', () => {
+    // 「出来」这类动词碎片：报告里它被当成一件道具。
+    const chapters = [
+      { chapterNumber: 8, content: '他从水隔后头出来，手里空着。' },
+      { chapterNumber: 9, content: '周叙又出来看了一趟。' },
+    ]
+    expect(findAnnihilatedPropRevival(chapters, { castNames: ['周叙'] }))
+      .toEqual([])
+  })
+
+  it('keeps the real ticket-stub revival (issue #78 guard intact)', () => {
+    const chapters = [
+      { chapterNumber: 21, content: ['票根表面起毛，纸芯吸饱了水，一按就塌。第三下，纸面从中间酥开，碎成几片，沾在他掌心的茧上，一捻就烂。', '没了。'].join(String.fromCharCode(10)) },
+      { chapterNumber: 28, content: '他从怀里摸出空白票根，蘸水压上去。' },
+    ]
+    const hits = findAnnihilatedPropRevival(chapters, { castNames: ['周叙', '全叔'] })
+    expect(hits.map(hit => hit.prop)).toContain('票根')
+  })
+
+  it('still finds the prop when the sentence uses the disposal form (把 X 摸出)', () => {
+    const chapters = [
+      { chapterNumber: 4, content: '账房那页被水泡酥，碎成几片。' },
+      { chapterNumber: 6, content: '他把那页从抽屉里取出，摊在灯下。' },
+    ]
+    const hits = findAnnihilatedPropRevival(chapters, { castNames: ['周叙'] })
+    expect(hits.map(hit => hit.prop)).toContain('那页')
+  })
+})

@@ -1087,10 +1087,15 @@ export interface PropRevivalInput {
   chapters: ReadonlyArray<{ chapterNumber: number; content: string }>
   /** findings 的 sourceChapter 用（通常是当前章）。 */
   currentChapter: number
+  /**
+   * 在册角色名（issue #80）：人不是道具。不传时抽取器会把主角名当成
+   * 「被写没了又复活」的物证（真实书稿上 4/4 假阳性，其中 1 条是主角名）。
+   */
+  castNames?: readonly string[]
 }
 
 export function findPropRevivalFindings(input: PropRevivalInput): ConsistencyFinding[] {
-  return findAnnihilatedPropRevival(input.chapters).map(hit => ({
+  return findAnnihilatedPropRevival(input.chapters, { castNames: input.castNames }).map(hit => ({
     stableFactKey: `prop:revival:${hit.prop}`,
     severity: 'warning' as const,
     sourceChapter: hit.appearedAt[hit.appearedAt.length - 1]!,
