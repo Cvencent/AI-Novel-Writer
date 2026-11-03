@@ -219,8 +219,34 @@ function describedCharacters(text: string): Array<{ character: string; at: numbe
 }
 
 /**
+ * 「偏旁名附近是否另有一个**部首相符**的字」的搜索跨度（句数，向前向后各取）。
+ *
+ * 取 4 而不是 2：issue #119 的实测样本里，真正被描述的字「柯」在偏旁名那一句之后
+ * **第 3 句**才出现（「木字旁的起笔。」→「周叙盯着那道残笔。」→「裂口里那道起笔立在他脑子里。」
+ * →「像“柯”字的第一笔。」）。跨度取 2 会漏掉它、照样误报。
+ * 放宽的代价是**可能少报**（附近恰好有别的同部首字）——这正是 #99 定的方向：宁可漏，也不误报。
+ */
+const MATCHING_RADICAL_SPAN = 4
+
+/**
  * 抽出本章所有**能判定**的字形断言（被描述的字 + 相邻偏旁名）。
  * 命中「偏旁名与这个字的实际部首相符」的**不返回**——它没有错。
+ *
+ * issue #119 修的一类**假阳性**：偏旁名所在句**自己没有被描述的字**时，判据会从
+ * 相邻句借一个引号单字——可作者说的可能根本是**别的字**。实测第 52 章：
+ * 「裂到「温」字刮去的那处停住……木字旁的起笔。」后几句才是「像『柯』字的第一笔」
+ * ——「木字旁」说的是**柯**（柯＝木＋可，木字旁**正确**），判据却借了指上句的
+ * 「温」（温＝三点水），报出「温是木字旁」这种张冠李戴。
+ *
+ * 修法（issue 建议 1）：
+ *   ① 偏旁名所在句**自己有**被描述的字时只用本句，不从相邻句借；
+ *   ② 借字之前，先在**较宽的跨度**（`MATCHING_RADICAL_SPAN`）里找有没有另一个字，
+ *      其实际部首恰好等于本句的偏旁名——有就说明偏旁名八成在说那个字，**不报**。
+ *
+ * ⚠️ 刻意**不采用** issue 建议 2 的字面写法（「偏旁名所在句自身没有字且借来的字不符
+ * 就判 unknown」）：那会把 #99 自己的两个真阳性一起判死——第 45 章
+ * 「半个“温”字。左边半边，立人旁。」里，偏旁名那半句（「立人旁」）**自身就没有字**，
+ * 它必须向上一句借「温」才判得出来。所以问题不在「借」，而在「借之前没找更合适的字」。
  */
 export function glyphRadicalMismatches(
   chapterNumber: number,
@@ -232,9 +258,23 @@ export function glyphRadicalMismatches(
   for (let index = 0; index < sentences.length; index += 1) {
     const names = radicalNamesIn(sentences[index]!)
     if (names.length === 0) continue
+    // 校验②：较宽跨度内若存在「实际部首与偏旁名相符」的字，判为「偏旁名在说那个字」，不报。
+    const matchingScan = sentences
+      .slice(Math.max(0, index - MATCHING_RADICAL_SPAN), index + MATCHING_RADICAL_SPAN + 1)
+      .join('')
+    if (describedCharacters(matchingScan).some(hit => {
+      const actual = radicalIndexOf(hit.character)
+      return actual !== null && names.some(name => name.index === actual)
+    })) continue
+    // issue #119 校验①：**本句自己有被描述的字**时只用本句，不从相邻句借
+    // （原来窗口一律取「本句 + 前后句」，借来的字可能与偏旁名无关）。
+    const ownSentence = describedCharacters(sentences[index]!)
+      .filter(hit => radicalIndexOf(hit.character) !== null)
     // 窗口 = 本句 + 紧邻的前后句：断言常被句号切开（「半个“温”字。左边半边，立人旁。」）。
     const window = [sentences[index - 1] ?? '', sentences[index]!, sentences[index + 1] ?? ''].join('')
-    const candidates = describedCharacters(window).filter(hit => radicalIndexOf(hit.character) !== null)
+    const candidates = ownSentence.length > 0
+      ? ownSentence
+      : describedCharacters(window).filter(hit => radicalIndexOf(hit.character) !== null)
     if (candidates.length === 0) continue
     // 窗口里有多个候选字时会牵连不清——宁可漏，也不猜（本仓 #30/#93 的教训）。
     if (new Set(candidates.map(hit => hit.character)).size > 1) continue

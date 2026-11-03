@@ -213,3 +213,39 @@ describe('glyphRadicalFindings (issue #99 finding shape)', () => {
       .toEqual([])
   })
 })
+
+describe('glyphRadicalMismatches — 跨句借字不张冠李戴 (issue #119)', () => {
+  // issue #119 第 52 章原文（逐字）：偏旁名在说第 3 句后的「柯」，判据却借了指上句的「温」。
+  const CH52 = `周叙把册子摊开。裂到「温」字刮去的那处停住，缝里翻出更深一层墨——一横起头，底下跟着一竖。木字旁的起笔。
+
+`
+    + `周叙盯着那道残笔。
+
+裂口里那道起笔立在他脑子里。像「柯」字的第一笔。`
+
+  it('does not report 温/木字旁 when a matching 柯 appears later in the same scene', () => {
+    expect(glyphRadicalMismatches(52, CH52)).toEqual([])
+  })
+
+  it('still reports the same shape when NO matching character is anywhere near', () => {
+    // 去掉「像『柯』字的第一笔」那一句（—真正被描述的字没了）→ 这时才是真错报。
+    const without = `周叙把册子摊开。裂到「温」字刮去的那处停住，缝里翻出更深一层墨——一横起头，底下跟着一竖。木字旁的起笔。
+
+周叙盯着那道残笔。`
+    const hits = glyphRadicalMismatches(52, without)
+    expect(hits).toHaveLength(1)
+    expect(hits[0]).toMatchObject({ character: '温', claimedName: '木字旁' })
+  })
+
+  it('prefers the character in the SAME sentence over one borrowed from an adjacent sentence', () => {
+    // 本句自己有引号单字时，相邻句那个字不该被借进来。
+    expect(glyphRadicalMismatches(1, '「柯」字的木字旁。上一句提到「温」。')).toEqual([])
+  })
+
+  it('keeps both #99 true positives (the radical name sits in its own sentence there)', () => {
+    // ⚠️ 这里正是**不能**按 issue 建议 2 字面实现的原因：第 45/43 章里
+    // 「立人旁」/「走之底」所在的那半句**自身没有字**，必须向相邻句借才判得出来。
+    expect(glyphRadicalMismatches(45, '半个“温”字。左边半边，立人旁。')).toHaveLength(1)
+    expect(glyphRadicalMismatches(43, '先露走之底，再往上——徐。')).toHaveLength(1)
+  })
+})
