@@ -1,5 +1,7 @@
 import { chapterTimeContinuity } from '../../../shared/chapter-time-continuity'
 import { closingShotOf, stagingOf } from '../../../shared/blueprint-semantic-contract'
+// 末句原文（issue #111）：给起草侧看最近三章「最后一句话长什么样」，与体检侧同一口径。
+import { chapterEndingProfile } from '../../../shared/chapter-ending'
 // 时点标注（issue #84）：读法与 #28 的收束、#32 的装置同源。
 import { timeAnchorOf } from '../../../shared/chapter-time-anchor'
 import {
@@ -453,6 +455,56 @@ ${chapterTimeContinuity('en-US')}` : ''}
   return { rules, authorItems: promptLanguageText(writingLanguage, zhItems, enItems) }
 }
 
+/**
+ * 「最近三章末句原文」这一段的提示词文本（issue #111）。
+ *
+ * 抽成纯函数是为了**可直测**：命令的 `execute` 很深、要 mock 生成运行时，
+ * 而这段文本本身与运行时无关。验收点只有两个：把每章末句**原文**带上、
+ * 并把「不得沿用同一种句法」的要求写成可执行的两条出路。
+ */
+export function recentEndingsPromptText(
+  writingLanguage: WritingLanguage,
+  recent: ReadonlyArray<{ chapterNumber: number; lastSentence: string }>,
+): string {
+  const usable = recent.filter(item => String(item.lastSentence ?? '').trim())
+  if (usable.length === 0) return ''
+  const zhLines = usable.map(item => `第${item.chapterNumber}章：${item.lastSentence}`)
+  const enLines = usable.map(item => `Chapter ${item.chapterNumber}: ${item.lastSentence}`)
+  return promptLanguageText(
+    writingLanguage,
+    `【最近几章的末句原文（本章末句不得沿用同一种句法）】\n${zhLines.join('\n')}\n上面是已定稿的**最后一句话本身**——不是标签。本章写到末句时对照一下：如果它同样是「一件物 + 还／仍／只剩／偏着／没有结束的状态、句首没有人物」，就换一种落点：落在人物的动作或判断上、落在半句台词上、或定格画面但不带否定标记。每一章的收尾是读者决定要不要点下一章的地方。`,
+    `[The final sentences of the last chapters, verbatim (do not reuse the same construction)]\n${enLines.join('\n')}\nThese are the actual last lines already written — not labels. When you reach this chapter's final sentence, compare: if it is again “an object + still / only left / cannot …, with no person leading it”, land somewhere else — on a character's action or judgement, on a half-spoken line, or on an image without a negation marker. A chapter's closing line is where readers decide whether to tap the next one.`,
+  )
+}
+
+/**
+ * 最近几章**已定稿正文的末句原文**（issue #111）。
+ *
+ * 上面拼给起草的是「时点 / 收束 / 装置」三个**标签**，模型看不到自己上一章那句话
+ * 实际长什么样——于是末句句法一路收敛（本书第 36 章后 6/13 章末句都是
+ * 「一件物 + 未完结标记 + 没有人」）。末句原文是已定稿只读内容，取它零成本。
+ *
+ * 与体检侧（`chapter-ending.ts` 的 `chapterEndingProfile`）用**同一个取句口径**，
+ * 保证「起草时看到的」与「预检时报的」是同一句话。取不到就返回空数组（省掉整段）。
+ */
+async function loadRecentFinalizedEndings(
+  projectPath: string,
+  projectSession: ProjectSessionContext,
+  currentChapter: number,
+  count: number,
+): Promise<Array<{ chapterNumber: number; lastSentence: string }>> {
+  const snapshot = await ipc.invokeWithProjectSession(
+    projectSession, 'db:draft-export-snapshot', projectPath,
+  ).catch(() => []) as Array<{ chapterNumber: number; content: string }>
+  return snapshot
+    .filter(row => Number.isSafeInteger(row.chapterNumber) && row.chapterNumber < currentChapter)
+    .sort((left, right) => left.chapterNumber - right.chapterNumber)
+    .slice(-count)
+    .map(row => ({ chapterNumber: row.chapterNumber, lastSentence: chapterEndingProfile(row.chapterNumber, String(row.content ?? '')).lastSentence }))
+    .filter(item => item.lastSentence)
+}
+
+
 /** 自动续写与压缩修订共用的作者资料块：本章蓝图、全局写作要求、文风、小说配置事实与章节材料。 */
 function draftAuthorMaterialBlock(writingLanguage: WritingLanguage, material: {
   chapterInfo: WriterChapterInfo
@@ -699,6 +751,19 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           `[Costs already paid in the recent chapters (do not recover them for free, and do not pay the same price again)]\n${enCostLines.join('\n')}\nIf this chapter must recover what a cost took away, or lift a loss, show another price the character pays for it; never dissolve a cost with a reminder, a convenient gesture, or the very next action.`,
         )}`
       }
+      // 最近三章的**末句原文**（issue #111）：上面给的只有「时点/收束/装置」三个**标签**，
+      // 模型看不到自己上一章那句话长什么样，于是末句句法一路收敛
+      // （本书第 36 章后 6/13 章末句都是「一件物 + 未完结标记 + 没有人」）。
+      // 末句原文是**已定稿、只读**的正文，取它不增加任何生成成本，却让「换一种收法」
+      // 从一句空要求变成一次可对照的比较。取不到正文（没导入/未定稿）就整段省掉。
+      let recentLastSentences = ''
+      try {
+        const recentDrafts = await loadRecentFinalizedEndings(expectedProjectPath, projectSession, this.chapterInfo.chapterNumber, 3)
+        if (recentDrafts.length > 0) {
+          recentLastSentences = recentEndingsPromptText(writingLanguage, recentDrafts)
+        }
+      } catch { /* 取不到已定稿正文就不给这段：不是本文档的必需材料。 */ }
+      if (recentLastSentences) recentClosingShots += `\n\n${recentLastSentences}`
       // 早先章节点名本章的伏笔承诺（issue #68）：原来这里只取最近 3 章的代价/落幅，
       // 而「必须埋下或回收的伏笔」只取本章自己的 foreshadowing——写在第 13 章的
       // 「与第 22 夜接榫」永远送不到第 22 章的起草。这里按**承诺**取数补上。

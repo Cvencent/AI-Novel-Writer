@@ -34,6 +34,7 @@ import {
   GenerateDraftCommand,
   countDraftUnits,
   previousChapterEnding,
+  recentEndingsPromptText,
   sanitizeDraftText,
   synopsisForDraftChapter,
   type GenerateDraftCommandDependencies,
@@ -4337,5 +4338,31 @@ ${headingPrefix}第3章：潮门
 
     await expect(command.execute({ step: {}, context, callbacks })).rejects.toThrow('lease unavailable')
     expectNoDraftPersistence(invoke)
+  })
+})
+
+describe('recentEndingsPromptText (issue #111)', () => {
+  it('carries the verbatim last sentences of the recent chapters', () => {
+    const text = recentEndingsPromptText('zh-CN', [
+      { chapterNumber: 44, lastSentence: '蹭不掉。' },
+      { chapterNumber: 45, lastSentence: '他手里只有那半个字。' },
+      { chapterNumber: 46, lastSentence: '底下经手人那一栏，还锁在别人包里。' },
+    ])
+    expect(text).toContain('第44章：蹭不掉。')
+    expect(text).toContain('第46章：底下经手人那一栏，还锁在别人包里。')
+    // 要求本身要写得可执行：给出「换一种落点」的两条出路，不是一句「注意文风」。
+    expect(text).toContain('落在人物的动作或判断上')
+    expect(text).toContain('落在半句台词上')
+  })
+
+  it('gives the English text when the writing language is English', () => {
+    const text = recentEndingsPromptText('en-US', [{ chapterNumber: 46, lastSentence: 'Only ink is left on the desk.' }])
+    expect(text).toContain('Chapter 46: Only ink is left on the desk.')
+    expect(text).toContain('land somewhere else')
+  })
+
+  it('returns empty when there is no usable sentence (and never throws)', () => {
+    expect(recentEndingsPromptText('zh-CN', [])).toBe('')
+    expect(recentEndingsPromptText('zh-CN', [{ chapterNumber: 1, lastSentence: '   ' }])).toBe('')
   })
 })
