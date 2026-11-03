@@ -40,7 +40,11 @@ export default function ImportNovelDialog({ open, onClose }: ImportNovelDialogPr
   const createProject = useProjectStore((s) => s.createProject)
   const currentProject = useProjectStore((s) => s.currentProject)
   const startWorkflow = useWorkflowStore((s) => s.startWorkflow)
-  const activeWorkflows = useWorkflowStore((s) => s.activeRuns)
+  // issue #104 ③：这里只问「某个导入运行是否还在活跃」——订阅运行 **id 串**（原始值，
+  // 按值比较）而不是整个 `activeRuns` 数组，生成期间每 100ms 变化的 `step.result`
+  // 就不会让这个对话框重渲染。不用 `useShallow`：该辅助要取 React 的 `useRef`，
+  // 在浏览器测试的多份 React 副本下会解析失败。
+  const activeRunIds = useWorkflowStore(s => s.activeRuns.map(run => run.id).join('\n'))
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
 
@@ -81,7 +85,7 @@ export default function ImportNovelDialog({ open, onClose }: ImportNovelDialogPr
     ?? resumableRuns[0]
     ?? null
   const resumableRunIsActive = resumableRun
-    ? activeWorkflows.some(workflow => workflow.id === resumableRun.id)
+    ? activeRunIds.split('\n').includes(resumableRun.id)
     : false
   const resumableRunCanRestart = resumableRun
     ? resumableRun.purpose !== 'author-manuscript'

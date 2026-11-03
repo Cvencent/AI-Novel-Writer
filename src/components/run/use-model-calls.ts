@@ -5,7 +5,7 @@ import { diagnosticWorkflowForCall, type LLMCallRecord, type LLMStats } from '..
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
 import { projectSessionContextFromProject, sameProjectSessionContext } from '../../shared/project-session-context'
 import { useProjectStore } from '../../stores/project-store'
-import { useWorkflowStore } from '../../stores/workflow-store'
+import { useWorkflowStore, diagnosticRunsKey } from '../../stores/workflow-store'
 import { LLMDataRequestGate } from '../panels/llm-data-request-gate'
 import { toast } from '../ui/Toast'
 
@@ -27,8 +27,12 @@ export function useModelCalls(): ModelCalls {
   const project = useProjectStore(s => s.currentProject)
   const session = useMemo(() => projectSessionContextFromProject(project), [project])
   const [gate] = useState(() => new LLMDataRequestGate())
-  const activeRuns = useWorkflowStore(s => s.activeRuns)
+  // issue #104 ③：诊断只需要运行的「身份 + 步骤时间/状态」，不读流式正文——
+  // 用字符串 Key 选择器（`useShallow` 在多份 React 副本的浏览器测试里会解析失败），
+  // 生成期间每 100ms 的 `step.result` 追加就不会让诊断面板重渲染。
+  const runsKey = useWorkflowStore(s => diagnosticRunsKey(s.activeRuns))
   const history = useWorkflowStore(s => s.history)
+  const activeRuns = useMemo(() => useWorkflowStore.getState().activeRuns, [runsKey])
   const runs = useMemo(() => [...activeRuns, ...history], [activeRuns, history])
   const [data, setData] = useState<{ session: ProjectSessionContext; stats: LLMStats; history: LLMCallRecord[] } | null>(null)
 

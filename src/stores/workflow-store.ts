@@ -272,6 +272,114 @@ export function workflowResourceKey(
   return identifier === undefined ? kind : `${kind}:${identifier}`
 }
 
+/**
+ * 「这一章是否正被某个运行占用」的**稳定投影**（issue #104 ③）。
+ *
+ * 生成期间流式文本每 100ms 换一次 `step.result`，而 `updateStepById` 每次都 `map` 出
+ * 一个**新的 `activeRuns` 数组**；任何 `useWorkflowStore(s => s.activeRuns)` 的订阅者
+ * 因此每秒重渲染约 10 次——打字面上就是「切页打字严重卡顿」。
+ *
+ * 这个投影只返回**占用的运行 id**（无占用时空串），于是选择器结果只在
+ * 「占用关系真的变化」时才变，正文每 100ms 的追加不再触发这些组件重渲染。
+ * 语义与原实现逐字一致：同一项目、`chapter_creation` 类型、且声明了该章的写资源键。
+ */
+export function activeChapterRunKey(
+  activeRuns: readonly WorkflowRun[],
+  projectPath: string | undefined,
+  chapterNumber: number | undefined,
+): string {
+  if (!projectPath || chapterNumber === undefined) return ''
+  const resourceKey = workflowResourceKey('chapter', chapterNumber)
+  const run = activeRuns.find(candidate => candidate.projectPath === projectPath
+    && candidate.type === 'chapter_creation'
+    && candidate.resourceKeys?.includes(resourceKey))
+  return run ? run.id : ''
+}
+
+/**
+ * 顶栏运行胶囊的**稳定 Key**（issue #104 ③）。
+ *
+ * 选择器必须返回**原始值**：`useWorkflowStore(selector)` 每次 store 更新都会跑一遍选择器，
+ * 只有 `Object.is` 相等才不重渲染。生成期间流式文本每 100ms 换一次 `step.result`，
+ * 返回对象的话每次都新 → 常驻顶栏 10Hz 重渲染。这里只拼出**参与渲染的字段**，
+ * 于是正文怎么追加都不会让它变。
+ *
+ * ⚠️ 刻意不用 `useShallow`：它要取 React 的 `useRef`，在浏览器测试的多份 React 副本下
+ * 会解析失败（`import-novel-resume.browser.tsx` 实测）。本仓既有的
+ * `workflowRefreshKey` / `runningKey` 也是同一套「字符串 Key 选择器」做法。
+ */
+export function runCapsuleKey(
+  activeRuns: readonly WorkflowRun[],
+  history: readonly WorkflowRun[],
+  projectPath: string | undefined,
+): string {
+  const projection = projectRunCapsule(activeRuns, history, projectPath)
+  return [projection.count, projection.waiting, projection.runId, projection.title,
+    projection.stepName, projection.percent, projection.endedCompletedAt].join('\u0000')
+}
+
+/**
+ * 诊断视图的运行集合 Key（issue #104 ③）。
+ *
+ * `use-model-calls` 把 `activeRuns` 拼进 `runs` 交给 `diagnosticWorkflowForCall`，
+ * 而那个函数只读身份与步骤时间/状态，**从来不读 `step.result`**。用这个 Key 当选择器，
+ * 生成期间的流式正文就不会让诊断面板重渲染。
+ */
+export function diagnosticRunsKey(activeRuns: readonly WorkflowRun[]): string {
+  return activeRuns.map(run => `${run.id}:${run.status}:${run.failureCode ?? ''}:`
+    + run.steps.map(step => `${step.name}:${step.status}:${step.failureCode ?? ''}:${step.startedAt ?? ''}:${step.completedAt ?? ''}`).join(',')).join(';')
+}
+ /**
+ * 顶栏运行胶囊要显示的**原始值投影**（issue #104 ③）。
+ *
+ * `RunCapsule` 常驻顶栏（设定页、正文页都在），却订阅了整个 `activeRuns`；
+ * 生成期间 `updateStepById` 每 100ms `map` 出一个新数组，于是顶栏跟着以 10Hz 重渲染。
+ * 这里只挑出真正参与渲染的几个原始值，配合 `useShallow` 做浅比较——
+ * 「与显示无关的字段」（尤其 `step.result`）再怎么变都不会让胶囊重渲染。
+ */
+export interface RunCapsuleProjection {
+  /** 本作品的运行数。 */
+  count: number
+  /** 其中在等确认的数量。 */
+  waiting: number
+  /** 单运行时的运行 id（多运行/无运行时为空串）。 */
+  runId: string
+  /** 单运行时的标题。 */
+  title: string
+  /** 单运行时的当前步骤名。 */
+  stepName: string
+  /** 单运行时的整数百分比。 */
+  percent: number
+  /** 最近一次结束的运行：完成态、完成时刻（毫秒）、id。 */
+  endedCompletedAt: number
+  endedRunId: string
+}
+
+export function projectRunCapsule(
+  activeRuns: readonly WorkflowRun[],
+  history: readonly WorkflowRun[],
+  projectPath: string | undefined,
+): RunCapsuleProjection {
+  const empty: RunCapsuleProjection = { count: 0, waiting: 0, runId: '', title: '', stepName: '', percent: 0, endedCompletedAt: 0, endedRunId: '' }
+  const lastEnded = projectPath ? history.find(run => sameProjectPathKey(run.projectPath, projectPath)) : undefined
+  const endedCompletedAt = lastEnded?.status === 'completed' && lastEnded.completedAt ? Date.parse(lastEnded.completedAt) : 0
+  const endedRunId = endedCompletedAt ? lastEnded!.id : ''
+  const base = { ...empty, endedCompletedAt, endedRunId }
+  if (!projectPath) return base
+  const runs = activeRuns.filter(run => sameProjectPathKey(run.projectPath, projectPath))
+  if (runs.length === 0) return base
+  const waiting = runs.filter(run => run.status === 'waiting').length
+  if (runs.length > 1) return { ...base, count: runs.length, waiting }
+  const run = runs[0]!
+  const step = run.steps[run.currentStepIndex]
+  const completed = run.steps.filter(item => item.status === 'completed' || item.status === 'skipped').length
+  const partial = step && step.status === 'running' ? (step.progress ?? 0) / 100 : 0
+  return {
+    ...base, count: 1, waiting, runId: run.id, title: run.title, stepName: step?.name ?? '',
+    percent: Math.round(Math.min(1, (completed + partial) / Math.max(1, run.steps.length)) * 100),
+  }
+}
+
 export function workflowResourceConflictMessage(locale: Locale, activeTitle: string): string {
   return uiText(
     locale,

@@ -1,12 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Check } from 'lucide-react'
-import { sameProjectPathKey } from '../../shared/project-session-context'
 import { useLocaleStore } from '../../stores/locale-store'
 import { navigate } from '../../stores/navigation/navigation-intents'
 import { useStageStore } from '../../stores/navigation/stage-store'
 import { useProjectStore } from '../../stores/project-store'
-import { useWorkflowStore } from '../../stores/workflow-store'
-import { runProgress } from '../../stores/navigation/stage-progress'
+import { useWorkflowStore, projectRunCapsule, runCapsuleKey } from '../../stores/workflow-store'
 import { ProgressRing } from './ProgressRing'
 
 const DONE_VISIBLE_MS = 1800
@@ -18,41 +16,45 @@ const DONE_VISIBLE_MS = 1800
 export default function RunCapsule() {
   const text = useLocaleStore(s => s.text)
   const projectPath = useProjectStore(s => s.currentProject?.path)
-  const allRuns = useWorkflowStore(s => s.activeRuns)
-  const lastEnded = useWorkflowStore(s => projectPath ? s.history.find(run => sameProjectPathKey(run.projectPath, projectPath)) : undefined)
+  // issue #104 ③：只订阅**参与渲染字段拼成的字符串 Key**，不再订阅整个 `activeRuns`
+  // ——生成期间流式文本每 100ms 换一次 `step.result`，选整个数组会让常驻顶栏以 10Hz 重渲染。
+  // Key 变了才重算投影（`getState()` 是同一份 store 的最新值）。
+  const summaryKey = useWorkflowStore(s => runCapsuleKey(s.activeRuns, s.history, projectPath))
+  const summary = useMemo(() => {
+    const state = useWorkflowStore.getState()
+    return projectRunCapsule(state.activeRuns, state.history, projectPath)
+  }, [summaryKey, projectPath])
   const sheetOpen = useStageStore(s => s.sheet?.kind === 'run')
-  const runs = projectPath ? allRuns.filter(run => sameProjectPathKey(run.projectPath, projectPath)) : []
-  const doneUntil = lastEnded?.status === 'completed' && lastEnded.completedAt ? Date.parse(lastEnded.completedAt) + DONE_VISIBLE_MS : 0
 
   const toggle = (runId?: string) => {
     if (sheetOpen) useStageStore.setState({ sheet: null })
     else navigate({ kind: 'run', facet: 'output', runId })
   }
 
-  if (runs.length === 0) {
+  const doneUntil = summary.endedCompletedAt ? summary.endedCompletedAt + DONE_VISIBLE_MS : 0
+  if (summary.count === 0) {
     return doneUntil ? <DoneCapsule key={doneUntil} until={doneUntil} expanded={sheetOpen} onToggle={() => toggle()} /> : null
   }
 
-  const waiting = runs.filter(run => run.status === 'waiting').length
-  if (runs.length > 1) {
+  const waiting = summary.waiting
+  if (summary.count > 1) {
     return (
       <button type="button" className="stage-capsule" aria-expanded={sheetOpen} onClick={() => toggle()}>
-        <ProgressRing size={18} stroke={2} ratio={runs.reduce((sum, run) => sum + runProgress(run), 0) / runs.length} />
+        <ProgressRing size={18} stroke={2} ratio={summary.percent / 100} />
         {waiting > 0
-          ? text(`${runs.length} 项运行中 · ${waiting} 项等你确认`, `${runs.length} running · ${waiting} need you`)
-          : text(`${runs.length} 项运行中`, `${runs.length} running`)}
+          ? text(`${summary.count} 项运行中 · ${waiting} 项等你确认`, `${summary.count} running · ${waiting} need you`)
+          : text(`${summary.count} 项运行中`, `${summary.count} running`)}
       </button>
     )
   }
 
-  const [run] = runs
-  const step = run.steps[run.currentStepIndex]
-  const percent = Math.round(runProgress(run) * 100)
   return (
-    <button type="button" className="stage-capsule" data-tone={waiting ? 'warn' : undefined} aria-expanded={sheetOpen} onClick={() => toggle(run.id)}>
-      <ProgressRing size={18} stroke={2} ratio={percent / 100} />
-      <span className="stage-capsule-label">{waiting ? text(`${run.title} · 等你确认`, `${run.title} · needs you`) : step && !run.title.includes(step.name) ? `${run.title} · ${step.name}` : run.title}</span>
-      <b className="stage-capsule-value">{percent}%</b>
+    <button type="button" className="stage-capsule" data-tone={waiting ? 'warn' : undefined} aria-expanded={sheetOpen} onClick={() => toggle(summary.runId)}>
+      <ProgressRing size={18} stroke={2} ratio={summary.percent / 100} />
+      <span className="stage-capsule-label">{waiting
+        ? text(`${summary.title} · 等你确认`, `${summary.title} · needs you`)
+        : summary.stepName && !summary.title.includes(summary.stepName) ? `${summary.title} · ${summary.stepName}` : summary.title}</span>
+      <b className="stage-capsule-value">{summary.percent}%</b>
     </button>
   )
 }

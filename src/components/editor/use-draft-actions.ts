@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { formatResourceUri, parseResourceUri, resourceWriteAllowed } from '../../shared/project-paths'
 import { useProjectStore } from '../../stores/project-store'
 import { registerEditorExitSaveHandler, useEditorStore } from '../../stores/editor-store'
-import { useWorkflowStore, workflowResourceKey } from '../../stores/workflow-store'
+import { useWorkflowStore, activeChapterRunKey } from '../../stores/workflow-store'
 import { useLocaleStore } from '../../stores/locale-store'
 import { toast } from '../ui/Toast'
 import {
@@ -130,15 +130,14 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
   const status: DraftStatus = tabDraftStatus ?? meta?.status ?? 'draft'
   const isReadonly = status === 'finalized' || status === 'archived' || !resourceWriteAllowed(filePath)
 
-  const activeRuns = useWorkflowStore(s => s.activeRuns)
-  // 按运行占用的章节资源判断归属；标题随界面语言变化，英文界面里没有「第N章」。
-  const activeChapterRun = activeRuns.find(r =>
-    r.projectPath === projectKey
-    && r.type === 'chapter_creation'
-    && meta
-    && r.resourceKeys?.includes(workflowResourceKey('chapter', meta.chapterNumber))
-  )
-  const isChapterBusy = !!activeChapterRun
+  // issue #104 ③：这里**只订阅「本章是否被运行占用」这一个布尔值**，不再订阅整个
+  // `activeRuns` 数组。原来选整个数组时，生成期间流式文本每 100ms 换一次 `step.result`，
+  // 而 `updateStepById` 每次都会 `map` 出新数组 → 这个 hook 在**打字面**上以 10Hz 重渲染，
+  // 正是「切到设定页打字严重卡顿」的那一处。选择器返回的字符串只在占用关系变化时才变。
+  const chapterBusyKey = useWorkflowStore(s => meta
+    ? activeChapterRunKey(s.activeRuns, projectKey, meta.chapterNumber)
+    : '')
+  const isChapterBusy = chapterBusyKey !== ''
   const isDirty = editorTab?.dirty ?? false
   const finalizationPending = editorTab?.finalizationPublication === 'pending'
   const finalizationConflict = editorTab?.finalizationConflict
