@@ -253,8 +253,32 @@ export function computeSegments(original: string, modified: string): DiffSegment
 export type HunkPick = 'original' | 'revised' | 'edit'
 
 /**
+ * 把「每段的文字」拼成合并结果（issue #127）。
+ *
+ * 段落是**以空行分隔**的单位，所以这里按「块 + 一个空行」拼，而不是逐片段 `join('\n')`。
+ *
+ * 旧实现的问题：修稿整段新增/整段删除时，对齐结果里那一对片段有**一侧是空数组**
+ * （`origIdx: []` 或 `modIdx: []`），它的文字是空串；而 `buildSegments` 在每个片段
+ * 之间还插了一个空行锚点（`lines: ['']`）。两个空串在 `join('\n')` 下叠成
+ * `'\n\n\n'`，于是合并结果凭空多出空行——实测第 56 章「一处修稿都不采纳」时
+ * 正文仍被插入 `'\n\n'`，且界面写着「已选 0 处用修稿」，两个数字自相矛盾。
+ *
+ * 判据是结构性的：**空的片段不产出一个段落**，非空片段之间才放一个空行。
+ * 这样「全部用原稿 / 全部用修稿」必然与那一版逐字相等（见同目录单测）。
+ */
+export function assembleMergedText(
+  segments: readonly DiffSegment[],
+  texts: Readonly<Record<number, string>>,
+): string {
+  return segments
+    .map((_, index) => texts[index] ?? '')
+    .filter(block => block.trim() !== '')
+    .join('\n\n')
+}
+
+/**
  * 修稿合并的数据：段落对齐后的片段、每处改动的选择与每段的合并文字。
- * 单章视图的合并视图用它；合并结果就是各段文字按顺序以换行连接。
+ * 单章视图的合并视图用它；合并结果就是各段文字按顺序以空行连接。
  */
 export function useMergeSegments(originalContent: string, modifiedContent: string) {
   const segments = useMemo(() => computeSegments(originalContent, modifiedContent), [originalContent, modifiedContent])
@@ -299,7 +323,7 @@ export function useMergeSegments(originalContent: string, modifiedContent: strin
     setSegTexts(p => ({ ...p, ...texts }))
   }, [hunks, hunkSegIdx])
 
-  const mergedText = useCallback(() => segments.map((_, i) => segTexts[i] ?? '').join('\n'), [segments, segTexts])
+  const mergedText = useCallback(() => assembleMergedText(segments, segTexts), [segments, segTexts])
 
   return { segments, hunks, picks, segTexts, choose, editSegment, chooseAll, mergedText }
 }
