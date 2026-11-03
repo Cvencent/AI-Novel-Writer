@@ -172,7 +172,8 @@ export function proseRepetitionEvidence(hit: ProseRepetitionHit): string {
  *
  * 只在「同一族短语覆盖了六成以上样本章」时才报，且样本 ≥ 8 章；本机 9 章定稿样本
  * （写法各异）覆盖 2/9 不触发——这是刻意的保守阈值，避免给作者刷噪声。
- * stableFactKey 带章号与族名，便于作者在一致性豁免里逐条关掉。
+ * stableFactKey 带**族名与最早命中章**（`currentChapter` 只用作「无命中章」时的兜底）：
+ * 命中集合稳定时 key 稳定，作者点一次「我已知」即可永久静音（issue #108）。
  */
 export function proseRepetitionFindings(
   chapters: ReadonlyArray<{ chapterNumber: number; content: string }>,
@@ -238,9 +239,17 @@ export function proseRepetitionFindings(
         ? 'Vary the entrance: let some chapters start with the character standing, walking, speaking first, or busy with something else, so how they do it distinguishes them. Do not open every scene with a crouch.'
         : 'Change the setting and the opening action for this scene; do not reuse the same staging across adjacent chapters.'
     return {
-      stableFactKey: `prose:${hit.kind}${hit.scope?.kind === 'character' ? `:${hit.scope.character}` : ''}:${currentChapter}`,
+      // key **不能带当前章号**（issue #108，同 #86/#89/#98 的第 4 例）：原来拼的是
+      // `:${currentChapter}`，于是同一族写法每写一章就换一个 key，作者点「我已知，
+      // 稍后处理」（#79 的 ack，精确匹配）永远只静音当章。改用**命中章集合的稳定锚**
+      // （最早命中章）：命中集合不变 → key 不变（一次 ack 永久静音）；集合变了说明
+      // 「这件事本身变了」→ 换 key 值得再报一次。
+      stableFactKey: `prose:${hit.kind}${hit.scope?.kind === 'character' ? `:${hit.scope.character}` : ''}:${hit.chapters[0]}`,
       severity: 'warning' as const,
-      sourceChapter: currentChapter,
+      // sourceChapter 也不能填 currentChapter（issue #108 的第二处，与 #79 同类）：
+      // 证据里写的是历史命中章（「第 13、14、17、18、23 章…」），填当前章会让界面把
+      // 这条**旧账**标成「正在写的这一章的问题」。指向**最早命中章**。
+      sourceChapter: hit.chapters[0] ?? currentChapter,
       evidence: proseRepetitionEvidence(hit),
       issue: { zhCN: zhCNIssue, enUS: enUSIssue },
       suggestion: { zhCN: zhCNSuggestion, enUS: enUSSuggestion },

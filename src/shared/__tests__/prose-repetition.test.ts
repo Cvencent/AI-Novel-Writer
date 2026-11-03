@@ -179,7 +179,8 @@ describe('同族命中按章号集合包含关系归并（issue #82）', () => {
       `第${index + 1}章：周叙蹲在铺位前核舱，写了${index + 1}个字。`))
     const posture = proseRepetitionFindings(book, 13, ['周叙'])
       .filter(finding => finding.stableFactKey.startsWith('prose:posture'))
-    expect(posture.map(finding => finding.stableFactKey)).toEqual(['prose:posture:13'])
+    // key 锚在**最早命中章**上（issue #108），不再是 currentChapter。
+    expect(posture.map(finding => finding.stableFactKey)).toEqual(['prose:posture:1'])
   })
 
   it('角色命中章集是全书命中的真子集 → 也只报全书那一条', () => {
@@ -191,8 +192,8 @@ describe('同族命中按章号集合包含关系归并（issue #82）', () => {
       return ch(n, `${hasZhou ? '周叙' : '旁白'}${squat ? '蹲在铺位前核舱。' : '翻着名册。'}`)
     })
     const keys = proseRepetitionFindings(book, 13, ['周叙']).map(finding => finding.stableFactKey)
-    expect(keys).toContain('prose:posture:13')
-    expect(keys).not.toContain('prose:posture:周叙:13')
+    expect(keys).toContain('prose:posture:1')
+    expect(keys).not.toContain('prose:posture:周叙:1')
   })
 
   it('配角命中章集不被全书包含（全书口径根本没产出）→ 角色那条必须保留（守 #49）', () => {
@@ -202,15 +203,15 @@ describe('同族命中按章号集合包含关系归并（issue #82）', () => {
       return ch(n, `第${n}章：周叙在验票舱核对名册。${support}`)
     })
     const keys = proseRepetitionFindings(book, 17, ['全叔', '周叙']).map(finding => finding.stableFactKey)
-    expect(keys).toContain('prose:posture:全叔:17')
-    expect(keys).not.toContain('prose:posture:17')
+    expect(keys).toContain('prose:posture:全叔:3')
+    expect(keys).not.toContain('prose:posture:3')
   })
 
   it('三族各自独立归并，互不影响', () => {
     const book = Array.from({ length: 12 }, (_, index) => ch(index + 1,
       `第${index + 1}章：周叙蹲在铺位前核舱，问他一句，他${index === 11 ? '抬头答了' : '没动'}。`))
     const keys = proseRepetitionFindings(book, 13, ['周叙']).map(finding => finding.stableFactKey)
-    expect(keys).toContain('prose:posture:13')
+    expect(keys).toContain('prose:posture:1')
     expect(keys.some(key => key.startsWith('prose:stillness'))).toBe(true)
   })
 
@@ -262,5 +263,52 @@ describe('findCharacterProseRepetition: 按出场章归一（issue #49）', () =
     const varied = Array.from({ length: 12 }, (_, index) => ch(index + 1,
       index < 6 ? `全叔${['抬头看天', '把绳收好', '退了半步', '点了点数', '把缆挂好', '擦了擦手'][index]}。` : `第${index + 1}章无关正文。`))
     expect(findCharacterProseRepetition(varied, ['全叔'])).toEqual([])
+  })
+})
+
+// issue #108：正文重复提醒的 key 带**当前章号** → 每写一章 key 就换一个，
+// 作者点「我已知，稍后处理」（#79 的 ack，精确匹配）永远只静音当章。
+// 这是 #86/#89/#98 同类缺陷的第 4 例；本组测试是 issue 建议 3 要求的那条属性断言。
+describe('prose repetition key is stable across chapters (issue #108)', () => {
+  /** 同一部书、只改 currentChapter —— 命中章集合一次都不变。 */
+  const book = Array.from({ length: 12 }, (_, index) => ch(index + 1,
+    Array.from({ length: 3 }, () => `周叙没答。全叔蹲在桩边。`).join('')))
+
+  const keysFor = (currentChapter: number) =>
+    proseRepetitionFindings(book, currentChapter, ['周叙', '全叔']).map(finding => finding.stableFactKey)
+
+  it('does not change any key as the book advances', () => {
+    const at25 = keysFor(25)
+    const at26 = keysFor(26)
+    const at27 = keysFor(27)
+    expect(at25.length).toBeGreaterThan(0)
+    expect(at26).toEqual(at25)
+    expect(at27).toEqual(at25)
+  })
+
+  it('anchors the key on the earliest hit chapter, not the chapter being written', () => {
+    const first = proseRepetitionFindings(book, 25, ['周叙', '全叔'])[0]!
+    // book 的第 1 章就是命中章，所以锚点是 1，而 currentChapter 是 25。
+    expect(first.stableFactKey.endsWith(':1')).toBe(true)
+    expect(first.stableFactKey).not.toContain(':25')
+  })
+
+  it('does not label a historical finding as the chapter being written', () => {
+    // 证据里写的是历史命中章；sourceChapter 若填 currentChapter，界面会把旧账标成
+    // 「正在写的这一章的问题」（issue #108 第二处 / #79 同类）。
+    const finding = proseRepetitionFindings(book, 25, ['周叙', '全叔'])[0]!
+    expect(finding.sourceChapter).toBe(1)
+    expect(finding.sourceChapter).not.toBe(25)
+  })
+
+  it('changes the key when the hit set itself changes, so a genuinely new cluster re-reports', () => {
+    // 命中集合变了说明「这件事本身变了」→ 换 key 值得再报一次（最早的命中章不同）。
+    const later = [...book, ...Array.from({ length: 6 }, (_, index) => ch(index + 100,
+      Array.from({ length: 3 }, () => '周叙没答。').join('')))]
+    const keyA = proseRepetitionFindings(book, 25, ['周叙'])[0]!.stableFactKey
+    const keyB = proseRepetitionFindings(later, 25, ['周叙'])[0]!.stableFactKey
+    // 同一族但锚点相同（都从第 1 章开始命中的是同一簇），这里只断言它取自命中集合而非 currentChapter。
+    expect(keyA.endsWith(':1')).toBe(true)
+    expect(keyB.endsWith(':1')).toBe(true)
   })
 })
