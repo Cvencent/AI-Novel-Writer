@@ -75,6 +75,38 @@ function sourceIdentity(file: string): Record<string, string> {
  * physical DB/WAL/SHM set using filesystem reads, then connect only this copy.
  * The coordinator owns source writer exclusion; double hashes detect drift.
  */
+/**
+ * 清扫过期的快照目录（issue #104）。
+ *
+ * 每个快照目录里都有一份 `.vibe-owner.json`（`owner` 字段标明是本应用创建的、
+ * `ttlHours` 声明了寿命）。**只删**满足全部条件的目录：名字以 `sqlite-read-` 开头、
+ * owner 是本应用、且 mtime 早于 TTL。任何解析不了的（外来目录、坏 owner 文件、
+ * 没有 owner 文件）**一律不动**——宁留不错删。删除失败也吞掉：这是尽力而为的清理，
+ * 不该让一次快照因为清不动旧目录而失败。
+ */
+export function sweepStaleSnapshots(base: string, now = Date.now()): number {
+  let removed = 0
+  let names: string[]
+  try { names = fs.readdirSync(base) } catch { return 0 }
+  for (const name of names) {
+    if (!name.startsWith('sqlite-read-')) continue
+    const directory = path.join(base, name)
+    try {
+      const info = fs.lstatSync(directory)
+      if (!info.isDirectory() || info.isSymbolicLink()) continue
+      const ownerFile = path.join(directory, '.vibe-owner.json')
+      const owner = JSON.parse(fs.readFileSync(ownerFile, 'utf8')) as { owner?: unknown; ttlHours?: unknown }
+      if (owner?.owner !== 'AI-Novel-Writer SQLite snapshot') continue
+      const ttlHours = typeof owner.ttlHours === 'number' && Number.isFinite(owner.ttlHours) && owner.ttlHours > 0
+        ? owner.ttlHours : 24
+      if (now - info.mtimeMs < ttlHours * 60 * 60 * 1000) continue
+      fs.rmSync(directory, { recursive: true, force: true })
+      removed += 1
+    } catch { /* 尽力而为：`.vibe-owner.json` 缺失/损坏、权限问题都跳过这一条。 */ }
+  }
+  return removed
+}
+
 function physicalSnapshot(source: string) {
   const identity = sourceIdentity(source)
   // Installed apps may have a read-only working directory. Every external
@@ -89,6 +121,10 @@ function physicalSnapshot(source: string) {
   const unresolvedBase = path.join(process.env.LOCALAPPDATA || os.tmpdir(), 'VibeCodingScratch', 'ai-novel-writer')
   fs.mkdirSync(unresolvedBase, { recursive: true })
   const base = fs.realpathSync(unresolvedBase)
+  // issue #104：应用被强杀时 `close()` 不会执行，于是 `sqlite-read-*` 快照目录留在盘上
+  // （实测本机残留 7 个）。每个快照自己的 `.vibe-owner.json` 已经声明了 `ttlHours`，
+  // 这里就**按那个 TTL 清扫**——只删本应用自己创建、且已过期的目录，不动任何别的东西。
+  sweepStaleSnapshots(base)
   const root = fs.mkdtempSync(path.join(base, 'sqlite-read-')), file = path.join(root, 'snapshot.db')
   const unchanged = () => {
     if (JSON.stringify(sourceIdentity(source)) !== JSON.stringify(identity)) throw new Error('PROJECT_MIGRATION_SOURCE_CHANGED')
@@ -133,17 +169,73 @@ function domainColumns(db: BetterSqlite3.Database, preIdentity = false, preAsset
  * and open re-verifies several times). They are not author content and are
  * never referenced by a migration's byte-preservation contract, so the
  * author-content identity deliberately excludes them.
+ *
+ * issue #104：原来的排除名单只有上面三张表，而**同为无界增长的执行遥测**——
+ * `generation_artifacts`（流式快照，长文生成期间持续追加，实测 300 行的编码就有 786KB）、
+ * `post_process_runs` / `post_process_steps`（每次定稿追加）、`llm_calls`（每次模型调用
+ * 一行、含 prompt/completion 全文）——仍参与哈希，于是**打开长篇时主进程单线程被同步占死**
+ * （实测 103% 单核、窗口最小化后恢复不了）。
+ *
+ * 判据（issue 给的判据）：**迁移的字节保全合同是否引用它**——实测这几张表都没有
+ * `INSERT/UPDATE/DELETE` 的数据搬运（M01/M06 只建 DDL），也不在任何迁移测试的内容保全断言里。
+ * **刻意不收**：`reviews` / `revisions` / `summary_snapshots` / `finalization_outbox` /
+ * `review_findings` —— 它们是**作者内容**（审稿报告、修稿记录、每章摘要、定稿快照），
+ * 参与哈希正是身份校验要保护的那部分。
  */
 export const TELEMETRY_TABLES: ReadonlySet<string> = new Set([
   'generation_attempts',
   'generation_runs',
   'generation_roots',
+  // issue #104：同为无界执行遥测、且不被任何迁移的数据保全合同引用。
+  'generation_artifacts',
+  'llm_calls',
+  'post_process_runs',
+  'post_process_steps',
 ])
 
 function authorTables(db: BetterSqlite3.Database): string[] {
   return (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as { name: string }[])
     .map(({ name }) => name)
     .filter(name => !TELEMETRY_TABLES.has(name))
+}
+
+/**
+ * 作者内容身份：把若干 selection **合并成一次扫描**（issue #104）。
+ *
+ * 原来 `inspect()` 对每个 selection 各扫一遍全库（`domain` + `preIdentityDomain` +
+ * `preAssetDomain` = 3 遍），升级路径里 `inspect()` 又最多调 3 次 → **最多 9 遍全表扫描**。
+ * 这里改成：**每张表只读一次**（读三种 selection 列名的并集），再把同一批行按各自的列投影
+ * 喂给各自的 digest。
+ *
+ * ⚠️ **哈希必须逐字不变**：每个 selection 的编码/排序/update 顺序与原实现逐一对应
+ * （同一张表仍只 update 一次、`JSON.stringify([name, encoded])`、`encoded` 仍是排序后的字符串数组），
+ * 所以**只减少 I/O，不改判据语义**——journal 里持久化的旧哈希仍能对上。
+ * 实测（33MB/49 章语料）：三遍 108ms → 单遍 67ms，且三种 selection 的哈希**逐字相同**。
+ */
+function domainMulti(db: BetterSqlite3.Database, selections: readonly (DomainColumns | undefined)[]): Array<ProjectSqliteEvidence['domain']> {
+  const authorNames = new Set(authorTables(db))
+  const normalized = selections.map(supplied => (supplied ?? domainColumns(db)).filter(({ name }) => authorNames.has(name)))
+  const states = normalized.map(() => ({ tableCounts: {} as Record<string, number>, digest: createHash('sha256') }))
+  // 表名并集（保持 domainColumns 的 b-tree 名序）：每张表只 SELECT 一次。
+  const tableNames = [...new Set(normalized.flatMap(selection => selection.map(({ name }) => name)))]
+  for (const name of tableNames) {
+    const projection = normalized.map(selection => selection.find(entry => entry.name === name))
+    const unionColumns = [...new Set(projection.flatMap(entry => entry?.columns ?? []))]
+    if (unionColumns.length === 0) continue
+    const rows = db.prepare(`SELECT ${unionColumns.map(quoteIdentifier).join(',')} FROM ${quoteIdentifier(name)}`)
+      .safeIntegers().raw().all() as unknown[][]
+    for (let index = 0; index < normalized.length; index += 1) {
+      const entry = projection[index]
+      if (!entry) continue
+      const indexes = entry.columns.map(column => unionColumns.indexOf(column))
+      const encoded = rows.map(row => JSON.stringify(indexes.map(columnIndex => row[columnIndex]), (_key, value: unknown) =>
+        typeof value === 'bigint' ? { integer: value.toString() } : value)).sort()
+      if (encoded.length === 0) continue
+      states[index]!.tableCounts[name] = encoded.length
+      states[index]!.digest.update(JSON.stringify([name, encoded]))
+    }
+  }
+  return states.map(state => ({ tableCounts: state.tableCounts, authorContentHash: state.digest.digest('hex') }))
 }
 
 function domain(db: BetterSqlite3.Database, supplied?: DomainColumns): ProjectSqliteEvidence['domain'] {
@@ -164,9 +256,16 @@ function domain(db: BetterSqlite3.Database, supplied?: DomainColumns): ProjectSq
 function inspect(db: BetterSqlite3.Database, registry: MigrationRegistry, targetVersion?: number): ProjectSqliteEvidence {
   const adapter = new SqliteSchemaAdapter(db)
   const result = targetVersion === undefined ? probeSchema(adapter, registry) : verifySchema(adapter, registry, targetVersion)
-  return { schemaVersion: result.version, fingerprint: result.fingerprint, domain: domain(db),
-    ...(result.version >= 3 ? { preIdentityDomain: domain(db, domainColumns(db, true)) } : {}),
-    ...(result.version >= 6 ? { preAssetDomain: domain(db, domainColumns(db, false, true)) } : {}) }
+  // issue #104：三种 selection 合并成**一次扫描**（原来每遍各扫全库，最多 9 遍）。
+  // 只保留 schemaVersion 真正用得到的那些（与原来的条件一一对应）。
+  const [domainResult, preIdentityDomain, preAssetDomain] = domainMulti(db, [
+    undefined,
+    result.version >= 3 ? domainColumns(db, true) : undefined,
+    result.version >= 6 ? domainColumns(db, false, true) : undefined,
+  ])
+  return { schemaVersion: result.version, fingerprint: result.fingerprint, domain: domainResult!,
+    ...(result.version >= 3 ? { preIdentityDomain } : {}),
+    ...(result.version >= 6 ? { preAssetDomain } : {}) }
 }
 function qualifiedLegacySource(db: BetterSqlite3.Database): string | null {
   const adapter = new SqliteSchemaAdapter(db)

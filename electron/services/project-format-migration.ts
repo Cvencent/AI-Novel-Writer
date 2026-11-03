@@ -56,7 +56,24 @@ interface Journal {
   sourceFingerprint: string; targetFingerprint?: string; sourceSchema: ProjectSqliteEvidence
   targetSchema?: ProjectSqliteEvidence; characterAssets?: unknown; backupOnlyCount: number
   createdAt: string
+  /**
+   * 作者内容身份的**算法版本**（issue #104）。
+   *
+   * `sourceSchema.domain.authorContentHash` 会持久化进 journal，并在续跑时与**新算出**的哈希
+   * 比对（`isDeepStrictEqual`）。所以一旦改了哈希口径（#104 把无界遥测表移出作者内容身份），
+   * **「迁移中途崩溃 → 升级应用 → 续跑」** 这条路径会拿旧算法的哈希去比新算法的哈希，
+   * 把一次完好的迁移误判成 `PROJECT_MIGRATION_SQLITE_CONTENT_CHANGED`（fail-closed）。
+   * 落一个版本号后：续跑时若版本不同，就**按新算法重算源库身份**再比，
+   * 既不改判据语义，也不会因改口径而误杀在途迁移。
+   * 缺省（老 journal 没这个字段）= 0。
+   */
+  identityVersion?: number
 }
+/**
+ * 当前作者内容身份的算法版本（issue #104）：把无界遥测表移出哈希的那一版 = 1。
+ * 以后任何**改变 `domain()` 口径**的改动都必须 +1，否则在途 journal 会误判。
+ */
+export const PROJECT_IDENTITY_VERSION = 1
 export type ProjectMigrationResult =
   | { state: 'ready'; projectId: string; migrationId: string; storageRoot: string; backupOnlyCount: number }
   | { state: 'blocked'; code: string }
@@ -190,7 +207,7 @@ function readJournal(file: string): Journal {
     || !/^[a-f0-9]{64}$/.test(value.sourceFingerprint) || !value.sourceSchema?.domain
     || typeof value.sourceRoot !== 'string' || typeof value.createdAt !== 'string' || !Number.isFinite(Date.parse(value.createdAt))
     || !Number.isSafeInteger(value.backupOnlyCount) || value.backupOnlyCount < 0
-    || Object.keys(value).some(key => !['version', 'migrationId', 'projectId', 'sourceRoot', 'phase', 'sourceFingerprint', 'targetFingerprint', 'sourceSchema', 'targetSchema', 'characterAssets', 'backupOnlyCount', 'createdAt'].includes(key))) fail('PROJECT_MIGRATION_JOURNAL_INVALID')
+    || Object.keys(value).some(key => !['version', 'migrationId', 'projectId', 'sourceRoot', 'phase', 'sourceFingerprint', 'targetFingerprint', 'sourceSchema', 'targetSchema', 'characterAssets', 'backupOnlyCount', 'createdAt', 'identityVersion'].includes(key))) fail('PROJECT_MIGRATION_JOURNAL_INVALID')
   return value
 }
 export async function migrateProjectFormat<V, A = unknown>(options: {
@@ -238,6 +255,7 @@ export async function migrateProjectFormat<V, A = unknown>(options: {
       if (typeof createdAt !== 'string' || !Number.isFinite(Date.parse(createdAt))) fail('PROJECT_MIGRATION_IDENTITY_INVALID')
       const sourceSchema = deps.probeSqlite(path.join(source, 'vela.db'))
       journal = { version: 1, migrationId: randomUUID(), projectId: options.projectId, sourceRoot: root,
+        identityVersion: PROJECT_IDENTITY_VERSION,
         phase: 'prepared', sourceFingerprint: treeFingerprint(source), sourceSchema, createdAt,
         backupOnlyCount: fs.readdirSync(source).filter(name => name === 'vectors.json.migrated' || !['vela.db', 'vela.db-wal', 'vela.db-shm', 'project.json', ...ASSETS, ...MIGRATED_ASSETS, ...VECTOR_ASSETS].includes(name)).length }
       writeJson(journalFile, journal); checkpoint('prepared')
@@ -262,6 +280,13 @@ export async function migrateProjectFormat<V, A = unknown>(options: {
     }
     if (journal.phase === 'prepared') {
       if (!fs.existsSync(source) || fs.existsSync(backup) || fs.existsSync(target) || treeFingerprint(source) !== journal.sourceFingerprint) fail('PROJECT_MIGRATION_SOURCE_CHANGED')
+      // issue #104：在途 journal 的身份算法版本与当前不同（应用升级过）时，按**新算法**重算
+      // 源库身份——否则下面会拿旧口径的哈希比新口径的哈希，把完好的迁移误判为内容变更。
+      if ((journal.identityVersion ?? 0) !== PROJECT_IDENTITY_VERSION) {
+        journal.sourceSchema = deps.probeSqlite(path.join(source, 'vela.db'))
+        journal.identityVersion = PROJECT_IDENTITY_VERSION
+        writeJson(journalFile, journal); checkpoint('identity-refreshed')
+      }
       // Quarantine only this journal's unverified output; never truncate/reuse its inodes.
       for (const partial of [staging, vectorCopy]) if (fs.existsSync(partial)) {
         fs.renameSync(partial, `${partial}.abandoned-${randomUUID()}`); syncDirectory(control)
