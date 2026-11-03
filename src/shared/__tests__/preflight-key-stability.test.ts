@@ -13,6 +13,8 @@ import {
   findUltimatumStreak,
 } from '../consistency-preflight'
 import { findUndatedStreakFindings } from '../chapter-time-anchor'
+import { findUnsettledDeadlineFindings } from '../deadline-settlement'
+import { findRepeatedRevocationFindings } from '../repeated-revocation'
 import { auditFinalizedProse } from '../finalized-prose-audit'
 import { proseRepetitionFindings } from '../prose-repetition'
 import { glyphRadicalFindings } from '../glyph-radical'
@@ -132,6 +134,11 @@ describe('no preflight key may change when only currentChapter advances (issue #
       ['glyphRadicalFindings', () => glyphRadicalFindings(SAMPLE_BOOK)],
       ['findCastNameDriftFindings', () => findCastNameDriftFindings({ chapters: SAMPLE_BOOK, castNames: CAST })],
       ['auditFinalizedProse', () => auditFinalizedProse({ chapters: SAMPLE_BOOK, castNames: CAST, blueprints: BLUEPRINTS })],
+      ['findUnsettledDeadlineFindings', n => findUnsettledDeadlineFindings({ chapters: SAMPLE_BOOK, currentChapter: n })],
+      ['findRepeatedRevocationFindings', () => findRepeatedRevocationFindings({
+        ledger: [{ chapterNumber: 1, costs: '从此不能再上柜台' }, { chapterNumber: 12, costs: '柜台从此不能再用' }],
+        prose: SAMPLE_BOOK, castNames: CAST,
+      })],
     ]
     for (const [name, produce] of producers) {
       const at15 = produce(15).map(finding => finding.stableFactKey)

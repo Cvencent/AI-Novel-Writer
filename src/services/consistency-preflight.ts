@@ -218,6 +218,8 @@ export async function readConsistencyPreflight(
       chapterNumber: blueprint.chapterNumber,
       keyEvents: blueprint.keyEvents,
       foreshadowing: blueprint.foreshadowing,
+      // 重复宣告的不可逆代价（#105）取 costsAndTurns：账本把同一处境记了两遍不可逆。
+      costsAndTurns: blueprint.costsAndTurns,
     })),
   })
   const propRevivalFindings = recentProse.length === 0 ? [] : findPropRevivalFindings({

@@ -20,6 +20,8 @@
  *  10. 物件过手动作固定化（#95）——折好→塞进某处 这一套三拍覆盖了多少章
  *  11. 字形断言（#99）——「半个 X 字，Y 旁」把偏旁说错（温写成立人旁、徐写成走之底）
  *  12. 角色名漂移（#102）——已登记角色在正文里被写成同后缀异姓（陆敬堂→穆敬堂），且已被账本继承
+ *  13. 期限宣告未对账（#101）——上一章抛出的期限，下一章整章不再提（既未兑现也未逾期/延期）
+ *  14. 重复宣告的不可逆处境变更（#105）——同一处境被记两遍不可逆，第一次从未落地
  *
  * 与审稿路径的差别只有一处，而且是刻意的：审稿把**本章正文**也放进样本
  * （那正是审稿的对象），而写前预检喂进来的全是**已定稿章**——因为要写的那一章
@@ -51,6 +53,10 @@ import { findUndatedStreakFindings } from './chapter-time-anchor'
 import { glyphRadicalFindings } from './glyph-radical'
 // 已登记角色名的同后缀异姓漂移（#102）：正文把「陆敬堂」写成「穆敬堂」。
 import { findCastNameDriftFindings } from './cast-name-drift'
+// 期限宣告未对账（#101）：期限「只写不读」——宣告了但下一章整章不再提。
+import { findUnsettledDeadlineFindings } from './deadline-settlement'
+// 同一项不可逆处境变更被宣告两次（#105）：账本记两遍、第一次从未落地。
+import { findRepeatedRevocationFindings } from './repeated-revocation'
 import { closingShotOf } from './blueprint-semantic-contract'
 import { foreshadowingDueAt, parseForeshadowingCommitments } from './foreshadowing-commitments'
 
@@ -64,8 +70,8 @@ export interface FinalizedProseAuditInput {
   chapters: readonly FinalizedProseChapter[]
   /** 在册角色名（#32/#33/#49 的「按角色归一」需要它）。 */
   castNames: readonly string[]
-  /** 全书蓝图；收束标注取自 `keyEvents`，伏笔承诺取自 `foreshadowing`。 */
-  blueprints: ReadonlyArray<{ chapterNumber: number; keyEvents?: string; foreshadowing?: string }>
+  /** 全书蓝图；收束标注取自 `keyEvents`，伏笔承诺取自 `foreshadowing`，重复宣告的代价取自 `costsAndTurns`（#105）。 */
+  blueprints: ReadonlyArray<{ chapterNumber: number; keyEvents?: string; foreshadowing?: string; costsAndTurns?: string }>
   /**
    * 跨章重复（#32/#33/#49）的样本窗口。
    *
@@ -198,9 +204,25 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   // 所以要在预检里点名「哪一章用了哪个写法」。名册由调用方传入。
   const castNameDrift = castNames.length === 0 ? [] : findCastNameDriftFindings({ chapters, castNames })
 
+  // 期限宣告未对账（issue #101）：「只写不读」的期限装置——本书 79 处宣告、0 次到期。
+  // 用全量已定稿章：期限的张力就在「下一章还没交代」时最大，报出来才知道哪一章该回头补。
+  const deadlineSettlement = findUnsettledDeadlineFindings({ chapters, currentChapter: nextChapter })
+
+  // 同一项不可逆处境变更被宣告两次（issue #105）：第 12 章把「售票口的位置」记为不可逆丧失，
+  // 之后 34 章正文里她照常在柜台上，第 47 章又宣告一次。需要**两边证据**——蓝图账本
+  // （两次「从此…」）+ 已定稿正文（其间该处境仍反复出现），所以这里同时喂两份。
+  const repeatedRevocation = findRepeatedRevocationFindings({
+    ledger: blueprints.map(blueprint => ({
+      chapterNumber: blueprint.chapterNumber,
+      costs: String(blueprint.costsAndTurns ?? ''),
+    })),
+    prose: chapters,
+    castNames,
+  })
+
   return [...closingLabel, ...numbering, ...ability, ...repetition, ...undelivered,
     ...ultimatum, ...reversal, ...undatedStreak, ...proseFlavor, ...positionalAxes, ...glyphRadical,
-    ...castNameDrift]
+    ...castNameDrift, ...deadlineSettlement, ...repeatedRevocation]
 }
 
 /**

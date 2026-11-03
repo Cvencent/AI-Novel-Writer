@@ -32,6 +32,9 @@ import { foreshadowingDueAt, parseForeshadowingCommitments } from '../../src/sha
 import { glyphRadicalFindings } from '../../src/shared/glyph-radical'
 // 角色名漂移（issue #102）：本章把某个已登记角色写成了同后缀异姓。
 import { findCastNameDriftFindings } from '../../src/shared/cast-name-drift'
+// 期限宣告未对账（#101）与重复宣告的不可逆处境变更（#105）：审稿时本章还在手边，正是能补的时候。
+import { findUnsettledDeadlineFindings } from '../../src/shared/deadline-settlement'
+import { findRepeatedRevocationFindings } from '../../src/shared/repeated-revocation'
 import { CHARACTER_STATE_TEXT_FIELDS } from '../../src/shared/character-roster'
 import { ProjectCoreRepository } from '../repositories/project-core-repository'
 import { CharacterRepository } from '../repositories/character-repository'
@@ -247,6 +250,23 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
         // 样本 = 本章正文 + 已定稿历史（历史章里那个异姓写法顺带一起报，指出是哪一章）。
         ...findCastNameDriftFindings({
           chapters: [...history.map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
+            { chapterNumber: source.chapterNumber, content: source.content }],
+          castNames: authorCards.map(card => card.name),
+        }),
+        // 期限宣告未对账（issue #101）：本章是否把**上一章**抛出的期限做了交代。
+        // 样本 = 上一章 + 本章（审稿时本章还在手边，正是能补的时候）。
+        ...findUnsettledDeadlineFindings({
+          chapters: [
+            ...history.slice(-1).map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
+            { chapterNumber: source.chapterNumber, content: source.content },
+          ],
+          currentChapter: source.chapterNumber,
+        }),
+        // 重复宣告的不可逆处境变更（issue #105）：账本记两遍不可逆、第一次从未落地。
+        // 样本与写前预检一致——账本（全部蓝图 costsAndTurns）+ 已定稿正文 + 本章。
+        ...findRepeatedRevocationFindings({
+          ledger: BlueprintRepository.getAll(db).map(row => ({ chapterNumber: row.chapterNumber, costs: row.costsAndTurns ?? '' })),
+          prose: [...history.map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
             { chapterNumber: source.chapterNumber, content: source.content }],
           castNames: authorCards.map(card => card.name),
         }),
