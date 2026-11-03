@@ -54,8 +54,48 @@ export const POSTURE_PHRASES = Object.freeze([
   '蹲', '俯身', '弯腰', '弯下腰', '屈膝', '单膝跪',
 ] as const)
 
+/**
+ * 神态／表情的固定写法（issue #117）：被顶回时「笑僵住」的那一族。
+ *
+ * 前三族收的都是**动作与姿态**（否定式反应 / 溯读装置 / 低身起手），
+ * **表情一个都没有**。而被角色顶回、被将一军的时候，那本书用的是同一个 4 字句：
+ *
+ *   第 27 章「周叙把账本塞回铜墨盒箱，推过船舷。'人是我派的。' **邵广海的笑停在脸上。**」
+ *   第 36 章「'柯代表。' **他笑停在脸上**，'看岔了也是有的——'」
+ *   第 50 章「'送检。' **笑停在脸上。**」（**单独成段**）
+ *   第 52 章「**笑停了一下。**邵广海偏头往巷口看。」
+ *
+ * 全书 52 章里这一族覆盖 **11 章 20 次**（笑停在脸上 ×7、笑还挂着 ×5、笑没落 ×2、
+ * 笑先到 ×2、笑才到 ×1），而邵广海出场 24 章里 **14 章（58%）** 都带这个节拍——
+ * 节拍完全一致：**对方一句短话 → 一个 4 字句独立成段 → 接一个手部小动作**。
+ *
+ * 为什么全链路拦不住：
+ *   - 本文件三族词表只收动作/姿态，不含表情；
+ *   - 蓝图合同的【人物反应轮换】原文写的是「不得连续多章都用同一批**否定式短句**
+ *     （没动／没答／没应／没说话／一言不发）」——口径**本身就限定在否定式**，
+ *     肯定式的「笑冻结」从合同层就走不到，模型于是躲开「没动」换上「笑停在脸上」。
+ *
+ * ⚠️ 词表边界（本仓在 #30/#43/#70/#93/#96/#99 反复吃过词表过拟合的亏）：
+ *   - 只收**「笑 + 未完结/定格」这个封闭形态**（笑停在（脸上）／笑还挂着／笑没落／笑先到／笑才到／
+ *     笑意没（有）到／笑僵住／笑纹没动），**不收裸「笑」**——裸「笑」在任何书里都高频，
+ *     收进来这一族会永远触发（同 #82 不收「站」的理由）；
+ *   - 不收「笑容」「笑了笑」这类中性写法（那是正常叙述，不是「定格」这个节拍）；
+ *   - 每条都带「笑」字前缀，所以不会撞到「停了一下」这类通用动词短句。
+ */
+export const EXPRESSION_PHRASES = Object.freeze([
+  '笑停在脸上', '笑停在', '笑还挂在脸上', '笑还挂着', '笑没落', '笑先到', '笑才到',
+  '笑意没到', '笑意还没到', '笑僵住', '笑纹没动',
+] as const)
+
+/**
+ * 同一条神态短语允许覆盖的**章数上限**（issue #117 的原话：「不得让同一神态短句出现在超过
+ * 2–3 章」）。取 3：实测那本书「笑停在脸上」覆盖 7 章、「笑还挂着」5 章——都在这个线上；
+ * 而**单次**出现的写法（「笑才到」1 章、「笑没落」1 章）不报，避免把正常的偶发写法当噪声。
+ */
+export const EXPRESSION_PHRASE_MAX_CHAPTERS = 3
+
 export interface ProseRepetitionHit {
-  kind: 'stillness' | 'staging' | 'posture'
+  kind: 'stillness' | 'staging' | 'posture' | 'expression'
   /** 命中该族短语的章号（升序）。 */
   chapters: number[]
   /** 具体命中的短语及各自章数，供作者核对。 */
@@ -65,6 +105,14 @@ export interface ProseRepetitionHit {
    * 配角出场章少，按全书章数归一永远达不到阈值——那不是「写法不固定」，是分母选错了。
    */
   scope?: { kind: 'book' } | { kind: 'character'; character: string; appearances: number }
+  /**
+   * 同一族内是否有**互斥变体**（issue #117）：神态族这一条几乎必然为 true。
+   *
+   * 这一族的一现象有多套措辞（「笑停在脸上」/「笑还挂在脸上」/「笑没落」），
+   * 它们说的**是同一件事**（笑定格）。`phrases` 把它们并列列出会让作者以为
+   * 「他换过措辞，不算重复」——其实换措辞正是这个现象的症状。
+   */
+  variantMerge?: boolean
 }
 
 export interface ProseRepetitionOptions {
@@ -85,6 +133,16 @@ function scanFamily(
   chapters: readonly ProseRepetitionChapter[],
   coverageRatio: number,
   scope: ProseRepetitionHit['scope'],
+  /**
+   * 可选的**按短语**判据（issue #117）：某一（去重后的）短语自身覆盖 ≥ 这么多章就报。
+   *
+   * 为什么神态族需要它而不是覆盖率：这个节拍**天然稀疏**——只在「被顶回」时出现，
+   * 实测那本书全族只覆盖 10/51 章（20%）、按角色最高 8/23（35%），
+   * 永远够不到 60% 的覆盖门槛，于是**恒不触发**（本仓设计规则⑪的形态）。
+   * 而 issue 点名的现象是「**同一个 4 字句**被反复用」（笑停在脸上 7 章、笑还挂着 5 章），
+   * 所以判据该按**单条短语的覆盖章数**，而不是整族占全书的比例。
+   */
+  minPhraseChapters?: number,
 ): ProseRepetitionHit | null {
   const covered = new Set<number>()
   const phraseHits: Array<{ phrase: string; chapters: number[] }> = []
@@ -94,14 +152,32 @@ function scanFamily(
     hit.forEach(chapter => covered.add(chapter))
     phraseHits.push({ phrase, chapters: hit })
   }
+  // 归并**互为子串**的变体（本仓 #82 的教训：不归并会把一个现象报成一族 N 条）。
+  // 「笑停在脸上」与「笑停在」命中同一批章——它们是同一个观察，只保留更具体的那个；
+  // 章号集合相同才算同一观察（不同则说明确实有两种写法，都留）。
+  const deduped = phraseHits
+    .slice()
+    .sort((left, right) => right.phrase.length - left.phrase.length)
+    .filter((entry, _index, all) => !all.some(other =>
+      other !== entry && other.phrase.length > entry.phrase.length
+      && other.chapters.length === entry.chapters.length
+      && other.chapters.every((chapter, position) => chapter === entry.chapters[position])))
   // 覆盖率用「并集覆盖了多少章」而不是「短语命中多少次」：读者感到固定的是**每章都来一下**。
   // 分母由调用方决定（全书章数 / 该角色的出场章数，issue #49），这里只做比例判断。
-  if (covered.size < Math.ceil(chapters.length * coverageRatio)) return null
+  // 给了 `minPhraseChapters` 时改判**单条短语的覆盖章数**（见该参数的说明）——两条路
+  // 任一成立即命中（神态族靠后者，前两族靠前者）。
+  const coverageMet = covered.size >= Math.ceil(chapters.length * coverageRatio)
+  const phraseMet = minPhraseChapters !== undefined
+    && deduped.some(entry => entry.chapters.length >= minPhraseChapters)
+  if (!coverageMet && !phraseMet) return null
   return {
     kind,
     chapters: [...covered].sort((left, right) => left - right),
-    phrases: phraseHits.sort((left, right) => right.chapters.length - left.chapters.length),
+    phrases: deduped.sort((left, right) => right.chapters.length - left.chapters.length),
     ...(scope ? { scope } : {}),
+    // 神态族（issue #117）：留下 ≥2 个同章集合的变体，说明作者是在**换措辞说同一个节拍**，
+    // 这一项要显式告诉文案层，别让作者以为「换过词就不算重复」。
+    ...(deduped.length >= 2 ? { variantMerge: true } : {}),
   }
 }
 
@@ -120,6 +196,11 @@ export function findProseRepetition(
     scanFamily('stillness', STILLNESS_PHRASES, usable, coverageRatio, { kind: 'book' }),
     scanFamily('staging', STAGING_PHRASES, usable, coverageRatio, { kind: 'book' }),
     scanFamily('posture', POSTURE_PHRASES, usable, coverageRatio, { kind: 'book' }),
+    // 神态族（issue #117）：被顶回时「笑定格」的那一族。前三族都是动作/姿态，
+    // 表情一个都没有——而它出现在**每一场交锋**里，比章末收敛更伤。
+    // ⚠️ 用**按短语的覆盖章数**判（不是全族覆盖率）：这个节拍天然稀疏（全族仅覆盖 10/51 章），
+    // 覆盖率门槛永远够不到，用它会恒不触发（设计规则⑪）。
+    scanFamily('expression', EXPRESSION_PHRASES, usable, coverageRatio, { kind: 'book' }, EXPRESSION_PHRASE_MAX_CHAPTERS),
   ].filter((hit): hit is ProseRepetitionHit => hit !== null)
 }
 
@@ -150,6 +231,10 @@ export function findCharacterProseRepetition(
       scanFamily('stillness', STILLNESS_PHRASES, appeared, coverageRatio, scope),
       scanFamily('staging', STAGING_PHRASES, appeared, coverageRatio, scope),
       scanFamily('posture', POSTURE_PHRASES, appeared, coverageRatio, scope),
+      // 神态族（issue #117）在**按角色**这一侧也走同一判据：实测邵广海出场 23 章里 8 章带
+      // 「笑定格」（35%，够不到 60% 的覆盖率），但**单条短语**「笑停在脸上」在全书覆盖 7 章、
+      // 「笑还挂着」5 章——按短语判就能报出来，而按覆盖率永远不触发。
+      scanFamily('expression', EXPRESSION_PHRASES, appeared, coverageRatio, scope, EXPRESSION_PHRASE_MAX_CHAPTERS),
     ]) if (hit) hits.push(hit)
   }
   return hits
@@ -222,22 +307,30 @@ export function proseRepetitionFindings(
       ? `人物反应被写成了固定短句：${subject}${hit.chapters.length} 章都用同一批否定式微动作（没动／没答／没应／没说话）表达受挫或被追问，读者能预判角色的反应。`
       : hit.kind === 'posture'
         ? `人物进场被写成了同一个动作：${subject}${hit.chapters.length} 章都先用同一个低身姿态（蹲／俯身／弯腰）进入场景，动作本身不再传递信息，角色之间的区分度也被抹掉。`
-        : `核心戏的场景装置被固定复用了：${subject}${hit.chapters.length} 章都用同一套「地点＋起手动作」搭戏（如舱底＋拧水隔＋票根蘸水），读者一看起手就知道接下来会发生什么。`
+        : hit.kind === 'expression'
+          ? `神态被写成了固定节拍：${subject}${hit.chapters.length} 章在被顶回、被将一军的时候都用**同一个「笑定格」短句**（笑停在脸上／笑还挂着／笑没落${hit.variantMerge ? '——这几个变体说的是同一件事，换措辞不等于换了写法' : ''}），通常还接一个手部小动作。读者的感受是「这套反应我见过」：表情本来是压迫感的来源，固定成一个短语之后，每一场交锋都变成同一个套路。`
+          : `核心戏的场景装置被固定复用了：${subject}${hit.chapters.length} 章都用同一套「地点＋起手动作」搭戏（如舱底＋拧水隔＋票根蘸水），读者一看起手就知道接下来会发生什么。`
     const enUSIssue = hit.kind === 'stillness'
       ? `${englishSubject}reactions have become a fixed formula: ${hit.chapters.length} chapters express setback or being questioned with the same negated micro-phrases, so readers can predict the reaction.`
       : hit.kind === 'posture'
         ? `${englishSubject}entrances all use the same low posture: ${hit.chapters.length} chapters start the scene by crouching, stooping or bending, so the action itself carries no information and the characters stop being distinguishable by what they do.`
-        : `${englishSubject}core scene's staging repeats: ${hit.chapters.length} chapters set it up with the same place-plus-opening-action, so readers know what follows from the opening beat.`
+        : hit.kind === 'expression'
+          ? `${englishSubject}facial reactions have become a fixed beat: ${hit.chapters.length} chapters mark being countered or one-upped with the **same “smile frozen” phrase**${hit.variantMerge ? ' (its several variants say the same thing — rewording is not variation)' : ''}, usually followed by a small hand movement. Readers feel they have seen this beat before: an expression is where menace lives, and pinning it to one phrase turns every confrontation into the same routine.`
+          : `${englishSubject}core scene's staging repeats: ${hit.chapters.length} chapters set it up with the same place-plus-opening-action, so readers know what follows from the opening beat.`
     const zhCNSuggestion = hit.kind === 'stillness'
       ? '换一种呈现方式表达沉默与受挫（身体动作、视线、呼吸、手上的活），也不要每章都用「提问→对方不回答」收场。'
       : hit.kind === 'posture'
         ? '换一种进场方式：有的章让角色站着／走着／先出声／手里正忙着别的事进场，把「他怎么做这件事」写成区分角色的信息，别让每场戏都从蹲下开始。'
-        : '换场合与起手动作搭这一场戏；同一套装置不要连着多章用。'
+        : hit.kind === 'expression'
+          ? `换几处落点，别让同一个神态短句出现在超过 2–3 章：①把表情换成**具体动作**（手指在袖口里碾了一下、把单子捏皱了）；②换**视线或呼吸**（他看向巷口、呼出一口气）；③把这一拍**挪到对方身上**（对方的反应/旁人的反应）；④干脆**切走**——不写他的脸，直接跳到他做的那件事。同一个角色的表情库要能被场景检验，不能只有一个「笑定格」。`
+          : '换场合与起手动作搭这一场戏；同一套装置不要连着多章用。'
     const enUSSuggestion = hit.kind === 'stillness'
       ? 'Show silence and setback another way (bodily action, gaze, breathing, the work in their hands), and stop ending every chapter on "asked a question, got no answer".'
       : hit.kind === 'posture'
         ? 'Vary the entrance: let some chapters start with the character standing, walking, speaking first, or busy with something else, so how they do it distinguishes them. Do not open every scene with a crouch.'
-        : 'Change the setting and the opening action for this scene; do not reuse the same staging across adjacent chapters.'
+        : hit.kind === 'expression'
+          ? 'Change where the beat lands, and keep any one expression phrase to two or three chapters at most: (1) turn the expression into a concrete action (a thumb rubbed the cuff, the slip crumpled); (2) move to gaze or breath (he looked toward the alley, let out a breath); (3) hand the beat to the other person; (4) cut away — skip his face and jump to what he does. A character\u2019s expression range must be testable by the scene, not just one frozen smile.'
+          : 'Change the setting and the opening action for this scene; do not reuse the same staging across adjacent chapters.'
     return {
       // key **不能带当前章号**（issue #108，同 #86/#89/#98 的第 4 例）：原来拼的是
       // `:${currentChapter}`，于是同一族写法每写一章就换一个 key，作者点「我已知，

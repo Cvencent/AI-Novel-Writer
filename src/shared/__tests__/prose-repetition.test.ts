@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { findCharacterProseRepetition, findProseRepetition, proseRepetitionEvidence, proseRepetitionFindings, POSTURE_PHRASES, STAGING_PHRASES, STILLNESS_PHRASES } from '../prose-repetition'
+import { EXPRESSION_PHRASE_MAX_CHAPTERS, findCharacterProseRepetition, findProseRepetition, proseRepetitionEvidence, proseRepetitionFindings, POSTURE_PHRASES, STAGING_PHRASES, STILLNESS_PHRASES } from '../prose-repetition'
 
 // issue #32（场景装置固定复用）/ #33（人物反应固定短句）：同一套写法在相邻章反复。
 // 判据用**跨章分布**而不是出现次数——本样本「没动」14 章里 9 次、每章恰好一次。
@@ -310,5 +310,70 @@ describe('prose repetition key is stable across chapters (issue #108)', () => {
     // 同一族但锚点相同（都从第 1 章开始命中的是同一簇），这里只断言它取自命中集合而非 currentChapter。
     expect(keyA.endsWith(':1')).toBe(true)
     expect(keyB.endsWith(':1')).toBe(true)
+  })
+})
+
+describe('神态族 (issue #117)', () => {
+  // issue 报告的节拍：对方一句短话 → 「笑停在脸上。」独立成段 → 手部小动作。
+  const beat = (n: number, sentence = '笑停在脸上。') =>
+    ch(n, ['“人是我派的。”', '', `邵广海${sentence}他摸出烟盒，在盒面上弹了两下，没抽。`].join('\n'))
+
+  it('reports the reported 「笑停在脸上」 family once the phrase covers enough chapters', () => {
+    // 实测「笑停在脸上」覆盖 7 章、「笑还挂着」5 章——单条短语超过 3 章即报。
+    const book = [beat(27), beat(36, '笑还挂着。'), beat(38), beat(41), beat(46, '笑还挂着。'), beat(50), beat(51)]
+    const hits = findProseRepetition(book, { minChapters: 4 }).filter(h => h.kind === 'expression')
+    expect(hits).toHaveLength(1)
+    expect(hits[0]!.phrases[0]!.phrase).toBe('笑停在脸上')
+    expect(hits[0]!.phrases[0]!.chapters.length).toBeGreaterThanOrEqual(EXPRESSION_PHRASE_MAX_CHAPTERS)
+  })
+
+  it('merges the overlapping variants instead of reporting one phenomenon twice', () => {
+    // 「笑停在脸上」⊂「笑停在」命中同一批章 → 只保留更具体的那个（本仓 #82 的教训）。
+    const book = Array.from({ length: 8 }, (_, i) => beat(i + 1))
+    const hit = findProseRepetition(book).find(h => h.kind === 'expression')!
+    expect(hit.phrases.map(p => p.phrase)).not.toContain('笑停在')
+    // 同一批章只留一条——不归并的话这里会并排出现「笑停在脸上」与「笑停在」。
+    expect(hit.phrases.filter(p => p.phrase.startsWith('笑停在')).length).toBe(1)
+  })
+
+  it('flags variantMerge when two DIFFERENT chapter sets both appear (rewording is the symptom)', () => {
+    // 实测那本书：「笑停在脸上」7 章、笑还挂着 5 章——章集不同，两者都留，且要标出
+    // 「这几个变体说的是同一件事」，否则作者会以为「换过措辞就不算重复」。
+    const book = [
+      ...[27, 36, 38, 41, 46, 50, 51].map(n => beat(n)),
+      ...[31, 35].map(n => beat(n, '笑还挂着。')),
+      beat(45, '笑先到。'),
+    ]
+    const hit = findProseRepetition(book).find(h => h.kind === 'expression')!
+    expect(hit.phrases.length).toBeGreaterThanOrEqual(2)
+    expect(hit.variantMerge).toBe(true)
+    // 文案要点明这一点（作者唯一读到的解释）。
+    const finding = proseRepetitionFindings(book, 52, []).find(f => f.stableFactKey.includes('expression'))!
+    expect(finding.issue.zhCN).toContain('换措辞不等于换了写法')
+  })
+
+  it('stays silent when the family only appears once or twice', () => {
+    // 偶发一次不是「固定写法」——不能因为词表在就报（本仓 #30/#43 的教训）。
+    const book = [beat(1), beat(2, '他抬眼看了看。')]
+    expect(findProseRepetition(book, { minChapters: 2 }).filter(h => h.kind === 'expression')).toEqual([])
+  })
+
+  it('does not fire on a book with no expression beat at all', () => {
+    const book = Array.from({ length: 6 }, (_, i) =>
+      ch(i + 1, ['周叙把存根折好收进内襟。', '', '他把册子合上。'].join('\n')))
+    expect(findProseRepetition(book, { minChapters: 4 }).filter(h => h.kind === 'expression')).toEqual([])
+  })
+
+  it('gives an actionable exit with a per-phrase chapter ceiling', () => {
+    const book = [beat(1), beat(2, '笑还挂着。'), ...Array.from({ length: 6 }, (_, i) => beat(i + 3))]
+    const finding = proseRepetitionFindings(book, 9, []).find(f => f.stableFactKey.includes('expression'))!
+    expect(finding.suggestion.zhCN).toContain('2–3 章')
+  })
+
+  it('keeps the key anchored to the earliest hit chapter (issues #86/#89/#98/#108)', () => {
+    const book = [27, 36, 38, 41, 42, 43, 44, 45].map(n => beat(n))
+    const finding = proseRepetitionFindings(book, 52, []).find(f => f.stableFactKey.includes('expression'))!
+    expect(finding.stableFactKey).toBe('prose:expression:27')
+    expect(finding.sourceChapter).toBe(27)
   })
 })
