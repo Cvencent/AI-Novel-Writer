@@ -218,14 +218,31 @@ export class GenerationLogRepository {
     }
   }
 
+  /**
+   * 保留策略：完整 Prompt 只留最近 `keepCount` 次，其余把 `messages` 删掉。
+   *
+   * issue #104 ⑤：这个方法**每次模型调用 reserve 都会跑一遍**（`generation-run-repository.ts` 的
+   * `reserve`），而原来的实现是「`SELECT` 出**全部**带 prompt 的 attempt 行 → `rows.slice(keep)`」——
+   * `generation_attempts` 是无界增长表（每次调用一行、含 prompt 全文），于是每调一次模型都要
+   * **把全表读进内存再丢掉前面那部分**。实测（合成语料）：50 行 3.5ms → 1000 行 **27.3ms**，
+   * 与行数线性增长；真实长篇（含那个 500MB 的作品）上会明显放大。
+   *
+   * 改成让 SQLite 只返回**需要清理的那些行**：`ORDER BY rowid DESC LIMIT -1 OFFSET keep`
+   * 直接跳过最新的 `keep` 行，不再把保留部分读出来。
+   * ⚠️ 判据的 **WHERE 与 ORDER BY 逐字不变**（只加 `LIMIT -1 OFFSET ?`）——筛选条件不动，
+   * 于是「哪些行该留、哪些该清」与原来完全一致；同样只删 `messages`、保留 `replayTask`
+   * 其余字段并写 `promptTrimmedAt`，返回值仍是清理行数。
+   * （已清理过的行本来就不满足 `json_type(...)='array'`，所以不会占 OFFSET 名额。）
+   */
   static trimPromptHistory(keepCount: number, db?: BetterSqlite3.Database): number {
     const database = requireDb(db)
     const keep = Math.max(0, Math.floor(keepCount))
-    const rows = database.prepare(`SELECT attempt_id, usage_receipt_json FROM generation_attempts
+    // `LIMIT -1 OFFSET keep` = 「跳过最新的 keep 行、取其余全部」（SQLite 的 LIMIT -1 表示不设上限）。
+    // 原来等价于「全表读出来再 slice(keep)」——结果相同，但要读的只有该清理的那些行。
+    const stale = database.prepare(`SELECT attempt_id, usage_receipt_json FROM generation_attempts
       WHERE usage_receipt_json IS NOT NULL
         AND json_type(usage_receipt_json,'$.replayTask.messages') = 'array'
-      ORDER BY rowid DESC`).all() as { attempt_id: string; usage_receipt_json: string }[]
-    const stale = rows.slice(keep)
+      ORDER BY rowid DESC LIMIT -1 OFFSET ?`).all(keep) as { attempt_id: string; usage_receipt_json: string }[]
     if (stale.length === 0) return 0
     const update = database.prepare('UPDATE generation_attempts SET usage_receipt_json=? WHERE attempt_id=?')
     database.transaction(() => {

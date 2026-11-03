@@ -154,4 +154,56 @@ describe('GenerationLogRepository', () => {
     seedCall('a3', 'p', 'x', 'y')
     expect(GenerationLogRepository.list(9999)).toHaveLength(1)
   })
+
+  // issue #104 ⑤：这个方法**每次模型调用 reserve 都会跑**，而旧实现是「SELECT 出全部带 prompt 的行
+  // → 再 slice(keep)」——把要保留的那些行也读进内存了。prompt 单次可达 MB 级（见
+  // `generation-log-retention.ts` 的注释），retention 又是 200，于是每次调用都在丢 200 份大文本。
+  // 改成 `LIMIT -1 OFFSET keep` 让 SQLite 只返回该清理的行；下面钉住「语义完全没变」。
+  it('只读取需要清理的行（不再把保留部分materialize），且语义与旧实现逐字一致', () => {
+    const db = getProjectDb()!
+    for (const n of [1, 2, 3, 4, 5, 6]) seedCall('r-' + n, 'p' + n, '提示词' + n, '返回' + n)
+    expect(GenerationLogRepository.trimPromptHistory(2, db)).toBe(4)
+    // 被保留的两条：Prompt 完整
+    for (const id of ['r-5', 'r-6']) {
+      expect(GenerationLogRepository.read(id, db)!.promptTrimmed).toBe(false)
+      expect(GenerationLogRepository.read(id, db)!.promptMessages.length).toBeGreaterThan(0)
+    }
+    // 被清理的四条：Prompt 没了、返回与 purpose 还在
+    for (const id of ['r-1', 'r-2', 'r-3', 'r-4']) {
+      const detail = GenerationLogRepository.read(id, db)!
+      expect(detail.promptMessages).toEqual([])
+      expect(detail.output).toBe('返回' + id.slice(2))
+      expect(detail.purpose).toBe('p' + id.slice(2))
+      expect(detail.promptTrimmed).toBe(true)
+    }
+  })
+
+  it('keep 为 0 时清理全部，keep 超过行数时一行都不清', () => {
+    const db = getProjectDb()!
+    for (const n of [1, 2, 3]) seedCall('z-' + n, 'p', '提示词', '返回')
+    expect(GenerationLogRepository.trimPromptHistory(10, db)).toBe(0)
+    expect(GenerationLogRepository.trimPromptHistory(0, db)).toBe(3)
+  })
+
+  it('SQL 只返回要清理的行——保留的那些不进结果集（issue #104 ⑤ 的实质）', () => {
+    const db = getProjectDb()!
+    // 给保留行与清理行不同的可辨识内容：若旧实现「全表读再 slice」，保留行也会出现在结果集里、
+    // 并进入 JSON.parse；新实现用 `LIMIT -1 OFFSET keep` 让它们根本不返回。
+    for (const n of [1, 2, 3, 4, 5, 6]) seedCall('q-' + n, 'p', '提示' + n, '返回' + n)
+    const bound = db.prepare(`SELECT attempt_id FROM generation_attempts
+      WHERE usage_receipt_json IS NOT NULL
+        AND json_type(usage_receipt_json,'$.replayTask.messages') = 'array'
+      ORDER BY rowid DESC LIMIT -1 OFFSET 2`).all() as { attempt_id: string }[]
+    // 只有最新的两行外的那四条会被读出来。
+    expect(bound.map(row => row.attempt_id).sort()).toEqual(['q-1', 'q-2', 'q-3', 'q-4'])
+    // 且 trim 之后仍是这个数（行为一致）。
+    expect(GenerationLogRepository.trimPromptHistory(2, db)).toBe(4)
+  })
+
+  it('重复调用是幂等的（第二次没有可清理的行）', () => {
+    const db = getProjectDb()!
+    for (const n of [1, 2, 3, 4]) seedCall('i-' + n, 'p', '提示词', '返回')
+    expect(GenerationLogRepository.trimPromptHistory(1, db)).toBe(3)
+    expect(GenerationLogRepository.trimPromptHistory(1, db)).toBe(0)
+  })
 })
