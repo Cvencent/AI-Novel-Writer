@@ -24,6 +24,7 @@
  *  14. 重复宣告的不可逆处境变更（#105）——同一处境被记两遍不可逆，第一次从未落地
  *  15. 章节标题「同题加尾」复用（#110）——「压印」/「压印的」、「无人认领」/「无人认领，一并化浆」
  *  16. 能力触发条件被静默绕过（#100）——世界观写死的硬限制在正文里失效且从未写成一次发现
+ *  17. 笔迹特征自相矛盾（#97）——同一个书写者被写成两套互斥特征
  *
  * 与审稿路径的差别只有一处，而且是刻意的：审稿把**本章正文**也放进样本
  * （那正是审稿的对象），而写前预检喂进来的全是**已定稿章**——因为要写的那一章
@@ -63,6 +64,8 @@ import { findRepeatedRevocationFindings } from './repeated-revocation'
 import { findDuplicateChapterTitleFindings } from './chapter-title-uniqueness'
 // 能力触发条件被绕过（#100）：世界观写死的硬限制在正文里被静默绕过、从未写成一次发现。
 import { findAbilityLimitBypassFindings } from './ability-limit-bypass'
+// 笔迹特征自相矛盾（#97）：同一个书写者被写成两套互斥特征（「稳、匀」vs「横折收得急」）。
+import { findHandwritingConflictFindings } from './handwriting-signature'
 import { closingShotOf } from './blueprint-semantic-contract'
 import { foreshadowingDueAt, parseForeshadowingCommitments } from './foreshadowing-commitments'
 
@@ -246,10 +249,13 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
     ? findAbilityLimitBypassFindings({ worldbuilding: input.worldbuilding, chapters })
     : []
 
+  // 笔迹特征自相矛盾（issue #97）：核心能力是「靠笔迹认人」时，同一个书写者不能有两套特征。
+  const handwritingConflicts = castNames.length === 0 ? [] : findHandwritingConflictFindings({ chapters, castNames })
+
   return [...closingLabel, ...numbering, ...ability, ...repetition, ...undelivered,
     ...ultimatum, ...reversal, ...undatedStreak, ...proseFlavor, ...positionalAxes, ...glyphRadical,
     ...castNameDrift, ...deadlineSettlement, ...repeatedRevocation, ...duplicateTitles,
-    ...abilityLimitBypass]
+    ...abilityLimitBypass, ...handwritingConflicts]
 }
 
 /**

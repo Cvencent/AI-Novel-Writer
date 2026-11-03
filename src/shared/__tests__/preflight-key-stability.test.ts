@@ -17,6 +17,7 @@ import { findUnsettledDeadlineFindings } from '../deadline-settlement'
 import { findRepeatedRevocationFindings } from '../repeated-revocation'
 import { findDuplicateChapterTitleFindings } from '../chapter-title-uniqueness'
 import { findAbilityLimitBypassFindings } from '../ability-limit-bypass'
+import { findHandwritingConflictFindings } from '../handwriting-signature'
 import { auditFinalizedProse } from '../finalized-prose-audit'
 import { proseRepetitionFindings } from '../prose-repetition'
 import { glyphRadicalFindings } from '../glyph-radical'
@@ -147,6 +148,10 @@ describe('no preflight key may change when only currentChapter advances (issue #
       ['findAbilityLimitBypassFindings', () => findAbilityLimitBypassFindings({
         worldbuilding: '触发条件：离船上岸，能力立刻衰减到几乎为零。',
         chapters: SAMPLE_BOOK,
+      })],
+      ['findHandwritingConflictFindings', () => findHandwritingConflictFindings({
+        chapters: [{ chapterNumber: 1, content: '温珩的笔稳、匀，起笔带锋。' }, { chapterNumber: 2, content: '温珩的笔，横折收得急。' }],
+        castNames: CAST,
       })],
     ]
     for (const [name, produce] of producers) {
