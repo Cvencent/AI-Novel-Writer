@@ -46,12 +46,12 @@ export function blueprintSemanticGenerationContract(writingLanguage: WritingLang
   if (writingLanguage === 'en-US') {
     return `[Immutable blueprint JSON contract]
 Output {"blueprints":[...]} only. Every item must contain all of these fields: ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.requiredFields.join(', ')}.
-chapterNumber must cover every target chapter exactly once, without duplicates or out-of-range values. title, role, purpose, keyEvents, and suspenseHook must be non-empty strings. title must be unique across the whole book: never reuse a title from an earlier chapter (recentBlueprints/chapter_list), and keyEvents must not replay a scene already written in a finalized chapter.
+chapterNumber must cover every target chapter exactly once, without duplicates or out-of-range values. title, role, purpose, keyEvents, and suspenseHook must be non-empty strings. title must be unique across the whole book: never reuse a title from an earlier chapter (recentBlueprints/chapter_list). A **retitled repeat counts as reuse** (issue #110): taking an existing title and appending a particle or a clause ("压印" to "压印的", "无人认领" to "无人认领，一并化浆") reads in the contents as the same chapter printed twice and is rejected; to carry a chapter forward, pick a wording with its own identity. keyEvents must not replay a scene already written in a finalized chapter.
 suspenseHook is always required; even without a mystery, state one concrete unresolved decision, threat, revelation, or consequence that creates forward pressure. **Entrances must not repeat** (issue #81): a character's first appearance in adjacent chapters must not use the same posture + place + clothing formula (in the sample one character entered the same way in 11 chapters — standing somewhere, barefoot, hem dripping — with two pairs matching 22 and 13 characters verbatim). The entrance is the start button of every scene, so a repeated one hurts more than a repeated closing shot. When keyEvents says how a character comes in, change that formula: whether they are tired, whether the clothes are dry, what is in their hands, who they stand beside, whether they speak or act first. Its **pragmatic form must rotate** (issue #66): do not end every chapter with someone forcing the protagonist into a binary choice (sign or the ship is impounded, do not go ashore tonight, you take my place). Recent chapters' hook forms are listed in references — read what was just used. Available forms: an open question, a newly exposed fact, a forced decision, an approaching deadline, a shift in someone's attitude, an unexplained piece of evidence. Adjacent chapters must not use the same form, and three consecutive chapters must never all close on a conditional or threatening line: with setting, speaker, and wording all different, readers still hear the same voice at every chapter end, which formalises the suspense and blunts it.
 Hook carry-over is required (issue #20): this chapter must explicitly address the previous chapter's suspenseHook (its name/person/object/decision is in recentBlueprints). Continue it, twist it, or settle it — and if it is deliberately deferred, say so and why in this chapter's keyEvents. Never silently switch to an unrelated topic: a hook whose line is simply dropped reads to the reader as a broken promise.
 Pending decisions outside the hook must also carry over (issue #35): the previous chapter's prose usually leaves more than one thing hanging — someone promised to take a shift, hand over an object, come back at a stated time, keep quiet, or stand in for another. Only the recorded suspenseHook is guaranteed to be handled downstream. When references/the material list a predecessor item the previous chapter's prose left open, this chapter must either advance it, twist it, or defer it explicitly in keyEvents (saying what is deferred and why). A decision a character stated aloud and that no later chapter ever mentions reads to the reader as an unfinished thread.
 Key objects must change hands on the page (issue #38): prose, not the blueprint, decides who holds an object. When a key object was refused, seized, or ended in another character's hands in the previous chapter, this chapter may not simply have the viewpoint character produce it — keyEvents must show the handoff (who gives it to whom, under what condition) or another seizure. Never describe an object as "already in his pocket" because the blueprint said it was handed over: the reader only believes what happened on the page.
-Never contradict yourself inside one chapter (issue #19): keyEvents must not both take a key object away (seized / handed over / burned) and have the same side read or use it in that chapter. If the object must be lost and regained here, write the recovery as its own event (who returns it, at what price); otherwise split the two across chapters. And never let remembering substitute for reading the physical object: if the established rule is that the ink layer on the object must be read, memory cannot replace it.
+Never contradict yourself inside one chapter (issue #19): keyEvents must not both take a key object away (seized / handed over / burned) and have the same side read or use it in that chapter. If the object must be lost and regained here, write the recovery as its own event (who returns it, at what price); otherwise split the two across chapters. And never let remembering substitute for reading the physical object: if the established rule is that the ink layer on the object must be read, memory cannot replace it. A **hard limit on the core ability must not be silently bypassed** (issue #100): if the worldbuilding fixes the ability's trigger condition ("it fails the moment you go ashore", "only at night", "requires blood"), this chapter must not have it succeed under the forbidden condition — **unless the chapter turns that into a discovery** (even one line: "he tried it; a little moisture was enough"), or states the workaround's cost. Readers see a rule the author set up and then broke without explanation, which costs more trust than a weaker ability; and such a limit is usually the book's pacing engine ("every night he races the drying ink") — once it lapses, every time-pressure scene loses its source. If you no longer want the limit, go back and revise the worldbuilding and the foreshadowing it anchors instead of letting it vanish in place.
 characters must list named people only (already in the character facts, or declared in this item's newCharacterCandidates), with at least one unique non-empty full name. Every named person who is not already in the character roster MUST also be declared in this item's newCharacterCandidates with a role; otherwise do not put them in characters at all — an undeclared name never gets a card, so post-finalization state writes and consistency checks will never cover them, and the next chapter will have no memory of them (issue #42). A walk-on who appears once and carries no plot should be described by role label in keyEvents, not given a name. Role-only labels such as "the examiner", "the guard" or "the clerk" must never appear in characters; describe them in keyEvents instead.
 newCharacterCandidates is optional. When present, include only important named characters first introduced by this blueprint and expected to recur. Every item must contain name and role, name must exactly copy one entry from characters, and role must be protagonist, antagonist, supporting, or minor. Omit it or use [] when there are no candidates; never include incidental figures.
 relationships is required and may be []; every item must contain non-empty from, to, and relation fields. from and to must exactly copy full names from the same item's characters array and may not self-reference.
@@ -65,7 +65,7 @@ Do not omit required fields, combine chapters, rename fields, explain, or output
   }
   return `【不可变蓝图 JSON 合同】
 只输出 {"blueprints":[...]}，每项必须完整包含：${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.requiredFields.join('、')}。
-chapterNumber 必须覆盖本批每个目标章节且不得重复或越界；title、role、purpose、keyEvents、suspenseHook 必须是非空字符串。title 必须全书唯一：不得复用已有章节的标题（见 recentBlueprints/chapter_list），keyEvents 不得重演已定稿章节里已经写过的场景。
+chapterNumber 必须覆盖本批每个目标章节且不得重复或越界；title、role、purpose、keyEvents、suspenseHook 必须是非空字符串。title 必须全书唯一：不得复用已有章节的标题（见 recentBlueprints/chapter_list）——**「同题加尾」也算复用**（issue #110）：把已有标题原样当前缀再补一个「的」或一个分句（「压印」→「压印的」、「无人认领」→「无人认领，一并化浆」）在目录里读起来就是同一章写了两遍，会被判重驳回；承接上一章请换一个**有区分度**的措辞。keyEvents 不得重演已定稿章节里已经写过的场景。
 **标题句法必须轮换**（issue #106）：不要与最近几章共用同一**句法骨架**——是禁结构、不是禁词。样本里第 41–48 章有 8/9 章都是「【物件】＋方位词＋的＋【线索】」（口供上的指印 / 名单上的半页 / 底板下的最后一册 / 册子里的空号段），一整列同构标题在目录里比在正文里更显眼，还把铺垫章、对峙章、代价章统一成同一个形状。**「X 上的 Y」「X 里的 Y」「X 之前的 Y」算同一骨架，换名词不算换结构**；连着三四章同形就该换取题方式。可用的取题角度：人物或动作（谁做了什么）、本章的转折或代价、一句台词或一个疑问、时间或场景的变化。references 里给了最近几章的标题，先看清刚用过什么结构。
 suspenseHook 始终必填；即使本章没有谜团，也要写明一个制造推进压力的具体未决决定、威胁、揭示或后果。**人物登场不得同构**（issue #81）：同一个角色在相邻章的登场段不得用同一套「姿态＋地点＋穿戴」交代（样本里温珩 11 章都是「站在某处、赤脚、靛蓝短褂下摆滴水」，其中两对逐字重合 22 字与 13 字）——登场句是每场戏的开机键，同构比收束收敛更伤。keyEvents 里写这个角色怎么进场时，换掉那套固定交代：他累不累、衣服干没干、手里拿着什么、跟谁站在一起、先出声还是先动手。钩子的**语用方式必须轮换**（issue #66）：不要每章都写成「有人用一句话把主角逼到一个二选一」（不签就扣船、今晚别下船、你替我上）。references 里给了最近几章的钩子类型，先看清刚用过什么。可用的形态：未解的具体疑问、刚暴露的新事实、被迫作出的选择、一个正在逼近的时点、某人态度的一次转变、一件尚未解释的物证。相邻两章不得重复同一种形态，连续三章也不得都以条件/警告句收尾——画面与人物都换了、钩子文本也不重复，读者却会在每章末尾听到同一个声音，悬念因此被形式化。
 上一章钩子必须接（issue #20）：本章必须显式回应上一章的 suspenseHook（其具名的人/物/决定见 recentBlueprints）——继续推进、反转或了结皆可；确实要搁置时，必须在本章 keyEvents 里写明「搁置了什么、为什么」。不得默默换成无关话题：钩子点名的人或决定在本章再不出现，读者读到的是「上一个坑没人埋」。
@@ -73,6 +73,7 @@ suspenseHook 始终必填；即使本章没有谜团，也要写明一个制造�
 钩子以外的悬置承诺也要接（issue #35）：上一章正文留下的悬置事情通常不止一件——谁答应替班、谁答应交出某物、谁说了明晚再来、要求谁闭嘴、谁被点名顶替。目前只有登记在案的 suspenseHook 有下游通道，其余全凭模型自觉。当材料/参考里列出「上一章正文留下而尚未落地的承诺或决定」时，本章必须继续推进、反转或在 keyEvents 里明确搁置（写明搁置了什么、为什么）。一个人物当众说出口的决定，后续章节整章不提，读者读到的是「这条线断了」。
 关键道具必须当面易手（issue #38）：谁持有物件由正文决定，不由蓝图决定。上一章某件关键物件被拒绝交出、被夺走、或结尾仍在他人手上时，本章不得直接写成本视角人物「从怀里摸出」——必须在 keyEvents 里写出交接动作（谁交给谁、在什么条件下）或另一次夺取。不得因为蓝图写了「某人推过来」就把物件当成本方已有：读者只认页面上发生过的动作。蓝图自身也不要写「温珩推过来的油纸包」这种原文里并不存在的既成事实。
 同一章内不得自相矛盾（issue #19）：本章 keyEvents 不得一边写「收走／夺走／烧掉／交出」某件关键道具，一边又让同一方读取或使用它。若本章确实要先失去再拿回，必须把重新取得的过程写成独立事件（谁还回来、付出什么），否则把这两件事拆到不同章节。尤其不得把「凭记忆复现」当成读取实物——前文规则要求读取的是实物上的墨层，记忆不能替代它。
+**能力的硬限制不得静默绕过**（issue #100）：世界观若给核心能力写死了触发条件（「离船上岸即失效」「只能在夜里」「必须见血」这类），本章就不得让它在受限条件下照样成功——**除非本章把这件事写成一次发现**（哪怕一句「他试过，补上水汽就成」），或写清绕法的代价。读者读到的是「作者亲手立的规矩后面自己破掉且不解释」，比能力弱更伤信任；而这类限制往往正是全书的节奏发动机（「每夜都在跟水汽赛跑」），它一失效，后面所有「抢时间」的戏都失去压力来源。若这条限制本来就不打算要，就回去改世界观与相关伏笔，别让它原地消失。
 characters 必须只写具名角色（角色名单里已建档的，或本章 newCharacterCandidates 声明的），至少含一个唯一非空姓名。凡不在角色名单里的具名角色，**必须**同时写进本章 newCharacterCandidates（含 role），否则不得写进 characters：未声明的名字不会建卡，定稿后的角色状态回写与一致性检查都收不到他，下一章起草时对他也毫无记忆（issue #42）。只出场一次、不承担情节的路人，改用身份称呼写进 keyEvents，不要起名字。「检测教员」「门卫」「店员」这类只有身份没有姓名的角色不得写进 characters，只能写进 keyEvents 的场景描述。
 newCharacterCandidates 可选；提供时只声明由本章首次引入且预计后续复用的重要具名角色，每项必须包含 name、role，name 必须逐字复制 characters 中的一个完整姓名，role 只能是 protagonist、antagonist、supporting、minor。无候选时可省略或传 []，一次性路人不得声明为候选。
 relationships 必须是数组，无关系时传 []；每项必须含非空 from、to、relation，from/to 必须精确出现在同项 characters 中且不能自指。
@@ -265,6 +266,36 @@ export function normalizeBlueprintSemanticItem(value: unknown, path = 'blueprint
   }
 }
 
+/**
+ * 标题唯一性比对的归一化（issue #110）：剥掉首尾空白与**尾部**标点。
+ *
+ * 「无人认领，」与「无人认领」只差一个尾标点——不剥掉就会漏过（issue 建议里点名的第一种）。
+ * 只剥尾部：句中的逗号是内容（「无人认领，一并化浆」与「无人认领」的区别正是那个分句）。
+ */
+function normalizeTitleForUniqueness(title: unknown): string {
+  return String(title ?? '').trim().replace(/[\s，,。.、；;：:！!？?…]+$/u, '')
+}
+
+/**
+ * 这个标题是否**复用**了已有标题（issue #110）。
+ *
+ * 判据：与任一已有标题**互为前缀（含相等）**。这样「压印」/「压印的」与
+ * 「无人认领」/「无人认领，一并化浆」都命中，而「空着的那一格」/「空着的第二格」
+ * （只共享前 3 字、谁也不含谁）正确地不报。
+ *
+ * ⚠️ **长度下限 2 字**：单字标题会互相吞（「印」是「压印」的前缀），那会把正常的
+ * 单字标题判成重名——本仓 #87 的教训（排序后取前 N 要先按对象分配名额）。
+ * 两侧都要 ≥2 字才判：任一侧是单字就不比，宁漏不误报。
+ */
+function titleIsReused(title: string, existing: readonly string[]): boolean {
+  if (title.length < TITLE_UNIQUENESS_MIN_CHARS) return false
+  return existing.some(candidate => candidate.length >= TITLE_UNIQUENESS_MIN_CHARS
+    && (candidate.startsWith(title) || title.startsWith(candidate)))
+}
+
+/** 互为前缀判重的最短长度（issue #110）：单字标题会互相吞，不参与比较。 */
+export const TITLE_UNIQUENESS_MIN_CHARS = 2
+
 export function decodeBlueprintSemanticPayload(
   payload: unknown,
   expectedChapterNumbers: readonly number[],
@@ -287,17 +318,23 @@ export function decodeBlueprintSemanticPayload(
   const seen = new Set<number>()
   // 标题去重：同一批内同名、或与已有章节同名（如两章都叫「待核」）都是合同违规——
   // 标题是目录里最显眼的身份，重名意味着场景重演已经发生（issue #16）。
-  const titles = new Set(existingTitles.map(title => title.trim()))
+  //
+  // issue #110：「同名」不能只判**精确相等**。「压印」/「压印的」（第 15、21 章）与
+  // 「无人认领」/「无人认领，一并化浆」（第 18、22 章）在字面上不同，但读者在目录里读到的
+  // 是同一章被写了两遍——「无人认领」本身已是完整断语，第 22 章只在后面加了个补充分句。
+  // 而合同写的约束是「title 必须全书唯一：不得复用已有章节的标题」，按本意它们是违反。
+  // 现在改成**互为前缀（含相等）即视为复用**，双向判（否则只挡「新标题更长」那种顺序）。
+  const titles = [...new Set(existingTitles.map(normalizeTitleForUniqueness))].filter(Boolean)
   for (const blueprint of decoded) {
     if (seen.has(blueprint.chapterNumber)) {
       throw new StructuredContractDiagnostic('duplicate_item', 'blueprints')
     }
     seen.add(blueprint.chapterNumber)
-    const title = blueprint.title.trim()
-    if (titles.has(title)) {
+    const title = normalizeTitleForUniqueness(blueprint.title)
+    if (titleIsReused(title, titles)) {
       throw new StructuredContractDiagnostic('duplicate_title', 'blueprints.title')
     }
-    titles.add(title)
+    titles.push(title)
     if (!expected.has(blueprint.chapterNumber)) {
       throw new StructuredContractDiagnostic('unexpected_item', 'blueprints')
     }

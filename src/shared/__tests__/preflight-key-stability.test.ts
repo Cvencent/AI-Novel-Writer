@@ -15,6 +15,8 @@ import {
 import { findUndatedStreakFindings } from '../chapter-time-anchor'
 import { findUnsettledDeadlineFindings } from '../deadline-settlement'
 import { findRepeatedRevocationFindings } from '../repeated-revocation'
+import { findDuplicateChapterTitleFindings } from '../chapter-title-uniqueness'
+import { findAbilityLimitBypassFindings } from '../ability-limit-bypass'
 import { auditFinalizedProse } from '../finalized-prose-audit'
 import { proseRepetitionFindings } from '../prose-repetition'
 import { glyphRadicalFindings } from '../glyph-radical'
@@ -138,6 +140,13 @@ describe('no preflight key may change when only currentChapter advances (issue #
       ['findRepeatedRevocationFindings', () => findRepeatedRevocationFindings({
         ledger: [{ chapterNumber: 1, costs: '从此不能再上柜台' }, { chapterNumber: 12, costs: '柜台从此不能再用' }],
         prose: SAMPLE_BOOK, castNames: CAST,
+      })],
+      ['findDuplicateChapterTitleFindings', () => findDuplicateChapterTitleFindings({
+        chapters: [{ chapterNumber: 1, title: '压印' }, { chapterNumber: 2, title: '压印的' }],
+      })],
+      ['findAbilityLimitBypassFindings', () => findAbilityLimitBypassFindings({
+        worldbuilding: '触发条件：离船上岸，能力立刻衰减到几乎为零。',
+        chapters: SAMPLE_BOOK,
       })],
     ]
     for (const [name, produce] of producers) {
