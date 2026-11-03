@@ -27,6 +27,9 @@ import {
   findUndeliveredForeshadowing,
 } from '../../src/shared/consistency-preflight'
 import { foreshadowingDueAt, parseForeshadowingCommitments } from '../../src/shared/foreshadowing-commitments'
+// 字形断言（issue #99）：审稿时本章正文还在手边，正是能改的时候。
+// 与写前预检（`finalized-prose-audit.ts`）共用同一份判据，只是样本不同。
+import { glyphRadicalFindings } from '../../src/shared/glyph-radical'
 import { CHARACTER_STATE_TEXT_FIELDS } from '../../src/shared/character-roster'
 import { ProjectCoreRepository } from '../repositories/project-core-repository'
 import { CharacterRepository } from '../repositories/character-repository'
@@ -231,6 +234,11 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
             { chapterNumber: source.chapterNumber, content: source.content }],
           currentChapter: source.chapterNumber,
         }),
+        // 字形断言与偏旁实际部首不符（issue #99）：第 45 章「半个“温”字……立人旁」、
+        // 第 43 章「先露走之底……徐」——两处都是该章唯一的身份判据，两处都错。
+        // 样本 = **本章正文**（审稿时这一章还没定稿，正是能改的时候）；历史章不再重复报
+        // （它们要么已定稿只读、要么已在上一轮审稿里提示过）。
+        ...glyphRadicalFindings([{ chapterNumber: source.chapterNumber, content: source.content }]),
       ],
       ...(confirmation ? { confirmation } : {}), ...(recheck ? { recheck } : {}) }
   })()

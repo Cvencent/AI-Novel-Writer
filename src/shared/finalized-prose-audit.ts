@@ -18,6 +18,7 @@
  *   8. 「AI 味」配额（#93）——比喻／生理反应／段尾总结／平均句长，配额取自起草清单原文
  *   9. 段落起手固定化（#94）——每一段的第一个词是主角名/代词
  *  10. 物件过手动作固定化（#95）——折好→塞进某处 这一套三拍覆盖了多少章
+ *  11. 字形断言（#99）——「半个 X 字，Y 旁」把偏旁说错（温写成立人旁、徐写成走之底）
  *
  * 与审稿路径的差别只有一处，而且是刻意的：审稿把**本章正文**也放进样本
  * （那正是审稿的对象），而写前预检喂进来的全是**已定稿章**——因为要写的那一章
@@ -45,6 +46,8 @@ import { proseFlavorFindings } from './prose-flavor'
 // 段落起手（#94）与物件过手（#95）：同一类「跨章看同一种写法」的位置轴补位。
 import { findParagraphOpenerFindings, findPropHandoverFindings } from './consistency-preflight'
 import { findUndatedStreakFindings } from './chapter-time-anchor'
+// 字形断言（#99）：正文里「半个 X 字，Y 旁」把偏旁说错——单章可判，且是最容易机器判的一类。
+import { glyphRadicalFindings } from './glyph-radical'
 import { closingShotOf } from './blueprint-semantic-contract'
 import { foreshadowingDueAt, parseForeshadowingCommitments } from './foreshadowing-commitments'
 
@@ -183,8 +186,12 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   // 只看最近 12 章反而会把长段的开头切掉、报出「最近 12 章没交代」这种半句话。
   const undatedStreak = findUndatedStreakFindings(chapters, nextChapter)
 
+  // 字形断言（issue #99）：正文里把「X 字」的偏旁说错。单章自洽、逐章可判，
+  // 用全量已定稿章（字形是**已定稿只读**的内容，报出来作者才知道哪一章要重写）。
+  const glyphRadical = glyphRadicalFindings(chapters)
+
   return [...closingLabel, ...numbering, ...ability, ...repetition, ...undelivered,
-    ...ultimatum, ...reversal, ...undatedStreak, ...proseFlavor, ...positionalAxes]
+    ...ultimatum, ...reversal, ...undatedStreak, ...proseFlavor, ...positionalAxes, ...glyphRadical]
 }
 
 /**
