@@ -183,7 +183,9 @@ describe('findBlueprintContinuityRisks', () => {
     })
     const absent = findings.find(finding => finding.stableFactKey.startsWith('cast:absent:'))
     expect(absent).toBeDefined()
-    expect(absent!.evidence).toBe('叶九 last scheduled in chapter 22')
+    // issue #112：这条 evidence 会直接渲染在「来源：」后面，必须是作者读得懂的中文，
+    // 不能是原来的 `${name} last scheduled in chapter N`（英文内部表达式）。
+    expect(absent!.evidence).toBe('叶九 上次进入蓝图：第 22 章')
   })
 
   it('reports absent, never-appeared, thin-cast, and overdue thread risks without duplicating AI review work', () => {

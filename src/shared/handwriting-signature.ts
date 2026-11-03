@@ -170,7 +170,7 @@ export function findHandwritingConflictFindings(input: {
         enUS: `The same writer “${hit.owner}” is given two **mutually exclusive** handwriting traits: “${left}” in chapters ${leftChapters}, “${right}” in chapters ${rightChapters}. If the book's core ability is recognising who wrote something by their hand, readers cannot build a reference table — every identification can only be taken on trust; and when a chapter uses one of those traits to rule the person out (“not his hand”), going back shows the two chapters contradict each other and the deduction collapses.`,
       },
       suggestion: {
-        zhCN: `把「${hit.owner}」的笔迹特征**固定下来**：在角色卡里写下他这两三类可核对的特征（起笔／横折／收笔／笔压），此后每次判读只**引用**、不再重新描述（issue 建议 1）。改法二选一：①选定其中一套，把另一处改掉（若后一套才是后来的设定，就把前一处按新特征重写）；②如果确实要写「笔迹变了」（手受了伤、被人仿写、临时被指使），那就在正文里写明**为什么会变**——让变化成为情节，而不是让特征随机漂移。`,
+        zhCN: `把「${hit.owner}」的笔迹特征**固定下来**：在角色卡里写下他这两三类可核对的特征（起笔／横折／收笔／笔压），此后每次判读只**引用**、不再重新描述。改法二选一：①选定其中一套，把另一处改掉（若后一套才是后来的设定，就把前一处按新特征重写）；②如果确实要写「笔迹变了」（手受了伤、被人仿写、临时被指使），那就在正文里写明**为什么会变**——让变化成为情节，而不是让特征随机漂移。`,
         enUS: `Fix “${hit.owner}”'s handwriting once: record those two or three checkable traits (entry stroke, turn, exit stroke, pressure) on the character card, and from then on only **cite** them instead of re-describing them. To repair: (1) pick one set and rewrite the other occurrence; or (2) if the handwriting really did change (an injured hand, a forgery, being told to write it), say on the page **why it changed** — make the change plot rather than letting the traits drift at random.`,
       },
     }

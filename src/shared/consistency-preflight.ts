@@ -265,7 +265,7 @@ export function findExpandedContinuityRisks(input: {
     if (last === undefined) {
       push({
         stableFactKey: `cast:never-appeared:${normalizedKeyPart(character.name)}`,
-        severity: 'warning', sourceChapter: input.currentChapter, evidence: `${character.name} / ${character.role}`,
+        severity: 'warning', sourceChapter: input.currentChapter, evidence: `${character.name}（${roleLabelZh}）从未进入蓝图`,
         issue: {
           zhCN: `${roleLabelZh}“${character.name}”截至第${input.currentChapter}章仍未在任何蓝图或已发生章节中登场。请确认是否遗漏了这条人物线。`,
           enUS: `${roleLabelEn} “${character.name}” has not appeared in any blueprint through chapter ${input.currentChapter}. Check whether this character line is missing from the plan.`,
@@ -282,7 +282,7 @@ export function findExpandedContinuityRisks(input: {
         // 「陆敬堂」从第 20 章起连报 6 章、谁也关不掉，于是这条**正确**的预警被训练成噪声。
         // 带 `last` 是对的：他一旦真的回来，`last` 变化 → key 变化 → 新的缺席才算新问题。
         stableFactKey: `cast:absent:${normalizedKeyPart(character.name)}:${last}`,
-        severity: 'warning', sourceChapter: last, evidence: `${character.name} last scheduled in chapter ${last}`,
+        severity: 'warning', sourceChapter: last, evidence: `${character.name} 上次进入蓝图：第 ${last} 章`,
         issue: {
           zhCN: `${roleLabelZh}“${character.name}”已连续 ${input.currentChapter - last} 章没有进入蓝图（上次第${last}章）。请确认这条人物线是否被遗忘。`,
           enUS: `${roleLabelEn} “${character.name}” has been absent from the chapter plan for ${input.currentChapter - last} chapters (last: chapter ${last}). Check whether their thread was forgotten.`,
@@ -290,8 +290,8 @@ export function findExpandedContinuityRisks(input: {
         suggestion: {
           // 出路要给**两个都可执行**的分支（issue #86 的建议 1，与 #55/#69 同一教训：
           // 只说「确认是否被遗忘」等于没给动作——作者当时按了「带提醒继续写」就往下走了）。
-          zhCN: `二选一：①让他回来——安排一次状态推进、远程影响或短暂登场；②他这条线就是收束了——在正文里写明他的退场及其原因（像样本第 18 章对配角邵德昌做的「搬去码头另一头养老，不再提查册的事」那样），别让读者以为作者忘了。两种情况都要落到正文，不要在预检弹层里点「继续」了事。`,
-          enUS: `Pick one: (1) bring them back \u2014 schedule a state advance, an off-page consequence, or a brief appearance; (2) their thread really is closed \u2014 write the exit and its cause into the prose (as the sample book did for a supporting character in chapter 18: “moved to the other end of the docks to retire, and stopped bringing up the ledger”), so readers do not think the author forgot. Either way it must land on the page; do not just click “continue” on the preflight notice.`,
+          zhCN: `二选一：①让他回来——安排一次状态推进、远程影响或短暂登场；②他这条线就是收束了——在正文里写明他的退场及其原因（例如写明他搬走了、调离了、或者不再管这件事），别让读者以为作者忘了。两种情况都要落到正文，不要在预检弹层里点「继续」了事。`,
+          enUS: `Pick one: (1) bring them back \u2014 schedule a state advance, an off-page consequence, or a brief appearance; (2) their thread really is closed \u2014 write the exit and its cause into the prose (for example, say outright that they moved away, were reassigned, or stopped pursuing the matter), so readers do not think the author forgot. Either way it must land on the page; do not just click “continue” on the preflight notice.`,
         },
       })
     }
@@ -302,7 +302,7 @@ export function findExpandedContinuityRisks(input: {
     if (isMainRole && !normalizedKeyPart(character.motivation ?? '')) {
       push({
         stableFactKey: `cast:thin:${normalizedKeyPart(character.name)}`,
-        severity: 'warning', sourceChapter: input.currentChapter, evidence: `${character.name} motivation is empty`,
+        severity: 'warning', sourceChapter: input.currentChapter, evidence: `${character.name} 的动机一栏是空的`,
         issue: {
           zhCN: `${roleLabelZh}“${character.name}”没有填写动机。长期写作时模型容易把他工具化。`,
           enUS: `${roleLabelEn} “${character.name}” has no motivation. Long-form drafting will tend to use them as a plot tool.`,
@@ -786,8 +786,8 @@ export function findClosingLabelConflicts(input: readonly ClosingLabelInput[]): 
       sourceChapter: item.chapterNumber,
       evidence: `第${item.chapterNumber}章蓝图标注「${item.label}」，而正文末句${actual}：${profile.lastSentence.slice(0, 60)}`,
       issue: {
-        zhCN: `本章蓝图标注的收束方式是「${item.label}」，但正文最后一幕${actual}。这个标注不是给人看的装饰：下一章生成时会拿它做「不得重复上一章落幅」的判断（issue #28），标错等于把轮换约束建立在假信息上——看起来可信，反而比不标更难发现。`,
-        enUS: `This chapter's blueprint declares the closing shot “${item.label}”, but the prose's final beat ${actualEn}. The label is not decoration: the next chapter uses it to avoid repeating the previous closing shot (issue #28), so a wrong label makes that constraint rest on false information — harder to notice than no label at all.`,
+        zhCN: `本章蓝图标注的收束方式是「${item.label}」，但正文最后一幕${actual}。这个标注不是给人看的装饰：下一章生成时会拿它做「不得重复上一章落幅」的判断，标错等于把轮换约束建立在假信息上——看起来可信，反而比不标更难发现。`,
+        enUS: `This chapter's blueprint declares the closing shot “${item.label}”, but the prose's final beat ${actualEn}. The label is not decoration: the next chapter uses it to avoid repeating the previous closing shot, so a wrong label makes that constraint rest on false information — harder to notice than no label at all.`,
       },
       suggestion: {
         zhCN: `按正文实际落幅改标注（正文是权威）：收在台词里就写「对话收束」，收在叙述里就写「物件落幅」或「人物动作收束」。若正文本身想换一种收法，就改正文再改标注，别只改标注。`,
@@ -878,7 +878,7 @@ export function findPendingLandingConvergence(input: {
     },
     suggestion: {
       zhCN: `换几种落点交替使用：①**落在人身上**——让视角人物在末句做一个动作或判断（「周叙把封皮压平，起身往舱门走」），把态度写进主体；②**落在台词上**——用一句没说完或没回答的话收（若怕落回 #66 的通牒，就别写成二选一/警告）；③**落在画面上但不带否定**——定格场景，不给「还/仍/只剩/不掉」这类未完结标记（「灯影把库门那道水痕照得发亮」）；④**切断**——直接把决定留到下一章开头再生效。规则是：最近十章的末句落点不得连续落在同一类上。`,
-      enUS: `Alternate the landing: (1) land on a person — end with the viewpoint character making a move or a judgement, putting the attitude in the subject; (2) land on a line of speech — close on something unsaid or unanswered (but avoid the two-way/threat shape, which is issue #66); (3) land on an image without negation — freeze the scene and drop the “still / only left / cannot” marker; (4) cut away — let the decision take effect at the start of the next chapter. Rule: the last-sentence landing must not fall in the same class across ten chapters in a row.`,
+      enUS: `Alternate the landing: (1) land on a person — end with the viewpoint character making a move or a judgement, putting the attitude in the subject; (2) land on a line of speech — close on something unsaid or unanswered (but avoid the two-way/threat shape); (3) land on an image without negation — freeze the scene and drop the “still / only left / cannot” marker; (4) cut away — let the decision take effect at the start of the next chapter. Rule: the last-sentence landing must not fall in the same class across ten chapters in a row.`,
     },
   }]
 }
@@ -1266,8 +1266,8 @@ export function findEntranceShotFindings(input: EntranceShotInput): ConsistencyF
       enUS: `“${hit.character}” enters almost word for word the same way in chapters ${hit.chapters.join(', ')} (${hit.commonSubstring.length} identical characters after stripping punctuation). An entrance is how readers rebuild the scene each chapter; the same line about standing somewhere in the same clothes stops carrying information and gets skipped. It hurts more than a repeated closing shot — the entrance is the start button of every scene.`,
     },
     suggestion: {
-      zhCN: `换这次登场要交代的东西：他累不累、衣服干没干、手里拿着什么、跟谁站在一起、是先出声还是先动手。**同一个角色连续几章的首次出现不得用同一套姿态＋穿戴交代**。样本里已有一章写成「肩上搭着那件洗白的短褂」，说明换得动——被换掉的十几个字正是本可以写信息的地方。`,
-      enUS: `Change what the entrance tells us: whether they are tired, whether the clothes are dry, what is in their hands, who they stand beside, whether they speak or act first. A character's first appearance must not repeat the same posture-plus-clothing formula in adjacent chapters. One chapter in the sample already manages it — the freed-up words are exactly where new information could go.`,
+      zhCN: `换这次登场要交代的东西：他累不累、衣服干没干、手里拿着什么、跟谁站在一起、是先出声还是先动手。**同一个角色连续几章的首次出现不得用同一套姿态＋穿戴交代**——前文已经用过的那套写法要换掉，被换掉的十几个字正是本可以写信息的地方。`,
+      enUS: `Change what the entrance tells us: whether they are tired, whether the clothes are dry, what is in their hands, who they stand beside, whether they speak or act first. A character's first appearance must not repeat the same posture-plus-clothing formula in adjacent chapters. Earlier chapters have already used versions of that formula, so it can be changed — the freed-up words are exactly where new information could go.`,
     },
   }))
 }
