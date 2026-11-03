@@ -27,6 +27,8 @@
  *  17. 笔迹特征自相矛盾（#97）——同一个书写者被写成两套互斥特征
  *  18. 末句落点收敛（#111）——末句连续落在「物 + 未完结态 + 无人称」上（#66 管语用，本条管形态）
  *  19. 句长单向收敛（#114）——最近窗口的叙述句均长比开篇基准低一截（与 #93 的上限判据同层、方向相反）
+ *  20. 引号风格漂移（#118）——某章整章换了引号（“…” ↔ 「…」），与全书多数派不一致
+ *  21. 陈旧状态时长（#115）——同一件事的用时在相邻章用了互斥的尺度（第 11 章「空了三天」→ 第 12 章「一个多月」仍说「三天」）
  *
  * 与审稿路径的差别只有一处，而且是刻意的：审稿把**本章正文**也放进样本
  * （那正是审稿的对象），而写前预检喂进来的全是**已定稿章**——因为要写的那一章
@@ -65,6 +67,10 @@ import { findUnsettledDeadlineFindings } from './deadline-settlement'
 import { findRepeatedRevocationFindings } from './repeated-revocation'
 // 章节标题「同题加尾」复用（#110）：合同只判精确同名、且只管新生成的那一批。
 import { findDuplicateChapterTitleFindings } from './chapter-title-uniqueness'
+// 引号风格漂移（issue #118）：某章整章换了引号，与全书多数派不一致。
+import { findQuoteStyleDriftFindings } from './quote-style'
+// 陈旧状态时长（issue #115）：同一件事的「过了多久」在相邻章用了互斥的尺度。
+import { findStaleStateDurationFindings } from './stale-state-duration'
 // 能力触发条件被绕过（#100）：世界观写死的硬限制在正文里被静默绕过、从未写成一次发现。
 import { findAbilityLimitBypassFindings } from './ability-limit-bypass'
 // 笔迹特征自相矛盾（#97）：同一个书写者被写成两套互斥特征（「稳、匀」vs「横折收得急」）。
@@ -267,10 +273,20 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   // 笔迹特征自相矛盾（issue #97）：核心能力是「靠笔迹认人」时，同一个书写者不能有两套特征。
   const handwritingConflicts = castNames.length === 0 ? [] : findHandwritingConflictFindings({ chapters, castNames })
 
+  // 引号风格漂移（issue #118）：某章整章换了引号（弯引号“…” ↔ 直角引号「…」）。
+  // 起草要求写明「所有对话必须使用标准中文双引号」，模型仍可能整章违反——
+  // 现有检测器都把三套引号写进字符类来兜住，**没有一处比较「本章风格是否与全书一致」**。
+  // 用全量已定稿章（判据要按全书多数派归一）。
+  const quoteStyleDrift = findQuoteStyleDriftFindings(chapters)
+
+  // 陈旧状态时长（issue #115）：第 11 章「铺位空了三天」→ 第 12 章「重抄后一个多月」仍说「空了三天」。
+  // 现有 `undated` 判的是「有没有交代跨日」，第 12 章写了「一个多月」恰好**达标**、躲过检查。
+  const staleStateDuration = findStaleStateDurationFindings(chapters)
+
   return [...closingLabel, ...numbering, ...ability, ...repetition, ...undelivered,
     ...ultimatum, ...pendingLanding, ...reversal, ...undatedStreak, ...proseFlavor, ...positionalAxes, ...glyphRadical,
     ...castNameDrift, ...deadlineSettlement, ...repeatedRevocation, ...duplicateTitles,
-    ...abilityLimitBypass, ...handwritingConflicts]
+    ...abilityLimitBypass, ...handwritingConflicts, ...quoteStyleDrift, ...staleStateDuration]
 }
 
 /**

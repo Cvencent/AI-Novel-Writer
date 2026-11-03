@@ -19,6 +19,8 @@ import { findRepeatedRevocationFindings } from '../repeated-revocation'
 import { findDuplicateChapterTitleFindings } from '../chapter-title-uniqueness'
 import { findAbilityLimitBypassFindings } from '../ability-limit-bypass'
 import { findHandwritingConflictFindings } from '../handwriting-signature'
+import { findQuoteStyleDriftFindings } from '../quote-style'
+import { findStaleStateDurationFindings } from '../stale-state-duration'
 import { auditFinalizedProse } from '../finalized-prose-audit'
 import { proseRepetitionFindings } from '../prose-repetition'
 import { glyphRadicalFindings } from '../glyph-radical'
@@ -60,6 +62,17 @@ const SAMPLE_BOOK: ReadonlyArray<{ chapterNumber: number; content: string }> = A
     '周叙没答。',
   ].join('\n\n')),
 )
+
+// issue #118/#115 的判据也要挂上同一份属性测试（key 不能随章节推进而漂）。
+const QUOTE_STYLE_BOOK = [
+  ...Array.from({ length: 10 }, (_, i) => ({ chapterNumber: i + 1, content: Array.from({ length: 8 }, () => '“话。”').join('') })),
+  { chapterNumber: 11, content: Array.from({ length: 9 }, () => '「话。」').join('') },
+  ...Array.from({ length: 6 }, (_, i) => ({ chapterNumber: i + 12, content: Array.from({ length: 7 }, () => '“话。”').join('') })),
+]
+const STALE_DURATION_BOOK = [
+  { chapterNumber: 11, content: '柯有顺的铺位空了三天，铺盖卷走了。' },
+  { chapterNumber: 12, content: ['重抄后一个多月。', '', '“柯有顺的铺空了三天。”'].join(String.fromCharCode(10)) },
+]
 
 const BLUEPRINTS = [
   { chapterNumber: 1, keyEvents: '周叙登船。', foreshadowing: '留待第 3 章揭开「最薄那册」' },
@@ -166,6 +179,8 @@ describe('no preflight key may change when only currentChapter advances (issue #
         worldbuilding: '触发条件：离船上岸，能力立刻衰减到几乎为零。',
         chapters: SAMPLE_BOOK,
       })],
+      ['findQuoteStyleDriftFindings', () => findQuoteStyleDriftFindings(QUOTE_STYLE_BOOK)],
+      ['findStaleStateDurationFindings', () => findStaleStateDurationFindings(STALE_DURATION_BOOK)],
       ['findHandwritingConflictFindings', () => findHandwritingConflictFindings({
         chapters: [{ chapterNumber: 1, content: '温珩的笔稳、匀，起笔带锋。' }, { chapterNumber: 2, content: '温珩的笔，横折收得急。' }],
         castNames: CAST,
