@@ -186,6 +186,38 @@ export function isReviewId(value: number | undefined): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
 }
 
+/**
+ * 把一批编辑部评审发现追加到修稿清单，返回**新增的那些**（issue #103）。
+ *
+ * 纯函数：只依赖传入的 `items`，不动 React state、不落库——这样调用方可以一次
+ * 追加任意多条（原来逐条调 `includeEditorialFinding`，每条都基于闭包里的旧 `items`，
+ * 于是「全部纳入修稿」只会留下最后一条）。判重按「描述 + 证据」，同一批内也判重。
+ */
+export function appendEditorialFindings(
+  items: readonly EditableReviewItem[],
+  findings: ReadonlyArray<{ severity: string; description: string; evidence?: string; category: string }>,
+  idPrefix = 'editorial',
+): EditableReviewItem[] {
+  const seen = new Set(items.map(item => (item.description + '|' + (item.quote ?? '')).trim()))
+  const added: EditableReviewItem[] = []
+  for (const finding of findings) {
+    const key = (finding.description + '|' + (finding.evidence ?? '')).trim()
+    if (seen.has(key)) continue
+    seen.add(key)
+    added.push({
+      id: `${idPrefix}-${Date.now()}-${items.length + added.length + 1}`,
+      reviewItemIndex: items.length + added.length,
+      category: finding.category,
+      severity: finding.severity === 'blocking' ? 'error' : 'warning',
+      description: finding.description,
+      quote: finding.evidence || undefined,
+      decision: 'apply',
+      origin: 'author',
+    })
+  }
+  return added
+}
+
 function editableItemsFromReview(
   issues: ReviewIssue[],
   snapshot: HumanConfirmedReviewSnapshot | null,
@@ -432,30 +464,26 @@ export function useReviewChecklist({
     })
   }
 
-  // 把编辑部评审的一条发现纳入修稿清单：以「编辑部·角色」为类别、severity
+  // 把编辑部评审的发现纳入修稿清单：以「编辑部·角色」为类别、severity
   // 对齐到清单的三档、证据作为原文引用。重复纳入同一条会被拒绝（按描述+证据判重）。
-  const includeEditorialFinding = (finding: { severity: string; description: string; evidence?: string; roleLabel: string }): boolean => {
-    const key = (finding.description + '|' + (finding.evidence ?? '')).trim()
-    if (items.some(item => (item.description + '|' + (item.quote ?? '')).trim() === key)) return false
-    const severity = (finding.severity === 'blocking' ? 'error' : 'warning') as 'error' | 'warning'
-    const next: EditableReviewItem[] = [
-      ...items,
-      {
-        id: 'editorial-' + Date.now() + '-' + (items.length + 1),
-        reviewItemIndex: items.length,
-        category: text('编辑部评审', 'Editorial panel') + '·' + finding.roleLabel,
-        severity,
-        description: finding.description,
-        quote: finding.evidence || undefined,
-        decision: 'apply',
-        origin: 'author',
-      },
-    ]
+  //
+  // issue #103：原实现用**闭包里的 `items`** 算下一条（`const next = [...items, 新一条]`），
+  // 而「全部纳入修稿」是在 `for` 循环里连续调它 —— 每次都用同一份旧 `items`，后一次覆盖
+  // 前一次，N 条发现只留下最后一条。改成纯函数一次追加全部，调用方再落库一次。
+  const includeEditorialFindings = (findings: ReadonlyArray<{ severity: string; description: string; evidence?: string; roleLabel: string }>): number => {
+    const added = appendEditorialFindings(items, findings.map(finding => ({
+      ...finding,
+      category: text('编辑部评审', 'Editorial panel') + '·' + finding.roleLabel,
+    })))
+    if (added.length === 0) return 0
+    const next = [...items, ...added]
     setItems(next)
     persistEditingDraft(next, authorGuidance)
     setEditingChecklist(true)
-    return true
+    return added.length
   }
+  const includeEditorialFinding = (finding: { severity: string; description: string; evidence?: string; roleLabel: string }): boolean =>
+    includeEditorialFindings([finding]) > 0
   const addAuthorItem = () => {
     setItems(current => {
       const authorItemCount = current.filter(item => item.origin === 'author').length
@@ -839,7 +867,7 @@ export function useReviewChecklist({
     items, authorGuidance, confirmed, editingChecklist, setEditingChecklist,
     checklistError, setChecklistError, confirming, processing, rechecking, recheckMessage,
     summary, goalReview, canManageChecklist, cycle,
-    updateItem, removeItem, addAuthorItem, includeEditorialFinding, setAuthorGuidance: setAuthorGuidancePersisted, confirmChecklist, startConfirmedRevision, retryRequiredRecheck,
+    updateItem, removeItem, addAuthorItem, includeEditorialFinding, includeEditorialFindings, setAuthorGuidance: setAuthorGuidancePersisted, confirmChecklist, startConfirmedRevision, retryRequiredRecheck,
   }
 }
 

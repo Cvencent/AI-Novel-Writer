@@ -25,6 +25,7 @@ import { reviewDimensions, type useDraftActions } from '../../editor/use-draft-a
 import { deleteDraftVersion } from '../../panels/sidebar/draft-deletion'
 import { deleteFinalizedChapter } from '../../panels/sidebar/finalized-chapter-deletion'
 import { captureProjectSession, isProjectSessionCurrent } from '../../project-session-gate'
+import { sameProjectSessionContext } from '../../../shared/project-session-context'
 import { Button } from '../../ui/Button'
 import { Check } from '../../ui/Check'
 import { DangerConfirm } from '../../ui/DangerConfirm'
@@ -148,18 +149,29 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
   // 审稿完成后自动打开审稿报告：勾选意见、编辑部评审（五角色）都在那份侧页里，
   // 不自动打开的话作者只能从「更多操作 → 审稿报告」自己找，容易以为流程没走完。
   // 只在「新出现一份审稿」时打开一次：切章节/重开时已有的旧报告不打扰。
-  const pendingReviewOpen = useRef<{ baseline: number | null } | null>(null)
+  //
+  // issue #103：意图存在 **stage store** 里，不再用本组件的 ref。原因：本组件由
+  // `ChapterView` 以 `key={review.sessionKey}` 挂载，而 sessionKey 含 reportText——
+  // 新审稿一落地 key 就变、组件整块卸载重挂，ref 随之丢掉，自动打开的分支永远走不到
+  // （`reviewReady` 期间动作条还会先卸载一次）。放进 store 后跨重挂有效。
+  const autoOpenIntent = useStageStore(s => s.reviewAutoOpen)
+  const pendingReviewOpen = autoOpenIntent && autoOpenIntent.filePath === filePath
+    && sameProjectSessionContext(autoOpenIntent.session, captureProjectSession(useProjectStore.getState().currentProject))
+    ? autoOpenIntent : null
   useEffect(() => {
-    const pending = pendingReviewOpen.current
-    if (!pending) return
+    if (!pendingReviewOpen) return
     const current = review?.reviewId ?? null
-    if (current !== null && current !== pending.baseline) {
-      pendingReviewOpen.current = null
+    if (current !== null && current !== pendingReviewOpen.baseline) {
+      useStageStore.setState({ reviewAutoOpen: null })
       setSheet(true)
     }
-  }, [review?.reviewId])
+  }, [pendingReviewOpen, review?.reviewId])
   const startReview = () => {
-    pendingReviewOpen.current = { baseline: review?.reviewId ?? null }
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (session) {
+      // 记下「发起时的 reviewId」；新报告落地、reviewId 变了就打开一次（含父组件重挂的情况）。
+      useStageStore.setState({ reviewAutoOpen: { session, filePath, baseline: review?.reviewId ?? null } })
+    }
     void draft.review(dims.filter(dim => checkedDims[dim.key]).map(dim => dim.promptLabel).join('、') || undefined)
   }
 

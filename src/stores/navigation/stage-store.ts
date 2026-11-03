@@ -35,6 +35,15 @@ interface StageState {
   writeRequest: { session: ProjectSessionContext; chapterNumber: number } | null
   /** 审稿或修稿刚生成，要这一稿的单章视图重读数据；视图接手后清空。只属于发出时的那次打开，换作品或重新打开即清掉。 */
   chapterRequest: { session: ProjectSessionContext; filePath: string } | null
+  /**
+   * 「等一份新审稿，落地后自动打开审稿报告」的意图（issue #103）。
+   *
+   * 原来这个意图挂在 `ChapterActions` 的 ref 上，而 `ChapterActions` 的 key 里含
+   * `reportText`（`review.sessionKey`）——新审稿一落地 key 就变、组件整块卸载重挂，
+   * ref 随之丢掉，自动打开的分支永远走不到。放进 store 后跨重挂仍然有效。
+   * `baseline` 是发起审稿那一刻的 reviewId；读到**不同**的新 id 时打开一次，然后清空。
+   */
+  reviewAutoOpen: { session: ProjectSessionContext; filePath: string; baseline: number | null } | null
   /** 各稿的审稿与修稿记录（按稿 id），流程脊与单章视图据此判断一章走到哪一步；只属于读出它的那次打开。 */
   chapterFacts: { session: ProjectSessionContext; byDraft: Readonly<Record<number, ChapterFacts>> } | null
   /** 流程脊为这次打开读完过一遍各稿的审稿与修稿记录。没读完时流程脊不列阶段与章节，章节阶段不会先按稿状态估计再改。 */
@@ -50,6 +59,7 @@ export const useStageStore = create<StageState>()(() => ({
   closingTabId: null,
   writeRequest: null,
   chapterRequest: null,
+  reviewAutoOpen: null,
   chapterFacts: null,
   spineFacts: null,
 }))

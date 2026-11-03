@@ -72,8 +72,16 @@ export default function EditorialPanelSection({ chapterNumber, draftId, draftVer
     activeRunId.current = workflow.runId ?? null
     // 不跳到运行侧页：评审就是在这块面板里出分。跳走会把审稿报告（含勾选修稿）
     // 整个换掉，作者回来只看到运行日志和一步 JSON，还以为没出结果。
+    // issue #103：`.finally()` 是**确定**知道运行结束的那条路径，让它顺手重读一次。
+    // 原来只有 `WORKFLOW_COMPLETE` 会刷新，而那条事件在「项目会话切换/失效」时
+    // 根本不发（workflow-store 只发 WORKFLOW_SETTLED），于是评分已落库、
+    // 面板却停在「还没有编辑部评分」直到重挂载。现在两条路径都指向同一个 load：
+    // 事件是快路径，`.finally` 是兜底路径。
     void useWorkflowStore.getState().startWorkflow(workflow).finally(() => {
-      if (isProjectSessionCurrent(session)) setStarting(false)
+      if (!isProjectSessionCurrent(session) || draftId === undefined) return
+      setStarting(false)
+      requestRevision.current += 1
+      void load(draftId, requestRevision.current)
     })
   }
 
@@ -128,12 +136,15 @@ export default function EditorialPanelSection({ chapterNumber, draftId, draftVer
           {checklist && quality.roles.some(role => role.findings.length > 0) && (
             <div className="stage-editorial-actions">
               <Button variant="secondary" size="sm" onClick={() => {
-                for (const role of quality.roles) {
+                // issue #103：一次算完再落库。原来是 `for` 循环里逐条调
+                // `includeEditorialFinding`，每条都基于闭包里的旧 `items`，
+                // 后一次覆盖前一次 → N 条发现只留下最后一条。
+                checklist.includeEditorialFindings(quality.roles.flatMap(role => {
                   const roleLabel = text(...ROLE_LABELS[role.role])
-                  for (const finding of role.findings) {
-                    checklist.includeEditorialFinding({ severity: finding.severity, description: finding.description, evidence: finding.evidence, roleLabel })
-                  }
-                }
+                  return role.findings.map(finding => ({
+                    severity: finding.severity, description: finding.description, evidence: finding.evidence, roleLabel,
+                  }))
+                }))
               }}>{text('全部纳入修稿', 'Include all in revision')}</Button>
               <span className="stage-editorial-hint">{text('纳入后与普通审稿意见一样：在上方清单勾选，然后「按 N 项意见修稿」。', 'Included notes join the checklist above: tick them, then revise by the selected items.')}</span>
             </div>
