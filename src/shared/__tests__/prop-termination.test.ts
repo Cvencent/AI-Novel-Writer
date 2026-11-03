@@ -266,3 +266,83 @@ describe('issue #80: 人不当道具、可用形态必须是宾语', () => {
     expect(hits.map(hit => hit.prop)).toContain('那页')
   })
 })
+
+/**
+ * issue #122：这条判据在真实书稿上是 3/3 假阳性（「里那」「账房」「票根」抽出来
+ * 没有一个是道具），而该报的真阳性 0 条。下面每条都对应一个**实测形态**，
+ * 判据全部是封闭语法类 / 句法位置，不枚举道具名。
+ */
+describe('issue #122: 复活检测不再抽跨词碎片与台词里的动作', () => {
+  const CAST = ['周叙', '温珩', '邵广海', '叶九', '柯明远', '林棠', '全叔']
+
+  it('never reports a token made only of numerals, measure words or localizers', () => {
+    // 实测「内衬里那」被切成「里那」；「一张临时移交单」被切成「一张」；
+    // 「徐哥那张，拿走了。」被切成「那张」。
+    const hits = findAnnihilatedPropRevival([
+      { chapterNumber: 3, content: '温珩没答。他想起铁柜里那本旧账，竹尺压过的那页。' },
+      { chapterNumber: 14, content: '他从内衬里那层摸出一片纸角，压在灯下。' },
+    ], { castNames: CAST })
+    const names = hits.map(hit => hit.prop)
+    for (const fragment of ['里那', '那张', '一张', '底下', '过来', '空白']) {
+      expect(names).not.toContain(fragment)
+    }
+  })
+
+  it('does not treat a demand spoken inside dialogue as the prop being destroyed', () => {
+    // 实测 ch9：「不签，把你爹那份旧航次账抄件交出来，也一样。」是**台词里的索取**，
+    // 东西还在原处；旧判据把「抄件」记成第 9 章被交出去了。
+    const hits = findAnnihilatedPropRevival([
+      { chapterNumber: 9, content: '“签了这份结案文书。不签，把你爹那份旧航次账抄件交出来，也一样。”' },
+      { chapterNumber: 10, content: '周叙摸出父亲旧账抄件，翻到“未登船名单”。' },
+    ], { castNames: CAST })
+    expect(hits.map(hit => hit.prop)).not.toContain('抄件')
+  })
+
+  it('does not treat a declaration embedded in another clause as inheriting an unrelated subject', () => {
+    // 实测 ch39：「木板响了两声，没了。」——没的是响声，主语不是前文的道具。
+    const hits = findAnnihilatedPropRevival([
+      { chapterNumber: 38, content: '“认清点。末页为什么空白，没人认。”' },
+      { chapterNumber: 39, content: '伙计下跳板。木板响了两声，没了。' },
+      { chapterNumber: 43, content: '周叙摸出空白票纸，凑到毛巾最湿那角按了按。' },
+    ], { castNames: CAST })
+    expect(hits.map(hit => hit.prop)).not.toContain('空白')
+  })
+
+  it('does not treat a perception noun as the object that vanished', () => {
+    // 实测 ch52：「柯明远推担保书过来之前说过一句话，原话没了。」没的是那句话。
+    const hits = findAnnihilatedPropRevival([
+      { chapterNumber: 52, content: '昨夜办公室里，柯明远推担保书过来之前说过一句话，原话没了。' },
+      { chapterNumber: 53, content: '周叙抽出担保书副本，搁在案边。' },
+    ], { castNames: CAST })
+    expect(hits.map(hit => hit.prop)).not.toContain('担保书')
+  })
+
+  it('does not treat taking something into a container as destruction', () => {
+    // 实测 ch38：「柯明远收走报告，看一眼，折好，塞进公文包外袋。」
+    // 三章后又「把先前那份报告抽出来」——那是转移保管。
+    const hits = findAnnihilatedPropRevival([
+      { chapterNumber: 38, content: '柯明远收走报告，看一眼，折好，塞进公文包外袋。' },
+      { chapterNumber: 41, content: '柯明远把先前那份报告抽出来，压在表旁。' },
+    ], { castNames: CAST })
+    expect(hits.map(hit => hit.prop)).not.toContain('报告')
+  })
+
+  it('reports one finding when the same prop is cut two ways', () => {
+    // 同一组章号上的「黄纸角」与「黄纸」是同一处上下文的两种切法。
+    const hits = findAnnihilatedPropRevival([
+      { chapterNumber: 48, content: '周叙盯着。温珩把下摆往下扯了一寸。黄纸角没了。' },
+      { chapterNumber: 49, content: '温珩拆开两寸，摸出一片黄纸角，递过来。' },
+    ], { castNames: CAST })
+    expect(hits).toHaveLength(1)
+    expect(hits[0]!.prop).toBe('黄纸角')
+  })
+
+  it('keeps reporting the physical destruction of a prop', () => {
+    // 反向：真阳性不许被这一轮收窄吃掉。
+    const hits = findAnnihilatedPropRevival([
+      { chapterNumber: 21, content: ['票根表面起毛，纸芯吸饱了水，一按就塌。第三下，纸面从中间酥开，碎成几片，沾在他掌心的茧上，一捻就烂。', '没了。'].join(String.fromCharCode(10) + String.fromCharCode(10)) },
+      { chapterNumber: 28, content: '他从怀里摸出空白票根，蘸水压上去。' },
+    ], { castNames: CAST })
+    expect(hits.map(hit => hit.prop)).toContain('票根')
+  })
+})
