@@ -58,6 +58,37 @@ import { planningTargetInstruction, parsePlanningTargetUnits, renderPlotOutlineR
 import { ProjectCoreRepository, type ProjectCoreSynopsisExpected, type ProjectCoreSynopsisCommitRequest } from '../repositories/project-core-repository'
 const graphOperations = { plot: 'plot-tree-snapshot', plan: 'narrative-thread-plan-candidate', event: 'narrative-thread-event-candidate' } as const
 
+/**
+ * 非 `stop` 终态的**可诊断**记录（issue #121）。
+ *
+ * `finish:length` 这个字符串把两件完全不同的事记成了同一个值：
+ *   ① **正文**写到输出上限被截断（报告只说了一半）；
+ *   ② **推理**把整个输出预算吃满，正文一个字都没输出。
+ *
+ * 实测那本 24 章的书：16 次撞顶里 **15 次是 ②**——`reasoningTokens` 恰好等于输出上限
+ * （8192 档 7 次、24576 档 14 次，恰好等于各自的上限），产物为空。
+ * 只留 `finish:length` 会让作者与 QA 都判成「报告太长、需要拆分」，而真相是「推理吃满了预算」。
+ *
+ * 这里把可判定的用量事实拼进去（**只拼数字，不拼正文**），让两种形态在诊断面板可分辨。
+ * 判据是**结构性的**（比较 reasoning 用量与输出上限），不枚举任何文案或码值。
+ */
+export function lengthFailureDiagnostic(
+  finishReason: string,
+  usage: { completionTokens?: number | null } | null | undefined,
+  reasoningTokens: number | null,
+): string {
+  const completion = usage?.completionTokens ?? null
+  const segments = [`finish:${finishReason}`]
+  if (typeof reasoningTokens === 'number' && reasoningTokens > 0) {
+    // 推理占到「输出上限的九成以上」= 预算基本没留给正文（实测撞顶时 reasoning 恰好等于上限）。
+    const reasoningShare = completion && completion > 0 ? reasoningTokens / completion : null
+    const exhausted = reasoningShare !== null && reasoningShare >= 0.9
+    segments.push(`reasoning=${reasoningTokens}${completion ? `/${completion}` : ''}`)
+    if (exhausted) segments.push('reasoning-exhausted')
+  }
+  return segments.join(' ')
+}
+
 export type SafeGenerationModelReceipt = Omit<ModelExecutionLeaseReceipt, 'leaseId' | 'createdAt' | 'expiresAt'>
 export function safeGenerationModelReceipt(receipt: ModelExecutionLeaseReceipt): SafeGenerationModelReceipt {
   return { modelId: receipt.modelId, provider: receipt.provider, protocol: receipt.protocol, modelName: receipt.modelName,
@@ -122,7 +153,14 @@ async function dispatchProvider(value: unknown, options: Parameters<GenerationRu
         // 失败时把可判定的传输事实一起存下来（issue #85）：只有裸码等于没法诊断。
         errorMessage: failureCode
           ? formatTransportDiagnostics(lastDiagnostics, failureCode)
-          : (finishReason && finishReason !== 'stop' ? `finish:${finishReason}` : undefined),
+          // issue #121：`finish:length` 原来把两件完全不同的事记成同一个字符串——
+          // ①**正文**写到输出上限被截断；②**推理**把整个输出预算吃满、正文一个字都没输出。
+          // 实测那本 24 章的书 16 次撞顶里 15 次是 ②（`reasoningTokens` 恰好等于上限、产物为空），
+          // 只留 `finish:length` 会让作者和 QA 都以为「报告太长需要拆分」，而真相是「推理吃满了预算」。
+          // 这里把可判定的用量事实拼进去，让两种形态在诊断里可分辨。
+          : (finishReason && finishReason !== 'stop'
+            ? lengthFailureDiagnostic(finishReason, usage, (evidence as ProviderUsageEvidence | null)?.reasoningTokens ?? null)
+            : undefined),
       })
     } catch { /* statistics only */ }
   }
