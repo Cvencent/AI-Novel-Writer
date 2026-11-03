@@ -45,6 +45,20 @@ export async function readConsistencyPreflight(
     return findBlueprintContinuityRisks(projections, blueprint, exemptions)
   }))).flat()
   const currentChapter = blueprints.reduce((max, blueprint) => Math.max(max, blueprint.chapterNumber), 0)
+  // 已定稿正文快照：缺席监控要靠它量「这个角色读者见过几章」（issue #107），
+  // 后面的章首/伏笔/物证等检测也用它。放在这里是因为 #107 需要它在 expandedFindings **之前**。
+  const recentProse = (await ipc.invokeWithProjectSession(
+    session, 'db:draft-export-snapshot', session.projectPath,
+  ).catch(() => [])) as Array<{ chapterNumber: number; content: string }>
+  // 每个在册角色在**已定稿正文**里出现过的章数（issue #107）：判定「读者记住过他」。
+  // 只数已定稿章（本章可能还没写），与蓝图判定用的章号口径一致。
+  const proseChaptersByCast = new Map<string, number>()
+  for (const entry of (Array.isArray(roster?.entries) ? roster.entries : [])) {
+    const name = typeof entry.name === 'string' ? entry.name.trim() : ''
+    if (!name) continue
+    proseChaptersByCast.set(name, recentProse.filter(row =>
+      Number.isSafeInteger(row.chapterNumber) && String(row.content ?? '').includes(name)).length)
+  }
   const expandedFindings = currentChapter === 0 ? [] : findExpandedContinuityRisks({
     currentChapter,
     blueprints: (Array.isArray(allBlueprints) ? allBlueprints : []).map(blueprint => ({
@@ -61,6 +75,8 @@ export async function readConsistencyPreflight(
       name: entry.name,
       role: entry.role,
       motivation: typeof entry.motivation === 'string' ? entry.motivation : '',
+      // issue #107：把「读者见过他几章」交给判据，配角据此纳入缺席监控。
+      seenChapters: proseChaptersByCast.get(typeof entry.name === 'string' ? entry.name.trim() : '') ?? 0,
     })),
     threads: (Array.isArray(threads) ? threads : []).map(thread => ({
       title: thread.title,
@@ -112,9 +128,7 @@ export async function readConsistencyPreflight(
   // 章首句式收敛（issue #71）与同一线索的揭示句式（issue #72）：两者都读**已定稿正文**，
   // 而这里正是起草/写前能拿到最近定稿的位置。取最近若干章 + 本章正在写的这一章。
   // 原来 `chapter-shape.ts` 只在生成细纲时打一行日志，正文写作阶段完全没人看章首。
-  const recentProse = (await ipc.invokeWithProjectSession(
-    session, 'db:draft-export-snapshot', session.projectPath,
-  ).catch(() => [])) as Array<{ chapterNumber: number; content: string }>
+  // `recentProse` 已在上面取过（#107 的缺席监控也要用它），这里直接用。
   // 已定稿正文的规范视图：只留本章之前的章、按章号升序、content 归一成字符串。
   // 各检测按自己的窗口从这里切（与 prop-termination 的 PROP_WINDOW 同一做法）。
   const historyProse = recentProse

@@ -173,7 +173,34 @@ export interface CastContinuityFact {
   name: string
   role: string
   motivation?: string
+  /**
+   * 该角色在**已定稿正文**里出现过的章数（issue #107）。
+   *
+   * 缺席监控原来只查 `role ∈ {protagonist, antagonist}`，而承担情感与秘密重量、
+   * 甚至被设定层排了收束弧光的角色常常是 `supporting` —— 实测那本书在册七人之一、
+   * 「隐藏主线的记忆载体」全叔被当众架走后**连续 15 章正文与蓝图 0 次**，
+   * 而预检一次没报（消融：只把他的 role 改成 antagonist，同一份数据立刻报出）。
+   *
+   * 有了这个计数，纳入条件就可以从「role 白名单」改成「读者记住过他」——
+   * 凡在已定稿正文里出场 ≥ `CAST_ABSENCE_MIN_PROSE_CHAPTERS` 章的角色都纳入。
+   * 调用方从已定稿正文统计（与蓝图判定用的是同一份 `chapters` 数据）。
+   */
+  seenChapters?: number
 }
+
+/**
+ * 角色缺席监控的阈值与分档（issue #107）。
+ *
+ * 原来的口径把「角色重要性」等同于「role 是不是 antagonist」，与实际写法脱节：
+ * 反派全部被查、配角整类跳过。现在改成 two-part：
+ *   - **纳入**：role 是主角/反派，**或**已定稿出场 ≥ `MONITORED_PROSE_CHAPTERS` 章；
+ *   - **阈值分档**：主角/反派 > `ABSENT_CHAPTERS_MAIN` 章即报（与原来一致，不动既有口径）；
+ *     配角/龙套要 > `ABSENT_CHAPTERS_SIDE` 章才报 —— 放宽是为了避免把配角变成
+ *     「每章一条」的噪声（#30 的教训：噪声会让作者连新问题一起跳过）。
+ */
+export const MONITORED_PROSE_CHAPTERS = 5
+export const ABSENT_CHAPTERS_MAIN = 5
+export const ABSENT_CHAPTERS_SIDE = 8
 
 export interface BlueprintContinuitySchedule {
   chapterNumber: number
@@ -213,7 +240,14 @@ export function findExpandedContinuityRisks(input: {
   }
   const schedules = input.blueprints.filter(item => item.chapterNumber > 0 && item.chapterNumber <= input.currentChapter)
   for (const character of input.cast) {
-    if (!['protagonist', 'antagonist'].includes(character.role)) continue
+    // 纳入条件（issue #107）：主角/反派一律查；配角/龙套只要在**已定稿正文**里
+    // 出场够多（读者记住过他）也查——原来这里是 `['protagonist','antagonist'].includes()`
+    // 硬白名单，于是「隐藏主线的记忆载体」全叔被架走后消失 15 章一次都没报。
+    const isMainRole = character.role === 'protagonist' || character.role === 'antagonist'
+    const seenChapters = Number.isSafeInteger(character.seenChapters) ? character.seenChapters! : 0
+    if (!isMainRole && seenChapters < MONITORED_PROSE_CHAPTERS) continue
+    // 阈值分档：配角放宽，避免把「本来就偶尔出场」的人变成每章一条的噪声。
+    const absenceThreshold = isMainRole ? ABSENT_CHAPTERS_MAIN : ABSENT_CHAPTERS_SIDE
     const characterKey = normalizedKeyPart(character.name)
     const appearances = schedules
       // 数组里列了，或描述文本里写了，都算「进了蓝图」（issue #74）。
@@ -223,20 +257,24 @@ export function findExpandedContinuityRisks(input: {
       .map(item => item.chapterNumber)
       .sort((left, right) => left - right)
     const last = appearances.at(-1)
+    // 角色的中文/英文定位标签（issue #107）：文案原来一律写「主要角色」，而配角被纳入后
+    // 这个词会让作者以为判据把配角当成了主角——按 role 取对应称谓。
+    const roleLabelZh = ({ protagonist: '主角', antagonist: '反派', supporting: '配角', minor: '角色' } as Record<string, string>)[character.role] ?? '角色'
+    const roleLabelEn = ({ protagonist: 'Protagonist', antagonist: 'Antagonist', supporting: 'Supporting character', minor: 'Character' } as Record<string, string>)[character.role] ?? 'Character'
     if (last === undefined) {
       push({
         stableFactKey: `cast:never-appeared:${normalizedKeyPart(character.name)}`,
         severity: 'warning', sourceChapter: input.currentChapter, evidence: `${character.name} / ${character.role}`,
         issue: {
-          zhCN: `主要角色“${character.name}”截至第${input.currentChapter}章仍未在任何蓝图或已发生章节中登场。请确认是否遗漏了主线人物。`,
-          enUS: `Major character “${character.name}” has not appeared in any blueprint through chapter ${input.currentChapter}. Check whether a main-cast character is missing from the plan.`,
+          zhCN: `${roleLabelZh}“${character.name}”截至第${input.currentChapter}章仍未在任何蓝图或已发生章节中登场。请确认是否遗漏了这条人物线。`,
+          enUS: `${roleLabelEn} “${character.name}” has not appeared in any blueprint through chapter ${input.currentChapter}. Check whether this character line is missing from the plan.`,
         },
         suggestion: {
-          zhCN: '补一场有作用的登场，或调整角色定位；不要把主角/反派长期留在名单外。',
-          enUS: 'Add a purposeful appearance or adjust the character role; do not leave a protagonist or antagonist off-page indefinitely.',
+          zhCN: '补一场有作用的登场，或调整角色定位；不要让在册人物长期留在名单外。',
+          enUS: 'Add a purposeful appearance or adjust the character role; do not leave a listed character off-page indefinitely.',
         },
       })
-    } else if (input.currentChapter - last > 5) {
+    } else if (input.currentChapter - last > absenceThreshold) {
       push({
         // key **不能带当前章号**（issue #86）：否则它每章都变，作者点了「我已知，稍后处理」
         // （#79 的 ack）也只能静音当章，下一章又是一条新提醒 —— 实测那本书的反派
@@ -245,24 +283,28 @@ export function findExpandedContinuityRisks(input: {
         stableFactKey: `cast:absent:${normalizedKeyPart(character.name)}:${last}`,
         severity: 'warning', sourceChapter: last, evidence: `${character.name} last scheduled in chapter ${last}`,
         issue: {
-          zhCN: `主要角色“${character.name}”已连续 ${input.currentChapter - last} 章没有进入蓝图（上次第${last}章）。请确认支线是否被遗忘。`,
-          enUS: `Major character “${character.name}” has been absent from the chapter plan for ${input.currentChapter - last} chapters (last: chapter ${last}). Check whether their thread was forgotten.`,
+          zhCN: `${roleLabelZh}“${character.name}”已连续 ${input.currentChapter - last} 章没有进入蓝图（上次第${last}章）。请确认这条人物线是否被遗忘。`,
+          enUS: `${roleLabelEn} “${character.name}” has been absent from the chapter plan for ${input.currentChapter - last} chapters (last: chapter ${last}). Check whether their thread was forgotten.`,
         },
         suggestion: {
           // 出路要给**两个都可执行**的分支（issue #86 的建议 1，与 #55/#69 同一教训：
           // 只说「确认是否被遗忘」等于没给动作——作者当时按了「带提醒继续写」就往下走了）。
           zhCN: `二选一：①让他回来——安排一次状态推进、远程影响或短暂登场；②他这条线就是收束了——在正文里写明他的退场及其原因（像样本第 18 章对配角邵德昌做的「搬去码头另一头养老，不再提查册的事」那样），别让读者以为作者忘了。两种情况都要落到正文，不要在预检弹层里点「继续」了事。`,
-          enUS: `Pick one: (1) bring them back \u2014 schedule a state advance, an off-page consequence, or a brief appearance; (2) their thread really is closed \u2014 write the exit and its cause into the prose (as the sample book did for a supporting character in chapter 18: "moved to the other end of the docks to retire, and stopped bringing up the ledger"), so readers do not think the author forgot. Either way it must land on the page; do not just click "continue" on the preflight notice.`,
+          enUS: `Pick one: (1) bring them back \u2014 schedule a state advance, an off-page consequence, or a brief appearance; (2) their thread really is closed \u2014 write the exit and its cause into the prose (as the sample book did for a supporting character in chapter 18: “moved to the other end of the docks to retire, and stopped bringing up the ledger”), so readers do not think the author forgot. Either way it must land on the page; do not just click “continue” on the preflight notice.`,
         },
       })
     }
-    if (!normalizedKeyPart(character.motivation ?? '')) {
+    // 「没填动机」只对主角/反派报（issue #107 的边界）：纳入范围放宽到配角后，
+    // 若把这条也跟着放宽，AI 建卡时「只填名字」的配角会一次涌出一批动机提醒，
+    // 而配角往往已在正文里立住（本条要求出场 ≥5 章）——那属于 #40 的卡片完整性，
+    // 不是本条要救的「人物线断档」。保持原口径，避免把新纳入的配角变成噪声源。
+    if (isMainRole && !normalizedKeyPart(character.motivation ?? '')) {
       push({
         stableFactKey: `cast:thin:${normalizedKeyPart(character.name)}`,
         severity: 'warning', sourceChapter: input.currentChapter, evidence: `${character.name} motivation is empty`,
         issue: {
-          zhCN: `主要角色“${character.name}”没有填写动机。长期写作时模型容易把他工具化。`,
-          enUS: `Major character “${character.name}” has no motivation. Long-form drafting will tend to use them as a plot tool.`,
+          zhCN: `${roleLabelZh}“${character.name}”没有填写动机。长期写作时模型容易把他工具化。`,
+          enUS: `${roleLabelEn} “${character.name}” has no motivation. Long-form drafting will tend to use them as a plot tool.`,
         },
         suggestion: {
           zhCN: '补充一个可被场景检验的欲望、恐惧或底线。',

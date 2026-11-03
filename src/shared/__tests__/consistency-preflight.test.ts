@@ -584,3 +584,69 @@ describe('findMissingCastInArch (issue #3)', () => {
     }).length).toBeLessThanOrEqual(6)
   })
 })
+
+// issue #107：配角缺席监控整类跳过。原判据是 `['protagonist','antagonist'].includes(role)`
+// 硬白名单，而承担情感与秘密重量、甚至被设定层排了收束弧光的角色常常是 supporting ——
+// 实测那本书在册七人之一、「隐藏主线的记忆载体」全叔被当众架走后**连续 15 章正文与蓝图 0 次**，
+// 预检一次没报（消融：只把他的 role 改成 antagonist，同一份数据立刻报出）。
+describe('cast absence monitoring covers supporting characters (issue #107)', () => {
+  /** 一本「全叔 15 章出场后消失」的书：正文 15 章，蓝图最后写他在第 32 章。 */
+  const book = (over: { role?: string; seenChapters?: number; currentChapter?: number } = {}) => findExpandedContinuityRisks({
+    currentChapter: over.currentChapter ?? 47,
+    blueprints: [
+      { chapterNumber: 32, characters: ['周叙', '全叔'], descriptionText: '两名伙计夹着全叔往外推。' },
+      { chapterNumber: 47, characters: ['周叙'], descriptionText: '周叙把存根压上舱板。' },
+    ],
+    cast: [{ name: '全叔', role: over.role ?? 'supporting', motivation: '以旧事换周叙一条活路',
+      seenChapters: over.seenChapters ?? 15 }],
+    threads: [],
+  })
+  const absent = (findings: ReturnType<typeof findExpandedContinuityRisks>) =>
+    findings.find(finding => finding.stableFactKey.startsWith('cast:absent:'))
+
+  it('reports a supporting character who already appeared in the finalized prose (the reported case)', () => {
+    const finding = absent(book())
+    expect(finding).toBeDefined()
+    expect(finding!.stableFactKey).toBe('cast:absent:全叔:32')
+    // 文案要按 role 说「配角」，不能说「主要角色」——否则作者以为判据把配角当主角了。
+    expect(finding!.issue.zhCN).toContain('配角')
+    expect(finding!.issue.zhCN).not.toContain('主要角色')
+    expect(finding!.suggestion.zhCN).toContain('写明他的退场')
+  })
+
+  it('the ablation holds: the same data with role=antagonist also reports (root cause was the role filter)', () => {
+    expect(absent(book({ role: 'antagonist' }))).toBeDefined()
+  })
+
+  it('still skips a background role that never accumulated a readership', () => {
+    // 只出场 1 章的路人消失是正常的：纳入条件是「已定稿出场 ≥ MONITORED_PROSE_CHAPTERS 章」。
+    expect(absent(book({ seenChapters: 1 }))).toBeUndefined()
+    expect(absent(book({ role: 'minor', seenChapters: 2 }))).toBeUndefined()
+  })
+
+  it('uses a looser threshold for side roles so they do not become per-chapter noise', () => {
+    // 配角阈值 8 章：缺席 6 章（32→38）不报；主角/反派阈值 5 章，同样缺席 6 章要报。
+    expect(absent(book({ seenChapters: 15, currentChapter: 38 }))).toBeUndefined()
+    expect(absent(book({ role: 'antagonist', seenChapters: 15, currentChapter: 38 }))).toBeDefined()
+  })
+
+  it('does not widen the empty-motivation check to side roles (keeps report noise down)', () => {
+    // 配角已在正文里立住（出场 ≥5 章）时，卡上没填动机属于 #40 的卡片完整性，
+    // 不该跟着 #107 一起放宽——否则 AI 建的「只填名字」配角会一次涌出一批提醒。
+    const findings = findExpandedContinuityRisks({
+      currentChapter: 10,
+      blueprints: [{ chapterNumber: 10, characters: ['周叙', '阿茂'], descriptionText: '阿茂递来票根。' }],
+      cast: [{ name: '阿茂', role: 'supporting', motivation: '', seenChapters: 10 }],
+      threads: [],
+    })
+    expect(findings.some(finding => finding.stableFactKey.startsWith('cast:thin:'))).toBe(false)
+    // 主角/反派的动机空仍照报（原口径不动）。
+    const main = findExpandedContinuityRisks({
+      currentChapter: 10,
+      blueprints: [{ chapterNumber: 10, characters: ['周叙'], descriptionText: '周叙核舱。' }],
+      cast: [{ name: '周叙', role: 'protagonist', motivation: '', seenChapters: 10 }],
+      threads: [],
+    })
+    expect(main.some(finding => finding.stableFactKey.startsWith('cast:thin:'))).toBe(true)
+  })
+})
