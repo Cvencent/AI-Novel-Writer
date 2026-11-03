@@ -7,6 +7,7 @@ import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuit
   findRepeatPropTerminationFindings, findLossRestatementFindings,
   findPropRevivalFindings, findEntranceShotFindings } from '../shared/consistency-preflight'
 import { ENTRANCE_WINDOW_CHAPTERS } from '../shared/entrance-shot'
+import { findTitleShapeConvergenceFindings } from '../shared/title-shape'
 import { auditFinalizedProse } from '../shared/finalized-prose-audit'
 import { DEFAULT_CHAPTER_WORDS_TARGET } from './workflows/chapter-creation-parameters'
 import { ipc } from './ipc-client'
@@ -165,6 +166,16 @@ export async function readConsistencyPreflight(
         cast: rosterEntries,
       })
     : []
+  // 章节标题的句法同构（issue #106）：标题层此前**只有「不得重名」一条**（字面相等），
+  // 而正文层已建五层位置轴（#71 章首 / #28#65#66 章末 / #81 登场句 / #94 段落起手 /
+  // #95 物件过手）——标题层是第六层，完全空白。判据只看**章节标题**（蓝图 title），
+  // 与已定稿正文无关，所以样本取全部蓝图（不是 historyProse）。
+  const titleShapeFindings = findTitleShapeConvergenceFindings({
+    chapters: (Array.isArray(allBlueprints) ? allBlueprints : []).map(blueprint => ({
+      chapterNumber: blueprint.chapterNumber,
+      title: typeof blueprint.title === 'string' ? blueprint.title : '',
+    })),
+  })
   // 同一件物证被终结两次（issue #73）：与 #71/#72 共用同一份最近定稿正文样本。
   const propTerminationFindings = proseSample.length === 0 ? [] : findRepeatPropTerminationFindings({
     chapters: proseSample,
@@ -233,7 +244,7 @@ export async function readConsistencyPreflight(
     findings: [...terminalFindings, ...expandedFindings, ...unregisteredFindings, ...appearanceGaps,
       ...nearNameFindings, ...keyEventsLengthFindings, ...openingFindings, ...timelineFindings,
       ...missingArchCastFindings, ...propTerminationFindings, ...lossRestatementFindings,
-      ...propRevivalFindings, ...entranceShotFindings,
+      ...propRevivalFindings, ...entranceShotFindings, ...titleShapeFindings,
       ...finalizedProseAuditFindings]
       .filter(item => !activeExemptions.has(item.stableFactKey))
       .filter(item => !acknowledgedKeys.has(item.stableFactKey)),
