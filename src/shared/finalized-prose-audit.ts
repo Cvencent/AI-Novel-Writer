@@ -29,6 +29,7 @@
  *  19. 句长单向收敛（#114）——最近窗口的叙述句均长比开篇基准低一截（与 #93 的上限判据同层、方向相反）
  *  20. 引号风格漂移（#118）——某章整章换了引号（“…” ↔ 「…」），与全书多数派不一致
  *  21. 陈旧状态时长（#115）——同一件事的用时在相邻章用了互斥的尺度（第 11 章「空了三天」→ 第 12 章「一个多月」仍说「三天」）
+ *  22. 道具收进容器后容器离开、它又回到身上（#113）——位置换了却没有交接动作
  *
  * 与审稿路径的差别只有一处，而且是刻意的：审稿把**本章正文**也放进样本
  * （那正是审稿的对象），而写前预检喂进来的全是**已定稿章**——因为要写的那一章
@@ -71,6 +72,8 @@ import { findDuplicateChapterTitleFindings } from './chapter-title-uniqueness'
 import { findQuoteStyleDriftFindings } from './quote-style'
 // 陈旧状态时长（issue #115）：同一件事的「过了多久」在相邻章用了互斥的尺度。
 import { findStaleStateDurationFindings } from './stale-state-duration'
+// 道具收进容器→容器离开→又回到身上（issue #113）：位置换了却没有交接动作。
+import { findPropContainerDepartureFindings } from './prop-relocation'
 // 能力触发条件被绕过（#100）：世界观写死的硬限制在正文里被静默绕过、从未写成一次发现。
 import { findAbilityLimitBypassFindings } from './ability-limit-bypass'
 // 笔迹特征自相矛盾（#97）：同一个书写者被写成两套互斥特征（「稳、匀」vs「横折收得急」）。
@@ -283,10 +286,15 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   // 现有 `undated` 判的是「有没有交代跨日」，第 12 章写了「一个多月」恰好**达标**、躲过检查。
   const staleStateDuration = findStaleStateDurationFindings(chapters)
 
+  // 道具位置断裂（issue #113）：第 14 章「纸角」收进册子衬页、册子被抽走，第 17/18 章它又在内衬里。
+  // 需要名册（排除人名被当道具，同 #80）。
+  const propContainerDeparture = findPropContainerDepartureFindings(chapters, castNames)
+
   return [...closingLabel, ...numbering, ...ability, ...repetition, ...undelivered,
     ...ultimatum, ...pendingLanding, ...reversal, ...undatedStreak, ...proseFlavor, ...positionalAxes, ...glyphRadical,
     ...castNameDrift, ...deadlineSettlement, ...repeatedRevocation, ...duplicateTitles,
-    ...abilityLimitBypass, ...handwritingConflicts, ...quoteStyleDrift, ...staleStateDuration]
+    ...abilityLimitBypass, ...handwritingConflicts, ...quoteStyleDrift, ...staleStateDuration,
+    ...propContainerDeparture]
 }
 
 /**
