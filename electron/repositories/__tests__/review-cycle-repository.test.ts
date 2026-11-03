@@ -486,7 +486,7 @@ describe('ReviewCycleRepository.create', () => {
     expect(plan.context?.findings[0]!.sourceExcerpt).toBe('上船三十二个人')
   })
 
-  it('fails closed for duplicate objective quotes and multi-evidence goals', () => {
+  it('fails closed for duplicate objective quotes', () => {
     const db = fixture()
     const source = '重复证据；重复证据；唯一甲；唯一乙。'
     const frozenGoals: FrozenChapterGoals = { chapterNumber: 1, coverage: 'complete',
@@ -495,12 +495,88 @@ describe('ReviewCycleRepository.create', () => {
       goalReviews: [{ id: 'goal-multi', status: 'unmet', description: '两处证据',
         evidence: [{ quote: '唯一甲' }, { quote: '唯一乙' }] }] }
     try {
+      // 只有那条引文出现两次的预检意见该落 unverified；多证据目标另行验证（issue #124）。
       const seeded = seed(db, { source, frozenGoals, model, preflight: [risk('fact:duplicate', '重复证据')] })
       const created = create(db, seeded.call)
       expect(created.findingCount).toBe(2)
-      const rows = db.prepare('SELECT * FROM review_findings').all() as Record<string, unknown>[]
-      for (const row of rows) expect(row).toMatchObject({ status: 'unverified', target_id: null,
+      const duplicated = db.prepare(`SELECT * FROM review_findings WHERE status='unverified'`)
+        .all() as Record<string, unknown>[]
+      expect(duplicated).toHaveLength(1)
+      expect(duplicated[0]).toMatchObject({ status: 'unverified', target_id: null,
         span_start: null, span_end: null, excerpt_hash: null, occurrence: null })
+      expect(verifyM03ReviewCycle(db)).toBe(true)
+    } finally { db.close() }
+  })
+
+  /**
+   * issue #124：目标型意见的证据常常不止一条（那本 55 章的书 38 条里 26 条是多证据），
+   * 而旧判据 `evidence.length === 1` 把这 26 条**整条**丢掉锚定，于是它们的引文虽然全部
+   * 可唯一定位，却一律落 `unverified`，合并后永不复验——而「本章目标 unmet」正是审稿里
+   * 唯一直接说明「蓝图事件没写出来」的结论。
+   *
+   * 新判据：**存在一条能唯一定位的引文就锚定**（按模型顺序取首个），其余证据留在报告里。
+   * 下面同时钉住反向：每条引文都定位不到时仍必须 unverified，口径不许放松。
+   */
+  it('anchors multi-evidence goals on the first uniquely locatable quote', () => {
+    const db = fixture()
+    const source = '重复证据；重复证据；唯一甲；唯一乙。'
+    const frozenGoals: FrozenChapterGoals = { chapterNumber: 1, coverage: 'complete',
+      items: [{ id: 'goal-multi', text: '多证据目标' }] }
+    const model = { summary: '需要修复', items: [{ category: '文风', severity: 'pass', description: '通过' }],
+      goalReviews: [{ id: 'goal-multi', status: 'unmet', description: '两处证据',
+        evidence: [{ quote: '唯一甲' }, { quote: '唯一乙' }] }] }
+    try {
+      const seeded = seed(db, { source, frozenGoals, model })
+      create(db, seeded.call)
+      const row = db.prepare(`SELECT * FROM review_findings WHERE target_id='goal-multi'`)
+        .get() as Record<string, unknown>
+      expect(row).toMatchObject({ status: 'unresolved', target_id: 'goal-multi', span_start: 10, span_end: 13,
+        occurrence: 1, excerpt_hash: hash('唯一甲') })
+      // occurrence 必须真的是 1，否则复验比对会把它当成歧义证据（classifyFindingEvidenceChange → ambiguous）。
+      const anchored = source.slice(Number(row.span_start), Number(row.span_end))
+      expect(anchored).toBe('唯一甲')
+      expect(source.split(anchored)).toHaveLength(2)
+      expect(verifyM03ReviewCycle(db)).toBe(true)
+    } finally { db.close() }
+  })
+
+  it('skips quotes that are not unique and anchors on a later one', () => {
+    const db = fixture()
+    // 上游 normalizeChapterGoalReview 只要求引文「存在」；唯一定位是锚定这一步的要求。
+    // 所以「第一条引文在源稿里出现两次、第二条唯一」是真实可达的形态——顺序不能决定成败。
+    const source = '重复证据；重复证据；唯一甲；唯一乙。'
+    const frozenGoals: FrozenChapterGoals = { chapterNumber: 1, coverage: 'complete',
+      items: [{ id: 'goal-order', text: '顺序目标' }] }
+    const model = { summary: '需要修复', items: [{ category: '文风', severity: 'pass', description: '通过' }],
+      goalReviews: [{ id: 'goal-order', status: 'unmet', description: '第二处证据才对',
+        evidence: [{ quote: '重复证据' }, { quote: '唯一甲' }] }] }
+    try {
+      const seeded = seed(db, { source, frozenGoals, model })
+      create(db, seeded.call)
+      const row = db.prepare(`SELECT * FROM review_findings WHERE target_id='goal-order'`)
+        .get() as Record<string, unknown>
+      expect(row).toMatchObject({ status: 'unresolved', target_id: 'goal-order', occurrence: 1 })
+      expect(source.slice(Number(row.span_start), Number(row.span_end))).toBe('唯一甲')
+      expect(verifyM03ReviewCycle(db)).toBe(true)
+    } finally { db.close() }
+  })
+
+  it('keeps goals unverified when no evidence quote can be located', () => {
+    const db = fixture()
+    const frozenGoals: FrozenChapterGoals = { chapterNumber: 1, coverage: 'complete',
+      items: [{ id: 'goal-miss', text: '定位不到的目标' }] }
+    const model = { summary: '需要修复', items: [{ category: '文风', severity: 'pass', description: '通过' }],
+      goalReviews: [{ id: 'goal-miss', status: 'unmet', description: '证据都在别章',
+        evidence: [{ quote: '根本不在本章' }, { quote: '也不在本章' }] }] }
+    try {
+      const seeded = seed(db, { source: '开场😀目标完成，预检证据，重复，重复。', frozenGoals, model })
+      create(db, seeded.call)
+      // 上游 normalizeChapterGoalReview 会把「引文定位不到」的目标降级成 unknown + 空证据，
+      // 锚定这一步看到的已经是 evidence=[]，于是仍必须 unverified——口径没有放松。
+      const row = db.prepare(`SELECT * FROM review_findings WHERE status='unverified' AND kind='objective'`)
+        .get() as Record<string, unknown> | undefined
+      expect(row).toBeDefined()
+      expect(row).toMatchObject({ status: 'unverified', target_id: null, span_start: null, span_end: null })
       expect(verifyM03ReviewCycle(db)).toBe(true)
     } finally { db.close() }
   })

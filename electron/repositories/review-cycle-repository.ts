@@ -239,6 +239,23 @@ function locateUnique(source: string, quote: string): { start: number; end: numb
 }
 
 /**
+ * 目标型意见的锚定引文（issue #124）。
+ *
+ * 旧判据是 `goal.evidence.length === 1 ? goal.evidence[0].quote : null`——**证据多于一条就整条不锚定**。
+ * 实测那本 55 章的书：38 条目标型意见里 26 条带多条证据，而这 26 条的引文**全部**能唯一定位
+ * （26/26），却因为条数判据一律落成 `unverified`，于是 `recheckContext` / `disposition` 整条跳过、
+ * 合并后永不复验。而「本章目标 unmet」恰好是审稿里唯一直接说明「蓝图事件没写出来」的结论。
+ *
+ * 「能不能自动复验」的依据是**有没有一条引文能唯一定位**，不是证据总条数是不是 1。
+ * 取模型给出顺序里第一条能唯一定位的证据做锚（确定性），其余证据仍留在审稿报告里给作者看。
+ * 一条也定位不到的（含零证据的 unknown 目标）仍返回 null → 仍落 `unverified`，口径没有放松。
+ */
+function goalAnchorQuote(sourceText: string, goal: SavedGoal): string | null {
+  for (const item of goal.evidence) if (locateUnique(sourceText, item.quote) !== null) return item.quote
+  return null
+}
+
+/**
  * 把一条审稿意见锚定到源稿（issue #7）。
  *
  * 旧判据是 `targetId !== null && span !== null`——**只有目标型意见才会被锚定**。
@@ -306,7 +323,7 @@ function buildFindings(report: SavedReport, source: ReviewCycleSource, sourceTex
     if (goal.evidence.some(item => sourceText.slice(item.start, item.end) !== item.quote)) invalid()
     if (goal.status === 'completed') continue
     const projection = report.items.find(item => item.goalId === goal.id)!
-    const quote = goal.evidence.length === 1 ? goal.evidence[0]!.quote : null
+    const quote = goalAnchorQuote(sourceText, goal)
     add(finding({ source, sourceText, category: projection.category, targetId: goal.id, kind: 'objective', quote,
       problemText: projection.description, expectedText: `${goal.text}\n${goal.description}`,
       anchoredStatus: goal.status === 'unknown' ? 'unknown' : 'unresolved', logicalIdentity: `goal:${goal.id}` }))
@@ -544,9 +561,11 @@ export class ReviewCycleRepository {
         const goal = item.goalId ? report.goals.find(candidate => candidate.id === item.goalId) : undefined
         if (goal?.status === 'completed') continue
         const objective = item.stableFactKey !== undefined || Boolean(goal)
+        // 必须与 buildFindings 用同一个锚定判据（issue #124）：这里重建 descriptor 只为反查
+        // reviewItemIndex，判据一旦不一致，落库行就配不上界面行，多证据目标会再次从 UI 掉线。
         const descriptor = finding({ source, sourceText: review.source_content, category: item.category,
           targetId: goal?.id ?? item.stableFactKey ?? null, kind: objective ? 'objective' : 'literary',
-          quote: goal ? goal.evidence.length === 1 ? goal.evidence[0]!.quote : null : item.quote ?? null,
+          quote: goal ? goalAnchorQuote(review.source_content, goal) : item.quote ?? null,
           problemText: item.description, ...(goal ? { expectedText: `${goal.text}\n${goal.description}` } : {}),
           anchoredStatus: goal?.status === 'unknown' ? 'unknown' : 'unresolved',
           logicalIdentity: goal ? `goal:${goal.id}` : objective ? `preflight:${item.stableFactKey}` : `free:${item.index}` })
