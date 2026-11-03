@@ -30,6 +30,8 @@ import { foreshadowingDueAt, parseForeshadowingCommitments } from '../../src/sha
 // 字形断言（issue #99）：审稿时本章正文还在手边，正是能改的时候。
 // 与写前预检（`finalized-prose-audit.ts`）共用同一份判据，只是样本不同。
 import { glyphRadicalFindings } from '../../src/shared/glyph-radical'
+// 角色名漂移（issue #102）：本章把某个已登记角色写成了同后缀异姓。
+import { findCastNameDriftFindings } from '../../src/shared/cast-name-drift'
 import { CHARACTER_STATE_TEXT_FIELDS } from '../../src/shared/character-roster'
 import { ProjectCoreRepository } from '../repositories/project-core-repository'
 import { CharacterRepository } from '../repositories/character-repository'
@@ -239,6 +241,15 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
         // 样本 = **本章正文**（审稿时这一章还没定稿，正是能改的时候）；历史章不再重复报
         // （它们要么已定稿只读、要么已在上一轮审稿里提示过）。
         ...glyphRadicalFindings([{ chapterNumber: source.chapterNumber, content: source.content }]),
+        // 角色名漂移（issue #102）：本章把「陆敬堂」写成「穆敬堂」。审稿合同只管
+        // 「同一场所/职级/编号是否被写成不同名称」（维度 8），而**人名**这一层
+        // 没有任何地方核对名册——模型报出过，却停在 unresolved、不阻断定稿。
+        // 样本 = 本章正文 + 已定稿历史（历史章里那个异姓写法顺带一起报，指出是哪一章）。
+        ...findCastNameDriftFindings({
+          chapters: [...history.map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
+            { chapterNumber: source.chapterNumber, content: source.content }],
+          castNames: authorCards.map(card => card.name),
+        }),
       ],
       ...(confirmation ? { confirmation } : {}), ...(recheck ? { recheck } : {}) }
   })()

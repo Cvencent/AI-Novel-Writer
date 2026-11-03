@@ -19,6 +19,7 @@
  *   9. 段落起手固定化（#94）——每一段的第一个词是主角名/代词
  *  10. 物件过手动作固定化（#95）——折好→塞进某处 这一套三拍覆盖了多少章
  *  11. 字形断言（#99）——「半个 X 字，Y 旁」把偏旁说错（温写成立人旁、徐写成走之底）
+ *  12. 角色名漂移（#102）——已登记角色在正文里被写成同后缀异姓（陆敬堂→穆敬堂），且已被账本继承
  *
  * 与审稿路径的差别只有一处，而且是刻意的：审稿把**本章正文**也放进样本
  * （那正是审稿的对象），而写前预检喂进来的全是**已定稿章**——因为要写的那一章
@@ -48,6 +49,8 @@ import { findParagraphOpenerFindings, findPropHandoverFindings } from './consist
 import { findUndatedStreakFindings } from './chapter-time-anchor'
 // 字形断言（#99）：正文里「半个 X 字，Y 旁」把偏旁说错——单章可判，且是最容易机器判的一类。
 import { glyphRadicalFindings } from './glyph-radical'
+// 已登记角色名的同后缀异姓漂移（#102）：正文把「陆敬堂」写成「穆敬堂」。
+import { findCastNameDriftFindings } from './cast-name-drift'
 import { closingShotOf } from './blueprint-semantic-contract'
 import { foreshadowingDueAt, parseForeshadowingCommitments } from './foreshadowing-commitments'
 
@@ -190,8 +193,14 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   // 用全量已定稿章（字形是**已定稿只读**的内容，报出来作者才知道哪一章要重写）。
   const glyphRadical = glyphRadicalFindings(chapters)
 
+  // 已登记角色名的同后缀异姓漂移（issue #102）：第 23 章把「陆敬堂」写成「穆敬堂」，
+  // 错误已被事实账本继承。用全量已定稿章——名字漂移一旦进账本，越往后越难改，
+  // 所以要在预检里点名「哪一章用了哪个写法」。名册由调用方传入。
+  const castNameDrift = castNames.length === 0 ? [] : findCastNameDriftFindings({ chapters, castNames })
+
   return [...closingLabel, ...numbering, ...ability, ...repetition, ...undelivered,
-    ...ultimatum, ...reversal, ...undatedStreak, ...proseFlavor, ...positionalAxes, ...glyphRadical]
+    ...ultimatum, ...reversal, ...undatedStreak, ...proseFlavor, ...positionalAxes, ...glyphRadical,
+    ...castNameDrift]
 }
 
 /**
