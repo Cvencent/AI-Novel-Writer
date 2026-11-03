@@ -6,6 +6,7 @@ import {
   parseScenePlanResponse,
   validateChapterCommitInput,
   type ChapterCommit,
+  type ChapterCommitGap,
   type CharacterVoiceProfileRecord,
   type DraftQualityReview,
   type EditorialPanelReview,
@@ -216,6 +217,35 @@ export class WritingIntelligenceRepository {
       WHERE f.chapter_number=? AND d.status='finalized' ORDER BY f.created_at DESC,f.rowid DESC LIMIT 1`).get(chapterNumber) as { draft_id: number } | undefined
     if (!latest) throw new Error('CHAPTER_COMMIT_FINALIZED_SOURCE_REQUIRED')
     return this.commitFinalizedChapter(chapterNumber, latest.draft_id, database)
+  }
+
+  /**
+   * 已定稿但没有事实账本的章节（issue #125）。
+   *
+   * #62 之后定稿的章会自动写账本，但**修复之前已经定稿的章会永远缺着**，
+   * 而界面照样显示「后处理全部完成」。这里把缺口扫出来，让作者（和下一章的
+   * 前情构建）知道少了哪几章，而不是让它静默留着。
+   *
+   * 分档的依据是**补齐需要的前置物是否还在**，不是「要不要重写正文」：
+   * 只要有 `finalization_outbox` + `summary_snapshots` 就能无损补齐；
+   * 缺摘要的那一类必须单独讲清楚（否则作者点重建会拿到一个错误码）。
+   */
+  static listChapterCommitGaps(db?: Database.Database): ChapterCommitGap[] {
+    const database = requireDb(db)
+    const rows = database.prepare(`SELECT d.chapter_number AS chapterNumber, d.id AS draftId,
+        EXISTS(SELECT 1 FROM finalization_outbox f WHERE f.draft_id=d.id) AS hasFinalization,
+        EXISTS(SELECT 1 FROM summary_snapshots s WHERE s.draft_id=d.id) AS hasSummary
+      FROM drafts d
+      WHERE d.status='finalized'
+        AND NOT EXISTS(SELECT 1 FROM chapter_commits c WHERE c.chapter_number=d.chapter_number)
+      ORDER BY d.chapter_number`).all() as Array<{ chapterNumber: number; draftId: number
+        hasFinalization: number; hasSummary: number }>
+    return rows.map(row => ({
+      chapterNumber: Number(row.chapterNumber),
+      draftId: Number(row.draftId),
+      status: !row.hasFinalization ? 'missing-finalization' as const
+        : !row.hasSummary ? 'missing-summary' as const : 'rebuildable' as const,
+    }))
   }
 
   private static rowToCommit(row: Record<string, unknown>): ChapterCommit {

@@ -978,6 +978,10 @@ export interface DatabaseChannels {
     args: [chapterNumber: number, expectedProjectPath: string]
     return: import('./writing-intelligence').ChapterCommit
   }
+  'db:writing-intelligence-commit-gaps': {
+    args: [expectedProjectPath: string]
+    return: import('./writing-intelligence').ChapterCommitGap[]
+  }
   'db:arc-outline-save-document': {
     args: [markdown: string, expectedProjectPath: string]
     return: { success: boolean; records?: ArcOutlineRecord[]; error?: string }

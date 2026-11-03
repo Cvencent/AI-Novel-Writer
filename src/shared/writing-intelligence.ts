@@ -102,6 +102,25 @@ export interface ChapterCommit extends ChapterCommitInput {
   createdAt: string
 }
 
+/**
+ * 已定稿但没有事实账本的一章（issue #125）。
+ *
+ * #62 修的是「定稿后处理报成功却没落库」（根因）；修复之前定稿的章节会**永远缺着**，
+ * 而产品不会提示。实测那本 55 章的书里有 11 章缺账，其中 5 章连
+ * `summary_snapshots` 都没有——那种章连「从当前投影重建」也补不出来
+ * （`commitFinalizedChapter` 会抛 `CHAPTER_COMMIT_CONTINUITY_REQUIRED`）。
+ *
+ * 所以缺口必须**分档**报出来，不能一律说「可以重建」：
+ * - `rebuildable`：有最终化快照 + 摘要快照 → 可无损补齐；
+ * - `missing-summary`：有最终化快照但没有摘要快照 → 需要重新跑一次摘要，不能静默当成可补；
+ * - `missing-finalization`：连最终化记录都没有 → 只能从当前投影重新生成。
+ */
+export interface ChapterCommitGap {
+  chapterNumber: number
+  draftId: number
+  status: 'rebuildable' | 'missing-summary' | 'missing-finalization'
+}
+
 export interface CharacterVoiceProfileRecord extends CharacterVoiceProfile {
   sourceDraftId: number
   contentHash: string

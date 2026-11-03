@@ -373,6 +373,10 @@ export function registerDatabaseController() {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return WritingIntelligenceRepository.rebuildChapterCommit(chapterNumber)
   })
+  ipcMain.handle('db:writing-intelligence-commit-gaps', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return WritingIntelligenceRepository.listChapterCommitGaps()
+  })
   ipcMain.handle('db:arc-outline-save-document', async (_event, markdown: string, expectedProjectPath: string) => {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)

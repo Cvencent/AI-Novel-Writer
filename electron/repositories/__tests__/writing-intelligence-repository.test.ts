@@ -76,4 +76,54 @@ describe('writing intelligence repository', () => {
       expect(WritingIntelligenceRepository.rebuildChapterCommit(3, db).commitId).toBe(commit.commitId)
     } finally { db.close() }
   })
+
+  /**
+   * issue #125：#62 之前定稿的章节会永远缺账本，而产品不提示。缺口必须能扫出来，
+   * 并且**分档**——只有「最终化快照 + 摘要快照」都在的才是可无损补齐的那一类；
+   * 缺摘要的章直接点重建会拿到 CHAPTER_COMMIT_CONTINUITY_REQUIRED，不能混在一起说。
+   */
+  it('lists finalized chapters whose ledger is missing, classified by what can still rebuild', () => {
+    const { db, draftId } = fixture()
+    try {
+      const finalize = (chapterNumber: number, withSummary: boolean, withOutbox = true) => {
+        const contentId = Number(db.prepare("INSERT INTO contents(body) VALUES('林岚进入库房。')")
+          .run().lastInsertRowid)
+        const id = Number(db.prepare(`INSERT INTO drafts(chapter_number,version,status,content_id)
+          VALUES(?,1,'finalized',?)`).run(chapterNumber, contentId).lastInsertRowid)
+        if (withOutbox) {
+          db.prepare(`INSERT INTO finalization_outbox(finalization_id,draft_id,chapter_number,chapter_title,content_hash,
+            content_revision,content_snapshot,target_file_name,publication_status)
+            VALUES(?,?,?,'库房',?,1,?,'c.md','published')`)
+            .run(`fin-${chapterNumber}`, id, chapterNumber, 'a'.repeat(64), '林岚进入库房。')
+        }
+        if (withSummary) {
+          db.prepare(`INSERT INTO summary_snapshots(draft_id,chapter_number,chapter_notes,continuity_facts,
+            character_state_candidates,source_finalization_id,source_content_hash) VALUES(?,?,'摘要','[]','[]',?,?)`)
+            .run(id, chapterNumber, `fin-${chapterNumber}`, 'a'.repeat(64))
+        }
+        return id
+      }
+      // fixture 里已有的 ch3 是「有 outbox、无 summary」→ missing-summary
+      const rebuildable = finalize(4, true)
+      const noFinalization = finalize(5, true, false)
+
+      const gaps = WritingIntelligenceRepository.listChapterCommitGaps(db)
+      expect(gaps).toEqual([
+        { chapterNumber: 3, draftId, status: 'missing-summary' },
+        { chapterNumber: 4, draftId: rebuildable, status: 'rebuildable' },
+        { chapterNumber: 5, draftId: noFinalization, status: 'missing-finalization' },
+      ])
+
+      // 缺的只是摘要这一前提：补上摘要后这一章变成 rebuildable，但**仍然缺账本**
+      // （缺口判据是「有没有 commit」，不是「能不能重建」——两件事不能混）。
+      db.prepare(`INSERT INTO summary_snapshots(draft_id,chapter_number,chapter_notes,continuity_facts,
+        character_state_candidates,source_finalization_id,source_content_hash) VALUES(?,3,'摘要','[]','[]','fin-3',?)`)
+        .run(draftId, 'a'.repeat(64))
+      expect(WritingIntelligenceRepository.listChapterCommitGaps(db).find(gap => gap.chapterNumber === 3))
+        .toMatchObject({ status: 'rebuildable' })
+      // 真正写出账本之后，这一章才从缺口里消失。
+      expect(WritingIntelligenceRepository.commitFinalizedChapter(3, draftId, db).chapterNumber).toBe(3)
+      expect(WritingIntelligenceRepository.listChapterCommitGaps(db).some(gap => gap.chapterNumber === 3)).toBe(false)
+    } finally { db.close() }
+  })
 })
