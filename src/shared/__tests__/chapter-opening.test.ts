@@ -222,16 +222,43 @@ describe('findOpeningShapeConvergence (issue #71 finding shape)', () => {
     const findings = findOpeningShapeConvergence({ chapters: run, castNames: cast, currentChapter: 24 })
     expect(findings).toHaveLength(1)
     expect(findings[0]).toMatchObject({
-      stableFactKey: 'chapter-opening:scene-first:24',
+      // key 不带章号：末章号会随窗口滚动，作者点「我已知」就永远关不掉（#98/#86/#89）。
+      stableFactKey: 'chapter-opening:scene-first',
       severity: 'warning',
       sourceChapter: 24,
     })
-    expect(findings[0]!.evidence).toContain('第 19–24 章连续 6 章')
+    // 全窗口命中时说 6/6（100%），而不是把窗口长度当命中数。
+    expect(findings[0]!.evidence).toContain('第 19–24 章共 6 章，其中 6 章（100%）')
     // 证据里要出现窗口内真实的章首小句，作者据此定位。
     expect(findings[0]!.evidence).toContain('靠埠前一个时辰')
     // 出路必须给出具体可用的开篇方式，而不是「请勿重复」。
     expect(findings[0]!.suggestion.zhCN).toContain('直接以动作或对白切入')
     expect(findings[0]!.suggestion.enUS).toContain('cut straight into an action')
+  })
+
+  // issue #98：`openingConvergence` 的语义是「窗口内 scene 起手**达标**」（≥80%），
+  // 返回**整个窗口**；原实现把 `window.length` 当命中数，于是 5/6 被说成「连续 6 章都以…」，
+  // 唯一的反例（人物起手那一章）既不在文案里、也不在 `slice(0,3)` 的样例里。
+  it('reports the real hit count, not the window length (issue #98)', () => {
+    const mixed = [
+      [39, '缆绳泡在船尾水槽里，绳缝吐着白汽。'],
+      [40, '票根从内襟抽出来，折痕压在指肚上。'],
+      [41, '跳板口堵着三个人。'],
+      [42, '售票口外堆着板车。'],
+      // 第 43 章是**人物起手**——5/6 = 83% ≥ 80%，窗口整体达标，但它不是命中章。
+      [43, '周叙把复核条拍在售票亭窗台上。'],
+      [44, '日头压到瓦檐。'],
+    ].map(([chapterNumber, content]) => ({ chapterNumber: chapterNumber as number, content: content as string }))
+    const findings = findOpeningShapeConvergence({ chapters: mixed, castNames: cast, currentChapter: 45 })
+    expect(findings).toHaveLength(1)
+    expect(findings[0]!.evidence).toContain('共 6 章，其中 5 章（83%）')
+    expect(findings[0]!.evidence).not.toContain('连续 6 章都以')
+    // 反例必须出现在证据里，作者才不会照着「全部都是」去回看第 43 章。
+    expect(findings[0]!.evidence).toContain('反例：第43章是人物起手')
+    expect(findings[0]!.issue.zhCN).toContain('5 章（83%）')
+    expect(findings[0]!.issue.zhCN).toContain('第43章例外')
+    // 例样只取命中章：不该把反例（第 43 章）也当样例列出来。
+    expect(findings[0]!.evidence).not.toContain('第43章「周叙把复核条')
   })
 
   it('stays silent when the openings rotate', () => {

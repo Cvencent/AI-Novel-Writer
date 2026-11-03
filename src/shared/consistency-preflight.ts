@@ -867,18 +867,30 @@ export function findOpeningShapeConvergence(input: ChapterOpeningStreakInput): C
   const window = openingConvergence(openings)
   if (window.length === 0) return []
   const range = `${window[0]!.chapterNumber}–${window[window.length - 1]!.chapterNumber}`
-  const samples = window.slice(0, 3).map(item => `第${item.chapterNumber}章「${item.clause}」`).join('、')
+  // issue #98：`openingConvergence` 的语义是「窗口内 scene 起手**达标**」（≥80%），
+  // 返回的是**整个窗口**（调用方要用它渲染章号区间）。原实现直接把 `window.length`
+  // 写成「连续 N 章都…」，于是 6 章里 5 章达标被说成 6/6，唯一的反例（第 43 章是
+  // 人物起手）既不在文案里、也不在 `slice(0,3)` 的样例里。
+  // 正确口径：N 必须来自**实际命中计数**，且反例要能出现在证据里。
+  const scene = window.filter(item => item.shape === 'scene')
+  const counter = window.find(item => item.shape !== 'scene')
+  const share = Math.round(scene.length / window.length * 100)
+  const samples = scene.slice(0, 3).map(item => `第${item.chapterNumber}章「${item.clause}」`).join('、')
+  const counterText = counter ? `；反例：第${counter.chapterNumber}章是人物起手「${counter.clause}」` : ''
+  const counterTextEn = counter ? `; the exception is chapter ${counter.chapterNumber}, which opens on a character (“${counter.clause}”)` : ''
   return [{
-    stableFactKey: `chapter-opening:scene-first:${window[window.length - 1]!.chapterNumber}`,
+    // key 锚在「哪一种章首形态收敛」上，**不带章号**（issue #98 同族于 #86/#89：
+    // 末章号随窗口滚动会让 key 每章都变，作者点「我已知」永远关不掉）。
+    stableFactKey: 'chapter-opening:scene-first',
     severity: 'warning' as const,
     // 证据落在**已定稿的那几章**里，不是正在写的这一章（issue #79）：
     // 写成 currentChapter 会让每条提醒都以「来源：第 N 章」开头，看起来像本章的问题，
     // 而实际上章号集合全在 6–12 章之前。
     sourceChapter: window[window.length - 1]!.chapterNumber,
-    evidence: `第 ${range} 章连续 ${window.length} 章都以「时间/地点状语 + 主句」起手：${samples}`,
+    evidence: `第 ${range} 章共 ${window.length} 章，其中 ${scene.length} 章（${share}%）以「时间/地点状语 + 主句」起手：${samples}${counterText}`,
     issue: {
-      zhCN: `最近 ${window.length} 章（第 ${range} 章）的**开篇句**是同一个句式：先给时间或地点状语，主句在后。开篇句是读者每章第一眼看到的东西——连着十几章这样开场，正文还没读进去就先感到腻，连载里这种地方最容易掉收藏。这几章的场景其实各不相同，缺的只是句式轮换。`,
-      enUS: `${window.length} chapters in a row (chapters ${range}) open with the same construction: a time or place adverbial first, the main clause after. The opening line is the first thing a reader sees in every chapter; a dozen chapters of the same opening wears thin before the prose even starts. These chapters already use different settings — only the sentence shape is repeating.`,
+      zhCN: `最近 ${window.length} 章（第 ${range} 章）里有 **${scene.length} 章（${share}%）** 的**开篇句**是同一个句式：先给时间或地点状语，主句在后${counter ? `（第${counter.chapterNumber}章例外，是人物起手）` : ''}。开篇句是读者每章第一眼看到的东西——连着十几章这样开场，正文还没读进去就先感到腻，连载里这种地方最容易掉收藏。这几章的场景其实各不相同，缺的只是句式轮换。`,
+      enUS: `${scene.length} of the last ${window.length} chapters (chapters ${range}) — ${share}% — open with the same construction: a time or place adverbial first, the main clause after${counterTextEn}. The opening line is the first thing a reader sees in every chapter; a dozen chapters of the same opening wears thin before the prose even starts. These chapters already use different settings — only the sentence shape is repeating.`,
     },
     suggestion: {
       zhCN: `换一种开篇：直接以动作或对白切入（「跳板还没落稳，周叙就拎着风灯下了船」）、以人物的判断或疑问起手、从一个正在发生的细节冷开场（一件物、一个声音、一句没头没尾的话），或从上一章的余波接进来。不必每章都先交代时间地点——读者能从上下文推出来。`,
