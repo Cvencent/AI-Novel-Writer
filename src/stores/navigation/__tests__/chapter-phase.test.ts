@@ -6,7 +6,14 @@ import type { DraftMeta } from '../../../services/draft-index'
 import { chapterPhase, deriveChapters, deriveStages, focusChapter, landingStage, type ChapterFacts, type WorkFacts } from '../stage-progress'
 import { useStageStore } from '../stage-store'
 
-interface FakeRevision { id: number; status: 'pending' | 'merged' | 'discarded'; updatedAt: string; sourceContent: string | null }
+interface FakeRevision {
+  id: number
+  status: 'pending' | 'merged' | 'discarded'
+  updatedAt: string
+  sourceContent: string | null
+  /** 生成时那一稿的稿状态；不填就与当前稿相同（旧用例的行为不变）。 */
+  sourceStatus?: string
+}
 interface FakeReview { id: number; reviewIndex: number; createdAt: string; cycle: string | null }
 
 const db = vi.hoisted(() => ({
@@ -37,7 +44,8 @@ vi.mock('../../../services/ipc-client', () => ({
         case 'db:draft-get-full': return db.draft
         case 'db:revision-get-full': {
           const revision = db.revisions.find(candidate => candidate.id === id)!
-          return { id, sourceDraft: revision.sourceContent === null ? null : { ...db.draft, content: revision.sourceContent } }
+          return { id, sourceDraft: revision.sourceContent === null ? null
+            : { ...db.draft, status: revision.sourceStatus ?? db.draft.status, content: revision.sourceContent } }
         }
         default: throw new Error(`unexpected IPC ${channel}`)
       }
@@ -87,6 +95,32 @@ describe('一稿走到哪一步（chapter-facts 读记录，chapterPhase 判断�
 
     db.draft.content = '雨从傍晚开始就没有停过。作者后来补的一句。'
     expect(await phaseOf('draft')).toMatchObject({ phase: 'reviewed', facts: { mergeable: [], stale: [{ id: 9, reason: 'edited' }] } })
+  })
+
+  /**
+   * issue #126：定稿只把稿状态从 draft 改成 finalized，正文一个字节没变。
+   * 旧实现把这一支并进 edited，横幅就说「修稿生成之后正文又改过」——
+   * 作者回去翻正文找不到任何改动，只能怀疑自己记错。
+   */
+  it('正文逐字未变、只是这一稿已定稿：原因是 finalized，不是 edited', async () => {
+    db.reviews = [{ id: 1, reviewIndex: 1, createdAt: '2026-10-13 20:00:01', cycle: 'generated' }]
+    db.revisions = [{ id: 9, status: 'pending', updatedAt: '2026-10-13 20:00:02',
+      sourceContent: db.draft.content, sourceStatus: 'draft' }]
+    // 定稿：只有 status 变了，content 一模一样。
+    db.draft.status = 'finalized'
+    await refreshChapterFacts([{ id: db.draft.id }], SESSION)
+    const facts = useStageStore.getState().chapterFacts?.byDraft[db.draft.id]
+    expect(facts?.mergeable).toEqual([])
+    expect(facts?.stale).toEqual([{ id: 9, reason: 'finalized' }])
+  })
+
+  it('正文确实改过时仍是 edited（不能因为新增 finalized 就把这条放松）', async () => {
+    db.revisions = [{ id: 9, status: 'pending', updatedAt: '2026-10-13 20:00:02',
+      sourceContent: db.draft.content, sourceStatus: 'draft' }]
+    db.draft.content = '雨从傍晚开始就没有停过。作者后来补的一句。'
+    await refreshChapterFacts([{ id: db.draft.id }], SESSION)
+    expect(useStageStore.getState().chapterFacts?.byDraft[db.draft.id]?.stale)
+      .toEqual([{ id: 9, reason: 'edited' }])
   })
 
   it('旧修稿没有记下生成时的源稿：同样过期，原因是 unsourced', async () => {

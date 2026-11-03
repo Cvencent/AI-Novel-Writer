@@ -12,7 +12,7 @@ import {
   type FrozenDraftSourceIdentity,
 } from '../../services/workflows/chapter-workflow'
 import { getPendingRevisions, getReviewsForVersion, type ReviewEntry, type RevisionEntry } from '../../services/draft-index'
-import { isRevisionSourceCurrent, refreshChapterFacts } from '../../stores/navigation/chapter-facts'
+import { staleRevisionReason, refreshChapterFacts } from '../../stores/navigation/chapter-facts'
 import { readDraftBody } from '../../stores/draft-store'
 import { ipc } from '../../services/ipc-client'
 import { retryFinalizationPublication } from '../../services/finalization-client'
@@ -474,17 +474,25 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
     }
 
     const source = revision.sourceDraft
-    const staleReason = !source
+    // 按原因说准（issue #126）：定稿只改稿状态、正文逐字未变，不能说成
+    // 「当前草稿已不是生成时源稿」——作者会去找一个不存在的正文改动。
+    const staleKind = staleRevisionReason(source, { ...meta, status: currentTarget.draftStatus ?? meta.status, content: currentSavedContent })
+    const staleReason = staleKind === 'unsourced'
       ? text(
           '旧修订稿缺少生成时源稿，修订仍可查看但不能合并。',
           'This legacy revision has no generation source. It remains viewable but cannot be merged.',
         )
-      : !isRevisionSourceCurrent(source, { ...meta, status: currentTarget.draftStatus ?? meta.status, content: currentSavedContent })
+      : staleKind === 'finalized'
         ? text(
-            '当前草稿已不是该修订稿的生成时源稿，修订仍可查看但不能合并。',
-            'The current draft no longer matches this revision’s generation source. It remains viewable but cannot be merged.',
+            '这一章已经定稿，正文没有改动；定稿之后不能再合并修稿，修订仍可查看。',
+            'This chapter is finalized and its text is unchanged; a revision cannot be merged after finalization. It remains viewable.',
           )
-        : null
+        : staleKind === 'edited'
+          ? text(
+              '生成这份修订之后正文又改过，合并会覆盖这些修改；修订仍可查看但不能合并。',
+              'The text changed after this revision was generated, so merging would overwrite those edits. It remains viewable but cannot be merged.',
+            )
+          : null
 
     // 始终展示修订与其真实冻结源；旧行或 stale 源只读，不用当前正文重基。
     setMergeData({

@@ -474,6 +474,10 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
             )}
           >
             {staleReasons.has('edited') && text('修稿生成之后正文又改过，合并会覆盖这些修改。', 'The text changed after the revision was generated, so merging would overwrite those edits. ')}
+            {/* issue #126：定稿只把稿状态从 draft 改成 finalized，正文一个字节没变。
+                旧实现把这一支并进 edited，于是横幅说「正文又改过」——作者回去翻正文
+                找不到任何改动。这一支必须单独说清「已定稿」这件事，而不是赖到正文上。 */}
+            {staleReasons.has('finalized') && text('这一章已经定稿，正文没有改动；定稿之后不能再合并修稿。', 'This chapter is finalized and its text is unchanged; a revision can no longer be merged after finalization. ')}
             {staleReasons.has('unsourced') && text('较早的修稿没有记下生成时依据的正文，无法确认合并会不会覆盖之后的修改。', 'An older revision did not record the text it was generated from, so there is no way to tell whether merging would overwrite later edits. ')}
             {text('可以查看修稿手动摘取，或丢弃后重新修稿。', 'View it to copy parts by hand, or discard it and revise again.')}
           </Notice>

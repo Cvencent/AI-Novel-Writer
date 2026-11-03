@@ -377,6 +377,24 @@ describe('流程脊与单章视图同一个阶段', () => {
     expect(backend.writes('db:revision-mark-discarded').map(args => args[0])).toEqual([revision.id])
   })
 
+  /**
+   * issue #126：「起草 → 修稿 → 定稿」是长篇里很常见的顺序，而定稿只把稿状态
+   * 从 draft 改成 finalized，正文一个字节没变。旧实现把这一支并进 edited，
+   * 横幅就说「修稿生成之后正文又改过」——作者翻正文找不到任何改动。
+   */
+  it('修稿还没合并就定稿：正文没变，提示说「已定稿」而不是「正文又改过」', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    backend.addReview(draft)
+    backend.addRevision(draft)
+    // 定稿：只改稿状态，正文与修稿生成时的冻结源稿逐字相同。
+    draft.status = 'finalized'
+    await mountWithSpine()
+    await openDraft(draft.id)
+    await expect.element(page.getByText('有 1 份修稿不能再合并')).toBeVisible()
+    await expect.element(page.getByText('这一章已经定稿，正文没有改动；定稿之后不能再合并修稿。可以查看修稿手动摘取，或丢弃后重新修稿。')).toBeVisible()
+    await expect.element(page.getByText('修稿生成之后正文又改过，合并会覆盖这些修改。可以查看修稿手动摘取，或丢弃后重新修稿。')).not.toBeInTheDocument()
+  })
+
   it('旧修稿没有记下生成时的源稿：同样不能合并，提示说的是没有源稿记录，不说正文改过', async () => {
     const draft = backend.addDraft({ status: 'draft' })
     backend.addRevision(draft).source = null

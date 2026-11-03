@@ -51,8 +51,10 @@ export default function MergeView({ data, versionLabel, recheck, onComplete, onL
         <Button variant="primary" disabled={busy || Boolean(data.staleReason)} onClick={() => void complete()}>
           <Check size={15} aria-hidden />{text('完成合并', 'Finish merge')}
         </Button>
-        <Button variant="secondary" disabled={busy} onClick={() => merge.chooseAll('original')}>{text('全部用原稿', 'Use all original')}</Button>
-        <Button variant="secondary" disabled={busy} onClick={() => merge.chooseAll('revised')}>{text('全部用修稿', 'Use all revision')}</Button>
+        {/* issue #126：这份修稿不能合并时，「全部用原稿 / 全部用修稿」点了也没有出口
+            （onComplete 被 staleReason 拦着）——必须一起禁用，别让作者以为自己漏了哪一步。 */}
+        <Button variant="secondary" disabled={busy || Boolean(data.staleReason)} onClick={() => merge.chooseAll('original')}>{text('全部用原稿', 'Use all original')}</Button>
+        <Button variant="secondary" disabled={busy || Boolean(data.staleReason)} onClick={() => merge.chooseAll('revised')}>{text('全部用修稿', 'Use all revision')}</Button>
         <Button variant="text" disabled={busy} onClick={onLater}>{text('稍后再合并', 'Merge later')}</Button>
         <span className="stage-ch-hint" role="status">
           {text(
