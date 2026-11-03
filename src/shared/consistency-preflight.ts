@@ -23,6 +23,7 @@ import {
 import {
   chapterEndingProfile,
   closingLabelConflicts,
+  pendingLandingConvergence,
   ultimatumStreak,
   type ChapterEndingProfile,
 } from './chapter-ending'
@@ -831,6 +832,53 @@ export function findUltimatumStreak(input: ChapterEndingStreakInput): Consistenc
     suggestion: {
       zhCN: `换一种收法。可用的落幅：物件/动作收尾（把态度写在动作里）、留白（停在未说出口的话上）、切到另一条线、把决定留到下一章开头再生效。若这一章确实需要一句狠话，至少让它不是末句——后面再落一笔别的。`,
       enUS: `Close differently: end on an object or an action that carries the attitude, leave a beat unsaid, cut to another thread, or let the decision land at the start of the next chapter. If this chapter truly needs the hard line, at least do not make it the final sentence — land something else after it.`,
+    },
+  }]
+}
+
+/**
+ * 末句落点收敛：连续多章收在「一件物 + 未完结标记 + 没有人」上（issue #111）。
+ *
+ * 与 #66 是两条不同的轴，而且样本不重叠：#66 管**语用**（末句是不是通牒式台词），
+ * 本条管**形态**（末句是不是一条无人称的未完结叙述句）。本书 #66 集中在 ch15–27、
+ * 本条集中在 ch36–47——`chapterEndingProfile` 那两个字段对命中的 6 章取同一个值，
+ * 一个字都区分不出来。
+ *
+ * 判据（结构性，见 `chapter-ending.ts` 的 `endingLandingOf`）：不是台词 + 句首没有人 + 含未完结标记。
+ * 物每次都换（墨盒／舵轮／茶碗盖／名单／灯壳里的一卷），**句式一次没换**。
+ * 窗口与阈值（W=10 / K=4）由语料标定：本书后段 10 章 4–6 章命中、前段 35 章仅 2 章。
+ */
+export function findPendingLandingConvergence(input: {
+  chapters: ReadonlyArray<{ chapterNumber: number; content: string }>
+  castNames: readonly string[]
+  currentChapter: number
+}): ConsistencyFinding[] {
+  const hit = pendingLandingConvergence(input.chapters.map(chapter => ({
+    chapterNumber: chapter.chapterNumber,
+    content: chapter.content,
+    castNames: input.castNames,
+  })))
+  if (!hit) return []
+  const windowChapters = hit.window.map(item => item.chapterNumber)
+  const ranges = `${windowChapters[0]}–${windowChapters[windowChapters.length - 1]}`
+  const hitChapters = hit.hits.map(item => item.chapterNumber)
+  const share = Math.round(hitChapters.length / hit.window.length * 100)
+  const samples = hit.hits.slice(-3).map(item => `第${item.chapterNumber}章「${item.lastSentence.slice(0, 36)}」`).join('、')
+  return [{
+    // key 锚在「哪一种落点收敛」上，**不带章号**（#86/#89/#98/#108 的教训：
+    // 末章号随窗口滚动会让 key 每章都变，作者点「我已知」永远关不掉）。
+    stableFactKey: 'chapter-ending:subjectless-pending',
+    severity: 'warning' as const,
+    // 证据落在**已定稿的那几章**里，不是正在写的这一章（issue #79）。
+    sourceChapter: windowChapters[windowChapters.length - 1]!,
+    evidence: `最近 ${hit.window.length} 章（第 ${ranges} 章）里 ${hitChapters.length} 章（${share}%）末句都是「一件物 + 未完结标记 + 没有人」：${samples}`,
+    issue: {
+      zhCN: `最近 ${hit.window.length} 章（第 ${ranges} 章）里有 **${hitChapters.length} 章（${share}%）** 的**最后一句话**是同一个骨架：先定格一件东西，再给它一个「还没结束」的状态，句首不出现人（命中章：${hitChapters.join('、')}）。物每次都换——墨盒、舵轮、茶碗盖、别人包里的名单——但读者合上每一章时听到的节拍是同一个。章末是读者决定「要不要点下一章」的地方：连着这么多章用同一种形式收束，悬念的形式感会盖过内容本身。`,
+      enUS: `${hitChapters.length} of the last ${hit.window.length} chapters (chapters ${ranges}) — ${share}% — close on the same skeleton: park an object, give it an unfinished state, and let no person lead the sentence (chapters ${hitChapters.join(', ')}). The object changes every time — an ink box, a wheel, a lid, a list in someone else's bag — but the beat the reader hears at the end of each chapter is identical. The closing line is where a reader decides whether to tap the next chapter; a dozen chapters closing on the same form makes the shape of suspense eclipse its content.`,
+    },
+    suggestion: {
+      zhCN: `换几种落点交替使用：①**落在人身上**——让视角人物在末句做一个动作或判断（「周叙把封皮压平，起身往舱门走」），把态度写进主体；②**落在台词上**——用一句没说完或没回答的话收（若怕落回 #66 的通牒，就别写成二选一/警告）；③**落在画面上但不带否定**——定格场景，不给「还/仍/只剩/不掉」这类未完结标记（「灯影把库门那道水痕照得发亮」）；④**切断**——直接把决定留到下一章开头再生效。规则是：最近十章的末句落点不得连续落在同一类上。`,
+      enUS: `Alternate the landing: (1) land on a person — end with the viewpoint character making a move or a judgement, putting the attitude in the subject; (2) land on a line of speech — close on something unsaid or unanswered (but avoid the two-way/threat shape, which is issue #66); (3) land on an image without negation — freeze the scene and drop the “still / only left / cannot” marker; (4) cut away — let the decision take effect at the start of the next chapter. Rule: the last-sentence landing must not fall in the same class across ten chapters in a row.`,
     },
   }]
 }

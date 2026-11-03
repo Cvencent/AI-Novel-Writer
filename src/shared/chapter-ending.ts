@@ -102,6 +102,109 @@ export function isUltimatumLine(sentence: string): boolean {
   return ULTIMATUM_PATTERNS.some(pattern => pattern.test(target))
 }
 
+/**
+ * 末句的**落点形态**（issue #111）。
+ *
+ * 前几轮把章末能机器判的那几维都补了：收在不在台词里（#65 标注比对）、
+ * 台词是不是通牒（#66 语用）、连续几章同一种收法（#66 连胜）。但**末句本身长什么样**
+ * 一直没人看——`lastSentence` 字段在调用方只被用来截断展示，从不参与结构判断。
+ *
+ * 实测那本悬疑长篇 49 章定稿：第 36 章之后 6/13 章（46%）的末句收敛成同一个骨架——
+ * **一件物 + 「还／仍／只剩／偏着／贴着」这类未完结标记，句首不出现任何施动者**；
+ * 前 35 章只有 2 章（6%）。六章逐字原文：
+ *
+ *   桌面上只剩一摊黑墨，和那只倒扣的铜墨盒。
+ *   舵轮偏着半圈，没人扶正。
+ *   矮桌上的茶碗盖还在那儿打转。
+ *   蹭不掉。
+ *   底下经手人那一栏，还锁在别人包里。
+ *   灯壳里那一卷贴着掌心，还带着一线潮的凉。
+ *
+ * 物每次都换（墨盒／舵轮／茶碗盖／名单／灯壳里的一卷），**句式一次没换**。
+ * 读者合上每一章时听到的节拍是同一个。
+ *
+ * 判据（结构性、可复算，issue 给的三条）：
+ *   ① 不是台词（不以开引号起头、不以收引号收尾）；
+ *   ② 句首不出现名册角色名、也不以人称代词/不定代词起头（`leadsWithPerson`）；
+ *   ③ 句内含**未完结标记**（`continuesPastSentence`）。
+ *
+ * 分类只用**封闭的功能类**（体标记／持续态／否定补语），不枚举题材词——
+ * 本仓在 #30/#43/#70/#93/#96/#99 反复吃过词表过拟合的亏。
+ * `落在物上 / 落在环境上` 这类细分需要语义理解，粗分类必然出错，故**不细判**。
+ */
+export type EndingLanding = 'subject' | 'subjectless-pending' | 'other'
+
+export interface EndingLandingInput {
+  chapterNumber: number
+  content: string
+  castNames?: readonly string[]
+}
+
+/** 句首施动者：名册角色名，或人称/不定人称代词。 */
+const LEADING_PERSON = /^(?:他|她|我|他们|她们|我们|咱们|两人|两名|众人|自己|有人|没人|彼此|大家|谁)/u
+
+/**
+ * 末句**句首**是不是「人」（issue #111 判据 ②）。
+ *
+ * 只判**句首**，不判「句中是否出现角色名」——后者会把
+ * 「顶缺的伙计睡在温珩隔壁铺」这类**句中只是提到某人**的句子也算成人物落点。
+ * 名的匹配要求**句首逐字相接**（`startsWith`），不做「包含」。
+ *
+ * 于是「温珩刚才站过的地方，木头还是湿的」算**句首有人**（本书第 6 章，判据 ② 不成立、
+ * 于是不进命中集）——与 issue 给的逐章结果一致。句首是名字就不管它在句中作主语还是作定语，
+ * 这一维只回答「读者看到的第一个词是不是一个人」。
+ */
+export function leadsWithPerson(sentence: string, castNames: readonly string[]): boolean {
+  const core = String(sentence ?? '').trim().replace(/^[“「『"]+/u, '')
+  if (!core) return true
+  if (LEADING_PERSON.test(core)) return true
+  return (castNames ?? []).map(name => String(name ?? '').trim()).filter(Boolean)
+    .some(name => core.startsWith(name))
+}
+
+/**
+ * 未完结标记（issue #111 判据 ③）。
+ *
+ * 四个子类，都是**封闭的功能类**（体标记／持续态／剩余／否定补语），不枚举题材词——
+ * 本仓在 #30/#43/#70/#93/#96/#99 反复吃过词表过拟合的亏。
+ *
+ *   - 持续体：`仍/仍旧/仍然/依旧/依然`，以及**裸「还」**（还没／还在／还是／还剩／还锁在…）；
+ *   - 附着态：`X着`（贴着／锁着／倒扣着／硌着…），但**排除介词性**的「着」——
+ *     就着／借着／趁着／跟着／沿／冲／对／随／靠／依／任／绕（实测 0202 第 15 章
+ *     「就着晨光，他把那道印子看了很久」正是在这里误命中）；
+ *   - 剩余：`只剩／还剩／仅剩／余下`；
+ *   - 否定补语：`不掉／不住／不清…` 与 `想不起／说不上／记不清`。
+ *
+ * 裸「还」**排除比较框架**（同句含「比」）：本书第 3 章「换锁的人来得比他回船**还**快」
+ * 是「比…还…」的比较，不是未完结状态——否则这一条会把比较句整片捞进来。
+ *
+ * 刻意**不收**单字「没」「不」：它们撞普通叙事语域（本书前 35 章大量「没有动／没答」
+ * 「周叙蹲着，没有动」），收了会把整本书判成收敛。
+ */
+const PENDING_CONTINUED = /仍|仍旧|仍然|依旧|依然/u
+const PENDING_BARE_STILL = /还/u
+const PENDING_DURATIVE = /(?<![就借趁跟沿冲对着随靠依任绕])着(?![的地得])/u
+const PENDING_REMAINDER = /(?:只|还|仅|就)?剩|余下/u
+const PENDING_NEGATIVE = /不[掉住起了清动成来去]|想不起|说不上|记不清/u
+
+export function continuesPastSentence(sentence: string): boolean {
+  const text = String(sentence ?? '')
+  return PENDING_CONTINUED.test(text)
+    // 裸「还」在「比…还…」里是比较级，不是「仍旧」。
+    || (PENDING_BARE_STILL.test(text) && !/比/u.test(text))
+    || PENDING_DURATIVE.test(text) || PENDING_REMAINDER.test(text) || PENDING_NEGATIVE.test(text)
+}
+
+/** 末句落点分类（issue #111）。 */
+export function endingLandingOf(input: EndingLandingInput): EndingLanding {
+  const sentences = splitProseSentences(closingParagraph(input.content))
+  const lastSentence = (sentences.at(-1) ?? '').trim()
+  if (!lastSentence) return 'other'
+  if (closesInsideDialogue(lastSentence)) return 'other'
+  if (leadsWithPerson(lastSentence, input.castNames ?? [])) return 'subject'
+  return continuesPastSentence(lastSentence) ? 'subjectless-pending' : 'other'
+}
+
 /** 提取一章的收束画像。 */
 export function chapterEndingProfile(chapterNumber: number, content: string): ChapterEndingProfile {
   const sentences = splitProseSentences(closingParagraph(content))
@@ -158,6 +261,64 @@ export function ultimatumStreak(
     streak.push(profile)
   }
   return streak.length >= minStreak ? streak : []
+}
+
+/**
+ * 末句落点收敛（issue #111）。
+ *
+ * 与 #66 是两条不同的轴：#66 管**末句的语用**（是不是通牒式台词），本条管**末句的形态**
+ * ——一条「一件物 + 未完结标记 + 没有人」的叙述句。#66 命中时末句必是台词，
+ * 本条命中时末句必不是台词，两条样本不重叠（本书 #66 集中在 ch15–27、本条集中在 ch36–47）。
+ *
+ * 判据取**滑动窗口**而不是**末尾连胜**：实测收敛不是一条不间断的链，而是
+ * 「最近 10 章里有 4 章」这种**密度**（ch44/47 命中、中间夹着别的写法）。
+ * 用连胜会漏掉真实形态——#66 用连胜是因为「每章都有人撂狠话」本身是连续的，
+ * 而「每章都落在一件没做完的东西上」是稀疏的。
+ *
+ * 阈值 W=10 / K=4 由真实语料标定：本书后段 10 章 4–6 章命中，前段 35 章只有 2 章，
+ * 前段不响、后段稳定报出。窗口内**章号必须连续**（同 #66/#71，中间夹没导入的章不算一条链）。
+ */
+export const LANDING_WINDOW = 10
+export const LANDING_MIN_HITS = 4
+
+export interface LandingHit {
+  /** 窗口内的章（升序），供调用方渲染章号区间。 */
+  window: Array<{ chapterNumber: number; landing: EndingLanding; lastSentence: string }>
+  /** 窗口内命中 `subjectless-pending` 的章（升序）。 */
+  hits: Array<{ chapterNumber: number; lastSentence: string }>
+}
+
+export function pendingLandingConvergence(
+  inputs: readonly EndingLandingInput[],
+  window = LANDING_WINDOW,
+  minHits = LANDING_MIN_HITS,
+): LandingHit | null {
+  const usable = inputs
+    .filter(item => Number.isSafeInteger(item.chapterNumber) && String(item.content ?? '').trim())
+    .map(item => ({
+      chapterNumber: item.chapterNumber,
+      content: String(item.content),
+      castNames: item.castNames ?? [],
+    }))
+    .sort((left, right) => left.chapterNumber - right.chapterNumber)
+    .map(item => ({
+      chapterNumber: item.chapterNumber,
+      landing: endingLandingOf(item),
+      lastSentence: chapterEndingProfile(item.chapterNumber, item.content).lastSentence,
+    }))
+  if (usable.length < window) return null
+  // 取**最近**那一段（与 #71 章首收敛同一做法）：收敛是「当下这几章」的形态。
+  const slice = usable.slice(-window)
+  // 章号必须连续：中间夹着没导入的章不算一条链（同 #66/#71）。
+  for (let index = 1; index < slice.length; index += 1) {
+    if (slice[index]!.chapterNumber !== slice[index - 1]!.chapterNumber + 1) return null
+  }
+  const hits = slice.filter(item => item.landing === 'subjectless-pending')
+  if (hits.length < minHits) return null
+  return {
+    window: slice.map(item => ({ chapterNumber: item.chapterNumber, landing: item.landing, lastSentence: item.lastSentence })),
+    hits: hits.map(item => ({ chapterNumber: item.chapterNumber, lastSentence: item.lastSentence })),
+  }
 }
 
 /**

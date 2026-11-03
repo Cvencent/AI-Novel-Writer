@@ -25,6 +25,7 @@
  *  15. 章节标题「同题加尾」复用（#110）——「压印」/「压印的」、「无人认领」/「无人认领，一并化浆」
  *  16. 能力触发条件被静默绕过（#100）——世界观写死的硬限制在正文里失效且从未写成一次发现
  *  17. 笔迹特征自相矛盾（#97）——同一个书写者被写成两套互斥特征
+ *  18. 末句落点收敛（#111）——末句连续落在「物 + 未完结态 + 无人称」上（#66 管语用，本条管形态）
  *
  * 与审稿路径的差别只有一处，而且是刻意的：审稿把**本章正文**也放进样本
  * （那正是审稿的对象），而写前预检喂进来的全是**已定稿章**——因为要写的那一章
@@ -42,6 +43,7 @@ import {
   abilityBudgetFindings,
   assertionReversalFindings,
   findClosingLabelConflicts,
+  findPendingLandingConvergence,
   findUltimatumStreak,
   findUndeliveredForeshadowing,
   numberingFindings,
@@ -179,6 +181,14 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
     currentChapter: nextChapter,
   })
 
+  // 末句落点收敛（issue #111）：末句连续落在「物 + 未完结态 + 无人称」上。
+  // 与 #66 同一位置轴、不同维度（#66 语用 / 本条形态），窗口取 10 章（判据自带阈值）。
+  const pendingLanding = findPendingLandingConvergence({
+    chapters,
+    castNames,
+    currentChapter: nextChapter,
+  })
+
   // 跨章断言反转（#52）：历史回看——在已定稿章之间找「后一章否定了前一章的结论」。
   // 逐对做是 O(n²)，所以只用**最近几章当「后章」**：久远的章对早已被作者接受，
   // 而且报告关心的正是「后面写的那一章有没有跟前面对不上」。
@@ -253,7 +263,7 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   const handwritingConflicts = castNames.length === 0 ? [] : findHandwritingConflictFindings({ chapters, castNames })
 
   return [...closingLabel, ...numbering, ...ability, ...repetition, ...undelivered,
-    ...ultimatum, ...reversal, ...undatedStreak, ...proseFlavor, ...positionalAxes, ...glyphRadical,
+    ...ultimatum, ...pendingLanding, ...reversal, ...undatedStreak, ...proseFlavor, ...positionalAxes, ...glyphRadical,
     ...castNameDrift, ...deadlineSettlement, ...repeatedRevocation, ...duplicateTitles,
     ...abilityLimitBypass, ...handwritingConflicts]
 }

@@ -7,6 +7,7 @@ import {
   findLossRestatementFindings,
   findOpeningShapeConvergence,
   findParagraphOpenerFindings,
+  findPendingLandingConvergence,
   findPropHandoverFindings,
   findPropRevivalFindings,
   findRepeatPropTerminationFindings,
@@ -65,6 +66,20 @@ const BLUEPRINTS = [
   { chapterNumber: 3, keyEvents: '★【收束：物件落幅】周叙合上账本。' },
 ]
 
+/**
+ * issue #111：末句收敛需要 10 章窗口里 ≥4 章的**末句**都写成
+ * 「物 + 未完结标记 + 句首没有人」。SAMPLE_BOOK 的末句全是「穆敬堂调东码头了。」（有人名），
+ * 一条都命中不了，拿它测这条判据会是**空转**（本仓吃过空转测试的亏）——所以单独造一份。
+ */
+const PENDING_LANDING_BOOK: ReadonlyArray<{ chapterNumber: number; content: string }> = Array.from(
+  { length: 12 },
+  (_, index) => ch(index + 1, [
+    `第${index + 1}章：周叙蹲在铺位前核舱。`,
+    '他把存根折好塞进内襟。',
+    index % 3 === 0 ? '桌面上只剩一摊黑墨。' : (index % 3 === 1 ? '舵轮偏着半圈，没人扶正。' : '红还没洗掉。'),
+  ].join('\n\n')),
+)
+
 /** 跑一遍「写前预检」里能离线跑的全部判据。 */
 function allFindings(currentChapter: number): ConsistencyFinding[] {
   const cast = [
@@ -83,6 +98,7 @@ function allFindings(currentChapter: number): ConsistencyFinding[] {
       threads: [],
     }),
     ...findUltimatumStreak({ chapters: SAMPLE_BOOK, currentChapter }),
+    ...findPendingLandingConvergence({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter }),
     ...findOpeningShapeConvergence({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter }),
     ...findDialogueOpenerConvergence({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter }),
     ...findRepeatPropTerminationFindings({ chapters: SAMPLE_BOOK, currentChapter }),
@@ -124,6 +140,7 @@ describe('no preflight key may change when only currentChapter advances (issue #
         threads: [],
       })],
       ['findUltimatumStreak', n => findUltimatumStreak({ chapters: SAMPLE_BOOK, currentChapter: n })],
+      ['findPendingLandingConvergence', n => findPendingLandingConvergence({ chapters: PENDING_LANDING_BOOK, castNames: CAST, currentChapter: n })],
       ['findOpeningShapeConvergence', n => findOpeningShapeConvergence({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter: n })],
       ['findDialogueOpenerConvergence', n => findDialogueOpenerConvergence({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter: n })],
       ['findRepeatPropTerminationFindings', n => findRepeatPropTerminationFindings({ chapters: SAMPLE_BOOK, currentChapter: n })],

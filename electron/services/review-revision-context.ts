@@ -12,6 +12,7 @@ import {
   abilityBudgetFindings,
   assertionReversalFindings,
   findClosingLabelConflicts,
+  findPendingLandingConvergence,
   findUltimatumStreak,
   numberingFindings,
 } from '../../src/shared/consistency-preflight'
@@ -242,6 +243,14 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
         ...findUltimatumStreak({
           chapters: [...history.slice(-4).map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
             { chapterNumber: source.chapterNumber, content: source.content }],
+          currentChapter: source.chapterNumber,
+        }),
+        // 末句落点收敛（issue #111）：末句连续落在「物 + 未完结态 + 无人称」上。
+        // 与 #66 同位置轴、不同维度（#66 管语用、本条管形态）。样本 = 最近定稿 + 本章。
+        ...findPendingLandingConvergence({
+          chapters: [...history.map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
+            { chapterNumber: source.chapterNumber, content: source.content }],
+          castNames: authorCards.map(card => card.name),
           currentChapter: source.chapterNumber,
         }),
         // 字形断言与偏旁实际部首不符（issue #99）：第 45 章「半个“温”字……立人旁」、
