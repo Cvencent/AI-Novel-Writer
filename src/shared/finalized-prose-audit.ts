@@ -26,6 +26,7 @@
  *  16. 能力触发条件被静默绕过（#100）——世界观写死的硬限制在正文里失效且从未写成一次发现
  *  17. 笔迹特征自相矛盾（#97）——同一个书写者被写成两套互斥特征
  *  18. 末句落点收敛（#111）——末句连续落在「物 + 未完结态 + 无人称」上（#66 管语用，本条管形态）
+ *  19. 句长单向收敛（#114）——最近窗口的叙述句均长比开篇基准低一截（与 #93 的上限判据同层、方向相反）
  *
  * 与审稿路径的差别只有一处，而且是刻意的：审稿把**本章正文**也放进样本
  * （那正是审稿的对象），而写前预检喂进来的全是**已定稿章**——因为要写的那一章
@@ -50,7 +51,7 @@ import {
 } from './consistency-preflight'
 import { proseRepetitionFindings } from './prose-repetition'
 // 「AI 味」的可机器判子集（issue #93）：超配额、段尾总结腔、平均句长。
-import { proseFlavorFindings } from './prose-flavor'
+import { proseFlavorDriftFindings, proseFlavorFindings } from './prose-flavor'
 // 段落起手（#94）与物件过手（#95）：同一类「跨章看同一种写法」的位置轴补位。
 import { findParagraphOpenerFindings, findPropHandoverFindings } from './consistency-preflight'
 import { findUndatedStreakFindings } from './chapter-time-anchor'
@@ -201,10 +202,14 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
     return auditAssertionReversals(before, chapter, castNames)
   })
 
-  // 「AI 味」配额（issue #93）：比喻／生理反应／段尾总结／平均句长。
+  // 「AI 味」配额（issue #93）：比喻／生理反应／段尾总结／句长。
   // 用的是**起草清单里那套配额原文**，于是起草侧禁的与审稿侧报的是同一件事。
-  // 只喂单章即可判定（配额是章内的），样本取 auditSample。
-  const proseFlavor = proseFlavorFindings(auditSample, nextChapter, castNames)
+  // 句长这一轴既有**章内**判据（quotaSample，配额是章内的），也有**跨章趋势**
+  // （issue #114：单章读不出的单向收敛，需要全量已定稿章当基准序列）。
+  const proseFlavor = [
+    ...proseFlavorFindings(auditSample, nextChapter, castNames),
+    ...proseFlavorDriftFindings(chapters),
+  ]
 
   // 段落起手固定化（issue #94）与物件过手动作固定化（issue #95）：
   // 都是「跨章看同一种写法」的位置轴，与上面几项同一出口。

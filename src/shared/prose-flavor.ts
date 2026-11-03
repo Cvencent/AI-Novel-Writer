@@ -70,7 +70,38 @@ export const AI_FLAVOR_QUOTAS = Object.freeze({
   motifPerChapter: 2,
   /** 意象密度：同一实词在本章的平均出现间隔（字/次）不得小于它。 */
   motifDensityChars: 120,
+  /**
+   * 句长**下限**（issue #114）：起草清单原来只封上限（≤22 字），模型逐章过拟合这一个
+   * 方向，50 章之后叙述句退化成一串 4–6 字的短拍（实测那本书章均叙述句长 16.0 → 12.5 字、
+   * ≥25 字的叙述句占比 19.8% → 2.4%）。
+   *
+   * 取 12 字：本书后段**章均**叙述句长最低到 9.9 字（ch48），前段稳定在 12.3 以上；
+   * 低于 12 字意味着「这一章几乎没有成句的叙述」。与上限 22 字一起构成**双边**约束。
+   */
+  minAverageSentenceChars: 12,
+  /** 长句能力下限：每 5 段至少 1 个 ≥25 字的成句叙述（与「每 5 段 1 个 ≤12 字短句」对偶）。 */
+  longSentenceChars: 25,
+  /** 跨章趋势：最近窗口的叙述句均长比开篇基准低多少字即报（issue #114）。 */
+  driftDropChars: 2.5,
+  /** 跨章趋势的相对降幅门槛（与绝对门槛同时满足才报，避免小基数误报）。 */
+  driftDropRatio: 0.15,
 })
+
+/**
+ * 起草清单「句长与节奏」那一条的**单一事实源**（issue #114）。
+ *
+ * 原文只封上限，模型照它逐章把句子拆短；判据层（`AI_FLAVOR_QUOTAS`）当时也只有上限，
+ * 两边天然同向。这里把清单口径收成一处，由模板插值引用，避免清单改了判据不动。
+ * ⚠️ 与 `AI_FLAVOR_QUOTAS` 是**同一组数字**，不要再各写一遍。
+ *
+ * 英文侧（`prompt-language.ts` 的 EN_US 模板）原本**就没有**这一条（起草清单是中文模板专有），
+ * 所以不另做英文常量——加了也是死代码。
+ */
+export const SENTENCE_RHYTHM_RULE_ZH_CN = Object.freeze(
+  `句长与节奏（**双边**）：平均句长 12–22 字；每 5 个自然段至少 1 个 12 字以内的短句或纯动作句，`
+  + `也至少 1 个 25 字以上的成句叙述；不得连续 3 句都超过 35 字，也不得连续 3 句都在 12 字以内。`
+  + `解释性段落单段不超过 3 句。`,
+)
 
 /**
  * 虚词／功能字（**封闭语法类**，不是开放词表）。
@@ -270,6 +301,28 @@ function proseParagraphs(content: string): string[] {
   return String(content ?? '').split(/\n\s*\n/u).map(block => block.trim()).filter(Boolean)
 }
 
+/** 去掉对白后的正文（issue #114：句长要看**叙述**，台词的长短由说话人决定）。 */
+function withoutQuotedDialogue(content: string): string {
+  return String(content ?? '').replace(/[“「『"][^”」』"]*[”」』"]/gu, '')
+}
+
+/**
+ * 叙述句（去掉对白、按句末标点切、只留 ≥1 字的实在句）。
+ *
+ * 与 `proseSentences` 的区别有两点，都是 issue #114 标定出来的：①**剔掉引号内的台词**
+ * （台词的句长由人物决定，不是叙述节奏）；②按**句末标点**切而不是按所有标点切
+ * （`proseSentences` 用字符类也断在逗号上，会把「他说，这事不急。」切成两句，口径偏短）。
+ * ⚠️ 长度按**去标点去空白后的字数**算——「他推开门，走了进去。」是 8 字而不是 10 字。
+ */
+export function narrativeSentenceLengths(content: string): number[] {
+  const lengths: number[] = []
+  for (const piece of withoutQuotedDialogue(content).split(/(?<=[。！？])/u)) {
+    const plain = piece.replace(/[\s。！？…、；：，,.!?;:"'“”「」『』—\-]/gu, '')
+    if (plain) lengths.push(plain.length)
+  }
+  return lengths
+}
+
 export interface ProseFlavorMeasurement {
   chapterNumber: number
   metaphor: number
@@ -277,6 +330,14 @@ export interface ProseFlavorMeasurement {
   /** 命中段尾总结腔的段落序号（从 1 起）与原文片段。 */
   summaryTails: Array<{ paragraphIndex: number, excerpt: string }>
   averageSentenceChars: number | null
+  /** 叙述句均长（去掉对白；issue #114 的句长判据与跨章趋势都用它）。 */
+  narrativeAverageChars: number | null
+  /** 本章叙述句总数（趋势判据要按章聚合，不是按句平均）。 */
+  narrativeSentenceCount: number
+  /** 本章 ≥25 字的叙述句数（长句能力下限用）。 */
+  longNarrativeSentences: number
+  /** 本章 ≤12 字的叙述句数（「全短句」形态用）。 */
+  shortNarrativeSentences: number
 }
 
 /**
@@ -303,6 +364,7 @@ export function measureProseFlavor(chapter: ProseFlavorChapter): ProseFlavorMeas
     if (followingSentence.length > 0) return []
     return [{ paragraphIndex: index + 1, excerpt: paragraph.slice(0, 60) }]
   })
+  const narrativeLengths = narrativeSentenceLengths(content)
   return {
     chapterNumber: chapter.chapterNumber,
     metaphor: countOccurrences(content, METAPHOR_CONNECTORS),
@@ -310,8 +372,17 @@ export function measureProseFlavor(chapter: ProseFlavorChapter): ProseFlavorMeas
     summaryTails,
     averageSentenceChars: sentences.length === 0 ? null
       : sentences.reduce((sum, sentence) => sum + sentence.length, 0) / sentences.length,
+    narrativeAverageChars: narrativeLengths.length === 0 ? null
+      : narrativeLengths.reduce((sum, length) => sum + length, 0) / narrativeLengths.length,
+    narrativeSentenceCount: narrativeLengths.length,
+    longNarrativeSentences: narrativeLengths.filter(length => length >= AI_FLAVOR_QUOTAS.longSentenceChars).length,
+    shortNarrativeSentences: narrativeLengths.filter(length => length <= 12).length,
   }
 }
+
+/** 跨章趋势的**开篇基准**章数与**最近窗口**章数（issue #114）。 */
+export const DRIFT_BASE_CHAPTERS = 10
+export const DRIFT_WINDOW = 10
 
 /**
  * 逐章判「AI 味」配额（issue #93）。
@@ -415,12 +486,97 @@ export function proseFlavorFindings(
           enUS: `Average sentence length is ${measurement.averageSentenceChars.toFixed(1)} characters, above the declared ${AI_FLAVOR_QUOTAS.averageSentenceChars}. A long average usually means the sentences are all doing the same job (informing, explaining, setting up) with too few short or pure-action sentences to break the rhythm.`,
         },
         suggestion: {
-          zhCN: `把解释性段落拆短：每 5 个自然段里放 1 个 12 字以内的短句或纯动作句（清单的原话）。先找那些「虽然／因此／于是」开头的句子——它们通常可以砍掉前半截。`,
-          enUS: `Split the explanatory paragraphs: keep one sentence of twelve characters or fewer, or one pure-action sentence, in every five paragraphs. Start with the ones opening on "although / therefore / so" — they usually lose their first half.`,
+          zhCN: `把解释性段落拆短：每 5 个自然段里放 1 个 12 字以内的短句或纯动作句（清单的原话）。先找那些「虽然／因此／于是」开头的句子——它们通常可以砍掉前半截。⚠️ 但**别只朝短的方向改**：拆短的同时要保留成句的叙述（见同章「句长只短不长」的提醒），否则会从「太长」滑到「全是短句」。`,
+          enUS: `Split the explanatory paragraphs: keep one sentence of twelve characters or fewer, or one pure-action sentence, in every five paragraphs. Start with the ones opening on "although / therefore / so" — they usually lose their first half. But do not only shorten: keep fully-formed narration alongside (see the same chapter's "sentences only getting shorter" note), or you will slide from "too long" into "all short".`,
+        },
+      })
+    }
+    // 句长**下限**（issue #114）：清单原来只封上限，模型逐章过拟合这一个方向，
+    // 后半程叙述句退化成一串短拍。单章读不出来（每章都在「正常」区间），
+    // 所以这里只判**章内极端形态**，「跨章单调下滑」交给 proseFlavorDriftFindings。
+    if (measurement.narrativeAverageChars !== null
+      && measurement.narrativeSentenceCount >= 8
+      && measurement.narrativeAverageChars < AI_FLAVOR_QUOTAS.minAverageSentenceChars) {
+      findings.push({
+        stableFactKey: `prose-flavor:sentence-length-floor:${chapterNumber}`,
+        severity: 'warning',
+        sourceChapter: chapterNumber,
+        evidence: `第${chapterNumber}章叙述句均长 ${measurement.narrativeAverageChars.toFixed(1)} 字（去对白，${measurement.narrativeSentenceCount} 句），低于清单下限 ${AI_FLAVOR_QUOTAS.minAverageSentenceChars} 字；≥25 字的成句叙述 ${measurement.longNarrativeSentences} 句`,
+        issue: {
+          zhCN: `本章**叙述句**均长只有 **${measurement.narrativeAverageChars.toFixed(1)} 字**（去掉对白后 ${measurement.narrativeSentenceCount} 句），低于清单下限 ${AI_FLAVOR_QUOTAS.minAverageSentenceChars} 字；其中 ≥25 字的成句叙述只有 ${measurement.longNarrativeSentences} 句。清单原来只写了「平均不超过 22 字」，于是模型逐章只朝短的方向改——到后半程句子碎成一串 4–6 字的短拍，读者拿到的是连续的信息点，而不是成句的叙述（该把一件道具怎么放、一层因果怎么接铺开的那些长句都不见了）。`,
+          enUS: `Narration averages only ${measurement.narrativeAverageChars.toFixed(1)} characters here (${measurement.narrativeSentenceCount} sentences excluding dialogue), below the declared floor of ${AI_FLAVOR_QUOTAS.minAverageSentenceChars}; only ${measurement.longNarrativeSentences} sentence(s) reach ${AI_FLAVOR_QUOTAS.longSentenceChars} characters. The list only ever capped the average at 22, so the model has been shortening chapter after chapter — by the later chapters the prose is a run of four-to-six-character beats, giving readers a string of information points instead of formed narration.`,
+        },
+        suggestion: {
+          zhCN: `把这一章里**该铺开的**那几处写成成句的叙述：一件道具怎么放、一个人怎么想、一层因果怎么接——这些本来就该是长句，不该拆成一串短拍。目标是**长短交替**：短句留给动作与冲击，长句留给交代与铺陈。规则是：不得连续 3 句都 ≤12 字；每 5 段至少 1 个 ≥25 字的成句叙述。`,
+          enUS: `Write the passages that genuinely need room as formed sentences: how an object is placed, how someone thinks, how one cause connects to the next — these belong in longer lines, not chopped into beats. Aim for alternation: short lines for action and impact, longer ones for exposition. Rule: never three consecutive sentences at twelve characters or fewer, and keep at least one sentence of ${AI_FLAVOR_QUOTAS.longSentenceChars}+ characters in every five paragraphs.`,
         },
       })
     }
   }
+  // ⚠️ **跨章趋势不在这里判**（issue #114）：本函数拿到的通常是**最近 12 章**的样本，
+  // 而趋势需要「开篇基准（10 章）+ 最近窗口（10 章）」——样本不足时它**恒不触发**
+  // （本仓在设计规则⑪吃过「接了检测≠检测会响」）。趋势判据单独导出
+  // `proseFlavorDriftFindings`，由调用方喂**全量已定稿章**。
   void currentChapter
   return findings
+}
+
+/**
+ * 跨章趋势：最近窗口的**叙述句均长**比开篇基准低一截（issue #114）。
+ *
+ * 为什么按**章均**而不是按句：判据要回答的是「这几章的节奏变了没有」，
+ * 而不是「这一句短不短」——按句平均会被单章内的长短交替抹平，正好绕过这个现象。
+ *
+ * 为什么和「上限」判据分开：上限（`averageSentenceChars > 22`）是**单章阈值**，
+ * 本书章均最长 18.3 字，一次都不会触发；下限（`< 12`）也只在极端章触发。
+ * 真正的形态是**序列**：前 25 章 16.0 字 → 后 25 章 12.5 字（与章号相关 −0.67）。
+ *
+ * 判据（三条同时成立，全部用**同一本书自己**的正文，不需要外部人类基线）：
+ *   ① 开篇基准 − 最近 W 章均长 ≥ `driftDropChars`（2.5 字，绝对降幅）；
+ *   ② 相对降幅 ≥ `driftDropRatio`（15%）；
+ *   ③ 最近窗口均长 ≤ `driftFloorChars`。
+ *
+ * 标定（两本真实语料）：sim2 从 ch30 起稳定报出（开篇 16.1 → 近期 13.6），
+ * 0202 从 ch22 起报出；两本的前 20 章都**不报**（那些章还没有可比的「开篇基准」被拉低）。
+ */
+export function proseFlavorDriftFindings(
+  chapters: readonly ProseFlavorChapter[],
+): ConsistencyFinding[] {
+  const metrics = chapters
+    .filter(chapter => Number.isSafeInteger(chapter.chapterNumber) && String(chapter.content ?? '').trim())
+    .map(chapter => measureProseFlavor(chapter))
+    .filter(metric => metric.narrativeAverageChars !== null && metric.narrativeSentenceCount > 0)
+  const base = metrics.slice(0, DRIFT_BASE_CHAPTERS)
+  const baseChars = base.reduce((sum, metric) => sum + metric.narrativeSentenceCount * (metric.narrativeAverageChars ?? 0), 0)
+  const baseCount = base.reduce((sum, metric) => sum + metric.narrativeSentenceCount, 0)
+  if (base.length < DRIFT_BASE_CHAPTERS || baseCount === 0 || metrics.length < DRIFT_BASE_CHAPTERS + DRIFT_WINDOW) return []
+  const baseline = baseChars / baseCount
+  const recent = metrics.slice(-DRIFT_WINDOW)
+  const recentChars = recent.reduce((sum, metric) => sum + metric.narrativeSentenceCount * (metric.narrativeAverageChars ?? 0), 0)
+  const recentCount = recent.reduce((sum, metric) => sum + metric.narrativeSentenceCount, 0)
+  if (recentCount === 0) return []
+  const recentAverage = recentChars / recentCount
+  const drop = baseline - recentAverage
+  const ratio = baseline > 0 ? drop / baseline : 0
+  if (drop < AI_FLAVOR_QUOTAS.driftDropChars || ratio < AI_FLAVOR_QUOTAS.driftDropRatio) return []
+  const longShare = recent.reduce((sum, metric) => sum + metric.longNarrativeSentences, 0) / recentCount
+  const shortShare = recent.reduce((sum, metric) => sum + metric.shortNarrativeSentences, 0) / recentCount
+  const range = `${recent[0]!.chapterNumber}–${recent[recent.length - 1]!.chapterNumber}`
+  return [{
+    // key 锚在「这一个方向收敛了」上、**不带章号/窗口末章号**（#86/#89/#98/#108/#111 的教训：
+    // 带末章号的 key 会随窗口滚动，作者点「我已知」永远关不掉）。
+    stableFactKey: 'prose-flavor:sentence-length-drift',
+    severity: 'warning' as const,
+    // 证据落在**已定稿的那几章**里（issue #79），不是正在写的那一章。
+    sourceChapter: recent[recent.length - 1]!.chapterNumber,
+    evidence: `最近 ${DRIFT_WINDOW} 章（第 ${range} 章）叙述句均长 ${recentAverage.toFixed(1)} 字，比开篇 ${DRIFT_BASE_CHAPTERS} 章的 ${baseline.toFixed(1)} 字低 ${drop.toFixed(1)} 字（${Math.round(ratio * 100)}%）；≥25 字占比 ${(longShare * 100).toFixed(1)}%，≤12 字占比 ${(shortShare * 100).toFixed(1)}%`,
+    issue: {
+      zhCN: `句长在**单向收敛**：最近 ${DRIFT_WINDOW} 章（第 ${range} 章）的叙述句均长是 **${recentAverage.toFixed(1)} 字**，比开篇 ${DRIFT_BASE_CHAPTERS} 章的 ${baseline.toFixed(1)} 字**低了 ${drop.toFixed(1)} 字（${Math.round(ratio * 100)}%）**，且 ≥25 字的成句叙述只剩 ${(longShare * 100).toFixed(1)}%（≤12 字的占了 ${(shortShare * 100).toFixed(1)}%）。这不是「短句用得好」，是**只朝一个方向改**：起草清单写的是「平均句长不超过 22 字」，模型逐章过拟合这一个上限，句子越写越碎——到后半程那些把一件道具怎么放、一层因果怎么接铺开的成句叙述基本没有了，读者读到的是连续的信息点而不是叙述。句长的**变化**本身是节奏的基本功，全是短句会读起来像提纲。`,
+      enUS: `Sentence length is converging in one direction: the last ${DRIFT_WINDOW} chapters (${range}) average **${recentAverage.toFixed(1)} characters** of narration, **${drop.toFixed(1)} characters (${Math.round(ratio * 100)}%) below** the opening ${DRIFT_BASE_CHAPTERS} chapters' ${baseline.toFixed(1)}; sentences of ${AI_FLAVOR_QUOTAS.longSentenceChars}+ characters are down to ${(longShare * 100).toFixed(1)}% (while ${(shortShare * 100).toFixed(1)}% are twelve or fewer). That is not well-used short sentences — it is a one-directional edit: the drafting list only caps the average at 22, so the model over-fits that ceiling and the prose fragments chapter by chapter, until the formed sentences that spread out a placement or a chain of cause are gone and readers get information points rather than narration. Variation in length is a basic of rhythm; all-short reads like an outline.`,
+    },
+    suggestion: {
+      zhCN: `把节奏改回**长短交替**（不是把短句写得更短）：①找出最近几章里「本该铺开却被拆碎」的那几处——道具怎么放、一个人怎么想、一层因果怎么接，把它们写回成句的叙述；②短句留给动作与冲击（「舵轮偏着半圈。」），长句留给交代与铺陈，让每 5 段里既有 ≤12 字的短句也有 ≥25 字的成句；③起草清单已同步改成**双边**规则（均长 12–22 字），按新的那条写，不要再只盯上限。`,
+      enUS: `Restore alternation rather than shortening further: (1) find the passages in the recent chapters that needed room but got chopped — how an object is placed, how someone thinks, how causes connect — and write them back as formed sentences; (2) keep short lines for action and impact, longer ones for exposition, so every five paragraphs has both a sentence of twelve or fewer and one of ${AI_FLAVOR_QUOTAS.longSentenceChars}+; (3) the drafting list is now a two-sided rule (average 12–22 characters) — write to that instead of the ceiling alone.`,
+    },
+  }]
 }
