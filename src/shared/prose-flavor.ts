@@ -116,6 +116,51 @@ export interface MotifHit {
  * 为什么按长度降序取子串关系而不是简单取最长：`桌面` 与 `在桌` 会同时命中，
  * 前者是实词、后者含虚词已被剔掉；但 `票根` 与 `票` 都合法时，应保留更具体的那个。
  */
+/**
+ * 「被处置的对象」用词：能把物拿起来／放下去／盯着看的动作词。
+ *
+ * 这是「意象」与「人物/场所」的分界（issue #96 的标定反馈）：票根被抽出来、折好、按在桌上
+ * ——它是**被处置的东西**；而「任九把清单拍在舱板上」「账房伙计递的话」里，那个词是**施动者**。
+ * 判据只用**位置关系**（动词后 4 字内出现候选词），不判语义。
+ */
+const OBJECT_ACTIONS: readonly string[] = Object.freeze([
+  '拿起', '放下', '搁', '按', '压', '捏', '盯', '翻开', '摊开', '折', '塞', '收走', '递',
+  '抽', '摸出', '举', '凑近', '扔', '捡', '夹', '蘸', '划', '写上', '抄', '撕', '藏',
+  '放进', '掏出', '挑起', '压上', '翻', '敲', '撬', '看', '擦', '卷', '扯', '扯下',
+])
+
+/** 施动者的典型后接词（人做主语时的谓语起手）。 */
+const AGENT_ACTIONS: readonly string[] = Object.freeze([
+  '把', '站', '说', '走', '接', '点头', '低头', '抬头', '伸手', '往前', '往后', '问',
+  '答', '笑', '抬眼', '转身', '蹲', '坐', '进来', '出去', '叫', '喊', '听', '看',
+])
+
+/**
+ * 候选词在本章**作宾语**与**作施动者**的次数（issue #96 标定反馈的核心判据）。
+ *
+ * 「作宾语」= 候选词紧跟在处置动作之后（动词 + 0–4 字 + 候选词）；
+ * 「作施动者」= 候选词之后紧跟施动谓语（候选词 + 0–2 字 + 谓语起手）。
+ * 两者都是**位置关系**，不依赖任何语义词表。
+ */
+export function countObjectVersusAgent(word: string, content: string): { asObject: number, asAgent: number } {
+  const text = String(content ?? '')
+  let asObject = 0
+  for (const action of OBJECT_ACTIONS) {
+    let index = text.indexOf(action)
+    while (index >= 0) {
+      if (text.slice(index + action.length, index + action.length + 4).includes(word)) asObject += 1
+      index = text.indexOf(action, index + 1)
+    }
+  }
+  let asAgent = 0
+  let at = text.indexOf(word)
+  while (at >= 0) {
+    if (AGENT_ACTIONS.some(action => text.slice(at + word.length, at + word.length + 2).includes(action))) asAgent += 1
+    at = text.indexOf(word, at + 1)
+  }
+  return { asObject, asAgent }
+}
+
 export function findChapterMotif(
   chapter: ProseFlavorChapter,
   castNames: readonly string[] = [],
@@ -148,7 +193,22 @@ export function findChapterMotif(
   // 去子串：若更长的候选同样高频且包含它，就丢掉短的（同一件事不要报两遍）。
   const maximal = candidates.filter(([window, count]) => !candidates.some(([other, otherCount]) =>
     other !== window && other.length > window.length && otherCount >= count && other.includes(window)))
-  const [winner] = maximal.sort((left, right) => right[1] - left[1] || right[0].length - left[0].length)
+  // **必须是「被反复处置的东西」，不是「反复在做事的人」**（issue #96 的标定反馈）。
+  //
+  // ⚠️ 这一步是本条判据最关键的收紧，来自巡检卡拿 24 章全书做的独立标定：
+  // 只按「频率 + 词形」筛时，5 条命中里 **4 条是假阳性** ——
+  //   「名字」（本书核心概念，全书都在围绕它）、「账房」（场所/职务词×2）、
+  //   「任九」（**未建档**的具名人物，不在 castNames 里所以没被上一道滤掉）。
+  // 它们的共同点是：**在句子里当施动者**（任九把清舱清单拍在舱板上／账房伙计递的话），
+  // 而意象词是**被处置的对象**（票根被抽出来/折好/按在桌上）。
+  // 所以判据改成「作宾语的次数 ≥ 1 且多于作施动者的次数」——实测：该书 5 条留 1 条、
+  // 另一本 7 条留 5 条，被否掉的两条「伙计」也确实是**人**而不是道具。
+  const actioned = maximal.filter(([window]) => {
+    const stats = countObjectVersusAgent(window, content)
+    return stats.asObject >= 1 && stats.asObject > stats.asAgent
+  })
+  if (actioned.length === 0) return null
+  const [winner] = actioned.sort((left, right) => right[1] - left[1] || right[0].length - left[0].length)
   if (!winner) return null
   const [word, count] = winner
   const paragraphs = content.split(/\n\s*\n/u).map(block => block.trim()).filter(Boolean)

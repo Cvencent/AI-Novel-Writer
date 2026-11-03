@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   AI_FLAVOR_QUOTAS,
   METAPHOR_CONNECTORS,
+  countObjectVersusAgent,
   hasFunctionCharacter,
   findChapterMotif,
   measureProseFlavor,
@@ -164,11 +165,12 @@ describe('physical-reaction word list must not catch literal holding (issue #93)
 // 等于零信息」（#30），所以按**密度**判（同一实词的平均出现间隔）。
 describe('findChapterMotif (issue #96)', () => {
   it('finds the word the chapter keeps leaning on, with the count and the paragraphs', () => {
+    // 报告第 36 章的形态：一件东西被**反复拿起/放下/盯着看**（不是反复当主语）。
     const chapter = ch(36, Array.from({ length: 8 }, (_, index) =>
-      `他把墨盒放在桌沿，墨汁淌开第${index + 1}回。`).join('\n\n'))
+      `他把墨盒拿起来，按在桌沿，盯着墨盒看了一息，又放下墨盒。第${index + 1}回。`).join('\n\n'))
     const motif = findChapterMotif(chapter)
     expect(motif).toBeDefined()
-    expect(motif!.word).toContain('墨')
+    expect(motif!.word).toBe('墨盒')
     expect(motif!.count).toBeGreaterThanOrEqual(8)
     expect(motif!.paragraphIndexes.length).toBeGreaterThan(0)
   })
@@ -196,7 +198,7 @@ describe('findChapterMotif (issue #96)', () => {
 
   it('drops a short window when a longer, equally frequent one contains it', () => {
     // 「票」⊂「票根」：两者都高频时报「票根」而不是两条（同 #73「去子串锚点」）。
-    const chapter = ch(1, Array.from({ length: 10 }, () => '那张票根是票根，边角发硬。').join('\n\n'))
+    const chapter = ch(1, Array.from({ length: 10 }, () => '他把票根抽出来，按了按票根，收好票根。').join('\n\n'))
     expect(findChapterMotif(chapter)!.word).toBe('票根')
   })
 
@@ -226,7 +228,7 @@ describe('findChapterMotif (issue #96)', () => {
   })
 
   it('reports a motif finding through the shared channel with a stable key', () => {
-    const dense = ch(43, Array.from({ length: 12 }, () => '三张存根按到毛巾底下，存根吃水，墨翻上来。').join('\n\n'))
+    const dense = ch(43, Array.from({ length: 12 }, () => '他把存根摊开，按住存根，又拿起存根对着光看。').join('\n\n'))
     const findings = proseFlavorFindings([dense], 44)
     const finding = findings.find(item => item.stableFactKey.startsWith('prose-flavor:motif'))
     expect(finding).toBeDefined()
@@ -240,8 +242,43 @@ describe('findChapterMotif (issue #96)', () => {
 
   it('runs on the whole book without the earlier three checks firing (no cross-talk)', () => {
     // 只超「意象配额」的正文，不该顺带触发比喻/生理/句长任何一条。
-    const onlyMotif = ch(1, Array.from({ length: 10 }, () => '玄铁令在石台上，玄铁令没有动。').join('\n\n'))
+    const onlyMotif = ch(1, Array.from({ length: 10 }, () => '他把玄铁令拿起来，按住玄铁令，盯着玄铁令看。').join('\n\n'))
     const findings = proseFlavorFindings([onlyMotif], 2)
     expect(findings.every(item => item.stableFactKey.startsWith('prose-flavor:motif'))).toBe(true)
+  })
+})
+
+// ⚠️ 巡检卡拿 24 章全书做的**独立标定**发现：只按「频率 + 词形」筛时 5 条命中里 4 条是假阳性。
+//   「名字」（本书核心概念，全书都在围绕它）、「账房」（场所/职务词 ×2）、
+//   「任九」（**未建档**的具名人物，不在 castNames 里所以上一步滤不掉）。
+// 修法来自同一次标定的构造验证：**意象是「被处置的对象」，那三类是「施动者」**。
+// 判据只用位置关系：候选词紧跟在处置动作后（作宾语）vs 候选词后紧跟施动谓语（作施动者）。
+describe('a motif must be acted upon, not acting (issue #96 calibration)', () => {
+  it('drops a word that keeps happening as the agent (a person doing things)', () => {
+    // 「任九」的形态：一直是主语在做（未建档角色，castNames 里没有）。
+    const chapter = ch(13, Array.from({ length: 10 }, () => '任九把清舱清单拍在舱板上。任九说，往后核签他代录。').join('\n\n'))
+    expect(findChapterMotif(chapter, ['周叙', '温珩'])).toBeNull()
+  })
+
+  it('drops a place/office word that only appears in locative frames', () => {
+    // 「账房」的形态：场所/职务名词（「账房午后递的话」「账房伙计抱着底册」）。
+    const chapter = ch(6, Array.from({ length: 10 }, () => '账房午后递的话。账房伙计抱着一摞空白底册从跳板过来。').join('\n\n'))
+    expect(findChapterMotif(chapter)).toBeNull()
+  })
+
+  it('still reports the genuine motif — the thing picked up and put down', () => {
+    // 「票根」的形态：被抽出来/按住/拿起来看 —— 这才是「反复承担情绪」的那个东西。
+    const chapter = ch(20, Array.from({ length: 8 }, () => '他把票根抽出来，按住票根，拿起票根对着光看。').join('\n\n'))
+    expect(findChapterMotif(chapter)?.word).toBe('票根')
+  })
+
+  it('separates the two roles by position alone, with no semantics', () => {
+    // 「作宾语」= 候选词紧跟在处置动作之后（动作 + 0–4 字 + 候选词）。
+    const asThing = countObjectVersusAgent('票根', '他把票根抽出来，按住票根。')
+    expect(asThing.asObject).toBeGreaterThanOrEqual(1)
+    expect(asThing.asAgent).toBe(0)
+    // 「作施动者」= 候选词之后紧跟施动谓语。
+    expect(countObjectVersusAgent('任九', '任九把清单拍在案上。任九说，往后核签他代录。'))
+      .toEqual({ asObject: 0, asAgent: 2 })
   })
 })
