@@ -48,11 +48,10 @@ describe('outlineRecentEvent', () => {
       .toBe('**场景与出场人物**：大厅。')
   })
 
-  it('超长且无中间句末标点时硬截（不加省略号半句，issue #18）', () => {
-    const long = `${'甲'.repeat(80)}。`
-    const result = outlineRecentEvent(long, 50)
-    expect(result.length).toBeLessThanOrEqual(50)
-    expect(result.endsWith('…')).toBe(false)
+  it('超长且无任何断点时返回空，不硬切半句（issue #109 收紧 #18）', () => {
+    // #18 时这里断言的是「硬切到 50 字」——那条断言把缺陷钉成了规格（issue #109 点名）。
+    // 现在：预算内一个断点都没有 → 空（宁缺毋滥，与 outlineRecentEventForCharacter 同口径）。
+    expect(outlineRecentEvent(`${'甲'.repeat(80)}。`, 50)).toBe('')
   })
 
   it('超长但在限长内有句末标点时截到句末（issue #18）', () => {
@@ -175,5 +174,69 @@ describe('recentEvents 只取事件型小节（issue #45）', () => {
   it('真正参与事件的人仍能取到本章发生的事', () => {
     expect(byName.get('任九')).toContain('催')
     for (const event of byName.values()) expect(event.length).toBeLessThanOrEqual(50)
+  })
+})
+
+// issue #109：#18 承诺「句末截断」，但兜底分支仍在**句中硬切**——实测 9 个角色 8 个恰好
+// 50 字、多条断在半个引号里（「觉得“好像是有这么个补网的，姓」）。
+// 根因是 `lastStop >= maxLength/2` 那道闸：第 20 位的「；」被判「太靠前」→ 退化到硬切。
+describe('outlineRecentEvent never cuts mid-sentence (issue #109)', () => {
+  /** 未闭合引号 = 断在引号内部，正是最刺眼的形态。 */
+  const insideOpenQuote = (text: string): boolean => {
+    let open = 0
+    for (const character of text) {
+      if ('“「『'.includes(character)) open += 1
+      else if ('”」』'.includes(character)) open -= 1
+    }
+    return open > 0
+  }
+
+  it('reproduces the reported case: stops at the 「；」 boundary instead of mid-quote', () => {
+    const reported = '周叙月末替铺子复核，压过那一格，压得深；甘阿发隔几日翻账时多看了一眼，觉得“好像是有这么个补网的，姓什么记不清'
+    const result = outlineRecentEvent(reported, 50)
+    // 旧实现返回 50 字、停在「姓」——半个引号。新实现停在「；」，引号完整。
+    expect(result).not.toBe(reported.slice(0, 50))
+    expect(insideOpenQuote(result)).toBe(false)
+    expect(result.endsWith('；')).toBe(true)
+    expect(result.length).toBeLessThanOrEqual(50)
+  })
+
+  it('falls back to a clause boundary when there is no sentence stop inside the budget', () => {
+    // 窗口内没有任何句末标点，但有逗号/顿号——至少在分句边界停下（不能硬切）。
+    const result = outlineRecentEvent('柯有顺接了补网铺的赊欠折，他那一格照老法子手写成绰号式记号，赊账、结清都记在同一行，又计上本月的工钱和赖账', 50)
+    expect(result.length).toBeLessThanOrEqual(50)
+    expect(['，', '、', '；', '。']).toContain(result.slice(-1))
+  })
+
+  it('returns empty rather than a hard cut when there is no break point at all', () => {
+    // 无标点长串：空比半句好（#18 的 outlineRecentEventForCharacter 已有「宁缺毋滥」先例）。
+    expect(outlineRecentEvent('甲'.repeat(80), 50)).toBe('')
+  })
+
+  it('still returns a whole first sentence inside the budget', () => {
+    expect(outlineRecentEvent('他翻过一页。后面还有很多很多的字'.repeat(3), 50)).toBe('他翻过一页。')
+  })
+
+  // issue 建议 3 要求的那条属性断言：任何输入下，输出要么停在一个断点、要么为空。
+  it('property: every output ends on a break point or is empty — never mid-word', () => {
+    const fragments = [
+      '。', '，', '；', '、', '！', '？',
+      ...Array.from({ length: 60 }, (_, index) => `第${index}个片段`),
+    ]
+    for (let seed = 0; seed < 200; seed += 1) {
+      // 用固定步长拼出确定性的「伪随机」长句，避免测试自身随机。
+      const text = fragments
+        .filter((_, index) => (index * (seed + 7)) % 3 !== 0)
+        .join('')
+        .repeat(2)
+      for (const maxLength of [20, 50, 80]) {
+        const result = outlineRecentEvent(text, maxLength)
+        expect(result.length, `seed=${seed} max=${maxLength}`).toBeLessThanOrEqual(maxLength)
+        if (result.length === 0) continue
+        expect(['。', '！', '？', '；', '，', '、', '!', '?', ';', ','], `seed=${seed} max=${maxLength} 结尾「${result.slice(-4)}」`)
+          .toContain(result.slice(-1))
+        expect(insideOpenQuote(result), `seed=${seed} max=${maxLength} 断在引号内「${result.slice(-12)}」`).toBe(false)
+      }
+    }
   })
 })

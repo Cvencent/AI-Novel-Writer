@@ -19,22 +19,60 @@ export interface OutlineChapterDigest {
   continuityFacts: string[]
 }
 
+/** 句末标点（切句用）。 */
+const SENTENCE_STOPS = ['。', '！', '？', '!', '?'] as const
+/**
+ * 次级断点（issue #109）：找不到句末标点时的退路。
+ *
+ * 分句/顿号比句中硬切好得多——「赊账、结清都记在同一行」停在顿号处仍是完整分句，
+ * 而硬切会产生「觉得“好像是有这么个补网的，姓」这种**半个引号**。
+ */
+const CLAUSE_STOPS = ['；', ';', '，', ',', '、'] as const
+
+/**
+ * 在 `limit` 以内从右往左找第一个断点，返回其**后一位**（含标点）。
+ * `minIndex` 之前的一律不算（避免只切出两个字）。
+ */
+function lastStopWithin(text: string, stops: readonly string[], limit: number, minIndex: number): number {
+  let best = -1
+  for (const stop of stops) {
+    const at = text.lastIndexOf(stop, Math.max(0, limit - 1))
+    if (at > best) best = at
+  }
+  return best >= minIndex ? best + 1 : 0
+}
+
 /**
  * 细纲推进角色状态时只写一句「本章发生了什么」。
  *
  * `chapterNotes` 是四句话的摘要，直接写进 `recentEvents` 会让角色卡的「最近事件」
  * 变成一坨计划文本（实测会整段顶掉前一章的真实事件）。按首个句末截断并限长。
+ *
+ * issue #109：**绝不产生「…」式半句**。#18 只让「窗口内有靠后的句末标点」这一支
+ * 停在句末，兜底分支仍是硬切（实测 9 个角色 8 个恰好 50 字、多条断在半个引号里，
+ * 例：「觉得“好像是有这么个补网的，姓」）。现在的降级阶梯：
+ *   ① 整句（首个句末标点处）在预算内 → 原样返回；
+ *   ② 超长 → 在末句标点处切（含 `；`，不再要求它落在后半段——那道闸正是 #109 的根因：
+ *      第 20 位的「；」被判「太靠前」，于是退化到硬切）；
+ *   ③ 仍没有 → 退到**分句/顿号**处（至少停在分句边界）；
+ *   ④ 连分句断点都没有（如无标点长串）→ 取第一条分句；一条都没有就返回空串。
+ * 空比半句好——`outlineRecentEventForCharacter` 本来就有「宁缺毋滥、取不到就留空」的先例。
  */
 export function outlineRecentEvent(notes: string, maxLength = 50): string {
   const normalized = notes.replace(/\s+/gu, ' ').trim()
   if (!normalized) return ''
   const firstSentence = (/^[^。！？!?]*[。！？!?]/u.exec(normalized)?.[0] ?? normalized).trim()
   if (firstSentence.length <= maxLength) return firstSentence
-  // 超长时在句末标点处截断，不产生「…」半句（issue #18）。
-  const clipped = firstSentence.slice(0, maxLength)
-  const lastStop = Math.max(clipped.lastIndexOf('。'), clipped.lastIndexOf('！'), clipped.lastIndexOf('？'), clipped.lastIndexOf('；'))
-  const stopIndex = lastStop >= Math.floor(maxLength / 2) ? lastStop + 1 : 0
-  return stopIndex > 0 ? firstSentence.slice(0, stopIndex) : clipped
+  // ② 句末标点（含 `；`）在预算内：取最靠后的那一个。
+  //    不再要求它落在后半段——那道闸（`>= maxLength/2`）正是 #109 的根因：
+  //    第 20 位的「；」被评为「太靠前」，于是退化到硬切，产出半个引号。
+  const sentenceStop = lastStopWithin(firstSentence, [...SENTENCE_STOPS, '；', ';'], maxLength, 0)
+  if (sentenceStop > 0) return firstSentence.slice(0, sentenceStop)
+  // ③ 退到分句/顿号（至少在分句边界停下，不切断引号里的词）。
+  const clauseStop = lastStopWithin(firstSentence, CLAUSE_STOPS, maxLength, 0)
+  if (clauseStop > 0) return firstSentence.slice(0, clauseStop)
+  // ④ 预算内没有任何断点（如无标点长串）：**空比半句好**。
+  return ''
 }
 
 
