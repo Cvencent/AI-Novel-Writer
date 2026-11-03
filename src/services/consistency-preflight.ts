@@ -9,6 +9,8 @@ import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuit
 import { ENTRANCE_WINDOW_CHAPTERS } from '../shared/entrance-shot'
 import { findTitleShapeConvergenceFindings } from '../shared/title-shape'
 import { auditFinalizedProse } from '../shared/finalized-prose-audit'
+// issue #120：ack 区渲染人话（配不上当轮 finding 时用封闭目录翻译）。
+import { acknowledgementTitleOf } from '../shared/acknowledgement-title'
 import { DEFAULT_CHAPTER_WORDS_TARGET } from './workflows/chapter-creation-parameters'
 import { ipc } from './ipc-client'
 
@@ -246,16 +248,26 @@ export async function readConsistencyPreflight(
       .map(row => ({ chapterNumber: row.chapterNumber, content: String(row.content ?? '') })),
     currentChapter,
   })
+  // issue #120：ack 区要给作者看人话，而不是 `stableFactKey`。
+  // 存储层只有「键 + 时间」两列，所以标题在这里补：**先按 key 与本轮全部 finding 配对**
+  // （那条判据这一轮仍命中 → 用判据自己写的原话），配不上的用封闭目录译出人话并注明
+  // 「已不再报出」。注意配对要拿**过滤 ack 之前**的完整清单。
+  const allFindings = [...terminalFindings, ...expandedFindings, ...unregisteredFindings, ...appearanceGaps,
+    ...nearNameFindings, ...keyEventsLengthFindings, ...openingFindings, ...timelineFindings,
+    ...missingArchCastFindings, ...propTerminationFindings, ...lossRestatementFindings,
+    ...propRevivalFindings, ...entranceShotFindings, ...titleShapeFindings,
+    ...finalizedProseAuditFindings]
+  const findingByKey = new Map(allFindings.map(item => [item.stableFactKey, item]))
+  const acknowledgedWithTitles = acknowledgements.map(item => ({
+    ...item,
+    title: acknowledgementTitleOf(item.stableFactKey, findingByKey.get(item.stableFactKey) ?? null),
+  }))
   return {
-    findings: [...terminalFindings, ...expandedFindings, ...unregisteredFindings, ...appearanceGaps,
-      ...nearNameFindings, ...keyEventsLengthFindings, ...openingFindings, ...timelineFindings,
-      ...missingArchCastFindings, ...propTerminationFindings, ...lossRestatementFindings,
-      ...propRevivalFindings, ...entranceShotFindings, ...titleShapeFindings,
-      ...finalizedProseAuditFindings]
+    findings: allFindings
       .filter(item => !activeExemptions.has(item.stableFactKey))
       .filter(item => !acknowledgedKeys.has(item.stableFactKey)),
     exemptions,
-    acknowledgements,
+    acknowledgements: acknowledgedWithTitles,
     castNames,
   }
 }

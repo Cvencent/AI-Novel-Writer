@@ -43,6 +43,15 @@ export interface ConsistencyExemption {
 export interface ConsistencyAcknowledgement {
   stableFactKey: string
   acknowledgedAt: string
+  /**
+   * 给作者看的可读标题（issue #120）。
+   *
+   * 存储层只有键与时间（`consistency_acknowledgements` 两列），所以标题由
+   * `readConsistencyPreflight` 在内存里补：优先用「这一轮仍然命中的那条 finding」的原文，
+   * 配不上时用封闭目录（`acknowledgement-title.ts`）译出人话并注明「已不再报出」。
+   * 界面**不再**渲染 `stableFactKey` 本身。
+   */
+  title?: { zhCN: string; enUS: string }
 }
 
 export interface ConsistencyFinding {

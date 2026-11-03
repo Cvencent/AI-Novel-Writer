@@ -97,7 +97,13 @@ export default function WritePreflight({
           <summary>{text(`已标记稍后处理（${acknowledged.length}）`, `Noted for later (${acknowledged.length})`)}</summary>
           {acknowledged.map(item => (
             <div key={item.stableFactKey} className="stage-preflight-exemption">
-              <span>{item.stableFactKey}</span>
+              {/*
+               * issue #120：这里原来渲染的是 `item.stableFactKey`（`prop:revival:内襟` 这种内部键），
+               * 作者挂起 16 条提醒后回看时认不出任何一条。改渲染 `title`（服务层用「当轮仍命中的
+               * finding 原文」或封闭目录译出的人话补上）；键降级为 title 属性的悬浮说明，
+               * 保留可定位性（支持排查用），但**不再直接显示**给作者。
+               */}
+              <span title={item.stableFactKey}>{item.title ? (locale === 'en-US' ? item.title.enUS : item.title.zhCN) : item.stableFactKey}</span>
               <Button variant="text" size="sm" disabled={busy} onClick={() => onUnacknowledge(item.stableFactKey)}>
                 <RotateCcw size={13} aria-hidden />{text('恢复提醒', 'Show again')}
               </Button>
