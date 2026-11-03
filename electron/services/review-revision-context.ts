@@ -35,6 +35,9 @@ import { findCastNameDriftFindings } from '../../src/shared/cast-name-drift'
 // 期限宣告未对账（#101）与重复宣告的不可逆处境变更（#105）：审稿时本章还在手边，正是能补的时候。
 import { findUnsettledDeadlineFindings } from '../../src/shared/deadline-settlement'
 import { findRepeatedRevocationFindings } from '../../src/shared/repeated-revocation'
+// 标题「同题加尾」复用（#110）与能力限制被绕过（#100）：审稿时本章与目录都在手边。
+import { findDuplicateChapterTitleFindings } from '../../src/shared/chapter-title-uniqueness'
+import { findAbilityLimitBypassFindings } from '../../src/shared/ability-limit-bypass'
 import { CHARACTER_STATE_TEXT_FIELDS } from '../../src/shared/character-roster'
 import { ProjectCoreRepository } from '../repositories/project-core-repository'
 import { CharacterRepository } from '../repositories/character-repository'
@@ -269,6 +272,16 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
           prose: [...history.map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
             { chapterNumber: source.chapterNumber, content: source.content }],
           castNames: authorCards.map(card => card.name),
+        }),
+        // 章节标题「同题加尾」复用（issue #110）：审稿时也要看到目录里那两章其实是同一个标题。
+        ...findDuplicateChapterTitleFindings({
+          chapters: BlueprintRepository.getAll(db).map(row => ({ chapterNumber: row.chapterNumber, title: String(row.title ?? '') })),
+        }),
+        // 能力触发条件被静默绕过（issue #100）：限制句从世界观取（源头那一层）。
+        ...findAbilityLimitBypassFindings({
+          worldbuilding: String((core as { worldbuilding?: string }).worldbuilding ?? ''),
+          chapters: [...history.map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
+            { chapterNumber: source.chapterNumber, content: source.content }],
         }),
       ],
       ...(confirmation ? { confirmation } : {}), ...(recheck ? { recheck } : {}) }

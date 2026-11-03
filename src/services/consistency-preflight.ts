@@ -214,8 +214,12 @@ export async function readConsistencyPreflight(
   const finalizedProseAuditFindings = auditFinalizedProse({
     chapters: historyProse,
     castNames,
+    // 能力触发条件被绕过（#100）：限制句从世界观取（源头那一层）。
+    worldbuilding: String((core as { worldbuilding?: string } | null)?.worldbuilding ?? ''),
     blueprints: (Array.isArray(allBlueprints) ? allBlueprints : []).map(blueprint => ({
       chapterNumber: blueprint.chapterNumber,
+      // 标题「同题加尾」复用（#110）需要 title。
+      title: blueprint.title,
       keyEvents: blueprint.keyEvents,
       foreshadowing: blueprint.foreshadowing,
       // 重复宣告的不可逆代价（#105）取 costsAndTurns：账本把同一处境记了两遍不可逆。

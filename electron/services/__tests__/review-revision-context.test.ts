@@ -89,7 +89,9 @@ describe('审修上下文实际 SQLite 捕获', () => {
   it('冻结当前及后五章蓝图和目标，历史原文无凭据不变成事实', () => {
     const f = fixture()
     f.db.exec("INSERT INTO contents(id,body) VALUES(2,'历史正文'); INSERT INTO drafts(chapter_number,version,status,content_id) VALUES(1,1,'finalized',2)")
-    for (const chapter of [1,2,3,7,8]) f.db.prepare('INSERT INTO blueprints(chapter_number,title,key_events) VALUES(?,?,?)').run(chapter, '合成章节', '林岚抵达北塔')
+    // 标题带上章号：issue #110 的「同题加尾」判据会把全同标题判成复用，
+    // 而本条测试验的是蓝图冻结范围，不该被标题重复干扰。
+    for (const chapter of [1,2,3,7,8]) f.db.prepare('INSERT INTO blueprints(chapter_number,title,key_events) VALUES(?,?,?)').run(chapter, `合成章节${chapter}`, '林岚抵达北塔')
     const context = f.capture()
     expect(context.blueprints.map(row => row.chapterNumber)).toEqual([2,3,7])
     expect(context.history).toEqual([expect.objectContaining({ content: '历史正文' })])

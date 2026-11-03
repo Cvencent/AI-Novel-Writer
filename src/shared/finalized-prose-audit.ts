@@ -22,6 +22,8 @@
  *  12. 角色名漂移（#102）——已登记角色在正文里被写成同后缀异姓（陆敬堂→穆敬堂），且已被账本继承
  *  13. 期限宣告未对账（#101）——上一章抛出的期限，下一章整章不再提（既未兑现也未逾期/延期）
  *  14. 重复宣告的不可逆处境变更（#105）——同一处境被记两遍不可逆，第一次从未落地
+ *  15. 章节标题「同题加尾」复用（#110）——「压印」/「压印的」、「无人认领」/「无人认领，一并化浆」
+ *  16. 能力触发条件被静默绕过（#100）——世界观写死的硬限制在正文里失效且从未写成一次发现
  *
  * 与审稿路径的差别只有一处，而且是刻意的：审稿把**本章正文**也放进样本
  * （那正是审稿的对象），而写前预检喂进来的全是**已定稿章**——因为要写的那一章
@@ -57,6 +59,10 @@ import { findCastNameDriftFindings } from './cast-name-drift'
 import { findUnsettledDeadlineFindings } from './deadline-settlement'
 // 同一项不可逆处境变更被宣告两次（#105）：账本记两遍、第一次从未落地。
 import { findRepeatedRevocationFindings } from './repeated-revocation'
+// 章节标题「同题加尾」复用（#110）：合同只判精确同名、且只管新生成的那一批。
+import { findDuplicateChapterTitleFindings } from './chapter-title-uniqueness'
+// 能力触发条件被绕过（#100）：世界观写死的硬限制在正文里被静默绕过、从未写成一次发现。
+import { findAbilityLimitBypassFindings } from './ability-limit-bypass'
 import { closingShotOf } from './blueprint-semantic-contract'
 import { foreshadowingDueAt, parseForeshadowingCommitments } from './foreshadowing-commitments'
 
@@ -70,8 +76,13 @@ export interface FinalizedProseAuditInput {
   chapters: readonly FinalizedProseChapter[]
   /** 在册角色名（#32/#33/#49 的「按角色归一」需要它）。 */
   castNames: readonly string[]
+  /**
+   * 世界观文本（issue #100）：能力触发条件的**限制句从它取**（源头那一层）。
+   * 不给就跳过这一类判据——没有声明过的规则无所谓被绕过。
+   */
+  worldbuilding?: string
   /** 全书蓝图；收束标注取自 `keyEvents`，伏笔承诺取自 `foreshadowing`，重复宣告的代价取自 `costsAndTurns`（#105）。 */
-  blueprints: ReadonlyArray<{ chapterNumber: number; keyEvents?: string; foreshadowing?: string; costsAndTurns?: string }>
+  blueprints: ReadonlyArray<{ chapterNumber: number; title?: string; keyEvents?: string; foreshadowing?: string; costsAndTurns?: string }>
   /**
    * 跨章重复（#32/#33/#49）的样本窗口。
    *
@@ -220,9 +231,25 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
     castNames,
   })
 
+  // 章节标题「同题加尾」复用（issue #110）：合同侧只判精确同名、且只在新生成那一批生效，
+  // 已定稿的旧章节不会再过合同——所以这里用**全书蓝图 title** 再查一遍。
+  const duplicateTitles = findDuplicateChapterTitleFindings({
+    chapters: blueprints.map(blueprint => ({
+      chapterNumber: blueprint.chapterNumber,
+      title: String(blueprint.title ?? ''),
+    })),
+  })
+
+  // 能力触发条件被绕过（issue #100）：限制句从世界观取，绕过形态 = 在受限场地 + 自造条件 +
+  // 全书从未写成一次发现。没有世界观就不判。
+  const abilityLimitBypass = input.worldbuilding
+    ? findAbilityLimitBypassFindings({ worldbuilding: input.worldbuilding, chapters })
+    : []
+
   return [...closingLabel, ...numbering, ...ability, ...repetition, ...undelivered,
     ...ultimatum, ...reversal, ...undatedStreak, ...proseFlavor, ...positionalAxes, ...glyphRadical,
-    ...castNameDrift, ...deadlineSettlement, ...repeatedRevocation]
+    ...castNameDrift, ...deadlineSettlement, ...repeatedRevocation, ...duplicateTitles,
+    ...abilityLimitBypass]
 }
 
 /**
