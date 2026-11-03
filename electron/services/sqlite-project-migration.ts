@@ -14,6 +14,8 @@ import { BLUEPRINT_EXTENDED_COLUMNS } from '../migrations/baseline-blueprint-sch
 import { initializeLegacyBaselineSchema } from '../migrations/baseline-schema'
 import { ensureBaselineBlueprintTables } from '../migrations/baseline-blueprint-schema'
 import { initializeCharacterRosterMetadata } from '../repositories/character-roster-schema'
+// 长任务可观测性（issue #104 第 ⑥ 条）：同步操作超阈值打日志。
+import { timeSyncOperation } from '../utils/slow-operation-log'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3') as typeof import('better-sqlite3')
@@ -222,8 +224,11 @@ function domainMulti(db: BetterSqlite3.Database, selections: readonly (DomainCol
     const projection = normalized.map(selection => selection.find(entry => entry.name === name))
     const unionColumns = [...new Set(projection.flatMap(entry => entry?.columns ?? []))]
     if (unionColumns.length === 0) continue
-    const rows = db.prepare(`SELECT ${unionColumns.map(quoteIdentifier).join(',')} FROM ${quoteIdentifier(name)}`)
-      .safeIntegers().raw().all() as unknown[][]
+    // issue #104 第 ⑥ 条：这里是「打开作品时主进程被同步占死」的那一段，包一层长任务日志，
+    // 于是下次卡顿能从日志直接看出是**哪张表**吃掉了主线程（原来一条相关日志都没有）。
+    const rows = timeSyncOperation(`domain-scan:${name}`, () =>
+      db.prepare(`SELECT ${unionColumns.map(quoteIdentifier).join(',')} FROM ${quoteIdentifier(name)}`)
+        .safeIntegers().raw().all() as unknown[][])
     for (let index = 0; index < normalized.length; index += 1) {
       const entry = projection[index]
       if (!entry) continue
