@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import {
   AI_FLAVOR_QUOTAS,
   METAPHOR_CONNECTORS,
+  hasFunctionCharacter,
+  findChapterMotif,
   measureProseFlavor,
   PHYSIOLOGICAL_CLICHES,
   proseFlavorFindings,
@@ -153,5 +155,93 @@ describe('physical-reaction word list must not catch literal holding (issue #93)
       ch(3, '全叔蹲在桩边绕绳圈，绳头压得死紧。'),
     ]
     expect(proseFlavorFindings(good, 4)).toEqual([])
+  })
+})
+
+// issue #96：起草清单里「意象配额：每个词在本章最多出现 2 次」从来没有被检查，
+// 而同一条清单里紧挨着的比喻/生理反应/句长三项（#93）已经落地。
+// ⚠️ 字面实现「每词 ≤2 次」实测 **43/43 章**都超 —— 那是「规则层输出全是假阳性
+// 等于零信息」（#30），所以按**密度**判（同一实词的平均出现间隔）。
+describe('findChapterMotif (issue #96)', () => {
+  it('finds the word the chapter keeps leaning on, with the count and the paragraphs', () => {
+    const chapter = ch(36, Array.from({ length: 8 }, (_, index) =>
+      `他把墨盒放在桌沿，墨汁淌开第${index + 1}回。`).join('\n\n'))
+    const motif = findChapterMotif(chapter)
+    expect(motif).toBeDefined()
+    expect(motif!.word).toContain('墨')
+    expect(motif!.count).toBeGreaterThanOrEqual(8)
+    expect(motif!.paragraphIndexes.length).toBeGreaterThan(0)
+  })
+
+  it('is word-list free: a different book and different motif still fire', () => {
+    // 判据不枚举「意象」清单（那串例子词是科幻题材的，换一本就失效）。
+    const chapter = ch(1, Array.from({ length: 9 }, () => '他把玄铁令按在石台上，灵纹亮了一瞬。').join('\n\n'))
+    const motif = findChapterMotif(chapter)
+    expect(motif).toBeDefined()
+    expect(motif!.word).toMatch(/玄铁|石台|灵纹|铁令/)
+  })
+
+  it('never picks a window that contains a function character', () => {
+    // 「了一」「的那」「他把」这类窗口在每章都大量出现；不剔掉它们，最高频词永远是虚词。
+    const chapter = ch(1, Array.from({ length: 20 }, () => '他把那件事说了，她的意思他懂。').join('\n\n'))
+    const motif = findChapterMotif(chapter)
+    if (motif) expect(hasFunctionCharacter(motif.word)).toBe(false)
+  })
+
+  it('excludes cast names — a person is content, not a prop', () => {
+    const chapter = ch(1, Array.from({ length: 12 }, () => '柯明远把纸按在桌上。').join('\n\n'))
+    const motif = findChapterMotif(chapter, ['柯明远'])
+    expect(motif?.word ?? '').not.toContain('柯明')
+  })
+
+  it('drops a short window when a longer, equally frequent one contains it', () => {
+    // 「票」⊂「票根」：两者都高频时报「票根」而不是两条（同 #73「去子串锚点」）。
+    const chapter = ch(1, Array.from({ length: 10 }, () => '那张票根是票根，边角发硬。').join('\n\n'))
+    expect(findChapterMotif(chapter)!.word).toBe('票根')
+  })
+
+  it('stays silent on a chapter whose words are spread out (density is the criterion)', () => {
+    // 同一个词出现 4 次、但每次都隔了很长的不同内容——不到密度门槛，不报。
+    // （注意 filler 本身必须是**各不相同**的句子，否则会造出一个新的高频窗口，
+    //  那时判据报的是那个窗口而不是这句测试想验的「稀疏」——第一版就踩了这个。）
+    const varied = [
+      '船沿水道往东，两侧的芦苇被风压向一边。',
+      '码头尽头有个人在收网，动作很慢。',
+      '账房的算盘响了一阵，又停了。',
+      '他把缆绳绕上桩，绳头垂进水里。',
+      '远处的灯桩一闪一闪，像是要灭。',
+      '仓门被推开又合上，木头发出闷响。',
+      '早潮退了，滩上留下几道湿痕。',
+      '有人在低声说话，听不清内容。',
+      '风灯的光晃过墙面，影子拉长又缩回。',
+      '跳板搭上岸，木板之间磨出吱声。',
+    ].join('')
+    const chapter = ch(1, `${varied}票根。${varied}票根。${varied}票根。${varied}票根。`)
+    expect(findChapterMotif(chapter)).toBeNull()
+  })
+
+  it('keeps the quota honest against the drafting list (motifPerChapter is documented)', () => {
+    expect(AI_FLAVOR_QUOTAS.motifPerChapter).toBe(2)
+    expect(AI_FLAVOR_QUOTAS.motifDensityChars).toBeGreaterThan(0)
+  })
+
+  it('reports a motif finding through the shared channel with a stable key', () => {
+    const dense = ch(43, Array.from({ length: 12 }, () => '三张存根按到毛巾底下，存根吃水，墨翻上来。').join('\n\n'))
+    const findings = proseFlavorFindings([dense], 44)
+    const finding = findings.find(item => item.stableFactKey.startsWith('prose-flavor:motif'))
+    expect(finding).toBeDefined()
+    expect(finding!.stableFactKey).toBe('prose-flavor:motif:43')
+    expect(finding!.severity).toBe('warning')
+    expect(finding!.evidence).toContain('存根')
+    // 出路三选一都得是可执行的，而不是「少用点这个词」。
+    expect(finding!.suggestion.zhCN).toContain('换指称')
+    expect(finding!.suggestion.enUS).toContain('vary the reference')
+  })
+
+  it('runs on the whole book without the earlier three checks firing (no cross-talk)', () => {
+    // 只超「意象配额」的正文，不该顺带触发比喻/生理/句长任何一条。
+    const onlyMotif = ch(1, Array.from({ length: 10 }, () => '玄铁令在石台上，玄铁令没有动。').join('\n\n'))
+    const findings = proseFlavorFindings([onlyMotif], 2)
+    expect(findings.every(item => item.stableFactKey.startsWith('prose-flavor:motif'))).toBe(true)
   })
 })

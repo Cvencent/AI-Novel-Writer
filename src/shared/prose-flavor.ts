@@ -53,12 +53,118 @@ export const SUMMARY_TAIL_PATTERNS = Object.freeze([
   '说不清道不明', '注定要',
 ] as const)
 
-/** 起草清单的配额（原文：比喻 ≤2、生理反应 ≤1、平均句长 ≤22）。 */
+/**
+ * 起草清单的配额（原文：比喻 ≤2、生理反应 ≤1、平均句长 ≤22、意象每词 ≤2）。
+ *
+ * `motifDensityChars` 是「意象配额」那一条的**密度化**口径（issue #96）：
+ * 清单原文是「每个词在本章最多出现 2 次」，但实测那本书 **43/43 章**都超 2 次 ——
+ * 按字面实现等于每章都报，正是「规则层输出全是假阳性时等于零信息」（#30）。
+ * 所以改成按**密度**判：同一个词在本章的出现间隔不得小于这个字数。
+ * 120 字 ≈ 800 字章的 7 次，实测在该样本上触发 7/43 章（报告点名的票根×10、存根×12 都在其中），
+ * 而正常用词（柜台、篷布这类 170+ 字/次）不触发。
+ */
 export const AI_FLAVOR_QUOTAS = Object.freeze({
   metaphor: 2,
   physiological: 1,
   averageSentenceChars: 22,
+  motifPerChapter: 2,
+  /** 意象密度：同一实词在本章的平均出现间隔（字/次）不得小于它。 */
+  motifDensityChars: 120,
 })
+
+/**
+ * 虚词／功能字（**封闭语法类**，不是开放词表）。
+ *
+ * 判「哪个实词重复最多」时必须先把含这些字的窗口剔掉：中文里「了一」「的那」「他把」
+ * 「在桌」这类窗口在每章都会大量出现（实测「了一」出现在 42/43 章），
+ * 不剔掉的话最高频词永远是它们，判据等于没判。
+ *
+ * 只收**语法功能字**（助词/介词/连词/代词/量词/趋向动词），**不收任何实词**——
+ * 这条边界很重要：一旦开始收「墨」「票」这类实词，就变成了词表（#30/#43/#70/#80 的坑）。
+ */
+export const FUNCTION_CHARACTERS: ReadonlySet<string> = new Set([
+  ...'的了在是把被和与就也都这那一不没他她我你么什怎为其而且或但如若因所以至从向对给让着过很更最又还再才只已将并等种些个件张条只次回到去来说做看想要能可得地着',
+])
+
+/** 一个窗口里是否含虚词／功能字（含则不作为「意象」候选）。 */
+export function hasFunctionCharacter(window: string): boolean {
+  for (const character of window) if (FUNCTION_CHARACTERS.has(character)) return true
+  return false
+}
+
+export interface MotifHit {
+  /** 本章重复最多的实词。 */
+  word: string
+  /** 该词在本章出现的次数。 */
+  count: number
+  /** 本章字数（去空白）。 */
+  chapterChars: number
+  /** 平均多少字出现一次。 */
+  charsPerOccurrence: number
+  /** 命中处所在的段落号（从 1 起，最多 3 个）。 */
+  paragraphIndexes: number[]
+}
+
+/**
+ * 找一章里「被反复用同一个实词拎着走」的那个词（issue #96 的「意象配额」）。
+ *
+ * 判据**不用词表**：正文切成 2–4 字窗口，剔掉含虚词/功能字的窗口与在册角色名的片段，
+ * 再按「同一窗口在本章的出现次数」排序；**去掉被更长候选包含的子串**
+ * （「票」⊂「票根」，两者都报会把同一个东西算两次 —— 与 #73「去子串锚点」同一教训）。
+ * 胜出者只要满足密度门槛就报。
+ *
+ * 为什么按长度降序取子串关系而不是简单取最长：`桌面` 与 `在桌` 会同时命中，
+ * 前者是实词、后者含虚词已被剔掉；但 `票根` 与 `票` 都合法时，应保留更具体的那个。
+ */
+export function findChapterMotif(
+  chapter: ProseFlavorChapter,
+  castNames: readonly string[] = [],
+  options: { minCharsPerOccurrence?: number } = {},
+): MotifHit | null {
+  const content = String(chapter.content ?? '')
+  const compact = content.replace(/\s+/gu, '')
+  if (compact.length === 0) return null
+  const minimumInterval = options.minCharsPerOccurrence ?? AI_FLAVOR_QUOTAS.motifDensityChars
+  // 4 字窗口至少要出现这个次数才算「密度超标」。
+  const needCount = Math.max(4, Math.ceil(compact.length / minimumInterval))
+
+  const counts = new Map<string, number>()
+  for (const run of content.matchAll(/[一-鿿]+/gu)) {
+    const text = run[0]
+    for (const length of [2, 3, 4]) {
+      for (let index = 0; index + length <= text.length; index += 1) {
+        const window = text.slice(index, index + length)
+        counts.set(window, (counts.get(window) ?? 0) + 1)
+      }
+    }
+  }
+  const names = castNames.map(name => String(name ?? '').trim()).filter(Boolean)
+  const candidates = [...counts.entries()]
+    .filter(([, count]) => count >= needCount)
+    .filter(([window]) => !hasFunctionCharacter(window))
+    // 在册角色名的片段不算意象（「柯明」是「柯明远」的子串）——人是内容不是道具。
+    .filter(([window]) => !names.some(name => name.includes(window)))
+  if (candidates.length === 0) return null
+  // 去子串：若更长的候选同样高频且包含它，就丢掉短的（同一件事不要报两遍）。
+  const maximal = candidates.filter(([window, count]) => !candidates.some(([other, otherCount]) =>
+    other !== window && other.length > window.length && otherCount >= count && other.includes(window)))
+  const [winner] = maximal.sort((left, right) => right[1] - left[1] || right[0].length - left[0].length)
+  if (!winner) return null
+  const [word, count] = winner
+  const paragraphs = content.split(/\n\s*\n/u).map(block => block.trim()).filter(Boolean)
+  const paragraphIndexes = paragraphs
+    .map((paragraph, index) => ({ paragraph, index: index + 1 }))
+    .filter(entry => entry.paragraph.includes(word))
+    .slice(0, 3)
+    .map(entry => entry.index)
+  return {
+    word,
+    count,
+    chapterChars: compact.length,
+    charsPerOccurrence: compact.length / count,
+    paragraphIndexes,
+  }
+}
 
 export interface ProseFlavorChapter {
   chapterNumber: number
@@ -156,6 +262,8 @@ export function measureProseFlavor(chapter: ProseFlavorChapter): ProseFlavorMeas
 export function proseFlavorFindings(
   chapters: ReadonlyArray<ProseFlavorChapter>,
   currentChapter: number,
+  /** 在册角色名：判「哪个实词重复最多」时要排除人名（人是内容不是道具）。 */
+  castNames: readonly string[] = [],
 ): ConsistencyFinding[] {
   const findings: ConsistencyFinding[] = []
   const ordered = [...chapters]
@@ -164,6 +272,27 @@ export function proseFlavorFindings(
   for (const chapter of ordered) {
     const measurement = measureProseFlavor(chapter)
     const chapterNumber = measurement.chapterNumber
+    // 意象配额（issue #96）：同一章里同一个实词被反复用来承担情绪。
+    // 清单原文是「每个词最多 2 次」，但实测 43/43 章都超 —— 按字面实现等于每章都报
+    // （#30「规则层输出全是假阳性时等于零信息」），所以按**密度**判（见 motifDensityChars）。
+    const motif = findChapterMotif(chapter, castNames)
+    if (motif) {
+      const paragraphs = motif.paragraphIndexes.map(index => `第${index}段`).join('、')
+      findings.push({
+        stableFactKey: `prose-flavor:motif:${chapterNumber}`,
+        severity: 'warning',
+        sourceChapter: chapterNumber,
+        evidence: `第${chapterNumber}章「${motif.word}」出现 ${motif.count} 次（平均每 ${motif.charsPerOccurrence.toFixed(0)} 字一次；${paragraphs} 等段）`,
+        issue: {
+          zhCN: `同一个词在本章被反复用来承担情绪：**「${motif.word}」出现 ${motif.count} 次**，平均每 ${motif.charsPerOccurrence.toFixed(0)} 字一次（本章 ${motif.chapterChars} 字）。起草清单的「意象配额」说不要让同一种物件或意象反复承担情绪——同一个词密集出现时，读者记住的是**这个词**，而不是它在推动的**事件**。`,
+          enUS: `One word carries the chapter's emotion over and over: **"${motif.word}" appears ${motif.count} times**, roughly once every ${motif.charsPerOccurrence.toFixed(0)} characters (chapter length ${motif.chapterChars}). The drafting list's motif quota says no single object or image should keep carrying the feeling; when one word is this dense, readers remember the word instead of the event it advances.`,
+        },
+        suggestion: {
+          zhCN: `三选一：①**换指称**（第一次点名之后用「那张纸」「它」「这一角」承接，别每次重述全称）；②**换承载物**（把情绪挪到另一个具体的动静上：手上的活、别人的反应、环境的变化）；③如果它确实要在场好几次，**让每次都带来新信息**（位置变了、状态变了、被谁碰过），而不是重复交代「它是那件重要的东西」。`,
+          enUS: `Pick one: (1) vary the reference — after the first mention use "the paper", "it", "that corner"; (2) move the feeling onto something else concrete (the work in their hands, someone's reaction, a change in the setting); (3) if it genuinely must appear this often, make each appearance carry new information (it moved, it changed state, someone touched it) instead of re-announcing that it matters.`,
+        },
+      })
+    }
     if (measurement.metaphor > AI_FLAVOR_QUOTAS.metaphor) {
       findings.push({
         stableFactKey: `prose-flavor:metaphor:${chapterNumber}`,

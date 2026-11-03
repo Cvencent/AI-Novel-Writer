@@ -168,7 +168,7 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   // 「AI 味」配额（issue #93）：比喻／生理反应／段尾总结／平均句长。
   // 用的是**起草清单里那套配额原文**，于是起草侧禁的与审稿侧报的是同一件事。
   // 只喂单章即可判定（配额是章内的），样本取 auditSample。
-  const proseFlavor = proseFlavorFindings(auditSample, nextChapter)
+  const proseFlavor = proseFlavorFindings(auditSample, nextChapter, castNames)
 
   // 段落起手固定化（issue #94）与物件过手动作固定化（issue #95）：
   // 都是「跨章看同一种写法」的位置轴，与上面几项同一出口。
