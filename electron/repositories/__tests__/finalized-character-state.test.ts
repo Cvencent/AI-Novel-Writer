@@ -8,7 +8,7 @@ import { migrateSchema } from '../../migrations/runner'
 import { getProjectDb } from '../../database'
 import { FinalizationRepository } from '../finalization-repository'
 import { SummaryRepository, invalidateContinuityProjectionFrom } from '../summary-repository'
-import { parseFinalizedCharacterStateResponse, type FinalizedCharacterContext } from '../../../src/shared/finalized-continuity'
+import { charactersAbsentButUpdated, parseFinalizedCharacterStateResponse, type FinalizedCharacterContext } from '../../../src/shared/finalized-continuity'
 
 vi.mock('../../database', () => ({ getProjectDb: vi.fn() }))
 const Database = createRequire(import.meta.url)('better-sqlite3') as typeof import('better-sqlite3')
@@ -402,5 +402,96 @@ describe('finalized character identities and derived state in the M02 database',
     expect(f.db.prepare("SELECT * FROM character_identity_proposals WHERE proposal_id='fcs:finalization-1'").get()).toEqual(snapshot)
     expect(f.db.prepare('SELECT COUNT(*) FROM finalization_outbox').pluck().get()).toBe(1)
     expect(f.db.prepare('SELECT body FROM contents WHERE id=1').pluck().get()).toBe(prose)
+  })
+})
+
+/**
+ * issue #150：本章 **0 出场**的人被写入了一整套「本章做了什么」。
+ *
+ * 现场（常驻测试书第 71 章）：正文里「邵广海」出现 0 次，定稿后处理却给他写了
+ * location / physicalState / mentalState / recentEvents / keyItems 五个字段，
+ * 内容全是柯明远在本章做的事（复核、夹卷宗、定三日内送检）。
+ *
+ * 解析器只校验 evidence 能定位、只出现一次、偏移对得上——而那条引文
+ * 「三日内，随布角送检。」本身没有主语，同一段上一句明写「柯明远伸手」。
+ * 归属这一维从来没被检查过。
+ */
+describe('本章 0 出场的角色不得直接写入状态 (issue #150)', () => {
+  it('downgrades an absent character’s update to a pending candidate instead of applying it', () => {
+    // 用一份**只有一人出场**的正文提交定稿：另一人 0 出场，却要给他写状态。
+    const onlyOne = '🌙林岚走进北塔。她合上门。'
+    const db = new Database(':memory:'); open.push(db)
+    vi.mocked(getProjectDb).mockReturnValue(db)
+    initializeLegacyBaselineSchema(db)
+    db.exec("INSERT INTO characters(name,notes) VALUES('林岚','档案甲'),('周研','档案乙')")
+    migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry(), CURRENT_DESKTOP_SCHEMA_VERSION)
+    db.exec("INSERT INTO project_core(id,project_name,characters_arch) VALUES('main','合成项目','')")
+    const ids = ['林岚', '周研'].map(name => db.prepare('SELECT character_id FROM characters WHERE name=?').pluck().get(name) as string)
+    FinalizationRepository.commit(draft(db, 1, 1, onlyOne))
+    // 候选要挂在**同代**的连续性投影上（库里已有该守卫）。
+    SummaryRepository.saveFinalizedContinuity({ draftId: 1, chapterNumber: 1, chapterNotes: '绑定定稿的摘要',
+      facts: [], source: SummaryRepository.readFinalizedCharacterContext(1, scope, db).source,
+      projectionGeneration: SummaryRepository.readFinalizedCharacterContext(1, scope, db).projectionGeneration })
+    const captured = SummaryRepository.readFinalizedCharacterContext(1, scope, db)
+    // 周研在正文里 0 次出现，却拿到一条「主持了复核」。
+    const response = parseFinalizedCharacterStateResponse(JSON.stringify({ updates: [{
+      characterId: ids[1], currentState: { recentEvents: '主持了复核' },
+      evidence: { text: '她合上门。' },
+    }] }), captured)
+    const receipt = SummaryRepository.commitFinalizedCharacterStates(captured, response, db)
+    // 不落库：applied 为 0，全部进待确认并带原因。
+    expect(receipt.applied).toBe(0)
+    expect(receipt.candidates.length).toBeGreaterThan(0)
+    expect(receipt.candidates.every(candidate => candidate.reason === 'character-absent')).toBe(true)
+    const row = db.prepare('SELECT cs_recent_events v FROM characters WHERE character_id=?').get(ids[1]) as { v: string | null }
+    expect(row.v).toBeFalsy()
+  })
+
+  it('still applies the update when the character does appear in the prose', () => {
+    const f = fixture(), captured = f.context()
+    // prose 里「周研留在旧站。」——周研确实在场，正常落库。
+    const response = parseFinalizedCharacterStateResponse(JSON.stringify({ updates: [{
+      characterId: f.ids[1], currentState: { recentEvents: '留在旧站' },
+      evidence: { text: '周研留在旧站。' },
+    }] }), captured)
+    const receipt = SummaryRepository.commitFinalizedCharacterStates(captured, response, f.db)
+    expect(receipt.applied).toBe(1)
+    expect(receipt.candidates).toEqual([])
+    expect(f.row(f.ids[1]).cs_recent_events).toBe('留在旧站')
+  })
+
+  it('counts an alias mention as appearing, and a 1-character name never counts', () => {
+    // 判据是「姓名或别名**逐字**出现」，且名字至少 2 字（单字名会命中任何句子）。
+    expect(charactersAbsentButUpdated(
+      { content: '老周留在旧站。林岚在屋里。', characters: [
+        { characterId: 'l', displayNameSnapshot: '林岚', aliases: [], fields: [] },
+        { characterId: 'c', displayNameSnapshot: '周研', aliases: ['老周'], fields: [] },
+      ] },
+      [{ characterId: 'c', currentState: { recentEvents: 'x' } }],
+    )).toEqual([])
+    expect(charactersAbsentButUpdated(
+      { content: '周研留在旧站。林岚在屋里。', characters: [
+        { characterId: 'l', displayNameSnapshot: '林岚', aliases: [], fields: [] },
+        { characterId: 'c', displayNameSnapshot: '周研', aliases: [], fields: [] },
+      ] },
+      [{ characterId: 'c', currentState: { recentEvents: 'x' } }],
+    )).toEqual([])
+    // ⚠️ 前置条件是「正文里至少认出一个在册名字」：这里用两个角色，
+    // 一个在场（柯明远）、一个 0 出场（邵广海）——正是 issue #150 的现场形态。
+    expect(charactersAbsentButUpdated(
+      {
+        content: '柯明远伸手。',
+        characters: [
+          { characterId: 'k', displayNameSnapshot: '柯明远', aliases: [], fields: [] },
+          { characterId: 'c', displayNameSnapshot: '邵广海', aliases: [], fields: [] },
+        ],
+      },
+      [{ characterId: 'c', currentState: { recentEvents: '主持了复核' } }],
+    )).toEqual(['c'])
+    // 正文里一个在册名字都认不出来 → 整类跳过（合成夹具的占位正文即此类）。
+    expect(charactersAbsentButUpdated(
+      { content: 'word1 word2 word3', characters: [{ characterId: 'c', displayNameSnapshot: '邵广海', aliases: [], fields: [] }] },
+      [{ characterId: 'c', currentState: { recentEvents: '主持了复核' } }],
+    )).toEqual([])
   })
 })

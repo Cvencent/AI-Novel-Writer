@@ -63,7 +63,7 @@ export interface FinalizedCharacterStateCandidate {
   selectionKey?: string
   displayName?: string
   rawValue?: unknown
-  reason?: 'author-protected' | 'legacy-protected'
+  reason?: 'author-protected' | 'legacy-protected' | 'character-absent'
   /** Present on current source-bound decisions; omitted only by preserved legacy rows. */
   candidateKey?: string
   source?: FinalizedSourceIdentity
@@ -172,6 +172,64 @@ export class FinalizedCharacterEvidenceError extends Error {
     readonly reason: 'missing' | 'no-exact-match' | 'multiple-exact-matches' | 'offset-mismatch') { super(code) }
 }
 
+/**
+ * 这个角色在**本章正文**里出现过吗（issue #150）。
+ *
+ * 判据是**姓名或别名逐字出现**，不是语义在场：改名、代称（「那伙计」）都算没出现。
+ * 这是刻意的保守——本条要挡的是「整章从头到尾没这个人，却给他写了一整套本章状态」，
+ * 而那种情况下连名字都不会出现一次（实测第 71 章「邵广海」0 次、「广海」0 次）。
+ *
+ * 反过来，只要出现过一次就不再拦：铁链后头挤出个人，哪怕只有一句「她开口」，
+ * 归给他的状态至少有落脚点，判据没有能力也没有必要再判「这一句是说他的吗」。
+ */
+export function characterAppearsInProse(character: { displayNameSnapshot: string; aliases: readonly string[] }, content: string): boolean {
+  const body = String(content ?? '')
+  const names = [character.displayNameSnapshot, ...character.aliases]
+    .map(name => String(name ?? '').trim())
+    .filter(name => name.length >= 2)
+  return names.some(name => body.includes(name))
+}
+
+/**
+ * 「本章 0 出场，却要被写入状态」的更新（issue #150）。
+ *
+ * 现场：第 71 章正文「邵广海」出现 0 次，定稿后处理却给他写了 location/physicalState/
+ * mentalState/recentEvents/keyItems 五个字段，内容全是**柯明远**在本章做的事
+ * （复核、夹卷宗、定三日内送检）。全书 141 条角色状态更新里 5 条写给了 0 出场的人。
+ *
+ * 为什么现有校验拦不住：解析器只检查 evidence 能定位、只出现一次、偏移对得上；
+ * 「三日内，随布角送检。」本身没有主语，而同一段上一句明写「柯明远伸手」。
+ * 归属这一维**完全没有被检查**，合同里也没要求。
+ *
+ * ⚠️ 本函数只回答第一问（0 出场）；第二问「引文所在句的施事是不是另一个人」需要
+ * 指代/施事判定——实测那类句子的引文常常没有主语，规则判不准（#149/#144 的同一教训）。
+ * 所以这里**只挡确定的那一档**：一个名字都没出现过的人，不该被写入本章状态。
+ *
+ * 返回 0 出场却被要求写入的 `characterId`（保持输入顺序，便于报错定位）。
+ */
+export function charactersAbsentButUpdated(
+  context: Pick<FinalizedCharacterContext, 'characters' | 'content'>,
+  updates: ReadonlyArray<{ characterId: string; currentState: Record<string, unknown> }>,
+): string[] {
+  const absent: string[] = []
+  // ⚠️ **前置条件**：正文里至少出现过一个在册角色名。
+  //
+  // 一个名字都认不出来的正文，本层没有任何依据判断「谁出场了」——那不是「0 出场」，
+  // 而是「这份正文不是这个故事的正常叙述」（合成夹具的占位文本就是这种）。
+  // 硬判会让每一条更新都被降级，而真实长篇里不会出现这种正文。
+  // 与 #107（名册为空整类跳过）、#135（判据静默先算条件在真实数据上成立吗）同一条。
+  const anyRegisteredName = context.characters.some(character => characterAppearsInProse(character, context.content))
+  if (!anyRegisteredName) return []
+  for (const update of updates) {
+    const character = context.characters.find(item => item.characterId === update.characterId)
+    if (!character) continue
+    // 没有任何动态字段的更新本来就不该存在（解析器已拦），这里只判有字段的。
+    if (Object.keys(update.currentState ?? {}).length === 0) continue
+    if (!characterAppearsInProse(character, context.content)) absent.push(update.characterId)
+  }
+  return absent
+}
+
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 /** Main re-parses the settled artifact with its own frozen context before domain commit. */
 export function parseFinalizedCharacterStateResponse(content: string, context: FinalizedCharacterContext): FinalizedCharacterStateResponse {
@@ -203,6 +261,14 @@ export function parseFinalizedCharacterStateResponse(content: string, context: F
       if (typeof input.currentState[field] !== 'string') throw new Error('FINALIZED_CHARACTER_FIELD_INVALID')
       currentState[field] = input.currentState[field]
     }
+    // ⚠️ 这里判的是**过滤前的键数**，刻意不改（issue #150 附注被证伪）。
+    //
+    // `{keyItems: ''}` 在本仓是**设计上的清空语义**，已有测试钉住
+    // （"clears an explicit empty derived field…"）。把它改成「必须至少有一个非空值」，
+    // 会连带禁止清空——那是另一个产品决定，不属于本条。
+    // issue 附注说「只带 updatedAtChapter 能过闸」，实测**不成立**（当前实现抛
+    // FINALIZED_CHARACTER_FIELD_INVALID）；附注的另一半「落一个空 currentState」
+    // 也走不到，因为空对象在这里就被拦下了。
     if (!Object.keys(currentState).length || Object.hasOwn(input.currentState, 'updatedAtChapter') && input.currentState.updatedAtChapter !== context.source.chapterNumber) {
       throw new Error('FINALIZED_CHARACTER_FIELD_INVALID')
     }

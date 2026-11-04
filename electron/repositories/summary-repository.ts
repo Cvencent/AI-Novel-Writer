@@ -27,7 +27,7 @@ import {
   type CharacterStateFieldProvenance,
 } from '../../src/shared/character-roster'
 import { decideDerivedPatch, type CharacterFieldSnapshot, type DerivedSourceOrder } from '../../src/shared/character-identity'
-import { parseFinalizedCharacterStateResponse } from '../../src/shared/finalized-continuity'
+import { charactersAbsentButUpdated, parseFinalizedCharacterStateResponse } from '../../src/shared/finalized-continuity'
 import { hasCharacterIdentitySchema } from './character-repository'
 import { refreshCharacterStateProjection } from './character-roster-repository'
 import type { ProjectEpoch } from '../../src/shared/source-ref'
@@ -158,7 +158,7 @@ function parseCharacterStateCandidates(value: string): FinalizedCharacterStateCa
             ...(typeof candidate.selectionKey === 'string' ? { selectionKey: candidate.selectionKey } : {}),
             ...(typeof candidate.displayName === 'string' ? { displayName: candidate.displayName } : {}),
             ...(candidate.rawValue !== undefined ? { rawValue: structuredClone(candidate.rawValue) } : {}),
-            ...(candidate.reason === 'author-protected' || candidate.reason === 'legacy-protected' ? { reason: candidate.reason } : {}),
+            ...(candidate.reason === 'author-protected' || candidate.reason === 'legacy-protected' || candidate.reason === 'character-absent' ? { reason: candidate.reason } : {}),
             ...(typeof candidate.candidateKey === 'string' ? { candidateKey: candidate.candidateKey } : {}),
             ...(isFinalizedSource(candidate.source) ? { source: structuredClone(candidate.source) } : {}),
             ...(Number.isSafeInteger(candidate.expectedFieldRevision) && (candidate.expectedFieldRevision as number) >= 0
@@ -433,8 +433,38 @@ export class SummaryRepository {
         field.characterId !== character.characterId || field.projectId !== context.projectId || field.epoch !== context.epoch))) throw new Error('FINALIZED_CHARACTER_CONTEXT_CHANGED')
       const verified = parseFinalizedCharacterStateResponse(JSON.stringify({ updates: response.updates }), context)
       if (verified.unresolved.length) throw new Error('FINALIZED_CHARACTER_IDENTITY_REQUIRED')
+      // 本章 **0 出场**却被写入状态（issue #150）：降级成待确认候选，不直接落库。
+      //
+      // 现场：第 71 章正文「邵广海」0 次，却拿到 5 个字段，内容全是柯明远在本章做的事
+      // （复核、夹卷宗、定三日内送检）。解析器只校验 evidence 能定位、只出现一次，
+      // 而「三日内，随布角送检。」本身没有主语——归属这一维从来没被检查过。
+      //
+      // ⚠️ 只降级不丢弃：托人带话这类**可以由不在场的人发生**的事仍然可能是对的，
+      // 让作者在「待确认」里一眼看到并决定（ch28/ch39 就是这一档）。
+      const absentIds = new Set(charactersAbsentButUpdated(context, verified.updates))
       const receipt: FinalizedCharacterStateCommitReceipt = { applied: 0, unchanged: 0, candidates: [] }
       for (const update of verified.updates) {
+        if (absentIds.has(update.characterId)) {
+          const capturedAbsent = context.characters.find(item => item.characterId === update.characterId)!
+          for (const field of CHARACTER_STATE_TEXT_FIELDS) {
+            if (!Object.hasOwn(update.currentState, field)) continue
+            const value = update.currentState[field]!
+            if (!String(value ?? '').trim()) continue
+            // ⚠️ CAS 基线必须取**当前真实字段**（与下面正常分支同一口径）：
+            // 填 0/空串会让作者在「待确认」里点采纳时对不上基线，永远应用失败。
+            const absentActual = current.characters.find(item => item.characterId === update.characterId)!
+              .fields.find(item => item.field === field)
+            receipt.candidates.push({ candidateKey: characterStateCandidateKey(context.source, update.characterId, field, value),
+              source: structuredClone(context.source),
+              expectedFieldRevision: absentActual?.revision ?? 0,
+              expectedFieldValueHash: absentActual?.valueHash ?? '',
+              characterId: update.characterId, characterName: capturedAbsent.displayNameSnapshot,
+              displayName: capturedAbsent.displayNameSnapshot,
+              selectionKey: `state:${update.characterId}:${field}`, field, value, evidence: update.evidence,
+              rawValue: structuredClone(update), reason: 'character-absent' })
+          }
+          continue
+        }
         const captured = context.characters.find(item => item.characterId === update.characterId)!
         const currentCharacter = current.characters.find(item => item.characterId === update.characterId)!
         const row = db.prepare('SELECT cs_provenance FROM characters WHERE character_id=? AND retired=0').get(update.characterId) as { cs_provenance: string }
