@@ -40,6 +40,13 @@ import {
   type AppearanceReviewCard,
   type AppearanceReviewChapter,
 } from '../shared/appearance-consistency'
+import {
+  buildSensoryReviewPrompt,
+  parseSensoryReview,
+  summarizeSensoryVerdicts,
+  type SensoryReviewChapter,
+  type SensoryVerdictSummary,
+} from '../shared/sensory-review'
 
 /** 能做字段级补丁的层（其余层走各自的页面或只能重定稿）。 */
 export const FIELD_PATCH_LAYERS: readonly PreflightLayer[] = ['blueprint', 'world']
@@ -233,4 +240,69 @@ export function appearanceContradictionFindings(
       enUS: `Either make this sentence agree with the card, or update the card if the prose is right (and keep later chapters consistent). Also check whether neighbouring chapters only say "the missing fingertip" without a side — that phrasing hides the error.`,
     },
   }))
+}
+
+/**
+ * 感官通道覆盖（issue #151 的规则修正）——**一次模型调用**，规则只负责喂与校验。
+ *
+ * 旧实现用气味/味觉/拟声三张词表去数；用户 2026-11-05 明确否掉那整类做法
+ * （「不能去设计词表，也不能用任何的短语匹配，内容类的全部让模型判断」）。
+ * 判断「这一段有没有写气味」需要理解内容，只能交模型；规则能做的是：
+ * 喂哪几章、要什么 JSON 形状、答案里的章号是否合法。
+ */
+export interface SensoryReviewOutcome {
+  status: 'ok' | 'failed'
+  summary: SensoryVerdictSummary | null
+  error?: string
+}
+
+export async function reviewSensoryChannels(
+  session: ProjectSessionContext,
+  chapters: readonly SensoryReviewChapter[],
+  locale: 'zh-CN' | 'en-US' = 'zh-CN',
+): Promise<SensoryReviewOutcome> {
+  const en = locale === 'en-US'
+  const request = { chapters, language: locale }
+  if (chapters.length === 0) return { status: 'ok', summary: null }
+  const { system, user } = buildSensoryReviewPrompt(request)
+  const response = await useLLMStore.getState().generate(
+    [{ role: 'system', content: system }, { role: 'user', content: user }],
+    undefined,
+    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
+  )
+  if (!response.success) {
+    return { status: 'failed', summary: null, error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
+  }
+  const verdicts = parseSensoryReview(response.content, request)
+  if (!verdicts) {
+    return { status: 'failed', summary: null, error: en
+      ? 'The model did not return a valid per-chapter verdict list.'
+      : '模型返回的不是合法的逐章判断清单。' }
+  }
+  return { status: 'ok', summary: summarizeSensoryVerdicts(verdicts) }
+}
+
+/** 把汇总转成一致性发现（只在这段**确实**稀疏时报）。 */
+export function sensoryVerdictFindings(summary: SensoryVerdictSummary | null): ConsistencyFinding[] {
+  if (!summary || !summary.sparse || summary.smellChapters.length === 0 && summary.silentChapters.length === 0) return []
+  const first = Math.min(...summary.silentChapters.concat(summary.smellChapters))
+  const last = Math.max(...summary.silentChapters.concat(summary.smellChapters))
+  const silent = summary.silentChapters
+  return [{
+    // 取这一段的首章（不带末章号）：这一段随新章滚动，带末章会让 ack 永远对不上（#86/#89/#98/#108）。
+    stableFactKey: `prose-flavor:sensory:${first}`,
+    severity: 'warning' as const,
+    sourceChapter: last,
+    evidence: `模型逐章判断：第${first}–${last}章共 ${summary.total} 章，只有 ${summary.smellChapters.length} 章写了气味`
+      + `（${Math.round(summary.smellShare * 100)}%）；味觉 ${summary.tasteChapters.length} 章、环境音 ${summary.soundChapters.length} 章；`
+      + `三类全无的章：${silent.length ? silent.map(n => `第${n}章`).join('、') : '无'}`,
+    issue: {
+      zhCN: `感官通道几乎只剩视觉与触觉：最近 ${summary.total} 章里只有 ${summary.smellChapters.length} 章写过气味（${Math.round(summary.smellShare * 100)}%），味觉 ${summary.tasteChapters.length} 章、环境音 ${summary.soundChapters.length} 章，三类全无的有 ${silent.length} 章。起草与精修模板都要求「通过五感细节强化环境描写」，但没有一层核对它——于是逐章退化成最擅长的通道。`,
+      enUS: `The sensory channels have collapsed into sight and touch: of the last ${summary.total} chapters only ${summary.smellChapters.length} use any smell (${Math.round(summary.smellShare * 100)}%), ${summary.tasteChapters.length} use taste, ${summary.soundChapters.length} use ambient sound, and ${silent.length} use none of the three. Both templates ask for sensory detail, but nothing checks it.`,
+    },
+    suggestion: {
+      zhCN: `在列出的那几章里各补一处**当场闻到的气味**（不必长）：要写清是什么东西发出的、在什么动作之后闻到的；不要写「闻到一股难以形容的味道」这类空话。改的是少数几章，不用每章都补。`,
+      enUS: `Add one on-the-spot smell to a few of the chapters listed: say what the thing is and what action raised the smell. Rewrite only a few chapters, not all of them.`,
+    },
+  }]
 }

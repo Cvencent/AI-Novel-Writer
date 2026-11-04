@@ -97,7 +97,6 @@ const FAMILY_LABELS: Readonly<Record<string, AcknowledgementTitle>> = Object.fre
   'prose-flavor:sentence-length': { zhCN: '平均句长超上限', enUS: 'sentence length above ceiling' },
   'prose-flavor:sentence-length-floor': { zhCN: '叙述句均长低于下限', enUS: 'sentence length below floor' },
   'prose-flavor:sentence-length-drift': { zhCN: '叙述句长单向收敛', enUS: 'sentence length drifting down' },
-  'prose-flavor:sensory': { zhCN: '感官通道只剩视觉与触觉', enUS: 'sensory channels collapsed' },
   'paragraph-opener': { zhCN: '段落起手主语固定', enUS: 'paragraph opener fixed' },
   'quote-style': { zhCN: '引号风格与全书不一致', enUS: 'quote style drift' },
   'glyph': { zhCN: '字形偏旁写错', enUS: 'wrong radical claimed' },

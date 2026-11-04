@@ -23,17 +23,30 @@ export interface SynopsisCheckpoint {
 /** 少于该字符数视为无保存价值的零碎输出，不落盘、不提供续写。 */
 export const MIN_SYNOPSIS_PARTIAL_PERSIST_CHARS = 120
 
+/**
+ * 未完成/部分覆盖大纲的标记**文本**——写入与读取共用这几个常量。
+ *
+ * ⚠️ 原先写入时用一整段字面量、读取时又各写一遍 `includes('本大纲未完成')`：
+ * 两处措辞一旦改动就会**静默失配**（标记读不出来 → 续写判断失效）。
+ * 那是「字面量匹配」最脆的形态（用户 2026-11-05 禁止这一类做法）。
+ * 现在标记文本只有一个来源；判断仍是对**自己写入的协议标记**做比对，不是对正文内容做语义判断。
+ */
+const SYNOPSIS_INCOMPLETE_LABEL_ZH = '本大纲未完成'
+const SYNOPSIS_INCOMPLETE_LABEL_EN = 'This outline is incomplete'
+const SYNOPSIS_PARTIAL_LABEL_ZH = '本大纲已覆盖至第'
+const SYNOPSIS_PARTIAL_LABEL_EN = 'This outline covers chapters'
+
 /** 落库时追加在未完成大纲末尾的可见标记（帮助用户识别与编辑器提示）。 */
 const SYNOPSIS_INCOMPLETE_MARKER_ZH = [
   '',
-  '> ⚠️ **本大纲未完成**：生成被输出长度中断，以上为已自动保存的已完成部分。',
+  `> ⚠️ **${SYNOPSIS_INCOMPLETE_LABEL_ZH}**：生成被输出长度中断，以上为已自动保存的已完成部分。`,
   '> 可在「AI 输出」提示处点击「继续生成细纲」，从断点续写补齐本批章节。',
   '',
 ].join('\n')
 
 const SYNOPSIS_INCOMPLETE_MARKER_EN = [
   '',
-  '> ⚠ **This outline is incomplete**: generation stopped at the output length limit; the completed part above was saved automatically.',
+  `> ⚠ **${SYNOPSIS_INCOMPLETE_LABEL_EN}**: generation stopped at the output length limit; the completed part above was saved automatically.`,
   '> Click “Continue plot outline” in the AI output notice to resume this batch.',
   '',
 ].join('\n')
@@ -62,8 +75,8 @@ export function renderSynopsisDbText(
   const coveredTo = checkpoint.synopsis_covered_to ?? totalChapters
   const visibleBody = coveredTo < totalChapters
     ? `${body}\n\n${english
-      ? `> This outline covers chapters 1-${coveredTo} of ${totalChapters}; the remaining chapters will be generated in later batches.`
-      : `> 本大纲已覆盖至第 ${coveredTo} 章（全书 ${totalChapters} 章），其余章节将在后续批次继续生成。`}`
+      ? `> ${SYNOPSIS_PARTIAL_LABEL_EN} 1-${coveredTo} of ${totalChapters}; the remaining chapters will be generated in later batches.`
+      : `> ${SYNOPSIS_PARTIAL_LABEL_ZH} ${coveredTo} 章（全书 ${totalChapters} 章），其余章节将在后续批次继续生成。`}`
     : body
   return `# ${heading}\n\n${visibleBody}`.trim()
 }
@@ -132,14 +145,17 @@ export function assertCheckpointDbMirrorCurrent(
 }
 
 export function hasVisibleIncompleteSynopsisMarker(dbOutlineText: string): boolean {
-  return dbOutlineText.includes('本大纲未完成')
-    || dbOutlineText.includes('This outline is incomplete')
+  // 用**同一常量**判断自己写入的标记：写入与读取只有一个来源，改一处两边同时生效。
+  // ⚠️ 这判的是「本模块写进正文的协议标记」，不是对作者正文的内容判断——后者按用户
+  // 2026-11-05 的规则必须交模型。
+  return dbOutlineText.includes(SYNOPSIS_INCOMPLETE_LABEL_ZH)
+    || dbOutlineText.includes(SYNOPSIS_INCOMPLETE_LABEL_EN)
 }
 
 export function hasVisiblePartialSynopsisMarker(dbOutlineText: string): boolean {
   return hasVisibleIncompleteSynopsisMarker(dbOutlineText)
-    || dbOutlineText.includes('本大纲已覆盖至第')
-    || dbOutlineText.includes('This outline covers chapters')
+    || dbOutlineText.includes(SYNOPSIS_PARTIAL_LABEL_ZH)
+    || dbOutlineText.includes(SYNOPSIS_PARTIAL_LABEL_EN)
 }
 
 export function isUsableSynopsisCheckpoint(

@@ -20,7 +20,10 @@ import { useProjectStore } from '../../../stores/project-store'
 import { captureProjectSession, isProjectSessionCurrent } from '../../project-session-gate'
 import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useAnchoredLayer } from '../../ui/use-anchored-layer'
-import { appearanceContradictionFindings, applyRepairDiffs, checkAppearanceAgainstCards, proposeLayerRepair } from '../../../services/preflight-repair'
+import {
+  appearanceContradictionFindings, applyRepairDiffs, checkAppearanceAgainstCards,
+  proposeLayerRepair, reviewSensoryChannels, sensoryVerdictFindings,
+} from '../../../services/preflight-repair'
 import { advanceRepairQueue, planRepairCalls, remainingRepairLayers, shouldContinueRepairChain } from '../../../shared/preflight-repair'
 import { preflightRouteOf } from '../../../shared/preflight-route'
 import { Button } from '../../ui/Button'
@@ -201,6 +204,39 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
         diffs: outcome.diffs,
         remainingLayers: calls.length - 1,
       })
+      show()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /**
+   * 感官通道覆盖（issue #151 的规则修正）——**交给模型判**，不由规则数词表。
+   *
+   * 与「核对角色外观」同一套：点一次 → 一次模型调用 → 结果并入提醒。
+   */
+  const checkSensory = async () => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || busy) return
+    const prose = (await ipc.invokeWithProjectSession(session, 'db:draft-export-snapshot', session.projectPath)
+      .catch(() => [])) as Array<{ chapterNumber: number, content: string }>
+    if (!isProjectSessionCurrent(session)) return
+    const chapters = prose
+      .filter(row => Number.isSafeInteger(row.chapterNumber) && row.chapterNumber < chapterNumber)
+      .map(row => ({ chapterNumber: row.chapterNumber, content: String(row.content ?? '') }))
+    setBusy(true)
+    setMessage(null)
+    try {
+      const outcome = await reviewSensoryChannels(session, chapters, locale)
+      if (!isProjectSessionCurrent(session)) return
+      if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
+      const found = sensoryVerdictFindings(outcome.summary)
+      if (found.length === 0) {
+        setMessage(text('模型判断这几章的感官通道够用（或章数太少，暂不判）。',
+          'The model found the sensory coverage adequate (or there are too few chapters to judge).'))
+        return
+      }
+      setPreflight(current => current ? { ...current, findings: [...current.findings, ...found] } : current)
       show()
     } finally {
       setBusy(false)
@@ -422,6 +458,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           onRepair={targets => void requestRepair(targets)}
           onRepairAll={() => void requestRepair(preflight.findings)}
           onCheckAppearance={() => void checkAppearance()}
+          onCheckSensory={() => void checkSensory()}
           repairProposal={repairProposal}
           onApplyRepairField={field => void applyRepair([field])}
           onApplyRepairAll={() => void applyRepair(null)}
