@@ -694,6 +694,38 @@ describe('review/revision consumers using the main contract (synthetic transport
     expect(f.writes()).toBe(1)
   })
 
+  /**
+   * issue #121：撞在输出上限上时要落到「更宽裕的替代输出」，而不是直接失败。
+   *
+   * 实测那本书 122 次审稿 16 次 finishReason=length，其中 15 次是推理把 24576
+   * 吃满、正文一个字没写出来；而 `review-chapter-rebuild` 的输出上限放到 32k
+   * （`reviewPurposeOutputCap` → 策略上限），本来就是为这种情况准备的——
+   * 但旧实现让 bounded completion 的 length 直接冒泡，122 次里 **0 次** rebuild，
+   * 那条路是死代码。
+   */
+  it('falls through to the roomier replacement when the first attempt hits the output limit', async () => {
+    const f = setup([
+      // 初始请求 + 一次自动续写都撞顶（maxContinuations=1），随后 bounded completion 抛 length。
+      { content: '{"summary":"被截断', finishReason: 'length' },
+      { content: '{"summary":"续写仍被截断', finishReason: 'length' },
+      // 替代输出（purpose=review-chapter-rebuild，上限 32k）说完了。
+      { content: review, finishReason: 'stop' },
+    ])
+    await f.command('review-chapter').execute(f.args)
+    expect(f.fixture.recovery!.attemptedPurposes)
+      .toEqual(['review-chapter', 'review-chapter', 'review-chapter-rebuild'])
+    expect(f.writes()).toBe(1)
+    expect(f.fixture.recovery!.latestArtifactFinishReason).toBe('stop')
+  })
+
+  it('does not swallow other terminal failures into the replacement path', async () => {
+    // 只吞 length：内容过滤必须照原样上抛，不能被当成「再试一次就好」。
+    const f = setup([{ content: '{"summary":"x', finishReason: 'content_filter' }])
+    await expect(f.command('review-chapter').execute(f.args)).rejects.toThrow()
+    expect(f.fixture.recovery!.attemptedPurposes).toEqual(['review-chapter'])
+    expect(f.writes()).toBe(0)
+  })
+
   it('persists malformed one-time recheck output as unknown without a replacement model call', async () => {
     const historySentinel = 'RECHECK_FROZEN_PREDECESSOR_EVIDENCE'
     const f = setup([{ content: 'not-json', finishReason: 'stop' }], [{

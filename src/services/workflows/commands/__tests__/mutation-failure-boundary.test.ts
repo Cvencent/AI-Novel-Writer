@@ -1459,7 +1459,16 @@ describe('workflow mutation failure boundaries', () => {
     expect(invoke.mock.calls.filter(([channel]) => channel === 'db:review-create')).toHaveLength(1)
   })
 
-  it('keeps a twice length-truncated review fail-closed', async () => {
+  /**
+   * issue #121：撞顶后**先用更宽裕的替代输出再试一次**，仍撞顶才失败关闭。
+   *
+   * 旧实现让 bounded completion 的 length 直接冒泡，`review-chapter-rebuild`
+   * （上限放到 32k）那条路一次都走不到——实测 122 次审稿 0 次 rebuild。
+   * 现在：第一轮 2 次调用撞顶 → 替代输出再来 2 次 → 仍撞顶 → 失败关闭，
+   * 仍然**不保存任何报告**（这条测试守的是「不静默接受截断产物」这个不变量，
+   * 它没有变；变的是「先试一次更宽裕的」）。
+   */
+  it('tries the roomier replacement once, then still fails closed when both hit the limit', async () => {
     const invoke = vi.fn(async (channel: string) => {
       if (channel === 'kb:search') return []
       if (channel === 'db:character-get-all') return []
@@ -1487,7 +1496,8 @@ describe('workflow mutation failure boundaries', () => {
       callbacks: callbacks(),
     })).rejects.toThrow('Automatic continuation ran 1 time, but the output is not yet complete')
 
-    expect(generateStream).toHaveBeenCalledTimes(2)
+    // 第一轮（初始 + 1 次续写）+ 替代输出（初始 + 1 次续写）。
+    expect(generateStream).toHaveBeenCalledTimes(4)
     expect(invoke.mock.calls.map(([channel]) => channel)).not.toContain('db:review-create')
   })
 })

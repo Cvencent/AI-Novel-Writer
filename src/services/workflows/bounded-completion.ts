@@ -151,17 +151,19 @@ export function createBoundedCompletionError(
   return error
 }
 
-function continuationLimitExceededError(maxContinuations: number, uiLocale: Locale): Error {
-  return new Error(
-    localize(
-      uiLocale,
-      `AI 输出连续达到本次请求长度限制，已自动续写 ${maxContinuations} 次，尚未完整生成。` +
-        '请缩短本次任务，或拆分为更小批次后重试。',
-      `AI output repeatedly reached this request length limit. Automatic continuation ran ${maxContinuations} ` +
-        `${maxContinuations === 1 ? 'time' : 'times'}, but the output is not yet complete. ` +
-        'Shorten the task or split it into smaller batches, then try again.',
-    ),
-  )
+function continuationLimitExceededError(maxContinuations: number, uiLocale: Locale): BoundedCompletionFailure {
+  // 必须带上 failureCode='length'（issue #121）：这条失败**就是**「撞在输出上限上」，
+  // 但旧实现抛的是裸 Error，调用方拿不到任何码，于是只能整个失败——
+  // 审稿那条「更宽裕的替代输出」分支因此成了死代码（实测 122 次审稿 0 次 rebuild）。
+  // 文案不变（作者看到的主要提示仍是原句），只是补上机器可识别的码。
+  return new BoundedCompletionFailure('length', localize(
+    uiLocale,
+    `AI 输出连续达到本次请求长度限制，已自动续写 ${maxContinuations} 次，尚未完整生成。` +
+      '请缩短本次任务，或拆分为更小批次后重试。',
+    `AI output repeatedly reached this request length limit. Automatic continuation ran ${maxContinuations} ` +
+      `${maxContinuations === 1 ? 'time' : 'times'}, but the output is not yet complete. ` +
+      'Shorten the task or split it into smaller batches, then try again.',
+  ))
 }
 
 function assertNotCancelled(uiLocale: Locale, isCancelled?: () => boolean): void {

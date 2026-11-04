@@ -1,4 +1,4 @@
-import { redactVisibleCompletionText } from '../bounded-completion'
+import { getBoundedCompletionFailureCode, redactVisibleCompletionText } from '../bounded-completion'
 import { reviewTimeContinuity } from '../../../shared/chapter-time-continuity'
 import type { CommandExecuteParams, WorkflowGenerationRuntimeDependencies } from './base-command'
 import type { PreparedReviewRevisionContext, ReviewRevisionRecovery } from '../../../shared/review-revision-generation'
@@ -119,6 +119,8 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
     let raw: string | undefined
     let parseFailure: unknown
     let needsRebuild = attempts.includes('review-chapter-rebuild')
+    /** 第一次审稿是不是撞在模型输出上限上（issue #121）。 */
+    let lengthExhausted = false
     if (this.recovery?.latestArtifact && this.recovery.latestArtifactFinishReason === 'stop') {
       raw = this.stripThinkingTags(this.recovery.latestArtifact.text)
       try { parseReviewGenerationResult(raw) } catch (error) { parseFailure = error; raw = undefined; needsRebuild = true }
@@ -136,13 +138,39 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
       return this.commitReview(prepared, params)
     }
     if (raw === undefined && !needsRebuild) {
-      raw = await generate('review-chapter', reviewPrompt)
-      try { parseReviewGenerationResult(raw) } catch (error) { parseFailure = error; raw = undefined; needsRebuild = true }
+      try {
+        raw = await generate('review-chapter', reviewPrompt)
+      } catch (error) {
+        /**
+         * 撞在输出上限上时**不要直接失败**（issue #121）。
+         *
+         * 实测那本书 122 次审稿里有 16 次 finishReason=length，其中 15 次是
+         * **推理把 24576 的输出预算吃满、正文一个字都没写出来**（产物为空），
+         * 而不是「报告写太长被截断」。这种情况下再续写也只是再撞一次。
+         *
+         * 设计上本来就有一条更宽裕的替代输出：`review-chapter-rebuild` 的
+         * 输出上限被放到策略上限（`reviewPurposeOutputCap` 返回 POSITIVE_INFINITY，
+         * 实际由 32k 的 maxOutputPerRequest 兜底），而普通审稿是 24576。
+         * 但旧实现让 bounded completion 的 length 失败直接冒泡，控制流根本走不到
+         * 下面那段 `raw === undefined && needsRebuild` —— 实测 122 次审稿
+         * **0 次** rebuild 调用，那条路是死代码。
+         *
+         * 只吞 length；其它失败码（传输、内容过滤）照原样上抛，交给 #85 的重试链。
+         */
+        if (getBoundedCompletionFailureCode(error) !== 'length') throw error
+        lengthExhausted = true
+        needsRebuild = true
+      }
+      if (raw !== undefined) {
+        try { parseReviewGenerationResult(raw) } catch (error) { parseFailure = error; raw = undefined; needsRebuild = true }
+      }
     }
     if (raw === undefined && needsRebuild) {
-      const detail = parseFailure instanceof SyntaxError
-        ? text('输出不是完整 JSON（可能被模型输出上限截断）', 'the output is not complete JSON (it may be truncated by the model output limit)')
-        : text('输出不符合审稿报告合同（字段缺失、越界或多余）', 'the output does not match the review-report contract (missing, oversized, or extra fields)')
+      const detail = lengthExhausted
+        ? text('输出达到模型长度上限（推理占满预算，正文没写出来）', 'the output hit the model length limit (reasoning consumed the whole budget, leaving no visible text)')
+        : parseFailure instanceof SyntaxError
+          ? text('输出不是完整 JSON（可能被模型输出上限截断）', 'the output is not complete JSON (it may be truncated by the model output limit)')
+          : text('输出不符合审稿报告合同（字段缺失、越界或多余）', 'the output does not match the review-report contract (missing, oversized, or extra fields)')
       params.callbacks.log(text(`审稿结果未通过校验（${detail}），正在请求一次完整替代输出...`,
         `The review result failed validation (${detail}); requesting one complete replacement...`))
       const instruction = promptLanguageText(language,
