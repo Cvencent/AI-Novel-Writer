@@ -232,14 +232,23 @@ export function findUnmetTimeAnchorFindings(
     if (!statesDayBoundaryText(anchor)) continue
     // 第 1 章没有上一章，跨日无从谈起。
     if (chapter.chapterNumber <= 1) continue
-    const proseStates = statesDayBoundaryText(chapter.content)
+    // ⚠️ 扫**章首窗口**，不是整章（issue #143）：日界是本章开头对上一章的交代，
+    // 章内朝前看的期限（「公司回话三日后到」）不是本章日界。
+    //
+    // 但有一类章**本来就写在章内跨日**：蓝图【时点】自己声明了这次推进发生在
+    // 本章之内（形态「…至/到…次日/翌日…」，如「当晚开航至次日靠埠」）。对这类章，
+    // 跨日写在章内某处才对（实测第 59 章把「靠埠是次日晌午」写在章中、章首只写起点），
+    // 所以这一类的「已落实」判定要放开到整章。
+    const anchorSpansWithinChapter = /(?:至|到|直到)\s*[^。！？\n]{0,6}(?:次日|翌日|第二天|隔天|隔日)/u.test(anchor)
+    const proseScope = anchorSpansWithinChapter ? String(chapter.content) : openingWindow(chapter.content)
+    const proseStates = statesDayBoundaryText(proseScope)
     const opening = (String(chapter.content).trim().split(/\n+/u)[0] ?? '').trim().slice(0, 40)
 
     // 两侧都说了日界，但**隔的天数不一样**（issue #134）：第 57 章蓝图标「次日」、
     // 正文写「两日后」——#132 的布尔判据当时判成「已落实」。这里补上数值比对。
     // 只有两侧都读得出确定的日数、且确实不等时才报；读不出来（null）一律放过。
     const anchorGap = dayGapOf(anchor)
-    const proseGap = dayGapOf(chapter.content)
+    const proseGap = dayGapOf(proseScope)
     if (proseStates && anchorGap !== null && proseGap !== null && anchorGap !== proseGap) {
       findings.push({
         // 章号是既成事实，不随写作推进而变（#86/#89/#98/#108）。
@@ -314,28 +323,57 @@ function chineseNumber(value: string): number | null {
   return tens * 10 + (match[2] ? digits[match[2]]! : 0)
 }
 
+/**
+ * 一章的**章首窗口**：日界是「本章开头对上一章的交代」，不是章内任意一处（issue #143）。
+ *
+ * 旧实现拿**整章正文**判「有没有日界」，于是章内任何**朝前看的期限**
+ * （「公司回话三日后到」）都被读成这一章的日界，两个方向同时出错：
+ * - **漏报**：第 63 章首段无日界、章末有「三日后到」→ 判成「已落实」，真缺陷被吃掉；
+ * - **误报**：第 64 章首段「封箱次日上午」（=1 天，与蓝图一致）、章末有「三日后…」→
+ *   章末那句把首段顶掉，判成「蓝图 1 天 vs 正文 3 天」，干净的章被冤枉。
+ *
+ * 取**前两个自然段**：实测两处真阳性都在第 1 段；而跨日交代偶尔写在第 2 段
+ * （先写一个静态场景再交代时间），所以不能只取第 1 段。
+ */
+export const DAY_BOUNDARY_OPENING_PARAGRAPHS = 2
+
+function openingWindow(content: string): string {
+  const paragraphs = String(content ?? '')
+    .split(/\n+/u)
+    .map(paragraph => paragraph.trim())
+    .filter(Boolean)
+  return paragraphs.slice(0, DAY_BOUNDARY_OPENING_PARAGRAPHS).join('\n')
+}
+
 /** 读出一段文字声明的**日数间隔**；读不确定就返回 null（不猜）。 */
 export function dayGapOf(text: string): number | null {
   const value = String(text ?? '')
-  const gaps: number[] = []
+  // ⚠️ 按**出现位置**收集，不能「先扫①再扫②」（issue #143）：分两轮 push 会让
+  // 「三日后才是结案日。次日清早他就上了船。」拿到 1（次日在第①轮里），
+  // 而全文最早出现的其实是「三日后」。
+  const found: Array<{ at: number; days: number }> = []
   // ① 序数日界词。
-  if (/次日|翌日/u.test(value)) gaps.push(1)
-  if (/隔天|隔日/u.test(value)) gaps.push(1)
+  for (const match of value.matchAll(/次日|翌日|隔天|隔日/gu)) found.push({ at: match.index ?? 0, days: 1 })
   for (const match of value.matchAll(/第([一二两三四五六七八九十]+)(?:天|日)/gu)) {
     const day = chineseNumber(match[1]!)
-    if (day !== null && day >= 1) gaps.push(day - 1)
+    if (day !== null && day >= 1) found.push({ at: match.index ?? 0, days: day - 1 })
   }
   // ② 数量 + 时间单位 + 后/之后/以后。
   for (const match of value.matchAll(/(\d+|[一二两三四五六七八九十]+|半)\s*(?:个)?(礼拜|星期|周|月|天|日|年)\s*(?:后|之后|以后)/gu)) {
     const count = chineseNumber(match[1]!)
     const unit = DAY_UNIT[match[2]!]
     if (count === null || unit === undefined) continue
-    gaps.push(count * unit)
+    found.push({ at: match.index ?? 0, days: count * unit })
   }
-  if (gaps.length === 0) return null
-  // 一段话里出现多个日界记号时取**最后一个**（后文更正前文的写法，与
-  // `timeAnchorOf` 取最后一个【时点】同一口径）。
-  return gaps.at(-1)!
+  if (found.length === 0) return null
+  // 取**最先出现**的那个日界记号（issue #143）。
+  //
+  // 旧实现取**最后一个**，依据是「后文更正前文」——那条假设是从 `timeAnchorOf`
+  // 取最后一个【时点】借来的，但**两者语义不同**：蓝图【时点】是一行标注，后写的
+  // 确实可能是更正；而正文里**先出现的那个才是本章的日界交代**，后面的往往是
+  // 对将来的期限（「公司回话三日后到」），不是对本章时间的更正。
+  // ⚠️ 调用方还会先切**章首窗口**（`openingWindow`），所以读到的不会是章末的期限。
+  return found.sort((left, right) => left.at - right.at)[0]!.days
 }
 
 /**

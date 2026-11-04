@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  dayGapOf,
   findUndatedStreak,
   findUndatedStreakFindings,
   findUnmetTimeAnchorFindings,
@@ -280,6 +281,46 @@ describe('findUnmetTimeAnchorFindings: 蓝图声明跨日而正文没写（issue
     expect(findUnmetTimeAnchorFindings([{ chapterNumber: 9, content: '他推开舱门。' }])).toEqual([])
     // 第 1 章没有上一章可跨。
     expect(findUnmetTimeAnchorFindings([prose(1, '他推开舱门。', '次日清晨')])).toEqual([])
+  })
+
+  /**
+   * issue #143：日界判据必须**只看章首**，且 `dayGapOf` 取**最先出现**的那个记号。
+   *
+   * 旧实现拿整章扫、并取**最后一个**匹配，于是章内任何朝前看的期限
+   * （「公司回话三日后到」）都被读成本章日界——两个方向同时出错：
+   * 第 63 章真漏报被吃掉、第 64 章首段明明写对却被章末顶掉。
+   */
+  it('does not let an in-chapter future deadline act as this chapter’s day boundary', () => {
+    // 第 63 章现场：首段无日界，章末有「三日后到」→ 必须报「没写日界」。
+    const ch63 = '天没亮透，码头外廊支起两张条凳。\n\n他把存根摊开。\n\n「公司回话三日后到。船等不起。」'
+    const hits = findUnmetTimeAnchorFindings([prose(63, ch63, '紧接第62章次日清晨')])
+    expect(hits.map(hit => hit.stableFactKey)).toEqual(['chapter-time:anchor-unmet:63'])
+  })
+
+  it('does not let an in-chapter deadline override a correct opening boundary', () => {
+    // 第 64 章现场：首段「封箱次日上午」=1 天、与蓝图一致；章末「三日后…」不该顶掉它。
+    const ch64 = '封箱次日上午，船首那盘缆绳还是三天前打的结。\n\n柯明远进来。\n\n三日后第三格里落谁的名，也只有他一个人清楚。'
+    expect(findUnmetTimeAnchorFindings([prose(64, ch64, '封箱次日上午')])).toEqual([])
+  })
+
+  it('still reports a real mismatch between the opening boundary and the blueprint', () => {
+    // 第 57 章现场（#134 的真阳性）：首段「两日后」vs 蓝图「次日」。
+    const ch57 = '两日后，送检结案日。日头刚翻过仓檐。'
+    const [hit] = findUnmetTimeAnchorFindings([prose(57, ch57, '次日（送检结案日）上午')])
+    expect(hit!.stableFactKey).toBe('chapter-time:anchor-gap-mismatch:57')
+  })
+
+  it('allows the boundary inside the chapter when the blueprint itself spans the chapter', () => {
+    // 第 59 章现场：蓝图「当晚开航至次日靠埠」——推进发生在**本章之内**，
+    // 章首只写起点、跨日写在章中，这才是对的。
+    const ch59 = '当晚开船。跳板收上来。\n\n周叙下舱核舱。\n\n靠埠是次日晌午。'
+    expect(findUnmetTimeAnchorFindings([prose(59, ch59, '当晚开航至次日靠埠')])).toEqual([])
+  })
+
+  it('reads the earliest boundary marker, not the last one', () => {
+    // 「三日后」在前、「次日」在后 → 本章日界是 3 天。
+    expect(dayGapOf('三日后才是结案日。次日清早他就上了船。')).toBe(3)
+    expect(dayGapOf('封箱次日上午。船首那盘缆绳还是三天前打的结。')).toBe(1)
   })
 
   it('keys on the problem chapter, which does not move as the book advances', () => {
