@@ -133,8 +133,26 @@ export interface ChapterBoundaryHit {
   at: number
   /** 隔了几天；读不出确定天数时为 null（如「过了几天」）。 */
   days: number | null
+  /**
+   * 这一处写的是**全书第几日**（「第三日」→ 3）。相对词（次日/两日后）为 null。
+   *
+   * ⚠️ 绝对日序**不能**换算成「隔了 N−1 天」（issue #147）：「第三日」是故事的第 3 天，
+   * 与上一章隔几天取决于上一章是第几日——上一章也是第三日时，两者隔 **0** 天。
+   * 所以这里与 `days` 分开存，由调用方与上一章的日序求差。
+   */
+  ordinal: number | null
   /** 记号所在的那一句（证据引用）。 */
   quote: string
+}
+
+/** 把一处日界记号归类成「绝对日序」或「相对间隔」（两者语义不同，不能混算）。 */
+function classifyBoundary(raw: string): { days: number | null; ordinal: number | null } {
+  const ordinalMatch = /^第([一二两三四五六七八九十百千万]+)(?:天|日|夜)$/u.exec(raw)
+  if (ordinalMatch) {
+    const day = chineseNumber(ordinalMatch[1]!)
+    return { days: null, ordinal: day !== null && day >= 1 ? day : null }
+  }
+  return { days: dayGapOf(raw), ordinal: null }
 }
 
 /**
@@ -151,7 +169,7 @@ export function chapterBoundaryHits(text: string): ChapterBoundaryHit[] {
     const raw = match[0]
     const at = match.index ?? 0
     if (DURATIVE_FUTURE_FORM.test(raw) && !isSentenceInitial(value, at)) continue
-    hits.push({ at, days: dayGapOf(raw), quote: sentenceAround(value, at) })
+    hits.push({ at, ...classifyBoundary(raw), quote: sentenceAround(value, at) })
   }
   return hits.sort((left, right) => left.at - right.at)
 }
@@ -319,6 +337,63 @@ export interface TimeAnchoredChapter extends TimeProseChapter {
   keyEvents?: string
 }
 
+/**
+ * 蓝图【时点】里明说「与上一章**同一天**」的词（封闭语法类）：同日/同夜/当夜/当日…
+ *
+ * 这一类**不要求正文写日界**——同一天本来就没有日界可写（issue #147）。
+ * ⚠️ 只在**没有**其他日界记号时才按 0 天处理：`紧接第62章次日清晨` 里也有「紧接」，
+ * 但它明确写了「次日」→ 那一天确实换了日，仍需正文交代。
+ */
+const SAME_DAY_ANCHOR = /(?:同日|同夜|同一天|当夜|当晚|当日|当天|这一夜)/u
+
+/** 括注里自称「与上一章相连」的词——它是对**日序**的自我声明（issue #147 建议 3 用它做前置校验）。 */
+const ADJACENT_TO_PREVIOUS = /紧接(?:第\s*[0-9一二三四五六七八九十百]+\s*章|上一?章|上章|上回)|紧接着/u
+
+/**
+ * 蓝图【时点】自身是否**自相矛盾**（issue #147 建议 3）：标了「第 N 日」，又用括注说
+ * 「紧接上一章」——若上一章不在第 N 日，这一张蓝图先自相矛盾，轮不到正文背锅。
+ *
+ * 实测 ch66【第三天午后（紧接上一章）】、ch67【第三天傍晚（紧接上一章）】：
+ * 括注是对的（确实同一天），错的是「第三天」这个绝对写法。**报在蓝图侧**，
+ * 作者改一个括注或一个日序即可，正文不用动。
+ *
+ * 只在两侧都读得出确定日序时判（读不出就放过，不猜）。
+ */
+export function findTimeAnchorSelfContradictions(
+  chapters: readonly TimeAnchoredChapter[],
+): ConsistencyFinding[] {
+  const findings: ConsistencyFinding[] = []
+  const ordered = [...chapters]
+    .filter(chapter => Number.isSafeInteger(chapter.chapterNumber))
+    .sort((left, right) => left.chapterNumber - right.chapterNumber)
+  let previousOrdinal: number | null = null
+  for (const chapter of ordered) {
+    const anchor = timeAnchorOf(chapter.keyEvents ?? '')
+    if (!anchor) continue
+    const ordinal = chapterBoundaryHits(anchor)[0]?.ordinal ?? null
+    if (ordinal !== null && previousOrdinal !== null && ordinal !== previousOrdinal
+      && ADJACENT_TO_PREVIOUS.test(anchor)) {
+      findings.push({
+        // 章号是既成事实，不随写作推进而变（#86/#89/#98/#108）。
+        stableFactKey: `chapter-time:anchor-self-contradiction:${chapter.chapterNumber}`,
+        severity: 'warning' as const,
+        sourceChapter: chapter.chapterNumber,
+        evidence: `第${chapter.chapterNumber}章蓝图【时点：${anchor}】：括注说紧接上一章，而上章标注的是全书第 ${previousOrdinal} 日，本章标的是第 ${ordinal} 日`,
+        issue: {
+          zhCN: `蓝图自己打自己：本章【时点】写着「${anchor}」——括注说「紧接上一章」，可括注外写的是全书第 ${ordinal} 日，而上一章标的是第 ${previousOrdinal} 日。两者不能同时成立：真紧接就应是第 ${previousOrdinal} 日，真到第 ${ordinal} 日就不算紧接。这一处不先定下来，起草时无论写出哪种都有一半是错的。`,
+          enUS: `The blueprint contradicts itself: 【时点: ${anchor}】 says it directly follows the previous chapter, yet it also places the chapter on story day ${ordinal} while the previous chapter is on day ${previousOrdinal}. Both cannot hold: if it truly follows, it is day ${previousOrdinal}; if it truly is day ${ordinal}, it does not directly follow. Until this is settled, whatever the draft writes will be half wrong.`,
+        },
+        suggestion: {
+          zhCN: `二选一：这一章确实紧接着上一章 → 把绝对写法改成相对的（「同日午后」「当夜（紧接上一章）」都是蓝图合同认可的写法）；这一章真到了第 ${ordinal} 日 → 删掉「紧接上一章」，并注意上一章之后确实过了一天。改完再看正文要不要补日界——蓝图没自相矛盾之前，别动正文。`,
+          enUS: `Pick one: if this chapter really follows the previous one, rewrite it relatively ("same afternoon", "that night (right after the previous chapter)" — both are in the blueprint contract); if it really is day ${ordinal}, drop "directly follows the previous chapter" and note a day did pass. Then revisit the prose — don't edit it while the blueprint contradicts itself.`,
+        },
+      })
+    }
+    if (ordinal !== null) previousOrdinal = ordinal
+  }
+  return findings
+}
+
 export function findUnmetTimeAnchorFindings(
   chapters: readonly TimeAnchoredChapter[],
 ): ConsistencyFinding[] {
@@ -326,13 +401,43 @@ export function findUnmetTimeAnchorFindings(
   const ordered = [...chapters]
     .filter(chapter => Number.isSafeInteger(chapter.chapterNumber) && String(chapter.content ?? '').trim())
     .sort((left, right) => left.chapterNumber - right.chapterNumber)
+  /**
+   * 上一章落在**全书第几日**（issue #147）。
+   *
+   * 为什么需要它：「第三日」是**绝对日序**，不是「隔了 2 天」。同一部书里
+   * ch65「第三日正午」→ ch66「第三天午后」是**同一天的中午与午后**（隔 0 天），
+   * 而把「第 N 日」一律按 N−1 换算会得出「隔 2 天」，于是要求正文补一句本不该有的日界。
+   * 有了这一条，「隔 0 天」就是可判的：同一天不需要日界。
+   *
+   * 只在读得出绝对日序时才推进（相对写法「次日」推进不了起点，保持 null 不猜）。
+   */
+  let previousOrdinal: number | null = null
   for (const chapter of ordered) {
     const anchor = timeAnchorOf(chapter.keyEvents ?? '')
     if (!anchor) continue
-    // 蓝图自己没声明跨日（「同日夜」「紧接上章当夜」）→ 不是这一条要管的事。
-    if (!statesDayBoundaryText(anchor)) continue
+    const anchorHit = chapterBoundaryHits(anchor)[0] ?? null
+    const anchorOrdinal = anchorHit?.ordinal ?? null
+    const anchorRelativeDays = anchorHit?.days ?? null
+    // 蓝图自己说「与上一章同一天」→ 这一天没有日界可写，跳过（原「同日夜」分支，现并进来）。
+    const declaresSameDay = anchorHit === null && SAME_DAY_ANCHOR.test(anchor)
+    // 蓝图既没声明跨日、也没说同一天 → 不是这一条要管的事。
+    if (anchorHit === null && !declaresSameDay) continue
     // 第 1 章没有上一章，跨日无从谈起。
     if (chapter.chapterNumber <= 1) continue
+
+    // 蓝图侧的「隔了几天」：绝对日序优先与上一章日序求差；否则用相对天数。
+    const anchorGap = anchorOrdinal !== null
+      ? (previousOrdinal !== null ? anchorOrdinal - previousOrdinal : null)
+      : (declaresSameDay ? 0 : anchorRelativeDays)
+
+    // **同一天**：正文不需要写日界，且两侧没有可比的跨度（issue #147）。
+    // 实测 ch66/ch67 就是这一档：蓝图说「第三天午后（紧接上一章）」，与上一章同日。
+    if (anchorGap === 0) {
+      if (anchorOrdinal !== null) previousOrdinal = anchorOrdinal
+      continue
+    }
+    if (anchorOrdinal !== null) previousOrdinal = anchorOrdinal
+
     // ⚠️ 只认**章首窗口**里的日界，且剔除朝前看的期限（issue #143 → #146）：
     // 日界是本章开头对上一章的交代，章内「公司回话三日后到」不是本章日界。
     //
@@ -353,22 +458,37 @@ export function findUnmetTimeAnchorFindings(
     // 两侧都说了日界，但**隔的天数不一样**（issue #134）：第 57 章蓝图标「次日」、
     // 正文写「两日后」——#132 的布尔判据当时判成「已落实」。这里补上数值比对。
     // 只有两侧都读得出确定的日数、且确实不等时才报；读不出来（null）一律放过。
-    const anchorGap = dayGapOf(anchor)
-    const proseGap = proseBoundary?.days ?? null
-    if (proseStates && anchorGap !== null && proseGap !== null && anchorGap !== proseGap) {
+    //
+    // ⚠️ 比的是**同一种量**（issue #147）：两侧都有绝对日序就比日序（「第三日」vs「第三日」= 相等），
+    // 否则退回比相对天数。把绝对日序拿去和相对天数比，会得出「§3 vs 2 天」这种假差。
+    const proseOrdinal = proseBoundary?.ordinal ?? null
+    const proseRelativeDays = proseBoundary?.days ?? null
+    let comparable = false
+    let anchorValue: number | null = null
+    let proseValue: number | null = null
+    if (anchorOrdinal !== null && proseOrdinal !== null) {
+      comparable = true
+      anchorValue = anchorOrdinal
+      proseValue = proseOrdinal
+    } else if (anchorRelativeDays !== null && proseRelativeDays !== null) {
+      comparable = true
+      anchorValue = anchorRelativeDays
+      proseValue = proseRelativeDays
+    }
+    if (proseStates && comparable && anchorValue !== proseValue) {
       findings.push({
         // 章号是既成事实，不随写作推进而变（#86/#89/#98/#108）。
         stableFactKey: `chapter-time:anchor-gap-mismatch:${chapter.chapterNumber}`,
         severity: 'warning' as const,
         sourceChapter: chapter.chapterNumber,
-        evidence: `第${chapter.chapterNumber}章：蓝图【时点：${anchor}】（隔 ${anchorGap} 天），正文写的是「${opening}」（隔 ${proseGap} 天）`,
+        evidence: `第${chapter.chapterNumber}章：蓝图【时点：${anchor}】（${anchorUnitText(anchorOrdinal, anchorValue!)}），正文写的是「${opening}」（${anchorUnitText(proseOrdinal, proseValue!)}）`,
         issue: {
-          zhCN: `时间推进对不上：蓝图声明这一章发生在「${anchor}」，也就是上一章之后第 ${anchorGap} 天；正文却写成 ${proseGap} 天之后（开头「${opening}」）。差 ${Math.abs(anchorGap - proseGap)} 天会顺着后面所有「N 日后」「N 日内」的期限一起漂。`,
-          enUS: `The time jump disagrees: the blueprint places this chapter on day ${anchorGap} after the previous one (【时点: ${anchor}】), but the prose opens with a ${proseGap}-day gap (“${opening}”). A difference of ${Math.abs(anchorGap - proseGap)} day(s) shifts every later deadline that counts from here.`,
+          zhCN: `时间推进对不上：蓝图声明这一章发生在「${anchor}」（${anchorUnitText(anchorOrdinal, anchorValue!)}）；正文却写成${anchorUnitText(proseOrdinal, proseValue!)}（开头「${opening}」）。两者不一致会顺着后面所有「N 日后」「N 日内」的期限一起漂。`,
+          enUS: `The time jump disagrees: the blueprint places this chapter at 【时点: ${anchor}】 (day ${anchorValue} of the story), but the prose opens with day ${proseValue} (“${opening}”). The mismatch shifts every later deadline that counts from here.`,
         },
         suggestion: {
-          zhCN: `两者改成一致：把正文那句日界改成蓝图声明的第 ${anchorGap} 天，或若正文才是对的，就改蓝图的【时点】标注。注意上一章末尾可能已经交代过同一个跨度（实测第 56 章就写过「两日后送检出」），改的时候要顺着那一处一起看，别让同一个跨度被数两遍。`,
-          enUS: `Make them agree: rewrite the prose boundary as day ${anchorGap}, or fix the blueprint's 【时点】 label if the prose is right. Check the previous chapter's ending too — it may already state the same span, and the two must not count it twice.`,
+          zhCN: `两者改成一致：把正文那句日界改成蓝图声明的${anchorUnitText(anchorOrdinal, anchorValue!)}，或若正文才是对的，就改蓝图的【时点】标注。注意上一章末尾可能已经交代过同一个跨度（实测第 56 章就写过「两日后送检出」），改的时候要顺着那一处一起看，别让同一个跨度被数两遍。`,
+          enUS: `Make them agree: rewrite the prose boundary to match the blueprint's day ${anchorValue}, or fix the blueprint's 【时点】 label if the prose is right. Check the previous chapter's ending too — it may already state the same span, and the two must not count it twice.`,
         },
       })
       continue
@@ -384,29 +504,38 @@ export function findUnmetTimeAnchorFindings(
       sourceChapter: chapter.chapterNumber,
       evidence: `第${chapter.chapterNumber}章：蓝图【时点：${anchor}】，正文没有日界；正文开头「${opening}」`,
       issue: {
-        zhCN: `本章蓝图声明了时间推进（【时点：${anchor}】），正文里却没有任何跨日或时间间隔的交代，开头是「${opening}」。上一章结尾与这一章之间到底隔了多久，读者只能按「同一夜接着写」来读——人物却已经换过班、换过地方。`,
-        enUS: `This chapter's blueprint declares a time change (【时点: ${anchor}】), but the prose states no day boundary or gap; it opens with “${opening}”. Readers can only take it as the same night continuing, even though characters have changed shifts or places.`,
+        zhCN: `本章蓝图声明了时间推进（【时点：${anchor}】${anchorGap !== null ? `，即上一章之后第 ${anchorGap} 天` : ''}），正文里却没有任何跨日或时间间隔的交代，开头是「${opening}」。上一章结尾与这一章之间到底隔了多久，读者只能按「同一夜接着写」来读——人物却已经换过班、换过地方。`,
+        enUS: `This chapter's blueprint declares a time change (【时点: ${anchor}】${anchorGap !== null ? `, day ${anchorGap} after the previous chapter` : ''}), but the prose states no day boundary or gap; it opens with “${opening}”. Readers can only take it as the same night continuing, even though characters have changed shifts or places.`,
       },
       suggestion: {
-        zhCN: `在正文开头补一句日界，把蓝图声明的时间落到纸面：例如「次日天没亮，……」或「隔了一天，……」。若这一章其实与上一章同一夜，那就改蓝图的【时点】标注（作者可在蓝图页修正）——两者必须一致，别让 chip 说次日、正文写当夜。`,
-        enUS: `Open the prose with an explicit day boundary that matches the blueprint, e.g. "before dawn the next day, …" or "a day later, …". If the chapter really continues the same night, fix the blueprint's 【时点】 label instead — the two must agree.`,
+        zhCN: `在正文开头补一句日界，把蓝图声明的时间落到纸面：例如「次日天没亮，……」或「隔了一天，……」。若这一章其实与上一章同一夜，那就改蓝图的【时点】标注（作者可在蓝图页修正），写成「同日午后」「当夜（紧接上一章）」这种**相对**写法——它会被按「同一天」处理，不再要求正文补日界。`,
+        enUS: `Open the prose with an explicit day boundary that matches the blueprint, e.g. "before dawn the next day, …" or "a day later, …". If the chapter really continues the same night, fix the blueprint's 【时点】 label instead and phrase it relatively ("same afternoon", "that night (right after the previous chapter)") — such labels are read as the same day and no boundary is required.`,
       },
     })
   }
   return findings
 }
 
+/** 证据里怎么称呼一个数值：绝对日序说「全书第 N 日」，相对间隔说「隔 N 天」。 */
+function anchorUnitText(ordinal: number | null, value: number): string {
+  return ordinal !== null ? `全书第 ${value} 日` : `隔 ${value} 天`
+}
+
 /**
  * 从一段文字里读出**隔了几天**（issue #134）。
  *
- * 为什么需要它：`statesDayBoundaryText` 是**布尔**——「次日」「两日后」「三日后」
+ * ⚠️ 只回答**相对**间隔（次日/两日后/半个月后…）。「第三日」这类**绝对日序**不在这里，
+ * 由 `chapterBoundaryHits` 的 `ordinal` 字段单独承载（issue #147）——两者语义不同，
+ * 把「第三日」换算成 N−1 天会让「同一天的后一章」被判成「隔了 2 天」。
+ *
+ * 本来要解决的问题：`statesDayBoundaryText` 是**布尔**——「次日」「两日后」「三日后」
  * 在它眼里是同一个 `true`。实测第 57 章蓝图标「次日」、正文写「两日后」，差整整
  * 一天，而 #132 的判据因为两侧都 true 判成「已落实」。
  *
- * 判据仍是**封闭语法**，只认三类能确定数值的写法（其余一律 null，不猜）：
- * - 序数日界：次日/翌日/第二天 → 1；隔天/隔日 → 1；第三天 → 2；
+ * 判据仍是**封闭语法**，只认能确定数值的写法（其余一律 null，不猜）：
+ * - 序数日界：次日/翌日/第二天 → 1；隔天/隔日 → 1；
  * - 数量 + 时间单位 + 后/之后：两天/两日/三日/一周/半个月…；
- * - 「第 N 天/日」。
+ * - 「第 N 天/日」**不再**在这里换算（见上）。
  *
  * 单位换算做**保守**的一档：日/天 = 1，周/礼拜/星期 = 7，月 = 30，年 = 365。
  * 读数只用于「两侧差多少」的比较，所以换算精度不影响判断（同样的写法两侧会得到
@@ -436,12 +565,12 @@ export function dayGapOf(text: string): number | null {
   // 「三日后才是结案日。次日清早他就上了船。」拿到 1（次日在第①轮里），
   // 而全文最早出现的其实是「三日后」。
   const found: Array<{ at: number; days: number }> = []
-  // ① 序数日界词。
+  // ① 相对序数日界词。
+  //
+  // ⚠️「第 N 天/日」**不在这里**（issue #147）：那是**全书日序**（「第三日」= 故事第 3 天），
+  // 换算成「隔 N−1 天」会让 ch65「第三日正午」→ ch66「第三天午后」这对**同一天**被判成
+  // 「隔了 2 天」，进而要求正文补一句本不该有的日界。绝对日序由 `chapterBoundaryHits().ordinal` 承载。
   for (const match of value.matchAll(/次日|翌日|隔天|隔日/gu)) found.push({ at: match.index ?? 0, days: 1 })
-  for (const match of value.matchAll(/第([一二两三四五六七八九十]+)(?:天|日)/gu)) {
-    const day = chineseNumber(match[1]!)
-    if (day !== null && day >= 1) found.push({ at: match.index ?? 0, days: day - 1 })
-  }
   // ② 数量 + 时间单位 + 后/之后/以后。
   for (const match of value.matchAll(/(\d+|[一二两三四五六七八九十]+|半)\s*(?:个)?(礼拜|星期|周|月|天|日|年)\s*(?:后|之后|以后)/gu)) {
     const count = chineseNumber(match[1]!)

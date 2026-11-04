@@ -5,6 +5,7 @@ import {
   dayGapOf,
   findUndatedStreak,
   findUndatedStreakFindings,
+  findTimeAnchorSelfContradictions,
   findUnmetTimeAnchorFindings,
   openingDayBoundary,
   statesDayBoundaryText,
@@ -369,11 +370,12 @@ describe('章首窗口与「朝前看」期限是两个独立判据（issue #146
       prose(20, paragraphs.join(NL), '新季开航后第三日'),
     ])).toEqual([])
     // 判据本身也要读得出它在第 4 段：证据与读数都来自那一句。
-    expect(openingDayBoundary(paragraphs.join(NL))).toMatchObject({ days: 2 })
+    // ⚠️「第三日」是**全书日序**（issue #147），读数是 ordinal 3，不是「隔 2 天」。
+    expect(openingDayBoundary(paragraphs.join(NL))).toMatchObject({ ordinal: 3, days: null })
   })
 
-  it('reads the boundary as 「第三日」= 2 days after the previous chapter, matching the blueprint', () => {
-    // 蓝图写「第三日」→ 也是 2 天；两侧一致所以不报 gap-mismatch。
+  it('reads the boundary as the story’s day 3, matching the blueprint’s day 3', () => {
+    // 蓝图写「第三日」→ 也是全书第 3 日；两侧一致所以不报 gap-mismatch。
     expect(findUnmetTimeAnchorFindings([prose(20, `${NL}${NL}${NL}第三日了。船开出去又回来两趟。`, '新季开航后第三日')]))
       .toEqual([])
   })
@@ -413,5 +415,162 @@ describe('章首窗口与「朝前看」期限是两个独立判据（issue #146
     const text = '封箱次日上午，船首那盘缆绳还是三天前打的结。' + NL + NL
       + '柯明远进来。' + NL + NL + '三日后第三格里落谁的名，也只有他一个人清楚。'
     expect(openingDayBoundary(text)).toMatchObject({ days: 1 })
+  })
+})
+
+/**
+ * issue #147：「第三日」「第三天」是**全书日序**（绝对），不是「隔了 N−1 天」（相对）。
+ *
+ * 现场：ch65【第三日正午（公司回话日）】→ ch66【第三天午后（紧接上一章）】→
+ * ch67【第三天傍晚（紧接上一章）】。后两章与前一章是**同一天的不同时段**，
+ * 蓝图自己也用「（紧接上一章）」说明了这一点。而旧实现把「第 N 日」一律按 N−1 换算：
+ *
+ *   ch66 被判「隔 2 天」→ 蓝图声明跨日、正文没有日界 → 报 anchor-unmet:66
+ *   ch65 通过则是**两侧同错抵消**（蓝图与正文都算成 2 天），属假通过。
+ *
+ * 修法：绝对日序与相对间隔**分开建模**（`chapterBoundaryHits().ordinal` 对 `days`），
+ * 并由上一章的日序求差；两者相同时连「正文要写日界」这个要求都不该提出。
+ */
+describe('绝对日序与相对间隔是两个不同的量（issue #147）', () => {
+  const NL = String.fromCharCode(10)
+  const prose = (chapterNumber: number, content: string, anchor: string) =>
+    ({ chapterNumber, content, keyEvents: `他核完账。【时点：${anchor}】` })
+
+  it('does not treat 「第三日」 as “two days after the previous chapter”', () => {
+    // 读数是日序 3，不是天数 2。
+    expect(chapterBoundaryHits('第三日正午，废水道的船坞棚底下没有风。')[0])
+      .toMatchObject({ ordinal: 3, days: null })
+    // 相对写法照旧读天数。
+    expect(chapterBoundaryHits('两日后，送检结案日。')[0]).toMatchObject({ days: 2, ordinal: null })
+  })
+
+  it('does not demand a day boundary when two chapters fall on the same story day', () => {
+    // ch65 → ch66：同一天的「正午」与「午后」，正文自然不必写日界。
+    const hits = findUnmetTimeAnchorFindings([
+      prose(65, '第三日正午，废水道的船坞棚底下没有风。', '第三日正午（公司回话日）'),
+      prose(66, '柯明远把登记册重新摊在木箱上。', '第三天午后（紧接上一章）'),
+    ])
+    expect(hits).toEqual([])
+  })
+
+  it('does not demand one for the third successive chapter on the same day either', () => {
+    // ch65 正午 → ch66 午后 → ch67 傍晚，三章同一天。
+    const hits = findUnmetTimeAnchorFindings([
+      prose(65, '第三日正午，船坞棚底下没有风。', '第三日正午（公司回话日）'),
+      prose(66, '柯明远把登记册重新摊在木箱上。', '第三天午后（紧接上一章）'),
+      prose(67, '引桥的灯才亮。周叙堵在办公室门口。', '第三天傍晚（紧接上一章）'),
+    ])
+    expect(hits).toEqual([])
+  })
+
+  it('still reports a real jump when the story day actually advances', () => {
+    // ch66→ch69：蓝图【次日（第四日）】= 全书第 4 日，与 ch66 的第 3 日不同，
+    // 而正文没写日界 → 该报。（带上 ch65 是为了让日序链条读得出来——判据靠上一章的日序求差。）
+    const hits = findUnmetTimeAnchorFindings([
+      prose(65, '第三日正午，船坞棚底下没有风。', '第三日正午（公司回话日）'),
+      prose(66, '柯明远把登记册重新摊在木箱上。', '第三天午后（紧接上一章）'),
+      prose(69, '天没亮透，周叙下跳板时鞋底还挂着舱里的水汽。', '次日（第四日）清晨至午后'),
+    ])
+    expect(hits.map(hit => hit.stableFactKey)).toEqual(['chapter-time:anchor-unmet:69'])
+  })
+
+  it('reports rather than guesses when the previous story day is unknown', () => {
+    // 采样从章中间起（上一章不在样本里）时读不出日序差 → 仍按「正文没写日界」报，
+    // 不猜成同一天。宁可多报一次，也不要把真实的跨日静音掉。
+    expect(findUnmetTimeAnchorFindings([
+      prose(66, '柯明远把登记册重新摊在木箱上。', '第三天午后（紧接上一章）'),
+    ]).map(hit => hit.stableFactKey)).toEqual(['chapter-time:anchor-unmet:66'])
+  })
+
+  it('compares like with like: day ordinals are not compared against day gaps', () => {
+    // 蓝图「第三日」与正文「两日后」不是同一个量（日序 vs 间隔）——读不出可比的数就放过，
+    // 不能报成「差 1 天」（那会把一个换算差异伪装成作者的错误）。
+    expect(findUnmetTimeAnchorFindings([
+      prose(9, '两日后，船靠了埠。', '第三日'),
+    ])).toEqual([])
+    // 同一种量才比：蓝图「第三日」vs 正文「第四日」→ 真的差一天，报。
+    expect(findUnmetTimeAnchorFindings([
+      prose(9, '第四日清早，船靠了埠。', '第三日'),
+    ]).map(hit => hit.stableFactKey)).toEqual(['chapter-time:anchor-gap-mismatch:9'])
+  })
+
+  it('keeps the relative-axis check working: 次日 vs 两日后 still mismatches (#134)', () => {
+    expect(findUnmetTimeAnchorFindings([
+      prose(57, '两日后，送检结案日。日头刚翻过仓檐。', '次日（送检结案日）上午'),
+    ]).map(hit => hit.stableFactKey)).toEqual(['chapter-time:anchor-gap-mismatch:57'])
+  })
+
+  it('does not require a boundary when the blueprint says it is the same day', () => {
+    // 蓝图写「同日午后」「当夜（紧接上一章）」这类**相对**写法时，本来就没有日界可写。
+    for (const anchor of ['同日午后', '当夜（紧接上一章）', '同日深夜', '紧接第57章，当日午后']) {
+      expect(findUnmetTimeAnchorFindings([
+        prose(9, '他把灯罩扣上。' + NL + '柯明远进来。', anchor),
+      ]), anchor).toEqual([])
+    }
+  })
+
+  it('is not fooled by 「紧接」when the anchor also names a different day', () => {
+    // 「紧接第62章**次日**清晨」：既有「紧接」又有「次日」——换日了，正文仍该写日界。
+    expect(findUnmetTimeAnchorFindings([
+      prose(63, '天没亮透，码头外廊支起两张条凳。', '紧接第62章次日清晨'),
+    ]).map(hit => hit.stableFactKey)).toEqual(['chapter-time:anchor-unmet:63'])
+  })
+
+  it('keeps the ordinal chain across chapters so same-day runs are judged on real days', () => {
+    // 中间夹一天休息也不会把日序丢掉：ch65(第3日) → ch66(第3日) → ch70(第4日)。
+    const hits = findUnmetTimeAnchorFindings([
+      prose(65, '第三日正午，船坞棚底下没有风。', '第三日正午（公司回话日）'),
+      prose(66, '他把册摊开。', '第三天午后（紧接上一章）'),
+      prose(70, '第四日清早，他把册合上。', '第四日清晨'),
+    ])
+    // ch70 的蓝图是绝对日序（第 4 日），正文也是第 4 日 → 两侧同量同值 → 放行。
+    expect(hits).toEqual([])
+  })
+})
+
+/**
+ * issue #147 建议 3：**蓝图侧**的前置校验。
+ *
+ * 「第三天午后（紧接上一章）」这一条【时点】自己就不能同时成立——括注说紧接上一章，
+ * 日序却说到了第 3 日。这类要先在蓝图上报出来，别拿它去冤枉正文。
+ */
+describe('蓝图【时点】自相矛盾（issue #147 建议 3）', () => {
+  const prose = (chapterNumber: number, anchor: string) =>
+    ({ chapterNumber, content: '正文一行。', keyEvents: `他核完账。【时点：${anchor}】` })
+
+  it('flags an absolute day that contradicts its own 「紧接上一章」', () => {
+    // 上一章在第 2 日、本章标「第三天（紧接上一章）」——两个说法不能同时成立。
+    // ⚠️ 实测 ch65「第三日正午」→ ch66「第三天午后（紧接上一章）」**不是**这一档：
+    // 两者都是第 3 日，同一天，自洽（那是主判据的换算错，已另修）。
+    const [hit] = findTimeAnchorSelfContradictions([
+      prose(65, '第二日正午'),
+      prose(66, '第三天午后（紧接上一章）'),
+    ])
+    expect(hit).toBeDefined()
+    expect(hit!.stableFactKey).toBe('chapter-time:anchor-self-contradiction:66')
+    expect(hit!.evidence).toContain('第 3 日')
+  })
+
+  it('stays silent when the day really does advance', () => {
+    // 「次日清晨（紧接上一章）」：次日 = 新的一天，与「紧接」不冲突（只是相对写法）。
+    expect(findTimeAnchorSelfContradictions([
+      prose(44, '同日夜（紧接上一章，日落前后）'),
+      prose(45, '次日清晨（两天期限的最后半天）'),
+    ])).toEqual([])
+  })
+
+  it('stays silent when the same-day label is relative, which is the contract’s own wording', () => {
+    for (const anchor of ['同日午后（紧接上一章）', '当夜（紧接上一章）', '紧接第57章，当日午后']) {
+      expect(findTimeAnchorSelfContradictions([prose(9, '第三日正午'), prose(10, anchor)]), anchor).toEqual([])
+    }
+  })
+
+  it('does not guess when the previous chapter has no day ordinal', () => {
+    // 上一章没写【时点】或写的是相对词 → 读不出日序 → 放过（把判定留给主判据）。
+    expect(findTimeAnchorSelfContradictions([prose(66, '第三天午后（紧接上一章）')])).toEqual([])
+    expect(findTimeAnchorSelfContradictions([
+      prose(65, '同日下午'),
+      prose(66, '第三天午后（紧接上一章）'),
+    ])).toEqual([])
   })
 })

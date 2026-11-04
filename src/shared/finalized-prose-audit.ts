@@ -58,7 +58,7 @@ import { proseRepetitionFindings } from './prose-repetition'
 import { proseFlavorDriftFindings, proseFlavorFindings } from './prose-flavor'
 // 段落起手（#94）与物件过手（#95）：同一类「跨章看同一种写法」的位置轴补位。
 import { findParagraphOpenerFindings, findPropHandoverFindings } from './consistency-preflight'
-import { findUndatedStreakFindings, findUnmetTimeAnchorFindings } from './chapter-time-anchor'
+import { findTimeAnchorSelfContradictions, findUndatedStreakFindings, findUnmetTimeAnchorFindings } from './chapter-time-anchor'
 // 字形断言（#99）：正文里「半个 X 字，Y 旁」把偏旁说错——单章可判，且是最容易机器判的一类。
 import { glyphRadicalFindings } from './glyph-radical'
 // 已登记角色名的同后缀异姓漂移（#102）：正文把「陆敬堂」写成「穆敬堂」。
@@ -252,10 +252,15 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   // 连胜判据按「连续 N 章」聚合，会把「有声明没落实」的章一并吞掉；
   // 这一条逐章比两侧（标注原文 vs 本章正文），提示直接指向要改的那一句。
   const blueprintByChapter = new Map(blueprints.map(item => [item.chapterNumber, item.keyEvents ?? '']))
-  const unmetTimeAnchor = findUnmetTimeAnchorFindings(chapters.map(chapter => ({
+  const timeAnchoredChapters = chapters.map(chapter => ({
     chapterNumber: chapter.chapterNumber, content: chapter.content,
     keyEvents: blueprintByChapter.get(chapter.chapterNumber) ?? '',
-  })))
+  }))
+  const unmetTimeAnchor = findUnmetTimeAnchorFindings(timeAnchoredChapters)
+  // 蓝图【时点】**自身**自相矛盾（#147 建议 3）：「第三天午后（紧接上一章）」——
+  // 括注与日序不能同时成立。这类要先在蓝图侧定下来，否则起草无论怎么写都有一半错，
+  // 也不该拿它去要求正文补日界。
+  const timeAnchorSelfContradiction = findTimeAnchorSelfContradictions(timeAnchoredChapters)
 
   // 字形断言（issue #99）：正文里把「X 字」的偏旁说错。单章自洽、逐章可判，
   // 用全量已定稿章（字形是**已定稿只读**的内容，报出来作者才知道哪一章要重写）。
@@ -339,7 +344,7 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   })))
 
   return [...closingLabel, ...numbering, ...ability, ...declaredCount, ...repetition, ...undelivered,
-    ...ultimatum, ...pendingLanding, ...reversal, ...undatedStreak, ...unmetTimeAnchor, ...proseFlavor, ...positionalAxes, ...glyphRadical,
+    ...ultimatum, ...pendingLanding, ...reversal, ...undatedStreak, ...unmetTimeAnchor, ...timeAnchorSelfContradiction, ...proseFlavor, ...positionalAxes, ...glyphRadical,
     ...castNameDrift, ...deadlineSettlement, ...repeatedRevocation, ...duplicateTitles,
     ...abilityLimitBypass, ...handwritingConflicts, ...quoteStyleDrift, ...staleStateDuration,
     ...propContainerDeparture, ...inventorySameChapter, ...inventoryShortfall, ...gaugeScale,
