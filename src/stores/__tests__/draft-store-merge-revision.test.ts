@@ -245,3 +245,49 @@ describe('draft-store merged revision persistence', () => {
         postCommitError: 'Error: synthetic recheck launch failure' })
   })
 })
+
+/**
+ * issue #137：把定稿后的修稿应用为新版本后，**版本下拉必须立刻更新**。
+ *
+ * 旧实现只 `reload()`——那只会重读**当前这一稿**的元数据（`parseDraftMeta(filePath)`），
+ * 不会重读这一章的草稿列表；而版本下拉读的是 `draftsByChapter[chapterNumber]`。
+ * 于是作者点完「应用为新版本」看不到新版本，要等切页/定稿才出现。
+ */
+describe('applyRevisionAsNewVersion 必须与列表刷新同一步 (issue #137)', () => {
+  it('refreshes this chapter’s draft list as part of the action', async () => {
+    const calls: string[] = []
+    invokeWithProjectSession.mockImplementation(async (_session: unknown, channel: string) => {
+      calls.push(channel)
+      if (channel === 'db:revision-apply-as-new-version') return { draftId: 12, version: 2 }
+      // 新版本出现后，这一章应当有 v1 与 v2 两稿。
+      if (channel === 'db:draft-list') {
+        return [
+          { id: 11, chapterNumber: 1, version: 1, status: 'finalized', wordCount: 0, source: 'write', createdAt: '2026-08-22T00:00:00.000Z' },
+          { id: 12, chapterNumber: 1, version: 2, status: 'draft', wordCount: 0, source: 'rewrite', createdAt: '2026-08-22T00:00:01.000Z' },
+        ]
+      }
+      return { success: true }
+    })
+
+    await expect(useDraftStore.getState().applyRevisionAsNewVersion(1, 1, projectPath, projectSession))
+      .resolves.toMatchObject({ success: true })
+    // 落库与列表读取都在，且落库在前。
+    expect(calls).toEqual(['db:revision-apply-as-new-version', 'db:draft-list'])
+    // 关键断言：下拉的数据源已经有两个版本。
+    expect(useDraftStore.getState().draftsByChapter[1]).toMatchObject([
+      expect.objectContaining({ id: 12, version: 2 }),
+      expect.objectContaining({ id: 11, version: 1 }),
+    ])
+  })
+
+  it('reports the failure without touching the draft list when the write is rejected', async () => {
+    invokeWithProjectSession.mockImplementation(async (_session: unknown, channel: string) => {
+      if (channel === 'db:revision-apply-as-new-version') throw new Error('REVISION_BASE_NOT_FINALIZED')
+      return []
+    })
+    const before = useDraftStore.getState().draftsByChapter[1]
+    await expect(useDraftStore.getState().applyRevisionAsNewVersion(1, 1, projectPath, projectSession))
+      .resolves.toEqual({ success: false, error: expect.stringContaining('REVISION_BASE_NOT_FINALIZED') })
+    expect(useDraftStore.getState().draftsByChapter[1]).toBe(before)
+  })
+})

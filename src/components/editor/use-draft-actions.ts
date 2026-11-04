@@ -14,7 +14,7 @@ import {
 import { getPendingRevisions, getReviewsForVersion, type ReviewEntry, type RevisionEntry } from '../../services/draft-index'
 import { staleRevisionReason, refreshChapterFacts } from '../../stores/navigation/chapter-facts'
 import type { RefinementFactTerm } from '../../shared/refinement-fact-diff'
-import { readDraftBody } from '../../stores/draft-store'
+import { readDraftBody, useDraftStore } from '../../stores/draft-store'
 import { ipc } from '../../services/ipc-client'
 import { retryFinalizationPublication } from '../../services/finalization-client'
 import { captureFinalizationSnapshot } from '../../services/finalization-snapshot'
@@ -587,8 +587,19 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
   const applyRevisionAsNewVersion = async (id: number): Promise<boolean> => {
     const projectSession = captureProjectSession(currentProject)
     if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return false
+    // ⚠️ 章号是必需的：store 的复合动作要拿它刷新**这一章**的草稿列表。
+    // 拿不到就明确失败，不要用 0 兜底（那会往 `draftsByChapter[0]` 写一份假列表）。
+    if (!meta) {
+      toast.error(text('当前草稿的身份未知，无法应用为新版本', 'The current draft’s identity is unknown, so it cannot be applied as a new version.'))
+      return false
+    }
     try {
-      await ipc.invokeWithProjectSession(projectSession, 'db:revision-apply-as-new-version', id, projectSession.projectPath)
+      // 走 store 的复合动作（落库 + 刷新本章草稿列表）：旧实现只 reload()，
+      // 而 reload 只重读当前这一稿的元数据，版本下拉要等切页/定稿才更新（issue #137）。
+      const result = await useDraftStore.getState().applyRevisionAsNewVersion(
+        id, meta.chapterNumber, projectSession.projectPath, projectSession,
+      )
+      if (!result.success) throw new Error(result.error || 'REVISION_APPLY_FAILED')
     } catch (error) {
       if (isProjectSessionCurrent(projectSession)) {
         toast.error(text(`把修稿应用为新版本失败：${String(error)}`, 'Could not apply the revision as a new version.'))

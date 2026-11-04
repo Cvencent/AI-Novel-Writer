@@ -112,6 +112,21 @@ interface DraftState {
   ) => Promise<void>
   /** 清除指定章节的缓存（下次访问时重新加载） */
   invalidateChapter: (chapterNumber: number) => void
+  /**
+   * 把定稿后的修稿应用为**新版本草稿**（issue #129 的落库出口）。
+   *
+   * 为什么放在 store 而不是调用点：应用新版本会让**这一章的版本集合**变化，
+   * 而版本下拉读的是 `draftsByChapter[chapterNumber]`（`VersionSwitcher`）。
+   * 旧实现的调用点只 `reload()`——那只会重读**当前这一稿**的元数据，
+   * 于是版本下拉要等切页/定稿才更新，作者会以为「应用为新版本没生效」
+   * （issue #137 点名的缺口）。放在这里才能保证「落库」与「列表刷新」是同一步。
+   */
+  applyRevisionAsNewVersion: (
+    revisionId: number,
+    chapterNumber: number,
+    expectedProjectPath: string,
+    expectedProjectSession?: ProjectSessionContext,
+  ) => Promise<{ success: boolean; draftId?: number; version?: number; error?: string }>
   /** 应用合并后的修稿，更新文件和各类状态 */
   applyMergedRevision: (
     chapterDir: string,
@@ -287,6 +302,22 @@ export const useDraftStore = create<DraftState>()((set, get) => ({
       delete next[chapterNumber]
       return { draftsByChapter: next }
     })
+  },
+
+  applyRevisionAsNewVersion: async (revisionId, chapterNumber, expectedProjectPath, expectedProjectSession) => {
+    const project = useProjectStore.getState().currentProject
+    const projectSession = currentDraftProjectSession(expectedProjectPath, expectedProjectSession)
+    if (!project || !projectSession) return { success: false, error: staleProjectError().error }
+    try {
+      const result = await ipc.invokeWithProjectSession(projectSession,
+        'db:revision-apply-as-new-version', revisionId, project.path)
+      if (!isDraftProjectSessionCurrent(projectSession)) return { success: false, error: staleProjectError().error }
+      // ⚠️ 这一步是整条动作的一部分：新的版本必须**立刻**出现在这一章的下拉里。
+      await get().loadChapterDrafts(chapterNumber, project.path, projectSession)
+      return { success: true, ...(result ?? {}) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
   },
 
   applyMergedRevision: async (
