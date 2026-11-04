@@ -3,7 +3,19 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
- * 面向用户的预检文案里不得混进**开发者内部产物**（issue #112）。
+ * 面向用户的预检文案里不得混进**开发者内部产物**（issue #112 / #138）。
+ *
+ * ⚠️ #138 的教训：#112 修完后又漏了两处，其中一处是**裸编号**（`若怕落回 #66 的通牒`，
+ * 不含「issue」二字，按关键字扫会漏），另一处是**标定样本里的物名**
+ * （`墨盒、舵轮、茶碗盖`，作者的书里根本没有这些道具）。
+ *
+ * 本测试能机械判的是前者（裸编号）与「样本」字样；**后者判不了**——要判「这个专名不属于
+ * 作者这本书」需要一份该书自己的专名表，而 finding 文案是静态字符串、不含书名/名册。
+ * 所以那条只能靠人工写作纪律：**finding 文案里举例子时，只许举抽象形态或指向本条 evidence，
+ * 不许举具体道具名**。已在 `automation-find-issues.md` 的自查项里写明。
+ *
+ * 原文档（issue #112）：
+
  *
  * 实测：那本 50 章的书点「写第 50 章」时弹出的 29 条提醒里，约 5 条带着
  * ① `（issue #28）`／`（issue 建议 1）` 这类仓库内部编号（产品里没有对应入口，作者点不了也看不懂）；
@@ -22,12 +34,49 @@ const USER_FACING_FIELDS = /\b(zhCN|enUS|evidence)\s*:/u
 const FORBIDDEN_IN_COPY: ReadonlyArray<{ label: string, pattern: RegExp }> = [
   { label: '仓库内部 issue 编号', pattern: /issue\s*#\d+/u },
   { label: '仓库内部「issue 建议」编号', pattern: /issue\s*建议/u },
+  // 裸编号（`#66`）：实测这是最容易漏的一类——#111 新加的文案里就有一条
+  // 「若怕落回 #66 的通牒」，不含「issue」二字，静态扫关键字会漏。
+  { label: '裸仓库编号（#数字）', pattern: /#\d+/u },
   { label: '引用标定样本（「样本」二字）', pattern: /样本/u },
   { label: '英文内部表达式（sample book / in the sample）', pattern: /\b(sample book|in the sample)\b/iu },
   // ⚠️ evidence 会被渲染成「来源：…」，必须是作者读得懂的中文/原句，
   // 不能是 `${name} last scheduled in chapter N` 这类内部字段拼接。
   { label: 'evidence 里的英文内部短语', pattern: /\b(last scheduled in|motivation is empty|last in chapter)\b/u },
 ]
+
+/**
+ * 把源码切成「面向用户的字段块」。
+ *
+ * ⚠️ 必须按**块**扫，不能按行：这些文案是大段模板字符串，一句常常跨 3–6 行。
+ * #112 的旧版按行扫，于是「若怕落回 #66 的通牒」与「墨盒、舵轮、茶碗盖」都没被抓到
+ * ——它们与字段名不在同一行（issue #138 的漏因）。
+ *
+ * 分块方式：从 `zhCN:`/`enUS:`/`evidence:` 起，到下一个同级字段名或 `}` 为止（上限 40 行），
+ * 用大括号深度把模板字符串里的 `${…}` 也算在同一块里。
+ */
+function userFacingBlocks(source: string): Array<{ line: number, text: string }> {
+  const lines = source.split(String.fromCharCode(10))
+  const blocks: Array<{ line: number, text: string }> = []
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!USER_FACING_FIELDS.test(lines[index]!)) continue
+    const collected: string[] = []
+    let depth = 0
+    let opened = false
+    for (let cursor = index; cursor < lines.length && cursor - index < 40; cursor += 1) {
+      const line = lines[cursor]!
+      collected.push(line)
+      for (const character of line) {
+        if (character === '{' || character === '(' || character === '[') { depth += 1; opened = true }
+        else if (character === '}' || character === ')' || character === ']') depth -= 1
+      }
+      if (cursor > index && opened && depth <= 0) break
+      // 单行字段（`evidence: '…',`）：本行就结束。
+      if (cursor === index && /,\s*$/u.test(line) && !opened) break
+    }
+    blocks.push({ line: index + 1, text: collected.join(String.fromCharCode(10)) })
+  }
+  return blocks
+}
 
 const SHARED_DIR = join(__dirname, '..')
 
@@ -43,11 +92,9 @@ describe('面向用户的预检文案不含开发者内部产物 (issue #112)', 
   it('no user-facing string carries an internal artifact', () => {
     const offenders: string[] = []
     for (const name of files) {
-      const lines = readFileSync(join(SHARED_DIR, name), 'utf8').split('\n')
-      for (const [index, line] of lines.entries()) {
-        if (!USER_FACING_FIELDS.test(line)) continue
+      for (const block of userFacingBlocks(readFileSync(join(SHARED_DIR, name), 'utf8'))) {
         for (const { label, pattern } of FORBIDDEN_IN_COPY) {
-          if (pattern.test(line)) offenders.push(`${name}:${index + 1} [${label}]`)
+          if (pattern.test(block.text)) offenders.push(`${name}:${block.line} [${label}]`)
         }
       }
     }
@@ -60,6 +107,8 @@ describe('面向用户的预检文案不含开发者内部产物 (issue #112)', 
     expect(FORBIDDEN_IN_COPY.some(({ pattern }) => pattern.test(sample))).toBe(true)
     expect(FORBIDDEN_IN_COPY.some(({ pattern }) => pattern.test('evidence: `${name} last scheduled in chapter 32`'))).toBe(true)
     expect(FORBIDDEN_IN_COPY.some(({ pattern }) => pattern.test('zhCN: `像样本第 18 章那样`'))).toBe(true)
+    // 裸编号（issue #138 的漏网形态）：不含「issue」二字。
+    expect(FORBIDDEN_IN_COPY.some(({ pattern }) => pattern.test('zhCN: `若怕落回 #66 的通牒`'))).toBe(true)
     // 正常文案不能命中。
     expect(FORBIDDEN_IN_COPY.some(({ pattern }) => pattern.test('zhCN: `在正文里写明他的退场及其原因`'))).toBe(false)
   })
