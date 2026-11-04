@@ -229,11 +229,30 @@ describe('findUnmetTimeAnchorFindings: 蓝图声明跨日而正文没写（issue
       prose(51, '他把灯罩扣上。', '紧接上章当夜，船仍停废水道'),
       prose(52, '回执是午后才送到的。', '次日午后'),
       prose(55, '日头出到桅顶，栈桥上的水汽还没收。', '次日上午（送检单项回执先于三日全案回）'),
-      // 这一章落实了：正文自己写了日界。
+      // 这一章正文写了日界……但写的是「两日后」，而蓝图标的是「次日」（issue #134）。
       prose(57, '两日后，送检结案日。', '次日（送检结案日）上午'),
     ])
-    expect(hits.map(hit => hit.sourceChapter)).toEqual([45, 49, 52, 55])
-    expect(hits.every(hit => hit.stableFactKey.startsWith('chapter-time:anchor-unmet:'))).toBe(true)
+    // 45/49/52/55 是「没写日界」；57 是「写了但隔的天数不对」（另一条 key）。
+    expect(hits.map(hit => hit.sourceChapter)).toEqual([45, 49, 52, 55, 57])
+    expect(hits.slice(0, 4).every(hit => hit.stableFactKey.startsWith('chapter-time:anchor-unmet:'))).toBe(true)
+    expect(hits[4]!.stableFactKey).toBe('chapter-time:anchor-gap-mismatch:57')
+  })
+
+  /**
+   * issue #134：`statesDayBoundaryText` 是布尔——「次日」「两日后」「三日后」在它眼里
+   * 是同一个 true。第 57 章蓝图标「次日」、正文写「两日后」，差整整一天，
+   * 而 #132 当时判成「已落实」，不报。
+   */
+  it('reports when both sides state a boundary but the day counts disagree', () => {
+    const [hit] = findUnmetTimeAnchorFindings([prose(57, '两日后，送检结案日。', '次日（送检结案日）上午')])
+    expect(hit!.stableFactKey).toBe('chapter-time:anchor-gap-mismatch:57')
+    expect(hit!.evidence).toContain('隔 1 天')
+    expect(hit!.evidence).toContain('隔 2 天')
+    // 换一组数值也成立（一周 vs 三日）。
+    expect(findUnmetTimeAnchorFindings([prose(9, '一周后，船靠了埠。', '三日后')])[0]!.stableFactKey)
+      .toBe('chapter-time:anchor-gap-mismatch:9')
+    // 正文写了日界但读不出确定天数（「过了几天」）→ 放过，不猜。
+    expect(findUnmetTimeAnchorFindings([prose(9, '过了几天，船靠了埠。', '次日')])).toEqual([])
   })
 
   it('quotes both sides so the author knows which sentence to fix', () => {
@@ -249,9 +268,11 @@ describe('findUnmetTimeAnchorFindings: 蓝图声明跨日而正文没写（issue
     }
   })
 
-  it('stays silent when the prose does state the day boundary', () => {
+  it('stays silent when the prose states the same day boundary the blueprint declares', () => {
     expect(findUnmetTimeAnchorFindings([prose(9, '次日天没亮，他就上了跳板。', '次日清晨')])).toEqual([])
-    expect(findUnmetTimeAnchorFindings([prose(9, '三天后，船靠了埠。', '次日午后')])).toEqual([])
+    expect(findUnmetTimeAnchorFindings([prose(9, '三天后，船靠了埠。', '三日后')])).toEqual([])
+    // 「隔天」= 「次日」= 1 天，同一天数不报。
+    expect(findUnmetTimeAnchorFindings([prose(9, '隔天他就走了。', '次日清晨')])).toEqual([])
   })
 
   it('stays silent without a blueprint anchor, and on the first chapter', () => {

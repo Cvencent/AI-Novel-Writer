@@ -232,9 +232,35 @@ export function findUnmetTimeAnchorFindings(
     if (!statesDayBoundaryText(anchor)) continue
     // 第 1 章没有上一章，跨日无从谈起。
     if (chapter.chapterNumber <= 1) continue
-    // 正文写出了日界 → 已落实。
-    if (statesDayBoundaryText(chapter.content)) continue
+    const proseStates = statesDayBoundaryText(chapter.content)
     const opening = (String(chapter.content).trim().split(/\n+/u)[0] ?? '').trim().slice(0, 40)
+
+    // 两侧都说了日界，但**隔的天数不一样**（issue #134）：第 57 章蓝图标「次日」、
+    // 正文写「两日后」——#132 的布尔判据当时判成「已落实」。这里补上数值比对。
+    // 只有两侧都读得出确定的日数、且确实不等时才报；读不出来（null）一律放过。
+    const anchorGap = dayGapOf(anchor)
+    const proseGap = dayGapOf(chapter.content)
+    if (proseStates && anchorGap !== null && proseGap !== null && anchorGap !== proseGap) {
+      findings.push({
+        // 章号是既成事实，不随写作推进而变（#86/#89/#98/#108）。
+        stableFactKey: `chapter-time:anchor-gap-mismatch:${chapter.chapterNumber}`,
+        severity: 'warning' as const,
+        sourceChapter: chapter.chapterNumber,
+        evidence: `第${chapter.chapterNumber}章：蓝图【时点：${anchor}】（隔 ${anchorGap} 天），正文写的是「${opening}」（隔 ${proseGap} 天）`,
+        issue: {
+          zhCN: `时间推进对不上：蓝图声明这一章发生在「${anchor}」，也就是上一章之后第 ${anchorGap} 天；正文却写成 ${proseGap} 天之后（开头「${opening}」）。差 ${Math.abs(anchorGap - proseGap)} 天会顺着后面所有「N 日后」「N 日内」的期限一起漂。`,
+          enUS: `The time jump disagrees: the blueprint places this chapter on day ${anchorGap} after the previous one (【时点: ${anchor}】), but the prose opens with a ${proseGap}-day gap (“${opening}”). A difference of ${Math.abs(anchorGap - proseGap)} day(s) shifts every later deadline that counts from here.`,
+        },
+        suggestion: {
+          zhCN: `两者改成一致：把正文那句日界改成蓝图声明的第 ${anchorGap} 天，或若正文才是对的，就改蓝图的【时点】标注。注意上一章末尾可能已经交代过同一个跨度（实测第 56 章就写过「两日后送检出」），改的时候要顺着那一处一起看，别让同一个跨度被数两遍。`,
+          enUS: `Make them agree: rewrite the prose boundary as day ${anchorGap}, or fix the blueprint's 【时点】 label if the prose is right. Check the previous chapter's ending too — it may already state the same span, and the two must not count it twice.`,
+        },
+      })
+      continue
+    }
+
+    // 正文写出了日界 → 已落实。
+    if (proseStates) continue
     findings.push({
       // key 里带的是**问题章号**（那一章是既成事实，不随写作推进而变），
       // 不是当前章号——后者会让提醒永远关不掉（#86/#89/#98/#108）。
@@ -256,7 +282,66 @@ export function findUnmetTimeAnchorFindings(
 }
 
 /**
- * 「最近 N 章没有任何跨日交代」→ 一致性发现（issue #84）。
+ * 从一段文字里读出**隔了几天**（issue #134）。
+ *
+ * 为什么需要它：`statesDayBoundaryText` 是**布尔**——「次日」「两日后」「三日后」
+ * 在它眼里是同一个 `true`。实测第 57 章蓝图标「次日」、正文写「两日后」，差整整
+ * 一天，而 #132 的判据因为两侧都 true 判成「已落实」。
+ *
+ * 判据仍是**封闭语法**，只认三类能确定数值的写法（其余一律 null，不猜）：
+ * - 序数日界：次日/翌日/第二天 → 1；隔天/隔日 → 1；第三天 → 2；
+ * - 数量 + 时间单位 + 后/之后：两天/两日/三日/一周/半个月…；
+ * - 「第 N 天/日」。
+ *
+ * 单位换算做**保守**的一档：日/天 = 1，周/礼拜/星期 = 7，月 = 30，年 = 365。
+ * 读数只用于「两侧差多少」的比较，所以换算精度不影响判断（同样的写法两侧会得到
+ * 同样的数）；只有**两侧用了不同单位**并且恰好接近时才会差一点，那种情况
+ * 一律按「不确定」放过（见 `findUnmetTimeAnchorFindings` 的容差）。
+ *
+ * 刻意不读：「明天」「后天」这类相对指示（没有上一章的绝对日期就无法换算）。
+ */
+const DAY_UNIT: Record<string, number> = { 天: 1, 日: 1, 周: 7, 礼拜: 7, 星期: 7, 月: 30, 年: 365 }
+
+function chineseNumber(value: string): number | null {
+  if (/^\d+$/u.test(value)) return Number(value)
+  const digits: Record<string, number> = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 }
+  if (value === '半') return 0.5
+  if (value.length === 1) return digits[value] ?? null
+  // 「十二」「二十」「二十三」：
+  const match = /^([一二两三四五六七八九])?十([一二三四五六七八九])?$/u.exec(value)
+  if (!match) return null
+  const tens = match[1] ? digits[match[1]]! : 1
+  return tens * 10 + (match[2] ? digits[match[2]]! : 0)
+}
+
+/** 读出一段文字声明的**日数间隔**；读不确定就返回 null（不猜）。 */
+export function dayGapOf(text: string): number | null {
+  const value = String(text ?? '')
+  const gaps: number[] = []
+  // ① 序数日界词。
+  if (/次日|翌日/u.test(value)) gaps.push(1)
+  if (/隔天|隔日/u.test(value)) gaps.push(1)
+  for (const match of value.matchAll(/第([一二两三四五六七八九十]+)(?:天|日)/gu)) {
+    const day = chineseNumber(match[1]!)
+    if (day !== null && day >= 1) gaps.push(day - 1)
+  }
+  // ② 数量 + 时间单位 + 后/之后/以后。
+  for (const match of value.matchAll(/(\d+|[一二两三四五六七八九十]+|半)\s*(?:个)?(礼拜|星期|周|月|天|日|年)\s*(?:后|之后|以后)/gu)) {
+    const count = chineseNumber(match[1]!)
+    const unit = DAY_UNIT[match[2]!]
+    if (count === null || unit === undefined) continue
+    gaps.push(count * unit)
+  }
+  if (gaps.length === 0) return null
+  // 一段话里出现多个日界记号时取**最后一个**（后文更正前文的写法，与
+  // `timeAnchorOf` 取最后一个【时点】同一口径）。
+  return gaps.at(-1)!
+}
+
+/**
+ * 「蓝图声明了跨日，正文一字未提」→ 一致性发现（issue #132）。
+
+
  *
  * `sourceChapter` 取**样本末章 + 1**（即将写的那一章）：这条提示是给「落笔前」看的，
  * 与 `finalized-prose-audit` 里其余各项同一口径。
