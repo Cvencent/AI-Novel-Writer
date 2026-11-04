@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { EN_US_BUILTIN_PROMPTS } from '../../../prompt-language'
 import { BUILTIN_PROMPTS } from '../../../prompt-templates'
-import { segmentChapterNotes, splitProseSentences } from '../../../../shared/finalized-continuity-facts'
+import { continuityCategoryBreakWarning, segmentChapterNotes, splitProseSentences } from '../../../../shared/finalized-continuity-facts'
 import { buildFinalizedContinuityFacts } from '../finalize-chapter.command'
 
 describe('buildFinalizedContinuityFacts', () => {
@@ -303,5 +303,65 @@ describe('事实出处可信度 (issue #63)', () => {
     const sentences = splitProseSentences(dialogue)
     expect(sentences).toHaveLength(1)
     expect(sentences[0]).toBe(dialogue)
+  })
+})
+
+/**
+ * issue #148：章节要点的 `[埋]` / `[钩]` 标记没被分类器认出来。
+ *
+ * 提示词要求模型用这套**标记**写要点（「剧情节点」用 `[触发]/[转折]/[结果]`，
+ * 「伏笔与钩子」用 `[埋]/[钩]`），而 `factCategory` 只认词（「伏笔」「未解」「线索」）。
+ * 两条通道没接上 → 实测全书 64 条 `[埋]` + 46 条 `[钩]` 全落成 `plot`，
+ * 而 `open-thread` 正是 12 条名额里**优先级最高**的一档，那档等于一直空着。
+ */
+describe('要点行首标记决定事实类别 (issue #148)', () => {
+  const content = '巷口靠墙站着一个穿绸褂的伙计，手插袖里往这边看，没动。'
+  const notes = [
+    '## 伏笔与钩子',
+    '- [埋] 巷口靠墙站着一个穿绸褂的伙计，手插袖里往这边看，没动。',
+    '- [钩] 那伙计袖口露出半截竹尺，尺面有个验字。',
+  ].join('\n')
+
+  it('classifies 「[埋]」 and 「[钩]」 as open-thread instead of plot', () => {
+    const facts = buildFinalizedContinuityFacts(5, notes, content, [])
+    expect(facts.length).toBeGreaterThan(0)
+    expect(facts.every(fact => fact.category === 'open-thread')).toBe(true)
+  })
+
+  it('keeps 「[触发]/[转折]/[结果]」 as plot even when the sentence mentions time', () => {
+    // 「[触发] 当日夜里……」这句确实带时间词，但它声明的是情节推进；
+    // 按词表会被判成 timeline，从而从「伏笔优先」的排序里掉出去。
+    const plotNotes = '- [触发] 当日夜里，周叙核完三十二张票根，发现吃水线沉了半指。'
+    const [fact] = buildFinalizedContinuityFacts(6, plotNotes, '当日夜里，周叙核完三十二张票根，发现吃水线沉了半指。', [])
+    expect(fact!.category).toBe('plot')
+  })
+
+  it('falls back to the word list when a note has no marker', () => {
+    // 作者手写的要点、旧版本产物都没有标记 —— 兜底词表仍要工作。
+    const bare = '货舱深处还有一个人没有点过名，这是一处伏笔。'
+    const [fact] = buildFinalizedContinuityFacts(7, bare, '货舱深处还有一个人没有点过名，这是一处伏笔。', [])
+    expect(fact!.category).toBe('open-thread')
+  })
+
+  it('does not treat an unregistered bracket as a foreshadowing marker', () => {
+    // 只有**封闭集合**里的标记才算；`[备注]` 这类原样落到词表兜底。
+    const other = '- [备注] 当日午后换班，账房把票根收走。'
+    const [fact] = buildFinalizedContinuityFacts(8, other, '当日午后换班，账房把票根收走。', [])
+    expect(fact!.category).toBe('timeline')
+  })
+
+  it('warns when the 伏笔与钩子 section has items but no fact lands in open-thread', () => {
+    // 分类断链在界面上看不见（那一节照常显示要点原文），所以要有留痕。
+    const warning = continuityCategoryBreakWarning(9, notes, [
+      { category: 'plot', entities: [], statement: 'x', sourceChapter: 9, evidence: 'x' },
+    ])
+    expect(warning).toContain('chapter 9')
+    expect(warning).toContain('open-thread 为 0')
+    // 有 open-thread 时不 warn。
+    expect(continuityCategoryBreakWarning(9, notes, [
+      { category: 'open-thread', entities: [], statement: 'x', sourceChapter: 9, evidence: 'x' },
+    ])).toBeNull()
+    // 没有「伏笔与钩子」一节时不 warn（没什么可丢的）。
+    expect(continuityCategoryBreakWarning(9, '## 剧情节点\n- [触发] 某件事。', [])).toBeNull()
   })
 })

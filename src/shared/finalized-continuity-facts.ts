@@ -50,11 +50,69 @@ export function segmentChapterNotes(chapterNotes: string): string[] {
   return merged
 }
 
+/**
+ * 章节要点**行首**的类型标记（issue #148）。
+ *
+ * 生成章节要点的提示词自己规定了这套标记（`builtin-prompt-templates.ts`：「剧情节点」用
+ * `[触发]/[转折]/[结果]`，「伏笔与钩子」用 `[埋]/[钩]`），所以它是**封闭集合**、写在
+ * 每一条的最前面——比叙述里碰巧出现的词可靠得多。实测那本书 438 条事实里 296 条带标记。
+ *
+ * ⚠️ 旧实现只认词（「伏笔」「未解」「线索」），而模型被要求写的是**标记**：两条通道
+ * 完全没接上，于是 64 条 `[埋]` + 46 条 `[钩]` 全落成 `plot`，`open-thread` 全书只有 1 条。
+ * 而 `open-thread` 是 12 条名额里**优先级最高**的一档（`CATEGORY_PRIORITY`）——
+ * 那一档空着，等于每一章都在按一张残缺的权重表砍内容。
+ */
+const OPEN_THREAD_MARKERS = new Set(['埋', '钩', '伏笔', '悬念', '线索', '未解'])
+/** 剧情节点标记：模型对「这一条是情节推进」的声明，不再走下面的词表判断。 */
+const PLOT_MARKERS = new Set(['触发', '转折', '结果', '开端', '发展', '收束', '结局'])
+
+/** 取行首标记；没有则返回空串。 */
+function leadingMarker(statement: string): string {
+  const match = /^\s*[\[【]([^\]】]{1,6})[\]】]/u.exec(String(statement ?? ''))
+  return match ? match[1]!.trim() : ''
+}
+
+/**
+ * 事实分类（issue #148）：**先看结构（行首标记），再看词（兜底）**。
+ *
+ * 两者是「先后」而不是「二选一」：带标记的按标记定，没带标记的仍按原来的词表判
+ * （作者手写的要点、旧版本产物都没有标记）。
+ */
 function factCategory(statement: string): FinalizedContinuityFactCategory {
+  const marker = leadingMarker(statement)
+  // ⚠️ 只认**封闭集合**里的标记。例外的方括号（作者自己写的 `[备注]`）原样落到词表兜底，
+  // 不要因为「有个方括号」就当成伏笔——那会把未登记标记整类误判。
+  if (OPEN_THREAD_MARKERS.has(marker)) return 'open-thread'
+  if (PLOT_MARKERS.has(marker)) return 'plot'
   if (/(?:角色|状态|持有|受伤|位于|死亡|身亡|牺牲|去世|character|holds?|injur|location|dead|died|deceased)/iu.test(statement)) return 'character-state'
   if (/(?:时间|当日|翌日|多年|之前|之后|timeline|before|after|years?)/iu.test(statement)) return 'timeline'
+  // 兜底词表也认「埋/钩」这一类单字标记之外的写法，但它必须在**没带标记**时才参与。
   if (/(?:伏笔|悬念|承诺|未解|线索|promise|unresolved|clue|mystery)/iu.test(statement)) return 'open-thread'
   return 'plot'
+}
+
+/**
+ * 分类通道是否断了（issue #148 建议 3）：本章要点里有「伏笔与钩子」一节（非空），
+ * 而落库事实里 `open-thread` 一条都没有。
+ *
+ * 为什么值得自检：`foreshadowing_json` 是另一条独立通道，界面上「伏笔与钩子」一节
+ * 会正常显示（那是 `chapter_notes` 原文），所以**分类断链在界面上完全看不见**——
+ * 只会表现为「事实账本里没有伏笔」，而作者无从知道该不该有。
+ *
+ * 返回警告文本（供调用方决定 console.warn 还是落库），没问题时返回 null。
+ */
+export function continuityCategoryBreakWarning(
+  chapterNumber: number,
+  chapterNotes: string,
+  facts: readonly FinalizedContinuityFact[],
+): string | null {
+  const notes = String(chapterNotes ?? '')
+  const openThreadSection = /##[^\n]*伏笔[^\n]*\n([\s\S]*?)(?:\n##|\n#\s|$)/u.exec(notes)?.[1] ?? ''
+  const sectionHasItems = /^\s*(?:[-*•]|\d+[.)、])/mu.test(openThreadSection)
+  if (!sectionHasItems) return null
+  if (facts.some(fact => fact.category === 'open-thread')) return null
+  return `[continuity-facts] chapter ${chapterNumber}: 要点里有「伏笔与钩子」一节，`
+    + `但 ${facts.length} 条事实里 open-thread 为 0——分类通道可能断了（检查行首 [埋]/[钩] 标记）`
 }
 
 function textBigrams(value: string): Set<string> {
@@ -308,5 +366,9 @@ export function buildFinalizedContinuityFacts(
       + ` (${facts.length} had evidence before dedupe/limit); check whether the prose really supports them`,
     )
   }
+  // 分类断链要留痕（issue #148 建议 3）：界面上「伏笔与钩子」一节照常显示（那是要点原文），
+  // 所以「伏笔一条都没进账本」在界面上完全看不见——不 warn 就永远查不到。
+  const categoryBreak = continuityCategoryBreakWarning(chapterNumber, chapterNotes, kept)
+  if (categoryBreak) console.warn(categoryBreak)
   return kept
 }
