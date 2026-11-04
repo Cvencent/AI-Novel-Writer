@@ -1978,10 +1978,27 @@ ${params.candidate.text}`,
       for (const field of CHARACTER_STATE_TEXT_FIELDS) {
         const value = card.currentState?.[field]?.trim()
         const provenance = card.currentState?.provenance?.[field]
-        if (!value || !provenance) continue
-        const chapterNumber = provenance.kind === 'author'
+        if (!value) continue
+        // 字段级来源章（issue #135）：`cs_updated_at_chapter` 是**角色级**的单一时间戳，
+        // 细纲推进（#130）会把它拉到正文还没写到的章；用它过滤会把在场角色的字段全部丢掉
+        // （实测「三个角色只剩名字」）。所以取**每个字段自己的**来源章。
+        //
+        // 兜底（同 issue 建议 1）：`OutlineCharacterStateRepository.apply` 推进细纲时会
+        // **删掉被写字段的 provenance**（刻意为之，免得旧标记给摘要背书），于是这类字段
+        // 「有值但没有来源章」。旧口径直接跳过 = 细纲写过的字段在清单里静默消失。
+        // 现在退回角色级时间戳，但**只在不超前时**才当本章起点（超前说明它正是细纲要推的
+        // 那一章，与 #130/#132 同一口径）。
+        //
+        // ⚠️ 只对 **provenance 整个缺失** 兜底，**不覆盖 `kind: 'legacy'`**：
+        // legacy 是显式声明「来源未知」，与「没有声明」不是一回事——把它也补上会让
+        // 「来源不可信」的旧值混进确定性清单（`generate-draft.command.test.ts` 有一条
+        // 用例正是钉这个：legacy 的 recentEvents 不得注入）。
+        const rollUp = card.currentState?.updatedAtChapter
+        const chapterNumber = provenance?.kind === 'author'
           ? provenance.chapterNumber
-          : provenance.kind === 'derived' ? provenance.source.chapterNumber : null
+          : provenance?.kind === 'derived' ? provenance.source.chapterNumber
+            : provenance === undefined && typeof rollUp === 'number' ? rollUp
+              : null
         if (chapterNumber === null) continue
         state[field] = { value, chapterNumber }
       }

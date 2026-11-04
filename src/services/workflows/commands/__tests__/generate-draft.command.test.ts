@@ -1853,6 +1853,36 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     expect(prompt).not.toContain('退入排队人群')
   })
 
+  /**
+   * issue #135：`OutlineCharacterStateRepository.apply` 推进细纲时会**删掉被写字段的
+   * provenance**，于是那些字段「有值但没有来源章」。旧口径直接跳过 → 起草前的对账清单
+   * 里那些字段静默消失（实测「三个在场角色只剩名字」）。这里钉住兜底：provenance 缺失时
+   * 用角色级 `updatedAtChapter`（且不超前）补出。
+   */
+  it('falls back to the chapter roll-up for state fields that lost their own provenance', async () => {
+    const runtime = fakeRuntime(() => outcome('新章正文。'.repeat(125), 'stop'))
+    const { context, callbacks, command } = setup({
+      runtime,
+      chapterNumber: 5,
+      characters: ['沈砚'],
+      wordsTarget: 500,
+      previousFinalizedContent: '第四章定稿原文。',
+      characterCards: [{
+        name: '沈砚',
+        role: 'supporting',
+        currentState: {
+          // 有值，但 provenance 整个缺失（细纲推进后的形态）。
+          location: 'SENTINEL_FALLBACK_LOCATION',
+          updatedAtChapter: 2,
+        },
+      }],
+    })
+    await command.execute({ step: {}, context, callbacks })
+    const prompt = runtime.complete.mock.calls[0]?.[0].messages
+      .find(message => message.role === 'user')?.content ?? ''
+    expect(prompt).toContain('SENTINEL_FALLBACK_LOCATION')
+  })
+
   it('never injects a state derived from this chapter or a later one as the starting point', async () => {
     const runtime = fakeRuntime(() => outcome('新章正文。'.repeat(125), 'stop'))
     const { context, callbacks, command } = setup({

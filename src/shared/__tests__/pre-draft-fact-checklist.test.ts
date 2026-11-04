@@ -49,6 +49,46 @@ describe('preDraftFactChecklist (issue #128)', () => {
     expect(text).toContain('physicalState@ch25')
   })
 
+  /**
+   * issue #135：**判据针对的是「每字段的来源章」，不是角色的单一时间戳**。
+   *
+   * 上游旧数据里 `cs_updated_at_chapter` 被细纲拉到 26（#130），而各字段的
+   * `cs_provenance[...].source.chapterNumber` 还停在 22/23/24。调用方
+   * （`generate-draft.buildPreDraftFactChecklist`）传进来的就是**字段级**章号——
+   * 这条测试把「角色时间戳超前不影响字段采信」这个契约钉住，防止未来有人
+   * 图省事改成读 `currentState.updatedAtChapter`（那会让三个在场角色只剩名字）。
+   */
+  it('keeps fields whose own provenance chapter is earlier, even when the chapter roll-up is ahead', () => {
+    // 输入形态与生成侧一致：state 里的 chapterNumber 取自 provenance，
+    // 而角色级 updatedAtChapter 是 26（超前）。第 25 章必须拿到 22/23 那两个字段。
+    const cast = [{ name: '周叙', role: 'protagonist', state: {
+      location: { value: '码头', chapterNumber: 22 },
+      mentalState: { value: '摸到衬页硬边不翻看', chapterNumber: 23 },
+      keyItems: { value: '“验”字旧木戳', chapterNumber: 23 },
+    }, formerNames: [] }]
+    const text = preDraftFactChecklist({ chapterNumber: 25, blueprintCharacters: ['周叙'],
+      keyEvents: '', cast, writingLanguage: 'zh-CN' })
+    expect(text).toContain('location@ch22')
+    expect(text).toContain('mentalState@ch23')
+    expect(text).toContain('keyItems@ch23')
+    // 三个字段都要在，不能只剩名字。
+    expect(text).not.toMatch(/^- 周叙 \(protagonist\)$/mu)
+  })
+
+  it('survives the shape where the roll-up is ahead and only some fields are stale', () => {
+    // 混合形态：两个字段早于本章（要采信）、一个来自本章（不能当起点）。
+    const cast = [{ name: '邵广海', role: 'antagonist', state: {
+      location: { value: '码头办公室', chapterNumber: 22 },
+      mentalState: { value: '只笑不语', chapterNumber: 23 },
+      keyItems: { value: '本章才拿到的单子', chapterNumber: 25 },
+    }, formerNames: [] }]
+    const text = preDraftFactChecklist({ chapterNumber: 25, blueprintCharacters: ['邵广海'],
+      keyEvents: '', cast, writingLanguage: 'zh-CN' })
+    expect(text).toContain('location@ch22')
+    expect(text).toContain('mentalState@ch23')
+    expect(text).not.toContain('本章才拿到的单子')
+  })
+
   it('never uses a state that comes from this chapter or later (rewriting an old chapter)', () => {
     const stale = [{ name: '周叙', role: 'protagonist', state: {
       // 第 26 章的值不能当第 26 章的起点；第 27 章更不能。
