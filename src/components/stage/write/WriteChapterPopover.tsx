@@ -262,6 +262,12 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           onRevoke={key => void revokeArrangement(key)}
           onAcknowledge={key => void acknowledgeFinding(key)}
           onUnacknowledge={key => void unacknowledgeFinding(key)}
+          onOpenLayer={route => {
+            // issue #137：把作者送到该提醒所属的那一层。先收起弹层，再导航——
+            // 否则弹层会盖在目标页上（与「去修复定稿后处理」同一处理）。
+            close(false)
+            navigate(route.destination)
+          }}
         />
       )}
       {message && <p className="stage-write-error" role="alert">{message}</p>}

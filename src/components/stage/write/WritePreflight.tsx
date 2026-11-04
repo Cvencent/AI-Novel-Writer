@@ -2,7 +2,21 @@ import { useState } from 'react'
 import { RotateCcw, ShieldAlert } from 'lucide-react'
 import type { ConsistencyPreflightResult } from '../../../services/consistency-preflight'
 import { useLocaleStore } from '../../../stores/locale-store'
+import { preflightRouteOf, type PreflightRoute } from '../../../shared/preflight-route'
 import { Button } from '../../ui/Button'
+
+/** 各层的中文/英文说法（面向作者；层名本身是内部概念）。 */
+function layerText(locale: 'zh-CN' | 'en-US', route: PreflightRoute): string {
+  const zh = route.layer === 'world' ? '世界观/设定'
+    : route.layer === 'cast' ? '角色名单'
+      : route.layer === 'outline' ? '细纲/粗纲'
+        : route.layer === 'blueprint' ? '本章蓝图' : '已定稿正文'
+  const en = route.layer === 'world' ? 'worldbuilding'
+    : route.layer === 'cast' ? 'cast list'
+      : route.layer === 'outline' ? 'outline'
+        : route.layer === 'blueprint' ? 'this chapter’s blueprint' : 'finalized prose'
+  return locale === 'en-US' ? en : zh
+}
 
 interface WritePreflightProps {
   preflight: ConsistencyPreflightResult
@@ -14,6 +28,16 @@ interface WritePreflightProps {
   /** 「我已知，稍后处理」（issue #79）：与「保存安排」分开，只表示知道，不表示刻意为之。 */
   onAcknowledge: (stableFactKey: string) => void
   onUnacknowledge: (stableFactKey: string) => void
+  /**
+   * 「去这一层改」（issue #137）：把作者送到该提醒所属的那一层。
+   *
+   * 这条出口解决的是「作者自己判断每条该去哪一层」——13 条提醒原来要跨 5 个页面
+   * 手工找 13 次。生成补丁与差异确认是它的下游（分批做）。
+   *
+   * ⚠️ **可选**：批量写作对话框（一次写多章）不传它——那里的提醒可能属于任意一章，
+   * 「去哪一层」回答不了「哪一章」，给按钮反而误导。不传时该出口整段不渲染。
+   */
+  onOpenLayer?: (route: PreflightRoute) => void
 }
 
 /**
@@ -27,7 +51,7 @@ interface WritePreflightProps {
  *  3. 「带提醒继续写」——本次不处理，也不落任何状态（仍然是一次性的）。
  */
 export default function WritePreflight({
-  preflight, busy, onIgnoreOnce, onRerun, onSave, onRevoke, onAcknowledge, onUnacknowledge,
+  preflight, busy, onIgnoreOnce, onRerun, onSave, onRevoke, onAcknowledge, onUnacknowledge, onOpenLayer,
 }: WritePreflightProps) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
@@ -49,6 +73,7 @@ export default function WritePreflight({
       )}
       {findings.map(finding => {
         const reason = reasons[finding.stableFactKey] ?? ''
+        const route = preflightRouteOf(finding.stableFactKey)
         return (
           <div key={finding.stableFactKey} className="stage-preflight-item">
             <p>{locale === 'en-US' ? finding.issue.enUS : finding.issue.zhCN}</p>
@@ -68,6 +93,22 @@ export default function WritePreflight({
               <Button variant="text" size="sm" disabled={busy} onClick={() => onAcknowledge(finding.stableFactKey)}>
                 {text('我已知，稍后处理', 'Noted — deal with it later')}
               </Button>
+              {/*
+                issue #137：这条提醒该去哪一层改。
+                ⚠️ 只有写前那一刻真能改的才给按钮：读已定稿正文的判据（`prose:*`）此刻
+                改不了（本章正文还不存在），标注原因而不是给一个点了没反应的按钮。
+              */}
+              {onOpenLayer === undefined ? null : route.repairable ? (
+                <Button variant="secondary" size="sm" disabled={busy} onClick={() => onOpenLayer(route)}>
+                  {text(`去${layerText(locale, route)}改`, `Open ${layerText(locale, route)}`)}
+                </Button>
+              ) : (
+                <span className="stage-preflight-not-here">
+                  {route.blockedBy === 'needs-finalized-prose'
+                    ? text('这条要改正文，本章写完后可回来处理', 'This needs the prose; handle it after this chapter is drafted')
+                    : text('这条暂时没有可改的层', 'No editable layer for this one yet')}
+                </span>
+              )}
             </div>
           </div>
         )

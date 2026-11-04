@@ -122,7 +122,15 @@
 
 .stage-preflight-save {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--s-2);
+}
+
+/* issue #137：写前那一刻改不了的提醒（读已定稿正文的那类），标注原因而不是给空按钮。 */
+.stage-preflight-not-here {
+  font-size: var(--fs-12);
+  color: var(--muted);
 }
 
 .stage-preflight-save .pi-input {
