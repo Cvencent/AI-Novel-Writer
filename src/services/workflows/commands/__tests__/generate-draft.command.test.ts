@@ -668,6 +668,25 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     expect(prompt).toContain('另一笔代价')
   })
 
+  it('tells the draft to vary the sentence that lands the cost, not just the cost (issue #145)', async () => {
+    // 代价可以一直是「忘一段」，但写它落下的那句不能每章落到同一个短句形状上——
+    // 实测那本书 8 章用同一句「脑子里空了一块」，读者记住的是那句话、不是这次丢了什么。
+    const runtime = fakeOutcomes(outcome('本章正文。'.repeat(125), 'stop'))
+    const f = setup({ runtime, wordsTarget: 500, chapterNumber: 2, characters: ['周叙'],
+      previousFinalizedContent: '第一章正文。',
+      blueprints: [
+        { chapterNumber: 1, title: '第一章', keyEvents: '开端。', costsAndTurns: '温珩昨夜在舱口说的话被墨吞掉，周叙再也想不起' },
+        { chapterNumber: 2, title: '第二章', keyEvents: '本章。', costsAndTurns: '本章的代价' },
+      ] })
+    await f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks })
+    const prompt = runtime.complete.mock.calls[0]![0].messages.map(message => message.content).join('\n')
+    expect(prompt).toContain('代价落下来那一拍也要换写法')
+    // 明文给出出路：换后果/身体反应/视角/这次丢掉的具体内容。
+    expect(prompt).toContain('换这次丢掉的')
+    // 反例只能讲「同一句反复出现会怎样」，不能再造一份短语表。
+    expect(prompt).not.toContain('脑子里空')
+  })
+
   it('injects every current character sharing a blueprint name', async () => {
     const runtime = fakeOutcomes(outcome('本章正文。'.repeat(125), 'stop'))
     const f = setup({ runtime, wordsTarget: 500, characters: ['沈砺'],
