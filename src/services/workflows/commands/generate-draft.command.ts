@@ -13,6 +13,7 @@ import { normalizeAgeField } from '../../../shared/character-age'
 import { appErrorMessage } from '../../../i18n/app-errors'
 import { sanitizeDraftText, composeDraftVisibleContinuation, DRAFT_CONDENSE_PURPOSE, DRAFT_VISIBLE_TEXT_VERSION, isDraftVisibleTextVersion, type DraftVisibleTextVersion } from '../../../shared/draft-visible-text'
 import { DRAFT_RECONCILE_PURPOSE, draftReconciliationBlock } from '../../../shared/draft-reconciliation'
+import { preDraftFactChecklist } from '../../../shared/pre-draft-fact-checklist'
 import { DRAFT_SHORT_OUTLINE_PURPOSE, draftShortOutlinePrompt, draftShortOutlineBlock } from '../../../shared/draft-short-outline'
 export { sanitizeDraftText } from '../../../shared/draft-visible-text'
 import { createWorkflowMainGenerationRuntime, type WorkflowMainGenerationRequest } from '../workflow-main-generation'
@@ -695,6 +696,9 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       this.chapterInfo.characters,
       this.chapterInfo.chapterNumber,
     )
+    // 起草前的确定性对账清单（issue #128）：正名 + 上一章末状态 + 本章时点。
+    // 与下面那次模型对账（draft-reconciliation）互补：这一份不调模型、可逐字核对。
+    const preDraftChecklist = await this.buildPreDraftFactChecklist(expectedProjectPath, projectSession, writingLanguage)
     let futureBlueprintsStr = promptLanguageText(
       writingLanguage,
       '（无后续蓝图）',
@@ -851,7 +855,7 @@ ${dueForeshadowing}`
       .withWordNumber(targetChars)
       // ---- 章节公共区（首章与后续章都必须完整注入）----
       .withChapterInfo(writerChapterInfo)
-      .withCharacterStates('')
+      .withCharacterStates(preDraftChecklist)
       .withFutureBlueprints('')
       .withFilteredContext('')
       .withUserGuidance(this.chapterInfo.userGuidance?.trim() || promptLanguageText(
@@ -1951,6 +1955,51 @@ ${params.candidate.text}`,
       }
       return parts.join('\n\n')
     } catch { return '' }
+  }
+
+  /**
+   * 起草前的确定性对账清单（issue #128）。
+   *
+   * 只读已有数据：名册（学名 + 记过的旧名）与本章蓝图的【时点】标注。
+   * 状态字段的「来源章号必须早于本章」由模块内部判，这里只喂数据。
+   */
+  private async buildPreDraftFactChecklist(
+    projectPath: string,
+    projectSession: ProjectSessionContext,
+    writingLanguage: WritingLanguage,
+  ): Promise<string> {
+    const blueprint = this.chapterInfo
+    const roster = await ipc.invokeWithProjectSession(projectSession, 'db:character-roster-read', projectPath)
+      .catch(() => null)
+    if (!roster || (roster.status !== 'ready' && roster.status !== 'empty')) return ''
+    const identityRevision = typeof roster.identityRevision === 'number' ? roster.identityRevision : null
+    const cast = roster.entries.map(card => {
+      const state: Record<string, { value: string; chapterNumber: number }> = {}
+      for (const field of CHARACTER_STATE_TEXT_FIELDS) {
+        const value = card.currentState?.[field]?.trim()
+        const provenance = card.currentState?.provenance?.[field]
+        if (!value || !provenance) continue
+        const chapterNumber = provenance.kind === 'author'
+          ? provenance.chapterNumber
+          : provenance.kind === 'derived' ? provenance.source.chapterNumber : null
+        if (chapterNumber === null) continue
+        state[field] = { value, chapterNumber }
+      }
+      // 名册记过的旧名（已生效的别名区间内的名字）。
+      const formerNames = identityRevision === null ? []
+        : (roster.aliases ?? [])
+          .filter(alias => alias.characterId === card.characterId && alias.name !== card.name
+            && alias.validFrom <= identityRevision && (alias.validThrough === null || identityRevision <= alias.validThrough))
+          .map(alias => alias.name)
+      return { name: card.name, role: card.role ?? '', state, formerNames }
+    })
+    return preDraftFactChecklist({
+      chapterNumber: blueprint.chapterNumber,
+      blueprintCharacters: blueprint.characters,
+      cast,
+      keyEvents: blueprint.keyEvents,
+      writingLanguage,
+    })
   }
 
   private async readCharacterProfiles(
