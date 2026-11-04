@@ -20,7 +20,7 @@ import { useProjectStore } from '../../../stores/project-store'
 import { captureProjectSession, isProjectSessionCurrent } from '../../project-session-gate'
 import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useAnchoredLayer } from '../../ui/use-anchored-layer'
-import { applyRepairDiffs, proposeLayerRepair } from '../../../services/preflight-repair'
+import { appearanceContradictionFindings, applyRepairDiffs, checkAppearanceAgainstCards, proposeLayerRepair } from '../../../services/preflight-repair'
 import { advanceRepairQueue, planRepairCalls, remainingRepairLayers, shouldContinueRepairChain } from '../../../shared/preflight-repair'
 import { preflightRouteOf } from '../../../shared/preflight-route'
 import { Button } from '../../ui/Button'
@@ -207,6 +207,53 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     }
   }
 
+  /**
+   * 角色卡外观与正文的对账（issue #153）——**交给模型判**，不由规则扫词表。
+   *
+   * 与「修复」同一套交互：点一次 → 一次模型调用 → 结果进差异面板/提醒 → 作者决定。
+   * 结果不落库：这条报的是「正文与卡上相悖」，改哪一侧由作者定。
+   */
+  const checkAppearance = async () => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || busy) return
+    const project = useProjectStore.getState().currentProject
+    const roster = await ipc.invokeWithProjectSession(session, 'db:character-roster-read', session.projectPath).catch(() => null)
+    const cards = (roster?.entries ?? []).flatMap(entry => {
+      const name = String(entry.name ?? '').trim()
+      const appearance = String(entry.appearance ?? '')
+      const notes = String(entry.notes ?? '')
+      return name && `${appearance}${notes}`.trim() ? [{ name, appearance, notes }] : []
+    })
+    if (!isProjectSessionCurrent(session)) return
+    if (cards.length === 0 || !project) {
+      setMessage(text('角色卡里还没有外观描述，无法核对。', 'No character card describes an appearance yet, so there is nothing to check.'))
+      return
+    }
+    const prose = (await ipc.invokeWithProjectSession(session, 'db:draft-export-snapshot', session.projectPath)
+      .catch(() => [])) as Array<{ chapterNumber: number, content: string }>
+    if (!isProjectSessionCurrent(session)) return
+    const chapters = prose
+      .filter(row => Number.isSafeInteger(row.chapterNumber) && row.chapterNumber < chapterNumber)
+      .map(row => ({ chapterNumber: row.chapterNumber, content: String(row.content ?? '') }))
+    setBusy(true)
+    setMessage(null)
+    try {
+      const outcome = await checkAppearanceAgainstCards(session, chapters, cards, locale)
+      if (!isProjectSessionCurrent(session)) return
+      if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
+      const found = appearanceContradictionFindings(outcome.contradictions)
+      if (found.length === 0) {
+        setMessage(text('模型没有找到正文与角色卡相悖的地方。', 'The model found no place where the prose contradicts a character card.'))
+        return
+      }
+      // 结果并入当前提醒列表（作者已有的 ack/保存安排机制照常可用）。
+      setPreflight(current => current ? { ...current, findings: [...current.findings, ...found] } : current)
+      show()
+    } finally {
+      setBusy(false)
+    }
+  }
+
   /** 作者勾选后落库（走现成写通道），然后重检刷新列表。 */
   const applyRepair = async (fields: readonly string[] | null) => {
     const diffs = repairProposal?.diffs.filter(diff => fields === null || fields.includes(diff.field)) ?? []
@@ -374,6 +421,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           currentChapter={chapterNumber}
           onRepair={targets => void requestRepair(targets)}
           onRepairAll={() => void requestRepair(preflight.findings)}
+          onCheckAppearance={() => void checkAppearance()}
           repairProposal={repairProposal}
           onApplyRepairField={field => void applyRepair([field])}
           onApplyRepairAll={() => void applyRepair(null)}

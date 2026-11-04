@@ -57,6 +57,11 @@ interface WritePreflightProps {
   onRepair?: (findings: readonly ConsistencyFinding[]) => void
   /** 「全部修复」：把当前能修的所有提醒按层分组，每层一次调用。 */
   onRepairAll?: () => void
+  /**
+   * 「核对角色外观」（issue #153）：请模型判正文有没有与角色卡相悖的描写。
+   * 不传时不渲染——那个调用只该由作者主动触发（一次模型调用，不该在预检里自动跑）。
+   */
+  onCheckAppearance?: () => void
   /** 模型给出的改写建议（差异面板）。null 表示当前没有待确认的改写。 */
   repairProposal?: RepairProposal | null
   onApplyRepairField?: (field: string) => void
@@ -76,7 +81,7 @@ interface WritePreflightProps {
  */
 export default function WritePreflight({
   preflight, busy, onIgnoreOnce, onRerun, onSave, onRevoke, onAcknowledge, onUnacknowledge, onOpenLayer, currentChapter,
-  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair,
+  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance,
 }: WritePreflightProps) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
@@ -169,6 +174,11 @@ export default function WritePreflight({
       ) : null}
       {findings.length > 0 && (
         <div className="stage-preflight-actions">
+          {onCheckAppearance === undefined ? null : (
+            <Button variant="text" size="sm" disabled={busy} onClick={onCheckAppearance}>
+              {text('核对角色外观', 'Check appearance vs cards')}
+            </Button>
+          )}
           {onRepairAll === undefined ? null : (
             <Button variant="secondary" size="sm" disabled={busy} onClick={onRepairAll}>
               {text('全部修复', 'Fix all')}

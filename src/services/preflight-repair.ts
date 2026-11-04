@@ -33,6 +33,13 @@ import {
   type RepairFieldDiff,
 } from '../shared/preflight-repair'
 import type { PreflightLayer } from '../shared/preflight-route'
+import {
+  buildAppearanceReviewPrompt,
+  parseAppearanceReview,
+  type AppearanceContradiction,
+  type AppearanceReviewCard,
+  type AppearanceReviewChapter,
+} from '../shared/appearance-consistency'
 
 /** 能做字段级补丁的层（其余层走各自的页面或只能重定稿）。 */
 export const FIELD_PATCH_LAYERS: readonly PreflightLayer[] = ['blueprint', 'world']
@@ -165,4 +172,65 @@ export async function applyRepairDiffs(
     return ipc.invokeWithProjectSession(session, 'db:project-core-update', patch, session.projectPath)
   }
   return { success: false, error: 'LAYER_NOT_WRITABLE' }
+}
+/**
+ * 角色卡外观与正文的对账（issue #153）——**一次模型调用**，本模块只负责组装与校验。
+ *
+ * 为什么不能写规则：判断「正文这一处与卡上描述是否相悖」是内容判断，
+ * 而任何词表都只对这一本书成立（第一版用 `缺/断/疤/伤` + `小指/虎口` 这类封闭词类，
+ * 被用户 2026-11-05 明确否掉）。规则能做的只有：喂什么、要什么形状、答案能不能核对。
+ */
+export interface AppearanceCheckOutcome {
+  status: 'ok' | 'failed'
+  contradictions: AppearanceContradiction[]
+  error?: string
+}
+
+export async function checkAppearanceAgainstCards(
+  session: ProjectSessionContext,
+  chapters: readonly AppearanceReviewChapter[],
+  cards: readonly AppearanceReviewCard[],
+  locale: 'zh-CN' | 'en-US' = 'zh-CN',
+): Promise<AppearanceCheckOutcome> {
+  const en = locale === 'en-US'
+  const request = { chapters, cards, language: locale }
+  if (chapters.length === 0 || cards.length === 0) return { status: 'ok', contradictions: [] }
+  const { system, user } = buildAppearanceReviewPrompt(request)
+  const response = await useLLMStore.getState().generate(
+    [{ role: 'system', content: system }, { role: 'user', content: user }],
+    undefined,
+    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
+  )
+  if (!response.success) {
+    return { status: 'failed', contradictions: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
+  }
+  const parsed = parseAppearanceReview(response.content, request)
+  if (!parsed) {
+    return { status: 'failed', contradictions: [], error: en
+      ? 'The model did not return a valid contradiction list.'
+      : '模型返回的不是合法的「相悖」清单。' }
+  }
+  return { status: 'ok', contradictions: parsed }
+}
+
+/** 把模型判出来的相悖转成一致性发现（供预检/审稿同一出口展示）。 */
+export function appearanceContradictionFindings(
+  contradictions: readonly AppearanceContradiction[],
+): ConsistencyFinding[] {
+  return contradictions.map(item => ({
+    // 章号 + 角色是既成事实；**引文**也进 key 的尾部（同一章同一人可能有多处），
+    // 但不带当前章号——否则提醒永远关不掉（#86/#89/#98/#108）。
+    stableFactKey: `character:appearance-contradiction:${item.chapterNumber}:${item.characterName}`,
+    severity: 'warning' as const,
+    sourceChapter: item.chapterNumber,
+    evidence: `第${item.chapterNumber}章：「${item.quote}」`,
+    issue: {
+      zhCN: `正文与角色卡对不上：「${item.characterName}」的这一处描写与卡上冲突——${item.explanation || '正文与卡上的描述不能同时成立。'}`,
+      enUS: `The prose disagrees with the character card: this description of “${item.characterName}” cannot hold together with the card — ${item.explanation || 'the two cannot both be true.'}`,
+    },
+    suggestion: {
+      zhCN: `二选一：把正文这一处改成与角色卡一致；或者若正文才是本意，就改角色卡（并在后面统一）。改完顺带核一下前后章有没有只写「缺半截的小指」这种不交代左右的写法——那种写法会让这个错被埋掉。`,
+      enUS: `Either make this sentence agree with the card, or update the card if the prose is right (and keep later chapters consistent). Also check whether neighbouring chapters only say "the missing fingertip" without a side — that phrasing hides the error.`,
+    },
+  }))
 }
