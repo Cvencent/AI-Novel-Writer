@@ -56,6 +56,8 @@ import {
 import { proseRepetitionFindings } from './prose-repetition'
 // 「AI 味」的可机器判子集（issue #93）：超配额、段尾总结腔、平均句长。
 import { proseFlavorDriftFindings, proseFlavorFindings } from './prose-flavor'
+// 感官通道覆盖（#151）：「五感」只写进提示词、全链路零核对 → 逐章退化成视觉+触觉。
+import { findSensoryChannelFindings } from './sensory-channel'
 // 段落起手（#94）与物件过手（#95）：同一类「跨章看同一种写法」的位置轴补位。
 import { findParagraphOpenerFindings, findPropHandoverFindings } from './consistency-preflight'
 import { findTimeAnchorSelfContradictions, findUndatedStreakFindings, findUnmetTimeAnchorFindings } from './chapter-time-anchor'
@@ -234,6 +236,9 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   const proseFlavor = [
     ...proseFlavorFindings(auditSample, nextChapter, castNames),
     ...proseFlavorDriftFindings(chapters),
+    // 感官通道（#151）：用全量已定稿章——趋势判据的窗口在判据内部收（最近 20 章），
+    // 样本切小会让「这一段有没有气味」失去意义。
+    ...findSensoryChannelFindings(chapters),
   ]
 
   // 段落起手固定化（issue #94）与物件过手动作固定化（issue #95）：
