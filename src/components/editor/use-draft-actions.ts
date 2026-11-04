@@ -580,6 +580,28 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
   }
 
   /** 丢弃不能再合并的修稿（生成后正文改过）；修稿记录标为已弃用，复验周期随之对账。 */
+  /**
+   * 把定稿后仍待合并的修稿**作为新版本草稿**落库（issue #129）。
+   * 不调模型：正文就是这份修稿。作者可以继续编辑、再审稿、再定稿。
+   */
+  const applyRevisionAsNewVersion = async (id: number): Promise<boolean> => {
+    const projectSession = captureProjectSession(currentProject)
+    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return false
+    try {
+      await ipc.invokeWithProjectSession(projectSession, 'db:revision-apply-as-new-version', id, projectSession.projectPath)
+    } catch (error) {
+      if (isProjectSessionCurrent(projectSession)) {
+        toast.error(text(`把修稿应用为新版本失败：${String(error)}`, 'Could not apply the revision as a new version.'))
+      }
+      return false
+    }
+    if (isProjectSessionCurrent(projectSession)) {
+      toast.success(text('已把修稿应用为新版本草稿', 'Applied the revision as a new draft version'))
+      reload()
+    }
+    return true
+  }
+
   const discardRevisions = async (ids: readonly number[]) => {
     const projectSession = captureProjectSession(currentProject)
     if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
@@ -599,6 +621,6 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
     pendingRevisions, reviews, loaded, reload,
     saving, saveOutcome, currentBodyRef, onBodyChange, save,
     refine, review, canFinalize, finalize, retryManuscriptPublication, repairFinalize,
-    mergeData, closeMerge, openPendingRevision, completeMerge, discardRevisions,
+    mergeData, closeMerge, openPendingRevision, completeMerge, discardRevisions, applyRevisionAsNewVersion,
   }
 }

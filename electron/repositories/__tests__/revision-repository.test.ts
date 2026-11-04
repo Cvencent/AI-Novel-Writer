@@ -28,6 +28,7 @@ beforeEach(() => {
       source TEXT NOT NULL DEFAULT 'write',
       content_id INTEGER NOT NULL,
       word_count INTEGER NOT NULL DEFAULT 0,
+      source_dependencies TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (content_id) REFERENCES contents(id) ON DELETE RESTRICT
@@ -369,3 +370,50 @@ describe('RevisionRepository.mergeIntoDraft', () => {
       wrong.close()
     }
   })
+
+/**
+ * issue #129：定稿之后仍待合并的修稿，旧行为只剩「逐段手抄」与「整份丢弃」。
+ * 这里给它一条能落库的出口：用修稿正文建一份新 version 的草稿，不调模型。
+ */
+describe('RevisionRepository.applyAsNewVersion', () => {
+  const seedRevision = (content: string): number => {
+    const contentId = ContentRepository.create(content)
+    return Number(db.prepare(`INSERT INTO revisions (base_draft_id, revision_index, revision_type, content_id)
+      VALUES (1, 1, 'refine', ?)`).run(contentId).lastInsertRowid)
+  }
+
+  it('creates a new draft version whose body is exactly the revision, and marks the revision merged', () => {
+    db.prepare("UPDATE drafts SET status='finalized' WHERE id=1").run()
+    const revisionId = seedRevision('修订正文。')
+    const result = RevisionRepository.applyAsNewVersion(revisionId, db)
+    expect(result.version).toBe(2)
+    const created = db.prepare(`SELECT c.body AS body, d.status AS status FROM drafts d
+      JOIN contents c ON c.id = d.content_id WHERE d.id = ?`).get(result.draftId) as { body: string; status: string }
+    expect(created.body).toBe('修订正文。')
+    // 新版本是普通草稿（可以继续编辑/再审稿/再定稿），不是定稿。
+    expect(created.status).toBe('draft')
+    expect(db.prepare('SELECT status, merged_to_draft_id FROM revisions WHERE id=?').get(revisionId))
+      .toEqual({ status: 'merged', merged_to_draft_id: result.draftId })
+  })
+
+  it('refuses when the base draft has not been finalized (that case merges normally)', () => {
+    const revisionId = seedRevision('修订正文。')
+    expect(() => RevisionRepository.applyAsNewVersion(revisionId, db)).toThrow('REVISION_BASE_NOT_FINALIZED')
+    expect(db.prepare('SELECT status FROM revisions WHERE id=?').pluck().get(revisionId)).toBe('pending')
+  })
+
+  it('refuses a revision that is no longer pending', () => {
+    db.prepare("UPDATE drafts SET status='finalized' WHERE id=1").run()
+    const revisionId = seedRevision('修订正文。')
+    db.prepare("UPDATE revisions SET status='discarded' WHERE id=?").run(revisionId)
+    expect(() => RevisionRepository.applyAsNewVersion(revisionId, db)).toThrow('REVISION_NOT_PENDING')
+  })
+
+  it('leaves the finalized ledger untouched: the new version is a draft, not a second finalization', () => {
+    db.prepare("UPDATE drafts SET status='finalized' WHERE id=1").run()
+    const revisionId = seedRevision('修订正文。')
+    RevisionRepository.applyAsNewVersion(revisionId, db)
+    const finalized = db.prepare("SELECT COUNT(*) FROM drafts WHERE status='finalized'").pluck().get()
+    expect(finalized).toBe(1)
+  })
+})

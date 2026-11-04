@@ -469,6 +469,14 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
             actions={(
               <>
                 <Button variant="secondary" size="sm" disabled={busy} onClick={() => openRevision(stale.at(-1)!)}>{text('查看修稿', 'View revision')}</Button>
+                {/* issue #129：定稿后仍待合并的修稿，旧行为只剩「逐段手抄」与「整份丢弃」。
+                    这里给它一条能落库的出口：正文就是这份修稿，建成新版本草稿，不调模型。 */}
+                {staleReasons.has('finalized') && (
+                  <Button variant="secondary" size="sm" disabled={busy}
+                    onClick={() => void draft.applyRevisionAsNewVersion(stale.at(-1)!.id)}>
+                    {text('应用为新版本', 'Apply as new version')}
+                  </Button>
+                )}
                 <Button variant="danger" size="sm" disabled={busy} onClick={() => setAsk('discard')}>{text('丢弃…', 'Discard…')}</Button>
               </>
             )}

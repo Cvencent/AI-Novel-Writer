@@ -395,6 +395,25 @@ describe('流程脊与单章视图同一个阶段', () => {
     await expect.element(page.getByText('修稿生成之后正文又改过，合并会覆盖这些修改。可以查看修稿手动摘取，或丢弃后重新修稿。')).not.toBeInTheDocument()
   })
 
+  /**
+   * issue #129：定稿后仍待合并的修稿，旧行为只剩「逐段手抄」与「整份丢弃」。
+   * 现在多一条能落库的出口：正文就是这份修稿，建成新版本草稿（不调模型）。
+   */
+  it('修稿还没合并就定稿：可以把它应用为新版本草稿，而不是只能手抄或丢弃', async () => {
+    const draft = backend.addDraft({ status: 'draft' })
+    backend.addReview(draft)
+    const revision = backend.addRevision(draft)
+    draft.status = 'finalized'
+    await mountWithSpine()
+    await openDraft(draft.id)
+    await expect.element(page.getByText('有 1 份修稿不能再合并')).toBeVisible()
+    await click('应用为新版本')
+    const [applied] = backend.writes('db:revision-apply-as-new-version')
+    expect(applied![0]).toBe(revision.id)
+    // 新版本草稿的正文就是这份修稿，作者可以继续编辑/再审稿/再定稿。
+    await expect.element(page.getByText('已把修稿应用为新版本草稿')).toBeVisible()
+  })
+
   it('旧修稿没有记下生成时的源稿：同样不能合并，提示说的是没有源稿记录，不说正文改过', async () => {
     const draft = backend.addDraft({ status: 'draft' })
     backend.addRevision(draft).source = null

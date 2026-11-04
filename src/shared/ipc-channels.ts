@@ -1288,6 +1288,11 @@ export interface DatabaseChannels {
   'db:revision-list': { args: [baseDraftId: number, expectedProjectPath: string]; return: RevisionMeta[] }
   'db:revision-get-pending': { args: [baseDraftId: number, expectedProjectPath: string]; return: RevisionMeta[] }
   'db:revision-get-full': { args: [id: number, expectedProjectPath: string]; return: RevisionFull | null }
+  /** 把待合并修稿作为新版本草稿落库（issue #129）：不调模型，正文就是这份修稿。 */
+  'db:revision-apply-as-new-version': {
+    args: [id: number, expectedProjectPath: string]
+    return: { draftId: number; version: number }
+  }
   /** 修稿的事实差分（issue #123）：修稿新增、原稿没有、前文已确立的专名。 */
   'db:revision-fact-terms': {
     args: [id: number, expectedProjectPath: string]

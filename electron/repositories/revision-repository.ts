@@ -7,6 +7,8 @@
 import { createHash } from 'node:crypto'
 import { getProjectDb } from '../database'
 import { ContentRepository } from './content-repository'
+import { DraftRepository } from './draft-repository'
+import { countDraftUnits } from '../../src/shared/draft-units'
 import { ReviewCycleRepository } from './review-cycle-repository'
 import type { ExpectedDraftSource } from '../../src/shared/ipc-channels'
 import { findRefinementFactTerms, type RefinementFactTerm } from '../../src/shared/refinement-fact-diff'
@@ -455,6 +457,48 @@ export class RevisionRepository {
             if (result.changes === 0) {
                 throw new Error(`[RevisionRepository] 无法合并修稿 #${id}：不存在或非 pending 状态`)
             }
+        })()
+    }
+
+    /**
+     * 把一份待合并修稿**作为新版本草稿**落库（issue #129）。
+     *
+     * 定稿之后仍待合并的修稿，旧行为只剩两条路：查看后逐段手抄，或整份丢弃。
+     * 而「起草 → 修稿 → 定稿」是长篇里最常见的顺序（审稿要几分钟，作者先定稿再写下一章），
+     * 于是这份修稿里已经改好的段落只能被丢掉。这里给它一条能落库的出口：
+     * 用修稿正文建一份**新 version 的草稿**，作者可以继续编辑、再审稿、再定稿。
+     *
+     * 与「生成新版本…」的区别只有一处：**不调模型**——正文就是这份修稿。
+     *
+     * 三条前置（都按结构性判据，不猜）：
+     * 1. 修稿必须是 pending；
+     * 2. 它依据的那一稿必须已定稿（未定稿的走正常合并，不该走这条）；
+     * 3. **属于审稿复验周期的修稿必须走原子合并入口**——那条链有自己的不变量
+     *    （`markMerged` 本身也这么拦），这里不绕过它。
+     */
+    static applyAsNewVersion(id: number, db = getProjectDb()): { draftId: number; version: number } {
+        if (!db) throw new Error('[RevisionRepository] 数据库未连接')
+        return db.transaction(() => {
+            const row = db.prepare(`SELECT r.status AS status, r.content_id AS contentId,
+                    d.chapter_number AS chapterNumber, d.status AS draftStatus
+                FROM revisions r JOIN drafts d ON d.id = r.base_draft_id WHERE r.id = ?`)
+                .get(id) as { status: string; contentId: number; chapterNumber: number; draftStatus: string } | undefined
+            if (!row) throw new Error('REVISION_NOT_FOUND')
+            if (row.status !== 'pending') throw new Error('REVISION_NOT_PENDING')
+            if (row.draftStatus !== 'finalized') throw new Error('REVISION_BASE_NOT_FINALIZED')
+            if (hasReviewCycleSchema(db) && db.prepare('SELECT 1 FROM review_cycles WHERE revision_id=?').get(id)) {
+                throw new Error('REVISION_REVIEW_CYCLE_REQUIRES_MERGE')
+            }
+            const body = ContentRepository.getBody(row.contentId, db) ?? ''
+            if (!body.trim()) throw new Error('REVISION_CONTENT_EMPTY')
+            const draftId = DraftRepository.create({
+                chapterNumber: row.chapterNumber, source: 'rewrite', content: body, wordCount: countDraftUnits(body),
+            }, db)
+            const version = db.prepare('SELECT version FROM drafts WHERE id=?').pluck().get(draftId) as number
+            const result = db.prepare(`UPDATE revisions SET status='merged', merged_to_draft_id=?, updated_at=datetime('now')
+                WHERE id=? AND status='pending'`).run(draftId, id)
+            if (result.changes !== 1) throw new Error('REVISION_NOT_PENDING')
+            return { draftId, version }
         })()
     }
 

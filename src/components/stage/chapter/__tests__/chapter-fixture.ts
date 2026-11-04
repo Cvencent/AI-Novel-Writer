@@ -130,6 +130,16 @@ export function createChapterBackend() {
         if (revision) Object.assign(revision, { status: 'discarded', updatedAt: now() })
         return { success: Boolean(revision) }
       }
+      case 'db:revision-apply-as-new-version': {
+        // issue #129：把定稿后仍待合并的修稿作为新版本草稿落库（不调模型）。
+        const revision = state.revisions.find(candidate => candidate.id === Number(args[0]) && candidate.status === 'pending')
+        if (!revision) return { success: false, error: 'REVISION_NOT_PENDING' }
+        const base = byId(revision.baseDraftId)!
+        const version = Math.max(...state.drafts.filter(item => item.chapterNumber === base.chapterNumber).map(item => item.version)) + 1
+        const created = addDraft({ chapterNumber: base.chapterNumber, version, status: 'draft', content: revision.content })
+        Object.assign(revision, { status: 'merged', updatedAt: now() })
+        return { success: true, draftId: created.id, version }
+      }
       case 'db:revision-merge': {
         const request = args[0] as { revisionId: number; targetDraftId: number; mergedContent: string }
         const draft = byId(request.targetDraftId)!

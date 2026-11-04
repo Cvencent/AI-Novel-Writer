@@ -1479,6 +1479,10 @@ export function registerDatabaseController() {
     }
   })
 
+  ipcMain.handle('db:revision-apply-as-new-version', async (_event, id: number, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return RevisionRepository.applyAsNewVersion(id)
+  })
   ipcMain.handle('db:revision-fact-terms', async (_event, id: number, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return RevisionRepository.refinementFactTerms(id)
