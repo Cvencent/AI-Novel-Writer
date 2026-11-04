@@ -13,6 +13,7 @@ import {
 } from '../../services/workflows/chapter-workflow'
 import { getPendingRevisions, getReviewsForVersion, type ReviewEntry, type RevisionEntry } from '../../services/draft-index'
 import { staleRevisionReason, refreshChapterFacts } from '../../stores/navigation/chapter-facts'
+import type { RefinementFactTerm } from '../../shared/refinement-fact-diff'
 import { readDraftBody } from '../../stores/draft-store'
 import { ipc } from '../../services/ipc-client'
 import { retryFinalizationPublication } from '../../services/finalization-client'
@@ -48,6 +49,11 @@ export interface MergeData {
   revisionPath: string
   targetSnapshot: { content: string; contentRevision: number }
   staleReason: string | null
+  /**
+   * 修稿新增、原稿没有、前文已确立的专名（issue #123）。
+   * 只用于在差异视图里标出「这一处动了事实」，不参与合并判定。
+   */
+  factTerms?: readonly RefinementFactTerm[]
 }
 
 interface DraftTarget {
@@ -494,6 +500,10 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
             )
           : null
 
+    // 事实差分（issue #123）：修稿新增了哪些前文已确立的专名。读失败不影响合并流程。
+    const factTerms = await ipc.invokeWithProjectSession(projectSession, 'db:revision-fact-terms', rev.id, projectKey)
+      .catch(() => [])
+    if (!isProjectSessionCurrent(projectSession) || request !== mergeRequest.current) return
     // 始终展示修订与其真实冻结源；旧行或 stale 源只读，不用当前正文重基。
     setMergeData({
       originalContent: source?.content ?? '',
@@ -501,6 +511,7 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
       revisionPath: revPath,
       targetSnapshot,
       staleReason,
+      ...(Array.isArray(factTerms) && factTerms.length > 0 ? { factTerms } : {}),
     })
   }
 

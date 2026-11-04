@@ -1479,6 +1479,10 @@ export function registerDatabaseController() {
     }
   })
 
+  ipcMain.handle('db:revision-fact-terms', async (_event, id: number, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return RevisionRepository.refinementFactTerms(id)
+  })
   ipcMain.handle('db:revision-mark-merged', async (_event, id: number, mergedToDraftId: number, expectedProjectPath: string) => {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)

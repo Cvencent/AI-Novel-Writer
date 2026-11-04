@@ -31,6 +31,24 @@ export default function MergeView({ data, versionLabel, recheck, onComplete, onL
   const pickOf = (index: number): HunkPick => merge.picks[index] ?? 'original'
   const revisedCount = merge.hunks.filter(hunk => pickOf(hunk.index) === 'revised').length
   const editedCount = merge.hunks.filter(hunk => pickOf(hunk.index) === 'edit').length
+  /**
+   * 每一处改动里「修稿新增、原稿没有、前文已确立的专名」（issue #123）。
+   *
+   * 只做标记、不改变合并结果：作者本来只能逐段读完并自己记得第 52 章那把尺在谁包里。
+   * 判据在 `shared/refinement-fact-diff.ts`（主进程算好随 MergeData 带下来）。
+   */
+  const factTerms = data.factTerms ?? []
+  const hunkFactTerms = useMemo(() => {
+    const byHunk = new Map<number, readonly string[]>()
+    if (factTerms.length === 0) return byHunk
+    for (const hunk of merge.hunks) {
+      const original = hunk.originalLines.join(String.fromCharCode(10))
+      const added = factTerms.filter(item => !original.includes(item.term)
+        && hunk.modifiedLines.some(line => line.includes(item.term)))
+      if (added.length > 0) byHunk.set(hunk.index, added.map(item => item.term))
+    }
+    return byHunk
+  }, [factTerms, merge.hunks])
   const paragraphs = useMemo(() => {
     let count = 0
     return merge.segments.map(segment => segment.type === 'hunk' || sameLabel(segment.lines) ? ++count : 0)
@@ -64,6 +82,16 @@ export default function MergeView({ data, versionLabel, recheck, onComplete, onL
         </span>
       </div>
       {data.staleReason && <Notice tone="warn" title={text('这份修稿不能合并', 'This revision cannot be merged')}>{data.staleReason}</Notice>}
+      {!data.staleReason && factTerms.length > 0 && (
+        <Notice tone="warn" title={text('这份修稿动了事实', 'This revision touches facts')}>
+          {text(
+            `修稿里有原稿没有、而前文已经写过的东西：${factTerms.map(item => `${item.term}（前文 ${item.historyChapters} 章出现过）`).join('、')}。`
+            + '这些位置在「用修稿」之前请先核对——措辞优化不会凭空添一件已确立的东西。',
+            `The revision introduces things your draft never had but earlier chapters did: ${factTerms.map(item => `${item.term} (in ${item.historyChapters} earlier chapters)`).join(', ')}. `
+            + 'Check these before choosing the revision — a wording polish does not add an established object from nowhere.',
+          )}
+        </Notice>
+      )}
       <div className="stage-ch-merge-legend">
         <span><i className="stage-ch-swatch" data-kind="original" />{text(`原稿 · ${versionLabel}`, `Original · ${versionLabel}`)}</span>
         <span><i className="stage-ch-swatch" data-kind="revised" />{text('修稿', 'Revision')}</span>
@@ -82,6 +110,14 @@ export default function MergeView({ data, versionLabel, recheck, onComplete, onL
             <section key={index} className="stage-ch-hunk" data-pick={pick} aria-label={name}>
               <div className="stage-ch-hunk-head">
                 <b>{name}</b>
+                {hunkFactTerms.has(hunk.index) && (
+                  <span className="stage-ch-hunk-fact" data-terms={hunkFactTerms.get(hunk.index)!.join('、')}>
+                    {text(
+                      `此处动了事实：${hunkFactTerms.get(hunk.index)!.join('、')}`,
+                      `This hunk touches facts: ${hunkFactTerms.get(hunk.index)!.join(', ')}`,
+                    )}
+                  </span>
+                )}
                 <SegmentedControl
                   label={text(`${name}用哪一版`, `Which version for ${name}`)}
                   value={pick}

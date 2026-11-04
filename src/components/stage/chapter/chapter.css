@@ -412,6 +412,16 @@
   margin-bottom: 10px;
 }
 
+/* 「此处动了事实」（issue #123）：修稿新增了原稿没有、前文已确立的专名。 */
+.stage-ch-hunk-fact {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warn, #b8860b) 14%, transparent);
+  color: var(--warn-text, #8a6400);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .stage-ch-hunk-cols {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

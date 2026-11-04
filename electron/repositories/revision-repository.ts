@@ -9,6 +9,7 @@ import { getProjectDb } from '../database'
 import { ContentRepository } from './content-repository'
 import { ReviewCycleRepository } from './review-cycle-repository'
 import type { ExpectedDraftSource } from '../../src/shared/ipc-channels'
+import { findRefinementFactTerms, type RefinementFactTerm } from '../../src/shared/refinement-fact-diff'
 import { assertExpectedDraftSource, SourceDraftChangedError } from './draft-source-guard'
 
 const contentHash = (value: string) => createHash('sha256').update(value).digest('hex')
@@ -246,6 +247,38 @@ export class RevisionRepository {
         const meta = rowToMeta(row)
         const body = ContentRepository.getBody(meta.contentId, db)
         return { ...meta, content: body ?? '', sourceDraft: rowToSourceDraft(row) }
+    }
+
+    /**
+     * 修稿的事实差分（issue #123）：修稿新增了哪些**前文已确立的专名**。
+     *
+     * 供合并视图在逐段确认前把「这一处动了事实」摆到作者眼前。判据在
+     * `src/shared/refinement-fact-diff.ts`（纯函数，可单测）。
+     */
+    static refinementFactTerms(id: number, db = getProjectDb()): RefinementFactTerm[] {
+        if (!db) return []
+        const row = db.prepare(`SELECT r.source_content AS sourceContent,
+                r.source_draft_chapter_number AS chapterNumber, c.body AS revision
+            FROM revisions r JOIN contents c ON c.id = r.content_id WHERE r.id = ?`)
+            .get(id) as { sourceContent: string | null; chapterNumber: number | null; revision: string } | undefined
+        if (!row || row.sourceContent === null || !Number.isSafeInteger(row.chapterNumber)) return []
+        const blueprint = db.prepare('SELECT key_events AS keyEvents FROM blueprints WHERE chapter_number = ?')
+            .get(row.chapterNumber) as { keyEvents: string | null } | undefined
+        if (!blueprint?.keyEvents?.trim()) return []
+        // 每章只取最新那一份定稿，避免同一章的多版本把「前文出现过几章」算重。
+        const history = db.prepare(`SELECT body FROM (
+                SELECT d.chapter_number, c.body, row_number() OVER (PARTITION BY d.chapter_number ORDER BY d.version DESC) rn
+                FROM drafts d JOIN contents c ON c.id = d.content_id
+                WHERE d.status = 'finalized' AND d.chapter_number < ?) WHERE rn = 1
+            ORDER BY chapter_number`).all(row.chapterNumber) as { body: string }[]
+        const castNames = db.prepare('SELECT name FROM characters WHERE retired = 0').pluck().all() as string[]
+        return findRefinementFactTerms({
+            source: row.sourceContent,
+            revision: row.revision,
+            blueprintKeyEvents: blueprint.keyEvents,
+            history: history.map(item => item.body),
+            castNames,
+        })
     }
 
     /** 获取下一个修稿序号 */

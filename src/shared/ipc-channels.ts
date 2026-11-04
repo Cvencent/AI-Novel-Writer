@@ -1288,6 +1288,11 @@ export interface DatabaseChannels {
   'db:revision-list': { args: [baseDraftId: number, expectedProjectPath: string]; return: RevisionMeta[] }
   'db:revision-get-pending': { args: [baseDraftId: number, expectedProjectPath: string]; return: RevisionMeta[] }
   'db:revision-get-full': { args: [id: number, expectedProjectPath: string]; return: RevisionFull | null }
+  /** 修稿的事实差分（issue #123）：修稿新增、原稿没有、前文已确立的专名。 */
+  'db:revision-fact-terms': {
+    args: [id: number, expectedProjectPath: string]
+    return: import('./refinement-fact-diff').RefinementFactTerm[]
+  }
   'db:revision-next-index': { args: [baseDraftId: number, expectedProjectPath: string]; return: number }
   'db:revision-merge': {
     args: [request: {
