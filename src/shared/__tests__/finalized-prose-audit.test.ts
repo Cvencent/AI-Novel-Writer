@@ -42,6 +42,18 @@ describe('auditFinalizedProse (issue #83)', () => {
    * issue #133：清单件数对不上——必须从**共用出口**报出来，否则写前预检与审稿两条路径都拿不到。
    */
   /** issue #136：量具换算矛盾必须从共用出口报出来。 */
+  /** issue #144：标题点到的角色本章没出场，必须从共用出口报出来。 */
+  it('surfaces a title naming an absent cast member from the shared exit (issue #144)', () => {
+    const findings = auditFinalizedProse({
+      chapters: [{ chapterNumber: 67, content: '周叙把布铺在舵板上，指腹压下去。' }],
+      castNames: ['周叙', '温珩'],
+      blueprints: [{ chapterNumber: 67, title: '温珩按住了那一角布', keyEvents: '周叙读布角' }],
+    })
+    const title = findings.filter(finding => finding.stableFactKey.startsWith('chapter-title:unmet:'))
+    expect(title).toHaveLength(1)
+    expect(title[0]!.evidence).toContain('温珩')
+  })
+
   /** issue #142：口头约定被复述反了，必须从共用出口报出来。 */
   it('surfaces a promise restated backwards from the shared exit (issue #142)', () => {
     const findings = auditFinalizedProse({

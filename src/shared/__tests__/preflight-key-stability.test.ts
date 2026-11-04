@@ -28,6 +28,7 @@ import { findInventoryShortfallFindings } from '../inventory-count'
 import { findGaugeScaleMismatches } from '../gauge-scale'
 import { findRepeatedSentenceFindings } from '../repeated-sentence'
 import { findPromisePolarityReversals } from '../promise-polarity'
+import { findTitleBodyMismatchFindings } from '../title-body-mismatch'
 import { proseRepetitionFindings } from '../prose-repetition'
 import { glyphRadicalFindings } from '../glyph-radical'
 import { findCastNameDriftFindings } from '../cast-name-drift'
@@ -208,6 +209,9 @@ describe('no preflight key may change when only currentChapter advances (issue #
       ['findPromisePolarityReversals', () => findPromisePolarityReversals([
         { chapterNumber: 60, content: '「答应我。座号不写进任何册。」' },
         { chapterNumber: 63, content: '「你答应过写进册。」' },
+      ])],
+      ['findTitleBodyMismatchFindings', () => findTitleBodyMismatchFindings([
+        { chapterNumber: 67, title: '温珩按住了那一角布', content: '周叙把布铺在舵板上。', castNames: ['周叙', '温珩'] },
       ])],
       ['findStaleStateDurationFindings', () => findStaleStateDurationFindings(STALE_DURATION_BOOK)],
       ['findHandwritingConflictFindings', () => findHandwritingConflictFindings({

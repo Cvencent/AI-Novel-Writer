@@ -87,6 +87,8 @@ import { findGaugeScaleMismatches } from './gauge-scale'
 import { findRepeatedSentenceFindings } from './repeated-sentence'
 // 口头约定被复述反了（#142）：承诺句的极性比对。
 import { findPromisePolarityReversals } from './promise-polarity'
+// 标题点到的人本章没出场（#144）：标题与本章正文/蓝图比对。
+import { findTitleBodyMismatchFindings } from './title-body-mismatch'
 import { closingShotOf } from './blueprint-semantic-contract'
 import { foreshadowingDueAt, parseForeshadowingCommitments } from './foreshadowing-commitments'
 
@@ -321,13 +323,23 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   const repeatedSentences = findRepeatedSentenceFindings(chapters)
   // 承诺极性（#142）：用全量已定稿章——约定可能在十几章前，窗口切小会漏掉首现处。
   const promiseReversals = findPromisePolarityReversals(chapters)
+  // 标题与本章比对（#144）：把本章蓝图标题接到对应章的正文上。
+  const titleByChapter = new Map(blueprints.map(item => [item.chapterNumber, String(item.title ?? '')]))
+  const keyEventsByChapter = new Map(blueprints.map(item => [item.chapterNumber, String(item.keyEvents ?? '')]))
+  const titleMismatches = findTitleBodyMismatchFindings(chapters.map(chapter => ({
+    chapterNumber: chapter.chapterNumber,
+    title: titleByChapter.get(chapter.chapterNumber) ?? '',
+    content: chapter.content,
+    keyEvents: keyEventsByChapter.get(chapter.chapterNumber) ?? '',
+    castNames,
+  })))
 
   return [...closingLabel, ...numbering, ...ability, ...declaredCount, ...repetition, ...undelivered,
     ...ultimatum, ...pendingLanding, ...reversal, ...undatedStreak, ...unmetTimeAnchor, ...proseFlavor, ...positionalAxes, ...glyphRadical,
     ...castNameDrift, ...deadlineSettlement, ...repeatedRevocation, ...duplicateTitles,
     ...abilityLimitBypass, ...handwritingConflicts, ...quoteStyleDrift, ...staleStateDuration,
     ...propContainerDeparture, ...inventorySameChapter, ...inventoryShortfall, ...gaugeScale,
-    ...repeatedSentences, ...promiseReversals]
+    ...repeatedSentences, ...promiseReversals, ...titleMismatches]
 }
 
 /**
