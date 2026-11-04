@@ -54,6 +54,8 @@ const FAMILY_LABELS: Readonly<Record<string, AcknowledgementTitle>> = Object.fre
   'chapter-time:anchor-unmet': { zhCN: '蓝图声明了跨日、正文没写', enUS: 'declared day change not in prose' },
   'chapter-time:anchor-gap-mismatch': { zhCN: '蓝图与正文差的天数不一致', enUS: 'day gap disagrees' },
   'chapter-time:anchor-self-contradiction': { zhCN: '蓝图【时点】自己前后矛盾', enUS: 'blueprint 时点 contradicts itself' },
+  'character-age': { zhCN: '人物年龄问题', enUS: 'character age' },
+  'character-age:unreconcilable': { zhCN: '正文写了年龄却归不到人', enUS: 'age stated but unattributable' },
   'deadline': { zhCN: '期限宣告未对账', enUS: 'unsettled deadline' },
   'timeline': { zhCN: '设定层时间锚点冲突', enUS: 'timeline anchor conflict' },
   // —— 角色 ——

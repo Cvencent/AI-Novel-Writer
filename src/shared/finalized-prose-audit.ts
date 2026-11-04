@@ -85,6 +85,7 @@ import { findEnumerationCountMismatches, findInventoryShortfallFindings } from '
 import { findGaugeScaleMismatches } from './gauge-scale'
 // 整句逐字跨章复用（#140）：与三族词表正交的字面比对。
 import { findRepeatedSentenceFindings, findShortSentenceReuseFindings } from './repeated-sentence'
+import { findUnreconcilableAgeFindings } from './character-age-ledger'
 // 口头约定被复述反了（#142）：承诺句的极性比对。
 import { findPromisePolarityReversals } from './promise-polarity'
 // 标题点到的人本章没出场（#144）：标题与本章正文/蓝图比对。
@@ -261,6 +262,9 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   // 括注与日序不能同时成立。这类要先在蓝图侧定下来，否则起草无论怎么写都有一半错，
   // 也不该拿它去要求正文补日界。
   const timeAnchorSelfContradiction = findTimeAnchorSelfContradictions(timeAnchoredChapters)
+  // 正文层年龄账本（issue #149）：本章写了年龄、却一处都归不到在册角色 → 这条年龄没有任何落点。
+  // 用全量已定稿章：年龄声明稀疏（实测 69 章只有 2 处），窗口切小会把它们切出样本。
+  const unreconcilableAge = findUnreconcilableAgeFindings(chapters, castNames)
 
   // 字形断言（issue #99）：正文里把「X 字」的偏旁说错。单章自洽、逐章可判，
   // 用全量已定稿章（字形是**已定稿只读**的内容，报出来作者才知道哪一章要重写）。
@@ -344,7 +348,7 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   })))
 
   return [...closingLabel, ...numbering, ...ability, ...declaredCount, ...repetition, ...undelivered,
-    ...ultimatum, ...pendingLanding, ...reversal, ...undatedStreak, ...unmetTimeAnchor, ...timeAnchorSelfContradiction, ...proseFlavor, ...positionalAxes, ...glyphRadical,
+    ...ultimatum, ...pendingLanding, ...reversal, ...undatedStreak, ...unmetTimeAnchor, ...timeAnchorSelfContradiction, ...unreconcilableAge, ...proseFlavor, ...positionalAxes, ...glyphRadical,
     ...castNameDrift, ...deadlineSettlement, ...repeatedRevocation, ...duplicateTitles,
     ...abilityLimitBypass, ...handwritingConflicts, ...quoteStyleDrift, ...staleStateDuration,
     ...propContainerDeparture, ...inventorySameChapter, ...inventoryShortfall, ...gaugeScale,
