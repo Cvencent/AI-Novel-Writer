@@ -117,7 +117,7 @@ export default function WritePreflight({
               ) : (
                 <span className="stage-preflight-not-here">
                   {route.blockedBy === 'needs-finalized-prose'
-                    ? text('这条落在已定稿的章上，要改正文就得新版本重定稿（本轮先放着）', 'This sits in a finalized chapter; fixing it means a new version and re-finalizing (later)')
+                    ? text('这条落在已定稿的章上：要改得先把那一章出新版本再重新定稿', 'This sits in a finalized chapter; fixing it needs a new version of that chapter, re-finalized')
                     : text('这条暂时没有可改的层', 'No editable layer for this one yet')}
                 </span>
               )}
