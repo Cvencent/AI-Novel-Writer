@@ -84,7 +84,7 @@ import { findEnumerationCountMismatches, findInventoryShortfallFindings } from '
 // 量具读数与换算（#136）：同一套刻度被写成两套比值。
 import { findGaugeScaleMismatches } from './gauge-scale'
 // 整句逐字跨章复用（#140）：与三族词表正交的字面比对。
-import { findRepeatedSentenceFindings } from './repeated-sentence'
+import { findRepeatedSentenceFindings, findShortSentenceReuseFindings } from './repeated-sentence'
 // 口头约定被复述反了（#142）：承诺句的极性比对。
 import { findPromisePolarityReversals } from './promise-polarity'
 // 标题点到的人本章没出场（#144）：标题与本章正文/蓝图比对。
@@ -321,6 +321,10 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   const gaugeScale = findGaugeScaleMismatches(chapters)
   // 整句复用（#140）：用全量已定稿章（相邻窗口在判据内部收，样本切小会漏掉首现章）。
   const repeatedSentences = findRepeatedSentenceFindings(chapters)
+  // 短叙述句跨章复用（#145）：#140 只管 ≥12 字、相邻 3 章；那本书的「脑子里空了一块」
+  // 只有 8 字、跨度 33 章 → 一次都命不中。这一档管 6–11 字的叙述短句，按**分布**判
+  // （≥3 章且首末跨度 ≥8）。需要名册排除「人名 + 同一动作」这种正常写法（「周叙没动。」8 章）。
+  const shortSentenceReuse = findShortSentenceReuseFindings(chapters, castNames)
   // 承诺极性（#142）：用全量已定稿章——约定可能在十几章前，窗口切小会漏掉首现处。
   const promiseReversals = findPromisePolarityReversals(chapters)
   // 标题与本章比对（#144）：把本章蓝图标题接到对应章的正文上。
@@ -339,7 +343,7 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
     ...castNameDrift, ...deadlineSettlement, ...repeatedRevocation, ...duplicateTitles,
     ...abilityLimitBypass, ...handwritingConflicts, ...quoteStyleDrift, ...staleStateDuration,
     ...propContainerDeparture, ...inventorySameChapter, ...inventoryShortfall, ...gaugeScale,
-    ...repeatedSentences, ...promiseReversals, ...titleMismatches]
+    ...repeatedSentences, ...shortSentenceReuse, ...promiseReversals, ...titleMismatches]
 }
 
 /**

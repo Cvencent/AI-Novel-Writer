@@ -26,7 +26,7 @@ import { declaredCharacterCountFindings } from '../consistency-preflight'
 import { findUnmetTimeAnchorFindings } from '../chapter-time-anchor'
 import { findInventoryShortfallFindings } from '../inventory-count'
 import { findGaugeScaleMismatches } from '../gauge-scale'
-import { findRepeatedSentenceFindings } from '../repeated-sentence'
+import { findRepeatedSentenceFindings, findShortSentenceReuseFindings } from '../repeated-sentence'
 import { findPromisePolarityReversals } from '../promise-polarity'
 import { findTitleBodyMismatchFindings } from '../title-body-mismatch'
 import { proseRepetitionFindings } from '../prose-repetition'
@@ -213,6 +213,12 @@ describe('no preflight key may change when only currentChapter advances (issue #
       ['findTitleBodyMismatchFindings', () => findTitleBodyMismatchFindings([
         { chapterNumber: 67, title: '温珩按住了那一角布', content: '周叙把布铺在舵板上。', castNames: ['周叙', '温珩'] },
       ])],
+      ['findShortSentenceReuseFindings', () => findShortSentenceReuseFindings([
+        { chapterNumber: 34, content: '脑子里空了一块。' },
+        { chapterNumber: 43, content: '脑子里空了一块。' },
+        { chapterNumber: 52, content: '脑子里空了一下。' },
+        { chapterNumber: 67, content: '脑子里空了一块。' },
+      ], CAST)],
       ['findStaleStateDurationFindings', () => findStaleStateDurationFindings(STALE_DURATION_BOOK)],
       ['findHandwritingConflictFindings', () => findHandwritingConflictFindings({
         chapters: [{ chapterNumber: 1, content: '温珩的笔稳、匀，起笔带锋。' }, { chapterNumber: 2, content: '温珩的笔，横折收得急。' }],

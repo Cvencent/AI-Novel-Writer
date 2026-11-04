@@ -102,6 +102,7 @@ const FAMILY_LABELS: Readonly<Record<string, AcknowledgementTitle>> = Object.fre
   'gauge:scale': { zhCN: '量具换算与本该章载客量差一个数量级', enUS: 'gauge conversion vs this chapter headcount' },
   'gauge:scale-ratio': { zhCN: '同一量具被写成两套换算比值', enUS: 'same gauge defined at two ratios' },
   'prose:sentence-reuse': { zhCN: '整句在相邻章逐字重复', enUS: 'whole sentence copied across chapters' },
+  'prose:short-sentence-reuse': { zhCN: '同一句短叙述句在多章复用', enUS: 'short narrative sentence reused across chapters' },
   'promise': { zhCN: '口头约定被复述反了', enUS: 'promise restated backwards' },
   'chapter-title:unmet': { zhCN: '标题点到的人本章没出场', enUS: 'title names someone absent' },
   // —— 伏笔 / 线索 / 其他 ——

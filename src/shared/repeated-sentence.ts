@@ -40,11 +40,30 @@ export const SENTENCE_REUSE_MIN_CHARS = 12
 
 const SENTENCE_SPLIT = /(?<=[。！？])|\n+/u
 
-function sentencesOf(content: string): string[] {
+/**
+ * 切句（**原样保留**引号与标点，不做任何归一、不设长度门槛）。
+ *
+ * ⚠️ 短句一档必须用这一份（issue #145）：
+ * - 用 `sentencesOf` 取不到句子——它内建了 12 字门槛（第一版踩到，三条测试全红在
+ *   「expected undefined」）；
+ * - 用剥过引号的版本判「是不是台词」也不成立——**台词标记恰恰要被保留下来**才能判。
+ *   长度门槛与引号归一属于各自的判据，不属于切句。
+ */
+function rawSentencesOf(content: string): string[] {
   return String(content ?? '')
     .split(SENTENCE_SPLIT)
     .map(sentence => sentence.trim())
+    .filter(Boolean)
+}
+
+function allSentencesOf(content: string): string[] {
+  return rawSentencesOf(content)
     .map(sentence => sentence.replace(/^[“「『"'`]+|[”」』"'`]+$/gu, '').trim())
+    .filter(Boolean)
+}
+
+function sentencesOf(content: string): string[] {
+  return allSentencesOf(content)
     .filter(sentence => stripForComparison(sentence).length >= SENTENCE_REUSE_MIN_CHARS)
 }
 
@@ -134,4 +153,159 @@ function isQuotation(content: string, sentence: string): boolean {
 /** 与 `findRepeatedSentenceFindings` 同一口径的最长公共片段（供证据/调试用）。 */
 export function longestSharedFragment(left: string, right: string): string {
   return longestCommonSubstring(stripForComparison(left), stripForComparison(right))
+}
+
+/**
+ * 「同一句短叙述句」跨多章复用（issue #145）。
+ *
+ * `findRepeatedSentenceFindings`（#140）判的是**相邻 3 章内、≥12 字的整句搬运**，
+ * 它的两条限制恰好把这一类现象整个漏掉——实测那本书 69 章里**8 章**用同一个短句骨架
+ * 写金手指的代价（issue 报告统计到 12 章，含「记得 A、记得 B，中间空了」那一套）：
+ *
+ *   ch34 / 43 / 48 / 64 / 67   脑子里空了一块。
+ *   ch52 / 61                  脑子里空了一下。
+ *   ch62                       脑子里空了一小块。
+ *
+ * 整句只有 8 个字、**跨度 33 章**，而且**每次措辞都略有不同**（一块/一下/一小块）——
+ * 逐字整句比对（#140）与「换个说法写同一件事」都判不出来。
+ *
+ * 所以本判据比的是**句子骨架**：归一后取**首 prefixChars 字**（issue 建议的「首 4–6 字」），
+ * 同一前缀在多章出现即归为一组。这是同一族的第三档，与另两档边界互不重叠：
+ *
+ * | 判据 | 比什么 | 范围 |
+ * |---|---|---|
+ * | #140 `prose:sentence-reuse` | ≥12 字**整句逐字**相同 | 相邻 3 章 |
+ * | 本判据 | 6–11 字短句的**首 6 字骨架**相同 | 分布（≥3 章、跨度 ≥8） |
+ *
+ * 四条收窄，全部由实测逼出：
+ * - **长度 6–11 字**：≥12 归 #140，两档不重叠；下界 6 是骨架长度的下限。
+ * - **不含引号**：台词复现是人物在说话（「随册送检。」三章都有是设定），
+ *   模板感来自**叙述句**每次落到同一个短句上。
+ * - **不含在册人名**：剥掉人名后「〇没动」「〇站在那儿」是**动作 idiom**，
+ *   不是模板（实测「周叙没动。」8 章、「周叙没答。」7 章，全是正常的受挫反应）。
+ * - **骨架取 6 字而不是 5**：5 字时实测开始把场所名当模板
+ *   （「码头办公室的门半开着」「码头办公室门开着」三章 → 那是同一个地方，不是句式）。
+ *
+ * 跨章用**分布**判而不是相邻窗口（与 #111 的密度窗口同一思路）：同一句在 ≥minChapters 章
+ * 出现、且首末跨度 ≥minSpan，才是在说「这本书反复用这一句」。
+ *
+ * 一组只出一条，把命中的章号与**变体**一起给出——作者要看到的是「这一拍用了 8 次，
+ * 其中三种措辞」，不是其中一句的 8 个副本。
+ * key 取**首现章 + 骨架**（两者都是既成事实），不带末章号（#86/#89/#98/#108）。
+ */
+export interface ShortSentenceReuseOptions {
+  /** 整句归一后的最少字数（含）。默认 6。 */
+  minChars?: number
+  /** 整句归一后的最多字数（含）。默认 11——12 起归 #140 的长句一档，两档不重叠。 */
+  maxChars?: number
+  /** 骨架长度（首 N 字）。默认 6；5 会开始把场所名当模板（见文件头）。 */
+  prefixChars?: number
+  /** 至少在几章里出现。默认 3。 */
+  minChapters?: number
+  /** 首末出现章的最小跨度。默认 8——跨几章才算「反复」，否则视为同一段剧情的延续。 */
+  minSpan?: number
+}
+
+export interface ShortSentenceReuse {
+  /** 骨架（首 prefixChars 字，归一去标点）。 */
+  skeleton: string
+  /** 这个骨架下实际出现过的**不同整句**（按首次出现顺序，≤4 条）。 */
+  variants: string[]
+  /** 含这个骨架的章号（升序、去重）。 */
+  chapters: number[]
+  /** `chapters` 覆盖的章数跨度（末 − 首）。 */
+  span: number
+}
+
+const SHORT_MIN_CHARS = 6
+const SHORT_MAX_CHARS = 11
+const SHORT_PREFIX_CHARS = 6
+const SHORT_MIN_CHAPTERS = 3
+const SHORT_MIN_SPAN = 8
+/** 变体只列前几条：一组报一条，证据要能读，不能变成句子清单。 */
+const SHORT_MAX_VARIANTS = 4
+
+/** 整句里是否有引号（台词/引文）——有就不算「叙述句模板」。 */
+const SENTENCE_QUOTED = /[“”「」『』"]/u
+
+/**
+ * 找出「同一句短叙述句的骨架在多章复用」的组（issue #145）。
+ *
+ * 传入 `castNames` 是**必需**的：判据要排除「人名 + 同一个动作」这种正常写法
+ * （见文件头），而没有名册就无法区分「人名」与「普通名词」。
+ */
+export function findShortSentenceReuse(
+  chapters: readonly RepeatedSentenceChapter[],
+  castNames: readonly string[],
+  options: ShortSentenceReuseOptions = {},
+): ShortSentenceReuse[] {
+  const minChars = options.minChars ?? SHORT_MIN_CHARS
+  const maxChars = options.maxChars ?? SHORT_MAX_CHARS
+  const prefixChars = Math.max(1, options.prefixChars ?? SHORT_PREFIX_CHARS)
+  const minChapters = options.minChapters ?? SHORT_MIN_CHAPTERS
+  const minSpan = options.minSpan ?? SHORT_MIN_SPAN
+  const names = castNames.map(name => String(name ?? '').trim()).filter(Boolean)
+  const grouped = new Map<string, { variants: string[]; chapters: number[] }>()
+  for (const chapter of chapters) {
+    if (!Number.isSafeInteger(chapter.chapterNumber)) continue
+    for (const sentence of rawSentencesOf(String(chapter.content ?? ''))) {
+      if (SENTENCE_QUOTED.test(sentence)) continue
+      // 归一化只用于比较与去重：首尾引号、标点都不影响「是不是同一句」。
+      const bare = sentence.replace(/^[“「『"'`]+|[”」』"'`]+$/gu, '').trim()
+      if (names.some(name => bare.includes(name))) continue
+      const normalized = stripForComparison(bare)
+      if (normalized.length < minChars || normalized.length > maxChars) continue
+      const skeleton = normalized.slice(0, prefixChars)
+      const entry = grouped.get(skeleton) ?? { variants: [], chapters: [] }
+      // 变体按**归一后**去重（「空了一下。」与「空了一下」算同一个变体）。
+      if (!entry.variants.some(variant => stripForComparison(variant) === normalized)
+        && entry.variants.length < SHORT_MAX_VARIANTS) {
+        entry.variants.push(bare)
+      }
+      if (!entry.chapters.includes(chapter.chapterNumber)) entry.chapters.push(chapter.chapterNumber)
+      grouped.set(skeleton, entry)
+    }
+  }
+  return [...grouped.entries()]
+    .map(([skeleton, entry]) => ({
+      skeleton,
+      variants: entry.variants,
+      chapters: [...entry.chapters].sort((left, right) => left - right),
+    }))
+    .filter(entry => entry.chapters.length >= minChapters)
+    .map(entry => ({ ...entry, span: entry.chapters.at(-1)! - entry.chapters[0]! }))
+    .filter(entry => entry.span >= minSpan)
+    // 复用章数多的先报；同章数按跨度、再按首现章。
+    .sort((left, right) => right.chapters.length - left.chapters.length
+      || right.span - left.span
+      || left.chapters[0]! - right.chapters[0]!)
+}
+
+/** `findShortSentenceReuse` 的结果 → 一致性发现（一组一条）。 */
+export function findShortSentenceReuseFindings(
+  chapters: readonly RepeatedSentenceChapter[],
+  castNames: readonly string[],
+  options: ShortSentenceReuseOptions = {},
+): ConsistencyFinding[] {
+  return findShortSentenceReuse(chapters, castNames, options).map(reuse => {
+    const first = reuse.chapters[0]!
+    const list = reuse.chapters.map(number => `第${number}章`).join('、')
+    const variantText = reuse.variants.map(variant => `「${variant}」`).join('、')
+    const variantCount = reuse.variants.length
+    return {
+      // key 取首现章 + 骨架：两者都是既成事实，不随写作推进而变。
+      stableFactKey: `prose:short-sentence-reuse:${first}:${reuse.skeleton}`,
+      severity: 'warning' as const,
+      sourceChapter: reuse.chapters.at(-1)!,
+      evidence: `${reuse.chapters.length} 章用同一个句首「${reuse.skeleton}」：${list}（写法：${variantText}）`,
+      issue: {
+        zhCN: `同一句叙述短句在多章复用：句首是「${reuse.skeleton}」的短句出现在 ${list} 共 ${reuse.chapters.length} 章，横跨 ${reuse.span} 章${variantCount > 1 ? `，中间换了 ${variantCount} 种写法（${variantText}）` : `，写法始终是 ${variantText}`}。换措辞不算换写法——读者认出的是这个句子的形状，不是字面。这种短句最容易变成「提示音」：它本来该是这一章独有的那一拍，重复几次之后那一拍的分量就没了。`,
+        enUS: `A short narrative line keeps recurring: sentences opening with “${reuse.skeleton}” appear in ${reuse.chapters.length} chapters (${list}), spanning ${reuse.span} chapters${variantCount > 1 ? `, in ${variantCount} variants (${variantText})` : ''}. Varying the wording is not varying the writing — readers recognize the shape of the sentence, not the exact characters. A short line like this easily turns into a cue, and the beat it was meant to carry loses its weight.`,
+      },
+      suggestion: {
+        zhCN: `把其中几处改写掉：换它当场造成的后果（人物做了什么、别人看见了什么），或换身体反应、换视角落点、换它这次丢掉的**具体内容**——别让同一拍每次都落回同一个句子的形状。若确实是刻意的复现（同一件事被反复想起），后几次要带上这次新丢的东西，读者才分得出这是第几次。`,
+        enUS: `Rewrite several of these: land on the consequence it produces in the scene (what someone does, what someone notices), or shift the body reaction, the viewpoint, and the specific thing lost this time — so the same beat does not keep landing on the same sentence shape. If the recurrence is deliberate (the same thing being lost again), give the later ones what was newly lost, so readers can tell which time this is.`,
+      },
+    }
+  })
 }
