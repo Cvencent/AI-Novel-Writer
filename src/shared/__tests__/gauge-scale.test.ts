@@ -15,38 +15,45 @@ describe('findGaugeScaleMismatches (issue #136)', () => {
   const CH1 = '他把存根在膝盖上磕齐，眼睛落到吃水线的刻痕上。那道刻痕他开船前刚亲手对过，此刻往水里沉了半指。\n\n半指，多一个人。\n\n三十二张票，舱里也该坐三十二个人。'
   const CH59 = '周叙下舱核舱。船尾吃水刻痕没在水里，比空载时沉出一指。竹尺比了两回，还是这一指。\n\n票三十二张。人按说也是三十二个。'
 
-  it('flags the the two chapters that put the same scale at a 16× different ratio', () => {
-    const hits = findGaugeScaleMismatches([ch(1, CH1), ch(59, CH59)])
-    const ratio = hits.find(hit => hit.stableFactKey === 'gauge:scale-ratio:指')
-    expect(ratio).toBeDefined()
-    expect(ratio!.evidence).toContain('2 人/指')
-    expect(ratio!.evidence).toContain('32 人/指')
-    // 现场两章都要在证据里点名。
-    expect(ratio!.evidence).toContain('第1章')
-    expect(ratio!.evidence).toContain('第59章')
+  /**
+   * issue #139：**增量 ≠ 容量**。第 1 章那句「半指，多一个人」是增量
+   * （基准是「开船前对过的刻痕」，已装 32 人；沉半指 = **多**上来一个人），
+   * 不能与全船 32 人相比。上一版把它当绝对容量，于是**写每一章都误报一次**，
+   * 且建议会诱使作者把全书核心装置那一句改坏。
+   *
+   * 而第 59 章的基准是「**空载**」——那是绝对容量。两者口径不同，不可比。
+   */
+  it('does not treat an incremental conversion as a capacity (issue #139)', () => {
+    expect(findGaugeScaleMismatches([ch(1, CH1)])).toEqual([])
+    expect(findGaugeScaleMismatches([ch(1, CH1), ch(59, CH59)])).toEqual([])
   })
 
-  it('also flags a chapter whose own conversion contradicts its own headcount', () => {
-    // 「半指 = 1 人」却写 32 张票：同一章自己打自己。
-    const [hit] = findGaugeScaleMismatches([ch(1, CH1)])
+  it('still flags two explicit absolute capacities that disagree', () => {
+    // 两处都以空载为基准（绝对容量），比值却差 2 倍 → 报。
+    const hits = findGaugeScaleMismatches([
+      ch(1, '吃水刻痕比空载时沉了半指。\n\n半指，八个人。'),
+      ch(9, '吃水刻痕比空载时沉出一指。\n\n三十二个人。'),
+    ])
+    const ratio = hits.find(hit => hit.stableFactKey === 'gauge:scale-ratio:指')
+    expect(ratio).toBeDefined()
+    expect(ratio!.evidence).toContain('16 人/指')
+    expect(ratio!.evidence).toContain('32 人/指')
+    expect(ratio!.evidence).toContain('第1章')
+    expect(ratio!.evidence).toContain('第9章')
+  })
+
+  it('still flags a chapter whose own absolute conversion contradicts its own headcount', () => {
+    // 绝对容量句（无增量标记）：「半指 = 1 人」却写 32 张票 → 同一章自己打自己。
+    const [hit] = findGaugeScaleMismatches([ch(1, '吃水刻痕比空载时沉了半指。\n\n半指，一个人。\n\n三十二张票。')])
     expect(hit!.stableFactKey).toBe('gauge:scale:1')
     expect(hit!.issue.zhCN).toContain('数量级')
   })
 
-  it('stays silent when every chapter agrees on the same ratio', () => {
-    const consistent = [
-      ch(1, '吃水线的刻痕往水里沉了半指。\n\n半指，多一个人。\n\n八张票，八个人。'),
-      ch(9, '船尾吃水刻痕比空载时沉出一指。\n\n十六张票。'),
-    ]
-    // ch1: 1 人 / 0.5 指 = 2；ch9: 16 人 / 1 指 = 16 → 仍不一致（故意保留，避免测试空转）
-    expect(findGaugeScaleMismatches(consistent).length).toBeGreaterThan(0)
-    // 真正一致的两章：
-    const aligned = [
-      ch(1, '吃水线的刻痕往水里沉了半指。\n\n半指，多一个人。\n\n十六张票。'),
-      ch(9, '船尾吃水刻痕比空载时沉出一指。\n\n三十二张票。'),
-    ]
-    // ch1 用显式换算（2 人/指），ch9 用「读数 + 载客」（32 人/指）→ 这是真矛盾，仍应报。
-    expect(findGaugeScaleMismatches(aligned).some(hit => hit.stableFactKey === 'gauge:scale-ratio:指')).toBe(true)
+  it('stays silent when two absolute capacities agree', () => {
+    expect(findGaugeScaleMismatches([
+      ch(1, '吃水刻痕比空载时沉了半指。\n\n半指，八个人。'),
+      ch(9, '吃水刻痕比空载时沉出一指。\n\n十六个人。'),
+    ])).toEqual([])
   })
 
   it('does not treat a descriptive measurement as a gauge reading', () => {
@@ -76,8 +83,9 @@ describe('findGaugeScaleMismatches (issue #136)', () => {
   })
 
   it('is structural: a different book with a different gauge and unit is judged the same way', () => {
+    // 两处都以空载为基准（绝对容量）、换量具换单位 → 判据照样成立。
     const hits = findGaugeScaleMismatches([
-      ch(2, '他看水位标的刻痕，沉了两寸。\n\n两寸，多一个人。\n\n十个人。'),
+      ch(2, '他看水位标的刻痕，比空载时沉了两寸。\n\n两寸，八个人。'),
       ch(8, '水位标的刻痕比空载时沉出四寸。\n\n四十张票。'),
     ])
     expect(hits.some(hit => hit.stableFactKey === 'gauge:scale-ratio:寸')).toBe(true)

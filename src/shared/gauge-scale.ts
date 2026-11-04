@@ -40,9 +40,16 @@ const LENGTH_UNIT = '(?:指|寸|分|厘|尺)'
 const QUANTITY = '[一二两三四五六七八九十百半\\d]+'
 
 const READING = new RegExp(`(${QUANTITY})\\s*(${LENGTH_UNIT})`, 'gu')
-/** 换算句：「半指，多一个人」「一指：三十二个人」——读数后紧跟标点再接计数。 */
+/**
+ * 换算句：「半指，多一个人」「一指：三十二个人」——读数后紧跟标点再接计数。
+ *
+ * ⚠️ **捕获**「多/少/差」这个增量标记（issue #139）：`半指，多一个人` 说的是
+ * 「比开船前对过的刻痕**多沉**半指 = **多**上来一个人」（增量），不是「半指能装一个人」
+ * （绝对容量）。上一版把这个前缀写成可选、却仍拿它去比全章载客总量，于是第 1 章那句
+ * 本来正确的换算被误报成「0.5 指 = 1 人 vs 32 人」，而且写每一章都跟着报一次。
+ */
 const CONVERSION = new RegExp(
-  `(${QUANTITY})\\s*(${LENGTH_UNIT})\\s*[，,：:]\\s*(?:多|少|差)?\\s*(${QUANTITY})\\s*(?:个)?\\s*(?:人|条命)`,
+  `(${QUANTITY})\\s*(${LENGTH_UNIT})\\s*[，,：:]\\s*(多|少|差)?\\s*(${QUANTITY})\\s*(?:个)?\\s*(?:人|条命)`,
   'u',
 )
 /**
@@ -83,6 +90,8 @@ interface Conversion {
   reading: number
   unit: string
   people: number
+  /** 「多/少/差」开头的**增量**换算（比基准多/少 N 人），不是绝对容量。 */
+  incremental: boolean
   sentence: string
 }
 
@@ -123,12 +132,12 @@ function gaugeEvidence(chapters: readonly GaugeChapter[]): { readings: Reading[]
       if (found.length === 0) continue
       readings.push(...found)
       const conversion = CONVERSION.exec(sentence)
-      const people = conversion ? numeralOf(conversion[3]!) : null
+      const people = conversion ? numeralOf(conversion[4]!) : null
       if (!conversion || people === null || people <= 0) continue
       const reading = numeralOf(conversion[1]!)
       if (reading === null || reading <= 0) continue
       conversions.push({ chapterNumber: chapter.chapterNumber, reading, unit: unitFamily(conversion[2]!),
-        people, sentence })
+        people, incremental: Boolean(conversion[3]), sentence })
     }
   }
   return { readings, conversions }
@@ -168,7 +177,14 @@ export function findGaugeScaleMismatches(
   const findings: ConsistencyFinding[] = []
 
   // A. 换算与该章声明载客量矛盾（同一章里自己打自己）。
+  //
+  // ⚠️ **增量换算是另一回事**（issue #139）：「半指，多一个人」说的是
+  // 「比基准多沉半指 = 多上来一个人」，与「全船坐了 32 人」并不矛盾——
+  // 拿它跟总量比会把第 1 章那句正确的换算永久误报（写每一章都报一次）。
+  // 增量句只与「本章人数相对票面的变化」有关，而 finding 文案是静态的、
+  // 拿不到那个变化量，所以这一支**不判**（宁可漏，不可误报）。
   for (const conversion of conversions) {
+    if (conversion.incremental) continue
     const chapter = ordered.find(item => item.chapterNumber === conversion.chapterNumber)!
     const declared = headcountOf(chapter)
     if (declared === null) continue
@@ -199,7 +215,18 @@ export function findGaugeScaleMismatches(
   // ② **读数 + 同章声明载客量**（「比空载时沉出一指」+「票三十二张」）→ 32/1 = 32。
   //    ch59 正是第 ② 种，没有「读数，N 人」的句式——只比 ① 会漏掉它。
   // 同单位族内推出来的比值必须一致，否则读者算不出「今晚多没多人」。
-  const derived: Conversion[] = [...conversions]
+  // 比值 = 人/读数，只有**绝对容量**才有意义；增量句（「多一个人」）混进来会把
+  // 第 1 章算成 2 人/指、第 59 章 32 人/指，从而报出一条假的「比值不唯一」（issue #139）。
+  // ⚠️ 还要排掉「读数本身是增量」的章（issue #139 的第二层）：第 1 章那句
+  // 「往水里沉了半指」与紧邻的增量换算「半指，多一个人」是**同一处读数**，
+  // 它表示的是「比基准多沉半指」这个差值，不是容量。把差值与全章载客量相除
+  // （32 / 0.5 = 64 人/指）仍是同一类错，只是换了个出口。
+  // 判据：该章有增量换算、且读数与该换算的读数相同（同单位族）→ 这处读数也不参与比值。
+  const incrementalReadings = new Set(conversions
+    .filter(item => item.incremental)
+    .map(item => `${item.chapterNumber}|${item.unit}|${item.reading}`))
+  const derived: Conversion[] = conversions.filter(item => !item.incremental)
+    .filter(item => !incrementalReadings.has(`${item.chapterNumber}|${item.unit}|${item.reading}`))
   for (const reading of readings) {
     // 这句本身就是换算句时跳过（已收进 conversions，避免重复计入）。
     if (conversions.some(item => item.chapterNumber === reading.chapterNumber && item.sentence === reading.sentence
@@ -208,8 +235,9 @@ export function findGaugeScaleMismatches(
     if (!chapter) continue
     const declared = headcountOf(chapter)
     if (declared === null || declared < 2) continue
+    if (incrementalReadings.has(`${reading.chapterNumber}|${reading.unit}|${reading.reading}`)) continue
     derived.push({ chapterNumber: reading.chapterNumber, reading: reading.reading, unit: reading.unit,
-      people: declared, sentence: reading.sentence })
+      people: declared, incremental: false, sentence: reading.sentence })
   }
   // 同一章、同一单位族里只留**一个**代表值（优先显式换算句）：同一处读数在正文里
   // 常被复述两次（「沉了半指」+「半指，多一个人」），那不是两套换算。
