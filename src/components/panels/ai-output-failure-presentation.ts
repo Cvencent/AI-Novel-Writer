@@ -1,6 +1,7 @@
 import type { Locale } from '../../i18n/types'
 import type { PromptBudgetReport } from '../../services/generation/generation-harness'
 import type { WorkflowFailureCode, WorkflowStep } from '../../stores/workflow-store'
+import { isReviewWaitOperation } from '../../shared/review-wait'
 
 export interface WorkflowFailurePresentation {
   heading: string
@@ -126,8 +127,10 @@ export function presentWorkflowFailure(
         }
   }
 
-  if (activity?.operation === 'review-chapter') {
-    const diagnostic = activity.diagnostics
+  // ⚠️ 救援重建也属于审稿等待（issue #152）：它同样没有逐字输出，
+  // 失败时的原因文案与普通审稿一致（输出未通过校验、被截断等）。
+  if (isReviewWaitOperation(activity?.operation)) {
+    const diagnostic = activity!.diagnostics
     const code = diagnostic?.causeCode ?? diagnostic?.errorCode
     let reason = error?.trim() || (locale === 'zh-CN' ? '审稿未完成，原因未知。' : 'The review did not finish; the cause is unknown.')
     if (diagnostic?.endReason === 'failed') {

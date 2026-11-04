@@ -443,3 +443,42 @@ describe('聊天入口不可见', () => {
     expect(selectedTab()).toBe(locale === 'en-US' ? 'Diagnostics' : '诊断')
   })
 })
+
+/**
+ * issue #152：审稿等待提示必须覆盖**救援重建**阶段。
+ *
+ * 崩溃现场：`review-chapter` 撞顶 257 秒 → 触发 `review-chapter-rebuild` → rebuild 刚启动页面崩了。
+ * 而提示只在 `operation === 'review-chapter'` 时渲染——**最长的那段等待没有任何反馈**，
+ * 作者看到的是一个不动的进度圈，不知道模型还在推理、也不知道可以中止。
+ */
+describe('审稿等待提示覆盖救援重建 (issue #152)', () => {
+  const reviewingRun = (operation: string) => run('5', 'running', {
+    steps: [{
+      id: '5-review', name: '审稿并定稿', description: '', status: 'running', logs: [], result: '',
+      generationActivity: { operation, diagnostics: { startedAt: 0, elapsedMs: 398_000, firstResponseMs: 3_000, lastResponseMs: 141_000, lastOutputMs: null } },
+    }] as Partial<WorkflowRun>['steps'],
+  })
+
+  it('shows the wait lines during the rescue rebuild, not only during the first call', async () => {
+    useLocaleStore.setState({ locale: 'zh-CN' })
+    useWorkflowStore.setState({ activeRuns: [reviewingRun('review-chapter-rebuild')] })
+    await render()
+    const wait = host!.querySelector('.run-step-wait')
+    expect(wait).not.toBeNull()
+    expect(wait!.textContent).toContain('已等待')
+    // 398 秒的等待必须能被作者看见（崩溃前正是这一段）。
+    expect(wait!.textContent).toMatch(/已等待 \d+秒/)
+  })
+
+  it('still shows them for the first review call', async () => {
+    useWorkflowStore.setState({ activeRuns: [reviewingRun('review-chapter')] })
+    await render()
+    expect(host!.querySelector('.run-step-wait')).not.toBeNull()
+  })
+
+  it('does not treat an ordinary drafting step as a model-wait', async () => {
+    useWorkflowStore.setState({ activeRuns: [reviewingRun('chapter-draft')] })
+    await render()
+    expect(host!.querySelector('.run-step-wait')).toBeNull()
+  })
+})

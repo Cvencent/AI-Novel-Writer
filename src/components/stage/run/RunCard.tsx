@@ -11,6 +11,7 @@ import { CharacterProposalSelectionPanel } from '../../characters/CharacterPropo
 import { isCurrentSessionRun, openNovelConfigurationFor, runFailure, useResumePlotOutline } from '../../run/run-failure'
 import { ACTIVE_RUN_STATUSES, splitThinking } from '../../run/run-output'
 import { useReviewWaitLines } from '../../run/use-review-wait'
+import { isReviewWaitOperation } from '../../../shared/review-wait'
 import { useWorkflowConfirmation, type WorkflowConfirmation } from '../../run/use-workflow-confirmation'
 import { Button } from '../../ui/Button'
 import MarkdownContent from '../../ui/MarkdownContent'
@@ -167,7 +168,7 @@ function stepMeta(step: WorkflowStep, text: Text): string {
   if (step.status === 'completed') return stepDuration(step.startedAt, step.completedAt, text)
   if (step.status === 'skipped') return text('已跳过', 'Skipped')
   if (step.status === 'failed') return text('失败', 'Failed')
-  if (step.status === 'running' && step.progress !== undefined && step.generationActivity?.operation !== 'review-chapter') return `${step.progress}%`
+  if (step.status === 'running' && step.progress !== undefined && !isReviewWaitOperation(step.generationActivity?.operation)) return `${step.progress}%`
   return ''
 }
 
@@ -184,7 +185,9 @@ function RunStep({ step, live, reasoning, open, onToggle, text }: {
   const thinking = reasoning || output.thinking
   const hasDetail = Boolean(output.raw || thinking || step.error)
   const expanded = hasDetail && open
-  const reviewing = live && step.generationActivity?.operation === 'review-chapter'
+  // ⚠️ 必须把救援重建（`review-chapter-rebuild`）也算进来（issue #152）：
+  // 崩溃现场正是 rebuild 阶段——那是**最长**的一段等待，却原来没有提示。
+  const reviewing = live && isReviewWaitOperation(step.generationActivity?.operation)
   const row = (
     <>
       <StepIcon step={step} />
