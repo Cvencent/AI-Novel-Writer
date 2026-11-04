@@ -42,6 +42,20 @@ describe('auditFinalizedProse (issue #83)', () => {
    * issue #133：清单件数对不上——必须从**共用出口**报出来，否则写前预检与审稿两条路径都拿不到。
    */
   /** issue #136：量具换算矛盾必须从共用出口报出来。 */
+  /** issue #142：口头约定被复述反了，必须从共用出口报出来。 */
+  it('surfaces a promise restated backwards from the shared exit (issue #142)', () => {
+    const findings = auditFinalizedProse({
+      chapters: [
+        { chapterNumber: 60, content: '「答应我。座号不写进任何册。」周叙看着他。' },
+        { chapterNumber: 63, content: '「一七四。」温珩说，「你答应过写进册。」' },
+      ],
+      castNames: [], blueprints: [],
+    })
+    const promise = findings.filter(finding => finding.stableFactKey.startsWith('promise:polarity:'))
+    expect(promise).toHaveLength(1)
+    expect(promise[0]!.evidence).toContain('不写进册')
+  })
+
   /** issue #140：整句逐字复用必须从共用出口报出来。 */
   it('surfaces a whole sentence copied across chapters from the shared exit (issue #140)', () => {
     const findings = auditFinalizedProse({

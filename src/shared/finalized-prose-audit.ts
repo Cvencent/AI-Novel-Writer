@@ -85,6 +85,8 @@ import { findEnumerationCountMismatches, findInventoryShortfallFindings } from '
 import { findGaugeScaleMismatches } from './gauge-scale'
 // 整句逐字跨章复用（#140）：与三族词表正交的字面比对。
 import { findRepeatedSentenceFindings } from './repeated-sentence'
+// 口头约定被复述反了（#142）：承诺句的极性比对。
+import { findPromisePolarityReversals } from './promise-polarity'
 import { closingShotOf } from './blueprint-semantic-contract'
 import { foreshadowingDueAt, parseForeshadowingCommitments } from './foreshadowing-commitments'
 
@@ -317,13 +319,15 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   const gaugeScale = findGaugeScaleMismatches(chapters)
   // 整句复用（#140）：用全量已定稿章（相邻窗口在判据内部收，样本切小会漏掉首现章）。
   const repeatedSentences = findRepeatedSentenceFindings(chapters)
+  // 承诺极性（#142）：用全量已定稿章——约定可能在十几章前，窗口切小会漏掉首现处。
+  const promiseReversals = findPromisePolarityReversals(chapters)
 
   return [...closingLabel, ...numbering, ...ability, ...declaredCount, ...repetition, ...undelivered,
     ...ultimatum, ...pendingLanding, ...reversal, ...undatedStreak, ...unmetTimeAnchor, ...proseFlavor, ...positionalAxes, ...glyphRadical,
     ...castNameDrift, ...deadlineSettlement, ...repeatedRevocation, ...duplicateTitles,
     ...abilityLimitBypass, ...handwritingConflicts, ...quoteStyleDrift, ...staleStateDuration,
     ...propContainerDeparture, ...inventorySameChapter, ...inventoryShortfall, ...gaugeScale,
-    ...repeatedSentences]
+    ...repeatedSentences, ...promiseReversals]
 }
 
 /**
