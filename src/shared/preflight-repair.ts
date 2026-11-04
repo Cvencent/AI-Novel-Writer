@@ -207,11 +207,11 @@ export function diffRepairPatch(
  * 与 `groupPreflightRoutes` 的分工：那边管「能不能改」，这边只管「怎么分批调用」。
  * 不可修的键由调用方在分组时就已经筛掉（`ks`），这里不做二次判断。
  */
-export function planRepairCalls(
-  findings: ReadonlyArray<Pick<ConsistencyFinding, 'stableFactKey' | 'evidence' | 'issue' | 'suggestion'> & { layer: PreflightLayer }>,
-): Array<{ layer: PreflightLayer; findings: typeof findings }> {
+export function planRepairCalls<T extends Pick<ConsistencyFinding, 'stableFactKey'> & { layer: PreflightLayer }>(
+  findings: readonly T[],
+): Array<{ layer: PreflightLayer; findings: T[] }> {
   const order: readonly PreflightLayer[] = ['world', 'cast', 'outline', 'blueprint']
-  const buckets = new Map<PreflightLayer, typeof findings[number][]>()
+  const buckets = new Map<PreflightLayer, T[]>()
   for (const finding of findings) {
     if (finding.layer === 'prose') continue
     const list = buckets.get(finding.layer) ?? []

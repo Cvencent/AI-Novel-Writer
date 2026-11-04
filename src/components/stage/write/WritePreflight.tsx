@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { RotateCcw, ShieldAlert } from 'lucide-react'
 import type { ConsistencyPreflightResult } from '../../../services/consistency-preflight'
+import type { ConsistencyFinding } from '../../../shared/consistency-preflight'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { preflightRouteOf, type PreflightRoute } from '../../../shared/preflight-route'
+import PreflightRepairPanel, { type RepairProposal } from './PreflightRepairPanel'
 import { Button } from '../../ui/Button'
 
 /** 各层的中文/英文说法（面向作者；层名本身是内部概念）。 */
@@ -45,6 +47,20 @@ interface WritePreflightProps {
    * 那里给章号会把属于别章的提醒误标。
    */
   currentChapter?: number
+  /**
+   * 「修复」（issue #137）：请模型按这条提醒把该层字段改出来，改完先看差异。
+   *
+   * ⚠️ **可选**：只有具备字段级写通道的层才传得动（蓝图层/世界观层）。
+   * 不传时该按钮不渲染——宁可少一个按钮，也不要给一个点了没反应的。
+   */
+  onRepair?: (findings: readonly ConsistencyFinding[]) => void
+  /** 「全部修复」：把当前能修的所有提醒按层分组，每层一次调用。 */
+  onRepairAll?: () => void
+  /** 模型给出的改写建议（差异面板）。null 表示当前没有待确认的改写。 */
+  repairProposal?: RepairProposal | null
+  onApplyRepairField?: (field: string) => void
+  onApplyRepairAll?: () => void
+  onDismissRepair?: () => void
 }
 
 /**
@@ -59,6 +75,7 @@ interface WritePreflightProps {
  */
 export default function WritePreflight({
   preflight, busy, onIgnoreOnce, onRerun, onSave, onRevoke, onAcknowledge, onUnacknowledge, onOpenLayer, currentChapter,
+  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair,
 }: WritePreflightProps) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
@@ -121,12 +138,36 @@ export default function WritePreflight({
                     : text('这条暂时没有可改的层', 'No editable layer for this one yet')}
                 </span>
               )}
+              {/*
+                「修复」：请模型按这条提醒把**该层的字段**改出来，改完先给差异（issue #137）。
+                ⚠️ 只对**能字段级改写**的层给按钮：角色层要走角色名单的 CAS 提交、
+                正文层只能新版本重定稿——那些层的出口是「去 X 改」。
+              */}
+              {onRepair === undefined || !route.repairable ? null : (route.layer === 'blueprint' || route.layer === 'world') ? (
+                <Button variant="secondary" size="sm" disabled={busy} onClick={() => onRepair([finding])}>
+                  {text('修复', 'Fix it')}
+                </Button>
+              ) : null}
             </div>
           </div>
         )
       })}
+      {repairProposal ? (
+        <PreflightRepairPanel
+          proposal={repairProposal}
+          busy={busy}
+          onApplyOne={field => onApplyRepairField?.(field)}
+          onApplyAll={() => onApplyRepairAll?.()}
+          onDismiss={() => onDismissRepair?.()}
+        />
+      ) : null}
       {findings.length > 0 && (
         <div className="stage-preflight-actions">
+          {onRepairAll === undefined ? null : (
+            <Button variant="secondary" size="sm" disabled={busy} onClick={onRepairAll}>
+              {text('全部修复', 'Fix all')}
+            </Button>
+          )}
           <Button variant="text" size="sm" disabled={busy} onClick={onIgnoreOnce}>{text('带提醒继续写', 'Continue with reminders')}</Button>
           <Button variant="text" size="sm" disabled={busy} onClick={onRerun}>{text('改蓝图后重检', 'Recheck after editing')}</Button>
         </div>

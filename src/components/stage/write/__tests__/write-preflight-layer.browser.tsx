@@ -118,3 +118,89 @@ describe('旧章的提醒不给可修按钮 (issue #137)', () => {
     await expect.element(page.getByRole('button', { name: '去本章蓝图改' })).toBeVisible()
   })
 })
+
+/**
+ * issue #137 第二层：**「修复」= 模型改写 + 作者确认差异**。
+ *
+ * 用户要求：改完先给差异，确认后才落库。所以按钮点下去只产生「建议」，不写任何东西。
+ */
+describe('修复出口与差异确认 (issue #137)', () => {
+  const mountWithRepair = async (proposal: { layerLabel: string; chapterNumber: number | null; diffs: Array<{ field: string; before: string; after: string; reason: string }> }, source: ConsistencyPreflightResult = preflight) => {
+    const applied: string[] = []
+    let dismissed = false
+    host = document.createElement('div')
+    host.className = 'paper-ink stage-shell'
+    document.body.append(host)
+    root = createRoot(host)
+    const common = {
+      preflight: source, busy: false,
+      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onRevoke: vi.fn(),
+      onAcknowledge: vi.fn(), onUnacknowledge: vi.fn(),
+      onOpenLayer: vi.fn(), currentChapter: 45,
+      onRepair: vi.fn(), onRepairAll: vi.fn(),
+      repairProposal: proposal,
+      onApplyRepairField: (field: string) => applied.push(field),
+      onApplyRepairAll: () => applied.push('ALL'),
+      onDismissRepair: () => { dismissed = true },
+    }
+    await act(async () => root!.render(<WritePreflight {...common} />))
+    return { applied, dismissedNow: () => dismissed }
+  }
+
+  it('offers a 修复 button only for the layers that have a field-level write channel', async () => {
+    // ⚠️ 这一条要能证明**层闸门**存在：共享 fixture 里 cast 那条是旧章（会被第二维挡住），
+    // 所以这里单独构造一条「可修的角色层提醒」——角色层仍然不该出现「修复」按钮
+    // （它的写通道要完整 CAS 载荷，薄服务半实现会写错账本）。
+    // 上面 fixture：cast（全叔）、blueprint（anchor-unmet:45）、prose（sentence-reuse）。
+    await mountWithRepair({ layerLabel: '本章蓝图', chapterNumber: 45, diffs: [] })
+    const labels = [...host!.querySelectorAll('button')].map(node => node.textContent)
+    // 蓝图层给「修复」；cast 层（角色名单的 CAS 提交）与 prose 层（只能重定稿）不给。
+    expect(labels.filter(label => label === '修复')).toHaveLength(1)
+
+    // 同一条断言换成「可修的角色层提醒」：仍然不给「修复」——那一层要走自己的 CAS 提交。
+    await act(async () => root?.unmount())
+    host?.remove()
+    root = undefined
+    await mountWithRepair({ layerLabel: '角色名单', chapterNumber: 45, diffs: [] }, {
+      ...preflight,
+      findings: [finding('cast:absent:全叔', 45)],
+    })
+    const castLabels = [...host!.querySelectorAll('button')].map(node => node.textContent)
+    expect(castLabels.filter(label => label === '修复')).toHaveLength(0)
+    // 但「去角色名单改」照给（那是它正确的出口）。
+    expect(castLabels).toContain('去角色名单改')
+    await expect.element(page.getByRole('button', { name: '全部修复' })).toBeVisible()
+  })
+
+  it('shows before/after per field and writes nothing until the author picks', async () => {
+    const { applied } = await mountWithRepair({
+      layerLabel: '本章蓝图', chapterNumber: 45,
+      diffs: [{ field: 'keyEvents', before: '他把回执摊在桌上。', after: '次日清晨，他把回执摊在桌上。', reason: '补了日界' }],
+    })
+    // 精确匹配：after 里也含 before 的字面，非精确匹配会命中两个元素。
+    await expect.element(page.getByText('他把回执摊在桌上。', { exact: true })).toBeVisible()
+    await expect.element(page.getByText('次日清晨，他把回执摊在桌上。', { exact: true })).toBeVisible()
+    // 默认一处都没勾：不勾就点不动「采纳」。
+    const applyButton = page.getByRole('button', { name: /采纳勾选的/ })
+    await expect.element(applyButton).toBeDisabled()
+    expect(applied).toEqual([])
+  })
+
+  it('applies exactly the field the author picked', async () => {
+    const { applied } = await mountWithRepair({
+      layerLabel: '本章蓝图', chapterNumber: 45,
+      diffs: [{ field: 'keyEvents', before: '旧', after: '新', reason: '' }],
+    })
+    await act(async () => page.getByRole('button', { name: '只采纳这一处' }).click())
+    expect(applied).toEqual(['keyEvents'])
+  })
+
+  it('lets the author keep everything as is', async () => {
+    const { dismissedNow } = await mountWithRepair({
+      layerLabel: '本章蓝图', chapterNumber: 45,
+      diffs: [{ field: 'title', before: '旧', after: '新', reason: '' }],
+    })
+    await act(async () => page.getByRole('button', { name: '都不改' }).click())
+    expect(dismissedNow()).toBe(true)
+  })
+})

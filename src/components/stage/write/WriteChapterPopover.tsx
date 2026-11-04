@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import { ChevronRight, PenLine } from 'lucide-react'
 import type { ConsistencyPreflightResult } from '../../../services/consistency-preflight'
+import type { ConsistencyFinding } from '../../../shared/consistency-preflight'
 import { ipc } from '../../../services/ipc-client'
 import {
   chapterDefaultWordsTarget,
@@ -19,9 +20,13 @@ import { useProjectStore } from '../../../stores/project-store'
 import { captureProjectSession, isProjectSessionCurrent } from '../../project-session-gate'
 import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useAnchoredLayer } from '../../ui/use-anchored-layer'
+import { applyRepairDiffs, proposeLayerRepair } from '../../../services/preflight-repair'
+import { planRepairCalls } from '../../../shared/preflight-repair'
+import { preflightRouteOf } from '../../../shared/preflight-route'
 import { Button } from '../../ui/Button'
 import SplitAction from './SplitAction'
 import WritePreflight from './WritePreflight'
+import type { RepairProposal } from './PreflightRepairPanel'
 
 interface WriteChapterPopoverProps {
   chapterNumber: number
@@ -55,6 +60,9 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
   // 否则弹层里一个按钮都没有，作者只能照脚注反复点同一个必然被拒绝的按钮。
   const [repairChapter, setRepairChapter] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
+  // 「修复」生成出来的字段改写建议（issue #137）：**作者确认差异后**才落库。
+  const [repairProposal, setRepairProposal] = useState<RepairProposal | null>(null)
+  const [repairSource, setRepairSource] = useState<{ layer: 'world' | 'cast' | 'outline' | 'blueprint' | 'prose'; chapterNumber: number | null } | null>(null)
   const [starting, setStarting] = useState(false)
   const modelFieldId = useId()
   const guidanceFieldId = useId()
@@ -148,6 +156,67 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     } catch (error) {
       if (isProjectSessionCurrent(session)) setMessage(error instanceof Error ? error.message : String(error))
       return null
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** 「修复」：请模型按这批提醒改**该层字段**，拿到差异后交给作者确认（issue #137）。 */
+  const requestRepair = async (targets: readonly ConsistencyFinding[]) => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || busy || targets.length === 0) return
+    // 只修**写前真能改**的、且有字段级写通道的层。
+    const fixable = targets.filter(finding => {
+      const route = preflightRouteOf(finding.stableFactKey, { currentChapter: chapterNumber, sourceChapter: finding.sourceChapter })
+      return route.repairable && (route.layer === 'blueprint' || route.layer === 'world')
+    })
+    if (fixable.length === 0) {
+      setMessage(text('这几条都落在已定稿的章上，要改得先出那一章的新版本。', 'These all sit in finalized chapters; fixing them needs a new version of that chapter.'))
+      return
+    }
+    const calls = planRepairCalls(fixable.map(finding => ({
+      ...finding,
+      layer: preflightRouteOf(finding.stableFactKey, { currentChapter: chapterNumber, sourceChapter: finding.sourceChapter }).layer,
+    })))
+    const call = calls[0]
+    if (!call) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      const outcome = await proposeLayerRepair(session, call.layer, chapterNumber, call.findings, locale)
+      if (!isProjectSessionCurrent(session)) return
+      if (outcome.status === 'failed') { setMessage(outcome.error); return }
+      if (outcome.status === 'unchanged') {
+        setMessage(text('模型认为这几条不需要改这一层的字段。', 'The model found nothing to change in this layer.'))
+        return
+      }
+      setRepairSource({ layer: call.layer, chapterNumber })
+      setRepairProposal({
+        layerLabel: call.layer === 'world' ? text('世界观/设定', 'worldbuilding') : text('本章蓝图', 'this chapter’s blueprint'),
+        chapterNumber,
+        diffs: outcome.diffs,
+      })
+      show()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** 作者勾选后落库（走现成写通道），然后重检刷新列表。 */
+  const applyRepair = async (fields: readonly string[] | null) => {
+    const diffs = repairProposal?.diffs.filter(diff => fields === null || fields.includes(diff.field)) ?? []
+    if (!repairSource || diffs.length === 0) return
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || busy) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      const result = await applyRepairDiffs(session, repairSource.layer, repairSource.chapterNumber, diffs)
+      if (!result.success) { setMessage(result.error || text('写入失败', 'Write failed')); return }
+      setRepairProposal(null)
+      setRepairSource(null)
+      // 重检：改完的提醒应该消失，作者要能看到这一点。
+      await start(false, session)
     } finally {
       setBusy(false)
     }
@@ -263,6 +332,12 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           onAcknowledge={key => void acknowledgeFinding(key)}
           onUnacknowledge={key => void unacknowledgeFinding(key)}
           currentChapter={chapterNumber}
+          onRepair={targets => void requestRepair(targets)}
+          onRepairAll={() => void requestRepair(preflight.findings)}
+          repairProposal={repairProposal}
+          onApplyRepairField={field => void applyRepair([field])}
+          onApplyRepairAll={() => void applyRepair(null)}
+          onDismissRepair={() => { setRepairProposal(null); setRepairSource(null) }}
           onOpenLayer={route => {
             // issue #137：把作者送到该提醒所属的那一层。先收起弹层，再导航——
             // 否则弹层会盖在目标页上（与「去修复定稿后处理」同一处理）。
