@@ -25,6 +25,7 @@ import { auditFinalizedProse } from '../finalized-prose-audit'
 import { declaredCharacterCountFindings } from '../consistency-preflight'
 import { findUnmetTimeAnchorFindings } from '../chapter-time-anchor'
 import { findInventoryShortfallFindings } from '../inventory-count'
+import { findGaugeScaleMismatches } from '../gauge-scale'
 import { proseRepetitionFindings } from '../prose-repetition'
 import { glyphRadicalFindings } from '../glyph-radical'
 import { findCastNameDriftFindings } from '../cast-name-drift'
@@ -193,6 +194,10 @@ describe('no preflight key may change when only currentChapter advances (issue #
       ['findInventoryShortfallFindings', () => findInventoryShortfallFindings([
         { chapterNumber: 57, content: '清库名单。无编号薄本六册。靛蓝短褂一件。旧航次账抄件一册。' },
         { chapterNumber: 58, content: '三样东西码成一排：无编号薄本在左；靛蓝短褂在中；旧航次账抄件在右。' },
+      ])],
+      ['findGaugeScaleMismatches', () => findGaugeScaleMismatches([
+        { chapterNumber: 1, content: '吃水线的刻痕往水里沉了半指。半指，多一个人。三十二张票。' },
+        { chapterNumber: 59, content: '船尾吃水刻痕比空载时沉出一指。票三十二张。' },
       ])],
       ['findStaleStateDurationFindings', () => findStaleStateDurationFindings(STALE_DURATION_BOOK)],
       ['findHandwritingConflictFindings', () => findHandwritingConflictFindings({

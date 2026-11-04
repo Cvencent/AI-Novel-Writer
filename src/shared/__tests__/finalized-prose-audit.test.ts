@@ -41,6 +41,20 @@ describe('auditFinalizedProse (issue #83)', () => {
   /**
    * issue #133：清单件数对不上——必须从**共用出口**报出来，否则写前预检与审稿两条路径都拿不到。
    */
+  /** issue #136：量具换算矛盾必须从共用出口报出来。 */
+  it('surfaces a gauge scale mismatch from the shared exit (issue #136)', () => {
+    const findings = auditFinalizedProse({
+      chapters: [
+        { chapterNumber: 1, content: '眼睛落到吃水线的刻痕上，往水里沉了半指。半指，多一个人。三十二张票，舱里也该坐三十二个人。' },
+        { chapterNumber: 59, content: '船尾吃水刻痕没在水里，比空载时沉出一指。票三十二张。' },
+      ],
+      castNames: [], blueprints: [],
+    })
+    const gauge = findings.filter(finding => finding.stableFactKey.startsWith('gauge:'))
+    expect(gauge.length).toBeGreaterThan(0)
+    expect(gauge.some(finding => finding.stableFactKey === 'gauge:scale-ratio:指')).toBe(true)
+  })
+
   it('surfaces an inventory shortfall from the shared exit (issue #133)', () => {
     const findings = auditFinalizedProse({
       chapters: [

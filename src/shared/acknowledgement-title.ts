@@ -98,6 +98,9 @@ const FAMILY_LABELS: Readonly<Record<string, AcknowledgementTitle>> = Object.fre
   'inventory': { zhCN: '清单件数对不上', enUS: 'inventory count mismatch' },
   'inventory:enumeration': { zhCN: '声明了几项却只列出几项', enUS: 'enumerated fewer items than declared' },
   'inventory:shortfall': { zhCN: '前章的清单件数在后文少了几件', enUS: 'inventory shortfall across chapters' },
+  'gauge': { zhCN: '量具读数与换算对不上', enUS: 'gauge reading vs conversion' },
+  'gauge:scale': { zhCN: '量具换算与本该章载客量差一个数量级', enUS: 'gauge conversion vs this chapter headcount' },
+  'gauge:scale-ratio': { zhCN: '同一量具被写成两套换算比值', enUS: 'same gauge defined at two ratios' },
   // —— 伏笔 / 线索 / 其他 ——
   'foreshadowing': { zhCN: '承诺的伏笔没落地', enUS: 'foreshadowing undelivered' },
   'thread': { zhCN: '叙事线索停摆/逾期', enUS: 'narrative thread' },

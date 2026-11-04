@@ -81,6 +81,8 @@ import { findAbilityLimitBypassFindings } from './ability-limit-bypass'
 import { findHandwritingConflictFindings } from './handwriting-signature'
 // 清单件数对账（#133）：声明 N 件却只列/兑现 M 件。同章枚举 + 跨章清单两条。
 import { findEnumerationCountMismatches, findInventoryShortfallFindings } from './inventory-count'
+// 量具读数与换算（#136）：同一套刻度被写成两套比值。
+import { findGaugeScaleMismatches } from './gauge-scale'
 import { closingShotOf } from './blueprint-semantic-contract'
 import { foreshadowingDueAt, parseForeshadowingCommitments } from './foreshadowing-commitments'
 
@@ -309,12 +311,14 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   // 用全量已定稿章：清单与兑现常常跨章，窗口切小会把清单切出样本。
   const inventorySameChapter = auditSample.flatMap(chapter => findEnumerationCountMismatches(chapter))
   const inventoryShortfall = findInventoryShortfallFindings(chapters)
+  // 量具换算（#136）：用全量已定稿章——换算句在远处、读数在近处，窗口切小会漏配。
+  const gaugeScale = findGaugeScaleMismatches(chapters)
 
   return [...closingLabel, ...numbering, ...ability, ...declaredCount, ...repetition, ...undelivered,
     ...ultimatum, ...pendingLanding, ...reversal, ...undatedStreak, ...unmetTimeAnchor, ...proseFlavor, ...positionalAxes, ...glyphRadical,
     ...castNameDrift, ...deadlineSettlement, ...repeatedRevocation, ...duplicateTitles,
     ...abilityLimitBypass, ...handwritingConflicts, ...quoteStyleDrift, ...staleStateDuration,
-    ...propContainerDeparture, ...inventorySameChapter, ...inventoryShortfall]
+    ...propContainerDeparture, ...inventorySameChapter, ...inventoryShortfall, ...gaugeScale]
 }
 
 /**
