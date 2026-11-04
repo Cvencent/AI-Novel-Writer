@@ -39,31 +39,3 @@ export function stripEmphasis(text: string): string {
     .replace(/[ \t]{2,}/gu, ' ')
     .trim()
 }
-
-/** 一条提醒里**给作者看**的三个字段。 */
-export interface AuthorVisibleFindingText {
-  issue: { zhCN: string, enUS: string }
-  suggestion: { zhCN: string, enUS: string }
-  evidence: string
-}
-
-/**
- * 把一条提醒的所有作者可见字段过一遍 `stripEmphasis`。
- *
- * 用它而不是在每处调 `stripEmphasis`：四条路径（预检弹层、ack 标题、编辑台质检、
- * 差异面板）只要都走这一个入口，就不会再出现「某条路径忘了剥」。
- */
-export function toAuthorVisibleText<T extends AuthorVisibleFindingText>(finding: T): T {
-  return {
-    ...finding,
-    issue: {
-      zhCN: stripEmphasis(finding.issue.zhCN),
-      enUS: stripEmphasis(finding.issue.enUS),
-    },
-    suggestion: {
-      zhCN: stripEmphasis(finding.suggestion.zhCN),
-      enUS: stripEmphasis(finding.suggestion.enUS),
-    },
-    evidence: stripEmphasis(finding.evidence),
-  }
-}

@@ -1,3 +1,4 @@
+import { stripEmphasis } from '../../../shared/author-visible-text'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Sparkles } from 'lucide-react'
 import { createEditorialPanelWorkflow } from '../../../services/workflows/writing-intelligence-workflow'
@@ -117,8 +118,9 @@ export default function EditorialPanelSection({ chapterNumber, draftId, draftVer
                       return (
                         <li key={index} data-severity={finding.severity}>
                           <b>{finding.severity}</b>
-                          {finding.description}
-                          {finding.evidence && <q>{finding.evidence}</q>}
+                          {/* issue #154：作者可见 → 剥掉 Markdown 粗体（只在渲染侧）。 */}
+                          {stripEmphasis(finding.description)}
+                          {finding.evidence && <q>{stripEmphasis(finding.evidence)}</q>}
                           {checklist && (included
                             ? <span className="stage-editorial-included">{text('已纳入修稿', 'Included in revision')}</span>
                             : <Button variant="secondary" size="sm" onClick={() => {

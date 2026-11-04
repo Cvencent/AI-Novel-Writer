@@ -652,3 +652,40 @@ describe('cast absence monitoring covers supporting characters (issue #107)', ()
     expect(main.some(finding => finding.stableFactKey.startsWith('cast:thin:'))).toBe(true)
   })
 })
+
+/**
+ * issue #159（我引入过的 P0 回归）：`mergeConsistencyFindingsIntoReview` 的产物
+ * **不是界面文案，而是落库的报告正文**。
+ *
+ * `review-revision-generation.ts` 用它算 `review_content_hash` 落库，
+ * `m03-review-cycle.ts` 的 schema 校验再拿**当前代码重建同一份报告**去比那个哈希。
+ * 一旦在这里剥 Markdown，「旧库含 `**` / 新代码重建的不含」→ 哈希不等 →
+ * `MIGRATION_VERIFICATION_FAILED` → 旧书升级后直接打不开（无自救路径）。
+ *
+ * 所以这条测试钉的是「**落库字节与判据原文逐字一致**」——剥离只能发生在渲染侧。
+ */
+describe('落库报告正文不得被展示层处理改写 (issue #159)', () => {
+  const boldFinding = {
+    stableFactKey: 'prose-flavor:motif:9',
+    severity: 'warning' as const,
+    sourceChapter: 9,
+    evidence: '第9章「盐包」出现 **7** 次',
+    issue: { zhCN: '同一个词被**反复**用来承担情绪。', enUS: 'One **word** carries it.' },
+    suggestion: { zhCN: '换**措辞**。', enUS: 'Change the **wording**.' },
+  }
+
+  it('keeps the finding text verbatim, including the bold markers', () => {
+    const merged = mergeConsistencyFindingsIntoReview({ summary: 'AI summary', items: [] }, [boldFinding], 'zh-CN')
+    expect(merged.items).toHaveLength(1)
+    // ⚠️ 逐字相同：一旦这里被剥，旧库的 report_content_hash 就对不上，旧书打不开。
+    expect(merged.items[0]!.description).toBe(boldFinding.issue.zhCN)
+    expect(merged.items[0]!.description).toContain('**')
+    // 证据行同样原样（#158 指出渲染侧那条 `quote` 漏剥——但那是渲染侧的事）。
+    expect(merged.items[0]!.quote).toBe(boldFinding.evidence)
+  })
+
+  it('is locale-aware without transforming the text', () => {
+    const merged = mergeConsistencyFindingsIntoReview({ summary: 'AI summary', items: [] }, [boldFinding], 'en-US')
+    expect(merged.items[0]!.description).toBe(boldFinding.issue.enUS)
+  })
+})

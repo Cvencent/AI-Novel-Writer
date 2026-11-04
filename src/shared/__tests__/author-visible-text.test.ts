@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { acknowledgementTitleOf } from '../acknowledgement-title'
-import { stripEmphasis, toAuthorVisibleText } from '../author-visible-text'
+import { stripEmphasis } from '../author-visible-text'
 
 /**
  * issue #154：判据文案里的 Markdown 粗体在界面上被**原样显示**。
@@ -30,31 +30,6 @@ describe('stripEmphasis (issue #154)', () => {
 
   it('collapses the double space a stripped marker can leave behind', () => {
     expect(stripEmphasis('章里有 **4 章** 是同一骨架')).toBe('章里有 4 章 是同一骨架')
-  })
-})
-
-describe('toAuthorVisibleText (issue #154)', () => {
-  const finding = {
-    stableFactKey: 'prose-flavor:motif:9',
-    severity: 'warning' as const,
-    sourceChapter: 9,
-    evidence: '第9章「盐包」出现 **7** 次',
-    issue: { zhCN: '同一条**骨架**重复', enUS: 'the same **shape** repeats' },
-    suggestion: { zhCN: '换**措辞**', enUS: 'change the **wording**' },
-  }
-
-  it('strips every author-visible field and keeps the rest of the finding intact', () => {
-    const visible = toAuthorVisibleText(finding)
-    for (const text of [visible.issue.zhCN, visible.issue.enUS, visible.suggestion.zhCN, visible.suggestion.enUS, visible.evidence]) {
-      expect(text).not.toContain('*')
-    }
-    expect(visible.stableFactKey).toBe(finding.stableFactKey)
-    expect(visible.sourceChapter).toBe(9)
-  })
-
-  it('does not mutate the source finding (prompt paths still need the markers)', () => {
-    toAuthorVisibleText(finding)
-    expect(finding.issue.zhCN).toContain('**')
   })
 })
 

@@ -1,5 +1,4 @@
 import type { FinalizedContinuityProjection } from './finalized-continuity'
-import { stripEmphasis } from './author-visible-text'
 import { blueprintKeyEventsOversize } from './blueprint-length'
 import { foreshadowingKeywords, selectDiscriminatingKeywords, type ForeshadowingCommitment } from './foreshadowing-commitments'
 import { findAnnihilatedPropRevival, findRepeatPropTermination } from './prop-termination'
@@ -1389,8 +1388,16 @@ export function mergeConsistencyFindingsIntoReview(
   const mapped = findings.map(finding => ({
     category: locale === 'en-US' ? 'Deterministic continuity preflight' : '确定性一致性预检',
     severity: finding.severity,
-    // issue #154：编辑台质检条目也是作者可见的纯文本，同样剥掉 Markdown 粗体。
-    description: stripEmphasis(locale === 'en-US' ? finding.issue.enUS : finding.issue.zhCN),
+    // ⚠️ **这里绝对不能剥离 Markdown**（issue #159，我引入过的 P0 回归）。
+    //
+    // 这个函数的产物不是「界面文案」，而是**落库的报告正文**：`review-revision-generation.ts`
+    // 用它算 `review_content_hash` 落库，`m03-review-cycle.ts` 的 schema 校验再拿**当前代码
+    // 重建同一份报告**去比那个哈希。在 #154 里我给这里加了 `stripEmphasis`，于是
+    // 「旧版本落库的报告含 `**`、新版本重建的不含」→ 哈希不等 → `MIGRATION_VERIFICATION_FAILED`
+    // → 旧书直接打不开（升级即触发、无自救路径）。
+    //
+    // 所以剥离只放在**界面渲染**那一侧（`ReviewSheet` / `EditorialPanelSection`）。
+    description: locale === 'en-US' ? finding.issue.enUS : finding.issue.zhCN,
     quote: finding.evidence,
     stableFactKey: finding.stableFactKey,
     sourceChapter: finding.sourceChapter,

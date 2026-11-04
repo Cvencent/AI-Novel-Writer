@@ -3,6 +3,7 @@ import { Plus, RotateCcw } from 'lucide-react'
 import type { useReviewChecklist, EditableReviewItem } from '../../editor/review-checklist'
 import { includedCount, normalizeSeverity, severityCopy } from '../../editor/review-checklist'
 import { pluralEn } from '../../../shared/plural-en'
+import { stripEmphasis } from '../../../shared/author-visible-text'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { Button } from '../../ui/Button'
 import { Check } from '../../ui/Check'
@@ -53,8 +54,11 @@ function IssueCard({ item, checklist, onEdit }: {
   const body = (
     <span className="stage-ch-issue-body">
       <span className="stage-ch-issue-tag" data-severity={item.severity}>{tag}</span>
-      {!editing && <span className="stage-ch-issue-text">{item.description || text('（未填写）', '(empty)')}</span>}
-      {!editing && item.quote && <q className="stage-ch-issue-quote">{item.quote}</q>}
+      {/* issue #154/#158/#159：剥离必须在**渲染**这一侧做。
+          落库的 `item.description` / `item.quote` 必须保持判据原文（含 `**`），
+          否则旧库的 report_content_hash 对不上、schema 校验会让书打不开。 */}
+      {!editing && <span className="stage-ch-issue-text">{stripEmphasis(item.description) || text('（未填写）', '(empty)')}</span>}
+      {!editing && item.quote && <q className="stage-ch-issue-quote">{stripEmphasis(item.quote)}</q>}
       {item.sourceChapter && <span className="stage-ch-issue-meta">{text(`来源：第${item.sourceChapter}章`, `Source: Chapter ${item.sourceChapter}`)}</span>}
       <FindingStatus item={item} checklist={checklist} />
     </span>
