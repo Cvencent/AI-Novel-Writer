@@ -455,7 +455,7 @@ describe('审稿等待提示覆盖救援重建 (issue #152)', () => {
   const reviewingRun = (operation: string) => run('5', 'running', {
     steps: [{
       id: '5-review', name: '审稿并定稿', description: '', status: 'running', logs: [], result: '',
-      generationActivity: { operation, diagnostics: { startedAt: 0, elapsedMs: 398_000, firstResponseMs: 3_000, lastResponseMs: 141_000, lastOutputMs: null } },
+      generationActivity: { operation, diagnostics: { startedAt: 0, elapsedMs: 398_000, firstResponseMs: 3_000, lastResponseMs: 141_000, lastOutputMs: null, phase: 'stream', visibleEvents: 0, reasoningEvents: 0 } },
     }] as Partial<WorkflowRun>['steps'],
   })
 
