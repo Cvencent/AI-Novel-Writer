@@ -51,6 +51,7 @@ import {
   findUltimatumStreak,
   findUndeliveredForeshadowing,
   numberingFindings,
+  declaredCharacterCountFindings,
 } from './consistency-preflight'
 import { proseRepetitionFindings } from './prose-repetition'
 // 「AI 味」的可机器判子集（issue #93）：超配额、段尾总结腔、平均句长。
@@ -162,6 +163,10 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
     chapterNumber: chapter.chapterNumber, content: chapter.content,
   }))
   const ability = auditSample.flatMap(chapter => abilityBudgetFindings({
+    chapterNumber: chapter.chapterNumber, content: chapter.content,
+  }))
+  // 自报「N 个字」与引出的实体不符（issue #131）：与编号位数同族，单章自洽，逐章跑。
+  const declaredCount = auditSample.flatMap(chapter => declaredCharacterCountFindings({
     chapterNumber: chapter.chapterNumber, content: chapter.content,
   }))
 
@@ -290,7 +295,7 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   // 需要名册（排除人名被当道具，同 #80）。
   const propContainerDeparture = findPropContainerDepartureFindings(chapters, castNames)
 
-  return [...closingLabel, ...numbering, ...ability, ...repetition, ...undelivered,
+  return [...closingLabel, ...numbering, ...ability, ...declaredCount, ...repetition, ...undelivered,
     ...ultimatum, ...pendingLanding, ...reversal, ...undatedStreak, ...proseFlavor, ...positionalAxes, ...glyphRadical,
     ...castNameDrift, ...deadlineSettlement, ...repeatedRevocation, ...duplicateTitles,
     ...abilityLimitBypass, ...handwritingConflicts, ...quoteStyleDrift, ...staleStateDuration,

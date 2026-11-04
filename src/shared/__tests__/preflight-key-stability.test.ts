@@ -22,6 +22,7 @@ import { findHandwritingConflictFindings } from '../handwriting-signature'
 import { findQuoteStyleDriftFindings } from '../quote-style'
 import { findStaleStateDurationFindings } from '../stale-state-duration'
 import { auditFinalizedProse } from '../finalized-prose-audit'
+import { declaredCharacterCountFindings } from '../consistency-preflight'
 import { proseRepetitionFindings } from '../prose-repetition'
 import { glyphRadicalFindings } from '../glyph-radical'
 import { findCastNameDriftFindings } from '../cast-name-drift'
@@ -58,6 +59,8 @@ const SAMPLE_BOOK: ReadonlyArray<{ chapterNumber: number; content: string }> = A
     '全叔蹲在桩边绕绳圈。',
     '他把票根按在湿处，背面墨翻上来。',
     '半个“温”字。左边半边，立人旁。',
+    // 自报计数与引出实体不符（issue #131）：让这条判据在该样本上确实有话可说。
+    '他在“核清”后头添了六个字——核至本班次为止。',
     '穆敬堂调东码头了。',
     '周叙没答。',
   ].join('\n\n')),
@@ -180,6 +183,7 @@ describe('no preflight key may change when only currentChapter advances (issue #
         chapters: SAMPLE_BOOK,
       })],
       ['findQuoteStyleDriftFindings', () => findQuoteStyleDriftFindings(QUOTE_STYLE_BOOK)],
+      ['declaredCharacterCountFindings', () => SAMPLE_BOOK.flatMap(chapter => declaredCharacterCountFindings(chapter))],
       ['findStaleStateDurationFindings', () => findStaleStateDurationFindings(STALE_DURATION_BOOK)],
       ['findHandwritingConflictFindings', () => findHandwritingConflictFindings({
         chapters: [{ chapterNumber: 1, content: '温珩的笔稳、匀，起笔带锋。' }, { chapterNumber: 2, content: '温珩的笔，横折收得急。' }],

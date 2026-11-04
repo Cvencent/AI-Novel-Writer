@@ -10,6 +10,8 @@ import { DESTINATION_LABELS, findHandoverConvergence } from './prop-handover'
 import { findLossRestatement } from './loss-restatement'
 import { findAbilityReuseContradictions } from './ability-budget'
 import { findDeclaredDigitCountMismatches } from './numbering-consistency'
+// 自报「N 个字」与紧随其后的实体不符（issue #131）：与 #47 同族，另一个量词形态。
+import { findDeclaredCharacterCountMismatches } from './declared-character-count'
 import {
   designSections,
   findTimelineAnchorConflicts,
@@ -1403,6 +1405,35 @@ export function abilityBudgetFindings(chapter: { chapterNumber: number; content:
     suggestion: {
       zhCN: '三选一：把用尽声明挪到这次使用之后；写出恢复条件（换班次、补水、换物件）并说明为什么这次还能读；或删掉这次使用。别让两句留在同一段里自相抵消。',
       enUS: 'Pick one: move the exhaustion statement after this use; write the recovery condition (new shift, refill, another object) and why this read is still possible; or drop this use. Do not leave both claims in the same passage canceling each other.',
+    },
+  }))
+}
+
+/**
+ * 「N 个字」的自报计数与紧随其后实体不符 → 一致性发现（issue #131）。
+ *
+ * 与 #47（编号位数）同族但不同量词：那条只认「编号/票号…+N 位+数字」，
+ * 中文里「六个字——核至本班次为止」这种自报计数它一条都覆盖不到。
+ *
+ * ⚠️ key **不带章号**：这条提醒是按「哪一处计数对不上」认人的，带上章号会让
+ * 「已标记稍后处理」永远关不掉（#86/#89/#98/#108 同一个坑）。
+ */
+export function declaredCharacterCountFindings(chapter: {
+  chapterNumber: number
+  content: string
+}): ConsistencyFinding[] {
+  return findDeclaredCharacterCountMismatches(chapter.content).map(mismatch => ({
+    stableFactKey: `declared-count:chars:${mismatch.evidence.slice(0, 24)}`,
+    severity: 'warning' as const,
+    sourceChapter: chapter.chapterNumber,
+    evidence: `第${chapter.chapterNumber}章：「${mismatch.evidence}」——声明 ${mismatch.declared} 个字，实际写出 ${mismatch.actual} 个`,
+    issue: {
+      zhCN: `这里声明「${mismatch.declared} 个字」，紧随其后写出的却是 ${mismatch.actual} 个字。这类句子是读者用来对账的（认字、数座号、核名单），数字对不上会让读者怀疑自己数错，回头重读。`,
+      enUS: `This line claims ${mismatch.declared} characters but then writes ${mismatch.actual}. Readers use these counts to check the deduction along with the character; a wrong count makes them think they miscounted and reread.`,
+    },
+    suggestion: {
+      zhCN: `二者改成一致：要么把声明改成 ${mismatch.actual} 个字，要么调整引出的字串到 ${mismatch.declared} 个字。`,
+      enUS: `Make them agree: state ${mismatch.actual} characters, or adjust the quoted text to ${mismatch.declared}.`,
     },
   }))
 }

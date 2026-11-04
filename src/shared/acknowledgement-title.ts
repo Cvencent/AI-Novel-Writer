@@ -94,6 +94,7 @@ const FAMILY_LABELS: Readonly<Record<string, AcknowledgementTitle>> = Object.fre
   'quote-style': { zhCN: '引号风格与全书不一致', enUS: 'quote style drift' },
   'glyph': { zhCN: '字形偏旁写错', enUS: 'wrong radical claimed' },
   'numbering': { zhCN: '编号位数自相矛盾', enUS: 'numbering digits mismatch' },
+  'declared-count': { zhCN: '自报的字数与写出的字不符', enUS: 'declared character count mismatch' },
   // —— 伏笔 / 线索 / 其他 ——
   'foreshadowing': { zhCN: '承诺的伏笔没落地', enUS: 'foreshadowing undelivered' },
   'thread': { zhCN: '叙事线索停摆/逾期', enUS: 'narrative thread' },
