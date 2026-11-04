@@ -58,8 +58,13 @@ const CONVERSION = new RegExp(
  * - **名词前置**：「票三十二张」「人三十二个」——实测那一章用的正是这一种
  *   （「票三十二张。人按说也是三十二个。」），只认前置会整章抽不到载客量。
  */
-const HEADCOUNT_POSTFIX = new RegExp(`(${QUANTITY})\s*(?:张票|个人|名乘客)`, 'gu')
-const HEADCOUNT_PREFIX = new RegExp(`(?:票|人)\s*(${QUANTITY})\s*(?:张|个|名)`, 'gu')
+// ⚠️ 模板串里的 `\s` **必须写双反斜杠**（issue #141）：单反斜杠在模板字符串里
+// 不是转义序列，`\s` 会退化成字母 `s`，正则就变成「允许 0 个或多个字母 s」。
+// 中文文本里数字与量词之间本来就没有字母 s，所以这种错误**不会报错、在无空格文本上
+// 结果还对**——只在「三十二 个人」这类带空格的写法上静默漏匹配。
+// 结构性测试 `no-invalid-regex-escape.test.ts` 守这一类。
+const HEADCOUNT_POSTFIX = new RegExp(`(${QUANTITY})\\s*(?:张票|个人|名乘客)`, 'gu')
+const HEADCOUNT_PREFIX = new RegExp(`(?:票|人)\\s*(${QUANTITY})\\s*(?:张|个|名)`, 'gu')
 
 const NUMERALS: Record<string, number> = {
   一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10, 半: 0.5,
@@ -121,7 +126,7 @@ function gaugeEvidence(chapters: readonly GaugeChapter[]): { readings: Reading[]
       // 而「吃水线的刻痕……沉了半指」在前一句（实测 ch1 正是这个形态）。
       const contextual = GAUGE_CONTEXT.test(sentence)
         || (index > 0 && GAUGE_CONTEXT.test(sentences[index - 1]!)
-          && new RegExp(`^${QUANTITY}\s*${LENGTH_UNIT}`, 'u').test(sentence))
+          && new RegExp(`^${QUANTITY}\\s*${LENGTH_UNIT}`, 'u').test(sentence))
       if (!contextual) continue
       const found: Reading[] = []
       for (const match of sentence.matchAll(READING)) {

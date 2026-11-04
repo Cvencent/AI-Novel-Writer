@@ -91,6 +91,19 @@ describe('findGaugeScaleMismatches (issue #136)', () => {
     expect(hits.some(hit => hit.stableFactKey === 'gauge:scale-ratio:寸')).toBe(true)
   })
 
+  /**
+   * issue #141：判据里的 `\s*`（数字与量词之间的空白容忍）必须真的生效。
+   * 旧写法在模板串里用了单反斜杠 → 退化成字母 `s` → 在带空格的文本上静默漏匹配。
+   * 这条用例专门喂带空格/全角空格的正文，否则这类缺陷永远测不出来。
+   */
+  it('tolerates whitespace between numbers and measure words (issue #141)', () => {
+    const hits = findGaugeScaleMismatches([
+      ch(1, '吃水刻痕比空载时沉了 半指 。半指 ， 八 个人。'),
+      ch(9, '吃水刻痕比空载时沉出 一指 。票 三十二 张。'),
+    ])
+    expect(hits.some(hit => hit.stableFactKey === 'gauge:scale-ratio:指')).toBe(true)
+  })
+
   it('keys name the settled chapters, so they do not drift as the book advances', () => {
     const base = findGaugeScaleMismatches([ch(1, CH1), ch(59, CH59)])
     const later = findGaugeScaleMismatches([ch(1, CH1), ch(59, CH59), ch(62, '他把缆绳绕好。')])
