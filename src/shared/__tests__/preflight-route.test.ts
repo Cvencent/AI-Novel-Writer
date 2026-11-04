@@ -78,12 +78,20 @@ describe('preflightRouteOf (issue #137)', () => {
     for (const root of roots) {
       for (const file of walk(root)) {
         const source = readFileSync(file, 'utf8')
-        // 只认**带引号的真实字面量**（`…` / '…' / "…"）：注释里也会出现 `stableFactKey:` 三个字
-        // 紧跟中文（本仓栽过这类假命中，与 #120 的同一手法）。
-        for (const match of source.matchAll(/stableFactKey:\s*([`'"])([^`'"]*)/gu)) {
+        // 只认**代码里的真实赋值**：`stableFactKey: ` + 引号字面量。
+        //
+        // ⚠️ 两条踩过的坑，都在这一个正则里：
+        // 1. 注释与文档串里也会出现 `stableFactKey:` 紧跟文字（#120 栽过同类假命中）。
+        //    只认**紧跟引号**的形态，注释里的中文/说明文字不会命中。
+        // 2. 这个正则曾经混进一个不可见的控制字符（``），于是整条守卫**静默失效**——
+        //    它永远匹配不到任何东西、永远通过，2026-11-04 新增的 `character-age:*` 键
+        //    就这样漏登记进了 `unknown-layer`。守卫生效的证据是「它曾经红过」，不是「它一直绿」。
+        for (const match of source.matchAll(/stableFactKey:\s*([`'"])([^`'"]*)/gu)) {
           const raw = match[2]!
           const beforeDynamic = raw.split('${')[0]!.replace(/:\s*$/u, '')
           if (!beforeDynamic) continue
+          // 只认**键形**（含冒号或全小写连字符族名）：文档里的整句话不会命中。
+          if (!/^[a-z][a-z0-9-]*(?::|$)/u.test(beforeDynamic)) continue
           const probe = beforeDynamic.endsWith(':') ? `${beforeDynamic}x` : beforeDynamic
           if (preflightRouteOf(probe).blockedBy === 'unknown-layer') {
             unrouteable.push(`${file.slice(join(__dirname, '..', '..', '..').length + 1)} :: ${raw}`)
@@ -111,3 +119,52 @@ function walk(dir: string): string[] {
   }
   return found
 }
+/**
+ * issue #137 在途实现的漏项：`repairable` 只看「层」，没看「问题章有没有定稿」。
+ *
+ * 实测那本书 39 条提醒里 30 条被标成 `repairable: true`，而它们的 `sourceChapter`
+ * 全部早于当前章——照那个标记做「一键修复」，改的是**已定稿的旧章**，而旧章改不动。
+ */
+describe('preflightRouteOf 的第二维：源章 vs 当前章 (issue #137)', () => {
+  it('marks a finding whose chapter is already finalized as not repairable now', () => {
+    // 本章蓝图声明了日界而正文没写——但那一章早就定稿了。
+    const route = preflightRouteOf('chapter-time:anchor-unmet:45', { currentChapter: 70, sourceChapter: 45 })
+    expect(route.layer).toBe('blueprint')
+    expect(route.repairable).toBe(false)
+    expect(route.blockedBy).toBe('needs-finalized-prose')
+  })
+
+  it('keeps plan-layer findings repairable when they belong to the upcoming chapter', () => {
+    const route = preflightRouteOf('chapter-time:undated:1', { currentChapter: 70, sourceChapter: 70 })
+    expect(route.repairable).toBe(true)
+  })
+
+  it('keeps the old one-dimensional behaviour when no chapter numbers are given', () => {
+    // 只问「去哪一层」的调用方（如批量对话框）不需要第二维。
+    expect(preflightRouteOf('chapter-time:anchor-unmet:45')).toMatchObject({ repairable: true })
+  })
+
+  it('divides a layer group into fixable and blocked keys instead of merging them', () => {
+    const groups = groupPreflightRoutes([
+      { stableFactKey: 'chapter-time:undated:1', sourceChapter: 70 },
+      { stableFactKey: 'chapter-time:anchor-unmet:45', sourceChapter: 45 },
+      { stableFactKey: 'prop:revival:票根', sourceChapter: 60 },
+    ], { currentChapter: 70 })
+    const blueprint = groups.find(group => group.layer === 'blueprint')!
+    expect(blueprint.ks).toEqual(['chapter-time:undated:1'])
+    expect(blueprint.blocked).toEqual(['chapter-time:anchor-unmet:45'])
+    expect(blueprint.repairable).toBe(true)
+    // prose 层整组都不可修，且带原因。
+    const prose = groups.find(group => group.layer === 'prose')!
+    expect(prose.ks).toEqual([])
+    expect(prose.blocked).toEqual(['prop:revival:票根'])
+    expect(prose.repairable).toBe(false)
+    expect(prose.blockedBy).toBe('needs-finalized-prose')
+  })
+
+  it('reports a wholly-blocked group as not repairable with the reason', () => {
+    const [group] = groupPreflightRoutes([{ stableFactKey: 'chapter-ending:label-mismatch:63', sourceChapter: 63 }], { currentChapter: 70 })
+    expect(group!.repairable).toBe(false)
+    expect(group!.blockedBy).toBe('needs-finalized-prose')
+  })
+})

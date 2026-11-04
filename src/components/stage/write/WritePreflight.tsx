@@ -38,6 +38,13 @@ interface WritePreflightProps {
    * 「去哪一层」回答不了「哪一章」，给按钮反而误导。不传时该出口整段不渲染。
    */
   onOpenLayer?: (route: PreflightRoute) => void
+  /**
+   * 即将写的那一章（issue #137 第二维）：给了它，「可修」才按「问题章 ≥ 它」判。
+   *
+   * 不给时只看层——批量写作对话框（一次写多章）没有单一的「当前章」，
+   * 那里给章号会把属于别章的提醒误标。
+   */
+  currentChapter?: number
 }
 
 /**
@@ -51,7 +58,7 @@ interface WritePreflightProps {
  *  3. 「带提醒继续写」——本次不处理，也不落任何状态（仍然是一次性的）。
  */
 export default function WritePreflight({
-  preflight, busy, onIgnoreOnce, onRerun, onSave, onRevoke, onAcknowledge, onUnacknowledge, onOpenLayer,
+  preflight, busy, onIgnoreOnce, onRerun, onSave, onRevoke, onAcknowledge, onUnacknowledge, onOpenLayer, currentChapter,
 }: WritePreflightProps) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
@@ -73,7 +80,12 @@ export default function WritePreflight({
       )}
       {findings.map(finding => {
         const reason = reasons[finding.stableFactKey] ?? ''
-        const route = preflightRouteOf(finding.stableFactKey)
+        // ⚠️ 两个维度都要传（issue #137）：只看层会把**旧章**的提醒标成可修，
+        // 而旧章只能「新版本 + 重新定稿」，写前这一刻改不动。
+        const route = preflightRouteOf(finding.stableFactKey, {
+          ...(currentChapter === undefined ? {} : { currentChapter }),
+          sourceChapter: finding.sourceChapter,
+        })
         return (
           <div key={finding.stableFactKey} className="stage-preflight-item">
             <p>{locale === 'en-US' ? finding.issue.enUS : finding.issue.zhCN}</p>
@@ -105,7 +117,7 @@ export default function WritePreflight({
               ) : (
                 <span className="stage-preflight-not-here">
                   {route.blockedBy === 'needs-finalized-prose'
-                    ? text('这条要改正文，本章写完后可回来处理', 'This needs the prose; handle it after this chapter is drafted')
+                    ? text('这条落在已定稿的章上，要改正文就得新版本重定稿（本轮先放着）', 'This sits in a finalized chapter; fixing it means a new version and re-finalizing (later)')
                     : text('这条暂时没有可改的层', 'No editable layer for this one yet')}
                 </span>
               )}

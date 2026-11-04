@@ -53,6 +53,8 @@ export interface PreflightRoute {
 const PREFIX_LAYERS: Readonly<Record<string, PreflightLayer>> = Object.freeze({
   // —— 世界观 / 设定层 ——
   'ability-limit': 'world',
+  // `ability-limit-bypass.ts` 实际发的是 `ability:limit-bypassed`（≈#100）：限制从世界观取，改要回世界观。
+  'ability': 'world',
   'timeline': 'world',
   'world': 'world',
   'design': 'world',
@@ -62,6 +64,8 @@ const PREFIX_LAYERS: Readonly<Record<string, PreflightLayer>> = Object.freeze({
   'handwriting': 'cast',
   'cast-name-drift': 'cast',
   'blueprint-cast': 'cast',
+  // 正文里写了年龄却归不到人（≈#149）：修法是在角色名单里点名建卡，或改写那句不依赖年龄的表述。
+  'character-age': 'cast',
   // —— 细纲 / 粗纲层 ——
   'arc': 'outline',
   'plot-outline': 'outline',
@@ -128,14 +132,35 @@ function layerOf(stableFactKey: string): PreflightLayer | null {
  * 读已定稿正文的判据（`prose`）在写前那一刻改不了——但第 137 号 issue 要求的
  * 「旧章修复 + 自动重新定稿」是第二步，本轮先把 `repairable: false` 与原因如实标出来，
  * 界面据此显示「需要正文，先写完这一章再来」而不是给一个空按钮。
+ *
+ * ⚠️ `sourceChapter` 是**第二个独立维度**（本模块第一版漏掉的那一问）：
+ * 有些判据虽被分派到计划层，但它们读的是**已定稿正文**（`chapter-ending` / `anchor-unmet`
+ * 的 on-prose 侧、`deadline` / `chapter-title:duplicate` / `handwriting` 等），
+ * 只有「问题章 ≥ 即将写的那一章」才在写前改得动。实测那本书 39 条里，有 30 条被旧实现
+ * 标成 `repairable: true`，而它们的 `sourceChapter` 全部早于当前章——照那个标记做
+ * 「一键修复」，改的是**已定稿的旧章**，而旧章本轮改不了。
+ *
+ * 所以本函数接受可选的两章号；给了就按「源章 ≥ 当前章」再合取一次，
+ * 早于当前章的统一标成 `needs-finalized-prose`（旧章只能新版本 + 重新定稿，属第二步）。
+ * 不给时保持原行为（只看层），供只关心「去哪一层」的调用方使用。
  */
-export function preflightRouteOf(stableFactKey: string): PreflightRoute {
+export function preflightRouteOf(
+  stableFactKey: string,
+  options: { currentChapter?: number; sourceChapter?: number } = {},
+): PreflightRoute {
   const layer = layerOf(stableFactKey)
   if (layer === null) {
     return { layer: 'blueprint', destination: LAYER_DESTINATIONS.blueprint, repairable: false, blockedBy: 'unknown-layer' }
   }
   const destination = LAYER_DESTINATIONS[layer]
   if (layer === 'prose') {
+    return { layer, destination, repairable: false, blockedBy: 'needs-finalized-prose' }
+  }
+  // 旧章（已定稿）的提醒：写前改不动，与 `prose` 层同一处置。
+  const { currentChapter, sourceChapter } = options
+  if (typeof currentChapter === 'number' && typeof sourceChapter === 'number'
+    && Number.isSafeInteger(currentChapter) && Number.isSafeInteger(sourceChapter)
+    && sourceChapter < currentChapter) {
     return { layer, destination, repairable: false, blockedBy: 'needs-finalized-prose' }
   }
   return { layer, destination, repairable: true }
@@ -145,22 +170,50 @@ export function preflightRouteOf(stableFactKey: string): PreflightRoute {
  * 一组提醒的**分层归并**（供「全部修复」按层分组，避免 N 次模型调用）。
  *
  * 返回顺序固定（world → cast → outline → blueprint → prose），便于界面与测试比对。
+ *
+ * 每组只收**写前真能改**的键（与 `preflightRouteOf` 同一口径，含「源章 ≥ 当前章」这一问）：
+ * 一组里混着旧章的键时，「全部修复」会去改已定稿的章——所以按**可修性**再分一档，
+ * 不可修的进 `blocked` 并带着原因，界面据此显示「这一组里有 N 条要改旧章，先放着」。
  */
+export interface PreflightRouteGroup {
+  layer: PreflightLayer
+  /** 写前真能改的键。 */
+  ks: string[]
+  /** 同一层里写前改不了（要正文 / 是旧章 / 群像只读 / 未知层）的键。 */
+  blocked: string[]
+  /** 整组（含 blocked 那部分）是否有可修的键。 */
+  repairable: boolean
+  blockedBy?: PreflightRoute['blockedBy']
+}
+
 export function groupPreflightRoutes(
-  findings: readonly { stableFactKey: string }[],
-): Array<{ layer: PreflightLayer; ks: string[]; repairable: boolean; blockedBy?: PreflightRoute['blockedBy'] }> {
+  findings: ReadonlyArray<{ stableFactKey: string; sourceChapter?: number }>,
+  options: { currentChapter?: number } = {},
+): PreflightRouteGroup[] {
   const order: readonly PreflightLayer[] = ['world', 'cast', 'outline', 'blueprint', 'prose']
-  const buckets = new Map<PreflightLayer, string[]>()
+  const buckets = new Map<PreflightLayer, { ks: string[]; blocked: string[]; blockedBy?: PreflightRoute['blockedBy'] }>()
   for (const finding of findings) {
-    const route = preflightRouteOf(finding.stableFactKey)
-    const list = buckets.get(route.layer) ?? []
-    list.push(finding.stableFactKey)
-    buckets.set(route.layer, list)
+    const route = preflightRouteOf(finding.stableFactKey, {
+      ...(options.currentChapter === undefined ? {} : { currentChapter: options.currentChapter }),
+      ...(finding.sourceChapter === undefined ? {} : { sourceChapter: finding.sourceChapter }),
+    })
+    const bucket = buckets.get(route.layer) ?? { ks: [], blocked: [] }
+    if (route.repairable) bucket.ks.push(finding.stableFactKey)
+    else {
+      bucket.blocked.push(finding.stableFactKey)
+      bucket.blockedBy ??= route.blockedBy
+    }
+    buckets.set(route.layer, bucket)
   }
   return order.flatMap(layer => {
-    const ks = buckets.get(layer)
-    if (!ks || ks.length === 0) return []
-    const route = preflightRouteOf(ks[0]!)
-    return [{ layer, ks, repairable: route.repairable, ...(route.blockedBy ? { blockedBy: route.blockedBy } : {}) }]
+    const bucket = buckets.get(layer)
+    if (!bucket) return []
+    return [{
+      layer,
+      ks: bucket.ks,
+      blocked: bucket.blocked,
+      repairable: bucket.ks.length > 0,
+      ...(bucket.blockedBy ? { blockedBy: bucket.blockedBy } : {}),
+    }]
   })
 }
