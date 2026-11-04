@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 
 import { useLocaleStore } from '../../../../stores/locale-store'
 import MergeView from '../MergeView'
+import type { MergeData } from '../../../editor/use-draft-actions'
 import { ORIGINAL, REVISED } from './chapter-fixture'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -13,9 +14,9 @@ let root: Root | undefined
 let host: HTMLDivElement | undefined
 let completed: string[]
 
-const data = { originalContent: ORIGINAL, modifiedContent: REVISED, revisionPath: 'ai-novel://revision/9', targetSnapshot: { content: ORIGINAL, contentRevision: 0 }, staleReason: null }
+const data: MergeData = { originalContent: ORIGINAL, modifiedContent: REVISED, revisionPath: 'ai-novel://revision/9', targetSnapshot: { content: ORIGINAL, contentRevision: 0 }, staleReason: null }
 
-async function mount(onLater = vi.fn(), override: Partial<typeof data> = {}) {
+async function mount(onLater = vi.fn(), override: Partial<MergeData> = {}) {
   host = document.createElement('div')
   host.className = 'paper-ink stage-shell'
   document.body.append(host)
