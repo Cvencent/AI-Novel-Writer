@@ -15,6 +15,7 @@ import {
 import { ipc } from '../../ipc-client'
 import { selectFrozenReviewRevisionMaterials } from './review-revision-materials'
 import { requireWorkflowProjectSession, workflowUiText } from '../workflow-project-session'
+import { reviewResumeRoute, canAttemptReviewPurpose } from '../../../shared/review-resume'
 
 export interface ReviewChapterParams extends ReviewRevisionCommandSource {
   reviewFocus?: string
@@ -118,7 +119,14 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
     const attempts = this.recovery?.attemptedPurposes ?? []
     let raw: string | undefined
     let parseFailure: unknown
-    let needsRebuild = attempts.includes('review-chapter-rebuild')
+    // ⚠️ 走哪条路由 `shared/review-resume.ts` 的纯函数决定（issue #152）：
+    // 崩溃恢复的正确性全压在这一句上，抽出来才有断言面。
+    // 行为与原内联写法逐条一致：先看能否复用上次产物，再看要不要直接重建。
+    let needsRebuild = reviewResumeRoute({
+      attemptedPurposes: attempts,
+      latestArtifactFinishReason: this.recovery?.latestArtifactFinishReason,
+      hasLatestArtifact: Boolean(this.recovery?.latestArtifact),
+    }).kind === 'rebuild'
     /** 第一次审稿是不是撞在模型输出上限上（issue #121）。 */
     let lengthExhausted = false
     if (this.recovery?.latestArtifact && this.recovery.latestArtifactFinishReason === 'stop') {
@@ -127,7 +135,7 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
     }
     const generate = async (purpose: 'review-chapter' | 'review-chapter-rebuild', prompt: string) => {
       const used = attempts.filter(item => item === purpose).length
-      if (used >= 2) throw new Error('GENERATION_REVIEW_REPLACEMENT_LIMIT')
+      if (!canAttemptReviewPurpose(attempts, purpose)) throw new Error('GENERATION_REVIEW_REPLACEMENT_LIMIT')
       return this.callLLMWithBoundedCompletion(prompt, builder.getSystemRole(), params.callbacks,
         { mode: 'replace-structured-output', maxContinuations: 1 - used },
         { responseFormat: { type: 'json_object' }, purpose, reasoningStage: 'review', writingSkillStage: 'review' }, params.context)
