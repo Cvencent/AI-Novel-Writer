@@ -66,6 +66,8 @@ const PREFIX_LAYERS: Readonly<Record<string, PreflightLayer>> = Object.freeze({
   'blueprint-cast': 'cast',
   // 正文里写了年龄却归不到人（≈#149）：修法是在角色名单里点名建卡，或改写那句不依赖年龄的表述。
   'character-age': 'cast',
+  // 身体标志换侧（#153）：卡上的「右小指」与正文的「左手」对账，改卡或改正文都在角色层/正文层。
+  'character:body-mark-side': 'prose',
   // —— 细纲 / 粗纲层 ——
   'arc': 'outline',
   'plot-outline': 'outline',

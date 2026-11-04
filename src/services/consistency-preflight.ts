@@ -227,6 +227,13 @@ export async function readConsistencyPreflight(
       // 重复宣告的不可逆代价（#105）取 costsAndTurns：账本把同一处境记了两遍不可逆。
       costsAndTurns: blueprint.costsAndTurns,
     })),
+    // 身体标志换侧（#153）：卡上的「右小指缺半节」与正文的「左手…小指」对账。
+    appearanceCards: (Array.isArray(roster?.entries) ? roster.entries : []).flatMap(entry => {
+      const name = typeof entry.name === 'string' ? entry.name.trim() : ''
+      const appearance = typeof entry.appearance === 'string' ? entry.appearance : ''
+      const notes = typeof entry.notes === 'string' ? entry.notes : ''
+      return name && appearance.trim() ? [{ name, appearance, notes }] : []
+    }),
   })
   const propRevivalFindings = recentProse.length === 0 ? [] : findPropRevivalFindings({
     chapters: recentProse

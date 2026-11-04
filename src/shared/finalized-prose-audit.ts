@@ -58,6 +58,8 @@ import { proseRepetitionFindings } from './prose-repetition'
 import { proseFlavorDriftFindings, proseFlavorFindings } from './prose-flavor'
 // 感官通道覆盖（#151）：「五感」只写进提示词、全链路零核对 → 逐章退化成视觉+触觉。
 import { findSensoryChannelFindings } from './sensory-channel'
+// 身体标志换侧（#153）：角色卡说「右小指缺半节」，正文写成左手。
+import { findBodyMarkSideConflicts } from './body-mark-consistency'
 // 段落起手（#94）与物件过手（#95）：同一类「跨章看同一种写法」的位置轴补位。
 import { findParagraphOpenerFindings, findPropHandoverFindings } from './consistency-preflight'
 import { findTimeAnchorSelfContradictions, findUndatedStreakFindings, findUnmetTimeAnchorFindings } from './chapter-time-anchor'
@@ -105,6 +107,14 @@ export interface FinalizedProseAuditInput {
   chapters: readonly FinalizedProseChapter[]
   /** 在册角色名（#32/#33/#49 的「按角色归一」需要它）。 */
   castNames: readonly string[]
+  /**
+   * 角色卡的身体标志（issue #153）：`appearance` + `notes`。
+   *
+   * 不给就跳过这一类判据——没有声明过的标志无所谓被写反。
+   * ⚠️ 与 `castNames` 分开传：名册可能只带名字（例如只为「人不是道具」这条判据服务），
+   * 而这一条必须要**外貌文本**。
+   */
+  appearanceCards?: ReadonlyArray<{ name: string; appearance: string; notes?: string }>
   /**
    * 世界观文本（issue #100）：能力触发条件的**限制句从它取**（源头那一层）。
    * 不给就跳过这一类判据——没有声明过的规则无所谓被绕过。
@@ -239,6 +249,9 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
     // 感官通道（#151）：用全量已定稿章——趋势判据的窗口在判据内部收（最近 20 章），
     // 样本切小会让「这一段有没有气味」失去意义。
     ...findSensoryChannelFindings(chapters),
+    // 身体标志换侧（#153）：用全量已定稿章——这类错常被「不再交代左右」的后续章埋掉，
+    // 窗口切小就看不见源头那一条了。
+    ...findBodyMarkSideConflicts(chapters, input.appearanceCards ?? []),
   ]
 
   // 段落起手固定化（issue #94）与物件过手动作固定化（issue #95）：
