@@ -26,6 +26,7 @@ import { declaredCharacterCountFindings } from '../consistency-preflight'
 import { findUnmetTimeAnchorFindings } from '../chapter-time-anchor'
 import { findInventoryShortfallFindings } from '../inventory-count'
 import { findGaugeScaleMismatches } from '../gauge-scale'
+import { findRepeatedSentenceFindings } from '../repeated-sentence'
 import { proseRepetitionFindings } from '../prose-repetition'
 import { glyphRadicalFindings } from '../glyph-radical'
 import { findCastNameDriftFindings } from '../cast-name-drift'
@@ -198,6 +199,10 @@ describe('no preflight key may change when only currentChapter advances (issue #
       ['findGaugeScaleMismatches', () => findGaugeScaleMismatches([
         { chapterNumber: 1, content: '吃水线的刻痕往水里沉了半指。半指，多一个人。三十二张票。' },
         { chapterNumber: 59, content: '船尾吃水刻痕比空载时沉出一指。票三十二张。' },
+      ])],
+      ['findRepeatedSentenceFindings', () => findRepeatedSentenceFindings([
+        { chapterNumber: 59, content: '周叙看了两息，指腹按进印泥，压在栏上。' },
+        { chapterNumber: 60, content: '船开了。周叙看了两息，指腹按进印泥，压在栏上。' },
       ])],
       ['findStaleStateDurationFindings', () => findStaleStateDurationFindings(STALE_DURATION_BOOK)],
       ['findHandwritingConflictFindings', () => findHandwritingConflictFindings({

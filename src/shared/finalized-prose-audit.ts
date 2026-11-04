@@ -83,6 +83,8 @@ import { findHandwritingConflictFindings } from './handwriting-signature'
 import { findEnumerationCountMismatches, findInventoryShortfallFindings } from './inventory-count'
 // 量具读数与换算（#136）：同一套刻度被写成两套比值。
 import { findGaugeScaleMismatches } from './gauge-scale'
+// 整句逐字跨章复用（#140）：与三族词表正交的字面比对。
+import { findRepeatedSentenceFindings } from './repeated-sentence'
 import { closingShotOf } from './blueprint-semantic-contract'
 import { foreshadowingDueAt, parseForeshadowingCommitments } from './foreshadowing-commitments'
 
@@ -313,12 +315,15 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   const inventoryShortfall = findInventoryShortfallFindings(chapters)
   // 量具换算（#136）：用全量已定稿章——换算句在远处、读数在近处，窗口切小会漏配。
   const gaugeScale = findGaugeScaleMismatches(chapters)
+  // 整句复用（#140）：用全量已定稿章（相邻窗口在判据内部收，样本切小会漏掉首现章）。
+  const repeatedSentences = findRepeatedSentenceFindings(chapters)
 
   return [...closingLabel, ...numbering, ...ability, ...declaredCount, ...repetition, ...undelivered,
     ...ultimatum, ...pendingLanding, ...reversal, ...undatedStreak, ...unmetTimeAnchor, ...proseFlavor, ...positionalAxes, ...glyphRadical,
     ...castNameDrift, ...deadlineSettlement, ...repeatedRevocation, ...duplicateTitles,
     ...abilityLimitBypass, ...handwritingConflicts, ...quoteStyleDrift, ...staleStateDuration,
-    ...propContainerDeparture, ...inventorySameChapter, ...inventoryShortfall, ...gaugeScale]
+    ...propContainerDeparture, ...inventorySameChapter, ...inventoryShortfall, ...gaugeScale,
+    ...repeatedSentences]
 }
 
 /**

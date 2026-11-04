@@ -42,6 +42,20 @@ describe('auditFinalizedProse (issue #83)', () => {
    * issue #133：清单件数对不上——必须从**共用出口**报出来，否则写前预检与审稿两条路径都拿不到。
    */
   /** issue #136：量具换算矛盾必须从共用出口报出来。 */
+  /** issue #140：整句逐字复用必须从共用出口报出来。 */
+  it('surfaces a whole sentence copied across chapters from the shared exit (issue #140)', () => {
+    const findings = auditFinalizedProse({
+      chapters: [
+        { chapterNumber: 59, content: '周叙下舱核舱。周叙看了两息，指腹按进印泥，压在栏上。他往前走。' },
+        { chapterNumber: 60, content: '船开了。周叙看了两息，指腹按进印泥，压在栏上。温珩在舵位上。' },
+      ],
+      castNames: [], blueprints: [],
+    })
+    const reuse = findings.filter(finding => finding.stableFactKey.startsWith('prose:sentence-reuse:'))
+    expect(reuse).toHaveLength(1)
+    expect(reuse[0]!.evidence).toContain('16 字逐字相同')
+  })
+
   it('surfaces a gauge scale mismatch from the shared exit (issue #136)', () => {
     const findings = auditFinalizedProse({
       chapters: [

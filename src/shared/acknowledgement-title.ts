@@ -101,6 +101,7 @@ const FAMILY_LABELS: Readonly<Record<string, AcknowledgementTitle>> = Object.fre
   'gauge': { zhCN: '量具读数与换算对不上', enUS: 'gauge reading vs conversion' },
   'gauge:scale': { zhCN: '量具换算与本该章载客量差一个数量级', enUS: 'gauge conversion vs this chapter headcount' },
   'gauge:scale-ratio': { zhCN: '同一量具被写成两套换算比值', enUS: 'same gauge defined at two ratios' },
+  'prose:sentence-reuse': { zhCN: '整句在相邻章逐字重复', enUS: 'whole sentence copied across chapters' },
   // —— 伏笔 / 线索 / 其他 ——
   'foreshadowing': { zhCN: '承诺的伏笔没落地', enUS: 'foreshadowing undelivered' },
   'thread': { zhCN: '叙事线索停摆/逾期', enUS: 'narrative thread' },
