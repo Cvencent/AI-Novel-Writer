@@ -75,11 +75,112 @@ const DAY_BOUNDARY_PATTERN = new RegExp(
 /**
  * 这一章有没有**明确写出**跨日或时间间隔。
  *
- * 这是全模块唯一的判据入口：`findUndatedStreak` 只问它「本章交代了没有」，
- * 不自己去数词——这样形态的覆盖范围只在一处维护，也就只在一处出错。
+ * 这是「**有没有提到时间在走**」这个较弱问题的唯一入口：`findUndatedStreak` 只问它
+ * 「本章交代了没有」，不自己去数词——这样形态的覆盖范围只在一处维护，也就只在一处出错。
+ *
+ * ⚠️ 它**不回答**「本章开头有没有交代日界」那个更强的问题（issue #146）：本函数只看
+ * 全文有没有命中，**不看在哪个位置**、也不管那一句是不是在说将来的期限
+ * （「公司回话三日后到」在它眼里同样是 true）。强问题的入口是
+ * `chapterBoundaryHits` / `openingDayBoundary`。
  */
 export function statesDayBoundaryText(content: string): boolean {
   return DAY_BOUNDARY_PATTERN.test(String(content ?? ''))
+}
+
+/** 句子边界字符（句末标点与换行）。 */
+const SENTENCE_TERMINATORS = '。！？；…\n'
+/** 句子开头允许出现的**非实词**标记：各种开引号/括号/破折号/空白。 */
+const SENTENCE_LEAD_MARKERS = /^[「『“‘（(【—–\-·\s]*$/u
+
+function sentenceStartOf(text: string, at: number): number {
+  for (let index = at - 1; index >= 0; index -= 1) {
+    if (SENTENCE_TERMINATORS.includes(text[index]!)) return index + 1
+  }
+  return 0
+}
+
+/** 这一处记号是否**位于句首**（前面只有空白与开引号/括号/破折号）。 */
+function isSentenceInitial(text: string, at: number): boolean {
+  return SENTENCE_LEAD_MARKERS.test(text.slice(sentenceStartOf(text, at), at))
+}
+
+/** 取记号所在的那一句（截断到 40 字，供证据引用）。 */
+function sentenceAround(text: string, at: number): string {
+  const start = sentenceStartOf(text, at)
+  let end = text.length
+  for (let index = at; index < text.length; index += 1) {
+    if (SENTENCE_TERMINATORS.includes(text[index]!)) { end = index; break }
+  }
+  return text.slice(start, end).trim().slice(0, 40)
+}
+
+/**
+ * 「数量 + 时间单位 + 后/之后/以后」这一族——它**既能**交代本章从上一章过了多久，
+ * **也能**修饰一个将来的事件（「公司回话三日后到」）。区分它们不靠词表，靠**句法位置**：
+ * 交代日界的写法是把时间状语放在句首（「两日后，送检结案日」「三天后，船靠了埠」）；
+ * 而作将来期限用时它前面一定还有一个主语/宾语（「公司回话三日后到」「他三天后走」）。
+ *
+ * 所以：这一族只有**落在句首**才算本章日界（issue #146 的「朝前看」排除）。
+ * 其余族（次日/翌日/第三天/过了几天）本身就是对「已经过了多久」的陈述，不看位置。
+ */
+const DURATIVE_FUTURE_FORM = new RegExp(
+  `^(?:${CHINESE_NUMERAL}|[0-9]+)\\s*${TIME_UNIT}\\s*(?:后|之后|以后)$`,
+  'u',
+)
+
+export interface ChapterBoundaryHit {
+  /** 在文本中的偏移量（用于取最早出现的那一处）。 */
+  at: number
+  /** 隔了几天；读不出确定天数时为 null（如「过了几天」）。 */
+  days: number | null
+  /** 记号所在的那一句（证据引用）。 */
+  quote: string
+}
+
+/**
+ * 一段文字里**算作本章日界**的记号，按出现位置排序（issue #146）。
+ *
+ * 与 `statesDayBoundaryText` 的区别只有一条：本函数会剔除「数量 + 单位 + 后」
+ * 这类**不在句首**的写法（那是朝前看的期限，不是本章的日界）。
+ */
+export function chapterBoundaryHits(text: string): ChapterBoundaryHit[] {
+  const value = String(text ?? '')
+  const global = new RegExp(DAY_BOUNDARY_PATTERN.source, 'gu')
+  const hits: ChapterBoundaryHit[] = []
+  for (const match of value.matchAll(global)) {
+    const raw = match[0]
+    const at = match.index ?? 0
+    if (DURATIVE_FUTURE_FORM.test(raw) && !isSentenceInitial(value, at)) continue
+    hits.push({ at, days: dayGapOf(raw), quote: sentenceAround(value, at) })
+  }
+  return hits.sort((left, right) => left.at - right.at)
+}
+
+/**
+ * 一章**开头**（场景初起）交代的日界：取最早的那一处（issue #146）。
+ *
+ * ⚠️ 窗口大小与「朝前看」的排除必须**分成两件事**（这正是 #143 改坏的根因）：
+ * - 旧实现用「窗口只有 2 段」**间接**排除章内的期限，于是把写在**第 3–4 段**的真日界
+ *   一起漏掉了（实测第 20 章首段台词、次段动作、三段交代案头，**第 4 段才是
+ *   「第三日了」**，而蓝图【时点】正是「第三日」→ 判成「正文没有日界」，反向假阳性）；
+ * - 现在窗口放宽到**场景初起**（人物在哪、正在做什么也算开头），期限由
+ *   `DURATIVE_FUTURE_FORM` + 句首位置单独排除，两者不再互相牵制。
+ */
+export const DAY_BOUNDARY_OPENING_PARAGRAPHS = 6
+
+export function openingWindow(content: string): string {
+  const paragraphs = String(content ?? '')
+    .split(/\n+/u)
+    .map(paragraph => paragraph.trim())
+    .filter(Boolean)
+  return paragraphs.slice(0, DAY_BOUNDARY_OPENING_PARAGRAPHS).join('\n')
+}
+
+/** 章首窗口里的第一处日界；没有就返回 null（正文没写日界）。 */
+export function openingDayBoundary(content: string): ChapterBoundaryHit | null {
+  const scope = openingWindow(content)
+  const hits = chapterBoundaryHits(scope)
+  return hits[0] ?? null
 }
 
 /**
@@ -232,8 +333,12 @@ export function findUnmetTimeAnchorFindings(
     if (!statesDayBoundaryText(anchor)) continue
     // 第 1 章没有上一章，跨日无从谈起。
     if (chapter.chapterNumber <= 1) continue
-    // ⚠️ 扫**章首窗口**，不是整章（issue #143）：日界是本章开头对上一章的交代，
-    // 章内朝前看的期限（「公司回话三日后到」）不是本章日界。
+    // ⚠️ 只认**章首窗口**里的日界，且剔除朝前看的期限（issue #143 → #146）：
+    // 日界是本章开头对上一章的交代，章内「公司回话三日后到」不是本章日界。
+    //
+    // 有两件事必须分开表达（#146 的教训）：**窗口多宽** 与 **期限怎么排除**。
+    // 窗口按「场景初起」算（人物在哪、正在做什么——实测第 20 章的日界在第 4 段），
+    // 期限靠 `DURATIVE_FUTURE_FORM` + 句首位置排除，不再靠「把窗口调小」间接实现。
     //
     // 但有一类章**本来就写在章内跨日**：蓝图【时点】自己声明了这次推进发生在
     // 本章之内（形态「…至/到…次日/翌日…」，如「当晚开航至次日靠埠」）。对这类章，
@@ -241,14 +346,15 @@ export function findUnmetTimeAnchorFindings(
     // 所以这一类的「已落实」判定要放开到整章。
     const anchorSpansWithinChapter = /(?:至|到|直到)\s*[^。！？\n]{0,6}(?:次日|翌日|第二天|隔天|隔日)/u.test(anchor)
     const proseScope = anchorSpansWithinChapter ? String(chapter.content) : openingWindow(chapter.content)
-    const proseStates = statesDayBoundaryText(proseScope)
+    const proseBoundary = chapterBoundaryHits(proseScope)[0] ?? null
+    const proseStates = proseBoundary !== null
     const opening = (String(chapter.content).trim().split(/\n+/u)[0] ?? '').trim().slice(0, 40)
 
     // 两侧都说了日界，但**隔的天数不一样**（issue #134）：第 57 章蓝图标「次日」、
     // 正文写「两日后」——#132 的布尔判据当时判成「已落实」。这里补上数值比对。
     // 只有两侧都读得出确定的日数、且确实不等时才报；读不出来（null）一律放过。
     const anchorGap = dayGapOf(anchor)
-    const proseGap = dayGapOf(proseScope)
+    const proseGap = proseBoundary?.days ?? null
     if (proseStates && anchorGap !== null && proseGap !== null && anchorGap !== proseGap) {
       findings.push({
         // 章号是既成事实，不随写作推进而变（#86/#89/#98/#108）。
@@ -321,28 +427,6 @@ function chineseNumber(value: string): number | null {
   if (!match) return null
   const tens = match[1] ? digits[match[1]]! : 1
   return tens * 10 + (match[2] ? digits[match[2]]! : 0)
-}
-
-/**
- * 一章的**章首窗口**：日界是「本章开头对上一章的交代」，不是章内任意一处（issue #143）。
- *
- * 旧实现拿**整章正文**判「有没有日界」，于是章内任何**朝前看的期限**
- * （「公司回话三日后到」）都被读成这一章的日界，两个方向同时出错：
- * - **漏报**：第 63 章首段无日界、章末有「三日后到」→ 判成「已落实」，真缺陷被吃掉；
- * - **误报**：第 64 章首段「封箱次日上午」（=1 天，与蓝图一致）、章末有「三日后…」→
- *   章末那句把首段顶掉，判成「蓝图 1 天 vs 正文 3 天」，干净的章被冤枉。
- *
- * 取**前两个自然段**：实测两处真阳性都在第 1 段；而跨日交代偶尔写在第 2 段
- * （先写一个静态场景再交代时间），所以不能只取第 1 段。
- */
-export const DAY_BOUNDARY_OPENING_PARAGRAPHS = 2
-
-function openingWindow(content: string): string {
-  const paragraphs = String(content ?? '')
-    .split(/\n+/u)
-    .map(paragraph => paragraph.trim())
-    .filter(Boolean)
-  return paragraphs.slice(0, DAY_BOUNDARY_OPENING_PARAGRAPHS).join('\n')
 }
 
 /** 读出一段文字声明的**日数间隔**；读不确定就返回 null（不猜）。 */

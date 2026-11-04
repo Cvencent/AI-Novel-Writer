@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  chapterBoundaryHits,
   dayGapOf,
   findUndatedStreak,
   findUndatedStreakFindings,
   findUnmetTimeAnchorFindings,
+  openingDayBoundary,
   statesDayBoundaryText,
   timeAnchorOf,
 } from '../chapter-time-anchor'
@@ -337,5 +339,79 @@ describe('findUnmetTimeAnchorFindings: 蓝图声明跨日而正文没写（issue
     // 换标注形态与正文，判据照样成立（「半个月后」与「隔日」）。
     expect(findUnmetTimeAnchorFindings([prose(12, '他把门关上。', '半个月后')])[0]!.sourceChapter).toBe(12)
     expect(findUnmetTimeAnchorFindings([prose(13, '他把门关上。', '隔日清晨')])[0]!.sourceChapter).toBe(13)
+  })
+})
+
+/**
+ * issue #146：#143 把「窗口多宽」和「期限怎么排除」用同一个数字表达了——
+ * `DAY_BOUNDARY_OPENING_PARAGRAPHS = 2`。于是**写在第 3–4 段的真日界被漏掉**，
+ * 报出反向假阳性（第 20 章蓝图【时点：第三日】、正文第 4 段「第三日了」却被判「没写」）。
+ *
+ * 修法是把两件事拆开：
+ * - 窗口放宽到**场景初起**（人物在哪、正在做什么也算开头）；
+ * - 「朝前看的期限」（「公司回话三日后到」）由**句法位置**单独排除，不靠窗口大小。
+ */
+describe('章首窗口与「朝前看」期限是两个独立判据（issue #146）', () => {
+  const NL = String.fromCharCode(10)
+  /** 与上面同一个形态：蓝图 keyEvents 里带【时点：…】标注。 */
+  const prose = (chapterNumber: number, content: string, anchor: string) =>
+    ({ chapterNumber, content, keyEvents: `他核完账。【时点：${anchor}】` })
+
+  it('finds the boundary on the fourth paragraph, where the real chapter puts it', () => {
+    // 第 20 章现场的段结构：台词 / 主角动作 / 交代案头 / 日界。
+    const paragraphs = [
+      '“搬缆的——验票舱缺人手，你过去。”',
+      '马六在货栈门口喊了一声。周叙把肩上的缆绳搁下。',
+      '案前换了人。新册摊着，边上摞着票根和印盒。',
+      '第三日了。船开出去又回来两趟，他的名字不在新册任何一页。',
+    ]
+    expect(findUnmetTimeAnchorFindings([
+      prose(20, paragraphs.join(NL), '新季开航后第三日'),
+    ])).toEqual([])
+    // 判据本身也要读得出它在第 4 段：证据与读数都来自那一句。
+    expect(openingDayBoundary(paragraphs.join(NL))).toMatchObject({ days: 2 })
+  })
+
+  it('reads the boundary as 「第三日」= 2 days after the previous chapter, matching the blueprint', () => {
+    // 蓝图写「第三日」→ 也是 2 天；两侧一致所以不报 gap-mismatch。
+    expect(findUnmetTimeAnchorFindings([prose(20, `${NL}${NL}${NL}第三日了。船开出去又回来两趟。`, '新季开航后第三日')]))
+      .toEqual([])
+  })
+
+  it('still rejects a forward-looking deadline in the first paragraph', () => {
+    // 「公司回话三日后到」是**将来的期限**，不是「上一章之后过了三天」。
+    // 判据靠句法位置：「N 日后」前面还有主语/宾语时不算日界。
+    expect(findUnmetTimeAnchorFindings([
+      prose(63, '公司回话三日后到。船等不起。' + NL + '周叙把存根摊开。', '紧接第62章次日清晨'),
+    ]).map(hit => hit.stableFactKey)).toEqual(['chapter-time:anchor-unmet:63'])
+  })
+
+  it('accepts the same durative form when it opens the sentence', () => {
+    // 同一族写法，句首 ⇒ 是本章日界（「两日后，送检结案日。」）。
+    expect(chapterBoundaryHits('两日后，送检结案日。')[0]).toMatchObject({ days: 2 })
+    expect(chapterBoundaryHits('他三天后才回来。')).toEqual([])
+    expect(chapterBoundaryHits('船要半个月后才能修好。')).toEqual([])
+  })
+
+  it('keeps the closing-quote case (dialogue opening a paragraph) as a boundary', () => {
+    // 句首允许开引号/破折号：台词开头交代时间同样是交代。
+    expect(chapterBoundaryHits('「两日后，送检结案日。」')[0]).toMatchObject({ days: 2 })
+    expect(chapterBoundaryHits('——三日后，船才靠埠。')[0]).toMatchObject({ days: 3 })
+  })
+
+  it('does not depend on which phrase family it is: 次日 still counts anywhere', () => {
+    // 「次日/翌日」本身就是对「已经过了多久」的陈述，带主语也是日界
+    // （「他次日清早上的船」）。刻意**不对这一族**加句首限制，否则真日界会漏。
+    expect(chapterBoundaryHits('他次日清早上的船。')[0]).toMatchObject({ days: 1 })
+    expect(findUnmetTimeAnchorFindings([
+      prose(9, '周叙把缆绳搁下。他次日清早上的船。', '次日清晨'),
+    ])).toEqual([])
+  })
+
+  it('takes the earliest boundary inside the window, not a later deadline', () => {
+    // 章首「封箱次日上午」（1 天）在前、后面「三日后…」在后 → 读 1 天（#143 保住了）。
+    const text = '封箱次日上午，船首那盘缆绳还是三天前打的结。' + NL + NL
+      + '柯明远进来。' + NL + NL + '三日后第三格里落谁的名，也只有他一个人清楚。'
+    expect(openingDayBoundary(text)).toMatchObject({ days: 1 })
   })
 })
