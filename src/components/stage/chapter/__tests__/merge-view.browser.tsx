@@ -15,13 +15,13 @@ let completed: string[]
 
 const data = { originalContent: ORIGINAL, modifiedContent: REVISED, revisionPath: 'ai-novel://revision/9', targetSnapshot: { content: ORIGINAL, contentRevision: 0 }, staleReason: null }
 
-async function mount(onLater = vi.fn()) {
+async function mount(onLater = vi.fn(), override: Partial<typeof data> = {}) {
   host = document.createElement('div')
   host.className = 'paper-ink stage-shell'
   document.body.append(host)
   root = createRoot(host)
   await act(async () => root!.render(
-    <MergeView data={data} versionLabel="草稿 v1" recheck onComplete={async text => { completed.push(text); return true }} onLater={onLater} />,
+    <MergeView data={{ ...data, ...override }} versionLabel="草稿 v1" recheck onComplete={async text => { completed.push(text); return true }} onLater={onLater} />,
   ))
 }
 
@@ -86,6 +86,19 @@ describe('修稿合并视图', () => {
     await act(async () => userEvent.keyboard('{Home}'))
     await expect.element(group.getByRole('button', { name: '用原稿' })).toHaveAttribute('aria-pressed', 'true')
     expect([...group.element().querySelectorAll('button')].map(button => button.tabIndex)).toEqual([0, -1, -1])
+  })
+
+  /**
+   * issue #123：修稿新增了原稿没有、前文已确立的专名时，要在合并前就摆到作者眼前。
+   * 这里只验「标记真的渲染出来了」——判据本身在 shared/refinement-fact-diff 的单测里。
+   */
+  it('marks the hunk that introduces an established term, and says so up front', async () => {
+    await mount(vi.fn(), { factTerms: [{ term: '空站台', fromBlueprint: true, historyChapters: 4 }] })
+    await expect.element(page.getByText('这份修稿动了事实')).toBeVisible()
+    await expect.element(page.getByText(/空站台（前文 4 章出现过）/)).toBeVisible()
+    // 「空站台」只出现在第 2 段的修稿里（原稿写的是「广播里的女声重复着同一句道歉」）。
+    const badge = host!.querySelector('.stage-ch-hunk-fact')
+    expect(badge?.getAttribute('data-terms')).toBe('空站台')
   })
 
   it('稍后再合并只收起视图，不提交', async () => {
