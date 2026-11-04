@@ -204,3 +204,25 @@ export function findDialogueOpenerConvergence(
     // 覆盖章数多的优先；同数按起手语排序，保证输出稳定。
     .sort((left, right) => right.chapters.length - left.chapters.length || left.opener.localeCompare(right.opener))
 }
+
+/**
+ * 「章首句式收敛」的样本窗口（issue #155 把窗口从服务层挪到这里）。
+ *
+ * 这一档的语义是**最近几章连续同构**，6 章合理——它与 `README` 里
+ * `chapter-shape.ts` 的原意一致。
+ */
+export const OPENING_SHAPE_WINDOW_CHAPTERS = 6
+
+/**
+ * 「对白起手语」的样本窗口（issue #155）。
+ *
+ * `findDialogueOpenerConvergence` 的契约是「同一句起手语在**多章**重复，≥3 章即报」，
+ * 它**没有相邻要求**——3 章可以散落在全书。旧实现把它和「章首句式」共用 6 章窗口，
+ * 于是任何章号跨度 > 6 的组**结构上永远不可达**：实测 75 章的书 38 组里 **27 组（71%）**
+ * 一次都不会报，包括 #72 的核心证据「你爸当年也」（落在 8 章、6 章窗里凑不出 3 章）。
+ *
+ * 取 `Infinity` = 全量已定稿章：这一档判的是「整本书反复用这一句起手」，
+ * 它本来就该看整本书；与同文件里 `ENTRANCE_WINDOW_CHAPTERS` 那种「近期形态」不是一类。
+ * ⚠️ 若将来确实要限窗，必须**同时**把范围写进文案——否则作者会以为整本都查过（issue #155 建议 4）。
+ */
+export const DIALOGUE_OPENER_WINDOW_CHAPTERS = Number.POSITIVE_INFINITY

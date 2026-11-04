@@ -6,6 +6,7 @@ import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuit
   findDesignTimelineConflicts, findMissingCastInArch,
   findRepeatPropTerminationFindings, findLossRestatementFindings,
   findPropRevivalFindings, findEntranceShotFindings } from '../shared/consistency-preflight'
+import { DIALOGUE_OPENER_WINDOW_CHAPTERS, OPENING_SHAPE_WINDOW_CHAPTERS } from '../shared/chapter-opening'
 import { ENTRANCE_WINDOW_CHAPTERS } from '../shared/entrance-shot'
 import { findTitleShapeConvergenceFindings } from '../shared/title-shape'
 import { auditFinalizedProse } from '../shared/finalized-prose-audit'
@@ -138,10 +139,27 @@ export async function readConsistencyPreflight(
     .filter(row => Number.isSafeInteger(row.chapterNumber) && row.chapterNumber < currentChapter)
     .sort((left, right) => left.chapterNumber - right.chapterNumber)
     .map(row => ({ chapterNumber: row.chapterNumber, content: String(row.content ?? '') }))
+  /**
+   * 两档章首判据的**样本必须分开**（issue #155）。
+   *
+   * - 章首句式收敛：语义是「最近几章**连续同构**」→ 6 章窗口合理；
+   * - 对白起手语：契约是「同一句起手语在**多章**重复，≥3 章即报」——
+   *   它自己**没有窗口概念**，3 章可以散落在全书。塞进 6 章窗口后，跨度大于 6 的组
+   *   **结构上永远不可达**（实测 75 章的书 38 组里 27 组如此，包括 #72 的核心证据
+   *   「你爸当年也」——它在 8 章分散出现，6 章窗里一次都凑不出 3 章）。
+   *
+   * 所以起手语这一档改用**全部已定稿章**：它是「出现次数/覆盖章数」语义，不需要相邻。
+   * 窗口常量也随之收在判据侧（下面 DIALOGUE_OPENER_CHAPTERS），不再硬编码在服务层——
+   * 两处漂开没有任何测试会红（这正是本条能潜伏这么久的原因）。
+   */
+  // 物证重复终结（#73）等判据沿用原来的「最近 6 章」样本——它们的语义是近期形态，
+  // 与起手语「整本书反复出现」不是一类。
   const proseSample = historyProse.slice(-6)
-  const openingFindings = proseSample.length === 0 ? [] : [
-    ...findOpeningShapeConvergence({ chapters: proseSample, castNames, currentChapter }),
-    ...findDialogueOpenerConvergence({ chapters: proseSample, castNames, currentChapter }),
+  const openingShapeSample = historyProse.slice(-OPENING_SHAPE_WINDOW_CHAPTERS)
+  const dialogueOpenerSample = historyProse.slice(-DIALOGUE_OPENER_WINDOW_CHAPTERS)
+  const openingFindings = historyProse.length === 0 ? [] : [
+    ...(openingShapeSample.length === 0 ? [] : [findOpeningShapeConvergence({ chapters: openingShapeSample, castNames, currentChapter })]).flat(),
+    ...(dialogueOpenerSample.length === 0 ? [] : [findDialogueOpenerConvergence({ chapters: dialogueOpenerSample, castNames, currentChapter })]).flat(),
   ]
   // 设定层时间锚点冲突（issue #2）：发生在架构阶段、会顺着链路往下传，
   // 所以放在起草/写前预检里——这是作者还来得及改设定的时候。

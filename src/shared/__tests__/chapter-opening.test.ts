@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  DIALOGUE_OPENER_WINDOW_CHAPTERS,
   OPENING_SCENE_RATIO,
+  OPENING_SHAPE_WINDOW_CHAPTERS,
   OPENING_WINDOW,
   REVEAL_OPENER_MIN_CHAPTERS,
   chapterOpeningOf,
@@ -303,5 +305,69 @@ describe('findDialogueOpenerConvergence finding (issue #72)', () => {
       { chapterNumber: 3, content: '“路上小心。”“我们明天再说。”' },
     ]
     expect(dialogueFinding({ chapters: varied, castNames: cast, currentChapter: 3 })).toEqual([])
+  })
+})
+
+/**
+ * issue #155：判据自己**没有窗口概念**（≥3 章即报，3 章可散落全书），
+ * 而服务层曾用「最近 6 章」剪样本 → 任何跨度 > 6 的组**结构上永远不可达**。
+ *
+ * 实测那本 75 章的书：6 章窗只能报 1 组；全量能报 38 组，其中
+ * 「柯代表」20 章、「三年前」11 章、「邵把头」9 章、「你爸当年也」8 章。
+ */
+describe('对白起手语需要长样本 (issue #155)', () => {
+  /** 起手语在 far 章出现，中间隔着很多没有这一句的章。 */
+  const spreadBook = (gap: number) => [
+    { chapterNumber: 1, content: '“你父亲当年也查过。”' },
+    { chapterNumber: 1 + gap, content: '“你父亲当年也有一张。”' },
+    { chapterNumber: 1 + 2 * gap, content: '“你父亲当年也忘过话。”' },
+  ]
+
+  it('finds a group whose chapters are far apart', () => {
+    // 跨度 16 章（1/9/17）——判据本身没有窗口概念，所以要报得出来。
+    const book = spreadBook(8)
+    expect(findDialogueOpenerConvergence(book)[0]!.chapters).toEqual([1, 9, 17])
+  })
+
+  it('goes silent when the service clips to the last six entries (issue #155 的机理)', () => {
+    // ⚠️ 服务层是按**数组位置**切片（`slice(-6)`），不是按章号。
+    // 所以构造：三章目标句之间各隔 10 章填充，末尾再补 1 章——
+    // 最近 6 条里只剩最后一个目标章，覆盖章数 1 < 3 → 报不出来。
+    const filler = (n: number) => ({ chapterNumber: n, content: `第${n}章：他把缆绳搁下。` })
+    const book = [
+      { chapterNumber: 1, content: '“你父亲当年也查过。”' },
+      ...Array.from({ length: 10 }, (_, i) => filler(i + 2)),
+      { chapterNumber: 12, content: '“你父亲当年也有一张。”' },
+      ...Array.from({ length: 10 }, (_, i) => filler(i + 13)),
+      { chapterNumber: 23, content: '“你父亲当年也忘过话。”' },
+      filler(24),
+    ]
+    // 全量：三章都在 → 报得到。
+    expect(findDialogueOpenerConvergence(book)[0]!.chapters).toEqual([1, 12, 23])
+    // 模拟服务层旧行为（最近 6 条）：只剩 ch23 那一次，凑不到 3 章 → 一条都不报。
+    expect(findDialogueOpenerConvergence(book.slice(-6))).toEqual([])
+  })
+
+  it('keeps the window constants next to the judge, not in the service layer', () => {
+    // 窗口硬编码在服务层时，判据与服务各自漂开、没有任何测试会红（本条就是这么潜伏的）。
+    expect(OPENING_SHAPE_WINDOW_CHAPTERS).toBe(6)
+    expect(DIALOGUE_OPENER_WINDOW_CHAPTERS).toBe(Number.POSITIVE_INFINITY)
+  })
+
+  it('lists the other groups by name instead of only a count', () => {
+    // 「另有 N 组」无法核对；作者最自然的读法是「没有别的重复起手语」。
+    const chapters = [
+      { chapterNumber: 1, content: '“柯代表。”他把册子推过来。' },
+      { chapterNumber: 2, content: '“柯代表。”' },
+      { chapterNumber: 3, content: '“柯代表。”' },
+      { chapterNumber: 4, content: '“邵把头。”' },
+      { chapterNumber: 5, content: '“邵把头。”' },
+      { chapterNumber: 6, content: '“邵把头。”' },
+    ]
+    const [finding] = dialogueFinding({ chapters, castNames: [], currentChapter: 7 })
+    expect(finding).toBeDefined()
+    // 第二组要**带名字与章号**，而不是只剩一个数字。
+    expect(finding!.evidence).toContain('邵把头')
+    expect(finding!.evidence).toContain('4、5、6')
   })
 })

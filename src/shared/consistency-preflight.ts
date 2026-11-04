@@ -1015,12 +1015,24 @@ export function findDialogueOpenerConvergence(input: ChapterOpeningStreakInput):
   const hits = findDialogueOpenerHits(input.chapters)
   if (hits.length === 0) return []
   const [widest] = hits
+  /**
+   * 其余组要**列出名字与章号**（issue #155 建议 2）。
+   *
+   * 旧实现只写「另有 N 组同类起手语」——那个数字无法核对，作者最自然的读法是
+   * 「没有别的重复起手语」。实测那本书 38 组里只有 8 组的名字曾经出现在屏幕上。
+   * 最多列 3 组（再多会淹没弹层），其余仍给数量并说明「还有」。
+   */
+  const others = hits.slice(1, 4).map(hit => `「${hit.opener}」（${hit.chapters.length} 章：${hit.chapters.join('、')}）`)
+  const remaining = Math.max(0, hits.length - 1 - others.length)
+  const othersText = others.length === 0
+    ? ''
+    : `；另有同类起手语 ${others.join('、')}${remaining > 0 ? ` 等 ${hits.length - 1} 组` : ''}`
   return [{
     stableFactKey: `chapter-opening:dialogue-opener:${widest!.opener}`,
     severity: 'warning' as const,
     // 证据章号集合才是读者要去看的地方（issue #79）。
     sourceChapter: widest!.chapters[widest!.chapters.length - 1]!,
-    evidence: `第 ${widest!.chapters.join('、')} 章的对白都以「${widest!.opener}」起手（共 ${widest!.chapters.length} 章）；另有 ${Math.max(0, hits.length - 1)} 组同类起手语`,
+    evidence: `第 ${widest!.chapters.join('、')} 章的对白都以「${widest!.opener}」起手（共 ${widest!.chapters.length} 章）${othersText}`,
     issue: {
       zhCN: `有 ${widest!.chapters.length} 章的长辈/对手开口第一句都是「${widest!.opener}……」，后半句各不相同。同一条线索的每一次推进都用同一个动作「抛半句 + 收口」时，读者记不住哪一章知道了什么，只记得「又一次有人提了一句」。线索本身的信息增量被句式替代了。`,
       enUS: `In ${widest!.chapters.length} chapters, the elder or the antagonist opens with the same words — “${widest!.opener}” — with a different tail each time. When every advance of a thread uses the same move (drop half a sentence, then withdraw), readers stop tracking what they learned where and only remember that someone hinted again. The sentence shape replaces the actual information gain.`,
