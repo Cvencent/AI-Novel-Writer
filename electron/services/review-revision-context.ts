@@ -22,6 +22,8 @@ export {
   numberingFindings,
 }
 import { closingShotOf } from '../../src/shared/blueprint-semantic-contract'
+// 蓝图声明跨日、正文没写（issue #132）：与写前预检共用同一个判据入口。
+import { findUnmetTimeAnchorFindings } from '../../src/shared/chapter-time-anchor'
 import {
   findDialogueOpenerConvergence,
   findOpeningShapeConvergence,
@@ -124,9 +126,13 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
       confirmation = { reviewSourceId: stored.id, content: serializeHumanConfirmedReviewSnapshot(snapshot), snapshot,
         originalReviewContentHash: textHash(original.content) }
     }
-    const blueprints = BlueprintRepository.getAll(db).filter(row => row.chapterNumber >= source.chapterNumber && row.chapterNumber <= source.chapterNumber + 5)
+    const allBlueprints = BlueprintRepository.getAll(db)
+    const blueprints = allBlueprints.filter(row => row.chapterNumber >= source.chapterNumber && row.chapterNumber <= source.chapterNumber + 5)
       .map(({ chapterNumber, title, role, purpose, keyEvents, characters, suspenseHook, userGuidance, notes }) =>
         ({ chapterNumber, title, role, purpose, keyEvents, characters, suspenseHook, userGuidance, notes }))
+    // 时点标注按章取（issue #132）：判定要拿**历史章自己的**蓝图，而上面那批只留了
+    // 「本章及以后 5 章」——用全量建一张表，免得为了一条判据再查一次库。
+    const keyEventsByChapter = new Map(allBlueprints.map(row => [row.chapterNumber, row.keyEvents ?? '']))
     const currentBlueprint = blueprints.find(row => row.chapterNumber === source.chapterNumber)
     const projections = SummaryRepository.listFinalizedContinuityBefore(source.chapterNumber, db)
     const rows = db.prepare("SELECT d.id,d.chapter_number,d.version,c.body,o.finalization_id,o.chapter_title,o.content_hash,o.content_snapshot FROM drafts d JOIN contents c ON c.id=d.content_id LEFT JOIN finalization_outbox o ON o.draft_id=d.id WHERE d.status='finalized' AND d.chapter_number < ? AND NOT EXISTS (SELECT 1 FROM drafts n WHERE n.chapter_number=d.chapter_number AND n.status='finalized' AND (n.version>d.version OR n.version=d.version AND n.id>d.id)) ORDER BY d.chapter_number,d.id")
@@ -286,7 +292,7 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
         }),
         // 章节标题「同题加尾」复用（issue #110）：审稿时也要看到目录里那两章其实是同一个标题。
         ...findDuplicateChapterTitleFindings({
-          chapters: BlueprintRepository.getAll(db).map(row => ({ chapterNumber: row.chapterNumber, title: String(row.title ?? '') })),
+          chapters: allBlueprints.map(row => ({ chapterNumber: row.chapterNumber, title: String(row.title ?? '') })),
         }),
         // 能力触发条件被静默绕过（issue #100）：限制句从世界观取（源头那一层）。
         ...findAbilityLimitBypassFindings({
@@ -294,6 +300,14 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
           chapters: [...history.map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
             { chapterNumber: source.chapterNumber, content: source.content }],
         }),
+        // 蓝图声明了跨日、正文没写（issue #132）：两侧数据都在库里（标注 + 正文）。
+        // 审稿这一侧把**本章**也算进去——这是定稿前唯一能拦住它的时点。
+        ...findUnmetTimeAnchorFindings([
+          ...history.map(item => ({ chapterNumber: item.chapterNumber, content: item.content,
+            keyEvents: keyEventsByChapter.get(item.chapterNumber) ?? '' })),
+          ...(currentBlueprint ? [{ chapterNumber: source.chapterNumber, content: source.content,
+            keyEvents: currentBlueprint.keyEvents ?? '' }] : []),
+        ]),
         // 笔迹特征自相矛盾（issue #97）：「叶九的，横折收得急」vs「叶九的笔稳、匀」。
         ...findHandwritingConflictFindings({
           chapters: [...history.map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),

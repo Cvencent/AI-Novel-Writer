@@ -59,7 +59,10 @@ const DAY_BOUNDARY_PATTERN = new RegExp(
   //   （天性）、「第二次见面」这类普通词组，实测「他第二天性使然」假阳性。
   '(?:次日|翌日|隔天|隔日|第二天(?![性次个])|转天|改天'
   + '|到了第二|到第二天'    // 「到了第二天夜里」
-  + '|当晚过去|一夜过去|这一夜过去)'
+  + '|当晚过去|一夜过去|这一夜过去'
+  // 蓝图标注里会把「跨日」直接写出来（实测「次日天亮前至上午（紧接上一章，跨日）」），
+  // 也可能单独只标这一个词。它是封闭术语、语义唯一，收进来（issue #132）。
+  + '|跨日)'
   // ② 数量 + 时间单位 + 过去/之后：「三天后」「半个月后」「两个礼拜以后」
   + `|(?:${CHINESE_NUMERAL}|[0-9]+)\\s*${TIME_UNIT}\\s*(?:后|之后|以后|过去|过去了)`
   // ③ 序数 + 时间单位（不带「后」）：「第二年春天」「第三天夜里」
@@ -191,6 +194,66 @@ export function timeAnchorOf(keyEvents: string): string {
 
 /** 机器读的时间标注形态（`splitBlueprintLabels` 用它把标注从可编辑正文里拆出来）。 */
 export const BLUEPRINT_TIME_ANCHOR_LABEL_PATTERN = /【\s*时点\s*[:：][^】]{0,60}】/gu
+
+/**
+ * 「蓝图声明了跨日，正文一字未提」→ 一致性发现（issue #132）。
+ *
+ * #84 补的是两端：产出端（蓝图合同要求标【时点】）与判定端（连续 N 章没有跨日交代）。
+ * 缺的是**两侧比对**——`statesDayBoundaryText` 只看正文自己有没有日界词，从不看
+ * 本章蓝图声明了什么。实测那本书 24 章带标注、5 章声明跨日，**4 章正文一字未提**
+ * （ch45 次日清晨 / ch49 次日天亮前（跨日）/ ch52 次日午后 / ch55 次日上午），
+ * 只有 ch57 落实（「两日后，送检结案日。」）。
+ *
+ * 为什么不能靠连胜判据兜住：`findUndatedStreak` 按「连续 N 章」聚合，ch45/ch49
+ * 恰好夹在一段连胜里被一并吞掉，提示不指向真正要改的那一句；而这两类的处置完全不同
+ * （「有声明没落实」= 回去补一句日界；「没声明」= 先在蓝图里想清时间）。
+ *
+ * 判据是**同一套形态在两侧各跑一遍**（不新增词表）：
+ * - 蓝图侧：`statesDayBoundaryText(标注原文)` 为真 → 它声明了跨日；
+ * - 正文侧：`statesDayBoundaryText(本章正文)` 为假 → 正文没写出日界；
+ * - 两者同时成立即报。第 1 章没有上一章可跨，跳过。
+ */
+export interface TimeAnchoredChapter extends TimeProseChapter {
+  /** 本章蓝图 `keyEvents`（含【时点：…】标注）；没有蓝图就不判。 */
+  keyEvents?: string
+}
+
+export function findUnmetTimeAnchorFindings(
+  chapters: readonly TimeAnchoredChapter[],
+): ConsistencyFinding[] {
+  const findings: ConsistencyFinding[] = []
+  const ordered = [...chapters]
+    .filter(chapter => Number.isSafeInteger(chapter.chapterNumber) && String(chapter.content ?? '').trim())
+    .sort((left, right) => left.chapterNumber - right.chapterNumber)
+  for (const chapter of ordered) {
+    const anchor = timeAnchorOf(chapter.keyEvents ?? '')
+    if (!anchor) continue
+    // 蓝图自己没声明跨日（「同日夜」「紧接上章当夜」）→ 不是这一条要管的事。
+    if (!statesDayBoundaryText(anchor)) continue
+    // 第 1 章没有上一章，跨日无从谈起。
+    if (chapter.chapterNumber <= 1) continue
+    // 正文写出了日界 → 已落实。
+    if (statesDayBoundaryText(chapter.content)) continue
+    const opening = (String(chapter.content).trim().split(/\n+/u)[0] ?? '').trim().slice(0, 40)
+    findings.push({
+      // key 里带的是**问题章号**（那一章是既成事实，不随写作推进而变），
+      // 不是当前章号——后者会让提醒永远关不掉（#86/#89/#98/#108）。
+      stableFactKey: `chapter-time:anchor-unmet:${chapter.chapterNumber}`,
+      severity: 'warning' as const,
+      sourceChapter: chapter.chapterNumber,
+      evidence: `第${chapter.chapterNumber}章：蓝图【时点：${anchor}】，正文没有日界；正文开头「${opening}」`,
+      issue: {
+        zhCN: `本章蓝图声明了时间推进（【时点：${anchor}】），正文里却没有任何跨日或时间间隔的交代，开头是「${opening}」。上一章结尾与这一章之间到底隔了多久，读者只能按「同一夜接着写」来读——人物却已经换过班、换过地方。`,
+        enUS: `This chapter's blueprint declares a time change (【时点: ${anchor}】), but the prose states no day boundary or gap; it opens with “${opening}”. Readers can only take it as the same night continuing, even though characters have changed shifts or places.`,
+      },
+      suggestion: {
+        zhCN: `在正文开头补一句日界，把蓝图声明的时间落到纸面：例如「次日天没亮，……」或「隔了一天，……」。若这一章其实与上一章同一夜，那就改蓝图的【时点】标注（作者可在蓝图页修正）——两者必须一致，别让 chip 说次日、正文写当夜。`,
+        enUS: `Open the prose with an explicit day boundary that matches the blueprint, e.g. "before dawn the next day, …" or "a day later, …". If the chapter really continues the same night, fix the blueprint's 【时点】 label instead — the two must agree.`,
+      },
+    })
+  }
+  return findings
+}
 
 /**
  * 「最近 N 章没有任何跨日交代」→ 一致性发现（issue #84）。

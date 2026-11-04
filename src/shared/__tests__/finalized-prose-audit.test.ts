@@ -34,6 +34,28 @@ describe('auditFinalizedProse (issue #83)', () => {
     expect(findings.some(finding => finding.stableFactKey.startsWith('prose:stillness'))).toBe(true)
   })
 
+  /**
+   * issue #132：蓝图声明了跨日、正文没写——这条必须从**共用出口**报出来，
+   * 否则写前预检与审稿两条路径都拿不到它（#83 的意义就在于此）。
+   */
+  it('surfaces a declared-but-unwritten day boundary from the shared exit (issue #132)', () => {
+    const chapters = [
+      { chapterNumber: 1, content: '回执摊在桌上，边角还带着潮气。' },
+      { chapterNumber: 2, content: '缝里卡着册子边角，露半指宽。' },
+      { chapterNumber: 3, content: '两日后，送检结案日。' },
+    ]
+    const blueprints = [
+      { chapterNumber: 1, keyEvents: '核账。【时点：同日夜】' },
+      { chapterNumber: 2, keyEvents: '翻册。【时点：次日天亮前至上午（紧接上一章，跨日）】' },
+      { chapterNumber: 3, keyEvents: '送检。【时点：次日（送检结案日）上午】' },
+    ]
+    const findings = auditFinalizedProse({ chapters, castNames: [], blueprints })
+    const unmet = findings.filter(finding => finding.stableFactKey.startsWith('chapter-time:anchor-unmet:'))
+    // 只有第 2 章：第 1 章蓝图没声明跨日，第 3 章正文写了日界。
+    expect(unmet.map(finding => finding.sourceChapter)).toEqual([2])
+    expect(unmet[0]!.evidence).toContain('跨日')
+  })
+
   it('stays silent on repetition with a 6-chapter sample, because the judge needs 8', () => {
     // 防回归：旧的写前预检只有 6 章样本，接上去就是一条永远不响的分支。
     const findings = auditFinalizedProse({

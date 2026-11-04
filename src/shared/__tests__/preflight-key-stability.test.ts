@@ -23,6 +23,7 @@ import { findQuoteStyleDriftFindings } from '../quote-style'
 import { findStaleStateDurationFindings } from '../stale-state-duration'
 import { auditFinalizedProse } from '../finalized-prose-audit'
 import { declaredCharacterCountFindings } from '../consistency-preflight'
+import { findUnmetTimeAnchorFindings } from '../chapter-time-anchor'
 import { proseRepetitionFindings } from '../prose-repetition'
 import { glyphRadicalFindings } from '../glyph-radical'
 import { findCastNameDriftFindings } from '../cast-name-drift'
@@ -184,6 +185,10 @@ describe('no preflight key may change when only currentChapter advances (issue #
       })],
       ['findQuoteStyleDriftFindings', () => findQuoteStyleDriftFindings(QUOTE_STYLE_BOOK)],
       ['declaredCharacterCountFindings', () => SAMPLE_BOOK.flatMap(chapter => declaredCharacterCountFindings(chapter))],
+      ['findUnmetTimeAnchorFindings', () => findUnmetTimeAnchorFindings([
+        { chapterNumber: 1, content: '他推开舱门。', keyEvents: '【时点：同日夜】' },
+        { chapterNumber: 2, content: '他推开舱门。', keyEvents: '【时点：次日清晨】' },
+      ])],
       ['findStaleStateDurationFindings', () => findStaleStateDurationFindings(STALE_DURATION_BOOK)],
       ['findHandwritingConflictFindings', () => findHandwritingConflictFindings({
         chapters: [{ chapterNumber: 1, content: '温珩的笔稳、匀，起笔带锋。' }, { chapterNumber: 2, content: '温珩的笔，横折收得急。' }],

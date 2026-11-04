@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   findUndatedStreak,
   findUndatedStreakFindings,
+  findUnmetTimeAnchorFindings,
   statesDayBoundaryText,
   timeAnchorOf,
 } from '../chapter-time-anchor'
@@ -203,5 +204,76 @@ describe('undated-streak key must not roll with the last chapter (issue #89)', (
     const fixed = undated(12).map(item =>
       item.chapterNumber === 6 ? { chapterNumber: 6, content: '三日后，船靠了埠。' } : item)
     expect(findUndatedStreakFindings(fixed, 13)).toEqual([])
+  })
+})
+
+/**
+ * issue #132：蓝图声明了「次日／跨日」，正文一字未提。
+ *
+ * 实测那本书 24 章带【时点】标注、5 章声明跨日，**4 章正文没落实**
+ * （ch45 次日清晨 / ch49 次日天亮前（跨日）/ ch52 次日午后 / ch55 次日上午），
+ * 只有 ch57 落实（「两日后，送检结案日。」）。下面用同样的形态复刻。
+ */
+describe('findUnmetTimeAnchorFindings: 蓝图声明跨日而正文没写（issue #132）', () => {
+  /** 蓝图 keyEvents 里【时点：…】标注的真实形态（timeAnchorOf 读的就是它）。 */
+  const prose = (chapterNumber: number, content: string, anchor: string) =>
+    ({ chapterNumber, content, keyEvents: `他核完账。
+【时点：${anchor}】` })
+
+  it('reports the four real forms the book actually produced', () => {
+    const hits = findUnmetTimeAnchorFindings([
+      prose(44, '回执摊在桌上，边角还带着潮气。', '同日夜（紧接上一章，日落前后）'),
+      prose(45, '回执摊在桌上，边角还带着潮气。', '次日清晨（两天期限的最后半天）'),
+      prose(48, '缝里卡着册子边角，露半指宽。', '同日深夜（紧接上一章）'),
+      prose(49, '缝里卡着册子边角，露半指宽。', '次日天亮前至上午（紧接上一章，跨日）'),
+      prose(51, '他把灯罩扣上。', '紧接上章当夜，船仍停废水道'),
+      prose(52, '回执是午后才送到的。', '次日午后'),
+      prose(55, '日头出到桅顶，栈桥上的水汽还没收。', '次日上午（送检单项回执先于三日全案回）'),
+      // 这一章落实了：正文自己写了日界。
+      prose(57, '两日后，送检结案日。', '次日（送检结案日）上午'),
+    ])
+    expect(hits.map(hit => hit.sourceChapter)).toEqual([45, 49, 52, 55])
+    expect(hits.every(hit => hit.stableFactKey.startsWith('chapter-time:anchor-unmet:'))).toBe(true)
+  })
+
+  it('quotes both sides so the author knows which sentence to fix', () => {
+    const [hit] = findUnmetTimeAnchorFindings([prose(45, '回执摊在桌上，边角还带着潮气。', '次日清晨（两天期限的最后半天）')])
+    expect(hit!.evidence).toContain('次日清晨')
+    expect(hit!.evidence).toContain('回执摊在桌上')
+    expect(hit!.issue.zhCN).toContain('次日清晨')
+  })
+
+  it('stays silent when the blueprint itself declares the same day', () => {
+    for (const anchor of ['同日夜（紧接上一章，日落前后）', '同日午后', '紧接上章，当日上午至日落前', '同夜']) {
+      expect(findUnmetTimeAnchorFindings([prose(9, '他推开舱门。', anchor)]), anchor).toEqual([])
+    }
+  })
+
+  it('stays silent when the prose does state the day boundary', () => {
+    expect(findUnmetTimeAnchorFindings([prose(9, '次日天没亮，他就上了跳板。', '次日清晨')])).toEqual([])
+    expect(findUnmetTimeAnchorFindings([prose(9, '三天后，船靠了埠。', '次日午后')])).toEqual([])
+  })
+
+  it('stays silent without a blueprint anchor, and on the first chapter', () => {
+    expect(findUnmetTimeAnchorFindings([prose(9, '他推开舱门。', '')])).toEqual([])
+    expect(findUnmetTimeAnchorFindings([{ chapterNumber: 9, content: '他推开舱门。' }])).toEqual([])
+    // 第 1 章没有上一章可跨。
+    expect(findUnmetTimeAnchorFindings([prose(1, '他推开舱门。', '次日清晨')])).toEqual([])
+  })
+
+  it('keys on the problem chapter, which does not move as the book advances', () => {
+    const at20 = findUnmetTimeAnchorFindings([prose(9, '他推开舱门。', '次日清晨')])[0]!
+    const at30 = findUnmetTimeAnchorFindings([
+      prose(9, '他推开舱门。', '次日清晨'),
+      prose(29, '又一章。', '同日午后'),
+    ])[0]!
+    expect(at20.stableFactKey).toBe('chapter-time:anchor-unmet:9')
+    expect(at30.stableFactKey).toBe(at20.stableFactKey)
+  })
+
+  it('is structural: any declared-then-unwritten pair is reported, not a fixed list', () => {
+    // 换标注形态与正文，判据照样成立（「半个月后」与「隔日」）。
+    expect(findUnmetTimeAnchorFindings([prose(12, '他把门关上。', '半个月后')])[0]!.sourceChapter).toBe(12)
+    expect(findUnmetTimeAnchorFindings([prose(13, '他把门关上。', '隔日清晨')])[0]!.sourceChapter).toBe(13)
   })
 })
