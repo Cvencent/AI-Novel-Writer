@@ -9,10 +9,11 @@
 ## 每轮流程
 
 > **所有 gh 命令必须显式带 `--repo Cvencent/AI-Novel-Writer`。**
-> 仓库有两个 remote：`origin` = Cvencent/AI-Novel-Writer（本项目）、
-> `upstream` = EthanYoQ/AI-Novel-Writer（**别人的仓库**）。`gh` 默认仓库曾被设为 upstream，
+> 本机这个工作目录还挂着**另一个 remote**（不是本项目的仓库）。`gh` 默认仓库曾被设为它，
 > 导致 issue 发错仓库（2026-11-01 实测）。`gh issue list / view / comment / close` 全部要带，
-> 动手前可用 `gh repo view --json nameWithOwner` 核对当前默认仓库。
+> 动手前可用 `gh repo view --repo Cvencent/AI-Novel-Writer --json nameWithOwner` 核对。
+> **任何写给外部看的文字（issue 正文、评论、文档、提交信息）都不要点名那个 remote 的仓库、
+> 也不要写它的 owner**——只说「另一个 remote / 非本项目仓库」。
 
 ```bash
 cd F:\aiNovelWriter\repo
@@ -96,6 +97,19 @@ pnpm run prepare:native-node       # 关键：切回 Node ABI，否则下次 vit
 - **不要**跑 `pnpm run build:win`（完整发行门，含 installer smoke，耗时数小时且要求 release 证据链）。
 - 打包完验证：`release/<version>/win-unpacked/resources/app.asar.unpacked/node_modules/better-sqlite3/build/Release/better_sqlite3.node` 大小应为 **1903104**（Electron ABI）。若为 1902080 说明打进去的是 Node 版，必须重来。
 - 安装：`release/<version>/win-unpacked` 直接覆盖到 `F:\aiNovel\ai-novel-writer\`。**先用 `tasklist` 确认用户的 app 没在运行**；在运行就跳过安装，在 issue 里写「已修复待下次启动安装」。
+- **烟测必须用隔离 userData，且跑完必须确认退出**（2026-11-03 事故）：
+  覆盖安装后拉起应用做烟测时，**绝不能省略 `--user-data-dir`**。省略就是落到用户的
+  `C:\Users\vencent\AppData\Roaming\ai-novel-writer`，一旦烟测实例没退出，它就会**占住 `lockfile`**，
+  用户此后每次双击都被单实例锁拒绝、**静默退出（`exitCode=0`）→ 黑屏**。他完全无法自救。
+  ```powershell
+  # 烟测：用隔离目录，跑完按 PID 关掉并确认
+  & 'F:\aiNovel\ai-novel-writer\AI小说作家.exe' --user-data-dir=F:\aiNovelWriter\repo\.qa\smoke-userData
+  # ... 观察 N 秒后
+  node -e "const{execFileSync}=require('child_process');const a=JSON.parse(execFileSync('powershell',['-NoProfile','-Command','Get-CimInstance Win32_Process | Select-Object ProcessId,Name | ConvertTo-Json -Compress'],{encoding:'utf8',maxBuffer:20971520}));const t=a.filter(p=>p.Name&&p.Name.startsWith('AI')&&p.Name.endsWith('.exe'));console.log('leftover',t.length)"
+  ```
+  收尾再确认用户的 `lockfile` 没有被这次烟测创建/占用（`ls "$env:APPDATA\ai-novel-writer\lockfile"`）。
+- **查进程别用内联中文**：`Where-Object { $_.Name -eq 'AI小说作家.exe' }` 写在 bash 双引号里会因编码失真
+  匹配不到任何进程（我会据此误判「没有实例在跑」）。改用 `.ps1` 文件、已知 PID，或用 node 取 JSON 后按前缀过滤。
 - **不要**建 GitHub Release、不要打 tag —— 用户明确要求只到本机安装这一步。
 
 ### 5. 关闭 issue
