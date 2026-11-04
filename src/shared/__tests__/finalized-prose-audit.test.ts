@@ -38,6 +38,22 @@ describe('auditFinalizedProse (issue #83)', () => {
    * issue #132：蓝图声明了跨日、正文没写——这条必须从**共用出口**报出来，
    * 否则写前预检与审稿两条路径都拿不到它（#83 的意义就在于此）。
    */
+  /**
+   * issue #133：清单件数对不上——必须从**共用出口**报出来，否则写前预检与审稿两条路径都拿不到。
+   */
+  it('surfaces an inventory shortfall from the shared exit (issue #133)', () => {
+    const findings = auditFinalizedProse({
+      chapters: [
+        { chapterNumber: 57, content: '清库名单。无编号薄本六册。靛蓝短褂一件。旧航次账抄件一册。' },
+        { chapterNumber: 58, content: '三样东西码成一排：无编号薄本在左；靛蓝短褂在中；旧航次账抄件在右。' },
+      ],
+      castNames: [], blueprints: [],
+    })
+    const shortfall = findings.filter(finding => finding.stableFactKey.startsWith('inventory:shortfall:'))
+    expect(shortfall).toHaveLength(1)
+    expect(shortfall[0]!.evidence).toContain('合计 8 件')
+  })
+
   it('surfaces a declared-but-unwritten day boundary from the shared exit (issue #132)', () => {
     const chapters = [
       { chapterNumber: 1, content: '回执摊在桌上，边角还带着潮气。' },

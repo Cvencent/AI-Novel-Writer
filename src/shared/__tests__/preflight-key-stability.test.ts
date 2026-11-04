@@ -24,6 +24,7 @@ import { findStaleStateDurationFindings } from '../stale-state-duration'
 import { auditFinalizedProse } from '../finalized-prose-audit'
 import { declaredCharacterCountFindings } from '../consistency-preflight'
 import { findUnmetTimeAnchorFindings } from '../chapter-time-anchor'
+import { findInventoryShortfallFindings } from '../inventory-count'
 import { proseRepetitionFindings } from '../prose-repetition'
 import { glyphRadicalFindings } from '../glyph-radical'
 import { findCastNameDriftFindings } from '../cast-name-drift'
@@ -188,6 +189,10 @@ describe('no preflight key may change when only currentChapter advances (issue #
       ['findUnmetTimeAnchorFindings', () => findUnmetTimeAnchorFindings([
         { chapterNumber: 1, content: '他推开舱门。', keyEvents: '【时点：同日夜】' },
         { chapterNumber: 2, content: '他推开舱门。', keyEvents: '【时点：次日清晨】' },
+      ])],
+      ['findInventoryShortfallFindings', () => findInventoryShortfallFindings([
+        { chapterNumber: 57, content: '清库名单。无编号薄本六册。靛蓝短褂一件。旧航次账抄件一册。' },
+        { chapterNumber: 58, content: '三样东西码成一排：无编号薄本在左；靛蓝短褂在中；旧航次账抄件在右。' },
       ])],
       ['findStaleStateDurationFindings', () => findStaleStateDurationFindings(STALE_DURATION_BOOK)],
       ['findHandwritingConflictFindings', () => findHandwritingConflictFindings({

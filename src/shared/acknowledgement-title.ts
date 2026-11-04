@@ -95,6 +95,9 @@ const FAMILY_LABELS: Readonly<Record<string, AcknowledgementTitle>> = Object.fre
   'glyph': { zhCN: '字形偏旁写错', enUS: 'wrong radical claimed' },
   'numbering': { zhCN: '编号位数自相矛盾', enUS: 'numbering digits mismatch' },
   'declared-count': { zhCN: '自报的字数与写出的字不符', enUS: 'declared character count mismatch' },
+  'inventory': { zhCN: '清单件数对不上', enUS: 'inventory count mismatch' },
+  'inventory:enumeration': { zhCN: '声明了几项却只列出几项', enUS: 'enumerated fewer items than declared' },
+  'inventory:shortfall': { zhCN: '前章的清单件数在后文少了几件', enUS: 'inventory shortfall across chapters' },
   // —— 伏笔 / 线索 / 其他 ——
   'foreshadowing': { zhCN: '承诺的伏笔没落地', enUS: 'foreshadowing undelivered' },
   'thread': { zhCN: '叙事线索停摆/逾期', enUS: 'narrative thread' },

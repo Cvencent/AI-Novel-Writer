@@ -79,6 +79,8 @@ import { findPropContainerDepartureFindings } from './prop-relocation'
 import { findAbilityLimitBypassFindings } from './ability-limit-bypass'
 // 笔迹特征自相矛盾（#97）：同一个书写者被写成两套互斥特征（「稳、匀」vs「横折收得急」）。
 import { findHandwritingConflictFindings } from './handwriting-signature'
+// 清单件数对账（#133）：声明 N 件却只列/兑现 M 件。同章枚举 + 跨章清单两条。
+import { findEnumerationCountMismatches, findInventoryShortfallFindings } from './inventory-count'
 import { closingShotOf } from './blueprint-semantic-contract'
 import { foreshadowingDueAt, parseForeshadowingCommitments } from './foreshadowing-commitments'
 
@@ -303,12 +305,16 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   // 道具位置断裂（issue #113）：第 14 章「纸角」收进册子衬页、册子被抽走，第 17/18 章它又在内衬里。
   // 需要名册（排除人名被当道具，同 #80）。
   const propContainerDeparture = findPropContainerDepartureFindings(chapters, castNames)
+  // 清单件数（#133）：同章「N 样…：A；B；C」项数不符 + 跨章清单合计与兑现项数不符。
+  // 用全量已定稿章：清单与兑现常常跨章，窗口切小会把清单切出样本。
+  const inventorySameChapter = auditSample.flatMap(chapter => findEnumerationCountMismatches(chapter))
+  const inventoryShortfall = findInventoryShortfallFindings(chapters)
 
   return [...closingLabel, ...numbering, ...ability, ...declaredCount, ...repetition, ...undelivered,
     ...ultimatum, ...pendingLanding, ...reversal, ...undatedStreak, ...unmetTimeAnchor, ...proseFlavor, ...positionalAxes, ...glyphRadical,
     ...castNameDrift, ...deadlineSettlement, ...repeatedRevocation, ...duplicateTitles,
     ...abilityLimitBypass, ...handwritingConflicts, ...quoteStyleDrift, ...staleStateDuration,
-    ...propContainerDeparture]
+    ...propContainerDeparture, ...inventorySameChapter, ...inventoryShortfall]
 }
 
 /**
