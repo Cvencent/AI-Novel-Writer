@@ -1,4 +1,5 @@
 import type { FinalizedContinuityProjection } from './finalized-continuity'
+import { stripEmphasis } from './author-visible-text'
 import { blueprintKeyEventsOversize } from './blueprint-length'
 import { foreshadowingKeywords, selectDiscriminatingKeywords, type ForeshadowingCommitment } from './foreshadowing-commitments'
 import { findAnnihilatedPropRevival, findRepeatPropTermination } from './prop-termination'
@@ -1376,7 +1377,8 @@ export function mergeConsistencyFindingsIntoReview(
   const mapped = findings.map(finding => ({
     category: locale === 'en-US' ? 'Deterministic continuity preflight' : '确定性一致性预检',
     severity: finding.severity,
-    description: locale === 'en-US' ? finding.issue.enUS : finding.issue.zhCN,
+    // issue #154：编辑台质检条目也是作者可见的纯文本，同样剥掉 Markdown 粗体。
+    description: stripEmphasis(locale === 'en-US' ? finding.issue.enUS : finding.issue.zhCN),
     quote: finding.evidence,
     stableFactKey: finding.stableFactKey,
     sourceChapter: finding.sourceChapter,

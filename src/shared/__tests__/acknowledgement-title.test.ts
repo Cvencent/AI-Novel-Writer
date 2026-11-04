@@ -97,7 +97,10 @@ describe('ack 区不再渲染内部键 (issue #120)', () => {
   it('当轮仍命中的那条用 finding 原文（首句），并仍可在悬浮里定位', () => {
     const finding = { issue: { zhCN: '章首句式收敛：最近 6 章里 5 章的**开篇句**是同一个句式。连着十几章这样开场。', enUS: 'Openings converged: five of six. More detail follows here.' } }
     const title = acknowledgementTitleOf('chapter-opening:scene-first', finding)
-    expect(title.zhCN).toBe('章首句式收敛：最近 6 章里 5 章的**开篇句**是同一个句式。')
+    // ⚠️ 断言「原文首句」，但**粗体标记必须已剥离**（issue #154）：ack 区是纯文本一行标题，
+    // 一行里出现两对 `**` 就完全读不出这是什么。这条断言原来把带星号的文案钉成了规格。
+    expect(title.zhCN).toBe('章首句式收敛：最近 6 章里 5 章的开篇句是同一个句式。')
+    expect(title.zhCN).not.toContain('*')
     expect(title.zhCN).not.toContain('chapter-opening')
     // 英文用 `.` 结尾，也要能在句末切开（第一版只认中文标点，英文整段被硬截）。
     expect(title.enUS).toBe('Openings converged: five of six.')

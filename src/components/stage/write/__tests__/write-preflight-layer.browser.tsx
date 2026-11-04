@@ -248,3 +248,40 @@ describe('跨层修复的剩余层提示 (issue #137)', () => {
     expect(host!.textContent).not.toContain('还会继续提出')
   })
 })
+
+/**
+ * issue #154：预检弹层里判据文案的 Markdown 粗体必须被剥掉。
+ *
+ * 实测 57%~81% 的提醒带 `**`，作者看到的是满屏星号——它会让人以为界面坏了
+ * （`**` 像是没渲染的模板），而且越强调越糟。
+ */
+describe('预检正文剥离 Markdown 粗体 (issue #154)', () => {
+  it('renders the emphasis as plain text', async () => {
+    const emphasised = {
+      ...preflight,
+      findings: [{
+        stableFactKey: 'prose-flavor:motif:9',
+        severity: 'warning' as const,
+        sourceChapter: 9,
+        evidence: '第9章「盐包」出现 7 次',
+        issue: { zhCN: '同一条**骨架**重复。', enUS: 'The same **shape** repeats.' },
+        suggestion: { zhCN: '换**措辞**。', enUS: 'Change the **wording**.' },
+      }],
+    } as ConsistencyPreflightResult
+    host = document.createElement('div')
+    host.className = 'paper-ink stage-shell'
+    document.body.append(host)
+    root = createRoot(host)
+    await act(async () => root!.render(
+      <WritePreflight
+        preflight={emphasised} busy={false}
+        onIgnoreOnce={vi.fn()} onRerun={vi.fn()} onSave={vi.fn()} onRevoke={vi.fn()}
+        onAcknowledge={vi.fn()} onUnacknowledge={vi.fn()}
+      />,
+    ))
+    expect(host!.textContent).not.toContain('**')
+    // 文字内容还在（不是把整句删掉了）。
+    expect(host!.textContent).toContain('同一条骨架重复')
+    expect(host!.textContent).toContain('换措辞')
+  })
+})

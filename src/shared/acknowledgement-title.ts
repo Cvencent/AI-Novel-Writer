@@ -22,6 +22,8 @@
  * 是可枚举、可用结构测试穷尽的闭集。`acknowledgement-title.test.ts` 会**扫描全部
  * `stableFactKey` 字面量**并断言每一个前缀都能译出人话——新加判据若忘了登记，测试直接红。
  */
+import { stripEmphasis } from './author-visible-text'
+
 
 export interface AcknowledgementTitle {
   zhCN: string
@@ -189,7 +191,9 @@ export function acknowledgementTitleOf(
  * 于是整段被硬截在中途——这是本文件第一版的实际缺陷，由测试的英文用例抓出来。
  */
 function firstSentence(text: string, maxChars: number): string {
-  const trimmed = String(text ?? '').trim()
+  // issue #154：ack 区是**纯文本**标题，判据文案里的 `**` 会原样显示。
+  // 先剥标记再截句：否则截断点可能落在一对 `**` 中间，留下半截标记。
+  const trimmed = stripEmphasis(text)
   if (!trimmed) return ''
   const stop = trimmed.search(/[。！？]|[.!?](?=\s|$)/u)
   const sentence = stop >= 0 ? trimmed.slice(0, stop + 1) : trimmed

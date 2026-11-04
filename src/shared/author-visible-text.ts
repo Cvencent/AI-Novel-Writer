@@ -1,0 +1,69 @@
+/**
+ * 作者可见文案的**轻量标记剥离**（issue #154）。
+ *
+ * 现象：判据的 `issue` / `suggestion` 在源码里写的是 Markdown 粗体（`**…**`），
+ * 那是为了在代码与 issue 里读起来有重点；但界面把它当**纯文本**渲染，
+ * 于是作者看到的是满屏 `**`：
+ *
+ * > 最近 10 章（第 15–24 章）里有 **4 章（40%）** 的**最后一句话**是同一个骨架…
+ *
+ * 实测（两本语料、`auditFinalizedProse` 只读）：52–53 条提醒里，
+ * `issue.zhCN` 含 `**` 的 29 条（57%）、`suggestion.zhCN` 的 40 条（77%）；
+ * 涉及的判据族 19 个。四条作者可见路径全都原样输出。
+ *
+ * ## 为什么在**出口**剥离，而不是改原字符串
+ *
+ * `issue.zhCN` 同时是**起草约束**的来源（`generate-draft.command.ts`）与
+ * **发给模型的修复提示**（`preflight-repair.ts`）的一部分——那两处保留 Markdown
+ * 更清楚，模型也读得懂。所以剥离只发生在「给作者看」的那几步。
+ *
+ * ## 只剥粗体，不引整库 Markdown
+ *
+ * 这些文案里有大量 `「」`、方括号与插值，整库渲染反而容易误伤；
+ * 而实测语料里**除了 `**` 没有任何其他标记**（去掉 `**` 后含单个 `*` 的字符串为 0 条）。
+ * 所以只处理 `**…**`，并把落单的 `**` 一并清掉（半截标记同样是噪音）。
+ */
+
+/**
+ * 去掉 Markdown 粗体标记，返回可直接给作者看的纯文本。
+ *
+ * - `**…**` → `…`（成对的粗体标记）；
+ * - 落单的 `**` / 单个 `*` 也一并去掉——半截标记在界面上同样是噪音，
+ *   而实测语料里不存在「真的想显示星号」的文案。
+ * - 空白折叠：剥离后可能出现「**词**」变成「词」而两侧留双空格，收成一个。
+ */
+export function stripEmphasis(text: string): string {
+  return String(text ?? '')
+    .replace(/\*\*/gu, '')
+    .replace(/\*/gu, '')
+    .replace(/[ \t]{2,}/gu, ' ')
+    .trim()
+}
+
+/** 一条提醒里**给作者看**的三个字段。 */
+export interface AuthorVisibleFindingText {
+  issue: { zhCN: string, enUS: string }
+  suggestion: { zhCN: string, enUS: string }
+  evidence: string
+}
+
+/**
+ * 把一条提醒的所有作者可见字段过一遍 `stripEmphasis`。
+ *
+ * 用它而不是在每处调 `stripEmphasis`：四条路径（预检弹层、ack 标题、编辑台质检、
+ * 差异面板）只要都走这一个入口，就不会再出现「某条路径忘了剥」。
+ */
+export function toAuthorVisibleText<T extends AuthorVisibleFindingText>(finding: T): T {
+  return {
+    ...finding,
+    issue: {
+      zhCN: stripEmphasis(finding.issue.zhCN),
+      enUS: stripEmphasis(finding.issue.enUS),
+    },
+    suggestion: {
+      zhCN: stripEmphasis(finding.suggestion.zhCN),
+      enUS: stripEmphasis(finding.suggestion.enUS),
+    },
+    evidence: stripEmphasis(finding.evidence),
+  }
+}

@@ -5,6 +5,7 @@ import type { ConsistencyFinding } from '../../../shared/consistency-preflight'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { preflightRouteOf, type PreflightRoute } from '../../../shared/preflight-route'
 import PreflightRepairPanel, { type RepairProposal } from './PreflightRepairPanel'
+import { stripEmphasis } from '../../../shared/author-visible-text'
 import { Button } from '../../ui/Button'
 
 /** 各层的中文/英文说法（面向作者；层名本身是内部概念）。 */
@@ -105,9 +106,14 @@ export default function WritePreflight({
         })
         return (
           <div key={finding.stableFactKey} className="stage-preflight-item">
-            <p>{locale === 'en-US' ? finding.issue.enUS : finding.issue.zhCN}</p>
-            <p className="stage-preflight-source">{text(`来源：第${finding.sourceChapter}章 · ${finding.evidence}`, `Source: Chapter ${finding.sourceChapter} · ${finding.evidence}`)}</p>
-            <p>{locale === 'en-US' ? finding.suggestion.enUS : finding.suggestion.zhCN}</p>
+            {/*
+              issue #154：判据文案里的 Markdown 粗体在界面是**纯文本渲染**，
+              不剥就是满屏 `**`（实测 57%~81% 的提醒带它）。剥离只在作者可见的出口做，
+              原字符串仍保留粗体给「发给模型的修复提示」与「起草约束」用。
+            */}
+            <p>{stripEmphasis(locale === 'en-US' ? finding.issue.enUS : finding.issue.zhCN)}</p>
+            <p className="stage-preflight-source">{stripEmphasis(text(`来源：第${finding.sourceChapter}章 · ${finding.evidence}`, `Source: Chapter ${finding.sourceChapter} · ${finding.evidence}`))}</p>
+            <p>{stripEmphasis(locale === 'en-US' ? finding.suggestion.enUS : finding.suggestion.zhCN)}</p>
             <div className="stage-preflight-save">
               <input
                 className="pi-input"
