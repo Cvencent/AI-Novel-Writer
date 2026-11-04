@@ -223,3 +223,53 @@ export function planRepairCalls<T extends Pick<ConsistencyFinding, 'stableFactKe
     return list && list.length > 0 ? [{ layer, findings: list }] : []
   })
 }
+/**
+ * 「全部修复」的**跨层排队**（issue #137）。
+ *
+ * 现状的缺口：`planRepairCalls` 会把可修的提醒按层排好序，但界面只取了第一批
+ * （`calls[0]`）——于是「全部修复」实际只修**一层**，其余层的提醒原样留着，
+ * 而按钮上写的是「全部」。这不是判据问题，是排队没做。
+ *
+ * 排队的两条规则（都可断言，所以放在这里而不是界面里）：
+ * 1. **一层一次确认**：每层的差异必须由作者点过（不能连跑三层后一次性丢给作者看）；
+ * 2. **同一层不重复排队**：一层要么一次修完，要么失败后由作者重来——
+ *    否则「模型说这层不用改」会让队列原地打转。
+ *
+ * ⚠️ 组内键的顺序保持 `planRepairCalls` 给出的顺序（world → cast → outline → blueprint），
+ * 这样「先修设定、再修蓝图」这件事对作者是可预期的。
+ */
+export interface RepairQueueGroup<T> {
+  layer: PreflightLayer
+  findings: readonly T[]
+}
+
+/** 推进排队：去掉刚处理完的那一层，返回剩余队列（不改原数组）。 */
+export function advanceRepairQueue<T extends RepairQueueGroup<unknown>>(
+  queue: readonly T[],
+  /** 刚处理完的层；null 表示这一层没成（不推进，由作者决定重来还是跳过）。 */
+  done: PreflightLayer | null,
+): T[] {
+  if (done === null) return [...queue]
+  return queue.filter(group => group.layer !== done)
+}
+
+/** 队列里还剩哪几层（供界面告诉作者「还有 N 层」）。 */
+export function remainingRepairLayers<T extends RepairQueueGroup<unknown>>(queue: readonly T[]): PreflightLayer[] {
+  return [...new Set(queue.map(group => group.layer))]
+}
+
+/**
+ * 作者放弃当前这一组（「都不改」）时该不该继续下一层。
+ *
+ * 判据：**没有改动就没推进**——这一层的提醒仍然成立，队列保持原样，
+ * 但它会挡住后续层（`advanceRepairQueue(queue, null)` 返还原队列）。
+ * 所以放弃时必须显式结束整条链，否则界面会反复提出同一组。
+ */
+export function shouldContinueRepairChain(options: {
+  /** 作者是否采纳了至少一处改动。 */
+  appliedChanges: boolean
+  /** 队列里是否还有别的层。 */
+  hasOtherLayers: boolean
+}): boolean {
+  return options.appliedChanges && options.hasOtherLayers
+}

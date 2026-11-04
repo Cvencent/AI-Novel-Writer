@@ -204,3 +204,47 @@ describe('修复出口与差异确认 (issue #137)', () => {
     expect(dismissedNow()).toBe(true)
   })
 })
+
+/**
+ * issue #137 跨层排队：告诉作者「这一层不是最后一批」。
+ *
+ * 缺口：`planRepairCalls` 会把可修提醒按层排好，但界面只取第一批——「全部修复」
+ * 实际只修一层，而按钮写的是「全部」。现在每层仍由作者逐次确认，但界面上说清还剩几层。
+ */
+describe('跨层修复的剩余层提示 (issue #137)', () => {
+  const mountWithRemaining = async (remainingLayers: number | undefined) => {
+    host = document.createElement('div')
+    host.className = 'paper-ink stage-shell'
+    document.body.append(host)
+    root = createRoot(host)
+    const common = {
+      preflight, busy: false,
+      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onRevoke: vi.fn(),
+      onAcknowledge: vi.fn(), onUnacknowledge: vi.fn(),
+      onOpenLayer: vi.fn(), currentChapter: 45,
+      onRepair: vi.fn(), onRepairAll: vi.fn(),
+      repairProposal: {
+        layerLabel: '本章蓝图', chapterNumber: 45,
+        diffs: [{ field: 'keyEvents', before: '旧', after: '新', reason: '' }],
+        ...(remainingLayers === undefined ? {} : { remainingLayers }),
+      },
+      onApplyRepairField: vi.fn(), onApplyRepairAll: vi.fn(), onDismissRepair: vi.fn(),
+    }
+    await act(async () => root!.render(<WritePreflight {...common} />))
+  }
+
+  it('says how many layers are still queued', async () => {
+    await mountWithRemaining(2)
+    await expect.element(page.getByText(/另外 2 层/)).toBeVisible()
+  })
+
+  it('says nothing extra when this is the last layer', async () => {
+    await mountWithRemaining(0)
+    expect(host!.textContent).not.toContain('还会继续提出')
+  })
+
+  it('stays silent when the caller does not track a queue at all', async () => {
+    await mountWithRemaining(undefined)
+    expect(host!.textContent).not.toContain('还会继续提出')
+  })
+})

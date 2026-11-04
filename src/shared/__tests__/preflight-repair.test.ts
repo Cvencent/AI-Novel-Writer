@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest'
 
 import {
   LAYER_FIELDS,
+  advanceRepairQueue,
   buildRepairPrompt,
   diffRepairPatch,
   parseRepairPatch,
   planRepairCalls,
+  remainingRepairLayers,
+  shouldContinueRepairChain,
 } from '../preflight-repair'
 
 const finding = (stableFactKey: string, zh: string) => ({
@@ -142,5 +145,48 @@ describe('planRepairCalls (issue #137)', () => {
       { ...finding('y:1', 'y'), layer: 'world' },
     ])
     expect(calls.map(call => call.layer)).toEqual(['world', 'blueprint'])
+  })
+})
+/**
+ * issue #137：「全部修复」的**跨层排队**。
+ *
+ * 缺口：`planRepairCalls` 把可修提醒按层排好，但界面只取第一批——于是「全部修复」
+ * 实际只修一层，其余层原样留着，而按钮上写的是「全部」。
+ */
+describe('跨层排队 (issue #137)', () => {
+  const group = (layer: 'world' | 'cast' | 'outline' | 'blueprint', ks: string[]) =>
+    ({ layer, findings: ks.map(key => ({ stableFactKey: key })) })
+
+  it('drops the finished layer and keeps the others in order', () => {
+    const queue = [group('world', ['w1']), group('blueprint', ['b1', 'b2'])]
+    expect(advanceRepairQueue(queue, 'world').map(item => item.layer)).toEqual(['blueprint'])
+    // 原数组不被修改（界面状态要能回看）。
+    expect(queue.map(item => item.layer)).toEqual(['world', 'blueprint'])
+  })
+
+  it('does not advance when the layer produced no change', () => {
+    // 模型说「这层不用改」/ 作者点了「都不改」→ 队列必须原地不动，
+    // 否则那几层的提醒会在没有任何改动的情况下被当作已处理。
+    const queue = [group('world', ['w1']), group('blueprint', ['b1'])]
+    expect(advanceRepairQueue(queue, null).map(item => item.layer)).toEqual(['world', 'blueprint'])
+  })
+
+  it('removes every group of the finished layer, so one layer is never queued twice', () => {
+    const queue = [group('blueprint', ['b1']), group('world', ['w1']), group('blueprint', ['b2'])]
+    expect(advanceRepairQueue(queue, 'blueprint').map(item => item.layer)).toEqual(['world'])
+  })
+
+  it('names the layers still queued, without duplicates', () => {
+    expect(remainingRepairLayers([group('world', ['w1']), group('blueprint', ['b1']), group('blueprint', ['b2'])]))
+      .toEqual(['world', 'blueprint'])
+    expect(remainingRepairLayers([])).toEqual([])
+  })
+
+  it('continues only when something was actually applied and another layer is left', () => {
+    // 四条组合都要对：「不采纳」绝不能触发下一层，否则作者会看到一串自己没同意的改动。
+    expect(shouldContinueRepairChain({ appliedChanges: true, hasOtherLayers: true })).toBe(true)
+    expect(shouldContinueRepairChain({ appliedChanges: false, hasOtherLayers: true })).toBe(false)
+    expect(shouldContinueRepairChain({ appliedChanges: true, hasOtherLayers: false })).toBe(false)
+    expect(shouldContinueRepairChain({ appliedChanges: false, hasOtherLayers: false })).toBe(false)
   })
 })

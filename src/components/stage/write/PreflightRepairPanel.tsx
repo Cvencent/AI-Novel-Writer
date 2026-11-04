@@ -9,6 +9,8 @@ export interface RepairProposal {
   layerLabel: string
   chapterNumber: number | null
   diffs: RepairFieldDiff[]
+  /** 「全部修复」排队里还剩几层（issue #137）：0 表示修完这一层就结束了。 */
+  remainingLayers?: number
 }
 
 interface PreflightRepairPanelProps {
@@ -50,6 +52,13 @@ export default function PreflightRepairPanel({
         {text('下面是模型按提醒改出来的具体字段。勾选你认可的那几处，才会写进项目。',
           'These are the fields the model rewrote to resolve the reminders. Nothing is written until you pick the ones you accept.')}
       </p>
+      {/* 跨层排队（issue #137）：告诉作者这一层不是最后一批，采纳后会继续提出下一层。 */}
+      {(proposal.remainingLayers ?? 0) > 0 ? (
+        <p className="stage-preflight-note">
+          {text(`采纳后还会继续提出另外 ${proposal.remainingLayers} 层（每层都要你确认，不会自动连改）。`,
+            `${proposal.remainingLayers} more layer${proposal.remainingLayers === 1 ? '' : 's'} will be proposed after you accept; each one still needs your confirmation.`)}
+        </p>
+      ) : null}
       {proposal.diffs.map(diff => (
         <div key={diff.field} className="stage-preflight-repair-item">
           <label className="stage-preflight-repair-pick">

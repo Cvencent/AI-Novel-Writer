@@ -21,7 +21,7 @@ import { captureProjectSession, isProjectSessionCurrent } from '../../project-se
 import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useAnchoredLayer } from '../../ui/use-anchored-layer'
 import { applyRepairDiffs, proposeLayerRepair } from '../../../services/preflight-repair'
-import { planRepairCalls } from '../../../shared/preflight-repair'
+import { advanceRepairQueue, planRepairCalls, remainingRepairLayers, shouldContinueRepairChain } from '../../../shared/preflight-repair'
 import { preflightRouteOf } from '../../../shared/preflight-route'
 import { Button } from '../../ui/Button'
 import SplitAction from './SplitAction'
@@ -63,6 +63,8 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
   // 「修复」生成出来的字段改写建议（issue #137）：**作者确认差异后**才落库。
   const [repairProposal, setRepairProposal] = useState<RepairProposal | null>(null)
   const [repairSource, setRepairSource] = useState<{ layer: 'world' | 'cast' | 'outline' | 'blueprint' | 'prose'; chapterNumber: number | null } | null>(null)
+  // 「全部修复」的跨层排队（issue #137）：一层一次确认，采纳后自动提出下一层。
+  const [repairQueue, setRepairQueue] = useState<Array<{ layer: 'world' | 'cast' | 'outline' | 'blueprint' | 'prose'; findings: readonly ConsistencyFinding[] }>>([])
   const [starting, setStarting] = useState(false)
   const modelFieldId = useId()
   const guidanceFieldId = useId()
@@ -180,6 +182,8 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     })))
     const call = calls[0]
     if (!call) return
+    // 其余层进队列：一层一次确认，不连跑。
+    setRepairQueue(calls.slice(1))
     setBusy(true)
     setMessage(null)
     try {
@@ -195,6 +199,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
         layerLabel: call.layer === 'world' ? text('世界观/设定', 'worldbuilding') : text('本章蓝图', 'this chapter’s blueprint'),
         chapterNumber,
         diffs: outcome.diffs,
+        remainingLayers: calls.length - 1,
       })
       show()
     } finally {
@@ -215,11 +220,46 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       if (!result.success) { setMessage(result.error || text('写入失败', 'Write failed')); return }
       setRepairProposal(null)
       setRepairSource(null)
+      // 跨层排队（issue #137）：这一层采纳了改动、且还有别的层 → 提出下一层。
+      // ⚠️ 只在**真的采纳了改动**时继续：作者点「都不改」时不能推进，
+      //    否则那几层的提醒会在没有任何改动的情况下被当作已处理。
+      const remaining = advanceRepairQueue(repairQueue, repairSource.layer)
+      setRepairQueue(remaining)
+      const next = remaining[0]
+      if (shouldContinueRepairChain({ appliedChanges: true, hasOtherLayers: Boolean(next) }) && next) {
+        // 先重检（这一层已落库），再按**最新**的提醒提出下一层。
+        await start(false, session)
+        if (!isProjectSessionCurrent(session)) return
+        await proposeQueuedGroup(session, next)
+        return
+      }
       // 重检：改完的提醒应该消失，作者要能看到这一点。
       await start(false, session)
     } finally {
       setBusy(false)
     }
+  }
+
+  /** 提出队列里的下一层（与「修复」走同一条生成 + 差异确认路径）。 */
+  const proposeQueuedGroup = async (
+    session: ProjectSessionContext,
+    group: { layer: 'world' | 'cast' | 'outline' | 'blueprint' | 'prose'; findings: readonly ConsistencyFinding[] },
+  ) => {
+    const outcome = await proposeLayerRepair(session, group.layer, chapterNumber, group.findings, locale)
+    if (!isProjectSessionCurrent(session)) return
+    if (outcome.status !== 'proposed') {
+      // 这一层没成（模型认为不用改 / 失败）：队列已经把它移走，把原因说清楚就停。
+      if (outcome.status === 'failed') setMessage(outcome.error)
+      return
+    }
+    setRepairSource({ layer: group.layer, chapterNumber })
+    setRepairProposal({
+      layerLabel: group.layer === 'world' ? text('世界观/设定', 'worldbuilding') : text('本章蓝图', 'this chapter’s blueprint'),
+      chapterNumber,
+      diffs: outcome.diffs,
+      remainingLayers: remainingRepairLayers(repairQueue).length,
+    })
+    show()
   }
 
   const saveArrangement = async (stableFactKey: string, reason: string) => {
@@ -337,7 +377,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           repairProposal={repairProposal}
           onApplyRepairField={field => void applyRepair([field])}
           onApplyRepairAll={() => void applyRepair(null)}
-          onDismissRepair={() => { setRepairProposal(null); setRepairSource(null) }}
+          onDismissRepair={() => { setRepairProposal(null); setRepairSource(null); setRepairQueue([]) }}
           onOpenLayer={route => {
             // issue #137：把作者送到该提醒所属的那一层。先收起弹层，再导航——
             // 否则弹层会盖在目标页上（与「去修复定稿后处理」同一处理）。
