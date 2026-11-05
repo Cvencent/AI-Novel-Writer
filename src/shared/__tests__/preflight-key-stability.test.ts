@@ -10,7 +10,7 @@ import {
 } from '../consistency-preflight'
 import { lossRestatementReviewFindings } from '../loss-restatement-review'
 import { findUndatedStreakFindings } from '../chapter-time-anchor'
-import { findUnsettledDeadlineFindings } from '../deadline-settlement'
+import { deadlineReviewFindings } from '../deadline-review'
 import { findRepeatedRevocationFindings } from '../repeated-revocation'
 import { findDuplicateChapterTitleFindings } from '../chapter-title-uniqueness'
 import { handwritingReviewFindings } from '../handwriting-review'
@@ -157,7 +157,9 @@ describe('no preflight key may change when only currentChapter advances (issue #
       ['glyphRadicalFindings', () => glyphRadicalFindings(SAMPLE_BOOK)],
       ['findCastNameDriftFindings', () => findCastNameDriftFindings({ chapters: SAMPLE_BOOK, castNames: CAST })],
       ['auditFinalizedProse', () => auditFinalizedProse({ chapters: SAMPLE_BOOK, castNames: CAST, blueprints: BLUEPRINTS })],
-      ['findUnsettledDeadlineFindings', n => findUnsettledDeadlineFindings({ chapters: SAMPLE_BOOK, currentChapter: n })],
+      // 期限那一族已改成模型判据（#163），这里直接喂它的产出转 findings 那一段：
+      // key 锚在**期限制**上（同形于旧实现），不带会滚动的章号。
+      ['deadlineReviewFindings', () => deadlineReviewFindings([{ chapterNumber: 1, quote: '明早交不出就完了。', deadline: '明早交完', explanation: '' }])],
       ['findRepeatedRevocationFindings', () => findRepeatedRevocationFindings({
         ledger: [{ chapterNumber: 1, costs: '从此不能再上柜台' }, { chapterNumber: 12, costs: '柜台从此不能再用' }],
         prose: SAMPLE_BOOK, castNames: CAST,

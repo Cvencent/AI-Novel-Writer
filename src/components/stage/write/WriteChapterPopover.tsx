@@ -26,7 +26,7 @@ import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useAnchoredLayer } from '../../ui/use-anchored-layer'
 import {
   appearanceContradictionFindings, appearanceUnusedMarkFindings, applyRepairDiffs, checkAppearanceAgainstCards,
-  proposeLayerRepair, reviewAbilityLimits, reviewBlueprintAgainstProse, reviewBlueprintInternals, reviewEvidenceShapes, reviewHandwritingTraits, reviewLossRestatements, reviewMemoryAnchors, reviewProseContent, reviewProseStyle,
+  proposeLayerRepair, reviewAbilityLimits, reviewBlueprintAgainstProse, reviewBlueprintInternals, reviewEvidenceShapes, reviewDeadlines, reviewHandwritingTraits, reviewLossRestatements, reviewMemoryAnchors, reviewProseContent, reviewProseStyle,
   reviewSensoryChannels, sensoryVerdictFindings,
 } from '../../../services/preflight-repair'
 import { advanceRepairQueue, planRepairCalls, remainingRepairLayers, shouldContinueRepairChain } from '../../../shared/preflight-repair'
@@ -651,6 +651,34 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     }
   }
 
+  /**
+   * 期限宣告了却从不结算（issue #101 / #163）——**交给模型判**。
+   *
+   * 旧实现是四张题材措辞表（天亮前/日落前/明早… + 不许/别想/扣下… + 期限已过/逾期…），
+   * 只对这本书的写法成立；按用户 2026-11-05 的定规改由模型判。
+   */
+  const checkDeadlines = async () => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || busy) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      const chapters = await recentFinalized(session)
+      if (!isProjectSessionCurrent(session)) return
+      if (chapters.length < 2) {
+        setMessage(text('至少要有两章已定稿正文才能判断「期限有没有结算」。',
+          'At least two finalized chapters are needed to judge deadline settlement.'))
+        return
+      }
+      const outcome = await reviewDeadlines(session, chapters, locale)
+      if (!isProjectSessionCurrent(session)) return
+      if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
+      mergeFindings(outcome.findings)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   /** 作者勾选后落库（走现成写通道），然后重检刷新列表。 */
   const applyRepair = async (fields: readonly string[] | null) => {
     const diffs = repairProposal?.diffs.filter(diff => fields === null || fields.includes(diff.field)) ?? []
@@ -900,6 +928,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           onCheckHandwriting={() => void checkHandwriting()}
           onCheckBlueprintInternal={() => void checkBlueprintInternal()}
           onCheckLossRestatement={() => void checkLossRestatement()}
+          onCheckDeadline={() => void checkDeadlines()}
           onCreateCharacter={name => void createCharacterCard(name)}
           repairProposal={repairProposal}
           onApplyRepairField={field => void applyRepair([field])}

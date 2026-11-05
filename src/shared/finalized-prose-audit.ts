@@ -64,7 +64,6 @@ import { glyphRadicalFindings } from './glyph-radical'
 // 已登记角色名的同后缀异姓漂移（#102）：正文把「陆敬堂」写成「穆敬堂」。
 import { findCastNameDriftFindings } from './cast-name-drift'
 // 期限宣告未对账（#101）：期限「只写不读」——宣告了但下一章整章不再提。
-import { findUnsettledDeadlineFindings } from './deadline-settlement'
 // 同一项不可逆处境变更被宣告两次（#105）：账本记两遍、第一次从未落地。
 import { findRepeatedRevocationFindings } from './repeated-revocation'
 // 章节标题「同题加尾」复用（#110）：合同只判精确同名、且只管新生成的那一批。
@@ -271,9 +270,11 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   // 所以要在预检里点名「哪一章用了哪个写法」。名册由调用方传入。
   const castNameDrift = castNames.length === 0 ? [] : findCastNameDriftFindings({ chapters, castNames })
 
-  // 期限宣告未对账（issue #101）：「只写不读」的期限装置——本书 79 处宣告、0 次到期。
-  // 用全量已定稿章：期限的张力就在「下一章还没交代」时最大，报出来才知道哪一章该回头补。
-  const deadlineSettlement = findUnsettledDeadlineFindings({ chapters, currentChapter: nextChapter })
+  // 期限宣告未对账（issue #101 / #163）：原先靠四张题材措辞表（天亮前/日落前/明早… +
+  // 不许/别想/扣下… + 期限已过/逾期…）判，按用户 2026-11-05 的定规（内容判断不许词表、
+  // 不许短语匹配）已改由模型判（deadline-review.ts + reviewDeadlines，作者主动触发）。
+  // 「这句是不是期限、下一章有没有结算它」要读懂句子，不是位置判据。
+  const deadlineSettlement: ConsistencyFinding[] = []
 
   // 同一项不可逆处境变更被宣告两次（issue #105）：第 12 章把「售票口的位置」记为不可逆丧失，
   // 之后 34 章正文里她照常在柜台上，第 47 章又宣告一次。需要**两边证据**——蓝图账本

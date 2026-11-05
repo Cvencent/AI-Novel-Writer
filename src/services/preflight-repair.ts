@@ -49,6 +49,12 @@ import {
   type BlueprintClaimChapter,
 } from '../shared/prose-conflict-review'
 import {
+  buildDeadlineReviewPrompt,
+  deadlineReviewFindings,
+  parseDeadlineReview,
+  type DeadlineChapter,
+} from '../shared/deadline-review'
+import {
   buildLossRestatementPrompt,
   lossRestatementReviewFindings,
   parseLossRestatementReview,
@@ -773,4 +779,44 @@ export async function reviewLossRestatements(
       : '模型返回的不是合法的「同一笔损失被重复宣告」清单。' }
   }
   return { status: 'ok', findings: lossRestatementReviewFindings(issues) }
+}
+
+/**
+ * 「期限宣告了却从不结算」（issue #101 的现场，issue #163 的迁移）——一次模型调用。
+ *
+ * 旧实现是四张题材措辞表（天亮前/日落前/明早… + 不许/别想/扣下… + 期限已过/逾期…），
+ * 只对这本书的写法成立。按用户 2026-11-05 的定规改由模型判；
+ * 规则只负责任意取候选宣告句、校验引文与章号。
+ */
+export interface DeadlineReviewOutcome {
+  status: 'ok' | 'failed'
+  findings: ConsistencyFinding[]
+  error?: string
+}
+
+export async function reviewDeadlines(
+  session: ProjectSessionContext,
+  chapters: readonly DeadlineChapter[],
+  locale: 'zh-CN' | 'en-US' = 'zh-CN',
+): Promise<DeadlineReviewOutcome> {
+  const en = locale === 'en-US'
+  const usable = chapters.filter(chapter => Number.isSafeInteger(chapter.chapterNumber) && String(chapter.content ?? '').trim())
+  if (usable.length < 2) return { status: 'ok', findings: [] }
+  const request = { chapters: usable, language: locale }
+  const { system, user } = buildDeadlineReviewPrompt(request)
+  const response = await useLLMStore.getState().generate(
+    [{ role: 'system', content: system }, { role: 'user', content: user }],
+    undefined,
+    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
+  )
+  if (!response.success) {
+    return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
+  }
+  const issues = parseDeadlineReview(response.content, request)
+  if (!issues) {
+    return { status: 'failed', findings: [], error: en
+      ? 'The model did not return a valid unsettled-deadline list.'
+      : '模型返回的不是合法的「期限未结算」清单。' }
+  }
+  return { status: 'ok', findings: deadlineReviewFindings(issues) }
 }

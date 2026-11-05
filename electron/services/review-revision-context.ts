@@ -35,7 +35,6 @@ import { glyphRadicalFindings } from '../../src/shared/glyph-radical'
 // 角色名漂移（issue #102）：本章把某个已登记角色写成了同后缀异姓。
 import { findCastNameDriftFindings } from '../../src/shared/cast-name-drift'
 // 期限宣告未对账（#101）与重复宣告的不可逆处境变更（#105）：审稿时本章还在手边，正是能补的时候。
-import { findUnsettledDeadlineFindings } from '../../src/shared/deadline-settlement'
 import { findRepeatedRevocationFindings } from '../../src/shared/repeated-revocation'
 // 标题「同题加尾」复用（#110）与能力限制被绕过（#100）：审稿时本章与目录都在手边。
 import { findDuplicateChapterTitleFindings } from '../../src/shared/chapter-title-uniqueness'
@@ -269,15 +268,8 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
             { chapterNumber: source.chapterNumber, content: source.content }],
           castNames: authorCards.map(card => card.name),
         }),
-        // 期限宣告未对账（issue #101）：本章是否把**上一章**抛出的期限做了交代。
-        // 样本 = 上一章 + 本章（审稿时本章还在手边，正是能补的时候）。
-        ...findUnsettledDeadlineFindings({
-          chapters: [
-            ...history.slice(-1).map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
-            { chapterNumber: source.chapterNumber, content: source.content },
-          ],
-          currentChapter: source.chapterNumber,
-        }),
+        // 期限宣告未对账（issue #101 / #163）：原先靠四张题材措辞表判，按用户 2026-11-05 的定规
+        // 已改由模型判（deadline-review.ts + reviewDeadlines，作者主动触发）。
         // 重复宣告的不可逆处境变更（issue #105）：账本记两遍不可逆、第一次从未落地。
         // 样本与写前预检一致——账本（全部蓝图 costsAndTurns）+ 已定稿正文 + 本章。
         ...findRepeatedRevocationFindings({

@@ -97,6 +97,11 @@ interface WritePreflightProps {
    * 原先靠五张题材措辞表判，按用户定规改由模型判。不传时不渲染。
    */
   onCheckLossRestatement?: () => void
+  /**
+   * 「核对期限结算」（issue #101 / #163）：请模型判「宣告的期限在下一章有没有结算或明确延续」。
+   * 原先靠四张题材措辞表判，按用户定规改由模型判。不传时不渲染。
+   */
+  onCheckDeadline?: () => void
 
   /**
    * 「为「X」建卡」（issue #160）：提醒**自带**可执行动作时给这个出口。
@@ -126,7 +131,7 @@ interface WritePreflightProps {
  */
 export default function WritePreflight({
   preflight, busy, onIgnoreOnce, onRerun, onSave, onRevoke, onAcknowledge, onUnacknowledge, onOpenLayer, currentChapter,
-  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent, onCheckAbility, onCheckMemory, onCheckBlueprintFacts, onCheckEvidence, onCheckHandwriting, onCheckBlueprintInternal, onCheckLossRestatement, onCreateCharacter,
+  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent, onCheckAbility, onCheckMemory, onCheckBlueprintFacts, onCheckEvidence, onCheckHandwriting, onCheckBlueprintInternal, onCheckLossRestatement, onCheckDeadline, onCreateCharacter,
 }: WritePreflightProps) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
@@ -294,6 +299,11 @@ export default function WritePreflight({
           {onCheckLossRestatement === undefined ? null : (
             <Button variant="text" size="sm" disabled={busy} onClick={onCheckLossRestatement}>
               {text('核对代价重述', 'Check re-charged costs')}
+            </Button>
+          )}
+          {onCheckDeadline === undefined ? null : (
+            <Button variant="text" size="sm" disabled={busy} onClick={onCheckDeadline}>
+              {text('核对期限结算', 'Check deadline settlement')}
             </Button>
           )}
         </div>
