@@ -1,6 +1,7 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { isProjectSessionContext } from '../../src/shared/project-session-context'
 import { closeProjectDatabase, getCurrentProjectPath, getProjectDb } from '../database'
+import { recategorizeFinalizedFacts } from '../../src/shared/finalized-continuity-facts'
 import { StageReviewRepository } from '../repositories/stage-review-repository'
 import { isStageReviewTarget } from '../../src/shared/stage-review-types'
 import { replacePlotOutlineChapter } from '../../src/shared/plot-outline-contract'
@@ -1121,6 +1122,28 @@ export function registerDatabaseController() {
       throw new Error('GENERATION_FINALIZATION_ADMISSION_REQUIRED')
     } catch (err) {
       return { success: false, error: String(err) }
+    }
+  })
+
+  /**
+   * 重算分类的**预演**（issue #173 建议 ①「写之前给出计数与样本，像修复按钮那样先看差异」）。
+   *
+   * 只读：返回「会改几条、从→到 的计数」，一个字节都不写。
+   * 作者看到差异之后再点「重算」才真正落库。
+   */
+  ipcMain.handle('db:continuity-recategorize-preview', async (_event, request: { draftId: number, chapterNumber: number }, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) return { success: false as const, error: '项目数据库未打开' }
+      const row = db.prepare('SELECT continuity_facts FROM summary_snapshots WHERE draft_id=? ORDER BY id DESC LIMIT 1')
+        .get(request.draftId) as { continuity_facts: string } | undefined
+      if (!row) return { success: false as const, error: '摘要快照缺失，无法重算分类' }
+      const facts = JSON.parse(String(row.continuity_facts || '[]')) as Parameters<typeof recategorizeFinalizedFacts>[0]
+      const plan = recategorizeFinalizedFacts(Array.isArray(facts) ? facts : [])
+      return { success: true as const, preview: { chapterNumber: request.chapterNumber, changed: plan.changes.length, counts: plan.counts } }
+    } catch (err) {
+      return { success: false as const, error: err instanceof Error ? err.message : String(err) }
     }
   })
 

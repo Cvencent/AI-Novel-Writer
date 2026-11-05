@@ -39,6 +39,8 @@ import type {
   FinalizedSourceReadResult,
   SaveFinalizedCharacterStateCandidatesRequest,
   SaveFinalizedContinuityRequest,
+  RecategorizeContinuityReceipt,
+  RecategorizeContinuityRequest,
 } from './finalized-continuity'
 import type { DraftSourceDependency } from './draft-source-dependency'
 import type { ConsistencyAcknowledgement, ConsistencyExemption } from './consistency-preflight'
@@ -1188,6 +1190,15 @@ export interface DatabaseChannels {
   'db:continuity-list-before': {
     args: [chapterNumber: number, expectedProjectPath: string]
     return: FinalizedContinuityProjection[]
+  }
+  /** 存量事实重新分类（issue #173）：只改 category，不动 statement / evidence。 */
+  'db:continuity-recategorize-preview': {
+    args: [request: RecategorizeContinuityRequest, expectedProjectPath: string]
+    return: { success: boolean; preview?: RecategorizeContinuityReceipt; error?: string }
+  }
+  'db:continuity-recategorize-chapter': {
+    args: [request: RecategorizeContinuityRequest, expectedProjectPath: string]
+    return: { success: boolean; receipt?: RecategorizeContinuityReceipt; error?: string }
   }
   'db:continuity-read-source': {
     args: [draftId: number, expectedProjectPath: string]

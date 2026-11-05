@@ -7,6 +7,7 @@ import { openCanonicalProjectFixture as initProjectDatabase } from '../../../tes
 import { countDraftUnits } from '../../../src/shared/draft-units'
 import { FinalizedDraftImportRepository } from '../finalized-draft-import-repository'
 import { SummaryRepository } from '../summary-repository'
+import { recategorizeFinalizedFacts } from '../../../src/shared/finalized-continuity-facts'
 
 let projectRoot = ''
 
@@ -147,5 +148,25 @@ describe('recategorizeFinalizedContinuityChapter 的安全闸 (issue #173)', () 
     // 整笔拒绝：账本没有被改动过（仍然是我们塞进去的那条旧分类）。
     const facts = SummaryRepository.listFinalizedContinuityBefore(2)[0]!.facts ?? []
     expect(facts[0]!.category).toBe('plot')
+  })
+})
+
+/**
+ * 预览与落库**必须一致**（issue #173 建议 ①「写之前给出计数与样本」）。
+ *
+ * 界面上的流程是：先 `db:continuity-recategorize-preview`（只读，给计数）→
+ * 作者确认 → 再 `db:continuity-recategorize-chapter`（落库）。
+ * 两条通道各自算一遍，所以它们的数字**必须相等**，否则作者看到的差异是假的。
+ */
+describe('预览与落库的数字必须一致 (issue #173)', () => {
+  it('preview counts equal what the write path then changes', async () => {
+    const { draftId } = seedLegacyChapter()
+    // 预览走的是同一份纯函数（IPC 层直接调 recategorizeFinalizedFacts），
+    // 这里在仓库层复算一次，确认它与写入路径用的是同一判据。
+    const row = getProjectDb()!.prepare('SELECT continuity_facts FROM summary_snapshots WHERE draft_id=?').get(draftId) as { continuity_facts: string }
+    const plan = recategorizeFinalizedFacts(JSON.parse(row.continuity_facts) as never)
+    const receipt = SummaryRepository.recategorizeFinalizedContinuityChapter({ draftId, chapterNumber: 1 })
+    expect(receipt.changed).toBe(plan.changes.length)
+    expect(receipt.counts).toEqual(plan.counts)
   })
 })
