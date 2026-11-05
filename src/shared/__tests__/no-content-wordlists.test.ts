@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { literalTablesIn, scanLiteralTables } from './literal-table-scan'
+import { literalTablesIn, scanLiteralTables, tableFingerprint } from './literal-table-scan'
 
 /**
  * 判据层不许再用「写死的中文词表/正则」判断内容（用户 2026-11-05，两轮追加）。
@@ -36,14 +36,22 @@ import { literalTablesIn, scanLiteralTables } from './literal-table-scan'
 const BASELINE = JSON.parse(readFileSync(join(__dirname, 'literal-tables.baseline.json'), 'utf8')) as string[]
 
 describe('判据层不许新增写死的中文词表/正则 (用户 2026-11-05 / issue #163)', () => {
-  // 基线用**仓库相对路径**（`src/shared/x.ts::样本`），扫描器给的是绝对路径 → 统一下一步。
+  // 基线用**仓库相对路径**（`src/shared/x.ts::表名::指纹`），扫描器给的是绝对路径 → 统一下一步。
   const repoRoot = join(__dirname, '..', '..', '..')
   const tables = scanLiteralTables(join(repoRoot, 'src', 'shared'))
-  const keyOf = (table: { file: string; samples: string[] }) => {
+  /**
+   * 一条表的身份 = **文件 + 表名 + 整表指纹**（issue #168）。
+   *
+   * ⚠️ 旧口径是「文件 + 首样本」，于是**往已有表里补词完全不触发**
+   * （实测：往 `ENTRANCE_DRESS` 加 `黄狗|花猫|麻雀` 全绿）——迁移期靠补词就能绕。
+   * 现在：表里加/换任何一个词，指纹就变 → 不在基线里 → 红。
+   * ⚠️ 表名也进 key：同一文件里多张表首样本相同时，旧口径会让其中一张**没有独立条目**。
+   */
+  const keyOf = (table: { file: string; name: string; samples: string[] }) => {
     const relative = table.file.split('\\').join('/')
     const at = relative.indexOf('src/shared/')
     const path = at >= 0 ? relative.slice(at) : relative
-    return `${path}::${table.samples[0] ?? '<none>'}`
+    return `${path}::${table.name}::${tableFingerprint(table.samples)}`
   }
 
   it('never adds a table that is not in the frozen baseline', () => {
@@ -74,5 +82,34 @@ describe('判据层不许新增写死的中文词表/正则 (用户 2026-11-05 /
     const found = literalTablesIn('probe.ts', probe)
     expect(found.map(item => item.shape).sort()).toEqual(['const-array', 'freeze', 'regex'])
     expect(found.every(item => item.samples.length > 0)).toBe(true)
+  })
+})
+/**
+ * issue #168：**往已有表里补词**也必须红。
+ *
+ * 上一版基线记的是「文件 + 首样本」，于是「表还在、首段样本没变」= 判为已有，
+ * 补任何词都全绿——而迁移期最自然的动作恰恰是「先往旧表里补几个词撑着」。
+ */
+describe('整表指纹封住「补词」这条路 (issue #168)', () => {
+  it('changes the fingerprint when a single word is added', () => {
+    const before = tableFingerprint(['短褂', '长衫', '绸褂'])
+    const after = tableFingerprint(['短褂', '长衫', '绸褂', '黄狗'])
+    expect(after).not.toBe(before)
+  })
+
+  it('keeps the fingerprint stable when only the writing order changes', () => {
+    // 把 `短褂|长衫` 改写成 `长衫|短褂` 是**无关措辞**，不该假红。
+    expect(tableFingerprint(['短褂', '长衫'])).toBe(tableFingerprint(['长衫', '短褂']))
+  })
+
+  it('changes the fingerprint when a word is replaced', () => {
+    expect(tableFingerprint(['短褂', '长衫'])).not.toBe(tableFingerprint(['短褂', '长袍']))
+  })
+
+  it('distinguishes two tables in the same file by name, not just by first sample', () => {
+    // 旧口径 `文件::首样本` 会让同一文件里首样本相同的两张表共用一个条目
+    // （issue 实测有 5 组），其中一张表增删都不影响判定。
+    const baseline = JSON.parse(readFileSync(join(__dirname, 'literal-tables.baseline.json'), 'utf8')) as string[]
+    expect(baseline.every(key => key.split('::').length >= 3)).toBe(true)
   })
 })

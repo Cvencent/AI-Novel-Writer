@@ -42,8 +42,16 @@ export function literalTablesIn(file: string, source: string): LiteralTable[] {
   const found: LiteralTable[] = []
 
   /** 从匹配位置往前找最近的 `const X =` / `X:` 名字。 */
-  const nameBefore = (code: string, at: number): string => {
-    const window = code.slice(Math.max(0, at - 200), at)
+  /**
+   * 从匹配位置往前找最近的表名。
+   *
+   * ⚠️ `lead` 是这次匹配**带上的那个前缀字符**（`=` / `(` / `,` / `:` / `return` / `=>`）：
+   * 正则字面量的 `match.index` 指向的是前缀字符本身，窗口切到它**之前**，
+   * 于是 `const X =` 的 `=` 落在窗外、匹配不到 → 一律取到 `<inline>`（issue #168 建议 ②：
+   * 表名必须进 key，否则同一文件的两张表会共用一个条目）。把前缀拼回去即可。
+   */
+  const nameBefore = (code: string, at: number, lead = ''): string => {
+    const window = code.slice(Math.max(0, at - 200), at) + lead
     const assign = [...window.matchAll(/(?:const|let|export const)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]*)?=\s*$/gu)].at(-1)
     if (assign) return assign[1]!
     const record = [...window.matchAll(/([A-Za-z_$][\w$]*)\s*:\s*$/gu)].at(-1)
@@ -74,7 +82,8 @@ export function literalTablesIn(file: string, source: string): LiteralTable[] {
     if (!hasChineseRun(pattern)) continue
     found.push({
       file,
-      name: nameBefore(code, match.index ?? 0),
+      // ⚠️ 把前缀字符（`=` `(` `,` …）拼回窗口，否则 `const X =` 的 `=` 落在窗外、取名失败。
+      name: nameBefore(code, match.index ?? 0, match[1]!),
       shape: 'regex',
       samples: chineseSamples(pattern),
     })
@@ -90,10 +99,31 @@ export function literalTablesIn(file: string, source: string): LiteralTable[] {
   return found
 }
 
-function chineseSamples(body: string, limit = 4): string[] {
+/**
+ * 表里的**全部**中文片段（不截断）。
+ *
+ * ⚠️ 原来只取前 4 段、守卫只比 `samples[0]` —— 于是「往已有表里补词」完全不触发
+ * （issue #168 实测：往 `ENTRANCE_DRESS` 加 `黄狗|花猫|麻雀` 全绿）。
+ * 现在取全量，供整表指纹使用。
+ */
+function chineseSamples(body: string): string[] {
   const runs = [...body.matchAll(/[\u4e00-\u9fff]{2,}/gu)].map(match => match[0])
-  const unique = [...new Set(runs)]
-  return unique.slice(0, limit)
+  return [...new Set(runs)]
+}
+
+/**
+ * 整表指纹：**排序后**的全部中文样本的哈希（issue #168 建议 ③）。
+ *
+ * ⚠️ 排序是必需的：不排序时，把 `短褂|长衫` 改写成 `长衫|短褂`（只调书写顺序）
+ * 会让指纹变 → 假红；而真正的「加词/换词」必须变 → 真红。排序后两者正好分开。
+ */
+export function tableFingerprint(samples: readonly string[]): string {
+  const canonical = [...samples].map(item => item.trim()).filter(Boolean).sort().join('\u0001')
+  let hash = 5381
+  for (let index = 0; index < canonical.length; index += 1) {
+    hash = ((hash * 33) ^ canonical.charCodeAt(index)) >>> 0
+  }
+  return hash.toString(16).padStart(8, '0')
 }
 
 /** 扫一个目录（递归，跳过测试与生成目录）。 */
