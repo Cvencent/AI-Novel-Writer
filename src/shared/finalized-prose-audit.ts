@@ -343,12 +343,27 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
     castNames,
   })))
 
-  return [...closingLabel, ...numbering, ...ability, ...declaredCount, ...repetition, ...undelivered,
+  const findings: ConsistencyFinding[] = [...closingLabel, ...numbering, ...ability, ...declaredCount, ...repetition, ...undelivered,
     ...ultimatum, ...pendingLanding, ...reversal, ...undatedStreak, ...unmetTimeAnchor, ...timeAnchorSelfContradiction, ...unreconcilableAge, ...proseFlavor, ...positionalAxes, ...glyphRadical,
     ...castNameDrift, ...deadlineSettlement, ...repeatedRevocation, ...duplicateTitles,
     ...abilityLimitBypass, ...handwritingConflicts, ...quoteStyleDrift, ...staleStateDuration,
     ...propContainerDeparture, ...inventorySameChapter, ...inventoryShortfall, ...gaugeScale,
     ...repeatedSentences, ...shortSentenceReuse, ...promiseReversals, ...titleMismatches]
+  // 「同一批 findings 的 key 必须唯一」（issue #164 建议 ③）。这条守卫很便宜，且覆盖所有判据族：
+  // #153 的洞二（同章同部位两条 → 同 key → ack 埋掉没修的那条）与本条的洞一洞二都是它该抓的。
+  // ⚠️ 这里不「去重」而是**报出来**：去重会静默吞掉一条内容不同的提醒，
+  // 正确的修法在各自的判据侧（合并同章同轴的证据，例如 `contentReviewFindings`）。
+  const seen = new Set<string>()
+  const duplicated: string[] = []
+  for (const finding of findings) {
+    if (seen.has(finding.stableFactKey)) duplicated.push(finding.stableFactKey)
+    seen.add(finding.stableFactKey)
+  }
+  if (duplicated.length) {
+    // 开发期可见：这不是「多一条噪声」，而是 ack 会静默掉没修的那条。
+    console.warn('[finalized-prose-audit] duplicate stableFactKey:', [...new Set(duplicated)].join(', '))
+  }
+  return findings
 }
 
 /**

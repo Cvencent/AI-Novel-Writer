@@ -159,19 +159,43 @@ function stripFence(value: string): string {
 
 /** 把模型判出的内容问题转成一致性发现。 */
 export function contentReviewFindings(issues: readonly ContentReviewIssue[]): ConsistencyFinding[] {
-  return issues.map(issue => ({
-    // 章号 + 轴是既成事实；不带「当前章」（#86/#89/#98/#108）。
-    stableFactKey: `prose:${issue.axis}:${issue.chapterNumber}`,
-    severity: 'warning' as const,
-    sourceChapter: issue.chapterNumber,
-    evidence: `第${issue.chapterNumber}章（${CONTENT_AXES[issue.axis][0]}）：「${issue.quote}」`,
-    issue: {
-      zhCN: `第${issue.chapterNumber}章有一处重复写法：${issue.explanation || '这里与前面几章的写法重复。'}（原文「${issue.quote}」）。同一个动作、同一套程序在多个章里按同一顺序出现时，读者读到的是流程，不是这一章发生的事。`,
-      enUS: `Chapter ${issue.chapterNumber} repeats a move: ${issue.explanation || 'this repeats what earlier chapters do.'} (“${issue.quote}”) When the same beat runs in the same order chapter after chapter, readers read a procedure instead of what happened here.`,
-    },
-    suggestion: {
-      zhCN: `换这一拍的落点：换由谁来做、换在场的人看见什么、换它这次造成的后果。或者在保留动作的同时**给它一个新的信息**（这次拿到的和上次不一样）。`,
-      enUS: `Move this beat's landing: change who does it, what the people present notice, or the consequence it produces this time — or keep the action but give it new information.`,
-    },
-  }))
+  /**
+   * **同章同轴合并成一条**（issue #164 建议 ②）。
+   *
+   * 提示词允许「每类最多 3 条」，而 key 只含 `轴 + 章号`——于是同章同轴的第 1、2 条
+   * 拿到完全相同的 key：React 列表复用错节点、**ack 按 key 精确匹配会把没修的那条一起静默掉**、
+   * `findingByKey` 只留最后一条（#120 的标题错配）。
+   *
+   * 合并后语义也变正确：**一条提醒 = 这一章这个轴的一个判断**，
+   * 作者 ack 它就是把「这一章这个轴」整个认了；而不是「认了其中一句」。
+   */
+  const grouped = new Map<string, ContentReviewIssue[]>()
+  for (const issue of issues) {
+    const key = `${issue.axis}:${issue.chapterNumber}`
+    const list = grouped.get(key) ?? []
+    list.push(issue)
+    grouped.set(key, list)
+  }
+  return [...grouped.values()].map(list => {
+    const first = list[0]!
+    const quotes = list.map(item => `「${item.quote}」`).join('、')
+    const explanations = list.map(item => item.explanation).filter(Boolean).join('；')
+    const count = list.length
+    return {
+      // 章号 + 轴是既成事实；不带「当前章」（#86/#89/#98/#108）。
+      // ⚠️ 合并后**天然唯一**：一章节一轴只出一条，见上面的分组。
+      stableFactKey: `prose:${first.axis}:${first.chapterNumber}`,
+      severity: 'warning' as const,
+      sourceChapter: first.chapterNumber,
+      evidence: `第${first.chapterNumber}章（${CONTENT_AXES[first.axis][0]}）${count > 1 ? `${count} 处：` : ''}${quotes}`,
+      issue: {
+        zhCN: `第${first.chapterNumber}章有${count > 1 ? ` ${count} 处` : '一处'}重复写法${count > 1 ? '（同一个轴上）' : ''}：${quotes}${explanations ? `——${explanations}` : ''}。同一个动作、同一套程序在多个章里按同一顺序出现时，读者读到的是流程，不是这一章发生的事。`,
+        enUS: `Chapter ${first.chapterNumber} repeats a move${count > 1 ? ` ${count} times on the same axis` : ''}: ${quotes}${explanations ? ` — ${explanations}` : ''} When the same beat runs in the same order chapter after chapter, readers read a procedure instead of what happened here.`,
+      },
+      suggestion: {
+        zhCN: `换这一拍的落点：换由谁来做、换在场的人看见什么、换它这次造成的后果。或者在保留动作的同时**给它一个新的信息**（这次拿到的和上次不一样）。`,
+        enUS: `Move this beat's landing: change who does it, what the people present notice, or the consequence it produces this time — or keep the action but give it new information.`,
+      },
+    }
+  })
 }

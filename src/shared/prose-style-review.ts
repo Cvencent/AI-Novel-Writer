@@ -159,17 +159,33 @@ function stripFence(value: string): string {
 
 /** 把模型判出的文风问题转成一致性发现（每条一章一类）。 */
 export function styleIssueFindings(issues: readonly StyleIssue[]): ConsistencyFinding[] {
-  return issues.map(issue => {
-    const labels = STYLE_KIND_LABELS[issue.kind]
+  /**
+   * **同章同类合并成一条**（issue #164 建议 ②）——理由与 `content-review` 完全相同：
+   * 提示词允许「每章最多 3 条」，而 key 只含 `类别 + 章号`，同章第 1、2 条会同 key，
+   * 导致 React 复用错节点、ack 静默掉没修的那条。
+   */
+  const grouped = new Map<string, StyleIssue[]>()
+  for (const issue of issues) {
+    const key = `${issue.kind}:${issue.chapterNumber}`
+    const list = grouped.get(key) ?? []
+    list.push(issue)
+    grouped.set(key, list)
+  }
+  return [...grouped.values()].map(list => {
+    const first = list[0]!
+    const labels = STYLE_KIND_LABELS[first.kind]
+    const quotes = list.map(item => `「${item.quote}」`).join('、')
+    const explanations = list.map(item => item.explanation).filter(Boolean).join('；')
+    const count = list.length
     return {
-      // 章号 + 类别是既成事实；不带「当前章」——否则 ack 永远关不掉（#86/#89/#98/#108）。
-      stableFactKey: `prose-flavor:${issue.kind}:${issue.chapterNumber}`,
+      // 章号 + 类别是既成事实；不带「当前章」（#86/#89/#98/#108）。合并后天然唯一。
+      stableFactKey: `prose-flavor:${first.kind}:${first.chapterNumber}`,
       severity: 'warning' as const,
-      sourceChapter: issue.chapterNumber,
-      evidence: `第${issue.chapterNumber}章 ${labels[0]}：「${issue.quote}」`,
+      sourceChapter: first.chapterNumber,
+      evidence: `第${first.chapterNumber}章 ${labels[0]}${count > 1 ? `${count} 处` : ''}：${quotes}`,
       issue: {
-        zhCN: `第${issue.chapterNumber}章的${labels[0]}：${issue.explanation || '这一处的写法在本章显得重复或代替了具体描写。'}（原文「${issue.quote}」）`,
-        enUS: `Chapter ${issue.chapterNumber} — ${labels[1]}: ${issue.explanation || 'this passage repeats a stock move or stands in for concrete detail.'} (“${issue.quote}”)`,
+        zhCN: `第${first.chapterNumber}章的${labels[0]}${count > 1 ? `（${count} 处）` : ''}：${explanations || '这一处的写法在本章显得重复或代替了具体描写。'}（原文${quotes}）`,
+        enUS: `Chapter ${first.chapterNumber} — ${labels[1]}${count > 1 ? ` (${count} places)` : ''}: ${explanations || 'this passage repeats a stock move or stands in for concrete detail.'} (${quotes})`,
       },
       suggestion: {
         zhCN: `把这一处换成**具体的、这一章独有的东西**：一个动作、一个数字、一件道具的位置，或这个人特有的反应——而不是通用的比喻或身体反应。`,

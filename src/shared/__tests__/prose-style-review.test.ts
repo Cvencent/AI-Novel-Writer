@@ -69,3 +69,17 @@ describe('styleIssueFindings', () => {
     expect(findings[0]!.evidence).toContain('比喻堆叠')
   })
 })
+
+/** issue #164：同章同类合并成一条（与 content-review 同一形态）。 */
+describe('styleIssueFindings 同章同类合并 (issue #164)', () => {
+  it('merges and keeps both quotes', () => {
+    const findings = styleIssueFindings([
+      { chapterNumber: 7, kind: 'metaphor', quote: '他的手抖得像筛糠。', explanation: '比喻一' },
+      { chapterNumber: 7, kind: 'metaphor', quote: '灯影像一尾鱼。', explanation: '比喻二' },
+    ])
+    expect(findings).toHaveLength(1)
+    expect(findings[0]!.stableFactKey).toBe('prose-flavor:metaphor:7')
+    expect(findings[0]!.evidence).toContain('2 处')
+    expect(new Set(findings.map(item => item.stableFactKey)).size).toBe(findings.length)
+  })
+})

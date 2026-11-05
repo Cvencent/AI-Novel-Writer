@@ -79,3 +79,45 @@ describe('contentReviewFindings', () => {
     expect(finding!.severity).toBe('warning')
   })
 })
+
+/**
+ * issue #164：同章同轴的两条必须**合并成一条**，而不是同 key 的两条。
+ *
+ * 原本 key 只含 `轴 + 章号`，而提示词允许「每类最多 3 条」→ 第 1、2 条同 key：
+ * React 列表复用错节点、**ack 按 key 精确匹配会把没修的那条一起静默掉**、
+ * `findingByKey` 只留最后一条（#120 的标题错配）。
+ */
+describe('同章同轴的合并 (issue #164)', () => {
+  it('merges two quotes on the same axis into one finding, keeping both as evidence', () => {
+    const findings = contentReviewFindings([
+      { chapterNumber: 7, axis: 'repeated-reaction', quote: '他蹲下去。', explanation: '同一个起手动作' },
+      { chapterNumber: 7, axis: 'repeated-reaction', quote: '他把风灯搁在膝上。', explanation: '同一个落手动作' },
+    ])
+    expect(findings).toHaveLength(1)
+    expect(findings[0]!.stableFactKey).toBe('prose:repeated-reaction:7')
+    // 两句都要出现在证据里，否则作者只看到一半。
+    expect(findings[0]!.evidence).toContain('他蹲下去')
+    expect(findings[0]!.evidence).toContain('他把风灯搁在膝上')
+    expect(findings[0]!.evidence).toContain('2 处')
+  })
+
+  it('keeps different axes and different chapters separate', () => {
+    const findings = contentReviewFindings([
+      { chapterNumber: 7, axis: 'repeated-reaction', quote: 'a', explanation: '' },
+      { chapterNumber: 7, axis: 'prop-terminal', quote: 'b', explanation: '' },
+      { chapterNumber: 8, axis: 'repeated-reaction', quote: 'c', explanation: '' },
+    ])
+    expect(findings.map(item => item.stableFactKey)).toEqual([
+      'prose:repeated-reaction:7', 'prose:prop-terminal:7', 'prose:repeated-reaction:8',
+    ])
+  })
+
+  it('every emitted key is unique — the exit guard’s invariant', () => {
+    const findings = contentReviewFindings([
+      { chapterNumber: 7, axis: 'repeated-reaction', quote: 'a', explanation: '' },
+      { chapterNumber: 7, axis: 'repeated-reaction', quote: 'b', explanation: '' },
+      { chapterNumber: 7, axis: 'repeated-reaction', quote: 'c', explanation: '' },
+    ])
+    expect(new Set(findings.map(item => item.stableFactKey)).size).toBe(findings.length)
+  })
+})
