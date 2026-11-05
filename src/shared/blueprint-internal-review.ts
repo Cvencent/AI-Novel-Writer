@@ -185,8 +185,15 @@ export function blueprintInternalFindings(issues: readonly BlueprintInternalIssu
         enUS: `This chapter's plan contradicts itself about one concrete thing: ${pairs}. The prose is written from the plan, so the same detail appears twice in one chapter with different values — and such details are often exactly what the chapter's closing beat rests on.${explanations ? ` (${explanations})` : ''}`,
       },
       suggestion: {
-        zhCN: `二选一，别两处都改模棱两可：①**选一个值当权威**，把另一处按它统一（若「压三道」才是设定，就把前面那句改成「收完压三道」，或改成「收完压几道」之外的说法：只写「绕法认得」，不报数）；②**如果两处本来讲的是两件事**，就在第二处写清区别（哪一道是哪一道），不要让读者以为是同一个数。改完顺带核一下正文：蓝图这一处若是落幅支点，正文里那两句也得跟着统一。`,
-        enUS: `Pick one value as authoritative and align the other phrase with it (or drop the number and describe the method instead), or — if the two mentions really are two different things — make the difference explicit so readers do not read them as the same number. Then check the prose: if this detail carries the closing beat, both mentions there have to match too.`,
+        /**
+         * issue #180：这里原来写死了本书样本（「若『压三道』才是设定，就把前面那句改成
+         * 『收完压三道』…只写『绕法认得』，不报数」），于是**每一条** finding 的建议里都挂着
+         * 那段绳结话——包括讲按字口供、讲油布包的那两条，作者照它去改根本无从下手。
+         *
+         * 现在改成**引用这一条 finding 自己的两处原文**，并按它们各自的形状给改法。
+         */
+        zhCN: `二选一，别两处都改模棱两可：①**选一个值当权威**——在「${list[0]!.firstQuote}」与「${list[0]!.secondQuote}」里定一个，把另一处按它统一；②**如果两处本来讲的是两件事**，就在第二处写清区别，别让读者以为是同一个值。两边都不确定时，还有第三条最省事的路：**把那一处改成不报具体值的写法**（只说这件事发生了，不落在数字或处数上）。改完顺带核一下正文：蓝图这一处若是落幅支点，正文里那两句也得跟着统一。`,
+        enUS: `Pick one value as authoritative — choose between “${list[0]!.firstQuote}” and “${list[0]!.secondQuote}” and align the other occurrence with it; or, if the two mentions really are two different things, make the difference explicit so readers do not read them as the same value. When neither side is settled, the cheapest route is to drop the specific value from that spot entirely (say the thing happened without pinning a number). Then check the prose: if this detail carries the closing beat, both mentions there have to match too.`,
       },
     }
   })

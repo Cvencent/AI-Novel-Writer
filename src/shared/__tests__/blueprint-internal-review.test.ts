@@ -200,3 +200,52 @@ describe('real corpus: chapter 79 blueprint text (issue #172)', () => {
     }
   })
 })
+/**
+ * issue #180：建议里原来写死了本书样本（「若『压三道』才是设定，就把前面那句改成
+ * 『收完压三道』…只写『绕法认得』，不报数」），于是**每一条** finding 的建议里都挂着
+ * 那段绳结话——包括讲按字口供、讲油布包的那两条。作者照它去改根本无从下手。
+ *
+ * 一条建议必须**只讲这一条 finding 自己的两处原文**。
+ */
+describe('建议不许写死样本 (issue #180)', () => {
+  const unrelated = {
+    chapterNumber: 77,
+    firstQuote: '称记得柜台上铜墨盒推过去、『他』攥着周叙的手往下压',
+    secondQuote: '徐汐从暗格出来，说她记得邵广海逼温珩按字的经过',
+    explanation: '同一按字场景，被按手的人一处写周叙，一处写温珩',
+  }
+
+  it('quotes this finding’s own two sides, not a sample from another chapter', () => {
+    const [finding] = blueprintInternalFindings([unrelated])
+    // 这一条讲的是按字，建议里必须出现它自己的两处原文……
+    expect(finding!.suggestion.zhCN).toContain('攥着周叙的手往下压')
+    expect(finding!.suggestion.zhCN).toContain('逼温珩按字')
+    // ……而绝不能出现别的章的样本词。
+    expect(finding!.suggestion.zhCN).not.toContain('压三道')
+    expect(finding!.suggestion.zhCN).not.toContain('绕法认得')
+    expect(finding!.suggestion.enUS).not.toContain('压三道')
+  })
+
+  it('the rope-knot finding still gets a usable suggestion (quoting itself)', () => {
+    const [finding] = blueprintInternalFindings([{
+      chapterNumber: 79,
+      firstQuote: '收完压一道',
+      secondQuote: '温珩的结要压三道',
+      explanation: '同一个结的收法给了两个道数',
+    }])
+    expect(finding!.suggestion.zhCN).toContain('收完压一道')
+    expect(finding!.suggestion.zhCN).toContain('温珩的结要压三道')
+    // 第三条出路（不报具体值）保留——它是唯一与具体样本无关的那条。
+    expect(finding!.suggestion.zhCN).toContain('不报具体值')
+  })
+
+  it('merges several contradictions without borrowing text from any of them as a sample', () => {
+    const [finding] = blueprintInternalFindings([
+      unrelated,
+      { chapterNumber: 77, firstQuote: '甲值', secondQuote: '乙值', explanation: '' },
+    ])
+    // 合并时引用的是**第一条**的两处原文（不是随机挑一条当样本）。
+    expect(finding!.suggestion.zhCN).toContain('攥着周叙的手往下压')
+    expect(finding!.suggestion.zhCN).not.toContain('压三道')
+  })
+})
