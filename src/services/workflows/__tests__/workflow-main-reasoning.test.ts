@@ -4,7 +4,7 @@ import type { ProjectSessionContext } from '../../../shared/ipc-channels'
 import type { StepCallbacks, WorkflowContext } from '../../../stores/workflow-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowReasoningStore } from '../../../stores/workflow-reasoning-store'
-import { createWorkflowMainGenerationRuntime } from '../workflow-main-generation'
+import { createWorkflowMainGenerationRuntime, type WorkflowMainGenerationSelection } from '../workflow-main-generation'
 import type { createMainGenerationTransport } from '../../generation/main-generation-transport'
 
 const session: ProjectSessionContext = { projectId: 'novel', leaseId: 'lease', projectPath: 'C:/novel' }
@@ -95,4 +95,79 @@ it('shows only current run reasoning in volatile memory and clears it on project
   expect(useWorkflowReasoningStore.getState().entries.workflow).toBeUndefined()
   await runtime.close()
   expect(unsubscribeReasoning).toHaveBeenCalledOnce()
+})
+
+/**
+ * issue #200：审稿失败后的**同一步骤重试**不许把上一次尝试自己的 root 当成 parent。
+ *
+ * 现场：`review-chapter` 271.9 秒后 ECONNRESET（`NETWORK_ERROR`）→ 工作流层的
+ * `withTransientRetry` 用**同一个 WorkflowContext** 再跑一遍 → 主进程抛
+ * `GENERATION_REVIEW_CONTEXT_MISMATCH:parentRootActionId`。
+ *
+ * 机制：第一次 `open()` 成功后 `context.mainGenerationRootHandle` 就是那次审稿的 root
+ * （`src/services/workflows/workflow-main-generation.ts:121`）。重试时 `open()` 又读到它，
+ * 于是当成「续跑同一个动作」把 `parentRootActionId` 塞进 beginRequest；而审稿准入表
+ * 要求首次审稿**没有** parent（`electron/services/review-revision-generation.ts:190`）→ 撞码。
+ *
+ * 这条测试钉住两件事：
+ *   1. 重试（同一次动作内的第二次 open，且没有显式 restart/resume）**不带** parent；
+ *   2. 跨阶段的 `advance()` 仍然**带** parent（那是设计上要共享 root 的）。
+ */
+it('does not turn a failed attempt’s own root into a parent when the same step retries (issue #200)', async () => {
+  const begin = vi.fn(async (_session: ProjectSessionContext, _request: { parentRootActionId?: string }) => view)
+  const transport = { begin, read: vi.fn(async () => view), pause: vi.fn(async () => ({ ...view, status: 'paused' as const })),
+    subscribe: vi.fn(() => () => {}), subscribeReasoning: vi.fn(() => () => {}),
+    cancel: vi.fn(async () => ({ ...view, status: 'cancelled' as const })) } as unknown as ReturnType<typeof createMainGenerationTransport>
+  const context: WorkflowContext = { runId: 'workflow', projectPath: session.projectPath, projectSession: session,
+    generationModelId: 'model', writingLanguage: 'zh-CN', uiLocale: 'zh-CN', data: {}, cancelled: false }
+  // 真实审稿请求一定带 `reviewRevisionContextId`（主进程 `review-revision:prepare` 发的准入凭据）。
+  const selection: WorkflowMainGenerationSelection = { operation: 'review-chapter', promptKeys: ['consistency_check'],
+    skillStages: ['review'], output: 'structured-data', reviewRevisionContextId: 'prepared-context' }
+  // 第一次：工作流自己的第一步，父动作应当为空（这是新动作的起点）。
+  const runtime = await createWorkflowMainGenerationRuntime({ context,
+    callbacks: { log: vi.fn(), setProgress: vi.fn(), appendText: vi.fn() }, selection }, transport)
+  expect(begin).toHaveBeenCalledTimes(1)
+  expect(begin.mock.calls[0]![1]).not.toHaveProperty('parentRootActionId')
+  // 模拟「这次尝试失败了但 root 已经落在 context 里」，然后用同一个 selection 重试。
+  const failedRoot = { ...handle, rootActionId: 'failed-attempt-root', runId: 'failed-attempt-run' }
+  context.mainGenerationRootHandle = failedRoot
+  context.mainGenerationRunHandle = failedRoot
+  await runtime.close()
+  expect(begin).toHaveBeenCalledTimes(1) // 同一次 open 只发一次 begin，不会自己重开
+
+  // 重试 = 再建一个 runtime、同一份 context（与 withTransientRetry 的行为一致）。
+  await createWorkflowMainGenerationRuntime({ context,
+    callbacks: { log: vi.fn(), setProgress: vi.fn(), appendText: vi.fn() }, selection }, transport)
+  expect(begin).toHaveBeenCalledTimes(2)
+  expect(begin.mock.calls[1]![1], '重试不许把上次失败尝试自己的 root 当 parent')
+    .not.toHaveProperty('parentRootActionId')
+})
+
+/**
+ * #200 的反向保护：**跨阶段**（advance）仍然共享同一个 root。
+ *
+ * 修 #200 时最容易犯的错是「重试别带 parent」写成「一律别带 parent」——
+ * 那会把起草 → 审稿 → 定稿共享一次预算的设计整个拆掉。
+ * 这两条测试成对存在：一条证明重试不带，一条证明 advance 带。
+ */
+it('still shares the root when advancing to the next stage (issue #200 不许把 parent 一律砍掉)', async () => {
+  const begin = vi.fn(async (_session: ProjectSessionContext, _request: { parentRootActionId?: string }) => view)
+  const pause = vi.fn(async () => ({ ...view, status: 'paused' as const }))
+  const transport = { begin, read: vi.fn(async () => view), pause,
+    subscribe: vi.fn(() => () => {}), subscribeReasoning: vi.fn(() => () => {}),
+    cancel: vi.fn(async () => ({ ...view, status: 'cancelled' as const })) } as unknown as ReturnType<typeof createMainGenerationTransport>
+  const context: WorkflowContext = { runId: 'workflow', projectPath: session.projectPath, projectSession: session,
+    generationModelId: 'model', writingLanguage: 'zh-CN', uiLocale: 'zh-CN', data: {}, cancelled: false }
+  const runtime = await createWorkflowMainGenerationRuntime({ context,
+    callbacks: { log: vi.fn(), setProgress: vi.fn(), appendText: vi.fn() },
+    selection: { operation: 'chapter-draft', chapterNumber: 5, promptKeys: [], skillStages: [], output: 'visible-text' } }, transport)
+  expect(begin.mock.calls[0]![1]).not.toHaveProperty('parentRootActionId')
+  // 同一 root 下的第二阶段（非审稿操作）：显式带 parent——这是设计的「一次动作共享预算」。
+  // ⚠️ 审稿/修稿**不在**这一档：它们的 lineage 由主进程 `review-revision:prepare` 裁决
+  // （`parentRootActionId` 按 recheck / confirmation / 恢复各算一次），工作流层再叠一个
+  // 就是算第二个答案——那正是 #200 撞的错。
+  await runtime.advance({ operation: 'finalized-chapter-notes', chapterNumber: 5, promptKeys: [],
+    skillStages: [], output: 'structured-data' })
+  expect(begin).toHaveBeenCalledTimes(2)
+  expect(begin.mock.calls[1]![1]).toMatchObject({ parentRootActionId: handle.rootActionId })
 })

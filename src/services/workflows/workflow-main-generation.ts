@@ -102,7 +102,30 @@ export async function createWorkflowMainGenerationRuntime(request: WorkflowMainG
         }) : stored
       } else {
         if (!modelId) throw new Error('GENERATION_MODEL_REQUIRED')
-        const parent = intent.continueDirectoryOperationId || restartHandle ? undefined : context.mainGenerationRootHandle
+        /**
+         * 谁有资格决定 `parentRootActionId` ——**一处**（issue #200）。
+         *
+         * 现场：`review-chapter` 271.9 秒后 ECONNRESET 失败 → 章节工作流的
+         * `withTransientRetry` 用同一个 `WorkflowContext` 重发 → 主进程抛
+         * `GENERATION_REVIEW_CONTEXT_MISMATCH:parentRootActionId`。
+         *
+         * 机制：第一次 `open()` 成功后 `context.mainGenerationRootHandle` 就是**那次审稿自己的
+         * root**。重试时这里又读到它，于是当成「续跑同一个动作」，把 `parentRootActionId` 塞进
+         * beginRequest；而审稿的准入表要求首次审稿**没有** parent
+         * （`electron/services/review-revision-generation.ts`）→ 撞码。失败后那次尝试的
+         * handle 在 `executeWithGenerationRuntime` 失败路径上不会被清掉，所以重试必然读到它。
+         *
+         * 修法不是「重试时清句柄」——那样 `advance()` 的跨阶段共享 root 也会被误伤。
+         * 正确的判据是**这条通道的 parent 由谁裁定**：审稿/修稿命令走
+         * `review-revision:prepare`，主进程按 recheck / confirmation / 恢复分别算出
+         * `parentRootActionId` 并**显式**放进 selection。这类请求的 lineage 已经由主进程
+         * 裁决完毕，工作流层再叠一个只会算出第二个答案。
+         *
+         * ⚠️ 只认 `reviewRevisionContextId` 这一个信号：它是主进程准入的凭据，
+         * 且只在 review/refine 类 selection 上出现。其余操作（起草/定稿/细纲）行为不变。
+         */
+        const parent = intent.continueDirectoryOperationId || restartHandle || intent.reviewRevisionContextId
+          ? undefined : context.mainGenerationRootHandle
         if (intent.parentRootActionId && parent && intent.parentRootActionId !== parent.rootActionId)
           throw new Error('GENERATION_WORKFLOW_ROOT_CHANGED')
         if (parent && (parent.projectId !== projectSession.projectId || !intent.batchId && !intent.importSlot && !context.agentWorkflowRegistrationId && parent.epoch !== projectSession.leaseId))
