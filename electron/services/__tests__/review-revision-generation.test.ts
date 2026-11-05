@@ -297,8 +297,34 @@ describe('review and revision generation through the actual owner and SQLite', (
     const f = fixture(), selection = f.selection(f.prepare())
     expect(() => f.owner.begin({ ...selection, reviewRevisionContextId: undefined })).toThrow('GENERATION_REVIEW_CONTEXT_REQUIRED')
     expect(() => f.owner.begin({ ...selection, authorInputs: [{ id: 'review-revision-context', text: '{}' }] })).toThrow('GENERATION_REVIEW_CONTEXT_MISMATCH')
+    // issue #174：错误码必须**指名**是哪一项不等——原来 11 项合取抛同一个码，
+    // 现场（第 26 章审稿）主进程日志里只有 GENERATION_REVIEW_CONTEXT_MISMATCH，
+    // 无从判断是哪一项，界面则空等 720 秒。
+    expect(() => f.owner.begin({ ...selection, authorInputs: [{ id: 'review-revision-context', text: '{}' }] })).toThrow('GENERATION_REVIEW_CONTEXT_MISMATCH:authorInputs')
     expect(() => f.owner.begin({ ...selection, reviewRevisionContextHash: 'a'.repeat(64) } as BeginGenerationRequest)).toThrow()
     expect(f.spy).not.toHaveBeenCalled()
+  })
+  /**
+   * issue #174：11 项合取抛同一个错误码，现场（第 26 章）无从判断是哪一项。
+   * 改成检查表后必须做到两件事：**布尔结果与原来完全一致**（不多拦也不少拦），
+   * 且错误码**指名**第一个不等的项。这条逐项扫一遍。
+   */
+  it('names the first failing field without changing which selections are rejected', () => {
+    const f = fixture(), prepared = f.prepare(), selection = f.selection(prepared)
+    const drift = (patch: Record<string, unknown>, expected: string) => {
+      expect(() => f.owner.begin({ ...selection, ...patch } as BeginGenerationRequest)).toThrow(`GENERATION_REVIEW_CONTEXT_MISMATCH:${expected}`)
+    }
+    drift({ operation: 'refine-draft' }, 'operation')
+    drift({ chapterNumber: 999 }, 'chapterNumber')
+    drift({ promptKeys: ['refine_chapter'] }, 'promptKeys')
+    drift({ skillStages: [] }, 'skillStages')
+    drift({ output: 'visible-text' }, 'output')
+    drift({ authorInputs: [{ id: 'review-revision-context', text: '{}' }] }, 'authorInputs')
+    // ⚠️ parentRootActionId 这一项在 begin 路径上会先撞 GENERATION_ROOT_MISSING（更早的校验），
+    // 所以这里不断言它——检查表里那一项仍在（对照脚本证明布尔等价）。
+    drift({ batchId: 'batch' }, 'batchId')
+    // 合法的那次仍然能过——检查表不许把正常请求也拦下来。
+    expect(() => f.owner.begin(selection)).not.toThrow()
   })
   it.each([['bad-json', 'stop'], [report, 'length']] as const)('does not save an invalid or incomplete review (%s)', async (text, finishReason) => {
     const f = fixture(async (_request, options) => { options.onVisible({ kind: 'delta', text }); return { finishReason, usage: null } }), request = await f.run()

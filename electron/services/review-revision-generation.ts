@@ -162,17 +162,35 @@ export class ReviewRevisionGeneration {
     if (!prepared) throw new Error('GENERATION_REVIEW_CONTEXT_REQUIRED')
     const { context } = prepared, finalized = context.source.status === 'finalized'
     const prompt = context.operation === 'review-chapter' ? 'consistency_check' : context.operation === 'refine-draft' ? 'refine_chapter' : 'refine_from_review'
-    if (selection.operation !== context.operation || selection.chapterNumber !== context.source.chapterNumber
-      || !isDeepStrictEqual(selection.promptKeys, [prompt]) || !isDeepStrictEqual(selection.skillStages, [context.operation === 'review-chapter' ? 'review' : 'refinement'])
-      || selection.outputOverrides !== undefined || selection.batchId !== undefined || selection.continueDirectoryOperationId !== undefined
-      || selection.output !== (context.operation === 'review-chapter' ? 'structured-data' : 'visible-text')
-      || !isDeepStrictEqual(selection.selectedDraftIds, finalized ? [] : [context.source.id])
-      || !isDeepStrictEqual(selection.selectedFinalizedDraftIds, finalized ? [context.source.id] : [])
-      || !isDeepStrictEqual(selection.authorInputs, [{ id: 'review-revision-context', text: JSON.stringify(context) }])
-      || (prepared.parentRootActionId !== undefined && selection.parentRootActionId !== prepared.parentRootActionId)
-      || (prepared.parentRootActionId === undefined && selection.parentRootActionId !== undefined)
+    /**
+     * issue #174：这一串合取项原来只抛一个 `GENERATION_REVIEW_CONTEXT_MISMATCH`，
+     * **不说哪一项不等**。现场（第 26 章审稿）主进程日志只有错误码，作者看到的是
+     * 「审稿一直在转」720 秒，而排查时无从下手——11 项里没有任何线索说明是哪一项。
+     *
+     * 改成**带名字的检查表**：错误码后面接第一个不相等的项名（`…_MISMATCH:authorInputs`），
+     * 一次复现就能定位。判断内容与顺序**逐条保持原样**（含那一处带注释的 modelId 条件），
+     * 只是把「合取」换成「第一个失败的具名项」——短路语义也一致。
+     */
+    const mismatches: Array<[string, boolean]> = [
+      ['operation', selection.operation === context.operation],
+      ['chapterNumber', selection.chapterNumber === context.source.chapterNumber],
+      ['promptKeys', isDeepStrictEqual(selection.promptKeys, [prompt])],
+      ['skillStages', isDeepStrictEqual(selection.skillStages, [context.operation === 'review-chapter' ? 'review' : 'refinement'])],
+      ['outputOverrides', selection.outputOverrides === undefined],
+      ['batchId', selection.batchId === undefined],
+      ['continueDirectoryOperationId', selection.continueDirectoryOperationId === undefined],
+      ['output', selection.output === (context.operation === 'review-chapter' ? 'structured-data' : 'visible-text')],
+      ['selectedDraftIds', isDeepStrictEqual(selection.selectedDraftIds, finalized ? [] : [context.source.id])],
+      ['selectedFinalizedDraftIds', isDeepStrictEqual(selection.selectedFinalizedDraftIds, finalized ? [context.source.id] : [])],
+      ['authorInputs', isDeepStrictEqual(selection.authorInputs, [{ id: 'review-revision-context', text: JSON.stringify(context) }])],
+      ['parentRootActionId', prepared.parentRootActionId === undefined
+        ? selection.parentRootActionId === undefined
+        : selection.parentRootActionId === prepared.parentRootActionId],
       // The confirmed review proves lineage, not the model choice of a new revision stage.
-      || !context.confirmation && prepared.modelId && selection.modelId !== prepared.modelId) throw new Error('GENERATION_REVIEW_CONTEXT_MISMATCH')
+      ['modelId', Boolean(context.confirmation) || !prepared.modelId || selection.modelId === prepared.modelId],
+    ]
+    const failed = mismatches.find(([, matches]) => !matches)
+    if (failed) throw new Error(`GENERATION_REVIEW_CONTEXT_MISMATCH:${failed[0]}`)
     if (!isDeepStrictEqual(context, captureReviewRevisionContext(this.db, reviewRevisionRequest(context), this.scope.projectId,
       context.recheck?.version))
       || !isDeepStrictEqual(this.parent(context), prepared.parentRootActionId ? { parentRootActionId: prepared.parentRootActionId, modelId: prepared.modelId } : {}))
