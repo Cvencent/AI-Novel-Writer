@@ -387,3 +387,75 @@ export function buildFinalizedContinuityFacts(
   if (categoryBreak) console.warn(categoryBreak)
   return kept
 }
+/**
+ * **存量事实的重新分类**（issue #173）。
+ *
+ * ## 现场
+ *
+ * `#148` 修好的是**判据**（`factCategory` 认得 `[埋]`/`[钩]` 了），但**分类是在落库那一刻
+ * 算一次并写死的**，之后再没有任何地方重算。于是：
+ *
+ * ```
+ * ch 1: [埋]/[钩] 2 条 → category = plot
+ * ...
+ * ch23: 全部 plot
+ * ch25: 3 条 → open-thread      ← 只有修好之后写的那一章是对的
+ * ```
+ *
+ * 全库 215 条事实里 209 条是 `plot`，而 `[埋]`/`[钩]` 共 52 条本该全是 `open-thread`。
+ * `open-thread` 在 `CATEGORY_PRIORITY` 里排**最高档**（占起草前 12 条名额），
+ * 被标成 `plot` 就等于那 52 条伏笔永远抢不到名额；`continuityCategoryBreakWarning`
+ * 也因此从 1.5.135 起一直在误响（它警告的「分类断链」早就不存在了，只是数据没重算）。
+ *
+ * 这与 #125 的结论同形：「修复已生效」≠「问题不存在」，要分**根因**（已修）与
+ * **存量**（不自愈）。
+ *
+ * ## 为什么是「重算 category」而不是「读取时重算」
+ *
+ * `category` 已经落库，且**有一处读取路径直接用它的值**：
+ * `writing-intelligence-repository.ts:175` 把它映射成 `kind` 交给下游。
+ * 改成读取时算会**悄悄改变已有下游数据**（那是另一类风险），而重算通道只动 `category`
+ * 一个字段、可计数、可回退。
+ *
+ * ## 三条约束（issue 建议 ①）
+ *
+ * - **只改 `category`**：`statement` / `evidence` / `sourceChapter` 一个字节都不动
+ *   （那几列已落库，动了会撞 #159 那类哈希问题）；
+ * - **可计数**：返回「改了几条、从什么改成什么」，供作者在界面上先看差异；
+ * - **幂等**：对已经正确的数据再跑一次，返回 0 条改动。
+ */
+export interface FactRecategorization {
+  /** 需要改的那几条（原对象 + 新分类）；调用方据此写库并展示差异。 */
+  changes: Array<{ fact: FinalizedContinuityFact, nextCategory: FinalizedContinuityFactCategory }>
+  /** 从 → 到 的计数，例如 `{ 'plot→open-thread': 29 }`。 */
+  counts: Record<string, number>
+}
+
+export function recategorizeFinalizedFacts(
+  facts: readonly FinalizedContinuityFact[],
+): FactRecategorization {
+  const changes: FactRecategorization['changes'] = []
+  const counts: Record<string, number> = {}
+  for (const fact of facts) {
+    const statement = String(fact.statement ?? '')
+    if (!statement.trim()) continue
+    const nextCategory = factCategory(statement)
+    if (nextCategory === fact.category) continue
+    changes.push({ fact, nextCategory })
+    const key = `${fact.category}→${nextCategory}`
+    counts[key] = (counts[key] ?? 0) + 1
+  }
+  return { changes, counts }
+}
+
+/** 把重算结果写成新的 facts 数组（只换 `category`，其余字段原样）。 */
+export function applyFactRecategorization(
+  facts: readonly FinalizedContinuityFact[],
+  plan: FactRecategorization,
+): FinalizedContinuityFact[] {
+  const nextByStatement = new Map(plan.changes.map(change => [change.fact, change.nextCategory]))
+  return facts.map(fact => {
+    const nextCategory = nextByStatement.get(fact)
+    return nextCategory === undefined || nextCategory === fact.category ? fact : { ...fact, category: nextCategory }
+  })
+}
