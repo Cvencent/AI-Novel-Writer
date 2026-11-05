@@ -72,6 +72,11 @@ interface WritePreflightProps {
   /** 「核对记忆回指」（#167）。不传时不渲染。 */
   onCheckMemory?: () => void
   /**
+   * 「核对蓝图与前文」（issue #157）：请模型判「蓝图是否把某件事说成一向如此，
+   * 而前文已明写它没发生」。不传时不渲染——同样只该由作者主动触发。
+   */
+  onCheckBlueprintFacts?: () => void
+  /**
    * 「为「X」建卡」（issue #160）：提醒**自带**可执行动作时给这个出口。
    *
    * 现场：文案写着「就在角色名单里为「徐汐」建卡」，弹层里 `建卡` 两个字一次都点不到，
@@ -99,7 +104,7 @@ interface WritePreflightProps {
  */
 export default function WritePreflight({
   preflight, busy, onIgnoreOnce, onRerun, onSave, onRevoke, onAcknowledge, onUnacknowledge, onOpenLayer, currentChapter,
-  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent, onCheckAbility, onCheckMemory, onCreateCharacter,
+  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent, onCheckAbility, onCheckMemory, onCheckBlueprintFacts, onCreateCharacter,
 }: WritePreflightProps) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
@@ -242,6 +247,11 @@ export default function WritePreflight({
           {onCheckAppearance === undefined ? null : (
             <Button variant="text" size="sm" disabled={busy} onClick={onCheckAppearance}>
               {text('核对角色外观', 'Check appearance vs cards')}
+            </Button>
+          )}
+          {onCheckBlueprintFacts === undefined ? null : (
+            <Button variant="text" size="sm" disabled={busy} onClick={onCheckBlueprintFacts}>
+              {text('核对蓝图与前文', 'Check blueprint vs prose')}
             </Button>
           )}
         </div>

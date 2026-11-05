@@ -41,6 +41,12 @@ import {
   type AppearanceReviewChapter,
 } from '../shared/appearance-consistency'
 import {
+  buildProseConflictPrompt,
+  parseProseConflictReview,
+  proseConflictFindings,
+  type BlueprintClaimChapter,
+} from '../shared/prose-conflict-review'
+import {
   buildMemoryAnchorPrompt,
   memoryAnchorFindings,
   parseMemoryAnchorReview,
@@ -481,4 +487,49 @@ export async function reviewMemoryAnchors(
       : '模型返回的不是合法的「回忆无锚点」清单。' }
   }
   return { status: 'ok', findings: memoryAnchorFindings(issues) }
+}
+
+/**
+ * 蓝图把某件事写成「一向如此」，而已定稿正文明写「没有发生」（issue #157）——一次模型调用。
+ *
+ * 现场：第 25 章蓝图 `foreshadowing` 写「码头老位置**每日一停**」，
+ * 而第 24 章已定稿正文写「脚底下没慢，也**没停**」。前者是对过去整段时期的追认，
+ * 等于把后者抹掉，且中间没有任何转折。
+ *
+ * 规则只负责：把蓝图的既有事实字段与前文正文摆在一起、校验两侧引文可定位；
+ * 「这条说法在前文里是不是被明确否定了」交模型（那是内容判断）。
+ * ⚠️ 不走「频率词表 + 否定词匹配」那条路（用户 2026-11-05 定规禁止）。
+ */
+export interface ProseConflictOutcome {
+  status: 'ok' | 'failed'
+  findings: ConsistencyFinding[]
+  error?: string
+}
+
+export async function reviewBlueprintAgainstProse(
+  session: ProjectSessionContext,
+  claims: readonly BlueprintClaimChapter[],
+  earlierChapters: readonly { chapterNumber: number, content: string }[],
+  locale: 'zh-CN' | 'en-US' = 'zh-CN',
+): Promise<ProseConflictOutcome> {
+  const en = locale === 'en-US'
+  const usableClaims = claims.filter(chapter => String(chapter.claims ?? '').trim())
+  if (usableClaims.length === 0 || earlierChapters.length === 0) return { status: 'ok', findings: [] }
+  const request = { claims: usableClaims, earlierChapters, language: locale }
+  const { system, user } = buildProseConflictPrompt(request)
+  const response = await useLLMStore.getState().generate(
+    [{ role: 'system', content: system }, { role: 'user', content: user }],
+    undefined,
+    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
+  )
+  if (!response.success) {
+    return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
+  }
+  const issues = parseProseConflictReview(response.content, request)
+  if (!issues) {
+    return { status: 'failed', findings: [], error: en
+      ? 'The model did not return a valid blueprint-vs-prose list.'
+      : '模型返回的不是合法的「蓝图与正文相反」清单。' }
+  }
+  return { status: 'ok', findings: proseConflictFindings(issues) }
 }

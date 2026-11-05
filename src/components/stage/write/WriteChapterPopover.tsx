@@ -24,7 +24,7 @@ import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useAnchoredLayer } from '../../ui/use-anchored-layer'
 import {
   appearanceContradictionFindings, applyRepairDiffs, checkAppearanceAgainstCards,
-  proposeLayerRepair, reviewAbilityLimits, reviewMemoryAnchors, reviewProseContent, reviewProseStyle,
+  proposeLayerRepair, reviewAbilityLimits, reviewBlueprintAgainstProse, reviewMemoryAnchors, reviewProseContent, reviewProseStyle,
   reviewSensoryChannels, sensoryVerdictFindings,
 } from '../../../services/preflight-repair'
 import { advanceRepairQueue, planRepairCalls, remainingRepairLayers, shouldContinueRepairChain } from '../../../shared/preflight-repair'
@@ -254,6 +254,38 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       }
       const earlier = prose.filter(chapter => chapter.chapterNumber < chapterNumber - 1)
       const outcome = await reviewMemoryAnchors(session, target, earlier, locale)
+      if (!isProjectSessionCurrent(session)) return
+      if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
+      mergeFindings(outcome.findings)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /**
+   * 蓝图把某件事写成「一向如此」，而前文已明写它没发生（issue #157）——**交给模型判**。
+   *
+   * 现场：第 25 章蓝图 `foreshadowing` 写「码头老位置每日一停」，而第 24 章定稿写
+   * 「脚底下没慢，也没停」。规则只把蓝图的既有事实字段与前文摆在一起、校验引文可定位。
+   */
+  const checkBlueprintFacts = async () => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || busy) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      const prose = await recentFinalized(session)
+      if (!isProjectSessionCurrent(session)) return
+      const earlier = prose.filter(chapter => chapter.chapterNumber < chapterNumber)
+      if (earlier.length === 0) {
+        setMessage(text('还没有已定稿的正文可供对照。', 'There is no finalized prose to compare against yet.'))
+        return
+      }
+      const outcome = await reviewBlueprintAgainstProse(session, [{
+        chapterNumber,
+        claims: [blueprint.keyEvents, blueprint.foreshadowing ?? '', blueprint.costsAndTurns ?? '']
+          .filter(Boolean).join('\n'),
+      }], earlier, locale)
       if (!isProjectSessionCurrent(session)) return
       if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
       mergeFindings(outcome.findings)
@@ -631,6 +663,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           onCheckContent={() => void checkContent()}
           onCheckAbility={() => void checkAbility()}
           onCheckMemory={() => void checkMemory()}
+          onCheckBlueprintFacts={() => void checkBlueprintFacts()}
           onCreateCharacter={name => void createCharacterCard(name)}
           repairProposal={repairProposal}
           onApplyRepairField={field => void applyRepair([field])}
