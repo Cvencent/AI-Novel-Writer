@@ -15,7 +15,7 @@ import type { Locale } from '../../i18n/types'
 import { useLocaleStore } from '../../stores/locale-store'
 // 章节工作流的步骤原来没有任何传输重试（issue #85）：同一次网络抖动，细纲能扛过去
 // （架构工作流四个步骤都被 withTransientRetry 包住），起草却在第一步就整章失败。
-import { withTransientRetry } from './transient-retry'
+import { transientRetryLimitFor, withTransientRetry } from './transient-retry'
 
 // ==========================================
 // 1. 结构与类型导出 (保留对外的向后兼容)
@@ -415,7 +415,9 @@ export function createReviewOnlyWorkflow(
         ),
         executor: async (step, context, callbacks) => {
           const { ReviewChapterCommand } = await import('./commands/review-chapter.command')
-          // 审稿是最重的一步（报告里 32s/56s 各失败一次），通道抖动重发一次往往就过。
+          // 审稿是最重的一步（issue #183：成功均 134 秒、失败率 13%，其中 6 条 ECONNRESET）。
+          // 「统一 2 次重试」对它是错的：一次失败后重试 2 次要让作者白等 ~7 分钟。
+          // 这里只给 1 次——够覆盖一次瞬时抖动，又不至于让作者等三轮。
           return withTransientRetry(
             () => new ReviewChapterCommand({
               draftPath: frozenParams.draftPath,
@@ -427,7 +429,7 @@ export function createReviewOnlyWorkflow(
               expectedMergedHash: frozenParams.expectedMergedHash,
             }).execute({ step, context, callbacks }),
             line => callbacks.log(line),
-            { isCancelled: () => context.cancelled },
+            { isCancelled: () => context.cancelled, limit: transientRetryLimitFor('review-chapter') },
           )
         },
       },
