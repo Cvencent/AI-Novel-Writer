@@ -123,9 +123,11 @@ describe('memoryAnchorFindings', () => {
  * 不写时间词表 —— 扩词表等于把「那天是过去还是将来」编进代码。
  */
 describe('issue #175 修复的三处', () => {
+  // ⚠️ issue #181 之后，**台词起手**的句子不再进池（人物在对话里讲往事是新信息，
+  // 不是叙述者的记忆断言）。所以这里用叙述句来验「时间状语 + 事件」这一档。
   const CH80 = [
     '周叙盯着放平的绳圈。昨晚在船舱口，他试打了几遍，最后一道收不紧。',
-    '“停船那晚，”他忽然开口，嗓子哑，“他从货舱取了个油布包。”',
+    '那一晚他从货舱取了个油布包，包法跟他爸票夹里那件一样。',
   ].join('\n')
 
   it('picks sentences anchored by a past time phrase, not only by a memory verb', () => {
@@ -133,7 +135,7 @@ describe('issue #175 修复的三处', () => {
     // 两句都是这一类，且都**没有**记忆动词。
     expect(found).toHaveLength(2)
     expect(found.map(item => item.sentence).join('')).toContain('昨晚在船舱口')
-    expect(found.map(item => item.sentence).join('')).toContain('停船那晚')
+    expect(found.map(item => item.sentence).join('')).toContain('那一晚他从货舱')
     expect(found.map(item => item.sentence).join('')).not.toContain('记得')
   })
 
@@ -144,7 +146,8 @@ describe('issue #175 修复的三处', () => {
   it('does not build a "future time" word list — the model decides that', () => {
     // 「开箱那天」会进来；那是**故意的**：过去/将来要看上下文，规则判不了。
     // 提示词里已经写明「指向将来的不要报」。
-    const found = memoryCallbackSentences(80, '“开箱那天，页角印。”他记下来。')
+    // ⚠️ 用**叙述句**：台词起手的句子已被 #181 排除（那是另一件事，与将来无关）。
+    const found = memoryCallbackSentences(80, '他翻到那一页，开箱那天，页角印，他记下来。')
     expect(found.length).toBeGreaterThan(0)
     const { system } = buildMemoryAnchorPrompt({ chapters: [{ chapterNumber: 80, content: CH80 }], earlierChapters: [{ chapterNumber: 79, content: '回船，坐在舱口。' }], language: 'zh-CN' })
     expect(system).toContain('其实指向**将来**')
@@ -154,5 +157,56 @@ describe('issue #175 修复的三处', () => {
   it('checks more than the immediately preceding chapter', () => {
     // 现场 81 个写作时点里只有 30×（37%）的上一章含回指句；取最近 3 章挡掉大半空转。
     expect(MEMORY_ANCHOR_TARGET_CHAPTERS).toBeGreaterThan(1)
+  })
+})
+
+/**
+ * issue #181：候选池里 56% 不是回指（23% 台词、22% 被切半句、3% 章节开场时间戳）。
+ * 9 条候选里只有 2 条值得判 —— 模型只能在这个池子里挑，也就只能在这些句子上出结论。
+ *
+ * 三处一起收窄（都只做**位置/形态**判断，内容仍归模型）：
+ */
+describe('issue #181 候选池的三股噪声', () => {
+  const CH80 = [
+    '第九天上午，废水道船尾舱。',
+    '周叙盯着放平的绳圈。昨晚在船舱口，他试打了几遍，最后一道收不紧。',
+    '“停船那晚，”他忽然开口，嗓子哑，“他从货舱取了个油布包。包法——”绳头在指间转了个向，“跟你爸票夹里那件，一样。”',
+    '“开箱那天，页角印。你作证。”',
+  ].join('\n')
+
+  it('drops this chapter’s own scene datum (not a back-reference)', () => {
+    const found = memoryCallbackSentences(80, CH80)
+    expect(found.map(item => item.sentence).join('')).not.toContain('第九天上午')
+  })
+
+  it('drops lines spoken in dialogue: a character narration is new information, not a memory assertion', () => {
+    // 人物在台词里讲往事 ≠ 叙述者在回指（#167 那类「他记得 X 而 X 没发生」不长这样）。
+    const found = memoryCallbackSentences(80, CH80)
+    expect(found.some(item => /^[“「]/u.test(item.sentence))).toBe(false)
+    // 「停船那晚…」整句是台词起手 → 不进池。
+    expect(found.map(item => item.sentence).join('')).not.toContain('停船那晚')
+  })
+
+  it('keeps the genuine back-reference (the one #167/#175 care about)', () => {
+    const found = memoryCallbackSentences(80, CH80)
+    expect(found.map(item => item.sentence).join('')).toContain('昨晚在船舱口')
+  })
+
+  it('never feeds a half sentence: quotes must be balanced', () => {
+    // 旧切句器按句号切，中文对白里句号在引号内部 → 台词被切断（82 章里 25/113 = 22%）。
+    // 现在用 splitProseSentences，再加一道断言式过滤：残句一律不进池。
+    for (const chapter of [[80, CH80], [2, '“这褂子，”他说，“我上船那年你就穿着。']] as const) {
+      for (const item of memoryCallbackSentences(chapter[0], chapter[1])) {
+        const opens = (item.sentence.match(/[“「『"]/gu) ?? []).length
+        const closes = (item.sentence.match(/[”」』"]/gu) ?? []).length
+        expect(opens, item.sentence).toBe(closes)
+      }
+    }
+  })
+
+  it('keeps a complete quoted sentence with a narrative tail if it starts as narration', () => {
+    // 反面对照：句子**以叙述开头、内含一句完整台词**时仍应入选（不是台词起手）。
+    const found = memoryCallbackSentences(82, '他记得那晚有人敲门，说的是“船开了”。')
+    expect(found.map(item => item.sentence).join('')).toContain('他记得那晚')
   })
 })

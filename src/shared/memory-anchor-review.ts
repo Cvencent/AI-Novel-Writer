@@ -1,4 +1,5 @@
 import type { ConsistencyFinding } from './consistency-preflight'
+import { splitProseSentences } from './finalized-continuity-facts'
 
 /**
  * 「记得 / 想起」这类**记忆回指**有没有前文锚点——由**模型判断**（issue #167）。
@@ -41,9 +42,18 @@ export interface MemoryCallbackChapter {
 /** 记忆动词（**功能类**）：出现即视为「这一句在回指某件已发生的事」。 */
 const MEMORY_VERB = /(?:记得|想起|回忆起|想起来|记不清|记不得|忘了|忘记)/u
 
-/** 切句（与其它判据同一口径）。 */
+/**
+ * 切句：用 `splitProseSentences`，不再自己按句号切（issue #181）。
+ *
+ * 现场实测（82 章、113 条候选）：旧切法产出 **25 条引号不配对（22%）**。
+ * 中文对白里句号出现在引号内部是常态（「停船那晚，」他忽然开口，「他从货舱取了个油布包。包法——」），
+ * 按句号切就把台词从中间断开——模型看到的是一件**残缺的事实**，返回的 finding 引用也是半句。
+ *
+ * `finalized-continuity-facts.ts` 的 `splitProseSentences` 正是 issue #63 为同一个问题写的
+ * （进出引号时关闭切分、以收引号开头的残片并回上一条），`chapter-ending` / `chapter-opening` 都已用它。
+ */
 function sentencesOf(content: string): string[] {
-  return String(content ?? '').split(/(?<=[。！？])|\n+/u).map(sentence => sentence.trim()).filter(Boolean)
+  return splitProseSentences(String(content ?? '')).map(sentence => sentence.trim()).filter(Boolean)
 }
 
 /**
@@ -62,21 +72,62 @@ function sentencesOf(content: string): string[] {
  * 与 `chapter-time-anchor.ts` 同一套形式类。它只决定「把哪一句喂给模型」，
  * 不判断「这件事在前文有没有发生」——那仍然是模型的活。
  */
-const PAST_TIME_MARKER = /(?:昨晚|昨夜|昨天|前天|今早|今晨|那天|那晚|当晚|那一夜|那日|那年|头天|先前|早先|上一次|上回|前几天|前些天|此前|当时|过了?(?:一|两|二|三|几|数|半)?(?:夜|天|日|晚)|第[一二三四五六七八九十百千0-9]+(?:天|日|夜|回))/u
+const PAST_TIME_MARKER = /(?:昨晚|昨夜|昨天|前天|今早|今晨|那天|那晚|那一晚|当晚|那一夜|那日|那年|头天|先前|早先|上一次|上回|前几天|前些天|此前|当时|过了?(?:一|两|二|三|几|数|半)?(?:夜|天|日|晚)|第[一二三四五六七八九十百千0-9]+(?:天|日|夜|回))/u
 
 /**
- * 从一章里取出**回指句**（issue #167 的原始口径 + issue #175 的扩展）。
+ * 「这一句是不是**本章自己的场景定位**」——issue #181 的第一股噪声（3%）。
  *
- * 两类都收：
+ * 现场：「第九天上午，废水道船尾舱。」「第十一日午后，稽核组撤走了。」
+ * 它们是**本章的时间/地点开头**，不指向任何前文；但 `PAST_TIME_MARKER` 里的
+ * 日序写法（`第N天`）会把它们全收进来。82 章里命中 4 章。
+ *
+ * 判据是**位置 + 形态**：位于本章第 1–2 句、且只由「时间/地点」构成（没有别的动作）。
+ * 不判断内容——「这句话有没有在说前文的事」仍归模型。
+ */
+function isChapterDatum(sentence: string, index: number): boolean {
+  if (index > 2) return false
+  // ⚠️ 不能只靠「句子够短」判断：「码头上另靠了三条船」也很短，但它是本章的事件。
+  // 判据是**它是不是只由「时间序数 + 场景地点」构成**：去掉时间序数字面后仍剩不下叙述内容。
+  const bare = sentence
+    .replace(/[一二三四五六七八九十百千0-9０-９]+/gu, '')
+    .replace(/(?:上午|下午|午后|正午|傍晚|入夜|天亮前?|夜里|夜间|清早|早晨|清晨|午前)/gu, '')
+    .replace(/(?:第|天|日|夜|时|刻|分|点)/gu, '')
+    .replace(/[\s，。、；：！？…—\-–·「」“”‘’()（）]/gu, '')
+  return bare.length <= 8
+}
+
+/**
+ * 从一章里取出**回指句**（issue #167 的原始口径 + issue #175 的扩展 + issue #181 的三处收窄）。
+ *
+ * 收两类：
  * 1. 含**记忆动词**的句子；
  * 2. 含**指向前文的时间状语**的句子（「昨晚在船舱口，他试打了几遍」）。
  *
- * ⚠️ 只做**位置/形态**筛选（句长下限 + 上述两类标记），不判断这句话说的是不是真事。
+ * 排三类（issue #181 实测：9 条候选里只有 2 条是真回指）：
+ * - **本章自己的场景定位**（「第九天上午，废水道船尾舱。」）——不指向任何前文；
+ * - **引号不配对的残句**（旧切句器切的半句）——换了 `splitProseSentences` 之后应当为 0，
+ *   但仍留一道断言式过滤：残句喂给模型等于让它在**残缺事实**上下结论；
+ * - **台词**（以开引号开头的句子）：人物在对话里讲往事是**新信息**，不是叙述者的记忆断言
+ *   （issue #167 那类「他记得 X 而 X 没发生」不长这样）。26/113 = 23% 的槽位原花在这上面。
+ *
+ * ⚠️ 只做**位置/形态**筛选，不判断这句话说的是不是真事。
  */
 export function memoryCallbackSentences(chapterNumber: number, content: string): Array<{ chapterNumber: number, sentence: string }> {
   return sentencesOf(content)
-    .filter(sentence => sentence.length >= 8 && (MEMORY_VERB.test(sentence) || PAST_TIME_MARKER.test(sentence)))
-    .map(sentence => ({ chapterNumber, sentence }))
+    .map((sentence, index) => ({ sentence, index }))
+    .filter(({ sentence, index }) => {
+      if (sentence.length < 8) return false
+      if (!(MEMORY_VERB.test(sentence) || PAST_TIME_MARKER.test(sentence))) return false
+      if (isChapterDatum(sentence, index)) return false
+      // 引号不配对：半句（切句残片）。完整句子的引号总是成对出现。
+      const opens = (sentence.match(/[“「『"]/gu) ?? []).length
+      const closes = (sentence.match(/[”」』"]/gu) ?? []).length
+      if (opens !== closes) return false
+      // 台词起手：人物在对话里讲往事，不是叙述者的回指。
+      if (/^[“「『"]/u.test(sentence)) return false
+      return true
+    })
+    .map(({ sentence }) => ({ chapterNumber, sentence }))
 }
 
 export interface MemoryCallbackIssue {
