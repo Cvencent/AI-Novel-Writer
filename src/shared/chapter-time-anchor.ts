@@ -370,7 +370,25 @@ export function findTimeAnchorSelfContradictions(
   for (const chapter of ordered) {
     const anchor = timeAnchorOf(chapter.keyEvents ?? '')
     if (!anchor) continue
-    const ordinal = chapterBoundaryHits(anchor)[0]?.ordinal ?? null
+    /**
+     * 【时点】可以是**落在本章之内的区间**（「第七日深夜至第八日清晨」）。
+     *
+     * ⚠️ 旧实现只取 `chapterBoundaryHits(anchor)[0]`（区间**首端**），于是第 76 章的
+     * 日序被记成 7、第 77 章记成 8，两者不等 + 括注「紧接第76章」命中
+     * → 报了一条**方向反了**的提醒：让作者去改一张本来正确的蓝图（issue #166 的现场）。
+     *
+     * 正确读法是两头各用各的：
+     * - **比较**用首端（本章从上一章的哪一天接上）；
+     * - **推进** `previousOrdinal` 用末端（本章结束在哪一天，否则后面每章都会早一天）。
+     *
+     * 「本章之内从 A 写到 B」是产品认可的写法——`findUnmetTimeAnchorFindings` 早就为它
+     * 放开到整章（`anchorSpansWithinChapter`），这条自证矛盾校验当时没同步。
+     */
+    const hits = chapterBoundaryHits(anchor)
+    const ordinals = hits.map(hit => hit.ordinal).filter((value): value is number => value !== null)
+    const startOrdinal = ordinals[0] ?? null
+    const endOrdinal = ordinals.at(-1) ?? null
+    const ordinal = startOrdinal
     if (ordinal !== null && previousOrdinal !== null && ordinal !== previousOrdinal
       && ADJACENT_TO_PREVIOUS.test(anchor)) {
       findings.push({
@@ -389,7 +407,8 @@ export function findTimeAnchorSelfContradictions(
         },
       })
     }
-    if (ordinal !== null) previousOrdinal = ordinal
+    // ⚠️ 推进用**末端**：区间 [第七日深夜, 第八日清晨] 的下一章应从第 8 日接上。
+    if (endOrdinal !== null) previousOrdinal = endOrdinal
   }
   return findings
 }

@@ -574,3 +574,53 @@ describe('蓝图【时点】自相矛盾（issue #147 建议 3）', () => {
     ])).toEqual([])
   })
 })
+
+/**
+ * issue #166：【时点】的「A 至 B」区间必须按**区间**读，不能只取首端。
+ *
+ * 现场（本书 75–78 章）：bp76「第七日深夜至第八日清晨（紧接第75章当夜）」、
+ * bp77「第八日清晨至午后（紧接第76章）」。旧实现只取首端，于是 ch76 记 7、ch77 记 8，
+ * 报出 `anchor-self-contradiction:77`——**让作者去改一张本来正确的蓝图**。
+ */
+describe('【时点】区间的两端各用各的 (issue #166)', () => {
+  const prose = (chapterNumber: number, anchor: string) =>
+    ({ chapterNumber, content: '正文一行。', keyEvents: `他核完账。【时点：${anchor}】` })
+
+  it('does not flag the chapter that merely continues the previous chapter’s interval', () => {
+    const hits = findTimeAnchorSelfContradictions([
+      prose(75, '第七日傍晚至当夜'),
+      prose(76, '第七日深夜至第八日清晨（紧接第75章当夜）'),
+      prose(77, '第八日清晨至午后（紧接第76章）'),
+      prose(78, '第八日午后至傍晚'),
+    ])
+    expect(hits).toEqual([])
+  })
+
+  it('still flags a real contradiction when the interval does not reach the next day', () => {
+    // 上一章停在第七日，这一章「（紧接上一章）」却标第八日 → 真的矛盾。
+    const hits = findTimeAnchorSelfContradictions([
+      prose(75, '第七日傍晚至当夜'),
+      prose(76, '第八日清晨（紧接第75章当夜）'),
+    ])
+    expect(hits.map(hit => hit.stableFactKey)).toEqual(['chapter-time:anchor-self-contradiction:76'])
+  })
+
+  it('advances the day ordinal with the interval’s END, not its start', () => {
+    // ch76 [第七日深夜 → 第八日清晨]：下一章从第 8 日起算才对。
+    // 若用首端推进，ch77「第八日清晨（紧接第76章）」会被误判成矛盾。
+    const hits = findTimeAnchorSelfContradictions([
+      prose(76, '第七日深夜至第八日清晨（紧接第75章当夜）'),
+      prose(77, '第八日清晨至午后（紧接第76章）'),
+    ])
+    expect(hits).toEqual([])
+  })
+
+  it('compares the interval’s START against the previous chapter', () => {
+    // ch77 从第八日清晨起，而 ch76 结束在第八日清晨 → 接得上。
+    const hits = findTimeAnchorSelfContradictions([
+      prose(76, '第七日深夜至第八日清晨'),
+      prose(77, '第八日清晨（紧接第76章）'),
+    ])
+    expect(hits).toEqual([])
+  })
+})
