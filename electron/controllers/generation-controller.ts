@@ -52,7 +52,20 @@ const ownerSessions = new WeakMap<Owner, ProjectSessionContext>()
  *    现在兜底码**保留前缀**（既有 `includes('GENERATION_REQUEST_FAILED')` 的分支不受影响），
  *    后面接截断后的原始 message。
  */
-const NAMED_ERROR_CODE = /^(?:GENERATION|ROOT_BUDGET|ARTIFACT|MAIN|CHARACTER|FINALIZED_CHARACTER|LEGACY_ROSTER)_[A-Z_]+(?::[A-Za-z]{1,40})?$/u
+/**
+ * 具名错误码的允许形态（issue #179 + #189）。
+ *
+ * - 主体：`GENERATION|…_[A-Z_]+`；
+ * - 后缀：**一个或多个字段名**，逗号分隔（`firstFailedCheck` 会一次报出全部失败项）。
+ *
+ * ⚠️ issue #189：`#178` 的 `firstFailedCheck` 产出 `…MISMATCH:a,b`（含**逗号**），
+ * 而这里的后缀原来只允许 `[A-Za-z]{1,40}`（**不许逗号**）——于是多名失败时整个码被兜底改写，
+ * 前缀换成 `GENERATION_REQUEST_FAILED`，所有 `includes('…MISMATCH')` 的分支全部走不到。
+ * 两个提交各自的测试都绿，因为**没人测「工具产出能否穿过白名单」**（现在有了，见跨模块守卫）。
+ *
+ * 限额：最多 8 项、每项 ≤31 字 —— 避免把整段文本当码透出去。
+ */
+const NAMED_ERROR_CODE = /^(?:GENERATION|ROOT_BUDGET|ARTIFACT|MAIN|CHARACTER|FINALIZED_CHARACTER|LEGACY_ROSTER)_[A-Z_]+(?::[A-Za-z][A-Za-z0-9_-]{0,30}(?:,[A-Za-z][A-Za-z0-9_-]{0,30}){0,7})?$/u
 
 export function generationErrorCode(error: unknown): string {
   if (error instanceof Error && (error.message === 'SOURCE_DRAFT_CHANGED' || NAMED_ERROR_CODE.test(error.message))) {

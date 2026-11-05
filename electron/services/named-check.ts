@@ -41,7 +41,14 @@ export interface NamedCheck {
 }
 
 /** 检查项名字的允许形态（与 IPC 白名单的 `:field` 后缀同一口径）。 */
-const CHECK_NAME = /^[A-Za-z0-9_]{1,40}$/u
+/**
+ * 检查项名字的允许形态。
+ *
+ * ⚠️ 与 IPC 白名单（`generation-controller.ts` 的 `NAMED_ERROR_CODE`）**必须同口径**：
+ * 那边允许每项 ≤31 字、最多 8 项。两边长度不一致时，32–40 字的合法名字会在边界被兜底改写
+ * （#189 的教训：A 的产出穿不过 B 的白名单，而两边各自的测试都绿）。
+ */
+const CHECK_NAME = /^[A-Za-z0-9_]{1,31}$/u
 
 /**
  * 返回具名错误码（`code:firstFailed[,secondFailed…]`），全部通过时返回 `null`。
