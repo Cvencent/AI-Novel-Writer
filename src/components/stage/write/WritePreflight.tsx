@@ -64,6 +64,9 @@ interface WritePreflightProps {
   onCheckAppearance?: () => void
   /** 「核对感官通道」（issue #151 的规则修正）：同样请模型判，不传时不渲染。 */
   onCheckSensory?: () => void
+  /** 「核对文风」「核对重复写法」（用户 2026-11-05：内容判断交模型）。不传时不渲染。 */
+  onCheckStyle?: () => void
+  onCheckContent?: () => void
   /** 模型给出的改写建议（差异面板）。null 表示当前没有待确认的改写。 */
   repairProposal?: RepairProposal | null
   onApplyRepairField?: (field: string) => void
@@ -83,7 +86,7 @@ interface WritePreflightProps {
  */
 export default function WritePreflight({
   preflight, busy, onIgnoreOnce, onRerun, onSave, onRevoke, onAcknowledge, onUnacknowledge, onOpenLayer, currentChapter,
-  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory,
+  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent,
 }: WritePreflightProps) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
@@ -176,6 +179,16 @@ export default function WritePreflight({
       ) : null}
       {findings.length > 0 && (
         <div className="stage-preflight-actions">
+          {onCheckStyle === undefined ? null : (
+            <Button variant="text" size="sm" disabled={busy} onClick={onCheckStyle}>
+              {text('核对文风', 'Check prose style')}
+            </Button>
+          )}
+          {onCheckContent === undefined ? null : (
+            <Button variant="text" size="sm" disabled={busy} onClick={onCheckContent}>
+              {text('核对重复写法', 'Check repeated moves')}
+            </Button>
+          )}
           {onCheckSensory === undefined ? null : (
             <Button variant="text" size="sm" disabled={busy} onClick={onCheckSensory}>
               {text('核对感官通道', 'Check sensory coverage')}

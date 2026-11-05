@@ -53,11 +53,11 @@ import {
   numberingFindings,
   declaredCharacterCountFindings,
 } from './consistency-preflight'
-import { proseRepetitionFindings } from './prose-repetition'
 // 「AI 味」的可机器判子集（issue #93）：超配额、段尾总结腔、平均句长。
-import { proseFlavorDriftFindings, proseFlavorFindings } from './prose-flavor'
+// 文风判据拆成两半（用户 2026-11-05：内容判断交模型）：
+// 句长是**形式**，留在这里；比喻/生理套话/段尾总结/意象是**内容**，交模型（见 prose-style-review.ts）。
+import { sentenceLengthDriftFindings, sentenceLengthFindings } from './sentence-length'
 // 段落起手（#94）与物件过手（#95）：同一类「跨章看同一种写法」的位置轴补位。
-import { findParagraphOpenerFindings, findPropHandoverFindings } from './consistency-preflight'
 import { findTimeAnchorSelfContradictions, findUndatedStreakFindings, findUnmetTimeAnchorFindings } from './chapter-time-anchor'
 // 字形断言（#99）：正文里「半个 X 字，Y 旁」把偏旁说错——单章可判，且是最容易机器判的一类。
 import { glyphRadicalFindings } from './glyph-radical'
@@ -72,9 +72,7 @@ import { findDuplicateChapterTitleFindings } from './chapter-title-uniqueness'
 // 引号风格漂移（issue #118）：某章整章换了引号，与全书多数派不一致。
 import { findQuoteStyleDriftFindings } from './quote-style'
 // 陈旧状态时长（issue #115）：同一件事的「过了多久」在相邻章用了互斥的尺度。
-import { findStaleStateDurationFindings } from './stale-state-duration'
 // 道具收进容器→容器离开→又回到身上（issue #113）：位置换了却没有交接动作。
-import { findPropContainerDepartureFindings } from './prop-relocation'
 // 能力触发条件被绕过（#100）：世界观写死的硬限制在正文里被静默绕过、从未写成一次发现。
 import { findAbilityLimitBypassFindings } from './ability-limit-bypass'
 // 笔迹特征自相矛盾（#97）：同一个书写者被写成两套互斥特征（「稳、匀」vs「横折收得急」）。
@@ -128,7 +126,6 @@ export interface FinalizedProseAuditInput {
   foreshadowingWindow?: number
 }
 
-const DEFAULT_REPETITION_WINDOW = 12
 const DEFAULT_AUDIT_WINDOW = 12
 /** 通牒连胜按「最近 4 章」——与审稿路径同一口径（`review-revision-context.ts`）。 */
 const ULTIMATUM_WINDOW = 4
@@ -151,9 +148,7 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   // 而本条样本里最新的定稿是上一章。用末章 + 1 与审稿路径的 currentChapter 口径一致。
   const nextChapter = chapters[chapters.length - 1]!.chapterNumber + 1
 
-  const repetitionWindow = input.repetitionWindow ?? DEFAULT_REPETITION_WINDOW
   const auditWindow = input.auditWindow ?? DEFAULT_AUDIT_WINDOW
-  const repetitionSample = chapters.slice(-repetitionWindow)
   const auditSample = chapters.slice(-auditWindow)
   const foreshadowingSample = input.foreshadowingWindow === undefined
     ? chapters : chapters.slice(-input.foreshadowingWindow)
@@ -181,9 +176,11 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
     chapterNumber: chapter.chapterNumber, content: chapter.content,
   }))
 
-  // 正文层跨章重复（#32/#33/#49）：分布判据，样本不足 8 章直接返回空。
-  const repetition = repetitionSample.length < 8
-    ? [] : proseRepetitionFindings(repetitionSample, nextChapter, castNames)
+  // 正文层跨章重复（#32/#33/#49）：原先是三族**短语表**（没动/没答/下舱底/蹲…）。
+  // 用户 2026-11-05：内容判断不许词表 → 已改成模型判据（`content-review.ts`，
+  // 轴 `repeated-reaction` / `repeated-device`），由作者在预检里主动触发。
+  // 这里不再产出：规则侧不再对「这句话在说什么」下断言。
+  const repetition: ConsistencyFinding[] = []
 
   // 伏笔承诺未落地（#68）：逐章问「曾承诺在本章兑现的，本章正文里有没有它的实体词」。
   const commitments = parseForeshadowingCommitments(blueprints.map(blueprint => ({
@@ -232,16 +229,17 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   // 句长这一轴既有**章内**判据（quotaSample，配额是章内的），也有**跨章趋势**
   // （issue #114：单章读不出的单向收敛，需要全量已定稿章当基准序列）。
   const proseFlavor = [
-    ...proseFlavorFindings(auditSample, nextChapter, castNames),
-    ...proseFlavorDriftFindings(chapters),
+    ...sentenceLengthFindings(auditSample, nextChapter),
+    ...sentenceLengthDriftFindings(chapters),
   ]
 
   // 段落起手固定化（issue #94）与物件过手动作固定化（issue #95）：
   // 都是「跨章看同一种写法」的位置轴，与上面几项同一出口。
   // 窗口与登场句同值（16 章）：三者都是段落/动作粒度、都需要跨章分布。
-  const positionalAxes = [
-    ...findParagraphOpenerFindings({ chapters: chapters.slice(-12), castNames, currentChapter: nextChapter }),
-    ...findPropHandoverFindings({ chapters, currentChapter: nextChapter }),
+  const positionalAxes: ConsistencyFinding[] = [
+    // 段落起手固定化（#94）、物件过手动作固定化（#95）、道具换容器（#113）、
+    // 陈旧时长（#115）：原先是题材短语表/动作表，已改由模型判（`content-review.ts` 的
+    // `repeated-device` / `prop-moved` / `stale-duration` 轴），作者主动触发。
   ]
 
   // 章级时间推进（第 7 项之上的新增轴，issue #84）：连续多章没有任何跨日交代。
@@ -317,11 +315,11 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
 
   // 陈旧状态时长（issue #115）：第 11 章「铺位空了三天」→ 第 12 章「重抄后一个多月」仍说「空了三天」。
   // 现有 `undated` 判的是「有没有交代跨日」，第 12 章写了「一个多月」恰好**达标**、躲过检查。
-  const staleStateDuration = findStaleStateDurationFindings(chapters)
+  const staleStateDuration: ConsistencyFinding[] = []
 
   // 道具位置断裂（issue #113）：第 14 章「纸角」收进册子衬页、册子被抽走，第 17/18 章它又在内衬里。
   // 需要名册（排除人名被当道具，同 #80）。
-  const propContainerDeparture = findPropContainerDepartureFindings(chapters, castNames)
+  const propContainerDeparture: ConsistencyFinding[] = []
   // 清单件数（#133）：同章「N 样…：A；B；C」项数不符 + 跨章清单合计与兑现项数不符。
   // 用全量已定稿章：清单与兑现常常跨章，窗口切小会把清单切出样本。
   const inventorySameChapter = auditSample.flatMap(chapter => findEnumerationCountMismatches(chapter))

@@ -4,8 +4,7 @@ import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuit
   findNearCastNameFindings, findOversizedBlueprintKeyEvents, findUnregisteredBlueprintCast,
   findDialogueOpenerConvergence, findOpeningShapeConvergence,
   findDesignTimelineConflicts, findMissingCastInArch,
-  findRepeatPropTerminationFindings, findLossRestatementFindings,
-  findPropRevivalFindings, findEntranceShotFindings } from '../shared/consistency-preflight'
+  findLossRestatementFindings, findEntranceShotFindings } from '../shared/consistency-preflight'
 import { DIALOGUE_OPENER_WINDOW_CHAPTERS, OPENING_SHAPE_WINDOW_CHAPTERS } from '../shared/chapter-opening'
 import { ENTRANCE_WINDOW_CHAPTERS } from '../shared/entrance-shot'
 import { findTitleShapeConvergenceFindings } from '../shared/title-shape'
@@ -154,7 +153,6 @@ export async function readConsistencyPreflight(
    */
   // 物证重复终结（#73）等判据沿用原来的「最近 6 章」样本——它们的语义是近期形态，
   // 与起手语「整本书反复出现」不是一类。
-  const proseSample = historyProse.slice(-6)
   const openingShapeSample = historyProse.slice(-OPENING_SHAPE_WINDOW_CHAPTERS)
   const dialogueOpenerSample = historyProse.slice(-DIALOGUE_OPENER_WINDOW_CHAPTERS)
   const openingFindings = historyProse.length === 0 ? [] : [
@@ -196,11 +194,9 @@ export async function readConsistencyPreflight(
       title: typeof blueprint.title === 'string' ? blueprint.title : '',
     })),
   })
-  // 同一件物证被终结两次（issue #73）：与 #71/#72 共用同一份最近定稿正文样本。
-  const propTerminationFindings = proseSample.length === 0 ? [] : findRepeatPropTerminationFindings({
-    chapters: proseSample,
-    currentChapter,
-  })
+  // 同一件物证被终结两次（#73）原先是题材动作表判据（解开|剪断|烧掉…），
+  // 已按用户 2026-11-05 的规则改由模型判（content-review.ts 的 prop-terminal 轴）。
+  const propTerminationFindings: ConsistencyFinding[] = []
   // 同一笔遗忘被跨章重新宣告（issue #75）：同样读最近定稿正文。窗口比物证那条放宽
   // 到 8 章——报告里的两组分别跨了 4 章（19→23）与 2 章（23→25），只看最近 6 章
   // 会漏掉第一组。
@@ -246,18 +242,8 @@ export async function readConsistencyPreflight(
       costsAndTurns: blueprint.costsAndTurns,
     })),
   })
-  const propRevivalFindings = recentProse.length === 0 ? [] : findPropRevivalFindings({
-    chapters: recentProse
-      .filter(row => Number.isSafeInteger(row.chapterNumber) && row.chapterNumber < currentChapter)
-      .sort((left, right) => left.chapterNumber - right.chapterNumber)
-      .slice(-16)
-      .map(row => ({ chapterNumber: row.chapterNumber, content: String(row.content ?? '') })),
-    currentChapter,
-    // 人不是道具（issue #80）：抽取器要名册才能排除角色名。
-    castNames: (Array.isArray(roster?.entries) ? roster.entries : [])
-      .map(entry => (typeof entry.name === 'string' ? entry.name.trim() : ''))
-      .filter(Boolean),
-  })
+  // 道具复活（#78）同样依赖终结动作表 → 已并入 content-review.ts 的 prop-terminal 轴。
+  const propRevivalFindings: ConsistencyFinding[] = []
   const lossRestatementFindings = recentProse.length === 0 ? [] : findLossRestatementFindings({
     chapters: recentProse
       .filter(row => Number.isSafeInteger(row.chapterNumber) && row.chapterNumber < currentChapter)

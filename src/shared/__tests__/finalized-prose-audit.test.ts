@@ -26,12 +26,17 @@ describe('auditFinalizedProse (issue #83)', () => {
     })).toEqual([])
   })
 
-  it('surfaces the cross-chapter repetition the review path used to own (issue #32/#33)', () => {
-    // 12 章样本过了 `findProseRepetition` 的 8 章下限——这正是接 6 章样本会静默返回空的原因。
+  it('no longer judges cross-chapter repetition in rules: that axis moved to the model', () => {
+    // ⚠️ 口径变更（用户 2026-11-05）：跨章重复原先靠三族**题材短语表**（没动／没答／下舱底…），
+    // 用户明确要求「不能设计词表、不能用短语匹配，内容类全部让模型判断」。
+    // 因此这条断言从「audit 必须报」改成「audit **不再**在规则层报」——
+    // 该轴现在由 `content-review.ts` 交给模型（`repeated-reaction` / `repeated-device`），
+    // 由作者在预检里主动触发。留着旧的「必须报」断言等于把已删除的词表钉成规格。
     const findings = auditFinalizedProse({
       chapters: stillnessBook(), castNames: ['温珩'], blueprints: [],
     })
-    expect(findings.some(finding => finding.stableFactKey.startsWith('prose:stillness'))).toBe(true)
+    expect(findings.some(finding => finding.stableFactKey.startsWith('prose:stillness'))).toBe(false)
+    expect(findings.some(finding => finding.stableFactKey.startsWith('prose:repeated-reaction'))).toBe(false)
   })
 
   /**

@@ -41,6 +41,19 @@ import {
   type AppearanceReviewChapter,
 } from '../shared/appearance-consistency'
 import {
+  buildContentReviewPrompt,
+  contentReviewFindings,
+  parseContentReview,
+  type ContentAxis,
+  type ContentReviewChapter,
+} from '../shared/content-review'
+import {
+  buildStyleReviewPrompt,
+  parseStyleReview,
+  styleIssueFindings,
+  type StyleReviewChapter,
+} from '../shared/prose-style-review'
+import {
   buildSensoryReviewPrompt,
   parseSensoryReview,
   summarizeSensoryVerdicts,
@@ -305,4 +318,78 @@ export function sensoryVerdictFindings(summary: SensoryVerdictSummary | null): C
       enUS: `Add one on-the-spot smell to a few of the chapters listed: say what the thing is and what action raised the smell. Rewrite only a few chapters, not all of them.`,
     },
   }]
+}
+
+/**
+ * 文风**内容**判据（比喻堆叠 / 生理套话 / 段尾总结 / 意象过载）——一次模型调用。
+ *
+ * 旧实现是三张短语表（`仿佛|犹如`、`喉结|攥拳`、`他知道，`…）。用户 2026-11-05：
+ * 内容判断不许词表、不许短语匹配 → 全部交模型；规则只喂数据、校验形状与引文定位。
+ */
+export interface StyleReviewOutcome {
+  status: 'ok' | 'failed'
+  findings: ConsistencyFinding[]
+  error?: string
+}
+
+export async function reviewProseStyle(
+  session: ProjectSessionContext,
+  chapters: readonly StyleReviewChapter[],
+  locale: 'zh-CN' | 'en-US' = 'zh-CN',
+): Promise<StyleReviewOutcome> {
+  const en = locale === 'en-US'
+  const request = { chapters, language: locale }
+  if (chapters.length === 0) return { status: 'ok', findings: [] }
+  const { system, user } = buildStyleReviewPrompt(request)
+  const response = await useLLMStore.getState().generate(
+    [{ role: 'system', content: system }, { role: 'user', content: user }],
+    undefined,
+    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
+  )
+  if (!response.success) {
+    return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
+  }
+  const issues = parseStyleReview(response.content, request)
+  if (!issues) {
+    return { status: 'failed', findings: [], error: en
+      ? 'The model did not return a valid style-issue list.'
+      : '模型返回的不是合法的文风问题清单。' }
+  }
+  return { status: 'ok', findings: styleIssueFindings(issues) }
+}
+
+/**
+ * 跨章重复 / 道具链 / 陈旧时长——一次模型调用，只问 caller 选定的轴。
+ */
+export interface ContentReviewOutcome {
+  status: 'ok' | 'failed'
+  findings: ConsistencyFinding[]
+  error?: string
+}
+
+export async function reviewProseContent(
+  session: ProjectSessionContext,
+  chapters: readonly ContentReviewChapter[],
+  axes: readonly ContentAxis[],
+  locale: 'zh-CN' | 'en-US' = 'zh-CN',
+): Promise<ContentReviewOutcome> {
+  const en = locale === 'en-US'
+  const request = { chapters, axes, language: locale }
+  if (chapters.length === 0 || axes.length === 0) return { status: 'ok', findings: [] }
+  const { system, user } = buildContentReviewPrompt(request)
+  const response = await useLLMStore.getState().generate(
+    [{ role: 'system', content: system }, { role: 'user', content: user }],
+    undefined,
+    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
+  )
+  if (!response.success) {
+    return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
+  }
+  const issues = parseContentReview(response.content, request)
+  if (!issues) {
+    return { status: 'failed', findings: [], error: en
+      ? 'The model did not return a valid content-issue list.'
+      : '模型返回的不是合法的重复写法清单。' }
+  }
+  return { status: 'ok', findings: contentReviewFindings(issues) }
 }

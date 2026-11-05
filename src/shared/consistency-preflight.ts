@@ -1,12 +1,9 @@
 import type { FinalizedContinuityProjection } from './finalized-continuity'
 import { blueprintKeyEventsOversize } from './blueprint-length'
 import { foreshadowingKeywords, selectDiscriminatingKeywords, type ForeshadowingCommitment } from './foreshadowing-commitments'
-import { findAnnihilatedPropRevival, findRepeatPropTermination } from './prop-termination'
 import { findRepeatedEntranceShots } from './entrance-shot'
 // 段落起手主语（issue #94）：与 #81 同族但读的是**每一段的第一个词**。
-import { findParagraphOpenerConvergence } from './paragraph-opener'
 // 物件过手动作的固定化（issue #95）：折好→塞进某处 这一套三拍。
-import { DESTINATION_LABELS, findHandoverConvergence } from './prop-handover'
 import { findLossRestatement } from './loss-restatement'
 import { findAbilityReuseContradictions } from './ability-budget'
 import { findDeclaredDigitCountMismatches } from './numbering-consistency'
@@ -1154,39 +1151,16 @@ export function findMissingCastInArch(input: MissingCastInArchInput): Consistenc
 }
 
 /**
- * 同一件物证被终结两次（issue #73）。
+ * 原先这里有四条**题材短语表**判据——道具终结两次（#73）、道具复活（#78）、
+ * 段落起手固定化（#94）、物件过手动作固定化（#95）。
  *
- * 实测样本：主线唯一的物证「三个结」在第 27 章被「一个一个解开」，
- * 第 29 章又「露出底下压死的三个结」再剪一遍，两次都被写成同一件事的后果。
+ * 它们各自依赖一张我写的词表/动作表（`解开|剪断|烧掉…`、`塞进|揣进…`、代词表…），
+ * 用户 2026-11-05 明确否掉这一整类：「不能去设计词表，也不能用任何的短语匹配，
+ * 内容类的全部让模型判断。」
  *
- * 蓝图层的【同章道具不得自相矛盾】（#19）只管**同一章内**，跨章的
- * 「已经没了的东西又被取出」从来没人看。这里补上。
- *
- * 判据是结构性的：对同一个名词，问它是否在**不同的章**里各自被一个终结动作处理过。
- * 不枚举剧情，换一件物证照样成立。
+ * 已改由 `content-review.ts` 的模型判据承担（轴 `prop-terminal` / `prop-moved` /
+ * `repeated-device`），由作者在预检里主动触发；规则侧不再对「这句话在说什么」下断言。
  */
-export interface RepeatPropTerminationInput {
-  chapters: ReadonlyArray<{ chapterNumber: number; content: string }>
-  /** findings 的 sourceChapter 用（通常是当前章）。 */
-  currentChapter: number
-}
-
-export function findRepeatPropTerminationFindings(input: RepeatPropTerminationInput): ConsistencyFinding[] {
-  return findRepeatPropTermination(input.chapters).map(hit => ({
-    stableFactKey: `prop:repeat-termination:${hit.prop}`,
-    severity: 'warning' as const,
-    sourceChapter: hit.chapters[hit.chapters.length - 1]!,
-    evidence: `「${hit.prop}」在第 ${hit.chapters.join('、')} 章各被处理掉一次：${hit.excerpts[0]?.slice(0, 50) ?? ''}`,
-    issue: {
-      zhCN: `同一件物证「${hit.prop}」在第 ${hit.chapters.join('、')} 章各被终结过一次（毁掉／交出／收走）。已经没了的东西在后面的章里又被取出来处理一遍，读者读到的是同一件事被做了两次——而且这两次通常还各自被写成同一件后果的因，等于那件后果也废了。`,
-      enUS: `The same prop “${hit.prop}” is disposed of once in each of chapters ${hit.chapters.join(', ')} (destroyed, handed over, or taken away). Something already gone cannot be produced and disposed of again; readers see the same beat happen twice, and both are usually written as the cause of the same consequence — which voids that consequence too.`,
-    },
-    suggestion: {
-      zhCN: `二选一：把后一次改成**仍旧不存在**的写法（它已经不在了，这一章该处理的是「找不到」或「缺少它」的后果），或者说明它中间是怎么回来的（谁还回来、付出什么代价）。别让同一件东西被处理两遍。`,
-      enUS: `Either make the later chapter reflect that it is gone (its absence is the thing to dramatize), or show explicitly how it came back — who returned it, at what price. Do not let one object be disposed of twice.`,
-    },
-  }))
-}
 
 /**
  * 同一笔遗忘被跨章重新宣告（issue #75）。
@@ -1230,34 +1204,6 @@ export function findLossRestatementFindings(input: LossRestatementInput): Consis
  *
  * 与 #73 互补：那条管「同一件东西被终结两次」，这条管「只有一次终结、但后面自行复活」。
  */
-export interface PropRevivalInput {
-  chapters: ReadonlyArray<{ chapterNumber: number; content: string }>
-  /** findings 的 sourceChapter 用（通常是当前章）。 */
-  currentChapter: number
-  /**
-   * 在册角色名（issue #80）：人不是道具。不传时抽取器会把主角名当成
-   * 「被写没了又复活」的物证（真实书稿上 4/4 假阳性，其中 1 条是主角名）。
-   */
-  castNames?: readonly string[]
-}
-
-export function findPropRevivalFindings(input: PropRevivalInput): ConsistencyFinding[] {
-  return findAnnihilatedPropRevival(input.chapters, { castNames: input.castNames }).map(hit => ({
-    stableFactKey: `prop:revival:${hit.prop}`,
-    severity: 'warning' as const,
-    sourceChapter: hit.appearedAt[hit.appearedAt.length - 1]!,
-    evidence: `「${hit.prop}」在第 ${hit.annihilatedAt} 章被写没了（${hit.annihilationExcerpt.slice(0, 40)}），`
-      + `第 ${hit.appearedAt.join('、')} 章又以可取用形态出现（${hit.appearanceExcerpt.slice(0, 40)}），中间没有重新获得的动作`,
-    issue: {
-      zhCN: `物证「${hit.prop}」在第 ${hit.annihilatedAt} 章被不可逆地写没了，第 ${hit.appearedAt.join('、')} 章又直接拿出来用，中间没有任何「重新获得」的动作（新领、向谁讨一张、用什么代价换回来）。读者记得住「它没了」这件事——尤其当作者用一整段甚至一个独立短句把它写死的时候——后面又见它回到怀里，是长篇里最容易让人弃书的那类矛盾。`,
-      enUS: `The prop “${hit.prop}” was irreversibly destroyed in chapter ${hit.annihilatedAt} and is used again in chapter ${hit.appearedAt.join(', ')} with no acquisition step in between (no new one, no asking someone, no price paid). Readers remember that it was gone — especially when the text made a point of it — and seeing it back in hand is the kind of contradiction that makes people drop a long serial.`,
-    },
-    suggestion: {
-      zhCN: `二选一：写出它怎么回来的（谁给的、用什么换的、剩下的一角），并把这次取得写成正文动作；或者改后面的章——它已经不在了，那几章该处理的是**缺少它**的后果（用什么替代、因此失去了什么）。`,
-      enUS: `Either show how it came back (who provided it, what was traded, a surviving fragment) as an on-page action, or rewrite the later chapters: it is gone, so what those chapters should dramatise is the consequence of not having it.`,
-    },
-  }))
-}
 
 /**
  * 人物登场句的跨章同构（issue #81）。
@@ -1293,91 +1239,6 @@ export function findEntranceShotFindings(input: EntranceShotInput): ConsistencyF
       enUS: `Change what the entrance tells us: whether they are tired, whether the clothes are dry, what is in their hands, who they stand beside, whether they speak or act first. A character's first appearance must not repeat the same posture-plus-clothing formula in adjacent chapters. Earlier chapters have already used versions of that formula, so it can be changed — the freed-up words are exactly where new information could go.`,
     },
   }))
-}
-
-export interface ParagraphOpenerInput {
-  chapters: ReadonlyArray<{ chapterNumber: number; content: string }>
-  castNames: readonly string[]
-  /** findings 的 sourceChapter 用（通常是当前章）。 */
-  currentChapter: number
-}
-
-/**
- * 段落起手固定化 → 一致性发现（issue #94）。
- *
- * 位置轴补位：章首（#71）、登场句（#81）、核心戏（#32/#33）、章末（#28/#65/#66）之后，
- * **每一段的第一个词**是产品里零覆盖的第四层。
- */
-export function findParagraphOpenerFindings(input: ParagraphOpenerInput): ConsistencyFinding[] {
-  return findParagraphOpenerConvergence(input.chapters, input.castNames).map(hit => {
-    const who = hit.opener.kind === 'cast' ? `「${hit.opener.name}」` : `「${hit.opener.word}」`
-    const share = (hit.count / hit.narrativeTotal * 100).toFixed(0)
-    const runSample = hit.longestRun.slice(0, 3)
-      .map(item => `第${item.chapterNumber}章第${item.paragraphIndex}段「${item.text.slice(0, 32)}…」`).join('；')
-    return {
-      // key 锚在「谁起手」上，不带章号（#86/#89 的教训：带章号的 key 永远关不掉）。
-      stableFactKey: `paragraph-opener:${hit.opener.kind === 'cast' ? hit.opener.name : hit.opener.word}`,
-      severity: 'warning' as const,
-      sourceChapter: input.currentChapter,
-      evidence: `叙述段以${who}起手 ${hit.count}/${hit.narrativeTotal} = ${share}%`
-        + (hit.longestRun.length >= 3 ? `；最长连续 ${hit.longestRun.length} 段：${runSample}` : ''),
-      issue: {
-        zhCN: `段落起手被写成了固定格式：${hit.narrativeTotal} 个叙述段里有 **${hit.count} 段（${share}%）以${who}开头**`
-          + (hit.longestRun.length >= 3 ? `，并出现过连续 ${hit.longestRun.length} 段同一起手（${runSample}）` : '')
-          + `。读者读到的不是「文笔差」，而是**视角一直钉在同一个人肩上**：每段先确认「谁在做」，再给「做了什么」。长篇里这种节奏比套话更磨人——套话能删，段首主语是整章的骨骼。`,
-        enUS: `Paragraph openings have become a fixed format: ${hit.count} of ${hit.narrativeTotal} narrative paragraphs (${share}%) begin with ${hit.opener.kind === 'cast' ? hit.opener.name : 'the same pronoun'}`
-          + (hit.longestRun.length >= 3 ? `, including a run of ${hit.longestRun.length} consecutive paragraphs` : '')
-          + `. Readers do not perceive bad prose; they perceive the camera pinned to one shoulder — each paragraph confirms who is acting before saying what happens. In a long serial that rhythm wears more than cliché does.`,
-      },
-      suggestion: {
-        zhCN: `换掉一部分段首主语：把**宾语提到主语位置**（「票根从内襟抽出来，压在桌面上」）、用**动作或时间起手**（「三下，停，再两下。」「开航前一刻钟，……」）、或让**环境先动**（「灯芯爆了一下。」）。规则是：同一章内连续三段以上不得以同一个人名或代词起手。`,
-        enUS: `Vary the opener: promote the object to subject position ("the stub came out of his coat and went flat on the table"), open on an action or a time ("three taps, a pause, two more"), or let the setting move first ("the wick popped"). Rule: no more than two consecutive narrative paragraphs in a chapter may open on the same name or pronoun.`,
-      },
-    }
-  })
-}
-
-export interface PropHandoverInput {
-  chapters: ReadonlyArray<{ chapterNumber: number; content: string }>
-  currentChapter: number
-}
-
-/**
- * 物件过手动作固定化 → 一致性发现（issue #95）。
- *
- * 判据是**结构性的**：折叠动作 + 收纳动词 + 目的地类三要素同句，按目的地**类别**
- * 归并（衣内／容器／场所），按**跨章覆盖率**判（同一套动作覆盖了多少章），
- * 不枚举具体动词与具体目的地。
- */
-export function findPropHandoverFindings(input: PropHandoverInput): ConsistencyFinding[] {
-  return findHandoverConvergence(input.chapters).map(hit => {
-    const share = (hit.chapters.length / hit.chapterTotal * 100).toFixed(0)
-    const dominant = hit.dominantDestination ? DESTINATION_LABELS[hit.dominantDestination] : null
-    const distribution = hit.byDestination
-      .map(item => `${DESTINATION_LABELS[item.destination].zhCN} ${item.chapters.length} 章`)
-      .join('、')
-    const sample = hit.samples.slice(0, 3)
-      .map(item => `第${item.chapterNumber}章「${item.excerpt.slice(0, 40)}…」`).join('；')
-    return {
-      // key 锚在「哪一种过手动作」上，不带章号（#86/#89 的教训：带章号的 key 关不掉）。
-      stableFactKey: `prop-handover:fold-stow${hit.dominantDestination ? `:${hit.dominantDestination}` : ''}`,
-      severity: 'warning' as const,
-      sourceChapter: input.currentChapter,
-      evidence: `「折好→收进某处」这一套动作覆盖 ${hit.chapters.length}/${hit.chapterTotal} 章（${share}%），共 ${hit.sentenceCount} 句；目的地分布：${distribution}`,
-      issue: {
-        zhCN: `物件的过手动作被写成了同一套：${hit.chapterTotal} 章里有 **${hit.chapters.length} 章（${share}%）**都是「折好→塞进某处」，共 ${hit.sentenceCount} 句`
-          + (dominant ? `，其中以${dominant.zhCN}最多` : '')
-          + `。三步骨架（出示→核验→折好收起）一次没变：${sample}。读者读到中段之后，纸件再重要也不再有重量——因为「重要」的表达方式已经被用完了；更要紧的是它**掩盖了人物的区别**：立场完全不同的几个人，收纸的动作都是同一个。`,
-        enUS: `Handling of a document has collapsed into one formula: ${hit.chapters.length} of ${hit.chapterTotal} chapters (${share}%) all run "fold → stow", ${hit.sentenceCount} sentences in total`
-          + (dominant ? `, most often ${dominant.enUS}` : '')
-          + `. The three-beat skeleton (produce → inspect → fold away) never changes: ${sample}. By mid-book the paper stops carrying weight, because the way "important" is expressed has been used up — and worse, it flattens the characters: people on opposite sides all put the paper away the same way.`,
-      },
-      suggestion: {
-        zhCN: `换掉其中两环：**换搬运方式**（压、锁、钉、烧、撕、交给第三方、当场揉掉）、**换目的地**（不放进身上也不放进包，而是压在某件东西底下、塞进别人的手里、留在原处）、或让**物件在过手时被改变**（撕掉一角、被水洇、被换掉）。连续两章的过手动作不得同形。`,
-        enUS: `Change two of the three beats: change the handling (press, lock, nail, burn, tear, hand to a third party, crumple on the spot), change the destination (not on the body and not in the bag — under something, into someone else's hand, left where it is), or let the object be altered in transit (a corner torn, ink bled, swapped). Consecutive chapters must not repeat the same handover shape.`,
-      },
-    }
-  })
 }
 
 export function mergeConsistencyFindingsIntoReview(

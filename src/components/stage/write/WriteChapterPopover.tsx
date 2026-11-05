@@ -22,7 +22,7 @@ import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useAnchoredLayer } from '../../ui/use-anchored-layer'
 import {
   appearanceContradictionFindings, applyRepairDiffs, checkAppearanceAgainstCards,
-  proposeLayerRepair, reviewSensoryChannels, sensoryVerdictFindings,
+  proposeLayerRepair, reviewProseContent, reviewProseStyle, reviewSensoryChannels, sensoryVerdictFindings,
 } from '../../../services/preflight-repair'
 import { advanceRepairQueue, planRepairCalls, remainingRepairLayers, shouldContinueRepairChain } from '../../../shared/preflight-repair'
 import { preflightRouteOf } from '../../../shared/preflight-route'
@@ -205,6 +205,69 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
         remainingLayers: calls.length - 1,
       })
       show()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** 共用：取最近已定稿章（各模型判据都用这一份）。 */
+  const recentFinalized = async (session: ProjectSessionContext) => {
+    const prose = (await ipc.invokeWithProjectSession(session, 'db:draft-export-snapshot', session.projectPath)
+      .catch(() => [])) as Array<{ chapterNumber: number, content: string }>
+    if (!isProjectSessionCurrent(session)) return []
+    return prose
+      .filter(row => Number.isSafeInteger(row.chapterNumber) && row.chapterNumber < chapterNumber)
+      .map(row => ({ chapterNumber: row.chapterNumber, content: String(row.content ?? '') }))
+  }
+
+  /** 把模型判出的问题并入当前提醒列表（作者已有的 ack/保存安排机制照常可用）。 */
+  const mergeFindings = (found: ConsistencyFinding[]) => {
+    if (found.length === 0) {
+      setMessage(text('模型没有找到这一类问题（或章数太少，暂不判）。',
+        'The model found nothing of this kind (or there are too few chapters to judge).'))
+      return
+    }
+    setPreflight(current => current ? { ...current, findings: [...current.findings, ...found] } : current)
+    show()
+  }
+
+  /**
+   * 文风内容判据（比喻堆叠 / 生理套话 / 段尾总结 / 意象过载）——**交给模型判**。
+   * 原先是三张题材短语表，按用户 2026-11-05 的规则全部交模型。
+   */
+  const checkStyle = async () => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || busy) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      const chapters = await recentFinalized(session)
+      if (!isProjectSessionCurrent(session)) return
+      const outcome = await reviewProseStyle(session, chapters, locale)
+      if (!isProjectSessionCurrent(session)) return
+      if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
+      mergeFindings(outcome.findings)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /**
+   * 跨章重复 / 道具链 / 陈旧时长——**交给模型判**（原先靠题材动作表）。
+   */
+  const checkContent = async () => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || busy) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      const chapters = await recentFinalized(session)
+      if (!isProjectSessionCurrent(session)) return
+      const outcome = await reviewProseContent(session, chapters,
+        ['repeated-reaction', 'repeated-device', 'prop-terminal', 'prop-moved', 'stale-duration'], locale)
+      if (!isProjectSessionCurrent(session)) return
+      if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
+      mergeFindings(outcome.findings)
     } finally {
       setBusy(false)
     }
@@ -459,6 +522,8 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           onRepairAll={() => void requestRepair(preflight.findings)}
           onCheckAppearance={() => void checkAppearance()}
           onCheckSensory={() => void checkSensory()}
+          onCheckStyle={() => void checkStyle()}
+          onCheckContent={() => void checkContent()}
           repairProposal={repairProposal}
           onApplyRepairField={field => void applyRepair([field])}
           onApplyRepairAll={() => void applyRepair(null)}

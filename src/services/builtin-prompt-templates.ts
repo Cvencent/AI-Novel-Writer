@@ -4,7 +4,7 @@ import { resolveWritingLanguage, type WritingLanguage } from '../shared/writing-
 import { EN_US_BUILTIN_PROMPTS, isCoreLocalizedBuiltinPromptKey, type PromptLanguageTemplate } from './prompt-language'
 // issue #114：起草清单的「句长与节奏」与判据（`AI_FLAVOR_QUOTAS`）**共用同一份文字**，
 // 原来是硬编码在模板字符串里、判据是常量，两边天然会漂（清单只写上限、判据也只看上限）。
-import { SENTENCE_RHYTHM_RULE_ZH_CN } from '../shared/prose-flavor'
+import { SENTENCE_RHYTHM_RULE_ZH_CN } from '../shared/sentence-length'
 
 export interface PromptTemplate {
   /** 模板唯一标识 */

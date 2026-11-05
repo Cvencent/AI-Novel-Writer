@@ -5,7 +5,6 @@ import type { PrepareReviewRevisionRequest, ReviewMaterialIdentity, ReviewRevisi
 import { parseHumanConfirmedReviewSnapshot, serializeHumanConfirmedReviewSnapshot } from '../../src/shared/human-confirmed-review'
 import { freezeChapterGoals } from '../../src/shared/chapter-goal-review'
 import { findBlueprintContinuityRisks } from '../../src/shared/consistency-preflight'
-import { proseRepetitionFindings } from '../../src/shared/prose-repetition'
 // issue #83：这三项的实现已移到 `src/shared/consistency-preflight.ts`（写前预检与审稿
 // 共用同一份）。这里既在本文件内调用、又要保持既有 import 路径不变，所以「import + re-export」。
 import {
@@ -192,12 +191,10 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
         [core.worldSetting, ...authorCards.map(card => card.notes)]),
       preflightFindings: [
         ...(currentBlueprint ? findBlueprintContinuityRisks(history.flatMap(item => item.projection ? [item.projection] : []), currentBlueprint, ConsistencyExemptionRepository.list(db)) : []),
-        // 正文层的跨章重复（issue #32 场景装置 / #33 人物反应句式）：审稿的「跨章重复」
-        // 维度对「同构写法」0 命中（本样本 19 份报告只报出 1 条逐字复写），这里用可机器判的
-        // 分布判据补上——样本是**最近定稿正文 + 本章正文**，正是审稿该看的范围。
-        ...proseRepetitionFindings([...history.map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
-          { chapterNumber: source.chapterNumber, content: source.content }], source.chapterNumber,
-          authorCards.map(card => card.name)),
+        // 正文层跨章重复（#32 场景装置 / #33 人物反应句式）：原先是三族**题材短语表**
+        // （没动／没答／下舱底／蘸水…）。用户 2026-11-05：内容判断不许词表、不许短语匹配
+        // → 已改由模型判（`src/shared/content-review.ts` 的 repeated-reaction / repeated-device 轴），
+        // 由作者在预检里主动触发。规则侧不再对「这句话在说什么」下断言。
         // 贯穿性编号的自洽（issue #47）：只做「声明 N 位、紧随数字不是 N 位」这一类——
         // 命中即错，不需要词表。样本是本章正文（最近定稿的编号体系在前面章节里，
         // 但「同一句自相矛盾」永远发生在当章）。

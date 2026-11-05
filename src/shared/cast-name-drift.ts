@@ -31,7 +31,7 @@
  * sim2（43 章）与 0202 的其余章 **0 假阳性**。
  */
 
-import { FUNCTION_CHARACTERS } from './prose-flavor'
+import { FUNCTION_CHARACTERS } from './sentence-length'
 
 export interface CastNameDriftChapter {
   chapterNumber: number

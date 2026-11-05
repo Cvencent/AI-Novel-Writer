@@ -6,11 +6,7 @@ import {
   findExpandedContinuityRisks,
   findLossRestatementFindings,
   findOpeningShapeConvergence,
-  findParagraphOpenerFindings,
   findPendingLandingConvergence,
-  findPropHandoverFindings,
-  findPropRevivalFindings,
-  findRepeatPropTerminationFindings,
   findUltimatumStreak,
 } from '../consistency-preflight'
 import { findUndatedStreakFindings } from '../chapter-time-anchor'
@@ -20,7 +16,6 @@ import { findDuplicateChapterTitleFindings } from '../chapter-title-uniqueness'
 import { findAbilityLimitBypassFindings } from '../ability-limit-bypass'
 import { findHandwritingConflictFindings } from '../handwriting-signature'
 import { findQuoteStyleDriftFindings } from '../quote-style'
-import { findStaleStateDurationFindings } from '../stale-state-duration'
 import { auditFinalizedProse } from '../finalized-prose-audit'
 import { declaredCharacterCountFindings } from '../consistency-preflight'
 import { findUnmetTimeAnchorFindings } from '../chapter-time-anchor'
@@ -29,7 +24,6 @@ import { findGaugeScaleMismatches } from '../gauge-scale'
 import { findRepeatedSentenceFindings, findShortSentenceReuseFindings } from '../repeated-sentence'
 import { findPromisePolarityReversals } from '../promise-polarity'
 import { findTitleBodyMismatchFindings } from '../title-body-mismatch'
-import { proseRepetitionFindings } from '../prose-repetition'
 import { glyphRadicalFindings } from '../glyph-radical'
 import { findCastNameDriftFindings } from '../cast-name-drift'
 import type { ConsistencyFinding } from '../consistency-preflight'
@@ -78,10 +72,6 @@ const QUOTE_STYLE_BOOK = [
   { chapterNumber: 11, content: Array.from({ length: 9 }, () => '「话。」').join('') },
   ...Array.from({ length: 6 }, (_, i) => ({ chapterNumber: i + 12, content: Array.from({ length: 7 }, () => '“话。”').join('') })),
 ]
-const STALE_DURATION_BOOK = [
-  { chapterNumber: 11, content: '柯有顺的铺位空了三天，铺盖卷走了。' },
-  { chapterNumber: 12, content: ['重抄后一个多月。', '', '“柯有顺的铺空了三天。”'].join(String.fromCharCode(10)) },
-]
 
 const BLUEPRINTS = [
   { chapterNumber: 1, keyEvents: '周叙登船。', foreshadowing: '留待第 3 章揭开「最薄那册」' },
@@ -123,14 +113,9 @@ function allFindings(currentChapter: number): ConsistencyFinding[] {
     ...findPendingLandingConvergence({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter }),
     ...findOpeningShapeConvergence({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter }),
     ...findDialogueOpenerConvergence({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter }),
-    ...findRepeatPropTerminationFindings({ chapters: SAMPLE_BOOK, currentChapter }),
     ...findLossRestatementFindings({ chapters: SAMPLE_BOOK, currentChapter }),
-    ...findPropRevivalFindings({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter }),
     ...findEntranceShotFindings({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter }),
-    ...findParagraphOpenerFindings({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter }),
-    ...findPropHandoverFindings({ chapters: SAMPLE_BOOK, currentChapter }),
     ...findUndatedStreakFindings(SAMPLE_BOOK, currentChapter),
-    ...proseRepetitionFindings(SAMPLE_BOOK, currentChapter, CAST),
     ...glyphRadicalFindings(SAMPLE_BOOK),
     ...findCastNameDriftFindings({ chapters: SAMPLE_BOOK, castNames: CAST }),
     ...auditFinalizedProse({ chapters: SAMPLE_BOOK, castNames: CAST, blueprints: BLUEPRINTS }),
@@ -165,14 +150,9 @@ describe('no preflight key may change when only currentChapter advances (issue #
       ['findPendingLandingConvergence', n => findPendingLandingConvergence({ chapters: PENDING_LANDING_BOOK, castNames: CAST, currentChapter: n })],
       ['findOpeningShapeConvergence', n => findOpeningShapeConvergence({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter: n })],
       ['findDialogueOpenerConvergence', n => findDialogueOpenerConvergence({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter: n })],
-      ['findRepeatPropTerminationFindings', n => findRepeatPropTerminationFindings({ chapters: SAMPLE_BOOK, currentChapter: n })],
       ['findLossRestatementFindings', n => findLossRestatementFindings({ chapters: SAMPLE_BOOK, currentChapter: n })],
-      ['findPropRevivalFindings', n => findPropRevivalFindings({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter: n })],
       ['findEntranceShotFindings', n => findEntranceShotFindings({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter: n })],
-      ['findParagraphOpenerFindings', n => findParagraphOpenerFindings({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter: n })],
-      ['findPropHandoverFindings', n => findPropHandoverFindings({ chapters: SAMPLE_BOOK, currentChapter: n })],
       ['findUndatedStreakFindings', n => findUndatedStreakFindings(SAMPLE_BOOK, n)],
-      ['proseRepetitionFindings', n => proseRepetitionFindings(SAMPLE_BOOK, n, CAST)],
       ['glyphRadicalFindings', () => glyphRadicalFindings(SAMPLE_BOOK)],
       ['findCastNameDriftFindings', () => findCastNameDriftFindings({ chapters: SAMPLE_BOOK, castNames: CAST })],
       ['auditFinalizedProse', () => auditFinalizedProse({ chapters: SAMPLE_BOOK, castNames: CAST, blueprints: BLUEPRINTS })],
@@ -219,7 +199,6 @@ describe('no preflight key may change when only currentChapter advances (issue #
         { chapterNumber: 52, content: '脑子里空了一下。' },
         { chapterNumber: 67, content: '脑子里空了一块。' },
       ], CAST)],
-      ['findStaleStateDurationFindings', () => findStaleStateDurationFindings(STALE_DURATION_BOOK)],
       ['findHandwritingConflictFindings', () => findHandwritingConflictFindings({
         chapters: [{ chapterNumber: 1, content: '温珩的笔稳、匀，起笔带锋。' }, { chapterNumber: 2, content: '温珩的笔，横折收得急。' }],
         castNames: CAST,
