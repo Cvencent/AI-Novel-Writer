@@ -33,7 +33,8 @@ import {
 } from './services/official-homepage-navigation'
 import { configureSingleInstanceRuntime } from './services/single-instance-runtime'
 import { forceNewInstanceRequested } from './services/single-instance-recovery'
-import { installWindowCloseGuard } from './controllers/window-controller'
+import { installWindowCloseGuard, isWindowQuitRequested } from './controllers/window-controller'
+import { decideRenderCrash, renderCrashMessage } from './services/render-crash-policy'
 import { registerStartupController } from './controllers/startup-controller'
 import { resolveGlobalDataRoots } from './services/app-data-locator'
 import { runGlobalDataMigration, activateGlobalData } from './services/global-data-migration'
@@ -181,6 +182,35 @@ function createWindow() {
   }))
   // 渲染进程不能把现有主窗口导航到外部内容。
   win.webContents.on('will-navigate', preventRendererNavigation)
+
+  /**
+   * 渲染进程崩溃（issue #152）：现场是审稿撞顶 257 秒 → 救援重建刚启动 → Page crashed
+   * （GPU TDR 之后 renderer 崩掉），两轮跨版本、跨安装同形态。
+   *
+   * 崩溃后**生成仍在主进程继续**，所以这里做两件事就够：
+   * 一次性的崩溃自动重载一次（实测这台机器 GPU 会周期性复位），
+   * 恢复不了就弹一个说明「刚才那一步没丢、重开去哪接着做」的原生对话框。
+   * 判定本身在 render-crash-policy.ts（纯函数，可断言），这里只做转调。
+   */
+  let renderRecoveryCount = 0
+  win.webContents.on('render-process-gone', (_event, details) => {
+    const decision = decideRenderCrash({
+      reason: details.reason,
+      exitCode: details.exitCode,
+      appQuitting: isWindowQuitRequested(win),
+      recoveryCount: renderRecoveryCount,
+    })
+    try { console.error('[AI Novel Writer] renderer gone: reason=' + details.reason + ' exitCode=' + details.exitCode + ' action=' + decision.action) } catch { /* 日志失败不影响恢复 */ }
+    if (decision.action === 'ignore') return
+    if (decision.action === 'reload') {
+      renderRecoveryCount += 1
+      win?.webContents.reload()
+      return
+    }
+    const message = renderCrashMessage(decision, app.getLocale() === 'en-US' ? 'en-US' : 'zh-CN')
+    void dialog.showMessageBox({ type: 'error', title: message.title, message: message.title, detail: message.body, buttons: ['OK'] })
+      .catch(() => undefined)
+  })
 
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)

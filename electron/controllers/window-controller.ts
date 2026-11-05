@@ -13,6 +13,12 @@ function getSenderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender)
 }
 
+/** 应用是否已进入退出流程（issue #152：崩溃处理不得在退出中弹框或重载）。 */
+export function isWindowQuitRequested(win: BrowserWindow | null): boolean {
+  if (!win) return false
+  return closeGuardStates.get(win)?.quitRequested ?? false
+}
+
 export function installWindowCloseGuard(win: BrowserWindow): void {
   const state: WindowCloseGuardState = {
     approved: false,
