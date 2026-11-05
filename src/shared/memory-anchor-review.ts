@@ -234,6 +234,14 @@ export function buildMemoryAnchorPrompt(request: MemoryAnchorRequest): { system:
 export function parseMemoryAnchorReview(
   raw: string,
   request: Pick<MemoryAnchorRequest, 'chapters' | 'language'>,
+  /**
+   * 本次请求**实际喂给模型**的候选池（`buildMemoryAnchorPrompt` 的返回值）。
+   *
+   * ⚠️ 由调用方传进来而不是在解析器里重算：重算会得到「另一份看起来一样的池子」，
+   * 而校验必须与模型看到的那一份**逐字同一份**（否则又是一处可能漂开的接口）。
+   * 不传时退回重算（保持既有测试与其它调用方可用）。
+   */
+  callbacks?: ReadonlyArray<{ chapterNumber: number, sentence: string }>,
 ): MemoryCallbackIssue[] | null {
   let parsed: unknown
   try {
@@ -245,6 +253,26 @@ export function parseMemoryAnchorReview(
   const list = (parsed as { issues?: unknown }).issues
   if (!Array.isArray(list)) return null
   const byNumber = new Map(request.chapters.map(chapter => [chapter.chapterNumber, String(chapter.content ?? '')]))
+  /**
+   * **本次候选池**（issue #184）。
+   *
+   * 原来这里只校验「引文能在整章正文里逐字找到」——而 `byNumber` 存的是**整章正文**，
+   * 所以模型从正文里截任意一段（半句、一句台词、一个逗号分句）都能过闸。
+   *
+   * 现场：写第 84 章那一次池子里只有 2 句合规候选，模型报的 1 条引文
+   * （「铜墨盒昨夜已交稽核组封存。」——柯明远当众说的一句台词）**不在池里**，
+   * 而它在正文里当然能逐字找到。于是「核对记忆回指」又绕回了 #181 想消灭的那类输入：
+   * 报出来的标题写着「本章让人物回忆起…」，可那一句根本不是任何人的回忆。
+   *
+   * 所以引文必须**命中本次请求的候选池**（`callbacks`）：相等，或者是某条候选句的一部分
+   * （模型可以只引半句，那是合理的截取）。
+   */
+  const pool = callbacks ?? buildMemoryAnchorPrompt({ ...request, earlierChapters: [] }).callbacks
+  const poolFor = (chapterNumber: number) => pool
+    .filter(item => item.chapterNumber === chapterNumber)
+    .map(item => item.sentence)
+  const inPool = (chapterNumber: number, quote: string) => poolFor(chapterNumber)
+    .some(sentence => sentence === quote || sentence.includes(quote))
   const result: MemoryCallbackIssue[] = []
   const seen = new Set<string>()
   for (const entry of list) {
@@ -255,6 +283,8 @@ export function parseMemoryAnchorReview(
     const missingAnchor = String(record.missingAnchor ?? '').trim()
     if (!Number.isSafeInteger(chapterNumber) || !byNumber.has(chapterNumber)) continue
     if (!quote || !byNumber.get(chapterNumber)!.includes(quote)) continue
+    // issue #184：引文还必须来自**本次候选池**——池外的任意字面（台词、半句）一律不收。
+    if (!inPool(chapterNumber, quote)) continue
     if (!missingAnchor) continue
     const key = `${chapterNumber}:${quote}`
     if (seen.has(key)) continue

@@ -553,7 +553,8 @@ export async function reviewMemoryAnchors(
   if (!response.success) {
     return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
   }
-  const issues = parseMemoryAnchorReview(response.content, request)
+  // issue #184：把**模型实际看到的那一份**候选池交给解析器（而不是让它重算一份）。
+  const issues = parseMemoryAnchorReview(response.content, request, callbacks)
   if (!issues) {
     return { status: 'failed', findings: [], error: en
       ? 'The model did not return a valid memory-anchor list.'

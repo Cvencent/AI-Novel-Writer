@@ -210,3 +210,52 @@ describe('issue #181 候选池的三股噪声', () => {
     expect(found.map(item => item.sentence).join('')).toContain('他记得那晚')
   })
 })
+
+/**
+ * issue #184：校验闸只比「引文能在整章正文里逐字找到」，于是模型可以引**池外**的任意字面。
+ *
+ * 现场（写第 84 章那次）：候选池 2 句、模型报 1 条、**100% 来自池外**——
+ * 引的是柯明远当众说的一句台词「铜墨盒昨夜已交稽核组封存。」，
+ * 而它在 ch83 正文里当然能逐字找到。于是这条判据又绕回了 #181 想消灭的输入：
+ * 标题写着「本章让人物回忆起…」，可那一句根本不是任何人的回忆。
+ */
+describe('引文必须来自候选池 (issue #184)', () => {
+  const chapters = [
+    { chapterNumber: 82, content: '他只记得他说了句要紧的。' },
+    { chapterNumber: 83, content: '第十三日午前，封箱桌抬进公所正厅。“铜墨盒昨夜已交稽核组封存。”柯明远说。' },
+  ]
+  const request = { chapters, language: 'zh-CN' as const }
+
+  const answer = (quote: string) => JSON.stringify({
+    issues: [{ chapterNumber: 83, quote, missingAnchor: '铜墨盒被交稽核组封存', explanation: 'x' }],
+  })
+
+  it('accepts a quote that really is one of the candidate sentences', () => {
+    // ch83 的候选句是那句叙述（本章时间戳已被 #181 排除前的形态），引它的前半也行。
+    const parsed = parseMemoryAnchorReview(answer('第十三日午前，封箱桌抬进公所正厅。'), request)
+    expect(parsed).toHaveLength(1)
+  })
+
+  it('rejects a quote from the chapter body that is NOT in the candidate pool (the reported case)', () => {
+    // 这句台词在 ch83 正文里逐字存在 —— 旧闸会放行；新闸必须拒。
+    expect(parseMemoryAnchorReview(answer('“铜墨盒昨夜已交稽核组封存。'), request)).toEqual([])
+  })
+
+  it('rejects any out-of-pool fragment even when it locates in the prose', () => {
+    // ⚠️ 注意：候选句的**子串**是允许的（模型可以只引半句），所以这里只列真正的池外字面。
+    for (const quote of ['柯明远说', '铜墨盒昨夜已交稽核组封存。']) {
+      expect(parseMemoryAnchorReview(answer(quote), request), quote).toEqual([])
+    }
+  })
+
+  it('still rejects a quote that is not in the chapter at all', () => {
+    expect(parseMemoryAnchorReview(answer('这一句根本不存在。'), request)).toEqual([])
+  })
+
+  it('keeps the pool check per chapter (a quote from another chapter does not pass)', () => {
+    const wrongChapter = JSON.stringify({
+      issues: [{ chapterNumber: 82, quote: '第十三日午前，封箱桌抬进公所正厅。', missingAnchor: 'x', explanation: 'y' }],
+    })
+    expect(parseMemoryAnchorReview(wrongChapter, request)).toEqual([])
+  })
+})
