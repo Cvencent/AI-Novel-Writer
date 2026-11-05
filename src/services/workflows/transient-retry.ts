@@ -51,6 +51,42 @@ export function transientRetryLimitFor(purpose: string | undefined): number {
 /** 可重试的传输失败码：主进程归类，或命令层为非主进程运行时补的兜底码。 */
 const TRANSIENT_CODES = ['NETWORK_ERROR', 'GENERATION_PROVIDER_FAILED'] as const
 
+/**
+ * 「**端口没人监听**」这一族的退避（issue #198）。
+ *
+ * 现场：23:10 那条链是 `ECONNRESET` → 4 秒后 `ECONNREFUSED` → 4 秒后 `ECONNREFUSED`。
+ * `ECONNREFUSED` 的语义是「目标端口没有进程在监听」——**不是抖动**，服务端要么正在重启、
+ * 要么根本没起来。这种情况下 1.5 秒/3 秒的线性退避等于**必然连撞两次**：
+ *
+ * ```
+ * 23:10:10  ECONNRESET    28.7s
+ * 23:10:14  ECONNREFUSED   0.35s   ← 间隔 4 秒
+ * 23:10:18  ECONNREFUSED   0.49s   ← 间隔 4 秒
+ * ```
+ *
+ * 所以按码分级：**连接被拒 → 先等 10 秒**（给服务端一个真正起身的窗口），再按倍数递增。
+ * 其余传输失败（超时/被重置/上游 5xx）保留原来的短退避——那些确实是瞬时抖动，
+ * 等太久只会让作者白等。
+ *
+ * ⚠️ 这是**耗时策略**，不是内容判断：判据只看「这个码意味着什么故障形态」。
+ */
+const REFUSED_CODES: ReadonlySet<string> = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN'])
+const REFUSED_BACKOFF_BASE_MS = 10_000
+
+/** 从错误里读出主进程归类的底层传输码（只有结构化字段，不含任何正文）。 */
+function transportCodeOf(error: unknown): string | null {
+  const record = error && typeof error === 'object' ? error as Record<string, unknown> : {}
+  // 命令层把码以 `[CODE]` 追在 message 尾部；主进程的诊断里另有 `code=` 段。
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  const fromMessage = [...REFUSED_CODES].find(code => message.includes(`code=${code}`) || message.includes(code))
+  if (fromMessage) return fromMessage
+  const receipt = record.receipt && typeof record.receipt === 'object' ? record.receipt as Record<string, unknown> : undefined
+  const diagnostics = receipt?.diagnostics && typeof receipt.diagnostics === 'object'
+    ? receipt.diagnostics as Record<string, unknown> : undefined
+  const code = diagnostics?.causeCode ?? diagnostics?.errorCode
+  return typeof code === 'string' ? code : null
+}
+
 /** 这条错误是不是「没有产出的传输失败」。只认码，不认自由文案。 */
 export function isTransientTransportError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? '')
@@ -59,6 +95,10 @@ export function isTransientTransportError(error: unknown): boolean {
     ? (error as { code?: unknown }).code
     : undefined
   if (typeof code === 'string' && (TRANSIENT_CODES as readonly string[]).includes(code)) return true
+  // 连接被拒 / 域名解析失败也是传输失败（issue #198：它们带着 code= 进诊断，但被归类成
+  // 泛码 GENERATION_PROVIDER_FAILED，按泛码就分不出该不该等久一点）。
+  const transportCode = transportCodeOf(error)
+  if (transportCode && REFUSED_CODES.has(transportCode)) return true
   return TRANSIENT_CODES.some(candidate => message.includes(`[${candidate}]`))
 }
 
@@ -82,7 +122,16 @@ export async function withTransientRetry<T>(
   options: TransientRetryOptions = {},
 ): Promise<T> {
   const limit = options.limit ?? TRANSIENT_RETRY_LIMIT
-  const backoff = options.backoffMs ?? (attempt => TRANSIENT_RETRY_BACKOFF_MS * attempt)
+  /**
+   * 退避分档（issue #198）：默认线性短退避；**端口没人监听**那一族要等得久一点。
+   *
+   * 调用方显式给了 `backoffMs` 就完全照用（那是调用处对成本的决定）。
+   */
+  const defaultBackoff = (error: unknown, attempt: number): number => {
+    const code = transportCodeOf(error)
+    if (code && REFUSED_CODES.has(code)) return REFUSED_BACKOFF_BASE_MS * attempt
+    return TRANSIENT_RETRY_BACKOFF_MS * attempt
+  }
   for (let attempt = 0; ; attempt += 1) {
     const startedAt = Date.now()
     try {
@@ -95,10 +144,18 @@ export async function withTransientRetry<T>(
        *
        * 现场：审稿单次 134 秒，作者看到的是一个不动的进度圈——他分不清「卡死」还是「慢」。
        * 把这次尝试的耗时与重试计划一起说出来，至少能让他判断「这是通道断了，不是没反应」。
+       *
+       * issue #198：还要说清**这次失败到底是哪种**——「连接被拒」意味着服务端没起来，
+       * 那是要等它起身，和「抖了一下」不是一回事。
        */
       const elapsed = Math.max(1, Math.round((Date.now() - startedAt) / 1000))
-      log(`与模型的连接中断（上游瞬时故障）：第 ${attempt + 1} 次尝试跑了 ${elapsed} 秒后断开，正在重试（第 ${attempt + 1} 次，最多 ${limit} 次）…`)
-      await new Promise(resolve => setTimeout(resolve, backoff(attempt + 1)))
+      const waitMs = options.backoffMs ? options.backoffMs(attempt + 1) : defaultBackoff(error, attempt + 1)
+      const refused = (() => { const code = transportCodeOf(error); return code !== null && REFUSED_CODES.has(code) })()
+      log(`${refused
+        ? '模型服务没有在监听（连接被拒）——按服务端未就绪处理'
+        : '与模型的连接中断（上游瞬时故障）'}：第 ${attempt + 1} 次尝试跑了 ${elapsed} 秒后失败，`
+        + `${Math.round(waitMs / 1000)} 秒后重试（第 ${attempt + 1} 次，最多 ${limit} 次）…`)
+      await new Promise(resolve => setTimeout(resolve, waitMs))
     }
   }
 }

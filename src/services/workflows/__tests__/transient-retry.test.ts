@@ -128,3 +128,63 @@ describe('按用途分级重试 (issue #183)', () => {
     expect(log.mock.calls[0]![0]).toContain('秒')
   })
 })
+
+/**
+ * issue #198：「端口没人监听」不能用「抖一下就过去」的短退避。
+ *
+ * 现场（同一台机、同一通道）：
+ * ```
+ * 23:10:10  ECONNRESET    28.7s
+ * 23:10:14  ECONNREFUSED  0.35s   ← 4 秒后就重试
+ * 23:10:18  ECONNREFUSED  0.49s   ← 又是 4 秒
+ * ```
+ * `ECONNREFUSED` 的语义是「目标端口没有进程在监听」——不是抖动，服务端要么在重启、
+ * 要么根本没起来。4 秒后重试一个这样的服务，等于**必然连撞**。
+ */
+describe('连接被拒要等得久一点 (issue #198)', () => {
+  it('recognises a refused connection even though it is categorised under the generic code', () => {
+    // 主进程把 ECONNREFUSED 归到 GENERATION_PROVIDER_FAILED，只把底层码放进诊断段。
+    const refused = new Error('GENERATION_PROVIDER_FAILED end=failed phase=request elapsed=40ms code=ECONNREFUSED')
+    expect(isTransientTransportError(refused)).toBe(true)
+    expect(isTransientTransportError(new Error('... code=ENOTFOUND'))).toBe(true)
+    expect(isTransientTransportError(new Error('... code=EAI_AGAIN'))).toBe(true)
+    // 内容失败仍不重试。
+    expect(isTransientTransportError(new Error('AI 输出达到本次请求长度限制'))).toBe(false)
+  })
+
+  it('waits ten seconds — not 1.5 — before retrying a refused connection', async () => {
+    const run = vi.fn(async () => { throw new Error('... code=ECONNREFUSED') })
+    const log = vi.fn()
+    // 不传 backoffMs：走默认分档（这里把计时换成假的，只看请求的等待时长）。
+    const waits: number[] = []
+    const realSetTimeout = globalThis.setTimeout
+    vi.stubGlobal('setTimeout', ((resolve: () => void, ms?: number) => {
+      waits.push(Number(ms ?? 0))
+      return realSetTimeout(resolve, 0)
+    }) as unknown as typeof setTimeout)
+    try {
+      await expect(withTransientRetry(run, log, { limit: 1 })).rejects.toThrow()
+    } finally { vi.unstubAllGlobals() }
+    expect(run).toHaveBeenCalledTimes(2)
+    // 第 1 次重试等 10 秒（1.5 秒 × 1 的老值不够让服务端起身）。
+    expect(waits[0]).toBe(10_000)
+    // 文案要说明这是「服务端没在监听」，而不是笼统的「连接中断」。
+    expect(String(log.mock.calls[0]![0])).toContain('没有在监听')
+    expect(String(log.mock.calls[0]![0])).toContain('10 秒后重试')
+  })
+
+  it('keeps the short backoff for an ordinary mid-stream reset', async () => {
+    const run = vi.fn(async () => { throw new Error('模型请求失败。 [GENERATION_PROVIDER_FAILED]') })
+    const waits: number[] = []
+    const realSetTimeout = globalThis.setTimeout
+    vi.stubGlobal('setTimeout', ((resolve: () => void, ms?: number) => {
+      waits.push(Number(ms ?? 0))
+      return realSetTimeout(resolve, 0)
+    }) as unknown as typeof setTimeout)
+    try {
+      await expect(withTransientRetry(run, vi.fn(), { limit: 1 })).rejects.toThrow()
+    } finally { vi.unstubAllGlobals() }
+    // 普通传输抖动仍是 1.5 秒级：等太久只会让作者白等。
+    expect(waits[0]).toBe(1_500)
+  })
+})
