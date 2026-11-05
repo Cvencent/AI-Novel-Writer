@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({ handlers: new Map<string, Handler>(), globalRo
 vi.mock('electron', () => ({ ipcMain: { handle: (channel: string, handler: Handler) => mocks.handlers.set(channel, handler) } }))
 vi.mock('../../services/app-data-locator', () => ({ getGlobalDataRoot: () => mocks.globalRoot }))
 vi.mock('../kb-controller', () => ({ getEmbeddingConfig: () => null }))
-import { registerGenerationController } from '../generation-controller'
+import { generationErrorCode, registerGenerationController } from '../generation-controller'
 import { registerDatabaseController } from '../db-controller'
 import { ProjectCoreRepository } from '../../repositories/project-core-repository'
 import { getProjectDataRoot } from '../../services/project-data-locator'
@@ -794,5 +794,49 @@ describe('chapter outline command through registered main IPC and formal CAS', (
       expect(ProjectCoreRepository.get()).toEqual(saved)
       expect(f.fetch).toHaveBeenCalledTimes(3)
     } finally { model.temperature = temperature }
+  })
+})
+
+/**
+ * issue #179：IPC 边界的错误码映射有两条硬缺陷。
+ *
+ * 1. 白名单正则原来要求**整串匹配**（到串尾），于是 issue #174 刚加上的「带字段名」变体
+ *    `GENERATION_REVIEW_CONTEXT_MISMATCH:authorInputs` 含冒号、不匹配 —— 诊断信息在
+ *    边界上被再吞一次，日志里只剩兜底码。**这条是我上一轮引入的回归。**
+ * 2. 兜底码把原始 message 彻底丢掉：日志里「请求失败」四个字不含任何信息。
+ *
+ * ⚠️ 这里断言的是**实现里导出的那个函数**（`generationErrorCode`），不是测试自己抄的一份
+ * 正则 —— 抄一份的话「改实现」不会让测试变红（我第一次就写成了那样，假绿）。
+ */
+describe('generationErrorCode (issue #179)', () => {
+  it('passes a named-field code through unchanged (the #174 code must survive #179)', () => {
+    expect(generationErrorCode(new Error('GENERATION_REVIEW_CONTEXT_MISMATCH:authorInputs')))
+      .toBe('GENERATION_REVIEW_CONTEXT_MISMATCH:authorInputs')
+    expect(generationErrorCode(new Error('GENERATION_REVIEW_CONTEXT_MISMATCH:selectedFinalizedDraftIds')))
+      .toBe('GENERATION_REVIEW_CONTEXT_MISMATCH:selectedFinalizedDraftIds')
+    // 无后缀的旧码照旧透传。
+    expect(generationErrorCode(new Error('GENERATION_REVIEW_CONTEXT_MISMATCH')))
+      .toBe('GENERATION_REVIEW_CONTEXT_MISMATCH')
+    expect(generationErrorCode(new Error('SOURCE_DRAFT_CHANGED'))).toBe('SOURCE_DRAFT_CHANGED')
+  })
+
+  it('does not let Chinese text or an overlong suffix masquerade as a code', () => {
+    // 限 `[A-Za-z]{1,40}`：整段中文与超长后缀都落回兜底码。
+    expect(generationErrorCode(new Error('GENERATION_REVIEW_CONTEXT_MISMATCH:这是中文')))
+      .toContain('GENERATION_REQUEST_FAILED:')
+    expect(generationErrorCode(new Error('GENERATION_REVIEW_CONTEXT_MISMATCH:' + 'a'.repeat(41))))
+      .toContain('GENERATION_REQUEST_FAILED:')
+  })
+
+  it('keeps the fallback prefix and appends the original message instead of dropping it', () => {
+    const code = generationErrorCode(new Error('第三方库抛出的真实原因：连接被重置'))
+    // 前缀必须保留：既有 includes('GENERATION_REQUEST_FAILED') 的分支不受影响。
+    expect(code.startsWith('GENERATION_REQUEST_FAILED')).toBe(true)
+    expect(code).toContain('连接被重置')
+    // 非 Error 退回类型名，不能变成 "[object Object]"。
+    expect(generationErrorCode('a string')).toBe('GENERATION_REQUEST_FAILED:string')
+    // 超长 message 截到 200 字，别把整章正文灌进错误码。
+    expect(generationErrorCode(new Error('x'.repeat(500))).length)
+      .toBeLessThanOrEqual('GENERATION_REQUEST_FAILED:'.length + 200)
   })
 })

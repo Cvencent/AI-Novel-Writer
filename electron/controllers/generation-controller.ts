@@ -37,6 +37,30 @@ type Owner = ReturnType<typeof createMainGenerationOwner>
 type OwnerChannels = LegacyRosterGenerationChannels & GraphGenerationChannels & GenerationOwnerChannels & CharacterProposalChannels & FinalizedCharacterGenerationChannels & ReviewRevisionGenerationInvokeChannels & AgentGenerationChannels & ImportGenerationChannels & EditorInlineGenerationChannels & FinalizationGenerationChannels
 const owners = new Map<Database.Database, { owner: Owner; session: ProjectSessionContext; subscribers: Set<WebContents> }>()
 const ownerSessions = new WeakMap<Owner, ProjectSessionContext>()
+/**
+ * 主进程内部错误 → 透给渲染层的错误码（issue #179）。
+ *
+ * 抽成**导出的纯函数**是为了能被断言：原来这段逻辑内联在 `ipcMain.handle` 的 catch 里，
+ * 测试只能自己抄一份正则，于是**改实现不会让测试变红**（假绿）。
+ *
+ * 两处硬缺陷（现场两轮稳定复现把它暴露出来）：
+ * 1. 白名单正则原来要求**整串匹配**（`…_[A-Z_]+` 到串尾）—— issue #174 刚加上的
+ *    「带字段名」变体（`GENERATION_REVIEW_CONTEXT_MISMATCH:authorInputs` 含冒号）
+ *    在 IPC 边界上被**再吞一次**，日志里只剩兜底码。
+ *    现在允许**可选**的字段名后缀；限 `[A-Za-z]{1,40}`，避免把整段中文当码透出去。
+ * 2. 兜底码把原始 message 彻底丢掉——日志里只能看到「请求失败」，看不到为什么。
+ *    现在兜底码**保留前缀**（既有 `includes('GENERATION_REQUEST_FAILED')` 的分支不受影响），
+ *    后面接截断后的原始 message。
+ */
+const NAMED_ERROR_CODE = /^(?:GENERATION|ROOT_BUDGET|ARTIFACT|MAIN|CHARACTER|FINALIZED_CHARACTER|LEGACY_ROSTER)_[A-Z_]+(?::[A-Za-z]{1,40})?$/u
+
+export function generationErrorCode(error: unknown): string {
+  if (error instanceof Error && (error.message === 'SOURCE_DRAFT_CHANGED' || NAMED_ERROR_CODE.test(error.message))) {
+    return error.message
+  }
+  return `GENERATION_REQUEST_FAILED:${error instanceof Error ? error.message.slice(0, 200) : typeof error}`
+}
+
 /** Called synchronously inside the same SQLite transaction as the formal effect. */
 export function assertGenerationSourcesCurrent(handle: MainGenerationRunHandle, blueprintRange?: { startChapter: number; endChapter: number }): void {
   const database = getProjectDb()
@@ -198,9 +222,7 @@ export function registerGenerationController(options: {
       } catch (error) {
         if (error instanceof TaskBudgetPreflightError) throw new Error(error.message)
         if (error instanceof KnowledgeBaseUnavailableError || error instanceof LegacyVectorMigrationBlockedError) throw new Error(error.code)
-        const code = error instanceof Error && (error.message === 'SOURCE_DRAFT_CHANGED' || /^(?:GENERATION|ROOT_BUDGET|ARTIFACT|MAIN|CHARACTER|FINALIZED_CHARACTER|LEGACY_ROSTER)_[A-Z_]+$/u.test(error.message))
-          ? error.message : 'GENERATION_REQUEST_FAILED'
-        throw new Error(code)
+        throw new Error(generationErrorCode(error))
       }
     })
   }
