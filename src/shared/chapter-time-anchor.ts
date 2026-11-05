@@ -141,6 +141,19 @@ export interface ChapterBoundaryHit {
    * 所以这里与 `days` 分开存，由调用方与上一章的日序求差。
    */
   ordinal: number | null
+  /**
+   * 记号前面紧邻的**事件锚点**（issue #196）。
+   *
+   * 「**开箱**次日」里的「开箱」是事件名：它把「次日」钉在某个具体事件之后。
+   * 同一部书里连续几章的【时点】都写「开箱次日X」（只是一个时辰不同），
+   * 它们其实**是同一天**——只看「次日」两个字会把每一章都算成「隔 1 天」，
+   * 于是四章各报一条「要求补日界」，而正文本来就不该补（同一天没有日界可写）。
+   *
+   * ⚠️ 抽取只做**位置**判断：记号前紧邻的那一小段词（≤8 字、不含标点/数字），
+   * 且它后面除记号外没有别的时间词。不判断「这两个事件名是不是同一件事」——
+   * 名字相同就是同一个锚点（那是事实，不是语义）。
+   */
+  eventAnchor: string | null
   /** 记号所在的那一句（证据引用）。 */
   quote: string
 }
@@ -153,6 +166,36 @@ function classifyBoundary(raw: string): { days: number | null; ordinal: number |
     return { days: null, ordinal: day !== null && day >= 1 ? day : null }
   }
   return { days: dayGapOf(raw), ordinal: null }
+}
+
+/**
+ * 记号前面紧邻的**事件锚点**（issue #196）。
+ *
+ * 「**开箱**次日」「**封箱**次日上午」「**靠埠**次日」——这些写法把「次日」钉在某个
+ * 具体事件之后。同一部书里连续几章都写「开箱次日X」（只是一个时辰不同）时，
+ * 它们**是同一天**，不是四次跨日。
+ *
+ * 判据只做**位置/形态**：
+ * - 往回最多取 8 个汉字；
+ * - 遇到标点、数字、空白、括号就停（那是另一个句子/另一个锚点）；
+ * - 取到的片段必须**不以时间词开头**（否则取到的是上一个时间词的尾巴）；
+ * - 片段里不能还有别的日界词（那说明这个「次日」跟在另一个相对词后面）。
+ *
+ * 拿不到就返回 null（纯相对写法「次日清晨」本来就没有事件锚点）。
+ */
+const EVENT_ANCHOR_MAX_CHARS = 8
+const EVENT_ANCHOR_STOP = /[\s，。、；：！？…—\-–·「」“”‘’（）()【】\[\]0-9０-９]/
+
+function eventAnchorBefore(text: string, at: number): string | null {
+  let start = at
+  while (start > 0 && at - start < EVENT_ANCHOR_MAX_CHARS && !EVENT_ANCHOR_STOP.test(text[start - 1]!)) {
+    start -= 1
+  }
+  const candidate = text.slice(start, at).trim()
+  if (candidate.length < 2) return null
+  // 以时间词开头 → 那是上一个时间词的尾巴（「三日后的次日」里的「后」之类）。
+  if (DAY_BOUNDARY_PATTERN.test(candidate) || /^[前后当日天夜隔转]/.test(candidate)) return null
+  return candidate
 }
 
 /**
@@ -169,7 +212,7 @@ export function chapterBoundaryHits(text: string): ChapterBoundaryHit[] {
     const raw = match[0]
     const at = match.index ?? 0
     if (DURATIVE_FUTURE_FORM.test(raw) && !isSentenceInitial(value, at)) continue
-    hits.push({ at, ...classifyBoundary(raw), quote: sentenceAround(value, at) })
+    hits.push({ at, ...classifyBoundary(raw), eventAnchor: eventAnchorBefore(value, at), quote: sentenceAround(value, at) })
   }
   return hits.sort((left, right) => left.at - right.at)
 }
@@ -431,6 +474,17 @@ export function findUnmetTimeAnchorFindings(
    * 只在读得出绝对日序时才推进（相对写法「次日」推进不了起点，保持 null 不猜）。
    */
   let previousOrdinal: number | null = null
+  /**
+   * 上一章的**事件锚点 + 相对天数**（issue #196）。
+   *
+   * 「开箱次日」把「次日」钉在事件「开箱」之后。连续几章的【时点】都写「开箱次日X」
+   * （只是时辰不同）时它们是**同一天**：本章的锚点与上一章的锚点相同 → gap = 0。
+   *
+   * ⚠️ 只在**相邻两章**之间比：事件名相同就说明是同一个锚点之下的第 N 天，
+   * 这与「绝对日序相同 = 同一天」是同一个道理（#147 对绝对日序就是这么处理的）。
+   */
+  let previousEventAnchor: string | null = null
+  let previousEventDays: number | null = null
   for (const chapter of ordered) {
     const anchor = timeAnchorOf(chapter.keyEvents ?? '')
     if (!anchor) continue
@@ -444,13 +498,42 @@ export function findUnmetTimeAnchorFindings(
     // 第 1 章没有上一章，跨日无从谈起。
     if (chapter.chapterNumber <= 1) continue
 
-    // 蓝图侧的「隔了几天」：绝对日序优先与上一章日序求差；否则用相对天数。
-    const anchorGap = anchorOrdinal !== null
-      ? (previousOrdinal !== null ? anchorOrdinal - previousOrdinal : null)
-      : (declaresSameDay ? 0 : anchorRelativeDays)
+    /**
+     * **同事件锚点**（issue #196）：本章与上一章的【时点】都写「<同一个事件名>次日…」。
+     *
+     * 现场：ch84「开箱日午后」→ ch85「开箱次日清晨」→ ch86「开箱次日午后」→
+     * ch87「开箱次日入夜」→ ch88「开箱次日深夜」。后四章**全是同一天**（一个时辰走一段），
+     * 而只认「次日」两个字就会把 ch86/87/88 各算成「隔 1 天」→ 四章各报一条，
+     * 建议还写着「在正文开头补一句日界」——照做就把同一天的四段拉成四天。
+     *
+     * 判据只做**名字相等**：事件名是事实（同一部书里同一个词就是同一个事件），不判语义相似。
+     */
+    const eventAnchor = anchorHit?.eventAnchor ?? null
+    const sameEventAnchor = eventAnchor !== null
+      && previousEventAnchor !== null
+      && eventAnchor === previousEventAnchor
+      && anchorRelativeDays !== null
+      && previousEventDays !== null
+      && anchorRelativeDays === previousEventDays
+
+    // 蓝图侧的「隔了几天」：同事件锚点 → 0；绝对日序优先与上一章日序求差；否则用相对天数。
+    const anchorGap = sameEventAnchor
+      ? 0
+      : anchorOrdinal !== null
+        ? (previousOrdinal !== null ? anchorOrdinal - previousOrdinal : null)
+        : (declaresSameDay ? 0 : anchorRelativeDays)
 
     // **同一天**：正文不需要写日界，且两侧没有可比的跨度（issue #147）。
     // 实测 ch66/ch67 就是这一档：蓝图说「第三天午后（紧接上一章）」，与上一章同日。
+    // ⚠️ 每章都要把「本章的锚点」记下来供**下一章**比 —— 必须放在 gap 分支**之前**，
+    // 否则第一张「开箱次日」（gap 算不出来、走别的分支）就没被记下，后面永远拿 null 比。
+    if (eventAnchor !== null && anchorRelativeDays !== null) {
+      previousEventAnchor = eventAnchor
+      previousEventDays = anchorRelativeDays
+    } else {
+      previousEventAnchor = null
+      previousEventDays = null
+    }
     if (anchorGap === 0) {
       if (anchorOrdinal !== null) previousOrdinal = anchorOrdinal
       continue

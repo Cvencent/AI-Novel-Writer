@@ -624,3 +624,71 @@ describe('【时点】区间的两端各用各的 (issue #166)', () => {
     expect(hits).toEqual([])
   })
 })
+
+/**
+ * issue #196：「事件锚点 + 次日」被一律算成「上一章之后第 1 天」。
+ *
+ * 现场：第 85–88 章蓝图【时点】写「**开箱次日**的清晨 / 午后 / 入夜 / 深夜」——
+ * 这是**同一天的四段**，可预检对四章各报一条「时间推进不明」，四条同义提醒占满一屏。
+ * 建议还写着「在正文开头补一句日界」——照做就把同一天的四段拉成四天，
+ * 后面所有「两日内 / 三日内」的期限跟着一起漂。
+ *
+ * 根因：`chapterBoundaryHits('开箱次日清晨')` 只认出「次日」两个字，返回 `days: 1`，
+ * 前面的事件名「开箱」被整个丢掉 → 既不知道「开箱」是哪一天，
+ * 也不知道上一章已经在「开箱次日」了。`SAME_DAY_ANCHOR` 那条兜底只在
+ * `hits` **为空**时才生效，而「开箱次日」不空。
+ */
+describe('事件锚点 + 次日 不是每次都跨日 (issue #196)', () => {
+  // 直接从 keyEvents 里取【时点】标注（与生产调用同一条路）。
+  const anchor = (text: string) => `【时点：${text}】某事。`
+
+  it('extracts the event name sitting right before the relative day word', () => {
+    const hit = chapterBoundaryHits(anchor('开箱次日清晨（紧接第84章）'))[0]!
+    expect(hit.eventAnchor).toBe('开箱')
+    expect(hit.days).toBe(1)
+  })
+
+  it('has no event anchor for a plain relative phrasing', () => {
+    expect(chapterBoundaryHits(anchor('次日清晨'))[0]!.eventAnchor).toBeNull()
+  })
+
+  it('does not take the tail of another time word as the event anchor', () => {
+    // 「三日后的次日」里的前半段是时间词，不是事件名。
+    expect(chapterBoundaryHits(anchor('三日后的次日'))[0]!.eventAnchor).toBeNull()
+  })
+
+  it('only the chapter that enters the event day crosses; the rest of the run is one day', () => {
+    // 现场四章（含前面建立锚点的第 84 章）：只有 84 → 85 那次是**真跨日**，
+    // 85/86/87/88 是同一天的四段。旧实现四章全报，四条提醒还把正文往四天上拉。
+    const chapters = [
+      { chapterNumber: 84, keyEvents: '【时点：开箱日午后（紧接第83章）】A。', content: '午后。' },
+      { chapterNumber: 85, keyEvents: '【时点：开箱次日清晨（紧接第84章）】B。', content: '卯时刚过。正厅门槛。' },
+      { chapterNumber: 86, keyEvents: '【时点：开箱次日午后（紧接第85章）】C。', content: '午后，廊下石板干了一半。' },
+      { chapterNumber: 87, keyEvents: '【时点：开箱次日入夜（紧接第86章）】D。', content: '入夜，外廊的灯点到第三盏。' },
+      { chapterNumber: 88, keyEvents: '【时点：开箱次日深夜（紧接第87章）】E。', content: '文书桌在收。' },
+    ]
+    expect(findUnmetTimeAnchorFindings(chapters).map(finding => finding.stableFactKey))
+      .toEqual(['chapter-time:anchor-unmet:85'])
+  })
+
+  it('the chapter that really does cross into the event day is still reported', () => {
+    // 第 84 → 85 是真跨日（开箱日 → 开箱次日），它该报。
+    const chapters = [
+      { chapterNumber: 84, keyEvents: '【时点：开箱日午后（紧接第83章）】A。', content: '午后。' },
+      { chapterNumber: 85, keyEvents: '【时点：开箱次日清晨（紧接第84章）】B。', content: '卯时刚过。' },
+    ]
+    expect(findUnmetTimeAnchorFindings(chapters).map(finding => finding.stableFactKey))
+      .toEqual(['chapter-time:anchor-unmet:85'])
+  })
+
+  it('a different event name is a different anchor (not silently same-day)', () => {
+    const chapters = [
+      { chapterNumber: 84, keyEvents: '【时点：开箱日午后（紧接第83章）】A。', content: '午后。' },
+      { chapterNumber: 85, keyEvents: '【时点：开箱次日清晨（紧接第84章）】B。', content: '卯时。' },
+      { chapterNumber: 86, keyEvents: '【时点：封箱次日午后（紧接第85章）】C。', content: '午后。' },
+    ]
+    // 两个不同事件名的「次日」不能互相当成同一天：85 是真跨日、86 也是。
+    expect(findUnmetTimeAnchorFindings(chapters).map(finding => finding.stableFactKey))
+      .toEqual(['chapter-time:anchor-unmet:85', 'chapter-time:anchor-unmet:86'])
+  })
+})
