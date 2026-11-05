@@ -5,6 +5,7 @@ import type { FinalizedCharacterArtifact } from '../../src/shared/finalized-char
 import type { MainGenerationRunHandle } from '../../src/services/generation/generation-runtime'
 import type { GenerationTask } from '../../src/services/generation/generation-harness'
 import { GenerationRunRepository, textHash, type DurableGenerationRun } from '../repositories/generation-run-repository'
+import { firstFailedCheck } from './named-check'
 import { finalizationSlotKey, readFinalizationGenerationContext, finalizationNotesBaseline } from './finalization-generation-source'
 import { SummaryRepository } from '../repositories/summary-repository'
 import { BlueprintRepository } from '../repositories/blueprint-repository'
@@ -55,8 +56,18 @@ export class FinalizationGeneration {
   require(handle: MainGenerationRunHandle): DurableGenerationRun {
     if (!handle || Object.keys(handle).some(key => !['projectId', 'epoch', 'rootActionId', 'runId'].includes(key))) throw new Error('GENERATION_RUN_IDENTITY_MISMATCH')
     const run = this.runs.get(handle.runId), context = readFinalizationGenerationContext(run)
-    if (handle.projectId !== this.projectId || run.binding.projectId !== this.projectId || handle.rootActionId !== run.rootActionId
-      || handle.epoch !== run.binding.epoch && handle.epoch !== context.identity.epoch) throw new Error('GENERATION_RUN_IDENTITY_MISMATCH')
+    /**
+     * issue #178：这四项原来合取共抛 `GENERATION_RUN_IDENTITY_MISMATCH`，不说是哪一项。
+     * 改成具名检查表 —— 顺序与原合取一致（短路语义不变），前缀仍是原码。
+     */
+    const identityFailure = firstFailedCheck('GENERATION_RUN_IDENTITY_MISMATCH', [
+      ['handleProjectId', handle.projectId === this.projectId],
+      ['bindingProjectId', run.binding.projectId === this.projectId],
+      ['rootActionId', handle.rootActionId === run.rootActionId],
+      // ⚠️ 原式是「两项都不等才失败」，不是两项都要相等。
+      ['epoch', handle.epoch === run.binding.epoch || handle.epoch === context.identity.epoch],
+    ])
+    if (identityFailure) throw new Error(identityFailure)
     return run
   }
   task(run: DurableGenerationRun): GenerationTask {
