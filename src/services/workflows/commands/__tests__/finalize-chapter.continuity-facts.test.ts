@@ -365,3 +365,33 @@ describe('要点行首标记决定事实类别 (issue #148)', () => {
     expect(continuityCategoryBreakWarning(9, '## 剧情节点\n- [触发] 某件事。', [])).toBeNull()
   })
 })
+
+/**
+ * issue #167：账本要能**认出**这条事实是「人物记得某件事」，而不是「正文里发生了某件事」。
+ *
+ * 现场：第 78 章的 `facts_json` 把「周叙记得渔棚灯与温珩摆手让他别停」当成 `plot` 收下，
+ * 于是下一章起草时它作为「最近发生的事」被注入——而那句话描述的护送动作
+ * 在全书前 78 章一次都没发生过。
+ *
+ * ⚠️ 本档只**标记**，不做判断（判断「所指的事有没有发生」要读前文，属内容判断，交模型）。
+ */
+describe('记忆回指单独立档 (issue #167)', () => {
+  it('classifies a remembering statement as memory-callback, not plot', () => {
+    const notes = '他记得渔棚里的灯，记得温珩摆手让他别停。'
+    const [fact] = buildFinalizedContinuityFacts(78, notes, notes, [])
+    expect(fact!.category).toBe('memory-callback')
+  })
+
+  it('still calls a plain event plot', () => {
+    const notes = '温珩蹲着收网，把纸压回夹层。'
+    const [fact] = buildFinalizedContinuityFacts(78, notes, notes, [])
+    expect(fact!.category).toBe('plot')
+  })
+
+  it('lets the memory marker win over a leading plot marker', () => {
+    // 模型可能给这一条打 `[触发]`，但它的性质是回忆——别让标记把它送回 plot。
+    const notes = '- [触发] 他记得温珩摆手让他别停。'
+    const [fact] = buildFinalizedContinuityFacts(78, notes, notes, [])
+    expect(fact!.category).toBe('memory-callback')
+  })
+})

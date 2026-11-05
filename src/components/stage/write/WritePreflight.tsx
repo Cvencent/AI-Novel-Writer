@@ -69,6 +69,8 @@ interface WritePreflightProps {
   onCheckContent?: () => void
   /** 「核对能力限制」（#100）。不传时不渲染。 */
   onCheckAbility?: () => void
+  /** 「核对记忆回指」（#167）。不传时不渲染。 */
+  onCheckMemory?: () => void
   /** 模型给出的改写建议（差异面板）。null 表示当前没有待确认的改写。 */
   repairProposal?: RepairProposal | null
   onApplyRepairField?: (field: string) => void
@@ -88,7 +90,7 @@ interface WritePreflightProps {
  */
 export default function WritePreflight({
   preflight, busy, onIgnoreOnce, onRerun, onSave, onRevoke, onAcknowledge, onUnacknowledge, onOpenLayer, currentChapter,
-  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent, onCheckAbility,
+  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent, onCheckAbility, onCheckMemory,
 }: WritePreflightProps) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
@@ -187,6 +189,11 @@ export default function WritePreflight({
             把左侧那四个甩出弹层（stage-shell 又是 overflow:hidden，滚不过去）
             ——作者一个都点不到。现在拆成两行。 */}
         <div className="stage-preflight-checks">
+          {onCheckMemory === undefined ? null : (
+            <Button variant="text" size="sm" disabled={busy} onClick={onCheckMemory}>
+              {text('核对记忆回指', 'Check remembered scenes')}
+            </Button>
+          )}
           {onCheckAbility === undefined ? null : (
             <Button variant="text" size="sm" disabled={busy} onClick={onCheckAbility}>
               {text('核对能力限制', 'Check ability limits')}

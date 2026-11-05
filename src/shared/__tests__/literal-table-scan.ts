@@ -66,9 +66,15 @@ export function literalTablesIn(file: string, source: string): LiteralTable[] {
   }
 
   // 形态 B：普通 `const X = [...] as const` / `const X: readonly string[] = [...]`
+  //
+  // ⚠️ 必须**排除数组里拼接的提示词模板**：提示词常写成
+  // `const user = [en ? '## Chapters' : '## 章节正文', chapterText].join('\n\n')` ——
+  // 那是**拼文案**，不是词表。判据：数组元素必须是**引号包裹的短字面量**
+  // （每项 ≤24 字、且整段不含 `.join(` / 模板反引号 / 变量引用）。
   for (const match of code.matchAll(/(?:const|let)\s+([A-Za-z_$][\w$]*)\s*(?::[^=\n]{0,80})?=\s*\[([\s\S]{0,2000}?)\]\s*(?:as const)?\s*$/gmu)) {
     const body = match[2]!
     if (!hasChineseRun(body)) continue
+    if (looksLikeCopyAssembly(body)) continue
     found.push({ file, name: match[1]!, shape: 'const-array', samples: chineseSamples(body) })
   }
 
@@ -97,6 +103,48 @@ export function literalTablesIn(file: string, source: string): LiteralTable[] {
   }
 
   return found
+}
+
+/**
+ * 这段数组是不是**在拼提示词文案**，而不是一张词表。
+ *
+ * 提示词常写成 `const user = [cond ? "## A" : "## 甲", chapterText].join(sep)` ——
+ * 里面的中文是**分节标题**，不是判据用的词。判据（任一命中即视为拼文案）：
+ * - 含 `.join(`（拼接）；
+ * - 含模板反引号（多行文案通常写在那里）；
+ * - 有**任何一项**不是「引号包住的短字面量」（≤24 字）。
+ */
+function looksLikeCopyAssembly(body: string): boolean {
+  if (/\.join\(/u.test(body)) return true
+  if (body.includes(String.fromCharCode(96))) return true
+  const items = splitTopLevelItems(body)
+  if (items.length === 0) return true
+  return items.some(item => {
+    const literal = new RegExp("^(['\"])([^'\"]*)\\1$", 'u').exec(item)
+    return literal === null || literal[2]!.length > 24
+  })
+}
+
+/** 按**顶层**逗号切数组项（不切引号/方括号内部的逗号）。 */
+function splitTopLevelItems(body: string): string[] {
+  const items: string[] = []
+  let depth = 0
+  let quote = ''
+  let current = ''
+  for (const character of body) {
+    if (quote) {
+      current += character
+      if (character === quote) quote = ''
+      continue
+    }
+    if (character === "'" || character === '"') { quote = character; current += character; continue }
+    if (character === '[' || character === '(' || character === '{') depth += 1
+    if (character === ']' || character === ')' || character === '}') depth -= 1
+    if (character === ',' && depth === 0) { items.push(current); current = ''; continue }
+    current += character
+  }
+  if (current.trim()) items.push(current)
+  return items.map(item => item.trim()).filter(Boolean)
 }
 
 /**

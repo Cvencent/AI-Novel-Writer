@@ -6,6 +6,18 @@ export type FinalizedContinuityFactCategory =
   | 'character-state'
   | 'timeline'
   | 'open-thread'
+  /**
+   * **记忆回指**（issue #167）：这条事实是「人物记得/想起某件事」这类**内部陈述**。
+   *
+   * 单独立一档而不是塞进 `plot`，理由是它和别的事实不同源：`plot` 陈述的是「正文里发生了什么」，
+   * 而这条陈述的是「人物以为发生过什么」——后者可能根本没在前文发生过
+   * （现场：第 78 章「记得温珩摆手让他别停」，而全书「摆手」只出现这一次）。
+   *
+   * ⚠️ 本档**不做判断**（判断「所指的事有没有发生」需要读前文，属内容判断，交模型：
+   * `memory-anchor-review.ts`）。它只把这类事实**标出来**，让下游（起草前的最近摘要）
+   * 知道「这一条是回忆，不是已发生」，也让按类取数的实现有机会区别对待。
+   */
+  | 'memory-callback'
   | 'plot'
 
 /** Existing finalization receipt fields needed to bind derived material to immutable prose. */

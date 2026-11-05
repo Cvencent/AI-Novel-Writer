@@ -32,7 +32,7 @@ import { hasCharacterIdentitySchema } from './character-repository'
 import { refreshCharacterStateProjection } from './character-roster-repository'
 import type { ProjectEpoch } from '../../src/shared/source-ref'
 
-const FACT_CATEGORIES = new Set(['character-state', 'timeline', 'open-thread', 'plot'])
+const FACT_CATEGORIES = new Set(['character-state', 'timeline', 'open-thread', 'memory-callback', 'plot'])
 const CHARACTER_STATE_FIELDS = new Set<string>(CHARACTER_STATE_TEXT_FIELDS)
 const STATE_COLUMNS: Record<CharacterStateTextField, string> = {
   location: 'cs_location', powerLevel: 'cs_power_level', physicalState: 'cs_physical_state',

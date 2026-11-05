@@ -78,7 +78,19 @@ function leadingMarker(statement: string): string {
  * 两者是「先后」而不是「二选一」：带标记的按标记定，没带标记的仍按原来的词表判
  * （作者手写的要点、旧版本产物都没有标记）。
  */
+/**
+ * 记忆回指的形态（**功能类**，不是题材词表）：句子里出现记忆动词。
+ *
+ * ⚠️ 这一步只判「这一条是不是内部陈述」，**不判「所指的事有没有发生」**——
+ * 后者必须读前文，属内容判断，交模型（`memory-anchor-review.ts`）。
+ * 现场（#167）：第 78 章账本把「周叙记得…温珩摆手让他别停」当成 `plot` 收下，
+ * 下一章起草就拿它当「最近发生的事」摘要注入。
+ */
+const MEMORY_CALLBACK_MARKER = /(?:记得|想起|回忆起|想起来|记不清|记不得|忘了|忘记)/u
+
 function factCategory(statement: string): FinalizedContinuityFactCategory {
+  // ⚠️ 记忆回指优先于行首标记：模型可能给这一条打 `[触发]`，但它的**性质**是回忆。
+  if (MEMORY_CALLBACK_MARKER.test(statement)) return 'memory-callback'
   const marker = leadingMarker(statement)
   // ⚠️ 只认**封闭集合**里的标记。例外的方括号（作者自己写的 `[备注]`）原样落到词表兜底，
   // 不要因为「有个方括号」就当成伏笔——那会把未登记标记整类误判。
@@ -264,6 +276,9 @@ const CATEGORY_PRIORITY: Record<FinalizedContinuityFactCategory, number> = {
   'open-thread': 0,
   'character-state': 1,
   timeline: 2,
+  // 记忆回指排在最末：它是「人物以为发生过什么」，比泛泛的情节陈述更**不该**占
+  // 起草前摘要的名额（issue #167：一条没发生过的回忆被当成最近事件注入）。
+  'memory-callback': 4,
   plot: 3,
 }
 

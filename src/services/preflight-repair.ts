@@ -41,6 +41,12 @@ import {
   type AppearanceReviewChapter,
 } from '../shared/appearance-consistency'
 import {
+  buildMemoryAnchorPrompt,
+  memoryAnchorFindings,
+  parseMemoryAnchorReview,
+  type MemoryCallbackChapter,
+} from '../shared/memory-anchor-review'
+import {
   abilityReviewFindings,
   buildAbilityReviewPrompt,
   limitSentencesOf,
@@ -434,4 +440,45 @@ export async function reviewAbilityLimits(
       : '模型返回的不是合法的「限制被绕过」清单。' }
   }
   return { status: 'ok', findings: abilityReviewFindings(issues) }
+}
+
+/**
+ * 记忆回指锚点（issue #167）——一次模型调用。
+ *
+ * 现场：第 78 章「他记得温珩摆手让他别停」，而全书「摆手」只出现这一次。
+ * 规则只负责：取出含记忆动词的句子、把前文正文作为检索范围喂进去、校验引文可定位；
+ * 「所指的事在前文有没有发生」交模型（那是内容判断）。
+ */
+export interface MemoryAnchorOutcome {
+  status: 'ok' | 'failed'
+  findings: ConsistencyFinding[]
+  error?: string
+}
+
+export async function reviewMemoryAnchors(
+  session: ProjectSessionContext,
+  chapters: readonly MemoryCallbackChapter[],
+  earlierChapters: readonly MemoryCallbackChapter[],
+  locale: 'zh-CN' | 'en-US' = 'zh-CN',
+): Promise<MemoryAnchorOutcome> {
+  const en = locale === 'en-US'
+  if (chapters.length === 0 || earlierChapters.length === 0) return { status: 'ok', findings: [] }
+  const request = { chapters, earlierChapters, language: locale }
+  const { system, user, callbacks } = buildMemoryAnchorPrompt(request)
+  if (callbacks.length === 0) return { status: 'ok', findings: [] }
+  const response = await useLLMStore.getState().generate(
+    [{ role: 'system', content: system }, { role: 'user', content: user }],
+    undefined,
+    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
+  )
+  if (!response.success) {
+    return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
+  }
+  const issues = parseMemoryAnchorReview(response.content, request)
+  if (!issues) {
+    return { status: 'failed', findings: [], error: en
+      ? 'The model did not return a valid memory-anchor list.'
+      : '模型返回的不是合法的「回忆无锚点」清单。' }
+  }
+  return { status: 'ok', findings: memoryAnchorFindings(issues) }
 }

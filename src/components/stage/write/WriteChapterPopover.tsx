@@ -22,7 +22,7 @@ import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useAnchoredLayer } from '../../ui/use-anchored-layer'
 import {
   appearanceContradictionFindings, applyRepairDiffs, checkAppearanceAgainstCards,
-  proposeLayerRepair, reviewAbilityLimits, reviewProseContent, reviewProseStyle,
+  proposeLayerRepair, reviewAbilityLimits, reviewMemoryAnchors, reviewProseContent, reviewProseStyle,
   reviewSensoryChannels, sensoryVerdictFindings,
 } from '../../../services/preflight-repair'
 import { advanceRepairQueue, planRepairCalls, remainingRepairLayers, shouldContinueRepairChain } from '../../../shared/preflight-repair'
@@ -230,6 +230,34 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     }
     setPreflight(current => current ? { ...current, findings: [...current.findings, ...found] } : current)
     show()
+  }
+
+  /**
+   * 记忆回指锚点（#167）——**交给模型判**。
+   * 规则取出本章的「记得/想起」句，把前文正文作为检索范围喂进去；
+   * 「所指的事在前文有没有发生」是内容判断。
+   */
+  const checkMemory = async () => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || busy) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      const prose = await recentFinalized(session)
+      if (!isProjectSessionCurrent(session)) return
+      const target = prose.filter(chapter => chapter.chapterNumber === chapterNumber - 1)
+      if (target.length === 0) {
+        setMessage(text('还没有上一章的定稿正文可核对。', 'There is no finalized previous chapter to check.'))
+        return
+      }
+      const earlier = prose.filter(chapter => chapter.chapterNumber < chapterNumber - 1)
+      const outcome = await reviewMemoryAnchors(session, target, earlier, locale)
+      if (!isProjectSessionCurrent(session)) return
+      if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
+      mergeFindings(outcome.findings)
+    } finally {
+      setBusy(false)
+    }
   }
 
   /**
@@ -555,6 +583,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           onCheckStyle={() => void checkStyle()}
           onCheckContent={() => void checkContent()}
           onCheckAbility={() => void checkAbility()}
+          onCheckMemory={() => void checkMemory()}
           repairProposal={repairProposal}
           onApplyRepairField={field => void applyRepair([field])}
           onApplyRepairAll={() => void applyRepair(null)}
