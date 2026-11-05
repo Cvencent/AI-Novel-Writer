@@ -268,15 +268,39 @@ async function pollUntil(page, predicate, { timeoutMs = GENERATION_TIMEOUT_MS, i
  * 8790 通道和应用尾部都可能「静默挂起」：run 停在 running、root 早已不活跃、
  * 数据库再无变化。傻等 20 分钟会让每小时一轮的定时任务彻底失能，
  * 所以每轮读一次属于本轮的项目库（自己的隔离库，只读），
- * 发现所有 root 都不活跃且库文件超过 stallMs 没变化，就立刻失败并带上诊断，
- * 让找茬任务能区分「应用挂起」和「通道慢」。
+ * 发现**确实没有活跃运行**且库文件超过 stallMs 没变化，就立刻失败并带上诊断。
+ *
+ * ⚠️ issue #198：原来这段注释说着「发现所有 root 都不活跃」，实现**从没读过 root**——
+ * 判据只有「库文件 mtime 多久没动」。于是把「单次调用 200 秒 + 落库」误诊成
+ * 「尾部挂起，非通道慢」，而事实恰恰相反（那次细纲 199.7 秒就成功了）。
+ * 现在真的问一次 `generation:list`：有 running 的运行就**不算停滞**，
+ * 因为「正在跑一个慢调用」和「没人干活了」是两种完全不同的状态。
+ *
+ * 阈值也跟着放宽：单次细纲实测 199.7 秒、蓝图 104–152 秒，落库还要时间。
+ * 302 秒这个数恰好贴在真实分布的边缘上（#198 实测就是这个值被踩）。默认改成
+ * 「单次慢调用 + 落库」的两倍量级，宁可多等，也不要再误判掉一个正在成功的调用。
  */
-async function pollUntilOrStall(page, predicate, { label, stallMs = 4 * 60_000, ...options } = {}) {
+const STALL_DEFAULT_MS = 10 * 60_000
+
+/** 本轮还有没有运行在跑（issue #198）。读不到就当「可能有」——宁可不判停滞。 */
+async function hasActiveGeneration(page, session) {
+  if (!session) return true
+  try {
+    const runs = await invokeSession(page, session, 'generation:list')
+    if (!Array.isArray(runs)) return true
+    return runs.some(run => run?.status === 'running')
+  } catch {
+    return true
+  }
+}
+
+async function pollUntilOrStall(page, predicate, { label, stallMs = STALL_DEFAULT_MS, session: pollSession, ...options } = {}) {
   const deadline = Date.now() + (options.timeoutMs ?? GENERATION_TIMEOUT_MS)
   const dbPath = path.join(report.projectPath ?? '', '.ai-novel', 'project.db')
   let lastChange = Date.now()
   let lastSignature = null
   let last
+  const session = pollSession ?? null
 
   for (;;) {
     last = await predicate(page).catch(error => ({ __pollError: String(error) }))
@@ -291,9 +315,18 @@ async function pollUntilOrStall(page, predicate, { label, stallMs = 4 * 60_000, 
       }
     }
 
-    if (Date.now() - lastChange > stallMs) {
-      throw new Error(`${label} 停滞：项目库 ${Math.round((Date.now() - lastChange) / 1000)} 秒无变化，`
-        + '生成根部已不活跃但没有产物（疑似尾部挂起，非通道慢）')
+    const idleMs = Date.now() - lastChange
+    if (idleMs > stallMs) {
+      /**
+       * 只有在**确认没有运行在跑**时才算停滞（issue #198）。
+       * 有 running 的运行 = 一个慢调用正在走（细纲实测 199.7 秒），要等它。
+       */
+      if (await hasActiveGeneration(page, session)) {
+        lastChange = Date.now() // 重置窗口：还在跑，不判停滞
+      } else {
+        throw new Error(`${label} 停滞：项目库 ${Math.round(idleMs / 1000)} 秒无变化，`
+          + '且 generation:list 里没有任何 running 的运行（确认无人在干活，不是通道慢）')
+      }
     }
     if (Date.now() > deadline) throw new Error(`${label} 超时（最后 ${JSON.stringify(last).slice(0, 400)}）`)
     await page.waitForTimeout(options.intervalMs ?? 3000)
@@ -465,7 +498,7 @@ async function main() {
       const value = await pollUntilOrStall(page, async () => {
         const current = await invokeSession(page, session, 'db:project-core-get', session.projectPath)
         return current?.premise && current?.worldbuilding && current?.charactersArch ? current : null
-      }, { label: '故事前提与世界观', stallMs: 5 * 60_000 })
+      }, { label: '故事前提与世界观', stallMs: STALL_DEFAULT_MS, session })
       return { premiseLength: (value.premise ?? '').length, charactersArchLength: (value.charactersArch ?? '').length }
     })
 
@@ -528,7 +561,7 @@ async function main() {
       const value = await pollUntilOrStall(page, async () => {
         const current = await invokeSession(page, session, 'db:project-core-get', session.projectPath)
         return new RegExp(`^## 第${to}章`, 'mu').test(String(current?.synopsis ?? '')) ? current : null
-      }, { label: `细纲 ${from}–${to}`, stallMs: 5 * 60_000 })
+      }, { label: `细纲 ${from}–${to}`, stallMs: STALL_DEFAULT_MS, session })
       const blocks = [...String(value.synopsis).matchAll(/^## 第(\d+)章/gmu)].map(m => Number(m[1]))
       return { entry, synopsisLength: value.synopsis.length, chapters: blocks }
     })
@@ -552,7 +585,7 @@ async function main() {
         const list = await invokeSession(page, session, 'db:blueprint-get-all', session.projectPath)
         const got = (list ?? []).filter(item => item.chapterNumber >= from && item.chapterNumber <= to)
         return got.length === (to - from + 1) ? got : null
-      }, { label: '蓝图落库', stallMs: 5 * 60_000 })
+      }, { label: '蓝图落库', stallMs: STALL_DEFAULT_MS, session })
       return { chapters: blueprints.map(item => item.chapterNumber) }
     })
 
@@ -602,7 +635,7 @@ for (let chapter = from; chapter <= to; chapter += 1) {
           const list = await invokeSession(page, session, 'db:draft-list', target, session.projectPath)
           const latest = [...(list ?? [])].reverse().find(item => item.wordCount > 200)
           return latest ?? null
-        }, { label: `第 ${target} 章草稿`, stallMs: 6 * 60_000 })
+        }, { label: `第 ${target} 章草稿`, stallMs: STALL_DEFAULT_MS, session })
         return { chapter: target, preflight: preflight.outcome, draftId: draft.id, version: draft.version, words: draft.wordCount }
       })
 
@@ -628,7 +661,7 @@ for (let chapter = from; chapter <= to; chapter += 1) {
         await pollUntilOrStall(page, async () => {
           const list = await invokeSession(page, session, 'db:draft-list', chapter, session.projectPath)
           return (list ?? []).some(item => item.status === 'finalized') ? list : null
-        }, { label: `第 ${chapter} 章定稿`, stallMs: 8 * 60_000 })
+        }, { label: `第 ${chapter} 章定稿`, stallMs: STALL_DEFAULT_MS, session })
 
         // 定稿 → 后处理链（知识库导入/要点/角色状态/事实账本）。写下一章的前置条件，
         // 不等完就点下一章会被静默拒绝（见 waitForPostProcess 的注释）。

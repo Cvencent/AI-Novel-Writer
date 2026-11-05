@@ -57,7 +57,14 @@ export async function collapseCapsule(page, timeout = 5_000) {
   }
 }
 
-/** 没有进行中的运行、上一次运行已完成。侧页在运行开始时自动展开，作者没关它就一直在。 */
+/**
+ * 没有进行中的运行、上一次运行已完成。
+ *
+ * ⚠️ issue #198：原来只会等「已完成」。现场蓝图那步 `waitForRunDone` 等满 **25 分钟**，
+ * 而它等的那个 run 早在 23:10 就因通道挂掉而**已失败**——上游都明确失败了，下游还在等超时。
+ * 现在同时认「失败」：卡片一进入失败态就返回（由调用方读取实际产物做判定），
+ * 不再白等剩余时间。
+ */
 export async function waitForRunDone(page, timeout = 90_000) {
   // 确认门（如「确认采用角色提议」）出现时先点确认，再继续等完成。
   const deadline = Date.now() + timeout
@@ -68,10 +75,17 @@ export async function waitForRunDone(page, timeout = 90_000) {
       await page.waitForTimeout(1_000)
       continue
     }
-    const done = anyCard(page).filter({ hasText: /^(上一次运行|Last run)/ }).getByText(/已完成|Complete/)
+    const last = anyCard(page).filter({ hasText: /^(上一次运行|Last run)/ })
+    const done = last.getByText(/已完成|Complete/)
     if (await done.count() > 0) {
       await done.first().waitFor({ state: 'visible', timeout: 5_000 }).catch(() => {})
       await waitForCompletionToast(page)
+      return
+    }
+    // issue #198：「已失败」也是终态。继续等只会等满 timeout 而毫无收益。
+    const failed = last.getByText(/失败|Failed/)
+    if (await failed.count() > 0) {
+      await failed.first().waitFor({ state: 'visible', timeout: 5_000 }).catch(() => {})
       return
     }
     await page.waitForTimeout(2_000)
