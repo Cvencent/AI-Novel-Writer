@@ -52,7 +52,6 @@ import {
   blueprintKeyEventsProseText,
   countBlueprintKeyEventsUnits,
 } from '../../../shared/blueprint-length'
-import { HOOK_FORM_TEXT, hookFormOf } from '../../../shared/chapter-ending'
 import {
   foreshadowingDueAt,
   parseForeshadowingCommitments,
@@ -253,11 +252,11 @@ function buildCompactBlueprintTask(input: {
       // 时点同看（issue #84）：上一章发生在什么时候不给模型看，它就没有依据判断本章
       // 该不该跨日——而链路上没有别处产出时点，起草契约的「同一天紧接」默认会永远生效。
       timeAnchor: timeAnchorOf(chapter.keyEvents) || undefined,
-      // 钩子形态同看（issue #66）：最近几章的钩子全写成条件/警告句时，正文只能照着
-      // 收成通牒——这个分布不进去，模型就没有依据去轮换。
-      hookForm: chapter.suspenseHook
-        ? HOOK_FORM_TEXT[hookFormOf(chapter.suspenseHook)][input.writingLanguage === 'en-US' ? 'enUS' : 'zhCN']
-        : undefined,
+      // 钩子**原文**同看（issue #66 的诉求：让模型看见最近几章的钩子分布，才能轮换）。
+      // ⚠️ issue #163：原来这里给的是**规则算出来的形态标签**（`hookFormOf` 用三张短语表
+      // 判「这句是揭示/决定/期限」）——那是内容判断。现在直接给原文，形态由模型自己看；
+      // 少一次规则判断，也多一分信息（标签会丢掉措辞）。
+      hookForm: chapter.suspenseHook || undefined,
     })),
     globalGuidance: input.globalGuidance,
     pacingGuidance: input.pacingGuidance,
@@ -449,13 +448,15 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
           ))
           .join('\n')
         // 最近 3 章的落幅单独列一段：收束方式轮换要求模型先看清刚用过什么（issue #28）。
-        // 钩子的**语用形态**一并列出（issue #66）：后段 5 章的 suspenseHook 全写成
-        // 「条件＋后果」两句，正文只能跟着收成通牒——模型看不见这个分布就无从轮换。
+        // 钩子一并列出**原文**（issue #66）：后段 5 章的 suspenseHook 全写成「条件＋后果」两句，
+        // 正文只能跟着收成通牒——模型看见原文自己就能判出这个分布并轮换。
+        // ⚠️ issue #163：原来这里给的是规则算出的「钩子形态」标签（三张短语表），
+        // 那是内容判断，已改成直接给原文（标签还会丢掉措辞）。
         const recentClosings = previous.slice(-COMPACT_RECENT_BLUEPRINTS)
           .map(chapter => promptLanguageText(
             writingLanguage,
-            `第${chapter.chapterNumber}章收束：${closingShotOf(chapter.keyEvents) || '（未标注）'}；钩子形态：${HOOK_FORM_TEXT[hookFormOf(chapter.suspenseHook)].zhCN}`,
-            `Chapter ${chapter.chapterNumber} closing shot: ${closingShotOf(chapter.keyEvents) || '(unlabelled)'}; hook form: ${HOOK_FORM_TEXT[hookFormOf(chapter.suspenseHook)].enUS}`,
+            `第${chapter.chapterNumber}章收束：${closingShotOf(chapter.keyEvents) || '（未标注）'}；章末钩子：${chapter.suspenseHook || '（未标注）'}`,
+            `Chapter ${chapter.chapterNumber} closing shot: ${closingShotOf(chapter.keyEvents) || '(unlabelled)'}; closing hook: ${chapter.suspenseHook || '(unlabelled)'}`,
           ))
           .join('\n')
         const prompt = new DirectoryPromptBuilder(template, writingLanguage)

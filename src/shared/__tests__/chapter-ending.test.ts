@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -10,8 +12,6 @@ import {
   hasDialogue,
   isUltimatumLine,
   ultimatumStreak,
-  hookFormOf,
-  HOOK_FORM_TEXT,
 } from '../chapter-ending'
 
 describe('closingParagraph / hasDialogue / closesInsideDialogue', () => {
@@ -160,29 +160,27 @@ describe('ultimatumStreak (issue #66)', () => {
   })
 })
 
-describe('hookFormOf (issue #66)', () => {
-  it('classifies the reported late-chapter hooks as ultimatums', () => {
-    expect(hookFormOf('签下"箱内账页完整无缺"，等于用担保书上那枚手印替一页被刮过的账作保；不签，箱子当场扣下、今夜停航。')).toBe('ultimatum')
-    expect(hookFormOf('他要么在开航前把谁派到档案房去，要么今晚看着复写件被清出库房。')).toBe('ultimatum')
-    expect(hookFormOf('箱子交回去要按手印——谁给他按？')).not.toBe('other')
+/**
+ * issue #66 的诉求（让模型看见最近几章的钩子分布并轮换）保留；
+ * issue #163 把**实现方式**换了：原来由规则用三张短语表给钩子**贴形态标签**
+ * （ultimatum / deadline / revelation / decision）——那是内容判断。
+ *
+ * 现在直接把 `suspenseHook` **原文**交给模型，形态由它自己看：
+ * 少一次规则判断，也多一分信息（标签会丢掉措辞）。
+ *
+ * 所以这条测试断言的是「规则侧不再有这一类分类器」，而不是换个词表接着测。
+ */
+describe('钩子形态交给模型看原文 (issue #66 / #163)', () => {
+  it('no longer exports a rule-based hook classifier', async () => {
+    const module = await import('../chapter-ending')
+    expect('hookFormOf' in module).toBe(false)
+    expect('HOOK_FORM_TEXT' in module).toBe(false)
   })
 
-  it('distinguishes a plain open question from a threat', () => {
-    expect(hookFormOf('那份复写件到底是谁放进档案房的？')).toBe('question')
-  })
-
-  it('recognises a newly exposed fact', () => {
-    expect(hookFormOf('原来父亲的担保书背后还有第二个签名。')).toBe('revelation')
-  })
-
-  it('returns other for an empty hook instead of guessing', () => {
-    expect(hookFormOf('')).toBe('other')
-  })
-
-  it('has bilingual labels for every form', () => {
-    for (const form of ['ultimatum', 'question', 'deadline', 'revelation', 'decision', 'other'] as const) {
-      expect(HOOK_FORM_TEXT[form].zhCN.length).toBeGreaterThan(0)
-      expect(HOOK_FORM_TEXT[form].enUS.length).toBeGreaterThan(0)
-    }
+  it('the directory prompt carries the hook text itself, not a computed label', () => {
+    // 源码断言：prompt 里出现的是 suspenseHook 原文，而不是 HOOK_FORM_TEXT[...] 这种标签查表。
+    const source = readFileSync(join(__dirname, '..', '..', 'services', 'workflows', 'commands', 'directory.command.ts'), 'utf8')
+    expect(source).toContain('hookForm: chapter.suspenseHook || undefined')
+    expect(source).not.toContain('HOOK_FORM_TEXT[')
   })
 })
