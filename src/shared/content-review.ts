@@ -45,6 +45,56 @@ export const CONTENT_AXES = Object.freeze({
   ],
 } as const)
 
+/**
+ * **每一轴**的「读者会遇到什么」与「该怎么改」（issue #185）。
+ *
+ * 现场：5 条 finding 覆盖 3 个不同的轴，而**建议与解释逐字相同** ——
+ * 那句「换这一拍的落点」对 `repeated-reaction` / `repeated-device` 成立，
+ * 对 `prop-terminal`（该删一次终结）、`prop-moved`（该补交接动作）、
+ * `stale-duration`（该统一时长）**根本讲不通**：作者照字面做，会把
+ * 「铜墨盒昨夜已交稽核组封存」换成另一句话，而真正缺的是那次交接动作。
+ *
+ * ⚠️ 这两张表是**判据的轴 → 改法**的映射（与 `CONTENT_AXES` 同形、同源），
+ * 不是内容词表：轴的名称里不含任何题材词，改法只说「该动哪一类东西」。
+ */
+export const CONTENT_AXIS_GUIDANCE = Object.freeze({
+  'repeated-reaction': {
+    problem: ['同一个反应短句反复出现', 'the same reaction line keeps coming back'],
+    fix: [
+      '换这一拍的落点：换由谁来做、换在场的人看见什么、换它这次造成的后果；或者在保留动作的同时**给它一个新的信息**（这次拿到的和上次不一样）。',
+      'Move this beat’s landing: change who does it, what the people present notice, or the consequence it produces this time — or keep the action but give it new information.',
+    ],
+  },
+  'repeated-device': {
+    problem: ['同一个场景装置反复用来开场', 'the same staging move keeps opening scenes'],
+    fix: [
+      '换一个**开场装置**：这一次从别的东西切进去（一个声音、一件物的位置、某人的一句半截话），别再用同一套程序把场景点着。',
+      'Open differently: cut in through something else this time (a sound, where an object ended up, half a line of dialogue) instead of lighting the scene with the same procedure.',
+    ],
+  },
+  'prop-terminal': {
+    problem: ['同一件道具被终结了不止一次', 'the same prop was destroyed or handed away more than once'],
+    fix: [
+      '**删掉后一次终结**，或者补一句它为什么还能用（被找回、另一件同名物、上次只是收起来）。两次终结并排出现时，读者会以为前面那次的代价白付了。',
+      'Delete the later termination, or say on the page why it is still in play (recovered, a different object with the same name, merely put away last time). Two terminations side by side make the earlier cost look like it never mattered.',
+    ],
+  },
+  'prop-moved': {
+    problem: ['道具换了持有者／容器却没有交接', 'a prop changed hands or containers with no handover'],
+    fix: [
+      '**补一句交接动作**：谁在什么时候、什么条件下把它交给谁（或在什么地方取出／放回）。不是换个说法重描，而是把「它怎么到这里的」写出来。',
+      'Write the handover: who gives it to whom, when, under what condition (or where it was taken out and put back). This is not a rewording — it is the missing step of how it got here.',
+    ],
+  },
+  'stale-duration': {
+    problem: ['同一处状态用了两个不相容的时长', 'one state carries two incompatible durations'],
+    fix: [
+      '**统一成同一个时长**，并交代这段时间里状态有没有变过（一直空着？中间被人动过？）。两个数字并排出现时，读者只会觉得作者自己也没记住。',
+      'Settle on one duration and say whether the state changed in between (still empty? touched meanwhile?). Two figures side by side only tell readers the author lost track.',
+    ],
+  },
+} as const)
+
 export type ContentAxis = keyof typeof CONTENT_AXES
 
 export interface ContentReviewChapter {
@@ -178,6 +228,9 @@ export function contentReviewFindings(issues: readonly ContentReviewIssue[]): Co
   }
   return [...grouped.values()].map(list => {
     const first = list[0]!
+    /** issue #185：**按轴**取「问题读法」与「改法」，不再用同一段常量套所有轴。 */
+    const guide = CONTENT_AXIS_GUIDANCE[first.axis]
+    const axisLabel = CONTENT_AXES[first.axis][0]
     const quotes = list.map(item => `「${item.quote}」`).join('、')
     const explanations = list.map(item => item.explanation).filter(Boolean).join('；')
     const count = list.length
@@ -189,12 +242,15 @@ export function contentReviewFindings(issues: readonly ContentReviewIssue[]): Co
       sourceChapter: first.chapterNumber,
       evidence: `第${first.chapterNumber}章（${CONTENT_AXES[first.axis][0]}）${count > 1 ? `${count} 处：` : ''}${quotes}`,
       issue: {
-        zhCN: `第${first.chapterNumber}章有${count > 1 ? ` ${count} 处` : '一处'}重复写法${count > 1 ? '（同一个轴上）' : ''}：${quotes}${explanations ? `——${explanations}` : ''}。同一个动作、同一套程序在多个章里按同一顺序出现时，读者读到的是流程，不是这一章发生的事。`,
-        enUS: `Chapter ${first.chapterNumber} repeats a move${count > 1 ? ` ${count} times on the same axis` : ''}: ${quotes}${explanations ? ` — ${explanations}` : ''} When the same beat runs in the same order chapter after chapter, readers read a procedure instead of what happened here.`,
+        // issue #185：解释串**按轴取** —— 「读者读到的是流程」只对两个 repeated-* 轴成立。
+        // issue #185 建议 ③：轴名必须**写在正文里**（原来只在「来源」行的括号中出现，作者看不出是哪一类）。
+        zhCN: `第${first.chapterNumber}章（${axisLabel}）${count > 1 ? ` ${count} 处` : '一处'}：${guide.problem[0]}。原文${quotes}${explanations ? `——${explanations}` : ''}`,
+        enUS: `Chapter ${first.chapterNumber} has ${count > 1 ? `${count} places with ` : ''}${guide.problem[1]}: ${quotes}${explanations ? ` — ${explanations}` : ''}.`,
       },
       suggestion: {
-        zhCN: `换这一拍的落点：换由谁来做、换在场的人看见什么、换它这次造成的后果。或者在保留动作的同时**给它一个新的信息**（这次拿到的和上次不一样）。`,
-        enUS: `Move this beat's landing: change who does it, what the people present notice, or the consequence it produces this time — or keep the action but give it new information.`,
+        // issue #185：改法**按轴取** —— 「换这一拍的落点」对 prop-terminal / prop-moved / stale-duration 是错的。
+        zhCN: guide.fix[0],
+        enUS: guide.fix[1],
       },
     }
   })

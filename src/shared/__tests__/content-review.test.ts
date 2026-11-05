@@ -121,3 +121,64 @@ describe('同章同轴的合并 (issue #164)', () => {
     expect(new Set(findings.map(item => item.stableFactKey)).size).toBe(findings.length)
   })
 })
+
+/**
+ * issue #185：一次调用返回 5 条、覆盖 3 个不同的轴，而**建议与解释逐字相同**。
+ *
+ * 那句「换这一拍的落点」对 `repeated-reaction` / `repeated-device` 成立，
+ * 对 `prop-terminal`（该删一次终结）/ `prop-moved`（该补交接动作）/
+ * `stale-duration`（该统一时长）**根本讲不通**：作者照字面做，
+ * 会把「铜墨盒昨夜已交稽核组封存」换成另一句话，而真正缺的是那次交接动作。
+ *
+ * 另外轴名原来只在「来源」行的括号里，正文里完全没有 —— 作者看到 5 条一样的建议时无从分辨。
+ */
+describe('按轴给建议与解释 (issue #185)', () => {
+  const issue = (axis: any, chapterNumber = 83) => ({
+    chapterNumber, axis, quote: `第${chapterNumber}章的某一句。`, explanation: '模型的一句话',
+  })
+
+  const suggestionsOf = (axis: any) => contentReviewFindings([issue(axis)] as never)[0]!.suggestion.zhCN
+
+  it('gives prop-moved the handover fix, not the "change the beat" fix', () => {
+    const text = suggestionsOf('prop-moved')
+    expect(text).toContain('交接')
+    expect(text).not.toContain('换这一拍的落点')
+  })
+
+  it('gives prop-terminal the delete/explain fix', () => {
+    const text = suggestionsOf('prop-terminal')
+    expect(text).toContain('删掉')
+    expect(text).not.toContain('换这一拍的落点')
+  })
+
+  it('gives stale-duration the unify-the-duration fix', () => {
+    const text = suggestionsOf('stale-duration')
+    expect(text).toContain('统一')
+    expect(text).not.toContain('换这一拍的落点')
+  })
+
+  it('keeps the "change the beat" fix for the two repeated-* axes', () => {
+    expect(suggestionsOf('repeated-reaction')).toContain('换这一拍的落点')
+    expect(suggestionsOf('repeated-device')).toContain('开场装置')
+  })
+
+  it('five findings on five axes no longer share one suggestion string', () => {
+    const axes = ['repeated-reaction', 'repeated-device', 'prop-terminal', 'prop-moved', 'stale-duration'] as const
+    const texts = axes.map(axis => contentReviewFindings([issue(axis)] as never)[0]!.suggestion.zhCN)
+    expect(new Set(texts).size).toBe(5)
+  })
+
+  it('names the axis inside the card text, not only in the source line', () => {
+    // issue #185 建议 ③：作者要能一眼看出「这条是「道具换手没交接」还是「同一状态两个时长」」。
+    const [finding] = contentReviewFindings([issue('stale-duration')] as never)
+    expect(finding!.issue.zhCN).toContain('同一处状态')
+    expect(finding!.issue.enUS).toContain('incompatible durations')
+    // 解释串也按轴取：这句「读者读到的是流程」不该出现在 stale-duration 上。
+    expect(finding!.issue.zhCN).not.toContain('读者读到的是流程')
+  })
+
+  it('keeps the per-chapter+axis key so acknowledgement stays exact', () => {
+    const [finding] = contentReviewFindings([issue('prop-moved', 82)] as never)
+    expect(finding!.stableFactKey).toBe('prose:prop-moved:82')
+  })
+})
