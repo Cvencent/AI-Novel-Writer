@@ -285,3 +285,58 @@ describe('预检正文剥离 Markdown 粗体 (issue #154)', () => {
     expect(host!.textContent).toContain('换措辞')
   })
 })
+
+/**
+ * issue #165：底部动作行**不许把按钮甩出弹层**。
+ *
+ * 现场（1.5.175）：四个「核对…」按钮全部渲染到 `.pi-popover` 左边界之外，
+ * 鼠标落点被下层 `.arch-arc-review-panel` 接管——功能实现了（`element.click()`
+ * 能跑、7 秒后出提示），但作者**一个都点不到**。
+ *
+ * 几何原因：动作行容器 288px，七个按钮合计 658px，`justify-content:flex-end`
+ * 在溢出时把左侧甩出去，而外层 `.stage-shell` 是 `overflow:hidden`，横向滚不到。
+ *
+ * ⚠️ 断言用**逐个按钮的左边界 vs 弹层左边界**（issue 建议 4）：
+ * `scrollWidth <= clientWidth` 抓不出来——溢出被上层裁掉后量的是裁后值（288/288）。
+ */
+describe('动作行不许把按钮甩出弹层 (issue #165)', () => {
+  const mountWithAllActions = async () => {
+    host = document.createElement('div')
+    host.className = 'paper-ink stage-shell'
+    // 模拟真实弹层：固定 360 宽、overflow visible 的内层，外层 overflow hidden。
+    host.style.cssText = 'width:360px;overflow:hidden;position:relative'
+    document.body.append(host)
+    root = createRoot(host)
+    const common = {
+      preflight, busy: false,
+      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onRevoke: vi.fn(),
+      onAcknowledge: vi.fn(), onUnacknowledge: vi.fn(),
+      onOpenLayer: vi.fn(), currentChapter: 45,
+      onRepair: vi.fn(), onRepairAll: vi.fn(),
+      onCheckAppearance: vi.fn(), onCheckSensory: vi.fn(),
+      onCheckStyle: vi.fn(), onCheckContent: vi.fn(), onCheckAbility: vi.fn(),
+    }
+    await act(async () => root!.render(<WritePreflight {...common} />))
+  }
+
+  it('keeps every action button inside the popover’s left and right edges', async () => {
+    await mountWithAllActions()
+    const shell = host!.getBoundingClientRect()
+    const buttons = [...host!.querySelectorAll('button')]
+    expect(buttons.length).toBeGreaterThan(6)
+    for (const button of buttons) {
+      const rect = button.getBoundingClientRect()
+      // 左边界：不许跑到弹层外面（这正是 1.5.175 的缺陷）。
+      expect(rect.left, `${button.textContent} 左边越界`).toBeGreaterThanOrEqual(shell.left - 0.5)
+      expect(rect.right, `${button.textContent} 右边越界`).toBeLessThanOrEqual(shell.right + 0.5)
+    }
+  })
+
+  it('puts the slow model-check buttons on their own row, not mixed with instant actions', async () => {
+    // 「核对…」是一次 60 秒级模型调用；和「带提醒继续写」这种即时动作挤一行是这次
+    // 溢出的直接原因，所以结构性上也要求分开（issue #165 建议 2）。
+    await mountWithAllActions()
+    expect(host!.querySelector('.stage-preflight-checks')?.textContent).toContain('核对能力限制')
+    expect(host!.querySelector('.stage-preflight-actions')?.textContent).not.toContain('核对能力限制')
+  })
+})

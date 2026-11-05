@@ -140,10 +140,26 @@
   font-size: var(--fs-12);
 }
 
-.stage-preflight-actions {
+/*
+ * issue #165：动作行必须能折行，且溢出时**不许把左边甩出去**。
+ * `justify-content: flex-end` 在溢出时把靠左的元素推出可视区（弹层外层
+ * `overflow: hidden`，横向滚不到）——实测七个按钮 658px vs 容器 288px，
+ * 左边四个「核对…」全部落在弹层之外、鼠标被下层页面接管。
+ * 现在：允许折行 + 用 `safe flex-end` 语义（不支持 safe 时退化成 flex-start）。
+ */
+.stage-preflight-actions,
+.stage-preflight-checks {
   display: flex;
-  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: var(--s-1);
+  justify-content: flex-start;
+}
+
+/* 「核对…」是一次耗时模型调用，单独一行、视觉上低一档（issue #165）。 */
+.stage-preflight-checks {
+  margin-top: var(--s-2);
+  padding-top: var(--s-2);
+  border-top: 1px dashed var(--line-soft, var(--line));
 }
 
 .stage-preflight-saved > summary {

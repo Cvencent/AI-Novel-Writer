@@ -180,7 +180,13 @@ export default function WritePreflight({
         />
       ) : null}
       {findings.length > 0 && (
-        <div className="stage-preflight-actions">
+        <>
+        {/* issue #165：四个「核对…」是一次耗时模型调用（实测 61 秒），与
+            「全部修复／带提醒继续写」这种即时动作不同类。原先挤在同一行，
+            七个按钮合计 658px 而容器只有 288px，justify-content:flex-end
+            把左侧那四个甩出弹层（stage-shell 又是 overflow:hidden，滚不过去）
+            ——作者一个都点不到。现在拆成两行。 */}
+        <div className="stage-preflight-checks">
           {onCheckAbility === undefined ? null : (
             <Button variant="text" size="sm" disabled={busy} onClick={onCheckAbility}>
               {text('核对能力限制', 'Check ability limits')}
@@ -206,6 +212,8 @@ export default function WritePreflight({
               {text('核对角色外观', 'Check appearance vs cards')}
             </Button>
           )}
+        </div>
+        <div className="stage-preflight-actions">
           {onRepairAll === undefined ? null : (
             <Button variant="secondary" size="sm" disabled={busy} onClick={onRepairAll}>
               {text('全部修复', 'Fix all')}
@@ -214,6 +222,7 @@ export default function WritePreflight({
           <Button variant="text" size="sm" disabled={busy} onClick={onIgnoreOnce}>{text('带提醒继续写', 'Continue with reminders')}</Button>
           <Button variant="text" size="sm" disabled={busy} onClick={onRerun}>{text('改蓝图后重检', 'Recheck after editing')}</Button>
         </div>
+        </>
       )}
       {saved.length > 0 && (
         <details className="stage-preflight-saved">
