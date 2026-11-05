@@ -1124,6 +1124,24 @@ export function registerDatabaseController() {
     }
   })
 
+  /**
+   * 存量事实的**重新分类**（issue #173）。
+   *
+   * 与 `continuity-save-finalized` 不同：那条是**重新投影**（要求 source / chapterNotes /
+   * projectionGeneration，会重写整行摘要），本通道只改 `category` 一个字段。
+   *
+   * ⚠️ 安全闸在仓库层（`SummaryRepository.recategorizeFinalizedContinuityChapter`）：
+   * 只接受「statement 不变、category 变化」的条目，且每条 evidence 必须仍能在定稿正文里逐字定位。
+   */
+  ipcMain.handle('db:continuity-recategorize-chapter', async (_event, request: { draftId: number, chapterNumber: number }, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true as const, receipt: SummaryRepository.recategorizeFinalizedContinuityChapter(request) }
+    } catch (err) {
+      return { success: false as const, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   ipcMain.handle('db:continuity-save-character-state-candidates', async (_event, _request, expectedProjectPath: string) => {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)

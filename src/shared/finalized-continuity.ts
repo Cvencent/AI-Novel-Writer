@@ -334,6 +334,27 @@ export interface SaveFinalizedContinuityRequest {
   source: FinalizedSourceIdentity
 }
 
+/**
+ * **存量事实的重新分类**（issue #173）。
+ *
+ * `#148` 修好的是判据，但 `category` 是落库那一刻算一次并写死的——存量 20 章不自愈
+ * （真书全量 561 条事实里 148 条与当前判据不符，含 109 条 `plot→open-thread`）。
+ * 这个请求只做一件事：把某一章已落库事实的 `category` 按**当前**判据重算一遍，
+ * `statement` / `evidence` / `sourceChapter` 逐字不动。
+ */
+export interface RecategorizeContinuityRequest {
+  draftId: number
+  chapterNumber: number
+}
+
+export interface RecategorizeContinuityReceipt {
+  chapterNumber: number
+  /** 改了几条。0 表示这一章已经是对的（幂等）。 */
+  changed: number
+  /** 从 → 到 的计数，例如 `{ 'plot→open-thread': 29 }`，供界面先给作者看差异。 */
+  counts: Record<string, number>
+}
+
 export interface SaveFinalizedCharacterStateCandidatesRequest {
   draftId: number
   chapterNumber: number

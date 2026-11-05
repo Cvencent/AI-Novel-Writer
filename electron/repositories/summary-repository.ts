@@ -19,6 +19,8 @@ import type {
   FinalizedSourceSnapshot,
   SaveFinalizedCharacterStateCandidatesRequest,
   SaveFinalizedContinuityRequest,
+  RecategorizeContinuityRequest,
+  RecategorizeContinuityReceipt,
 } from '../../src/shared/finalized-continuity'
 import {
   CHARACTER_STATE_TEXT_FIELDS,
@@ -26,6 +28,7 @@ import {
   type CharacterStateTextField,
   type CharacterStateFieldProvenance,
 } from '../../src/shared/character-roster'
+import { applyFactRecategorization, recategorizeFinalizedFacts } from '../../src/shared/finalized-continuity-facts'
 import { decideDerivedPatch, type CharacterFieldSnapshot, type DerivedSourceOrder } from '../../src/shared/character-identity'
 import { charactersAbsentButUpdated, parseFinalizedCharacterStateResponse } from '../../src/shared/finalized-continuity'
 import { hasCharacterIdentitySchema } from './character-repository'
@@ -671,6 +674,62 @@ export class SummaryRepository {
           input.projectionGeneration,
         )
       }
+    })()
+  }
+
+  /**
+   * **只改 `category`** 的窄写回（issue #173）。
+   *
+   * 现场：`#148` 修好的是**判据**，而 `category` 是落库那一刻算一次并写死的 ——
+   * 存量 20 章不自愈（真书全量 561 条事实里 148 条与当前判据不符，含 109 条 `plot→open-thread`）。
+   * `open-thread` 在 `CATEGORY_PRIORITY` 里排最高档（占起草前 12 条名额），
+   * 标成 `plot` 就等于那批伏笔永远抢不到名额。
+   *
+   * 为什么单独一条方法、而不是复用 `saveFinalizedContinuity`：
+   * 那条要求 `draftId` / `source` / `chapterNotes` 与**投影代际**，会连 `chapter_notes`、
+   * `source_content_hash`、`projection_generation` 一起重写 —— 那是**重新投影**，不是修分类。
+   * 这里只动两张表里的 `category` 一个字段，其余逐字保留（动了会撞 #159 那类哈希问题）。
+   *
+   * ⚠️ 两道安全闸（都在同一事务内）：
+   * 1. 每条事实的 `evidence` 必须仍能在**绑定定稿正文**里逐字定位（防止改到已被替换的章）；
+   * 2. 只接受「`statement` 不变、`category` 变化」的条目 —— 传别的形状一律拒绝，
+   *    否则这条方法就成了「任意改账本」的后门。
+   */
+  static recategorizeFinalizedContinuityChapter(input: RecategorizeContinuityRequest, db = getProjectDb()): RecategorizeContinuityReceipt {
+    if (!db) throw new Error('项目数据库未打开')
+    if (!Number.isSafeInteger(input.chapterNumber) || input.chapterNumber < 1 || !Number.isSafeInteger(input.draftId)) {
+      throw new Error('重算分类的参数无效')
+    }
+    return db.transaction((): RecategorizeContinuityReceipt => {
+      const snapshot = readFinalizedSourceFromDb(db, input.draftId)
+      if (!snapshot || input.chapterNumber !== snapshot.source.chapterNumber) {
+        throw new Error('重算分类的来源已失效')
+      }
+      const row = db.prepare('SELECT id, continuity_facts FROM summary_snapshots WHERE draft_id=? ORDER BY id DESC LIMIT 1')
+        .get(input.draftId) as { id: number; continuity_facts: string } | undefined
+      if (!row) throw new Error('摘要快照缺失，无法重算分类')
+      const facts = parseFacts(String(row.continuity_facts ?? '[]'), input.chapterNumber)
+      const plan = recategorizeFinalizedFacts(facts)
+      if (plan.changes.length === 0) return { chapterNumber: input.chapterNumber, changed: 0, counts: {} }
+      // 安全闸：只改 category，且引文必须仍在定稿正文里。
+      for (const change of plan.changes) {
+        if (!snapshot.content.includes(change.fact.evidence)) throw new Error('连续性事实引文无法在绑定定稿正文中精确定位')
+      }
+      const next = applyFactRecategorization(facts, plan)
+      db.prepare("UPDATE summary_snapshots SET continuity_facts=? WHERE id=?")
+        .run(JSON.stringify(next), row.id)
+      // `chapter_commits.facts_json` 是同一批事实的第二份落库，也要一起对齐（否则两套账不一致）。
+      const commit = db.prepare('SELECT commit_id, facts_json FROM chapter_commits WHERE draft_id=?')
+        .get(input.draftId) as { commit_id: string; facts_json: string } | undefined
+      if (commit) {
+        const commitFacts = parseFacts(String(commit.facts_json ?? '[]'), input.chapterNumber)
+        const commitPlan = recategorizeFinalizedFacts(commitFacts)
+        if (commitPlan.changes.length > 0) {
+          db.prepare('UPDATE chapter_commits SET facts_json=? WHERE commit_id=?')
+            .run(JSON.stringify(applyFactRecategorization(commitFacts, commitPlan)), commit.commit_id)
+        }
+      }
+      return { chapterNumber: input.chapterNumber, changed: plan.changes.length, counts: plan.counts }
     })()
   }
 
