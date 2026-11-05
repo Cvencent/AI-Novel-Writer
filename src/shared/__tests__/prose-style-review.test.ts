@@ -83,3 +83,37 @@ describe('styleIssueFindings 同章同类合并 (issue #164)', () => {
     expect(new Set(findings.map(item => item.stableFactKey)).size).toBe(findings.length)
   })
 })
+
+/**
+ * issue #161：`motif` 轴必须排除**术语 / 场所 / 关键概念**。
+ *
+ * 旧判据（已随 `prose-flavor.ts` 删除）靠「词频 × 位置」：第 75 章「经手」6 次
+ * （6 次全在台词里，且从没被处置过）被判成「反复承担情绪的意象」，唯一依据是
+ * 「**按**经手人处置」这个错位窗口。12 条命中里至少 3 条（经手/调阅/案桌）是这个错。
+ */
+describe('motif 轴排除术语与场所 (issue #161)', () => {
+  it('tells the model that terminology is not a motif', () => {
+    const { system } = buildStyleReviewPrompt(request)
+    expect(system).toContain('术语/职务/单据名')
+    // 现场的具体形态要写明，否则模型不知道「经手人」这类算术语。
+    expect(system).toContain('经手人')
+    expect(system).toContain('调阅条')
+  })
+
+  it('tells the model that a place is not a motif', () => {
+    const { system } = buildStyleReviewPrompt(request)
+    expect(system).toContain('场所')
+    expect(system).toContain('案桌上')
+  })
+
+  it('tells the model that a concept the reader must remember is not a motif', () => {
+    const { system } = buildStyleReviewPrompt(request)
+    expect(system).toContain('必须记住')
+  })
+
+  it('keeps the positive criterion: only mood-only words count', () => {
+    // 判据的正面仍是「换掉也不影响理解、纯粹用来抒情」——不是「一个词出现多次就报」。
+    const { system } = buildStyleReviewPrompt(request)
+    expect(system).toContain('换掉也不影响理解')
+  })
+})
