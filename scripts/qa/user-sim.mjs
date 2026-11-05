@@ -294,13 +294,27 @@ async function hasActiveGeneration(page, session) {
   }
 }
 
-async function pollUntilOrStall(page, predicate, { label, stallMs = STALL_DEFAULT_MS, session: pollSession, ...options } = {}) {
+/**
+ * ⚠️ `session` 是**必填的位置参数**（issue #205）。
+ *
+ * 上一版把它放在 options 里（`{ session }`），六个调用点里五个传了、一个漏了——
+ * 漏的那处（粗纲铺满全书）于是 `hasActiveGeneration` 永远 `return true`，
+ * 停滞判定在这一步**完全失效**：真挂死就白等到整步超时（25 分钟量级）。
+ *
+ * 这正是「可选参数 + 手写传参」的必然结果。改成位置参数后，漏传在**调用处一行可见**，
+ * 再配一条结构守卫（`scripts/qa/__tests__/user-sim-poll-session.test.mjs`）扫全部调用点。
+ */
+async function pollUntilOrStall(page, session, predicate, options = {}) {
+  if (!session?.projectId) {
+    // 宁可当场炸掉，也不要静默退化成「永远认为有运行在跑」而白等一整步超时。
+    throw new Error('pollUntilOrStall: 缺少 session —— 停滞判定无法工作（这是驱动 bug，不是产品问题）')
+  }
+  const { label, stallMs = STALL_DEFAULT_MS } = options
   const deadline = Date.now() + (options.timeoutMs ?? GENERATION_TIMEOUT_MS)
   const dbPath = path.join(report.projectPath ?? '', '.ai-novel', 'project.db')
   let lastChange = Date.now()
   let lastSignature = null
   let last
-  const session = pollSession ?? null
 
   for (;;) {
     last = await predicate(page).catch(error => ({ __pollError: String(error) }))
@@ -495,10 +509,10 @@ async function main() {
       await arch.selectOnly(page, ['premise', 'worldbuilding', 'characters'])
       await arch.startGenerate(page)
       await runSheet.waitForRunDone(page, GENERATION_TIMEOUT_MS)
-      const value = await pollUntilOrStall(page, async () => {
+      const value = await pollUntilOrStall(page, session, async () => {
         const current = await invokeSession(page, session, 'db:project-core-get', session.projectPath)
         return current?.premise && current?.worldbuilding && current?.charactersArch ? current : null
-      }, { label: '故事前提与世界观', stallMs: STALL_DEFAULT_MS, session })
+      }, { label: '故事前提与世界观' })
       return { premiseLength: (value.premise ?? '').length, charactersArchLength: (value.charactersArch ?? '').length }
     })
 
@@ -517,11 +531,11 @@ async function main() {
         await arch.selectOnly(page, ['arc'])
         await arch.startGenerate(page)
       })
-      const arcs = await pollUntilOrStall(page, async () => {
+      const arcs = await pollUntilOrStall(page, session, async () => {
         const list = await invokeSession(page, session, 'db:arc-outline-list', session.projectPath)
         const coveredNow = (list ?? []).reduce((max, item) => Math.max(max, item.toChapter), 0)
         return coveredNow >= wanted ? list : null
-      }, { timeoutMs: ARC_TIMEOUT_MS, intervalMs: 5000, label: '粗纲铺满全书', stallMs: 5 * 60_000 })
+      }, { timeoutMs: ARC_TIMEOUT_MS, intervalMs: 5000, label: '粗纲铺满全书' })
       // 粗纲成功后运行侧页不会自己收起（issue #39）：作者会点「收起」，harness 也必须收，
       // 否则下一步「确保蓝图」的前置检查与按钮点击全被这个侧页挡着。
       await runSheet.closeIfOpen(page)
@@ -558,10 +572,10 @@ async function main() {
         await arch.setRange(page, nextFrom, Math.max(nextFrom, to))
         await arch.startGenerate(page)
       }
-      const value = await pollUntilOrStall(page, async () => {
+      const value = await pollUntilOrStall(page, session, async () => {
         const current = await invokeSession(page, session, 'db:project-core-get', session.projectPath)
         return new RegExp(`^## 第${to}章`, 'mu').test(String(current?.synopsis ?? '')) ? current : null
-      }, { label: `细纲 ${from}–${to}`, stallMs: STALL_DEFAULT_MS, session })
+      }, { label: `细纲 ${from}–${to}` })
       const blocks = [...String(value.synopsis).matchAll(/^## 第(\d+)章/gmu)].map(m => Number(m[1]))
       return { entry, synopsisLength: value.synopsis.length, chapters: blocks }
     })
@@ -581,11 +595,11 @@ async function main() {
       if (!missing.length) return { skipped: true }
       await blueprintPage.generateRange(page, missing[0], missing.at(-1))
       await runSheet.waitForRunDone(page, GENERATION_TIMEOUT_MS)
-      const blueprints = await pollUntilOrStall(page, async () => {
+      const blueprints = await pollUntilOrStall(page, session, async () => {
         const list = await invokeSession(page, session, 'db:blueprint-get-all', session.projectPath)
         const got = (list ?? []).filter(item => item.chapterNumber >= from && item.chapterNumber <= to)
         return got.length === (to - from + 1) ? got : null
-      }, { label: '蓝图落库', stallMs: STALL_DEFAULT_MS, session })
+      }, { label: '蓝图落库' })
       return { chapters: blueprints.map(item => item.chapterNumber) }
     })
 
@@ -631,11 +645,11 @@ for (let chapter = from; chapter <= to; chapter += 1) {
         if (preflight.outcome === 'continued') log(`  一致性预检有提醒，已点「带提醒继续写」：${preflight.summary.replace(/\s+/g, ' ').slice(0, 160)}`)
         else if (preflight.outcome === 'no-continue-button') log(`  弹层出现但没有「带提醒继续写」按钮（可能不是一致性预检）：${String(preflight.summary ?? '').replace(/\s+/g, ' ').slice(0, 200)}`)
         await runSheet.waitForRunDone(page, GENERATION_TIMEOUT_MS)
-        const draft = await pollUntilOrStall(page, async () => {
+        const draft = await pollUntilOrStall(page, session, async () => {
           const list = await invokeSession(page, session, 'db:draft-list', target, session.projectPath)
           const latest = [...(list ?? [])].reverse().find(item => item.wordCount > 200)
           return latest ?? null
-        }, { label: `第 ${target} 章草稿`, stallMs: STALL_DEFAULT_MS, session })
+        }, { label: `第 ${target} 章草稿` })
         return { chapter: target, preflight: preflight.outcome, draftId: draft.id, version: draft.version, words: draft.wordCount }
       })
 
@@ -658,10 +672,10 @@ for (let chapter = from; chapter <= to; chapter += 1) {
         await chapterView.reviewSheet(page).waitFor({ state: 'visible', timeout: REVIEW_SHEET_TIMEOUT_MS })
         const excerpt = await chapterView.reviewSheet(page).innerText().catch(() => '')
         await chapterView.finalize(page, chapter)
-        await pollUntilOrStall(page, async () => {
+        await pollUntilOrStall(page, session, async () => {
           const list = await invokeSession(page, session, 'db:draft-list', chapter, session.projectPath)
           return (list ?? []).some(item => item.status === 'finalized') ? list : null
-        }, { label: `第 ${chapter} 章定稿`, stallMs: STALL_DEFAULT_MS, session })
+        }, { label: `第 ${chapter} 章定稿` })
 
         // 定稿 → 后处理链（知识库导入/要点/角色状态/事实账本）。写下一章的前置条件，
         // 不等完就点下一章会被静默拒绝（见 waitForPostProcess 的注释）。
