@@ -35,6 +35,9 @@ import { configureSingleInstanceRuntime } from './services/single-instance-runti
 import { forceNewInstanceRequested } from './services/single-instance-recovery'
 import { installWindowCloseGuard, isWindowQuitRequested } from './controllers/window-controller'
 import { decideRenderCrash, renderCrashMessage } from './services/render-crash-policy'
+// issue #169：原生对话框是**纯文本**，判据文案里的 Markdown 粗体会原样显示成 `**`。
+// `stripEmphasis` 原本只在 React 侧用；主进程这个出口同样是「给作者看」，也要剥。
+import { stripEmphasis } from '../src/shared/author-visible-text'
 import { registerStartupController } from './controllers/startup-controller'
 import { resolveGlobalDataRoots } from './services/app-data-locator'
 import { runGlobalDataMigration, activateGlobalData } from './services/global-data-migration'
@@ -208,7 +211,8 @@ function createWindow() {
       return
     }
     const message = renderCrashMessage(decision, app.getLocale() === 'en-US' ? 'en-US' : 'zh-CN')
-    void dialog.showMessageBox({ type: 'error', title: message.title, message: message.title, detail: message.body, buttons: ['OK'] })
+    // issue #169：`title`/`detail` 走系统原生渲染，不认 Markdown —— 剥掉再送。
+    void dialog.showMessageBox({ type: 'error', title: stripEmphasis(message.title), message: stripEmphasis(message.title), detail: stripEmphasis(message.body), buttons: ['OK'] })
       .catch(() => undefined)
   })
 

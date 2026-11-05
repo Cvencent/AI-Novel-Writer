@@ -67,7 +67,9 @@ describe('renderCrashMessage (issue #152)', () => {
     const message = renderCrashMessage(decision, 'zh-CN')
     expect(message.title).toContain('窗口')
     // 这两句是作者在崩溃现场最需要知道的：生成在后台没丢、去哪里接着处理。
-    expect(message.body).toContain('没有丢')
+    // ⚠️ 不钉死「没有丢」这三个字（它就是 #169 的现场措辞）：断言**语义**——
+    // 「那一步没白等」+「去哪里接着做」。措辞会变，功能不能变。
+    expect(message.body).toMatch(/没有丢|一秒都没丢|没白等/u)
     expect(message.body).toContain('运行侧页')
   })
 
@@ -86,5 +88,47 @@ describe('renderCrashMessage (issue #152)', () => {
   it('produces nothing for decisions that never show a dialog', () => {
     expect(renderCrashMessage({ action: 'reload', why: 'transient' }, 'zh-CN')).toEqual({ title: '', body: '' })
     expect(renderCrashMessage({ action: 'ignore', why: 'quitting' }, 'en-US')).toEqual({ title: '', body: '' })
+  })
+})
+/**
+ * issue #169：给作者看的崩溃文案**不许带 Markdown 标记**。
+ *
+ * 现场：中文四档的 `body` 里都写着 `**没有丢**`，而它被塞进 Electron **原生对话框**的 `detail`
+ * ——原生渲染是纯文本，作者在窗口刚崩的那一刻看到的是「**没有丢**」。
+ *
+ * ⚠️ 旧断言是 `expect(message.body).toContain('没有丢')`：`'**没有丢**'.includes('没有丢')`
+ * 为真 —— 测试是绿的，**它不可能发现星号**。所以这里改成逐档、逐语言扫标记。
+ */
+describe('作者可见的崩溃文案不含标记 (issue #169)', () => {
+  const whys = ['out-of-memory', 'launch-failed', 'integrity-failure', 'recovery-exhausted'] as const
+  const langs = ['zh-CN', 'en-US'] as const
+
+  it('never contains asterisks in any tier or language', () => {
+    for (const why of whys) {
+      for (const lang of langs) {
+        const message = renderCrashMessage({ action: 'notify', why }, lang)
+        expect(message.title, `${why}/${lang} title`).not.toContain('*')
+        expect(message.body, `${why}/${lang} body`).not.toContain('*')
+      }
+    }
+  })
+
+  it('never contains other markdown furniture that a native dialog would show literally', () => {
+    for (const why of whys) {
+      for (const lang of langs) {
+        const message = renderCrashMessage({ action: 'notify', why }, lang)
+        // 原生框不认 Markdown：反引号、下划线强调、井号标题都不该出现在文案里。
+        expect(message.body, `${why}/${lang}`).not.toMatch(/[`_]{2}|^#{1,6}\s/mu)
+      }
+    }
+  })
+
+  it('still says the thing that matters (the text itself was not gutted)', () => {
+    // 剥离只去标记，不许把安抚那句话删掉——这条与上面两条互相约束。
+    const zh = renderCrashMessage({ action: 'notify', why: 'out-of-memory' }, 'zh-CN')
+    expect(zh.body).toMatch(/没有丢|一秒都没丢|没白等/u)
+    expect(zh.body).toContain('运行侧页')
+    const en = renderCrashMessage({ action: 'notify', why: 'out-of-memory' }, 'en-US')
+    expect(en.body).toContain('not lost')
   })
 })
