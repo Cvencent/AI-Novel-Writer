@@ -40,6 +40,33 @@ const REVIEW_SHEET_TIMEOUT_MS = Number(option('review-timeout-min') ?? 12) * 60_
 const ARC_TIMEOUT_MS = Number(option('arc-timeout-min') ?? 25) * 60_000
 const GENERATION_TIMEOUT_MS = Number(option('gen-timeout-min') ?? 25) * 60_000
 
+/**
+ * 安装包里 app.asar 的 mtime（issue #188）。
+ *
+ * 现场：找茬卡与修卡每轮必撞 —— 五次 sim 崩溃（「页面崩溃 / Target page closed」）
+ * **全部落在覆盖安装 mtime 之后 60–90 秒**（61/64/65/71/78s）。修卡 :55 起跑 → ~:09–16 装完，
+ * 找茬卡 :05 起跑 → ~:09–12 进入正文/审稿，两边在同一分钟相遇；而**审稿是最长的一步**（134–414 秒），
+ * 所以每次被打断的都恰好是「最贵的那一步」。这不是随机干扰，是**定向打断**。
+ *
+ * 后果不止白跑一轮：它会把假崩溃记成「审稿不稳定」（#152 / #183 都在追这条），
+ * 而**报告自己能不能说清「这次崩溃是不是安装窗口造成的」**，不该靠人每次手比 mtime
+ * （已经犯过两次：一次读旧值、一次把 27 分钟读成 27 分钟）。
+ */
+function asarMtimeMs(exePath) {
+  if (!exePath) return null
+  // exe 在 <install>\AI小说作家.exe，asar 在 <install>\resources\app.asar
+  const candidates = [
+    path.join(path.dirname(exePath), 'resources', 'app.asar'),
+    path.join(exePath, 'resources', 'app.asar'),
+  ]
+  for (const candidate of candidates) {
+    try {
+      return Math.round(fs.statSync(candidate).mtimeMs)
+    } catch { /* 试下一个 */ }
+  }
+  return null
+}
+
 function resolveExe() {
   const explicit = option('exe')
   if (explicit) {
@@ -281,6 +308,17 @@ const report = {
   wordsPerChapter: WORDS,
   model: MODEL.modelName,
   exe: null,
+  /** 起跑时看到的 asar mtime（issue #188）。 */
+  asarMtimeAtStart: null,
+  /** 收工时看到的 asar mtime（issue #188）。 */
+  asarMtimeAtEnd: null,
+  /**
+   * 这次跑的过程中安装包被换过吗（issue #188）。
+   *
+   * 判定：收工时的 asar mtime 落进 [startedAt, finishedAt] 区间 —— 说明中途装了新版本，
+   * 这一轮的崩溃/异常**不能算产品缺陷**。报告自己说了算，不靠人每次手比 mtime。
+   */
+  installWindowSuspect: false,
   projectPath: null,
   steps: [],
   consoleErrors: [],
@@ -308,6 +346,7 @@ async function main() {
   const fresh = process.argv.includes('--fresh')
   const exe = resolveExe()
   report.exe = exe
+  report.asarMtimeAtStart = asarMtimeMs(exe)
   const roots = ensureWorkspace()
   // 工作区独占（issue #54）：并发会话共用默认隔离区时会互相删 temp、撞同一份 userData 的
   // Electron 单实例锁，报错还会写进同一份报告。这里拿不到锁就明确退出，而不是静默共享。
@@ -516,6 +555,23 @@ async function main() {
       }, { label: '蓝图落库', stallMs: 5 * 60_000 })
       return { chapters: blueprints.map(item => item.chapterNumber) }
     })
+
+/**
+ * **进入正文生成之前再查一次安装 mtime**（issue #188 建议 ②）。
+ *
+ * 这是最后一个「便宜的回退点」：前面的细纲/蓝图已花 2–4 分钟，
+ * 而正文 + 审稿要 6–10 分钟（审稿单步 134–414 秒，是最贵的）。
+ * 若安装包在本次运行期间被换过，现在停还能保住已产出的细纲/蓝图。
+ *
+ * ⚠️ 只**放弃本轮**并写明原因，不改任何产品行为——找茬卡的纪律是「撞窗口就不跑」。
+ */
+const currentAsarMtime = asarMtimeMs(report.exe)
+if (currentAsarMtime !== null && report.asarMtimeAtStart !== null && currentAsarMtime !== report.asarMtimeAtStart) {
+  report.installWindowSuspect = true
+  throw new Error(`安装包在本次运行期间被替换（asar mtime=${new Date(currentAsarMtime).toISOString()}），`
+    + '已停在正文生成之前：这一轮的产物（细纲/蓝图）保留，但正文/审稿不再跑——'
+    + '否则崩溃会被误记成产品缺陷（issue #188）。')
+}
 
 for (let chapter = from; chapter <= to; chapter += 1) {
       await step(`写第 ${chapter} 章正文`, async () => {
@@ -743,6 +799,21 @@ function refusedReportPath() {
 
 function writeReport(target = reportTarget) {
   report.finishedAt = new Date().toISOString()
+  /**
+   * issue #188：这一轮有没有撞上覆盖安装窗口。
+   *
+   * 判据是**区间**而不是差值：只要收工时看到的 asar mtime 落在本次运行的时间段里，
+   * 就说明中途换过安装包 —— 那一次的崩溃/异常不能算产品缺陷。
+   * ⚠️ 用「startedAt ≤ mtime ≤ finishedAt」而不是「mtime > startedAt」：
+   * 前者能覆盖「起跑那一刻刚好在装」的边界情况（那时 mtime 已经新了，但安装还没写完 asar）。
+   */
+  report.asarMtimeAtEnd = asarMtimeMs(report.exe)
+  if (report.asarMtimeAtStart !== null && report.asarMtimeAtEnd !== null) {
+    const startedMs = Date.parse(report.startedAt)
+    const finishedMs = Date.parse(report.finishedAt)
+    report.installWindowSuspect = report.asarMtimeAtEnd > report.asarMtimeAtStart
+      && report.asarMtimeAtEnd >= startedMs && report.asarMtimeAtEnd <= finishedMs
+  }
   report.failedSteps = report.steps.filter(item => !item.ok).map(item => item.name)
   report.stalled = report.steps.filter(item => /停滞/.test(item.error ?? '')).map(item => item.name)
   fs.mkdirSync(path.dirname(target), { recursive: true })
