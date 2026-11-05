@@ -39,8 +39,8 @@ import { findUnsettledDeadlineFindings } from '../../src/shared/deadline-settlem
 import { findRepeatedRevocationFindings } from '../../src/shared/repeated-revocation'
 // 标题「同题加尾」复用（#110）与能力限制被绕过（#100）：审稿时本章与目录都在手边。
 import { findDuplicateChapterTitleFindings } from '../../src/shared/chapter-title-uniqueness'
-// 笔迹特征自相矛盾（#97）：审稿时也要看到同一个书写者被写成两套互斥特征。
-import { findHandwritingConflictFindings } from '../../src/shared/handwriting-signature'
+// 笔迹特征自相矛盾（#97 / #163）：原先靠四张书写质量词表判，按用户 2026-11-05 的定规
+// （内容判断不许词表、不许短语匹配）已改由模型判（`handwriting-review.ts`，作者主动触发）。
 import { CHARACTER_STATE_TEXT_FIELDS } from '../../src/shared/character-roster'
 import { ProjectCoreRepository } from '../repositories/project-core-repository'
 import { CharacterRepository } from '../repositories/character-repository'
@@ -300,12 +300,6 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
           ...(currentBlueprint ? [{ chapterNumber: source.chapterNumber, content: source.content,
             keyEvents: currentBlueprint.keyEvents ?? '' }] : []),
         ]),
-        // 笔迹特征自相矛盾（issue #97）：「叶九的，横折收得急」vs「叶九的笔稳、匀」。
-        ...findHandwritingConflictFindings({
-          chapters: [...history.map(item => ({ chapterNumber: item.chapterNumber, content: item.content })),
-            { chapterNumber: source.chapterNumber, content: source.content }],
-          castNames: authorCards.map(card => card.name),
-        }),
       ],
       ...(confirmation ? { confirmation } : {}), ...(recheck ? { recheck } : {}) }
   })()

@@ -49,6 +49,12 @@ import {
   type BlueprintClaimChapter,
 } from '../shared/prose-conflict-review'
 import {
+  buildHandwritingReviewPrompt,
+  handwritingReviewFindings,
+  parseHandwritingReview,
+  type HandwritingChapter,
+} from '../shared/handwriting-review'
+import {
   buildEvidenceShapePrompt,
   evidenceShapeFindings,
   parseEvidenceShapeReview,
@@ -622,4 +628,44 @@ export async function reviewEvidenceShapes(
       : '模型返回的不是合法的「物证形态」清单。' }
   }
   return { status: 'ok', findings: evidenceShapeFindings(issues) }
+}
+
+/**
+ * 同一个书写者的笔迹被写成两套互斥特征（issue #97 的现场，issue #163 的迁移）——一次模型调用。
+ *
+ * 旧实现用四张书写质量词表（稳匀/急促/重笔/轻笔）加归属句正则判，按用户 2026-11-05 的定规
+ * （内容判断不许词表、不许短语匹配）改由模型判。规则只负责：喂哪几章与名册、
+ * 校验两处引文都能逐字定位、把答案收窄成清单。
+ */
+export interface HandwritingReviewOutcome {
+  status: 'ok' | 'failed'
+  findings: ConsistencyFinding[]
+  error?: string
+}
+
+export async function reviewHandwritingTraits(
+  session: ProjectSessionContext,
+  chapters: readonly HandwritingChapter[],
+  castNames: readonly string[],
+  locale: 'zh-CN' | 'en-US' = 'zh-CN',
+): Promise<HandwritingReviewOutcome> {
+  const en = locale === 'en-US'
+  const request = { chapters, castNames, language: locale }
+  if (chapters.length === 0) return { status: 'ok', findings: [] }
+  const { system, user } = buildHandwritingReviewPrompt(request)
+  const response = await useLLMStore.getState().generate(
+    [{ role: 'system', content: system }, { role: 'user', content: user }],
+    undefined,
+    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
+  )
+  if (!response.success) {
+    return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
+  }
+  const issues = parseHandwritingReview(response.content, request)
+  if (!issues) {
+    return { status: 'failed', findings: [], error: en
+      ? 'The model did not return a valid handwriting-conflict list.'
+      : '模型返回的不是合法的「笔迹自相矛盾」清单。' }
+  }
+  return { status: 'ok', findings: handwritingReviewFindings(issues) }
 }

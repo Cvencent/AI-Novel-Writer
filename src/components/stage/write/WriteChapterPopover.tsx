@@ -24,7 +24,7 @@ import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useAnchoredLayer } from '../../ui/use-anchored-layer'
 import {
   appearanceContradictionFindings, appearanceUnusedMarkFindings, applyRepairDiffs, checkAppearanceAgainstCards,
-  proposeLayerRepair, reviewAbilityLimits, reviewBlueprintAgainstProse, reviewEvidenceShapes, reviewMemoryAnchors, reviewProseContent, reviewProseStyle,
+  proposeLayerRepair, reviewAbilityLimits, reviewBlueprintAgainstProse, reviewEvidenceShapes, reviewHandwritingTraits, reviewMemoryAnchors, reviewProseContent, reviewProseStyle,
   reviewSensoryChannels, sensoryVerdictFindings,
 } from '../../../services/preflight-repair'
 import { advanceRepairQueue, planRepairCalls, remainingRepairLayers, shouldContinueRepairChain } from '../../../shared/preflight-repair'
@@ -494,6 +494,37 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     }
   }
 
+  /**
+   * 同一个书写者的笔迹被写成两套互斥特征（issue #97 / #163）——**交给模型判**。
+   *
+   * 旧实现用四张书写质量词表（稳匀/急促/重笔/轻笔）加归属句正则判；按用户 2026-11-05 的定规
+   * （内容判断不许词表、不许短语匹配）改由模型判。规则只摆样本与名册、校验两处引文可定位。
+   */
+  const checkHandwriting = async () => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || busy) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      const chapters = await recentFinalized(session)
+      if (!isProjectSessionCurrent(session)) return
+      if (chapters.length === 0) {
+        setMessage(text('还没有已定稿的正文可核对。', 'There is no finalized prose to check yet.'))
+        return
+      }
+      const roster = await ipc.invokeWithProjectSession(session, 'db:character-roster-read', session.projectPath).catch(() => null)
+      if (!isProjectSessionCurrent(session)) return
+      const castNames = ((roster?.entries ?? []) as Array<{ name?: string }>)
+        .map(entry => String(entry.name ?? '').trim()).filter(Boolean)
+      const outcome = await reviewHandwritingTraits(session, chapters, castNames, locale)
+      if (!isProjectSessionCurrent(session)) return
+      if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
+      mergeFindings(outcome.findings)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   /** 作者勾选后落库（走现成写通道），然后重检刷新列表。 */
   const applyRepair = async (fields: readonly string[] | null) => {
     const diffs = repairProposal?.diffs.filter(diff => fields === null || fields.includes(diff.field)) ?? []
@@ -714,6 +745,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           onCheckMemory={() => void checkMemory()}
           onCheckBlueprintFacts={() => void checkBlueprintFacts()}
           onCheckEvidence={() => void checkEvidenceShapes()}
+          onCheckHandwriting={() => void checkHandwriting()}
           onCreateCharacter={name => void createCharacterCard(name)}
           repairProposal={repairProposal}
           onApplyRepairField={field => void applyRepair([field])}

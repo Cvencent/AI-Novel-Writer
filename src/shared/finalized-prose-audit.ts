@@ -75,7 +75,6 @@ import { findQuoteStyleDriftFindings } from './quote-style'
 // 道具收进容器→容器离开→又回到身上（issue #113）：位置换了却没有交接动作。
 // 能力触发条件被绕过（#100）：世界观写死的硬限制在正文里被静默绕过、从未写成一次发现。
 // 笔迹特征自相矛盾（#97）：同一个书写者被写成两套互斥特征（「稳、匀」vs「横折收得急」）。
-import { findHandwritingConflictFindings } from './handwriting-signature'
 // 清单件数对账（#133）：声明 N 件却只列/兑现 M 件。同章枚举 + 跨章清单两条。
 import { findEnumerationCountMismatches, findInventoryShortfallFindings } from './inventory-count'
 // 量具读数与换算（#136）：同一套刻度被写成两套比值。
@@ -302,8 +301,11 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   // 已改由模型判（`ability-review.ts` + `reviewAbilityLimits`），由作者主动触发。
   const abilityLimitBypass: ConsistencyFinding[] = []
 
-  // 笔迹特征自相矛盾（issue #97）：核心能力是「靠笔迹认人」时，同一个书写者不能有两套特征。
-  const handwritingConflicts = castNames.length === 0 ? [] : findHandwritingConflictFindings({ chapters, castNames })
+  // 笔迹特征自相矛盾（issue #97 / #163）：原先靠四张书写质量词表（稳匀/急促/重笔/轻笔）
+  // 判，按用户 2026-11-05 的定规（内容判断不许词表、不许短语匹配）已改由模型判
+  // （`handwriting-review.ts` + `reviewHandwritingTraits`，作者主动触发）。
+  // 判「这笔字什么质量」要读懂句子，不是位置/分布判据，所以不走这条自动审计。
+  const handwritingConflicts: ConsistencyFinding[] = []
 
   // 引号风格漂移（issue #118）：某章整章换了引号（弯引号“…” ↔ 直角引号「…」）。
   // 起草要求写明「所有对话必须使用标准中文双引号」，模型仍可能整章违反——

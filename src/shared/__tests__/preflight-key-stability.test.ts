@@ -13,7 +13,7 @@ import { findUndatedStreakFindings } from '../chapter-time-anchor'
 import { findUnsettledDeadlineFindings } from '../deadline-settlement'
 import { findRepeatedRevocationFindings } from '../repeated-revocation'
 import { findDuplicateChapterTitleFindings } from '../chapter-title-uniqueness'
-import { findHandwritingConflictFindings } from '../handwriting-signature'
+import { handwritingReviewFindings } from '../handwriting-review'
 import { findQuoteStyleDriftFindings } from '../quote-style'
 import { auditFinalizedProse } from '../finalized-prose-audit'
 import { declaredCharacterCountFindings } from '../consistency-preflight'
@@ -194,10 +194,12 @@ describe('no preflight key may change when only currentChapter advances (issue #
         { chapterNumber: 52, content: '脑子里空了一下。' },
         { chapterNumber: 67, content: '脑子里空了一块。' },
       ], CAST)],
-      ['findHandwritingConflictFindings', () => findHandwritingConflictFindings({
-        chapters: [{ chapterNumber: 1, content: '温珩的笔稳、匀，起笔带锋。' }, { chapterNumber: 2, content: '温珩的笔，横折收得急。' }],
-        castNames: CAST,
-      })],
+      // 笔迹那一族已改成模型判据（#163），这里直接喂它「产出转 findings」的那一段：
+      // 同样要满足「key 不含会滚动的章号」——它锚在书写者身上。
+      ['handwritingReviewFindings', () => handwritingReviewFindings([{
+        owner: '温珩', chapterNumber: 1, quote: '温珩的笔稳、匀，起笔带锋。',
+        conflictingChapterNumber: 2, conflictingQuote: '温珩的笔，横折收得急。', explanation: '',
+      }])],
     ]
     for (const [name, produce] of producers) {
       const at15 = produce(15).map(finding => finding.stableFactKey)
