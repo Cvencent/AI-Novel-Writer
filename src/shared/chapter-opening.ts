@@ -135,6 +135,26 @@ export function openingConvergence(
 export const REVEAL_OPENER_GROUP_CHARS = 3
 export const REVEAL_OPENER_MIN_CHAPTERS = 3
 
+/**
+ * 起手语本身的**最短长度**（issue #162）。
+ *
+ * 现场（73 章常驻书，改了窗口之后）：全量 39 组里 8 组是**称呼语**
+ * （「柯代表」覆盖 22 章、「邵把头」9 章…），12 组是**纯名词短语**
+ * （「三年前」11 章、「名册上」6 章…）——20 组（53%）落在「≥3 章即报」的门槛里，
+ * 称呼语累计覆盖 58 个章次，足以在每个写作时点都压过真正的句式收敛。
+ *
+ * 根因是「按首 3 字归组」让**3 字**本身成了合格答案：`clause.slice(0, 3)` 落到
+ * 「柯代表」这种称呼上，或落到「三年前」这种跨词碎片上——两者都不是「抛半句 + 收口」。
+ *
+ * 所以把**报出的起手语**下限抬到 4 字（归组仍按 3 字，只是不在 3 字处收口）：
+ * 实测同一本书 39 组 → 5 组，称呼语与 3 字名词短语全部消失，
+ * 留下的是「你爸当年」（8 章、跨度 58）、「你的名字」（4 章）、「想清楚了」「白纸黑字」。
+ *
+ * ⚠️ 这是**长度**判据，不是词表：4 字是「能容下一个完整 2 字词 + 功能词」的下限，
+ * 换一本书、换一组称谓，命中的仍是文本自己的公共前缀。
+ */
+export const REVEAL_OPENER_MIN_OPENER_CHARS = 4
+
 export interface DialogueOpenerHit {
   /** 该组的最长公共前缀（起手语）。 */
   opener: string
@@ -175,10 +195,11 @@ function longestCommonPrefix(values: readonly string[]): string {
 
 export function findDialogueOpenerConvergence(
   chapters: ReadonlyArray<{ chapterNumber: number; content: string }>,
-  options: { minChapters?: number; groupChars?: number } = {},
+  options: { minChapters?: number; groupChars?: number; minOpenerChars?: number } = {},
 ): DialogueOpenerHit[] {
   const groupChars = options.groupChars ?? REVEAL_OPENER_GROUP_CHARS
   const minChapters = options.minChapters ?? REVEAL_OPENER_MIN_CHAPTERS
+  const minOpenerChars = options.minOpenerChars ?? REVEAL_OPENER_MIN_OPENER_CHARS
   // 按「首 groupChars 字」归组；组内保留每章的一条原句，用于算最长公共前缀。
   const groups = new Map<string, { chapters: number[]; clauses: string[] }>()
   for (const chapter of chapters) {
@@ -200,9 +221,24 @@ export function findDialogueOpenerConvergence(
       opener: longestCommonPrefix(group.clauses),
       chapters: [...group.chapters].sort((left, right) => left - right),
     }))
-    .filter(hit => hit.opener.length >= groupChars)
-    // 覆盖章数多的优先；同数按起手语排序，保证输出稳定。
-    .sort((left, right) => right.chapters.length - left.chapters.length || left.opener.localeCompare(right.opener))
+    // 起手语本身要够长（issue #162）：3 字收口出来的「柯代表」「三年前」不是句式。
+    .filter(hit => hit.opener.length >= minOpenerChars)
+    /**
+     * 排序：**跨度 × 章数**优先（issue #162 建议 ③）。
+     *
+     * 旧口径「覆盖章数优先」天然偏向称呼语——喊 22 次「柯代表」比 8 章分散的
+     * 「你爸当年」覆盖得多，于是每个写作时点报的都是前者。而这一档的语义是
+     * 「同一条线索的推进句式在全书的跨度上反复出现」，所以取 `章数 × 章号跨度`：
+     * 8 章跨度 58 = 464 远胜 22 章跨度 20 = 440，真正分散的收敛排到前面。
+     * 同分再按章数、最后按起手语，保证输出稳定。
+     */
+    .sort((left, right) => {
+      const score = (hit: DialogueOpenerHit) =>
+        hit.chapters.length * (hit.chapters[hit.chapters.length - 1]! - hit.chapters[0]! + 1)
+      return score(right) - score(left)
+        || right.chapters.length - left.chapters.length
+        || left.opener.localeCompare(right.opener)
+    })
 }
 
 /**

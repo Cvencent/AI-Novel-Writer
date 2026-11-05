@@ -197,7 +197,7 @@ describe('dialogueOpeners / findDialogueOpenerConvergence (issue #72)', () => {
     expect(REVEAL_OPENER_MIN_CHAPTERS).toBe(3)
   })
 
-  it('sorts by coverage so the widest convergence is reported first', () => {
+  it('sorts by span × coverage so the widest convergence is reported first', () => {
     // 后半句各不相同（真实样本就是这样），公共前缀才收得住。
     const hits = findDialogueOpenerConvergence([
       { chapterNumber: 1, content: '“你爸当年也查到这个。”' },
@@ -206,6 +206,65 @@ describe('dialogueOpeners / findDialogueOpenerConvergence (issue #72)', () => {
       { chapterNumber: 4, content: '“你别问了。”' },
     ])
     expect(hits.map(hit => hit.opener)).toEqual(['你爸当年也', '你别问了'])
+  })
+})
+
+/**
+ * issue #162：称呼语与 3 字名词短语不该被当成「揭示句式」。
+ *
+ * 现场（73 章书，窗口改成全量之后）：39 组里 8 组是称呼语（「柯代表」覆盖 22 章）、
+ * 12 组是纯名词短语（「三年前」11 章）——53% 的组落在门槛里，称呼语累计覆盖 58 个章次，
+ * 足以在每个写作时点压过真正的收敛（「你爸当年也」被压了 13 个时点）。
+ *
+ * 用户 2026-11-05 的定规适用于内容判断，这一条是**结构判据**（长度 + 跨度），
+ * 不设计任何词表：判据只看「这个公共前缀有没有长到能容纳一个完整词」。
+ */
+describe('称呼语不是揭示句式 (issue #162)', () => {
+  it('a bare form of address repeated across many chapters is not reported', () => {
+    const chapters = Array.from({ length: 6 }, (_, index) => ({
+      chapterNumber: index + 1,
+      content: '“柯代表。”他把册子推过来。',
+    }))
+    // 3 字收口 = 称呼语；剥掉了就没有「起手语」可言（part 1 的语义）。
+    expect(findDialogueOpenerConvergence(chapters)).toEqual([])
+  })
+
+  it('a three-character noun fragment is not reported either', () => {
+    const chapters = [
+      { chapterNumber: 1, content: '“三年前的号段。”' },
+      { chapterNumber: 2, content: '“三年前七月。”' },
+      { chapterNumber: 3, content: '“三年前那批不入底的湿票。”' },
+    ]
+    expect(findDialogueOpenerConvergence(chapters)).toEqual([])
+  })
+
+  it('the same phrases DO report once the shared prefix is long enough', () => {
+    // 反面对照：加长公共前缀（同一句式）→ 照样命中，说明门槛没有把判据废掉。
+    const chapters = [
+      { chapterNumber: 1, content: '“你爸当年也查到这个空额。”' },
+      { chapterNumber: 2, content: '“你爸当年也有一张。”' },
+      { chapterNumber: 3, content: '“你爸当年也忘过话。”' },
+    ]
+    expect(findDialogueOpenerConvergence(chapters).map(hit => hit.opener)).toEqual(['你爸当年也'])
+  })
+
+  it('prefers the widely-spread convergence over the many-chapter echo (span × coverage)', () => {
+    // 旧口径「覆盖章数优先」→ 22 章的称呼语永远压过 8 章分散的真句式。
+    const FIXTURE_A = ['“你爸当年也查到这个空额。”', '“你爸当年也有一张。”', '“你爸当年也忘过话。”']
+    const FIXTURE_B = ['“底根补完了吗。”', '“底根补完再报。”', '“底根补完就走。”']
+    const chapters: Array<{ chapterNumber: number; content: string }> = []
+    // A：8 章分散在 1..64（跨度 64）——真句式
+    for (const chapterNumber of [1, 9, 17, 25, 33, 41, 49, 64]) {
+      chapters.push({ chapterNumber, content: FIXTURE_A[chapterNumber % FIXTURE_A.length]! })
+    }
+    // B：9 章挤在 5..13（跨度 9）——局部回声
+    for (let chapterNumber = 5; chapterNumber <= 13; chapterNumber += 1) {
+      chapters.push({ chapterNumber, content: FIXTURE_B[chapterNumber % FIXTURE_B.length]! })
+    }
+    const hits = findDialogueOpenerConvergence(chapters)
+    expect(hits[0]!.opener).toBe('你爸当年也')
+    // 局部回声仍在列表里（不是删掉，只是不排第一）。
+    expect(hits.map(hit => hit.opener)).toContain('底根补完')
   })
 })
 
@@ -356,18 +415,20 @@ describe('对白起手语需要长样本 (issue #155)', () => {
 
   it('lists the other groups by name instead of only a count', () => {
     // 「另有 N 组」无法核对；作者最自然的读法是「没有别的重复起手语」。
+    // ⚠️ fixture 用 4 字起手语（issue #162）：3 字的「柯代表。」「邵把头。」正是
+    // 条要清掉的那一类（称呼语），它们不再进候选，也就测不到「列出其余组」。
     const chapters = [
-      { chapterNumber: 1, content: '“柯代表。”他把册子推过来。' },
-      { chapterNumber: 2, content: '“柯代表。”' },
-      { chapterNumber: 3, content: '“柯代表。”' },
-      { chapterNumber: 4, content: '“邵把头。”' },
-      { chapterNumber: 5, content: '“邵把头。”' },
-      { chapterNumber: 6, content: '“邵把头。”' },
+      { chapterNumber: 1, content: '“你爸当年也查过。”他把册子推过来。' },
+      { chapterNumber: 2, content: '“你爸当年也有一张。”' },
+      { chapterNumber: 3, content: '“你爸当年也忘过话。”' },
+      { chapterNumber: 4, content: '“白纸黑字在这儿。”' },
+      { chapterNumber: 5, content: '“白纸黑字，你自己看。”' },
+      { chapterNumber: 6, content: '“白纸黑字写着的。”' },
     ]
     const [finding] = dialogueFinding({ chapters, castNames: [], currentChapter: 7 })
     expect(finding).toBeDefined()
     // 第二组要**带名字与章号**，而不是只剩一个数字。
-    expect(finding!.evidence).toContain('邵把头')
+    expect(finding!.evidence).toContain('白纸黑字')
     expect(finding!.evidence).toContain('4、5、6')
   })
 })
