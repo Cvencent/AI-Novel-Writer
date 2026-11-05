@@ -417,3 +417,90 @@ describe('未建档角色的一键建卡出口 (issue #160)', () => {
     }
   })
 })
+
+/**
+ * issue #192：60–97 秒的「核对…」期间，界面上**必须**有状态。
+ *
+ * 现场（1.5.195）：点下去之后弹层逐字不变，唯一的信号是按钮变灰——而灰掉在语义上
+ * 同时也是「这个按钮不可用」，作者无法区分「正在跑」和「坏了」。九次 8 秒采样里
+ * `aria-busy` 命中 0、spinner 命中 0、`进行中|正在|核对中|请稍候` 正则命中 0。
+ */
+describe('「核对…」进行中要有可见状态 (issue #192)', () => {
+  let resolveCheck: (() => void) | undefined
+
+  const mountWithSlowCheck = async () => {
+    host = document.createElement('div')
+    host.className = 'paper-ink stage-shell'
+    host.style.cssText = 'width:360px;overflow:hidden;position:relative'
+    document.body.append(host)
+    root = createRoot(host)
+    const pending = new Promise<void>(resolve => { resolveCheck = resolve })
+    const common = {
+      preflight, busy: false,
+      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onRevoke: vi.fn(),
+      onAcknowledge: vi.fn(), onUnacknowledge: vi.fn(),
+    }
+    await act(async () => root!.render(
+      <WritePreflight {...common} onCheckEvidence={() => pending} onCheckHandwriting={vi.fn()} />,
+    ))
+  }
+
+  it('shows a live progress line and marks the running button busy', async () => {
+    await mountWithSlowCheck()
+    const section = host!.querySelector('.stage-preflight')!
+    // 点之前什么都没有（不许把「不可用」和「正在跑」混为一谈）。
+    expect(section.hasAttribute('aria-busy')).toBe(false)
+    expect(host!.querySelector('.stage-preflight-running')).toBeNull()
+
+    await act(async () => {
+      host!.querySelectorAll('button')[0]!
+      ;[...host!.querySelectorAll('button')].find(b => b.textContent?.includes('核对物证形态'))!.click()
+      await Promise.resolve()
+    })
+
+    const line = host!.querySelector('.stage-preflight-running')
+    expect(line, '点下去就必须有一行「正在…」').not.toBeNull()
+    expect(line!.textContent).toContain('核对物证形态')
+    expect(line!.textContent).toContain('已等')
+    // 屏幕阅读器也要拿到（issue #192 建议 4）。
+    expect(section.getAttribute('aria-busy')).toBe('true')
+    expect(line!.getAttribute('role')).toBe('status')
+    expect(line!.getAttribute('aria-live')).toBe('polite')
+    const running = [...host!.querySelectorAll('button')].find(b => b.textContent?.includes('核对物证形态'))!
+    expect(running.getAttribute('aria-busy')).toBe('true')
+    // spinner 真的渲染了（不是只有一圈 CSS 类名）。
+    expect(host!.querySelector('.stage-preflight-spin')).not.toBeNull()
+
+    await act(async () => { resolveCheck?.(); await Promise.resolve() })
+    // 返回后立刻撤掉：不许留着「已等 97 秒」骗人。
+    expect(host!.querySelector('.stage-preflight-running')).toBeNull()
+    expect(host!.querySelector('.stage-preflight')!.hasAttribute('aria-busy')).toBe(false)
+    expect([...host!.querySelectorAll('button')].find(b => b.textContent?.includes('核对物证形态'))!
+      .hasAttribute('aria-busy')).toBe(false)
+  })
+
+  it('does not light up the other check buttons while one is running', async () => {
+    await mountWithSlowCheck()
+    await act(async () => {
+      ;[...host!.querySelectorAll('button')].find(b => b.textContent?.includes('核对物证形态'))!.click()
+      await Promise.resolve()
+    })
+    const others = [...host!.querySelectorAll('button')].filter(b => b.textContent?.includes('核对') && !b.textContent?.includes('核对物证形态'))
+    expect(others.length).toBeGreaterThan(0)
+    for (const other of others) expect(other.getAttribute('aria-busy')).toBeNull()
+    await act(async () => { resolveCheck?.(); await Promise.resolve() })
+  })
+
+  it('keeps the progress line inside the popover edges (issue #165 不会因此复发)', async () => {
+    await mountWithSlowCheck()
+    await act(async () => {
+      ;[...host!.querySelectorAll('button')].find(b => b.textContent?.includes('核对物证形态'))!.click()
+      await Promise.resolve()
+    })
+    const shell = host!.getBoundingClientRect()
+    const line = host!.querySelector('.stage-preflight-running')!.getBoundingClientRect()
+    expect(line.left).toBeGreaterThanOrEqual(shell.left - 0.5)
+    expect(line.right).toBeLessThanOrEqual(shell.right + 0.5)
+    await act(async () => { resolveCheck?.(); await Promise.resolve() })
+  })
+})

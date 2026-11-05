@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { RotateCcw, ShieldAlert } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Loader2, RotateCcw, ShieldAlert } from 'lucide-react'
 import type { ConsistencyPreflightResult } from '../../../services/consistency-preflight'
 import type { ConsistencyFinding } from '../../../shared/consistency-preflight'
 import { useLocaleStore } from '../../../stores/locale-store'
@@ -61,47 +61,47 @@ interface WritePreflightProps {
    * 「核对角色外观」（issue #153）：请模型判正文有没有与角色卡相悖的描写。
    * 不传时不渲染——那个调用只该由作者主动触发（一次模型调用，不该在预检里自动跑）。
    */
-  onCheckAppearance?: () => void
+  onCheckAppearance?: () => void | Promise<void>
   /** 「核对感官通道」（issue #151 的规则修正）：同样请模型判，不传时不渲染。 */
-  onCheckSensory?: () => void
+  onCheckSensory?: () => void | Promise<void>
   /** 「核对文风」「核对重复写法」（用户 2026-11-05：内容判断交模型）。不传时不渲染。 */
-  onCheckStyle?: () => void
-  onCheckContent?: () => void
+  onCheckStyle?: () => void | Promise<void>
+  onCheckContent?: () => void | Promise<void>
   /** 「核对能力限制」（#100）。不传时不渲染。 */
-  onCheckAbility?: () => void
+  onCheckAbility?: () => void | Promise<void>
   /** 「核对记忆回指」（#167）。不传时不渲染。 */
-  onCheckMemory?: () => void
+  onCheckMemory?: () => void | Promise<void>
   /**
    * 「核对蓝图与前文」（issue #157）：请模型判「蓝图是否把某件事说成一向如此，
    * 而前文已明写它没发生」。不传时不渲染——同样只该由作者主动触发。
    */
-  onCheckBlueprintFacts?: () => void
+  onCheckBlueprintFacts?: () => void | Promise<void>
   /**
    * 「核对物证形态」（issue #156）：请模型判「被当作证据的物件在不同章里形态是否一致、
    * 它的形态与成因能不能同时成立」。不传时不渲染。
    */
-  onCheckEvidence?: () => void
+  onCheckEvidence?: () => void | Promise<void>
   /**
    * 「核对笔迹特征」（issue #97 / #163）：请模型判「同一个书写者有没有被写成两套互斥的笔迹特征」。
    * 原先靠四张书写质量词表判，按用户定规改由模型判。不传时不渲染。
    */
-  onCheckHandwriting?: () => void
+  onCheckHandwriting?: () => void | Promise<void>
   /**
    * 「核对蓝图自洽」（issue #172）：请模型判「同一章蓝图内部对同一件事给了两套不能同时成立的值」。
    * 现场是第 79 章 notes 里既写「收完压一道」又写「结要压三道」，而正文照抄两处。
    * 不传时不渲染。
    */
-  onCheckBlueprintInternal?: () => void
+  onCheckBlueprintInternal?: () => void | Promise<void>
   /**
    * 「核对代价重述」（issue #75 / #163）：请模型判「同一笔被丢掉的记忆有没有在后面又被当成新损失宣告一遍」。
    * 原先靠五张题材措辞表判，按用户定规改由模型判。不传时不渲染。
    */
-  onCheckLossRestatement?: () => void
+  onCheckLossRestatement?: () => void | Promise<void>
   /**
    * 「核对期限结算」（issue #101 / #163）：请模型判「宣告的期限在下一章有没有结算或明确延续」。
    * 原先靠四张题材措辞表判，按用户定规改由模型判。不传时不渲染。
    */
-  onCheckDeadline?: () => void
+  onCheckDeadline?: () => void | Promise<void>
 
   /**
    * 「为「X」建卡」（issue #160）：提醒**自带**可执行动作时给这个出口。
@@ -136,12 +136,65 @@ export default function WritePreflight({
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
   const [reasons, setReasons] = useState<Record<string, string>>({})
+  /**
+   * 正在跑的那颗「核对…」（issue #192）。
+   *
+   * 现场：点下去 60–97 秒界面一字不变，唯一的信号是按钮变灰——而灰掉在语义上
+   * 同时也是「这个按钮不可用」，作者无法区分「正在跑」和「坏了」。
+   * 这里记住**哪一颗**在跑，好在弹层里写一行「正在核对物证形态… 已等 37 秒」。
+   */
+  const [runningCheck, setRunningCheck] = useState<{ id: string, label: string, startedAt: number } | null>(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  useEffect(() => {
+    if (runningCheck === null) return
+    // 每秒刷新一次已等秒数：这是 60 秒级的等待，秒数在走本身就证明「还活着」。
+    setElapsedSeconds(Math.floor((Date.now() - runningCheck.startedAt) / 1000))
+    const timer = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - runningCheck.startedAt) / 1000))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [runningCheck])
+
+  /**
+   * 点「核对…」：先立进行中态，再发起调用，**等它真的返回**才撤掉。
+   *
+   * ⚠️ 不能用 `busy` 判断结束（issue #192）：`checkSensory` 这类调用要先读快照、
+   * 再 setBusy(true)，中间有一段时间 busy 还是 false——按 busy 清状态会把刚点亮的那一行
+   * 立刻抹掉。所以这里 await 调用本身。
+   */
+  const startCheck = async (id: string, label: string, run: (() => void | Promise<void>) | undefined) => {
+    if (run === undefined || busy) return
+    setRunningCheck({ id, label, startedAt: Date.now() })
+    setElapsedSeconds(0)
+    try {
+      await run()
+    } finally {
+      setRunningCheck(null)
+    }
+  }
+  const checkButton = (
+    id: string,
+    zh: string,
+    en: string,
+    run: (() => void | Promise<void>) | undefined,
+  ) => run === undefined ? null : (
+    <Button
+      variant="text"
+      size="sm"
+      disabled={busy}
+      aria-busy={runningCheck?.id === id ? true : undefined}
+      onClick={() => void startCheck(id, locale === 'en-US' ? en : zh, run)}
+    >
+      {runningCheck?.id === id ? <Loader2 size={12} className="stage-preflight-spin" aria-hidden /> : null}
+      {text(zh, en)}
+    </Button>
+  )
   const { findings } = preflight
   const saved = preflight.exemptions.filter(exemption => !exemption.revoked)
   const acknowledged = preflight.acknowledgements
 
   return (
-    <section className="stage-preflight" aria-label={text('一致性预检', 'Consistency preflight')}>
+    <section className="stage-preflight" aria-label={text('一致性预检', 'Consistency preflight')} aria-busy={runningCheck !== null || undefined}>
       {findings.length > 0 && (
         <p className="stage-preflight-head">
           <ShieldAlert size={14} aria-hidden />
@@ -246,67 +299,34 @@ export default function WritePreflight({
             把左侧那四个甩出弹层（stage-shell 又是 overflow:hidden，滚不过去）
             ——作者一个都点不到。现在拆成两行。 */}
         <div className="stage-preflight-checks">
-          {onCheckMemory === undefined ? null : (
-            <Button variant="text" size="sm" disabled={busy} onClick={onCheckMemory}>
-              {text('核对记忆回指', 'Check remembered scenes')}
-            </Button>
-          )}
-          {onCheckAbility === undefined ? null : (
-            <Button variant="text" size="sm" disabled={busy} onClick={onCheckAbility}>
-              {text('核对能力限制', 'Check ability limits')}
-            </Button>
-          )}
-          {onCheckStyle === undefined ? null : (
-            <Button variant="text" size="sm" disabled={busy} onClick={onCheckStyle}>
-              {text('核对文风', 'Check prose style')}
-            </Button>
-          )}
-          {onCheckContent === undefined ? null : (
-            <Button variant="text" size="sm" disabled={busy} onClick={onCheckContent}>
-              {text('核对重复写法', 'Check repeated moves')}
-            </Button>
-          )}
-          {onCheckSensory === undefined ? null : (
-            <Button variant="text" size="sm" disabled={busy} onClick={onCheckSensory}>
-              {text('核对感官通道', 'Check sensory coverage')}
-            </Button>
-          )}
-          {onCheckAppearance === undefined ? null : (
-            <Button variant="text" size="sm" disabled={busy} onClick={onCheckAppearance}>
-              {text('核对角色外观', 'Check appearance vs cards')}
-            </Button>
-          )}
-          {onCheckBlueprintFacts === undefined ? null : (
-            <Button variant="text" size="sm" disabled={busy} onClick={onCheckBlueprintFacts}>
-              {text('核对蓝图与前文', 'Check blueprint vs prose')}
-            </Button>
-          )}
-          {onCheckEvidence === undefined ? null : (
-            <Button variant="text" size="sm" disabled={busy} onClick={onCheckEvidence}>
-              {text('核对物证形态', 'Check evidence objects')}
-            </Button>
-          )}
-          {onCheckHandwriting === undefined ? null : (
-            <Button variant="text" size="sm" disabled={busy} onClick={onCheckHandwriting}>
-              {text('核对笔迹特征', 'Check handwriting traits')}
-            </Button>
-          )}
-          {onCheckBlueprintInternal === undefined ? null : (
-            <Button variant="text" size="sm" disabled={busy} onClick={onCheckBlueprintInternal}>
-              {text('核对蓝图自洽', 'Check plan consistency')}
-            </Button>
-          )}
-          {onCheckLossRestatement === undefined ? null : (
-            <Button variant="text" size="sm" disabled={busy} onClick={onCheckLossRestatement}>
-              {text('核对代价重述', 'Check re-charged costs')}
-            </Button>
-          )}
-          {onCheckDeadline === undefined ? null : (
-            <Button variant="text" size="sm" disabled={busy} onClick={onCheckDeadline}>
-              {text('核对期限结算', 'Check deadline settlement')}
-            </Button>
-          )}
+          {checkButton('onCheckMemory', '核对记忆回指', 'Check remembered scenes', onCheckMemory)}
+          {checkButton('onCheckAbility', '核对能力限制', 'Check ability limits', onCheckAbility)}
+          {checkButton('onCheckStyle', '核对文风', 'Check prose style', onCheckStyle)}
+          {checkButton('onCheckContent', '核对重复写法', 'Check repeated moves', onCheckContent)}
+          {checkButton('onCheckSensory', '核对感官通道', 'Check sensory coverage', onCheckSensory)}
+          {checkButton('onCheckAppearance', '核对角色外观', 'Check appearance vs cards', onCheckAppearance)}
+          {checkButton('onCheckBlueprintFacts', '核对蓝图与前文', 'Check blueprint vs prose', onCheckBlueprintFacts)}
+          {checkButton('onCheckEvidence', '核对物证形态', 'Check evidence objects', onCheckEvidence)}
+          {checkButton('onCheckHandwriting', '核对笔迹特征', 'Check handwriting traits', onCheckHandwriting)}
+          {checkButton('onCheckBlueprintInternal', '核对蓝图自洽', 'Check plan consistency', onCheckBlueprintInternal)}
+          {checkButton('onCheckLossRestatement', '核对代价重述', 'Check re-charged costs', onCheckLossRestatement)}
+          {checkButton('onCheckDeadline', '核对期限结算', 'Check deadline settlement', onCheckDeadline)}
         </div>
+        {/*
+          issue #192：这一行是**唯一的**进行中信号。原来 60–97 秒里弹层逐字不变，
+          作者只能从「按钮变灰」推断状态——而灰掉同时意味着「不可用」，两者无法区分。
+          秒数每秒在走，本身就是在证明「还活着」；把它做成 `aria-live="polite"`，
+          屏幕阅读器用户在同样的 97 秒里也能拿到状态。
+        */}
+        {runningCheck === null ? null : (
+          <p className="stage-preflight-running" role="status" aria-live="polite">
+            <Loader2 size={13} className="stage-preflight-spin" aria-hidden />
+            {text(
+              `正在${runningCheck.label}… 已等 ${elapsedSeconds} 秒`,
+              `Running ${runningCheck.label}… ${elapsedSeconds}s elapsed`,
+            )}
+          </p>
+        )}
         <div className="stage-preflight-actions">
           {onRepairAll === undefined ? null : (
             <Button variant="secondary" size="sm" disabled={busy} onClick={onRepairAll}>

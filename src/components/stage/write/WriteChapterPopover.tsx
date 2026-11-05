@@ -917,18 +917,18 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           currentChapter={chapterNumber}
           onRepair={targets => void requestRepair(targets)}
           onRepairAll={() => void requestRepair(preflight.findings)}
-          onCheckAppearance={() => void checkAppearance()}
-          onCheckSensory={() => void checkSensory()}
-          onCheckStyle={() => void checkStyle()}
-          onCheckContent={() => void checkContent()}
-          onCheckAbility={() => void checkAbility()}
-          onCheckMemory={() => void checkMemory()}
-          onCheckBlueprintFacts={() => void checkBlueprintFacts()}
-          onCheckEvidence={() => void checkEvidenceShapes()}
-          onCheckHandwriting={() => void checkHandwriting()}
-          onCheckBlueprintInternal={() => void checkBlueprintInternal()}
-          onCheckLossRestatement={() => void checkLossRestatement()}
-          onCheckDeadline={() => void checkDeadlines()}
+          onCheckAppearance={() => checkAppearance()}
+          onCheckSensory={() => checkSensory()}
+          onCheckStyle={() => checkStyle()}
+          onCheckContent={() => checkContent()}
+          onCheckAbility={() => checkAbility()}
+          onCheckMemory={() => checkMemory()}
+          onCheckBlueprintFacts={() => checkBlueprintFacts()}
+          onCheckEvidence={() => checkEvidenceShapes()}
+          onCheckHandwriting={() => checkHandwriting()}
+          onCheckBlueprintInternal={() => checkBlueprintInternal()}
+          onCheckLossRestatement={() => checkLossRestatement()}
+          onCheckDeadline={() => checkDeadlines()}
           onCreateCharacter={name => void createCharacterCard(name)}
           repairProposal={repairProposal}
           onApplyRepairField={field => void applyRepair([field])}

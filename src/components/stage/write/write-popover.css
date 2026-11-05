@@ -174,3 +174,32 @@
   gap: var(--s-2);
   margin-top: var(--s-2);
 }
+
+/*
+ * 「核对…」进行中那一行（issue #192）。
+ *
+ * 这 12 颗按钮是一次 60–97 秒的模型调用：原来这段时间弹层逐字不变，唯一的信号是
+ * 按钮变灰——而灰掉同时意味着「不可用」，作者没法区分「正在跑」和「坏了」。
+ * 这一行把状态写出来，并让秒数每秒在走。
+ */
+.stage-preflight-running {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  margin-top: var(--s-2);
+  color: var(--ink-2);
+  font: var(--fs-13)/1.5 var(--font-ui);
+}
+
+.stage-preflight-spin {
+  animation: stage-preflight-spin 1s linear infinite;
+}
+
+@keyframes stage-preflight-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 尊重系统的「减少动态效果」：旋转是状态信号，换成静态图标而不是完全不动。 */
+@media (prefers-reduced-motion: reduce) {
+  .stage-preflight-spin { animation: none; }
+}
