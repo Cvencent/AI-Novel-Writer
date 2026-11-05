@@ -49,6 +49,12 @@ import {
   type BlueprintClaimChapter,
 } from '../shared/prose-conflict-review'
 import {
+  blueprintInternalFindings,
+  buildBlueprintInternalPrompt,
+  parseBlueprintInternalReview,
+  type BlueprintInternalChapter,
+} from '../shared/blueprint-internal-review'
+import {
   buildHandwritingReviewPrompt,
   handwritingReviewFindings,
   parseHandwritingReview,
@@ -668,4 +674,46 @@ export async function reviewHandwritingTraits(
       : '模型返回的不是合法的「笔迹自相矛盾」清单。' }
   }
   return { status: 'ok', findings: handwritingReviewFindings(issues) }
+}
+
+/**
+ * 同一章蓝图**内部**自相矛盾（issue #172）——一次模型调用。
+ *
+ * 现场：第 79 章 `notes` 同一条目先写「收完压一道」，后写「温珩的结要压三道」，
+ * 正文照抄两处，而全章落幅正是「他打不成温珩的结法」。
+ *
+ * 规则只负责把蓝图原文整段喂进去、校验两处引文都能在该章蓝图里逐字定位；
+ * 「这两句说的是不是同一件事、值是不是互斥」交模型（那是内容判断）。
+ */
+export interface BlueprintInternalOutcome {
+  status: 'ok' | 'failed'
+  findings: ConsistencyFinding[]
+  error?: string
+}
+
+export async function reviewBlueprintInternals(
+  session: ProjectSessionContext,
+  chapters: readonly BlueprintInternalChapter[],
+  locale: 'zh-CN' | 'en-US' = 'zh-CN',
+): Promise<BlueprintInternalOutcome> {
+  const en = locale === 'en-US'
+  const usable = chapters.filter(chapter => String(chapter.text ?? '').trim())
+  if (usable.length === 0) return { status: 'ok', findings: [] }
+  const request = { chapters: usable, language: locale }
+  const { system, user } = buildBlueprintInternalPrompt(request)
+  const response = await useLLMStore.getState().generate(
+    [{ role: 'system', content: system }, { role: 'user', content: user }],
+    undefined,
+    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
+  )
+  if (!response.success) {
+    return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
+  }
+  const issues = parseBlueprintInternalReview(response.content, request)
+  if (!issues) {
+    return { status: 'failed', findings: [], error: en
+      ? 'The model did not return a valid intra-plan conflict list.'
+      : '模型返回的不是合法的「蓝图内部自相矛盾」清单。' }
+  }
+  return { status: 'ok', findings: blueprintInternalFindings(issues) }
 }

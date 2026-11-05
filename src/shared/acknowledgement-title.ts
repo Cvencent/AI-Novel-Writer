@@ -117,6 +117,7 @@ const FAMILY_LABELS: Readonly<Record<string, AcknowledgementTitle>> = Object.fre
   'prose:evidence-shape': { zhCN: '被当作证据的物件形态/成因立不住', enUS: 'evidence object does not hold up' },
   'prose:memory-anchor-missing': { zhCN: '回忆的事在前文找不到', enUS: 'remembered scene has no anchor' },
   'blueprint:habit-vs-prose': { zhCN: '蓝图把没发生过的事写成一向如此', enUS: 'blueprint claims a habit the prose denies' },
+  'blueprint:internal-contradiction': { zhCN: '蓝图自己给了两套值', enUS: 'the plan contradicts itself' },
   'promise': { zhCN: '口头约定被复述反了', enUS: 'promise restated backwards' },
   'chapter-title:unmet': { zhCN: '标题点到的人本章没出场', enUS: 'title names someone absent' },
   // —— 伏笔 / 线索 / 其他 ——

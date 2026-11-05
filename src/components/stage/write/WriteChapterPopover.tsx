@@ -24,7 +24,7 @@ import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useAnchoredLayer } from '../../ui/use-anchored-layer'
 import {
   appearanceContradictionFindings, appearanceUnusedMarkFindings, applyRepairDiffs, checkAppearanceAgainstCards,
-  proposeLayerRepair, reviewAbilityLimits, reviewBlueprintAgainstProse, reviewEvidenceShapes, reviewHandwritingTraits, reviewMemoryAnchors, reviewProseContent, reviewProseStyle,
+  proposeLayerRepair, reviewAbilityLimits, reviewBlueprintAgainstProse, reviewBlueprintInternals, reviewEvidenceShapes, reviewHandwritingTraits, reviewMemoryAnchors, reviewProseContent, reviewProseStyle,
   reviewSensoryChannels, sensoryVerdictFindings,
 } from '../../../services/preflight-repair'
 import { advanceRepairQueue, planRepairCalls, remainingRepairLayers, shouldContinueRepairChain } from '../../../shared/preflight-repair'
@@ -525,6 +525,45 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     }
   }
 
+  /**
+   * 同一章蓝图**内部**自相矛盾（issue #172）——**交给模型判**。
+   *
+   * 现场：第 79 章 notes 同一条目先写「收完压一道」、后写「温珩的结要压三道」，正文照抄两处，
+   * 而全章落幅正是「他打不成温珩的结法」。
+   * 规则只把蓝图原文整段摆进去、校验两处引文可定位；「是不是同一件事」交模型。
+   *
+   * ⚠️ 必须从库里读整章蓝图：写作弹层拿到的 prefill 不含 notes，
+   * 而本条现场的矛盾正好在 notes 里。
+   */
+  const checkBlueprintInternal = async () => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || busy) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      const all = (await ipc.invokeWithProjectSession(session, 'db:blueprint-get-all', session.projectPath)
+        .catch(() => [])) as Array<Record<string, unknown>>
+      if (!isProjectSessionCurrent(session)) return
+      const chapters = all.flatMap(row => {
+        const number = Number(row.chapterNumber)
+        if (!Number.isSafeInteger(number) || number > chapterNumber) return []
+        const text = [row.notes, row.keyEvents, row.purpose, row.suspenseHook, row.costsAndTurns, row.foreshadowing]
+          .map(value => String(value ?? '').trim()).filter(Boolean).join(String.fromCharCode(10))
+        return text ? [{ chapterNumber: number, text }] : []
+      })
+      if (chapters.length === 0) {
+        setMessage(text('蓝图里还没有可核对的文字。', 'The blueprints have no text to check yet.'))
+        return
+      }
+      const outcome = await reviewBlueprintInternals(session, chapters, locale)
+      if (!isProjectSessionCurrent(session)) return
+      if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
+      mergeFindings(outcome.findings)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   /** 作者勾选后落库（走现成写通道），然后重检刷新列表。 */
   const applyRepair = async (fields: readonly string[] | null) => {
     const diffs = repairProposal?.diffs.filter(diff => fields === null || fields.includes(diff.field)) ?? []
@@ -746,6 +785,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           onCheckBlueprintFacts={() => void checkBlueprintFacts()}
           onCheckEvidence={() => void checkEvidenceShapes()}
           onCheckHandwriting={() => void checkHandwriting()}
+          onCheckBlueprintInternal={() => void checkBlueprintInternal()}
           onCreateCharacter={name => void createCharacterCard(name)}
           repairProposal={repairProposal}
           onApplyRepairField={field => void applyRepair([field])}
