@@ -7,6 +7,7 @@ import { openCanonicalProjectFixture as initProjectDatabase } from '../../../tes
 import { countDraftUnits } from '../../../src/shared/draft-units'
 import { FinalizedDraftImportRepository } from '../finalized-draft-import-repository'
 import { SummaryRepository } from '../summary-repository'
+import { WritingIntelligenceRepository } from '../writing-intelligence-repository'
 import { recategorizeFinalizedFacts } from '../../../src/shared/finalized-continuity-facts'
 
 let projectRoot = ''
@@ -168,5 +169,46 @@ describe('预览与落库的数字必须一致 (issue #173)', () => {
     const receipt = SummaryRepository.recategorizeFinalizedContinuityChapter({ draftId, chapterNumber: 1 })
     expect(receipt.changed).toBe(plan.changes.length)
     expect(receipt.counts).toEqual(plan.counts)
+  })
+})
+
+/**
+ * issue #187：后处理链被崩溃中断在**最后一段** —— 摘要/outbox/notes 全有，
+ * 唯独 `chapter_commits` 没有行，而 `last_error` 是空串（链是在「没有记录」的情况下断的）。
+ *
+ * 原来的重算分类只 `if (commit) {…}`：commit 不存在就**静默跳过**，
+ * 于是作者点「重算分类」只改 `summary_snapshots`，两套账的不一致原样保留。这里钉住「如实报告」。
+ */
+describe('账本整行缺失要如实报告 (issue #187)', () => {
+  it('reports commitLedgerMissing when chapter_commits has no row for that draft', () => {
+    const { draftId } = seedLegacyChapter()
+    // 模拟「链断在最后一段」：删掉 commit 行（这一章在 fixture 里本来也没有 commit，保险起见再删一次）。
+    getProjectDb()!.prepare('DELETE FROM chapter_commits WHERE draft_id=?').run(draftId)
+    const receipt = SummaryRepository.recategorizeFinalizedContinuityChapter({ draftId, chapterNumber: 1 })
+    expect(receipt.commitLedgerMissing).toBe(true)
+    // 但摘要那一侧该改的仍然改了（不是整笔不干）。
+    expect(receipt.changed).toBeGreaterThan(0)
+  })
+
+  it('does not report it when both ledgers exist', () => {
+    const { draftId } = seedLegacyChapter()
+    const receipt = SummaryRepository.recategorizeFinalizedContinuityChapter({ draftId, chapterNumber: 1 })
+    // fixture 里没有 chapter_commits 行 —— 所以这一条只断言「有行时不报」的语义面：
+    // 先补一行再跑，第二次应当没有该标记。
+    expect(receipt.commitLedgerMissing).toBe(true)
+    getProjectDb()!.prepare(`INSERT INTO chapter_commits(commit_id,chapter_number,draft_id,finalization_id,content_hash,
+      facts_json,character_states_json,foreshadowing_json,quality_json,created_at)
+      VALUES('c-187',1,?,'f-187',?,'[]','[]','[]','{}',datetime('now'))`).run(draftId, 'a'.repeat(64))
+    // 幂等：分类已对齐 → changed 0，且不再报缺失。
+    const again = SummaryRepository.recategorizeFinalizedContinuityChapter({ draftId, chapterNumber: 1 })
+    expect(again.commitLedgerMissing).toBeUndefined()
+  })
+
+  it('lists the chapter in the gap list so the UI can show it', () => {
+    const { draftId } = seedLegacyChapter()
+    const gaps = WritingIntelligenceRepository.listChapterCommitGaps()
+    const gap = gaps.find(item => item.chapterNumber === 1)
+    // outbox + summary 都在 → 状态是 rebuildable（#125 已证明这两份够重建，不用重新生成正文）。
+    expect(gap).toEqual({ chapterNumber: 1, draftId, status: 'rebuildable' })
   })
 })

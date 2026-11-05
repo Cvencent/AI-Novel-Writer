@@ -25,6 +25,7 @@ import { reviewDimensions, type useDraftActions } from '../../editor/use-draft-a
 import { deleteDraftVersion } from '../../panels/sidebar/draft-deletion'
 import { deleteFinalizedChapter } from '../../panels/sidebar/finalized-chapter-deletion'
 import { captureProjectSession, isProjectSessionCurrent } from '../../project-session-gate'
+import { ipc } from '../../../services/ipc-client'
 import { sameProjectSessionContext } from '../../../shared/project-session-context'
 import { Button } from '../../ui/Button'
 import { Check } from '../../ui/Check'
@@ -102,6 +103,14 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
   const [rewritePrompt, setRewritePrompt] = useState('')
   const [mergeLater, setMergeLater] = useState(false)
   const [commitOpen, setCommitOpen] = useState(false)
+  /**
+   * 当前章**事实账本缺行**（issue #187）。
+   *
+   * 现场：第 26 章后处理链被崩溃中断在最后一段——摘要 / outbox / notes 全有，
+   * 唯独 chapter_commits 没有行，而 last_error 是空串。界面上它看起来就是「已定稿」，
+   * 完全静默；作者不开「事实账本…」对话框就永远不知道。
+   */
+  const [commitMissing, setCommitMissing] = useState(false)
   const reviewOptions = useAnchoredLayer('start')
   const reviseOptions = useAnchoredLayer('start')
 
@@ -303,6 +312,21 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
       }
     })()
   }
+  // issue #187：这一章的账本缺行时，界面上要能看见（不必先打开账本对话框）。
+  useEffect(() => {
+    if (chapterNumber === undefined) { setCommitMissing(false); return }
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session) { setCommitMissing(false); return }
+    let active = true
+    void ipc.invokeWithProjectSession(session, 'db:writing-intelligence-commit-gaps', session.projectPath)
+      .then((gaps: unknown) => {
+        if (!active || !isProjectSessionCurrent(session)) return
+        const list = Array.isArray(gaps) ? gaps as Array<{ chapterNumber: number }> : []
+        setCommitMissing(list.some(gap => gap.chapterNumber === chapterNumber))
+      })
+      .catch(() => { if (active) setCommitMissing(false) })
+    return () => { active = false }
+  }, [chapterNumber, commitOpen])
   const moreGroups: MenuGroupSpec[] = [
     { id: 'chapter', items: [
       ...(editable ? [{ id: 'refine', label: text('直接修稿…', 'Revise directly…'), disabled: busy, onSelect: () => { setRefinePrompt(''); setAsk('refine') } }] : []),
@@ -310,7 +334,10 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
       ...(editable && stage !== 'revised' ? [{ id: 'finalize', label: text('定稿…', 'Finalize…'), disabled: !canFinalize, onSelect: () => setAsk('finalize') }] : []),
       ...(review && !sheetOpen && !focus ? [{ id: 'report', label: text('审稿报告', 'Review report'), onSelect: () => setSheet(true) }] : []),
       ...(stage === 'final' && chapterNumber !== undefined ? [{ id: 'sync-outline', label: text('按定稿正文校正细纲/蓝图', 'Align outline and blueprint with the prose'), disabled: busy, onSelect: () => { void alignOutlineWithFinal() } }] : []),
-      { id: 'fact-ledger', label: text('事实账本…', 'Fact ledger…'), onSelect: () => setCommitOpen(true) },
+      { id: 'fact-ledger', label: commitMissing
+        ? text('事实账本（未落库，可补齐）…', 'Fact ledger (missing — can be rebuilt)…')
+        : text('事实账本…', 'Fact ledger…'),
+      onSelect: () => setCommitOpen(true) },
       { id: 'history', label: text('版本历史', 'Version history'), onSelect: () => navigate({ kind: 'resource', page: 'history' }) },
       { id: 'copy', label: text('复制本章正文', 'Copy chapter text'), onSelect: copyBody },
     ] },

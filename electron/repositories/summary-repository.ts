@@ -729,7 +729,22 @@ export class SummaryRepository {
             .run(JSON.stringify(applyFactRecategorization(commitFacts, commitPlan)), commit.commit_id)
         }
       }
-      return { chapterNumber: input.chapterNumber, changed: plan.changes.length, counts: plan.counts }
+      /**
+       * issue #187：`chapter_commits` **整行缺失**时不能静默跳过。
+       *
+       * 现场（第 26 章）：后处理链被崩溃中断在最后一段 —— 摘要/outbox/notes 全有，
+       * 唯独 `chapter_commits` 没有行，而 `last_error` 是空串（链是在「没有记录」的情况下断的）。
+       * 原来的实现只 `if (commit) {…}`，于是作者点「重算分类」只改 `summary_snapshots`，
+       * **两套账的不一致被原样保留**，而且界面上一个字都不说。
+       *
+       * 现在把这件事如实报回给调用方（`commitLedgerMissing`），界面据此给「补齐账本」入口。
+       */
+      return {
+        chapterNumber: input.chapterNumber,
+        changed: plan.changes.length,
+        counts: plan.counts,
+        ...(commit ? {} : { commitLedgerMissing: true as const }),
+      }
     })()
   }
 

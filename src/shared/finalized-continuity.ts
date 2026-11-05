@@ -353,6 +353,13 @@ export interface RecategorizeContinuityReceipt {
   changed: number
   /** 从 → 到 的计数，例如 `{ 'plot→open-thread': 29 }`，供界面先给作者看差异。 */
   counts: Record<string, number>
+  /**
+   * `chapter_commits` **整行缺失**（issue #187）：`summary_snapshots` 有事实、`chapter_commits` 没行，
+   * 两套账不一致。后处理链在最后一段被中断（关应用/断电/崩溃）就会留下这种状态。
+   *
+   * ⚠️ 重算分类**修不了它**（那条只改 category），界面必须另给「补齐账本」入口。
+   */
+  commitLedgerMissing?: true
 }
 
 export interface SaveFinalizedCharacterStateCandidatesRequest {

@@ -89,7 +89,7 @@ export default function ChapterCommitDialog({ open, chapterNumber, onClose }: {
     try {
       const result = await ipc.invokeWithProjectSession(session, 'db:continuity-recategorize-chapter',
         { draftId: commit.draftId, chapterNumber }, session.projectPath) as
-        | { success: true, receipt: { changed: number } }
+        | { success: true, receipt: { changed: number, commitLedgerMissing?: true } }
         | { success: false, error: string } | null
       if (!isProjectSessionCurrent(session)) return
       if (!result?.success) {
@@ -97,6 +97,15 @@ export default function ChapterCommitDialog({ open, chapterNumber, onClose }: {
         return
       }
       toast.success(text(`已重算 ${result.receipt.changed} 条分类`, `Recategorized ${result.receipt.changed} fact(s)`))
+      /**
+       * issue #187：账本整行缺失时，重算分类**修不了它**（那条只改 category）——
+       * 必须明说，否则作者会以为「重算过了就对齐了」，而两套账的不一致仍留着。
+       */
+      if (result.receipt.commitLedgerMissing) {
+        toast.error(text(
+          '这一章的事实账本整行缺失（后处理链曾被中断），重算分类修不了它——请用下方的「从当前投影重建」。',
+          'This chapter has no fact-ledger row at all (the post-processing chain was interrupted); recomputing categories cannot fix that — use “Rebuild from projections” below.'))
+      }
       setRecategorize(null)
       await load()
     } finally { if (isProjectSessionCurrent(session)) setLoading(false) }
