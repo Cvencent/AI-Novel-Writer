@@ -43,12 +43,14 @@ describe('buildEvidenceShapePrompt (issue #156)', () => {
     expect(user).toContain('第74章')
   })
 
-  it('states both kinds it may report and nothing else', () => {
+  it('states the kinds it may report and nothing else', () => {
     const { system } = buildEvidenceShapePrompt({ chapters, cards, language: 'zh-CN' })
     expect(system).toContain('same-object-drift')
     expect(system).toContain('impossible-cause')
-    // 只许报这两类：否则模型会把「物证没再出现」这类正常延续也报上来。
-    expect(system).toContain('只报下面这两类问题')
+    // issue #182：第三档「保管关系」（谁持有 / 锁没锁 / 哪个房间）也进来了。
+    expect(system).toContain('custody-drift')
+    // 只许报这几类：否则模型会把「物证没再出现」这类正常延续也报上来。
+    expect(system).toContain('只报下面这三类问题')
   })
 
   it('excludes changes the prose itself explains', () => {
@@ -172,5 +174,68 @@ describe('evidenceShapeFindings (issue #156)', () => {
     const [finding] = evidenceShapeFindings([drift])
     expect(finding!.issue.enUS).toContain('evidence')
     expect(finding!.suggestion.enUS).toContain('fact ledger')
+  })
+})
+/**
+ * issue #182：物证本身没复活、没换容器，换的是**保管关系与所在场所**
+ * （谁持有、锁没锁、在哪个房间）——这一层原来全仓没有任何判据。
+ *
+ * 现场：ch78/79 柯明远亲手把铜墨盒锁进自己的私柜、「手在锁上压着，没挪开」；
+ * ch82 同一把柜子「没锁死」、钥匙在**管物人**腰上，全章没有一句交接。
+ * 而 ch82 整章的推理（湿印、指甲痕、谁动的）全都建立在「柜子锁着、钥匙在柯明远手上」这个前提上。
+ */
+describe('保管关系突变 (issue #182)', () => {
+  const custodyRequest = {
+    chapters: [
+      { chapterNumber: 78, content: '盒子进了私柜。钥匙在锁孔里转了一圈，铜扣按紧。私柜靠墙。柯明远的手在锁上压着，没挪开。' },
+      { chapterNumber: 82, content: '办公楼墙边，私柜挂着一把锁，没锁死。柜门拉开，铜墨盒不在。“锁没撬。钥匙在我腰上。”' },
+    ],
+    language: 'zh-CN' as const,
+  }
+
+  it('asks about the keeper, the locked state and the room as a third axis', () => {
+    const { system } = buildEvidenceShapePrompt(custodyRequest)
+    expect(system).toContain('custody-drift')
+    // 三处都要在提问里点到——只问「谁持有」会漏掉「没锁死」和「房间从公所挪到办公楼」。
+    expect(system).toContain('保管人')
+    expect(system).toContain('锁具状态')
+    expect(system).toContain('所在房间')
+  })
+
+  it('excludes a handover the prose itself narrates', () => {
+    const { system } = buildEvidenceShapePrompt(custodyRequest)
+    // 「正文自己写出来的交接」不算问题（如「有人把钥匙交出去」「当着人撬封」）。
+    expect(system).toContain('自己写出来的')
+  })
+
+  it('accepts a custody-drift report whose two quotes locate verbatim', () => {
+    const parsed = parseEvidenceShapeReview(JSON.stringify({
+      issues: [{
+        kind: 'custody-drift',
+        chapterNumber: 82,
+        quote: '私柜挂着一把锁，没锁死',
+        conflictingChapterNumber: 78,
+        conflictingQuote: '柯明远的手在锁上压着，没挪开',
+        explanation: '同一把柜子的钥匙从柯明远换到管物人手上，没有交接',
+      }],
+    }), { chapters: custodyRequest.chapters })
+    expect(parsed).toHaveLength(1)
+    expect(parsed![0]!.kind).toBe('custody-drift')
+  })
+
+  it('words a pure custody drift differently from a shape drift', () => {
+    const [custody] = evidenceShapeFindings([{
+      chapterNumber: 82,
+      kind: 'custody-drift',
+      quote: '私柜挂着一把锁，没锁死',
+      conflictingChapterNumber: 78,
+      conflictingQuote: '柯明远的手在锁上压着，没挪开',
+      explanation: '钥匙换了人',
+    }])
+    // 作者要能一眼看出「这次变的是保管关系」，而不是「形态变了」。
+    expect(custody!.issue.zhCN).toContain('保管人')
+    expect(custody!.issue.zhCN).toContain('交接')
+    // 英文措辞用 keeper / locked state / room —— 比抽象的 custody 更能让作者对上原文。
+    expect(custody!.issue.enUS).toContain('keeper')
   })
 })
