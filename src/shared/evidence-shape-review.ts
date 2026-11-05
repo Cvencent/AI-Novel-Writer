@@ -83,8 +83,8 @@ export interface EvidenceShapeIssue {
 
 export const EVIDENCE_SHAPE_KINDS = Object.freeze({
   'same-object-drift': [
-    '同一件物证（一枚印、一道痕、一件信物）在不同章里被当成同一件证据，但形态对不上（一圆一缺、一大一小、一深一浅）；**或同一个容器（盒盖内沿、夹层、柜格、内衬、封套）里装的东西换了**（一处是字、一处是印；一处是一页纸、一处是指模），而正文没有交代它被换过（issue #186）',
-    'the same piece of evidence described inconsistently across chapters with no in-story change — OR the CONTENTS of one container (a box lid rim, a lining, a drawer, an envelope) change from chapter to chapter (writing one time, a seal another; a page another time, a fingerprint another) with no in-story swap',
+    '同一件物证（一枚印、一道痕、一件信物）在不同章里被当成同一件证据，但形态对不上（一圆一缺、一大一小、一深一浅）；**或同一个容器（盒盖内沿、夹层、柜格、内衬、封套）里装的东西换了**（一处是字、一处是印；一处是一页纸、一处是指模），而正文没有交代它被换过（issue #186）；**或一句话把某件东西拿去和「前文某处的东西」比（「跟 X 一样」「和上次那只同一件」），而那个参照物从来不存在、或里面装的不是这种东西**（issue #176）',
+    'the same piece of evidence described inconsistently across chapters with no in-story change — OR the CONTENTS of one container (a box lid rim, a lining, a drawer, an envelope) change from chapter to chapter (writing one time, a seal another; a page another time, a fingerprint another) with no in-story swap — OR a line compares one thing to \'the one in X\' / \'the same one as last time\' when X never held that thing, or the referent never existed at all (issue #176)',
   ],
   'impossible-cause': [
     '物证的形态被归因到一个物理上不成立的人或动作（某人的某个部位缺了半节 → 于是印上有缺口，但他按印时用的不是那个部位；或者那件物证根本不会留下这种痕迹）',
@@ -117,6 +117,7 @@ export function buildEvidenceShapePrompt(request: EvidenceShapeRequest): { syste
       'Judge by meaning, not by a fixed word list: the same object may be named differently in each chapter, and a different object may share a description.',
       'The CONTENTS of one container count as this axis too: the same box lid rim, lining, drawer or envelope holding writing in one chapter and a seal in another, or a page one time and a fingerprint another — report it when the prose never says it was taken out or swapped.',
       'A change that the prose itself explains (it was cleaned, replaced, damaged on the page) is NOT a problem.',
+      'Comparisons count too: when a line says something is `the same as the one in X` or `the same one as last time`, check that the referent actually exists earlier and really holds that kind of thing — report it when the referent never existed, or when what it holds is a different kind of thing entirely.',
       'For "impossible-cause", use the character cards when given: if a body mark is said to explain a trace, check that the mark is on the part that would actually be used.',
       'Every report must quote exact sentences: one from the main chapter, and one from the chapter it conflicts with. If you cannot quote both, do not report.',
       'Do not report ordinary continuity of an object that is consistent. When unsure, do not report.',
@@ -138,6 +139,13 @@ export function buildEvidenceShapePrompt(request: EvidenceShapeRequest): { syste
       // 而这类容器（墨盒夹层、票夹里层、卷宗内衬）恰恰是本书反复用来放证据的地方。
       '**同一个容器的内装物**也算这一档：同一个盒盖内沿、夹层、柜格、内衬、封套里，一处写的是字、另一处变成印；一处是一页纸、另一处变成指模——只要正文没有交代它被取出或换过，就要报。',
       '正文**自己交代过**的变化（被擦掉、被换掉、在这一章被弄坏）不算问题。',
+      // issue #176：现场是第 80 章一句台词「（油布包的包法）跟你爸票夹里那件，一样」——
+      // 而全书 81 章里票夹（出现 20 章）装过的**全是平的纸件**（票根/存根册/纸条/收条），
+      // 「油布包」全书只在 ch37（温珩从自己短褂夹层里抽出）与 ch80 出现。
+      // 那个参照物**从未被建立**，而这句正是本章后段「油布包下落不明」的支点。
+      '**被拿来互相比对的东西**也算这一档：一句话说「跟某处那件一样」「和上次那只同一件」时，',
+      '要核那个参照物**在前文里是否真的存在、且里面装的/包的是不是这种东西**；',
+      '参照物不存在、或它装的东西根本不同类（票夹里只有纸，却被拿来说明「包法」），就要报。',
       '判「成因不成立」时参考给出的角色卡：若某个身体标志被用来解释一处痕迹，要核那个标志是否长在**真正会用到**的部位上。',
       '每条都必须**逐字引用**两处：主问题那一章的一句，以及与之相悖的那一章的一句。引不出来就不要报。',
       '物证前后一致的正常延续不要报。不确定就不要报。',

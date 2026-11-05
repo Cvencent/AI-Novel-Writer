@@ -310,3 +310,71 @@ describe('容器内装物也算形态漂移 (issue #186)', () => {
     }), { chapters: request.chapters })).toEqual([])
   })
 })
+
+/**
+ * issue #176：第 80 章一句台词把温珩取走的油布包与「你爸票夹里那件」相比——
+ * 而全书 81 章里票夹（出现 20 章）装过的**全是平的纸件**（票根/存根册/纸条/收条），
+ * 「油布包」全书只在 ch37（温珩从自己短褂夹层抽出）与 ch80 出现。
+ * 那个参照物**从未被建立**，而这句正是本章后段「油布包下落不明」的支点。
+ *
+ * 与 #167 的分界：句中没有记忆动词（`memoryCallbackSentences` 取不到它），
+ * 所以它落在这一档（物件比对）而不是「记忆回指」那一档。
+ */
+describe('参照物落空的物件比对 (issue #176)', () => {
+  const request = {
+    chapters: [
+      { chapterNumber: 37, content: '温珩解开短褂下摆，手伸进夹层里摸了两下，抽出一只油布包。灰布包，裹了三层，扎着麻线。' },
+      { chapterNumber: 71, content: '票夹从怀里摸出来，掀开里层。空白票纸只剩一张。' },
+      { chapterNumber: 80, content: '“停船那晚，”他忽然开口，嗓子哑，“他从货舱取了个油布包。包法——”绳头在指间转了个向，“跟你爸票夹里那件，一样。”' },
+    ],
+    language: 'zh-CN' as const,
+  }
+
+  it('asks the model to check whether a comparison’s referent really exists and holds that kind of thing', () => {
+    const { system } = buildEvidenceShapePrompt(request)
+    // 三个要素缺一不可：参照物存在 / 里面装的是什么 / 比对句本身。
+    expect(system).toContain('被拿来互相比对的东西')
+    expect(system).toContain('参照物')
+    expect(system).toContain('一样')
+  })
+
+  it('names the failure shape: a container whose contents are a different kind of thing', () => {
+    const { system } = buildEvidenceShapePrompt(request)
+    // 现场就是这一形态：票夹里只有纸，却被拿来说明「包法」。
+    expect(system).toContain('票夹里只有纸')
+    expect(system).toContain('包法')
+  })
+
+  it('accepts a comparison report whose two quotes locate verbatim', () => {
+    const parsed = parseEvidenceShapeReview(JSON.stringify({
+      issues: [{
+        kind: 'same-object-drift',
+        chapterNumber: 80,
+        quote: '跟你爸票夹里那件，一样',
+        conflictingChapterNumber: 71,
+        conflictingQuote: '票夹从怀里摸出来，掀开里层。空白票纸只剩一张。',
+        explanation: '票夹里只有纸，从来没有包',
+      }],
+    }), { chapters: request.chapters })
+    expect(parsed).toHaveLength(1)
+  })
+
+  it('still requires both quotes to locate (the new wording is not a free pass)', () => {
+    expect(parseEvidenceShapeReview(JSON.stringify({
+      issues: [{
+        kind: 'same-object-drift',
+        chapterNumber: 80,
+        quote: '跟你爸票夹里那件一模一样啊',
+        conflictingChapterNumber: 71,
+        conflictingQuote: '票夹从怀里摸出来',
+        explanation: 'x',
+      }],
+    }), { chapters: request.chapters })).toEqual([])
+  })
+
+  it('keeps the two earlier layers intact (container contents and outer shape)', () => {
+    const { system } = buildEvidenceShapePrompt(request)
+    expect(system).toContain('同一个容器的内装物')
+    expect(system).toContain('一圆一缺')
+  })
+})
