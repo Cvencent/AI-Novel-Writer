@@ -1,8 +1,9 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { ChevronRight, PenLine } from 'lucide-react'
 import type { ConsistencyPreflightResult } from '../../../services/consistency-preflight'
 import { readConsistencyPreflight } from '../../../services/consistency-preflight'
 import { createCharacterCardForPreflight } from '../../../services/preflight-character-card'
+import { mergeModelFindings } from '../../../shared/merge-model-findings'
 import type { ConsistencyFinding } from '../../../shared/consistency-preflight'
 import { ipc } from '../../../services/ipc-client'
 import {
@@ -72,6 +73,12 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
   // 「全部修复」的跨层排队（issue #137）：一层一次确认，采纳后自动提出下一层。
   const [repairQueue, setRepairQueue] = useState<Array<{ layer: 'world' | 'cast' | 'outline' | 'blueprint' | 'prose'; findings: readonly ConsistencyFinding[] }>>([])
   const [starting, setStarting] = useState(false)
+  /**
+   * `mergeFindings` 想给作者的那句「新增 N 条 / N 条已挂起」（issue #170）。
+   * 用 ref 暂存、在 setState 之外落地——在 updater 里调另一个 setState 会触发
+   * 「在更新期间更新另一个组件/state」的告警。
+   */
+  const mergeSummaryRef = useRef<string | null>(null)
   const modelFieldId = useId()
   const guidanceFieldId = useId()
   const hintFieldId = useId()
@@ -223,14 +230,43 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       .map(row => ({ chapterNumber: row.chapterNumber, content: String(row.content ?? '') }))
   }
 
-  /** 把模型判出的问题并入当前提醒列表（作者已有的 ack/保存安排机制照常可用）。 */
+  /**
+   * 把模型判出的问题并入当前提醒列表（作者已有的 ack/保存安排机制照常可用）。
+   *
+   * issue #170 的三处修正：
+   * - **按 `stableFactKey` 合并**：连点两次同一个按钮会产出同章同轴的 key（`prose-flavor:motif:68`
+   *   出现两次）→ React 列表拿重复 key、ack 一条会静默掉另一条。合并时把**同 key 的引文并进
+   *   `evidence`**（与 `styleIssueFindings` 内部口径一致）。
+   * - **合并前滤掉已 ack 的 key**：模型结论走的是渲染层直 push，从来没经过
+   *   `readConsistencyPreflight` 里那道 ack 过滤——所以「挂起过的下次核对照样回来」（#86/#89/#98/#108 的老毛病，
+   *   这次坏在渲染层）。
+   * - **给作者一句可见说明**：条数变化要能看见，否则界面静默回到原样会让人以为「核完了、解决了」。
+   */
   const mergeFindings = (found: ConsistencyFinding[]) => {
     if (found.length === 0) {
       setMessage(text('模型没有找到这一类问题（或章数太少，暂不判）。',
         'The model found nothing of this kind (or there are too few chapters to judge).'))
       return
     }
-    setPreflight(current => current ? { ...current, findings: [...current.findings, ...found] } : current)
+    // 合并/过滤是纯函数（`mergeModelFindings`），这样「同 key 不重复、已挂起不再列」能被断言。
+    let summary: string | null = null
+    setPreflight(current => {
+      if (!current) return current
+      const result = mergeModelFindings(current.findings, found, current.acknowledgements)
+      // 条数变化要能看见（issue #170 建议 ④）——静默回到原样比报错更糟。
+      if (result.added > 0 || result.droppedAcknowledged > 0) {
+        summary = text(
+          `本次核对新增 ${result.added} 条${result.droppedAcknowledged > 0 ? `；${result.droppedAcknowledged} 条此前已挂起，未再列出` : ''}。`,
+          `${result.added} new finding(s)${result.droppedAcknowledged > 0 ? `; ${result.droppedAcknowledged} already set aside earlier and not listed again` : ''}.`)
+        mergeSummaryRef.current = summary
+      }
+      return { ...current, findings: result.findings }
+    })
+    // 在 setState 之外落地提示：updater 里调另一个 setState 会触发「更新期间更新 state」的告警。
+    if (mergeSummaryRef.current) {
+      setMessage(mergeSummaryRef.current)
+      mergeSummaryRef.current = null
+    }
     show()
   }
 
@@ -619,10 +655,24 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     show()
   }
 
+  /**
+   * 「保存安排」：落库后**只动这一条**（issue #170 建议 ③）。
+   *
+   * 旧实现是 `await start(false, saved)` —— 而 `start` 会重跑 `readConsistencyPreflight`
+   * 并**整体替换** preflight 对象。那个函数不知道刚跑过哪几个模型判据（它不接收这些结果），
+   * 所以重算的返回值天然不含它们 → 作者点一条无关旧账的「保存安排」，刚花 2 万 tok 核出来的
+   * 10 条模型结论**静默清零**。这里改成与 `unacknowledgeFinding` 同一写法：只改这一条。
+   */
   const saveArrangement = async (stableFactKey: string, reason: string) => {
     const saved = await changeArrangement(text('保存一致性安排失败', 'Could not save the consistency arrangement.'),
       session => ipc.invokeWithProjectSession(session, 'db:consistency-exemption-save', stableFactKey, reason, session.projectPath))
-    if (saved) await start(false, saved)
+    if (!saved) return
+    setPreflight(current => current ? {
+      ...current,
+      exemptions: [...current.exemptions.filter(item => item.stableFactKey !== stableFactKey),
+        { stableFactKey, reason, revoked: false }],
+      findings: current.findings.filter(item => item.stableFactKey !== stableFactKey),
+    } : current)
   }
 
   const revokeArrangement = async (stableFactKey: string) => {
@@ -640,10 +690,22 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
    * stable_fact_key 跨章稳定，所以 ack 一次就永久静音——这正是作者此前缺的第三个口径。
    * ack 后接着开写（与 saveArrangement 同一路径），作者不必再多点一次。
    */
+  /**
+   * 「我已知，稍后处理」：同样是**只动这一条**（issue #170 建议 ③）。
+   *
+   * 旧实现落库后调 `start(false, done)` 重算并整体替换 preflight —— 模型判据的结论不在
+   * `readConsistencyPreflight` 的返回值里，于是一挂起旧账就把它们全清了（现场：60 → 50，
+   * 模型条目 0 条，界面上没有任何提示）。挂起本来只该影响被挂起的那一条。
+   */
   const acknowledgeFinding = async (stableFactKey: string) => {
     const done = await changeArrangement(text('标记稍后处理失败', 'Could not note it for later.'),
       session => ipc.invokeWithProjectSession(session, 'db:consistency-ack-save', stableFactKey, session.projectPath))
-    if (done) await start(false, done)
+    if (!done) return
+    setPreflight(current => current ? {
+      ...current,
+      findings: current.findings.filter(item => item.stableFactKey !== stableFactKey),
+      acknowledgements: [...current.acknowledgements, { stableFactKey, acknowledgedAt: new Date().toISOString() }],
+    } : current)
   }
 
   /**
