@@ -4,11 +4,11 @@ import {
   findDialogueOpenerConvergence,
   findEntranceShotFindings,
   findExpandedContinuityRisks,
-  findLossRestatementFindings,
   findOpeningShapeConvergence,
   findPendingLandingConvergence,
   findUltimatumStreak,
 } from '../consistency-preflight'
+import { lossRestatementReviewFindings } from '../loss-restatement-review'
 import { findUndatedStreakFindings } from '../chapter-time-anchor'
 import { findUnsettledDeadlineFindings } from '../deadline-settlement'
 import { findRepeatedRevocationFindings } from '../repeated-revocation'
@@ -112,7 +112,9 @@ function allFindings(currentChapter: number): ConsistencyFinding[] {
     ...findPendingLandingConvergence({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter }),
     ...findOpeningShapeConvergence({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter }),
     ...findDialogueOpenerConvergence({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter }),
-    ...findLossRestatementFindings({ chapters: SAMPLE_BOOK, currentChapter }),
+    // 同一笔遗忘那一族已改成模型判据（#163），这里直接喂它的产出转 findings 那一段：
+    // key 锚在**损失本身**上，不带会滚动的章号。
+    ...lossRestatementReviewFindings([{ referent: '三个结', chapterNumbers: [19, 20], quoteChapterNumber: 19, quote: '那里空了', explanation: '' }]),
     ...findEntranceShotFindings({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter }),
     ...findUndatedStreakFindings(SAMPLE_BOOK, currentChapter),
     ...glyphRadicalFindings(SAMPLE_BOOK),
@@ -149,7 +151,7 @@ describe('no preflight key may change when only currentChapter advances (issue #
       ['findPendingLandingConvergence', n => findPendingLandingConvergence({ chapters: PENDING_LANDING_BOOK, castNames: CAST, currentChapter: n })],
       ['findOpeningShapeConvergence', n => findOpeningShapeConvergence({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter: n })],
       ['findDialogueOpenerConvergence', n => findDialogueOpenerConvergence({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter: n })],
-      ['findLossRestatementFindings', n => findLossRestatementFindings({ chapters: SAMPLE_BOOK, currentChapter: n })],
+      ['lossRestatementReviewFindings', () => lossRestatementReviewFindings([{ referent: '三个结', chapterNumbers: [19, 20], quoteChapterNumber: 19, quote: '那里空了', explanation: '' }])],
       ['findEntranceShotFindings', n => findEntranceShotFindings({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter: n })],
       ['findUndatedStreakFindings', n => findUndatedStreakFindings(SAMPLE_BOOK, n)],
       ['glyphRadicalFindings', () => glyphRadicalFindings(SAMPLE_BOOK)],

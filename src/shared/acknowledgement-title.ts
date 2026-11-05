@@ -84,6 +84,7 @@ const FAMILY_LABELS: Readonly<Record<string, AcknowledgementTitle>> = Object.fre
   'prop:container-departure': { zhCN: '道具位置换了却没有交接', enUS: 'prop container departure' },
   'prop-handover': { zhCN: '物件过手动作固定化', enUS: 'prop handover converging' },
   'continuity': { zhCN: '遗忘被跨章重述', enUS: 'loss restatement' },
+  'continuity:loss-restatement': { zhCN: '同一笔损失被重复宣告', enUS: 'same loss announced again' },
   'revocation': { zhCN: '不可逆处境重复宣告', enUS: 'repeated revocation' },
   // —— 正文写法 ——
   'prose': { zhCN: '正文重复写法', enUS: 'prose repetition' },

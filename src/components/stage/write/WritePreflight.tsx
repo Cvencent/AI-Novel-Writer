@@ -92,6 +92,11 @@ interface WritePreflightProps {
    * 不传时不渲染。
    */
   onCheckBlueprintInternal?: () => void
+  /**
+   * 「核对代价重述」（issue #75 / #163）：请模型判「同一笔被丢掉的记忆有没有在后面又被当成新损失宣告一遍」。
+   * 原先靠五张题材措辞表判，按用户定规改由模型判。不传时不渲染。
+   */
+  onCheckLossRestatement?: () => void
 
   /**
    * 「为「X」建卡」（issue #160）：提醒**自带**可执行动作时给这个出口。
@@ -121,7 +126,7 @@ interface WritePreflightProps {
  */
 export default function WritePreflight({
   preflight, busy, onIgnoreOnce, onRerun, onSave, onRevoke, onAcknowledge, onUnacknowledge, onOpenLayer, currentChapter,
-  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent, onCheckAbility, onCheckMemory, onCheckBlueprintFacts, onCheckEvidence, onCheckHandwriting, onCheckBlueprintInternal, onCreateCharacter,
+  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent, onCheckAbility, onCheckMemory, onCheckBlueprintFacts, onCheckEvidence, onCheckHandwriting, onCheckBlueprintInternal, onCheckLossRestatement, onCreateCharacter,
 }: WritePreflightProps) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
@@ -284,6 +289,11 @@ export default function WritePreflight({
           {onCheckBlueprintInternal === undefined ? null : (
             <Button variant="text" size="sm" disabled={busy} onClick={onCheckBlueprintInternal}>
               {text('核对蓝图自洽', 'Check plan consistency')}
+            </Button>
+          )}
+          {onCheckLossRestatement === undefined ? null : (
+            <Button variant="text" size="sm" disabled={busy} onClick={onCheckLossRestatement}>
+              {text('核对代价重述', 'Check re-charged costs')}
             </Button>
           )}
         </div>

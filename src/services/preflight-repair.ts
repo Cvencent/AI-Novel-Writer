@@ -49,6 +49,12 @@ import {
   type BlueprintClaimChapter,
 } from '../shared/prose-conflict-review'
 import {
+  buildLossRestatementPrompt,
+  lossRestatementReviewFindings,
+  parseLossRestatementReview,
+  type LossReviewChapter,
+} from '../shared/loss-restatement-review'
+import {
   blueprintInternalFindings,
   buildBlueprintInternalPrompt,
   parseBlueprintInternalReview,
@@ -716,4 +722,44 @@ export async function reviewBlueprintInternals(
       : '模型返回的不是合法的「蓝图内部自相矛盾」清单。' }
   }
   return { status: 'ok', findings: blueprintInternalFindings(issues) }
+}
+
+/**
+ * 同一笔遗忘被跨章重新宣告（issue #75 的现场，issue #163 的迁移）——一次模型调用。
+ *
+ * 旧实现是五张题材措辞表（记得/空了/空壳/被水洇/仍然没…），只对这本书的写法成立。
+ * 按用户 2026-11-05 的定规改由模型判；规则只负责喂哪些章、校验引文与章号。
+ */
+export interface LossRestatementOutcome {
+  status: 'ok' | 'failed'
+  findings: ConsistencyFinding[]
+  error?: string
+}
+
+export async function reviewLossRestatements(
+  session: ProjectSessionContext,
+  chapters: readonly LossReviewChapter[],
+  locale: 'zh-CN' | 'en-US' = 'zh-CN',
+): Promise<LossRestatementOutcome> {
+  const en = locale === 'en-US'
+  const usable = chapters.filter(chapter => Number.isSafeInteger(chapter.chapterNumber) && String(chapter.content ?? '').trim())
+  // 少于两章谈不上「跨章重述」。
+  if (usable.length < 2) return { status: 'ok', findings: [] }
+  const request = { chapters: usable, language: locale }
+  const { system, user } = buildLossRestatementPrompt(request)
+  const response = await useLLMStore.getState().generate(
+    [{ role: 'system', content: system }, { role: 'user', content: user }],
+    undefined,
+    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
+  )
+  if (!response.success) {
+    return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
+  }
+  const issues = parseLossRestatementReview(response.content, request)
+  if (!issues) {
+    return { status: 'failed', findings: [], error: en
+      ? 'The model did not return a valid loss-restatement list.'
+      : '模型返回的不是合法的「同一笔损失被重复宣告」清单。' }
+  }
+  return { status: 'ok', findings: lossRestatementReviewFindings(issues) }
 }

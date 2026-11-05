@@ -4,7 +4,6 @@ import { foreshadowingKeywords, selectDiscriminatingKeywords, type Foreshadowing
 import { findRepeatedEntranceShots } from './entrance-shot'
 // 段落起手主语（issue #94）：与 #81 同族但读的是**每一段的第一个词**。
 // 物件过手动作的固定化（issue #95）：折好→塞进某处 这一套三拍。
-import { findLossRestatement } from './loss-restatement'
 import { findAbilityReuseContradictions } from './ability-budget'
 import { findDeclaredDigitCountMismatches } from './numbering-consistency'
 // 自报「N 个字」与紧随其后的实体不符（issue #131）：与 #47 同族，另一个量词形态。
@@ -1263,38 +1262,6 @@ export function findMissingCastInArch(input: MissingCastInArchInput): Consistenc
  * `repeated-device`），由作者在预检里主动触发；规则侧不再对「这句话在说什么」下断言。
  */
 
-/**
- * 同一笔遗忘被跨章重新宣告（issue #75）。
- *
- * 金手指代价是「每溯读一次，墨吞掉一段记忆」，而同一笔缺失被跨章宣告三遍，
- * 每次都当新损失写——代价因此变成可重复计价。蓝图合同的「代价必须留账」（#36）
- * 只管章内，`prose-repetition` 的词表是动作词，都对遗忘句 0 命中。
- *
- * 判据结构性：找「记得 + 缺失」同处出现的句子，再取不同章缺失句里的**公共子串**
- * 作为「同一件东西」。#75 的关键是**没有承接词**——带「仍然没想起来」的章不算重述。
- */
-export interface LossRestatementInput {
-  chapters: ReadonlyArray<{ chapterNumber: number; content: string }>
-  /** findings 的 sourceChapter 用（通常是当前章）。 */
-  currentChapter: number
-}
-
-export function findLossRestatementFindings(input: LossRestatementInput): ConsistencyFinding[] {
-  return findLossRestatement(input.chapters).map(hit => ({
-    stableFactKey: `continuity:loss-restatement:${hit.referent}`,
-    severity: 'warning' as const,
-    sourceChapter: hit.chapters[hit.chapters.length - 1]!,
-    evidence: `「${hit.referent}」的缺失在第 ${hit.chapters.join('、')} 章各被当新损失宣告一次：${hit.excerpt.slice(0, 50)}`,
-    issue: {
-      zhCN: `同一笔记忆缺失（「${hit.referent}」）在第 ${hit.chapters.join('、')} 章各被宣告了一次，每次读起来都像刚发生的损失。金手指的代价是这本书张力的来源，同一笔被反复宣告，读者学到的是「这个代价可以重复计价」——后面再写「他又忘了一件事」就没有分量了。`,
-      enUS: `The same memory loss (“${hit.referent}”) is announced once in each of chapters ${hit.chapters.join(', ')}, each time reading like a fresh loss. When a power's cost is repeatedly re-charged for the same thing, readers learn that the cost is repeatable — and later "he forgot something again" beats land with no weight.`,
-    },
-    suggestion: {
-      zhCN: `后续章再提这件事时，要么写成**延续**（带上「仍然没想起来」「还是空的」这类承接词，读者读到的是他一直没想起来），要么写成**新的获取尝试**（再溯读一次、求人提醒、换个法子查）并把这次尝试的代价落账。不要每次都用「他记得 X，Y 空着」重新宣告一遍。`,
-      enUS: `When later chapters revisit this, write it as **continuation** (use carry-over wording such as “still has not remembered”), or as a **new attempt to recover it** (re-reading, asking someone, another route) and record that attempt's cost. Do not re-announce it each time with “he remembers X, but Y is blank”.`,
-    },
-  }))
-}
 
 /**
  * 已被写死的物证又自己回来了（issue #78）。

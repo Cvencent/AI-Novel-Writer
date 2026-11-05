@@ -4,7 +4,7 @@ import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuit
   findNearCastNameFindings, findOversizedBlueprintKeyEvents, findUnregisteredBlueprintCast,
   findDialogueOpenerConvergence, findOpeningShapeConvergence,
   findDesignTimelineConflicts, findMissingCastInArch,
-  findLossRestatementFindings, findEntranceShotFindings } from '../shared/consistency-preflight'
+  findEntranceShotFindings } from '../shared/consistency-preflight'
 import { DIALOGUE_OPENER_WINDOW_CHAPTERS, OPENING_SHAPE_WINDOW_CHAPTERS } from '../shared/chapter-opening'
 import { ENTRANCE_WINDOW_CHAPTERS } from '../shared/entrance-shot'
 import { findTitleShapeConvergenceFindings } from '../shared/title-shape'
@@ -262,14 +262,11 @@ export async function readConsistencyPreflight(
   })
   // 道具复活（#78）同样依赖终结动作表 → 已并入 content-review.ts 的 prop-terminal 轴。
   const propRevivalFindings: ConsistencyFinding[] = []
-  const lossRestatementFindings = recentProse.length === 0 ? [] : findLossRestatementFindings({
-    chapters: recentProse
-      .filter(row => Number.isSafeInteger(row.chapterNumber) && row.chapterNumber < currentChapter)
-      .sort((left, right) => left.chapterNumber - right.chapterNumber)
-      .slice(-12)
-      .map(row => ({ chapterNumber: row.chapterNumber, content: String(row.content ?? '') })),
-    currentChapter,
-  })
+  // 同一笔遗忘被跨章重新宣告（#75 / #163）：原先靠五张题材措辞表（记得/空了/空壳/被水洇/仍然没…）判，
+  // 按用户 2026-11-05 的定规（内容判断不许词表、不许短语匹配）已改由模型判
+  // （`loss-restatement-review.ts` + `reviewLossRestatements`，作者主动触发）。
+  // 「这两处是不是同一笔损失」要读懂句子，不是位置/计数判据。
+  const lossRestatementFindings: ConsistencyFinding[] = []
   // issue #120：ack 区要给作者看人话，而不是 `stableFactKey`。
   // 存储层只有「键 + 时间」两列，所以标题在这里补：**先按 key 与本轮全部 finding 配对**
   // （那条判据这一轮仍命中 → 用判据自己写的原话），配不上的用封闭目录译出人话并注明
