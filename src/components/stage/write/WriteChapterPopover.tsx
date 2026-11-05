@@ -24,7 +24,7 @@ import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useAnchoredLayer } from '../../ui/use-anchored-layer'
 import {
   appearanceContradictionFindings, applyRepairDiffs, checkAppearanceAgainstCards,
-  proposeLayerRepair, reviewAbilityLimits, reviewBlueprintAgainstProse, reviewMemoryAnchors, reviewProseContent, reviewProseStyle,
+  proposeLayerRepair, reviewAbilityLimits, reviewBlueprintAgainstProse, reviewEvidenceShapes, reviewMemoryAnchors, reviewProseContent, reviewProseStyle,
   reviewSensoryChannels, sensoryVerdictFindings,
 } from '../../../services/preflight-repair'
 import { advanceRepairQueue, planRepairCalls, remainingRepairLayers, shouldContinueRepairChain } from '../../../shared/preflight-repair'
@@ -445,6 +445,43 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     }
   }
 
+/**
+   * 被当成证据的物件：跨章形态是否一致、形态与成因能不能同时成立（issue #156）。
+   *
+   * 现场：第 73 章「半个红指印，圆圆的」→ 第 74 章「缺口齐整，缺了半节的拇指按的」，
+   * 而叶九缺的是右小指（第 45 章他用拇指压过页面）。这条推理是主线最高潮的证据。
+   * 规则只摆样本与角色卡、校验两处引文可定位；「是不是同一枚印」「这个成因成不成立」交模型。
+   */
+  const checkEvidenceShapes = async () => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || busy) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      const roster = await ipc.invokeWithProjectSession(session, 'db:character-roster-read', session.projectPath).catch(() => null)
+      if (!isProjectSessionCurrent(session)) return
+      // 角色卡只用来核「缺某部位」这类成因；没有卡也能判跨章形态漂移。
+      const cards = ((roster?.entries ?? []) as Array<{ name?: string, appearance?: string, notes?: string }>).flatMap(entry => {
+        const name = String(entry.name ?? '').trim()
+        const appearance = String(entry.appearance ?? '')
+        const notes = String(entry.notes ?? '')
+        return name && `${appearance}${notes}`.trim() ? [{ name, appearance, notes }] : []
+      })
+      const chapters = await recentFinalized(session)
+      if (!isProjectSessionCurrent(session)) return
+      if (chapters.length === 0) {
+        setMessage(text('还没有已定稿的正文可核对。', 'There is no finalized prose to check yet.'))
+        return
+      }
+      const outcome = await reviewEvidenceShapes(session, chapters, cards, locale)
+      if (!isProjectSessionCurrent(session)) return
+      if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
+      mergeFindings(outcome.findings)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   /** 作者勾选后落库（走现成写通道），然后重检刷新列表。 */
   const applyRepair = async (fields: readonly string[] | null) => {
     const diffs = repairProposal?.diffs.filter(diff => fields === null || fields.includes(diff.field)) ?? []
@@ -664,6 +701,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           onCheckAbility={() => void checkAbility()}
           onCheckMemory={() => void checkMemory()}
           onCheckBlueprintFacts={() => void checkBlueprintFacts()}
+          onCheckEvidence={() => void checkEvidenceShapes()}
           onCreateCharacter={name => void createCharacterCard(name)}
           repairProposal={repairProposal}
           onApplyRepairField={field => void applyRepair([field])}

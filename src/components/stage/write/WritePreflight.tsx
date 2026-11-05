@@ -77,6 +77,12 @@ interface WritePreflightProps {
    */
   onCheckBlueprintFacts?: () => void
   /**
+   * 「核对物证形态」（issue #156）：请模型判「被当作证据的物件在不同章里形态是否一致、
+   * 它的形态与成因能不能同时成立」。不传时不渲染。
+   */
+  onCheckEvidence?: () => void
+
+  /**
    * 「为「X」建卡」（issue #160）：提醒**自带**可执行动作时给这个出口。
    *
    * 现场：文案写着「就在角色名单里为「徐汐」建卡」，弹层里 `建卡` 两个字一次都点不到，
@@ -104,7 +110,7 @@ interface WritePreflightProps {
  */
 export default function WritePreflight({
   preflight, busy, onIgnoreOnce, onRerun, onSave, onRevoke, onAcknowledge, onUnacknowledge, onOpenLayer, currentChapter,
-  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent, onCheckAbility, onCheckMemory, onCheckBlueprintFacts, onCreateCharacter,
+  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent, onCheckAbility, onCheckMemory, onCheckBlueprintFacts, onCheckEvidence, onCreateCharacter,
 }: WritePreflightProps) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
@@ -252,6 +258,11 @@ export default function WritePreflight({
           {onCheckBlueprintFacts === undefined ? null : (
             <Button variant="text" size="sm" disabled={busy} onClick={onCheckBlueprintFacts}>
               {text('核对蓝图与前文', 'Check blueprint vs prose')}
+            </Button>
+          )}
+          {onCheckEvidence === undefined ? null : (
+            <Button variant="text" size="sm" disabled={busy} onClick={onCheckEvidence}>
+              {text('核对物证形态', 'Check evidence objects')}
             </Button>
           )}
         </div>

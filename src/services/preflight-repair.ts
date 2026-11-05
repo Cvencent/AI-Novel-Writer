@@ -47,6 +47,13 @@ import {
   type BlueprintClaimChapter,
 } from '../shared/prose-conflict-review'
 import {
+  buildEvidenceShapePrompt,
+  evidenceShapeFindings,
+  parseEvidenceShapeReview,
+  type EvidenceCastCard,
+  type EvidenceChapter,
+} from '../shared/evidence-shape-review'
+import {
   buildMemoryAnchorPrompt,
   memoryAnchorFindings,
   parseMemoryAnchorReview,
@@ -532,4 +539,49 @@ export async function reviewBlueprintAgainstProse(
       : '模型返回的不是合法的「蓝图与正文相反」清单。' }
   }
   return { status: 'ok', findings: proseConflictFindings(issues) }
+}
+
+/**
+ * 被当成证据的物件：跨章形态是否一致、成因是否物理成立（issue #156）——一次模型调用。
+ *
+ * 现场：第 73 章「半个红指印，**圆圆的**」→ 第 74 章「**缺口齐整**，缺了半节的**拇指**按的」，
+ * 而叶九缺的是**右小指**（第 45 章他自己用拇指压过页面）。第 74 章的「缺口对上」
+ * 与第 75 章凭它放人，全建立在这条不成立的推理上。
+ *
+ * 规则只负责：把最近若干章与角色卡的身体描述一起喂进去、要求**两处引文都逐字可定位**；
+ * 「这两章是不是同一件物证」「这个形态与成因能不能同时成立」交模型。
+ * ⚠️ 不走「印/痕迹词表 × 部位词表 × 按印词表」那条路（用户 2026-11-05 定规禁止）。
+ */
+export interface EvidenceShapeOutcome {
+  status: 'ok' | 'failed'
+  findings: ConsistencyFinding[]
+  error?: string
+}
+
+export async function reviewEvidenceShapes(
+  session: ProjectSessionContext,
+  chapters: readonly EvidenceChapter[],
+  cards: readonly EvidenceCastCard[],
+  locale: 'zh-CN' | 'en-US' = 'zh-CN',
+): Promise<EvidenceShapeOutcome> {
+  const en = locale === 'en-US'
+  const request = { chapters, cards, language: locale }
+  // 没有正文就没有可核对的东西；只有一章时仍可能判「这一章内的成因不成立」。
+  if (chapters.length === 0) return { status: 'ok', findings: [] }
+  const { system, user } = buildEvidenceShapePrompt(request)
+  const response = await useLLMStore.getState().generate(
+    [{ role: 'system', content: system }, { role: 'user', content: user }],
+    undefined,
+    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
+  )
+  if (!response.success) {
+    return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
+  }
+  const issues = parseEvidenceShapeReview(response.content, request)
+  if (!issues) {
+    return { status: 'failed', findings: [], error: en
+      ? 'The model did not return a valid evidence-shape list.'
+      : '模型返回的不是合法的「物证形态」清单。' }
+  }
+  return { status: 'ok', findings: evidenceShapeFindings(issues) }
 }

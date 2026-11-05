@@ -315,7 +315,7 @@ describe('动作行不许把按钮甩出弹层 (issue #165)', () => {
       onRepair: vi.fn(), onRepairAll: vi.fn(),
       onCheckAppearance: vi.fn(), onCheckSensory: vi.fn(),
       onCheckStyle: vi.fn(), onCheckContent: vi.fn(), onCheckAbility: vi.fn(),
-      onCheckBlueprintFacts: vi.fn(),
+      onCheckBlueprintFacts: vi.fn(), onCheckEvidence: vi.fn(),
     }
     await act(async () => root!.render(<WritePreflight {...common} />))
   }
@@ -341,6 +341,7 @@ describe('动作行不许把按钮甩出弹层 (issue #165)', () => {
     expect(host!.querySelector('.stage-preflight-actions')?.textContent).not.toContain('核对能力限制')
     // issue #157 的第七个「核对…」也必须在那一行里（新按钮不许挪到即时动作行）。
     expect(host!.querySelector('.stage-preflight-checks')?.textContent).toContain('核对蓝图与前文')
+    expect(host!.querySelector('.stage-preflight-checks')?.textContent).toContain('核对物证形态')
   })
 })
 
