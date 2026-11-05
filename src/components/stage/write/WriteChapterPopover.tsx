@@ -22,7 +22,8 @@ import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useAnchoredLayer } from '../../ui/use-anchored-layer'
 import {
   appearanceContradictionFindings, applyRepairDiffs, checkAppearanceAgainstCards,
-  proposeLayerRepair, reviewProseContent, reviewProseStyle, reviewSensoryChannels, sensoryVerdictFindings,
+  proposeLayerRepair, reviewAbilityLimits, reviewProseContent, reviewProseStyle,
+  reviewSensoryChannels, sensoryVerdictFindings,
 } from '../../../services/preflight-repair'
 import { advanceRepairQueue, planRepairCalls, remainingRepairLayers, shouldContinueRepairChain } from '../../../shared/preflight-repair'
 import { preflightRouteOf } from '../../../shared/preflight-route'
@@ -229,6 +230,35 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     }
     setPreflight(current => current ? { ...current, findings: [...current.findings, ...found] } : current)
     show()
+  }
+
+  /**
+   * 能力限制被绕过（#100）——**交给模型判**。
+   * 限制句从世界观取（那是作者的声明），「正文有没有违反」由模型回答。
+   */
+  const checkAbility = async () => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    const project = useProjectStore.getState().currentProject
+    if (!session || busy || !project) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      const core = await ipc.invokeWithProjectSession(session, 'db:project-core-get', session.projectPath).catch(() => null)
+      if (!isProjectSessionCurrent(session)) return
+      const worldbuilding = String((core as { worldbuilding?: string } | null)?.worldbuilding ?? '')
+      const chapters = await recentFinalized(session)
+      if (!isProjectSessionCurrent(session)) return
+      if (!worldbuilding.trim()) {
+        setMessage(text('世界观里没有可核对的限制句。', 'The worldbuilding declares no limit to check against.'))
+        return
+      }
+      const outcome = await reviewAbilityLimits(session, worldbuilding, chapters, locale)
+      if (!isProjectSessionCurrent(session)) return
+      if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
+      mergeFindings(outcome.findings)
+    } finally {
+      setBusy(false)
+    }
   }
 
   /**
@@ -524,6 +554,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           onCheckSensory={() => void checkSensory()}
           onCheckStyle={() => void checkStyle()}
           onCheckContent={() => void checkContent()}
+          onCheckAbility={() => void checkAbility()}
           repairProposal={repairProposal}
           onApplyRepairField={field => void applyRepair([field])}
           onApplyRepairAll={() => void applyRepair(null)}

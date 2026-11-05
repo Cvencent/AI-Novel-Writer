@@ -41,6 +41,13 @@ import {
   type AppearanceReviewChapter,
 } from '../shared/appearance-consistency'
 import {
+  abilityReviewFindings,
+  buildAbilityReviewPrompt,
+  limitSentencesOf,
+  parseAbilityReview,
+  type AbilityReviewChapter,
+} from '../shared/ability-review'
+import {
   buildContentReviewPrompt,
   contentReviewFindings,
   parseContentReview,
@@ -392,4 +399,39 @@ export async function reviewProseContent(
       : '模型返回的不是合法的重复写法清单。' }
   }
   return { status: 'ok', findings: contentReviewFindings(issues) }
+}
+
+/** 能力限制被绕过（#100）——一次模型调用，限制句由世界观提供，判断交模型。 */
+export interface AbilityReviewOutcome {
+  status: 'ok' | 'failed'
+  findings: ConsistencyFinding[]
+  error?: string
+}
+
+export async function reviewAbilityLimits(
+  session: ProjectSessionContext,
+  worldbuilding: string,
+  chapters: readonly AbilityReviewChapter[],
+  locale: 'zh-CN' | 'en-US' = 'zh-CN',
+): Promise<AbilityReviewOutcome> {
+  const en = locale === 'en-US'
+  const limits = limitSentencesOf(worldbuilding)
+  if (limits.length === 0 || chapters.length === 0) return { status: 'ok', findings: [] }
+  const request = { limits, chapters, language: locale }
+  const { system, user } = buildAbilityReviewPrompt(request)
+  const response = await useLLMStore.getState().generate(
+    [{ role: 'system', content: system }, { role: 'user', content: user }],
+    undefined,
+    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
+  )
+  if (!response.success) {
+    return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
+  }
+  const issues = parseAbilityReview(response.content, request)
+  if (!issues) {
+    return { status: 'failed', findings: [], error: en
+      ? 'The model did not return a valid limit-violation list.'
+      : '模型返回的不是合法的「限制被绕过」清单。' }
+  }
+  return { status: 'ok', findings: abilityReviewFindings(issues) }
 }

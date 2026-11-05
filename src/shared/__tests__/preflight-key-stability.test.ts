@@ -13,7 +13,6 @@ import { findUndatedStreakFindings } from '../chapter-time-anchor'
 import { findUnsettledDeadlineFindings } from '../deadline-settlement'
 import { findRepeatedRevocationFindings } from '../repeated-revocation'
 import { findDuplicateChapterTitleFindings } from '../chapter-title-uniqueness'
-import { findAbilityLimitBypassFindings } from '../ability-limit-bypass'
 import { findHandwritingConflictFindings } from '../handwriting-signature'
 import { findQuoteStyleDriftFindings } from '../quote-style'
 import { auditFinalizedProse } from '../finalized-prose-audit'
@@ -163,10 +162,6 @@ describe('no preflight key may change when only currentChapter advances (issue #
       })],
       ['findDuplicateChapterTitleFindings', () => findDuplicateChapterTitleFindings({
         chapters: [{ chapterNumber: 1, title: '压印' }, { chapterNumber: 2, title: '压印的' }],
-      })],
-      ['findAbilityLimitBypassFindings', () => findAbilityLimitBypassFindings({
-        worldbuilding: '触发条件：离船上岸，能力立刻衰减到几乎为零。',
-        chapters: SAMPLE_BOOK,
       })],
       ['findQuoteStyleDriftFindings', () => findQuoteStyleDriftFindings(QUOTE_STYLE_BOOK)],
       ['declaredCharacterCountFindings', () => SAMPLE_BOOK.flatMap(chapter => declaredCharacterCountFindings(chapter))],

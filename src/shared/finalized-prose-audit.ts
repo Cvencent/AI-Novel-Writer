@@ -74,7 +74,6 @@ import { findQuoteStyleDriftFindings } from './quote-style'
 // 陈旧状态时长（issue #115）：同一件事的「过了多久」在相邻章用了互斥的尺度。
 // 道具收进容器→容器离开→又回到身上（issue #113）：位置换了却没有交接动作。
 // 能力触发条件被绕过（#100）：世界观写死的硬限制在正文里被静默绕过、从未写成一次发现。
-import { findAbilityLimitBypassFindings } from './ability-limit-bypass'
 // 笔迹特征自相矛盾（#97）：同一个书写者被写成两套互斥特征（「稳、匀」vs「横折收得急」）。
 import { findHandwritingConflictFindings } from './handwriting-signature'
 // 清单件数对账（#133）：声明 N 件却只列/兑现 M 件。同章枚举 + 跨章清单两条。
@@ -298,11 +297,10 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
     })),
   })
 
-  // 能力触发条件被绕过（issue #100）：限制句从世界观取，绕过形态 = 在受限场地 + 自造条件 +
-  // 全书从未写成一次发现。没有世界观就不判。
-  const abilityLimitBypass = input.worldbuilding
-    ? findAbilityLimitBypassFindings({ worldbuilding: input.worldbuilding, chapters })
-    : []
+  // 能力触发条件被绕过（issue #100）：原先是 12 条**本书专属场所**的正则
+  // （账房|售票亭|柜台|铺子…）+ 本书的能力表现（墨浮上来）。按用户 2026-11-05 的规则
+  // 已改由模型判（`ability-review.ts` + `reviewAbilityLimits`），由作者主动触发。
+  const abilityLimitBypass: ConsistencyFinding[] = []
 
   // 笔迹特征自相矛盾（issue #97）：核心能力是「靠笔迹认人」时，同一个书写者不能有两套特征。
   const handwritingConflicts = castNames.length === 0 ? [] : findHandwritingConflictFindings({ chapters, castNames })

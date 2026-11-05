@@ -67,6 +67,8 @@ interface WritePreflightProps {
   /** 「核对文风」「核对重复写法」（用户 2026-11-05：内容判断交模型）。不传时不渲染。 */
   onCheckStyle?: () => void
   onCheckContent?: () => void
+  /** 「核对能力限制」（#100）。不传时不渲染。 */
+  onCheckAbility?: () => void
   /** 模型给出的改写建议（差异面板）。null 表示当前没有待确认的改写。 */
   repairProposal?: RepairProposal | null
   onApplyRepairField?: (field: string) => void
@@ -86,7 +88,7 @@ interface WritePreflightProps {
  */
 export default function WritePreflight({
   preflight, busy, onIgnoreOnce, onRerun, onSave, onRevoke, onAcknowledge, onUnacknowledge, onOpenLayer, currentChapter,
-  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent,
+  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent, onCheckAbility,
 }: WritePreflightProps) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
@@ -179,6 +181,11 @@ export default function WritePreflight({
       ) : null}
       {findings.length > 0 && (
         <div className="stage-preflight-actions">
+          {onCheckAbility === undefined ? null : (
+            <Button variant="text" size="sm" disabled={busy} onClick={onCheckAbility}>
+              {text('核对能力限制', 'Check ability limits')}
+            </Button>
+          )}
           {onCheckStyle === undefined ? null : (
             <Button variant="text" size="sm" disabled={busy} onClick={onCheckStyle}>
               {text('核对文风', 'Check prose style')}
