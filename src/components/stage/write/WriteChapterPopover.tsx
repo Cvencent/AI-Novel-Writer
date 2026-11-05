@@ -4,6 +4,7 @@ import type { ConsistencyPreflightResult } from '../../../services/consistency-p
 import { readConsistencyPreflight } from '../../../services/consistency-preflight'
 import { createCharacterCardForPreflight } from '../../../services/preflight-character-card'
 import { mergeModelFindings } from '../../../shared/merge-model-findings'
+import { MEMORY_ANCHOR_TARGET_CHAPTERS } from '../../../shared/memory-anchor-review'
 import type { ConsistencyFinding } from '../../../shared/consistency-preflight'
 import { ipc } from '../../../services/ipc-client'
 import {
@@ -283,15 +284,37 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     try {
       const prose = await recentFinalized(session)
       if (!isProjectSessionCurrent(session)) return
-      const target = prose.filter(chapter => chapter.chapterNumber === chapterNumber - 1)
+      /**
+       * 被检查的章：**不只上一章**（issue #175 建议 ②）。
+       *
+       * 记忆回指可以指向任意前文，没理由只查 N-1——而原实现只取 N-1，于是「最近几章里
+       * 有一章没回指句」时整次核对就是空转。取最近 MEMORY_ANCHOR_TARGET_CHAPTERS 章；
+       * 前文检索范围仍是全量（`earlier`，内部有 12 万字符上限）。
+       */
+      const target = prose
+        .filter(chapter => chapter.chapterNumber < chapterNumber
+          && chapter.chapterNumber >= chapterNumber - MEMORY_ANCHOR_TARGET_CHAPTERS)
+        .sort((left, right) => left.chapterNumber - right.chapterNumber)
       if (target.length === 0) {
-        setMessage(text('还没有上一章的定稿正文可核对。', 'There is no finalized previous chapter to check.'))
+        setMessage(text('还没有已定稿的正文可核对。', 'There is no finalized prose to check yet.'))
         return
       }
-      const earlier = prose.filter(chapter => chapter.chapterNumber < chapterNumber - 1)
+      const earliest = target[0]!.chapterNumber
+      const earlier = prose.filter(chapter => chapter.chapterNumber < earliest)
       const outcome = await reviewMemoryAnchors(session, target, earlier, locale)
       if (!isProjectSessionCurrent(session)) return
       if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
+      // issue #175：一次模型调用都没发时**明说**，不要伪装成「查过了没毛病」。
+      if (outcome.skipped === 'no-callbacks') {
+        setMessage(text(
+          `这 ${target.length} 章里没有「记得／想起」这类回指句，未发起核对（不是「查过了没问题」）。`,
+          `None of these ${target.length} chapter(s) contains a remembering sentence, so no check was sent — this is not "checked and clean".`))
+        return
+      }
+      if (outcome.skipped === 'no-earlier-chapters') {
+        setMessage(text('这几章之前没有更早的定稿正文，无从对照。', 'There is no earlier finalized prose to check against.'))
+        return
+      }
       mergeFindings(outcome.findings)
     } finally {
       setBusy(false)

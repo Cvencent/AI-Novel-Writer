@@ -521,6 +521,13 @@ export async function reviewAbilityLimits(
 export interface MemoryAnchorOutcome {
   status: 'ok' | 'failed'
   findings: ConsistencyFinding[]
+  /**
+   * 这次**没有可核对的回指句**，因此一次模型调用都没发（issue #175）。
+   *
+   * 现场：81 个写作时点里 51 个（63%）章节没有含记忆动词的句子，函数在这里提前返回，
+   * 而界面把空结果与「模型真的没找到」共用同一句文案 —— 作者以为「查过了、没问题」。
+   */
+  skipped?: 'no-callbacks' | 'no-earlier-chapters'
   error?: string
 }
 
@@ -531,10 +538,13 @@ export async function reviewMemoryAnchors(
   locale: 'zh-CN' | 'en-US' = 'zh-CN',
 ): Promise<MemoryAnchorOutcome> {
   const en = locale === 'en-US'
-  if (chapters.length === 0 || earlierChapters.length === 0) return { status: 'ok', findings: [] }
+  if (chapters.length === 0 || earlierChapters.length === 0) {
+    return { status: 'ok', findings: [], skipped: 'no-earlier-chapters' }
+  }
   const request = { chapters, earlierChapters, language: locale }
   const { system, user, callbacks } = buildMemoryAnchorPrompt(request)
-  if (callbacks.length === 0) return { status: 'ok', findings: [] }
+  // issue #175：没有回指句就**不发请求**，但要让调用方知道「没发」而不是「发了没找到」。
+  if (callbacks.length === 0) return { status: 'ok', findings: [], skipped: 'no-callbacks' }
   const response = await useLLMStore.getState().generate(
     [{ role: 'system', content: system }, { role: 'user', content: user }],
     undefined,

@@ -46,10 +46,36 @@ function sentencesOf(content: string): string[] {
   return String(content ?? '').split(/(?<=[。！？])|\n+/u).map(sentence => sentence.trim()).filter(Boolean)
 }
 
-/** 从一章里取出**记忆回指句**（含记忆动词、且长度足够承载一个动作描述）。 */
+/**
+ * 「时间状语 + 事件」式回指（issue #175 建议 ③）——**形式类**，不是题材词。
+ *
+ * 现场（第 80 章）两句都是这一形态，而 `MEMORY_VERB` 一个都不认：
+ *
+ * ```
+ * 周叙盯着放平的绳圈。昨晚在船舱口，他试打了几遍，最后一道收不紧。
+ * 「停船那晚，」他忽然开口，嗓子哑，「他从货舱取了个油布包。」
+ * ```
+ *
+ * 它们恰好是最容易与前文对不上的写法（「昨晚」指第 79 章章末那一场）。
+ *
+ * ⚠️ 这里只认**指向前文的时间标记**（相对日 / 序数日 / 完成态的「那晚」「当时」），
+ * 与 `chapter-time-anchor.ts` 同一套形式类。它只决定「把哪一句喂给模型」，
+ * 不判断「这件事在前文有没有发生」——那仍然是模型的活。
+ */
+const PAST_TIME_MARKER = /(?:昨晚|昨夜|昨天|前天|今早|今晨|那天|那晚|当晚|那一夜|那日|那年|头天|先前|早先|上一次|上回|前几天|前些天|此前|当时|过了?(?:一|两|二|三|几|数|半)?(?:夜|天|日|晚)|第[一二三四五六七八九十百千0-9]+(?:天|日|夜|回))/u
+
+/**
+ * 从一章里取出**回指句**（issue #167 的原始口径 + issue #175 的扩展）。
+ *
+ * 两类都收：
+ * 1. 含**记忆动词**的句子；
+ * 2. 含**指向前文的时间状语**的句子（「昨晚在船舱口，他试打了几遍」）。
+ *
+ * ⚠️ 只做**位置/形态**筛选（句长下限 + 上述两类标记），不判断这句话说的是不是真事。
+ */
 export function memoryCallbackSentences(chapterNumber: number, content: string): Array<{ chapterNumber: number, sentence: string }> {
   return sentencesOf(content)
-    .filter(sentence => MEMORY_VERB.test(sentence) && sentence.length >= 8)
+    .filter(sentence => sentence.length >= 8 && (MEMORY_VERB.test(sentence) || PAST_TIME_MARKER.test(sentence)))
     .map(sentence => ({ chapterNumber, sentence }))
 }
 
@@ -73,6 +99,15 @@ export interface MemoryAnchorRequest {
   maxEarlierChars?: number
 }
 
+/**
+ * 被检查的章数（issue #175 建议 ②）：回指可以指向任意前文，没理由只查上一章。
+ *
+ * 现场实测：81 个写作时点里只有 30 个（37%）的**上一章**含回指句，其余 51 个点一次
+ * 模型调用都不发；而最近 21 个时点里只有 7 个能真跑。取最近 3 章能把「上一章没回指句」
+ * 这一类空转挡掉大半——而检索范围（前文全量）本来就是喂进去的。
+ */
+export const MEMORY_ANCHOR_TARGET_CHAPTERS = 3
+
 /** 前文喂入上限：约 12 万字符（≈ 六七十章 800 字正文）。 */
 export const MEMORY_ANCHOR_MAX_EARLIER_CHARS = 120_000
 
@@ -95,7 +130,10 @@ export function buildMemoryAnchorPrompt(request: MemoryAnchorRequest): { system:
 
   const system = en
     ? [
-      'You are given a list of sentences in which a character REMEMBERS something, and the earlier chapters.',
+      'You are given sentences that look BACKWARD — either a character remembering something, or a sentence anchored by a past time phrase ("last night", "the night the boat stopped") — and the earlier chapters.',
+      // issue #175：取句口径含「时间状语 + 事件」，其中难免混入**将来**的句子（「开箱那天」）。
+      // 将来不是回指——由模型判断，不写时间词表。
+      'Some of these sentences may point FORWARD (something that will happen later). Do not report those; only look backward.',
       'For each remembered sentence, decide whether the thing being remembered actually happens in the earlier chapters.',
       'Report ONLY those memories whose described action, object, or scene cannot be found in the earlier chapters.',
       'A memory of something that happened in an earlier chapter is fine, even if it is described in different words — judge by meaning.',
@@ -106,7 +144,10 @@ export function buildMemoryAnchorPrompt(request: MemoryAnchorRequest): { system:
       'If nothing is missing, output {"issues":[]}. No commentary outside the JSON.',
     ].join('\n')
     : [
-      '下面是一组「人物在回忆某件事」的句子，以及前文章节正文。',
+      '下面是一组**指向前文**的句子（人物在回忆某件事，或句子带过去的时间状语，如「昨晚」「停船那晚」），以及前文章节正文。',
+      // issue #175：取句口径含「时间状语 + 事件」，其中难免混入**将来**的句子（「开箱那天，页角印」）。
+      // 将来不是回指——这条由模型判断，不写时间词表。
+      '有些句子其实指向**将来**（后面才会发生的事）。那些不要报，只看指向过去的。',
       '逐句判断：**被回忆的那件事，在前文里真的发生过吗**。',
       '只报**在被检查章之前的章节正文里找不到**的那些回忆。',
       '前文里确实写过的回忆是对的——哪怕这一句换了措辞；**按意思判断，不按字面**。',
