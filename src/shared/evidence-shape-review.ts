@@ -83,8 +83,8 @@ export interface EvidenceShapeIssue {
 
 export const EVIDENCE_SHAPE_KINDS = Object.freeze({
   'same-object-drift': [
-    '同一件物证（一枚印、一道痕、一件信物）在不同章里被当成同一件证据，但形态对不上（一圆一缺、一大一小、一深一浅），而正文没有交代它变过',
-    'the same piece of evidence described inconsistently across chapters with no in-story change',
+    '同一件物证（一枚印、一道痕、一件信物）在不同章里被当成同一件证据，但形态对不上（一圆一缺、一大一小、一深一浅）；**或同一个容器（盒盖内沿、夹层、柜格、内衬、封套）里装的东西换了**（一处是字、一处是印；一处是一页纸、一处是指模），而正文没有交代它被换过（issue #186）',
+    'the same piece of evidence described inconsistently across chapters with no in-story change — OR the CONTENTS of one container (a box lid rim, a lining, a drawer, an envelope) change from chapter to chapter (writing one time, a seal another; a page another time, a fingerprint another) with no in-story swap',
   ],
   'impossible-cause': [
     '物证的形态被归因到一个物理上不成立的人或动作（某人的某个部位缺了半节 → 于是印上有缺口，但他按印时用的不是那个部位；或者那件物证根本不会留下这种痕迹）',
@@ -115,6 +115,7 @@ export function buildEvidenceShapePrompt(request: EvidenceShapeRequest): { syste
       'Report only these three kinds of problem:',
       kinds,
       'Judge by meaning, not by a fixed word list: the same object may be named differently in each chapter, and a different object may share a description.',
+      'The CONTENTS of one container count as this axis too: the same box lid rim, lining, drawer or envelope holding writing in one chapter and a seal in another, or a page one time and a fingerprint another — report it when the prose never says it was taken out or swapped.',
       'A change that the prose itself explains (it was cleaned, replaced, damaged on the page) is NOT a problem.',
       'For "impossible-cause", use the character cards when given: if a body mark is said to explain a trace, check that the mark is on the part that would actually be used.',
       'Every report must quote exact sentences: one from the main chapter, and one from the chapter it conflicts with. If you cannot quote both, do not report.',
@@ -132,6 +133,10 @@ export function buildEvidenceShapePrompt(request: EvidenceShapeRequest): { syste
       '只报下面这三类问题：',
       kinds,
       '按**意思**判断，不要按固定词表：同一件物证在不同章里可能换了叫法，不同物件也可能共用同一个描述。',
+      // issue #186：现场是「同一个盒子的**内装物**」——ch78 盒盖内沿是**一行字**、夹层是**一页泡毁的纸**；
+      // ch83 变成「内沿浮出半个红印」「夹层的指模」（「指模」全书仅此一次）。
+      // 而这类容器（墨盒夹层、票夹里层、卷宗内衬）恰恰是本书反复用来放证据的地方。
+      '**同一个容器的内装物**也算这一档：同一个盒盖内沿、夹层、柜格、内衬、封套里，一处写的是字、另一处变成印；一处是一页纸、另一处变成指模——只要正文没有交代它被取出或换过，就要报。',
       '正文**自己交代过**的变化（被擦掉、被换掉、在这一章被弄坏）不算问题。',
       '判「成因不成立」时参考给出的角色卡：若某个身体标志被用来解释一处痕迹，要核那个标志是否长在**真正会用到**的部位上。',
       '每条都必须**逐字引用**两处：主问题那一章的一句，以及与之相悖的那一章的一句。引不出来就不要报。',

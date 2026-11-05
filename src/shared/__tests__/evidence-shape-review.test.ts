@@ -239,3 +239,74 @@ describe('保管关系突变 (issue #182)', () => {
     expect(custody!.issue.enUS).toContain('keeper')
   })
 })
+
+/**
+ * issue #186：**同一个容器的内装物**换了，也算物证形态漂移。
+ *
+ * 现场：ch78 盒盖内沿是「一行小字」（而且底下还有一层刻上去再蘸墨描的），
+ * 夹层是「一页纸」且「纸面湿透，什么也认不出」；
+ * ch83 同一两个位置变成「内沿浮出**半个红印**」「墨盒**夹层的指模**」——
+ * 「指模」全书仅此一次（词频实测 1 章）。而 ch83 整章的定罪链（两个缺口并排、对上了）
+ * 正架在这两处上。
+ *
+ * 判据原来只举「一枚印、一道痕、一件信物」这类**外在形态**，没提「容器里装什么」。
+ */
+describe('容器内装物也算形态漂移 (issue #186)', () => {
+  const request = {
+    chapters: [
+      { chapterNumber: 78, content: '先起的是盖内沿。一行小字浮出来，笔压匀，收锋慢。夹层那一页软下来。内沿那行还在，夹层那页已经翻开，纸面湿透，什么也认不出。' },
+      { chapterNumber: 83, content: '盒盖内沿凑近水汽。指腹抹过去，干墨慢慢泛开，半个红印浮出来。叶九看了邵广海一眼。“邵把头留在墨盒夹层的指模。我代按。”' },
+    ],
+    language: 'zh-CN' as const,
+  }
+
+  it('states that the CONTENTS of one container count as the same axis', () => {
+    const { system } = buildEvidenceShapePrompt(request)
+    // 描述里要有「容器 / 里装的东西」这一层，否则模型只会看外在形态。
+    expect(system).toContain('同一个容器')
+    expect(system).toContain('内装物')
+    // 具体到位置：盒盖内沿 / 夹层 / 柜格 / 内衬 / 封套。
+    expect(system).toContain('夹层')
+  })
+
+  it('names both container locations of the reported case in the prompt guidance', () => {
+    const { system } = buildEvidenceShapePrompt(request)
+    // 提示词要能把「内沿是字 vs 印」「夹层是纸 vs 模」这种对照问出来。
+    expect(system).toContain('盒盖内沿')
+    expect(system).toContain('一处是字')
+    expect(system).toContain('一页纸')
+  })
+
+  it('keeps the outer-shape wording (the #156 case must still be caught)', () => {
+    const { system } = buildEvidenceShapePrompt(request)
+    // 扩范围不许把原来那档挤掉：外在形态（一圆一缺）仍在描述里。
+    expect(system).toContain('一圆一缺')
+  })
+
+  it('accepts a report about a container’s contents whose two quotes locate verbatim', () => {
+    const parsed = parseEvidenceShapeReview(JSON.stringify({
+      issues: [{
+        kind: 'same-object-drift',
+        chapterNumber: 83,
+        quote: '半个红印浮出来',
+        conflictingChapterNumber: 78,
+        conflictingQuote: '一行小字浮出来',
+        explanation: '同一个盒盖内沿：前章是字、本章是印',
+      }],
+    }), { chapters: request.chapters })
+    expect(parsed).toHaveLength(1)
+  })
+
+  it('still requires both quotes to locate — a container claim is not a free pass', () => {
+    expect(parseEvidenceShapeReview(JSON.stringify({
+      issues: [{
+        kind: 'same-object-drift',
+        chapterNumber: 83,
+        quote: '内沿浮出一个印',
+        conflictingChapterNumber: 78,
+        conflictingQuote: '一行小字浮出来',
+        explanation: 'x',
+      }],
+    }), { chapters: request.chapters })).toEqual([])
+  })
+})
