@@ -5,6 +5,7 @@ import {
   dayGapOf,
   findUndatedStreak,
   findUndatedStreakFindings,
+  findOrdinalRegressionFindings,
   findTimeAnchorSelfContradictions,
   findUnmetTimeAnchorFindings,
   openingDayBoundary,
@@ -690,5 +691,107 @@ describe('事件锚点 + 次日 不是每次都跨日 (issue #196)', () => {
     // 两个不同事件名的「次日」不能互相当成同一天：85 是真跨日、86 也是。
     expect(findUnmetTimeAnchorFindings(chapters).map(finding => finding.stableFactKey))
       .toEqual(['chapter-time:anchor-unmet:85', 'chapter-time:anchor-unmet:86'])
+  })
+})
+
+/**
+ * issue #202：蓝图日序跳回。
+ *
+ * 现场：第 83 章「第十三日开箱日午前」→ 第 84–88 章全是相对写法（「开箱次日入夜」）
+ * → 第 89 章（结案对账）写回「第三日上午」，正文第一句也照抄。
+ *
+ * 两个问题：
+ *  1. 自证矛盾那条判据把**第 83 章**的日序当成「上一章」，于是文案说了一句假话
+ *     （「上章标注的是全书第 13 日」，而第 88 章原文里没有「第十三」）；
+ *  2. 全书日序回退**没有任何判据**——删掉括注「（紧接第88章次日）」后，一条都不报。
+ */
+describe('蓝图日序跳回 (issue #202)', () => {
+  /** 现场那七张蓝图（第 83–89 章）。 */
+  const live = [
+    { chapterNumber: 83, keyEvents: '【时点：第十三日开箱日午前】A。', content: '午前。' },
+    { chapterNumber: 84, keyEvents: '【时点：开箱日午后（紧接第83章）】B。', content: '午后。' },
+    { chapterNumber: 85, keyEvents: '【时点：开箱次日清晨（紧接第84章）】C。', content: '卯时。' },
+    { chapterNumber: 86, keyEvents: '【时点：开箱次日午后（紧接第85章）】D。', content: '午后。' },
+    { chapterNumber: 87, keyEvents: '【时点：开箱次日入夜（紧接第86章）】E。', content: '入夜。' },
+    { chapterNumber: 88, keyEvents: '【时点：开箱次日深夜（紧接第87章）】F。', content: '深夜。' },
+    { chapterNumber: 89, keyEvents: '【时点：第三日上午（紧接第88章次日）】G。', content: '第三日上午，公所门板卸下来。' },
+  ]
+
+  it('does not pass off a five-chapters-old day as "the previous chapter"', () => {
+    // 相对写法那几章把日序清空 → 第 89 章不再拿第 83 章的 13 去比，于是没有人说谎。
+    const findings = findTimeAnchorSelfContradictions(live)
+    expect(findings.map(finding => finding.stableFactKey)).toEqual([])
+  })
+
+  it('still reports a genuine adjacent contradiction (issue #147/#166 不许因此退化)', () => {
+    const chapters = [
+      // 上一章是第 2 日，本章写第 3 日却还说「紧接上一章」→ 真矛盾，必须照报。
+      { chapterNumber: 65, keyEvents: '【时点：第二日正午】A。', content: '正午。' },
+      { chapterNumber: 66, keyEvents: '【时点：第三天午后（紧接上一章）】B。', content: '午后。' },
+    ]
+    const findings = findTimeAnchorSelfContradictions(chapters)
+    expect(findings.map(finding => finding.stableFactKey))
+      .toEqual(['chapter-time:anchor-self-contradiction:66'])
+  })
+
+  it('names the chapter the day ordinal actually came from', () => {
+    const chapters = [
+      { chapterNumber: 80, keyEvents: '【时点：第十日】A。', content: 'A。' },
+      // 81 没标时点（不是相对写法），日序仍是第 80 章那个 —— 文案要点名第 80 章。
+      { chapterNumber: 81, keyEvents: '本章无时点。', content: 'B。' },
+      { chapterNumber: 82, keyEvents: '【时点：第二日（紧接上一章）】C。', content: 'C。' },
+    ]
+    const finding = findTimeAnchorSelfContradictions(chapters)[0]!
+    expect(finding.stableFactKey).toBe('chapter-time:anchor-self-contradiction:82')
+    expect(finding.evidence).toContain('第 80 章')
+    expect(finding.evidence).not.toContain('上章标注')
+  })
+
+  it('reports the whole-book day regression that neither existing criterion can see', () => {
+    const findings = findOrdinalRegressionFindings(live)
+    expect(findings.map(finding => finding.stableFactKey))
+      .toEqual(['chapter-time:ordinal-regression:89'])
+    const finding = findings[0]!
+    // 证据必须能落到具体章：是第 83 章已经写到第 13 日。
+    expect(finding.evidence).toContain('第 3 日')
+    expect(finding.evidence).toContain('第 83 章')
+    expect(finding.evidence).toContain('第 13 日')
+    expect(finding.sourceChapter).toBe(89)
+  })
+
+  it('sees the regression even when the "紧接" parenthetical is deleted', () => {
+    // 这正是 #202 的核心：删掉括注后自证矛盾那条 0 条，回退必须仍被看见。
+    const withoutParenthetical = live.map(chapter => chapter.chapterNumber === 89
+      ? { ...chapter, keyEvents: '【时点：第三日上午】G。' }
+      : chapter)
+    expect(findTimeAnchorSelfContradictions(withoutParenthetical)).toEqual([])
+    expect(findOrdinalRegressionFindings(withoutParenthetical).map(finding => finding.stableFactKey))
+      .toEqual(['chapter-time:ordinal-regression:89'])
+  })
+
+  it('stays quiet on a monotonically advancing timeline', () => {
+    const chapters = [
+      { chapterNumber: 1, keyEvents: '【时点：第一日】A。', content: 'A。' },
+      { chapterNumber: 2, keyEvents: '【时点：第三日（紧接第二章）】B。', content: 'B。' },
+      { chapterNumber: 3, keyEvents: '【时点：第三日深夜至第四日清晨】C。', content: 'C。' },
+      { chapterNumber: 4, keyEvents: '【时点：次日清晨】D。', content: 'D。' },
+      { chapterNumber: 5, keyEvents: '【时点：第七日】E。', content: 'E。' },
+    ]
+    expect(findOrdinalRegressionFindings(chapters)).toEqual([])
+  })
+
+  it('reads chapters in chapter order regardless of the caller’s array order', () => {
+    const shuffled = [live[6]!, live[0]!, live[3]!, live[1]!, live[5]!, live[2]!, live[4]!]
+    expect(findOrdinalRegressionFindings(shuffled).map(finding => finding.stableFactKey))
+      .toEqual(['chapter-time:ordinal-regression:89'])
+  })
+
+  it('does not regress when only the interval head goes back inside one chapter', () => {
+    // 区间 [第七日深夜, 第八日清晨] 写在同一张蓝图里 → 首端 7 比 reached 7 不小，不报。
+    const chapters = [
+      { chapterNumber: 1, keyEvents: '【时点：第七日】A。', content: 'A。' },
+      { chapterNumber: 2, keyEvents: '【时点：第七日深夜至第八日清晨】B。', content: 'B。' },
+    ]
+    expect(findOrdinalRegressionFindings(chapters)).toEqual([])
   })
 })

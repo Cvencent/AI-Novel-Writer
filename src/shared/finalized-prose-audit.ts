@@ -58,7 +58,7 @@ import {
 // 句长是**形式**，留在这里；比喻/生理套话/段尾总结/意象是**内容**，交模型（见 prose-style-review.ts）。
 import { sentenceLengthDriftFindings, sentenceLengthFindings } from './sentence-length'
 // 段落起手（#94）与物件过手（#95）：同一类「跨章看同一种写法」的位置轴补位。
-import { findTimeAnchorSelfContradictions, findUndatedStreakFindings, findUnmetTimeAnchorFindings } from './chapter-time-anchor'
+import { findOrdinalRegressionFindings, findTimeAnchorSelfContradictions, findUndatedStreakFindings, findUnmetTimeAnchorFindings } from './chapter-time-anchor'
 // 字形断言（#99）：正文里「半个 X 字，Y 旁」把偏旁说错——单章可判，且是最容易机器判的一类。
 import { glyphRadicalFindings } from './glyph-radical'
 // 已登记角色名的同后缀异姓漂移（#102）：正文把「陆敬堂」写成「穆敬堂」。
@@ -257,6 +257,12 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   // 括注与日序不能同时成立。这类要先在蓝图侧定下来，否则起草无论怎么写都有一半错，
   // 也不该拿它去要求正文补日界。
   const timeAnchorSelfContradiction = findTimeAnchorSelfContradictions(timeAnchoredChapters)
+  /**
+   * 全书日序回退（issue #202）：本章标的日序比前面已经写到的那一天更早。
+   * 与上面两条**正交**——不依赖括注、不依赖相邻，只比大小；删掉括注也看得见
+   * （现场第 89 章把「紧接第88章次日」删掉后，自证矛盾那条 0 条，这条仍在）。
+   */
+  const ordinalRegression = findOrdinalRegressionFindings(timeAnchoredChapters)
   // 正文层年龄账本（issue #149）：本章写了年龄、却一处都归不到在册角色 → 这条年龄没有任何落点。
   // 用全量已定稿章：年龄声明稀疏（实测 69 章只有 2 处），窗口切小会把它们切出样本。
   const unreconcilableAge = findUnreconcilableAgeFindings(chapters, castNames)
@@ -347,7 +353,7 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   })))
 
   const findings: ConsistencyFinding[] = [...closingLabel, ...numbering, ...ability, ...declaredCount, ...repetition, ...undelivered,
-    ...ultimatum, ...pendingLanding, ...reversal, ...undatedStreak, ...unmetTimeAnchor, ...timeAnchorSelfContradiction, ...unreconcilableAge, ...proseFlavor, ...positionalAxes, ...glyphRadical,
+    ...ultimatum, ...pendingLanding, ...reversal, ...undatedStreak, ...unmetTimeAnchor, ...timeAnchorSelfContradiction, ...ordinalRegression, ...unreconcilableAge, ...proseFlavor, ...positionalAxes, ...glyphRadical,
     ...castNameDrift, ...deadlineSettlement, ...repeatedRevocation, ...duplicateTitles,
     ...abilityLimitBypass, ...handwritingConflicts, ...quoteStyleDrift, ...staleStateDuration,
     ...propContainerDeparture, ...inventorySameChapter, ...inventoryShortfall, ...gaugeScale,

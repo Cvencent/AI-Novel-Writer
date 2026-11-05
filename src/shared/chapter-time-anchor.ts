@@ -410,6 +410,18 @@ export function findTimeAnchorSelfContradictions(
     .filter(chapter => Number.isSafeInteger(chapter.chapterNumber))
     .sort((left, right) => left.chapterNumber - right.chapterNumber)
   let previousOrdinal: number | null = null
+  /**
+   * 那个日序是**哪一章**标的（issue #202）。
+   *
+   * 现场：第 84–88 章的【时点】全用相对写法（「开箱次日入夜」），旧实现在这些章上
+   * **不推进** `previousOrdinal`，于是它一直停在**第 83 章**的「第十三日」；
+   * 第 89 章写「第三日上午（紧接第88章次日）」时，判据拿 13 去比 3，
+   * 报出来的原话是「**上章标注的是全书第 13 日**」——而第 88 章原文里根本没有「第十三」，
+   * 这句陈述本身是假的。作者照它改（改成第十三日）反而把时间线改得更错。
+   *
+   * 记下出处，文案才能说实话；相对写法把日序清空，别让五章前的数字冒充上一章。
+   */
+  let previousOrdinalAtChapter: number | null = null
   for (const chapter of ordered) {
     const anchor = timeAnchorOf(chapter.keyEvents ?? '')
     if (!anchor) continue
@@ -434,15 +446,16 @@ export function findTimeAnchorSelfContradictions(
     const ordinal = startOrdinal
     if (ordinal !== null && previousOrdinal !== null && ordinal !== previousOrdinal
       && ADJACENT_TO_PREVIOUS.test(anchor)) {
+      const fromChapter = previousOrdinalAtChapter ?? chapter.chapterNumber
       findings.push({
         // 章号是既成事实，不随写作推进而变（#86/#89/#98/#108）。
         stableFactKey: `chapter-time:anchor-self-contradiction:${chapter.chapterNumber}`,
         severity: 'warning' as const,
         sourceChapter: chapter.chapterNumber,
-        evidence: `第${chapter.chapterNumber}章蓝图【时点：${anchor}】：括注说紧接上一章，而上章标注的是全书第 ${previousOrdinal} 日，本章标的是第 ${ordinal} 日`,
+        evidence: `第${chapter.chapterNumber}章蓝图【时点：${anchor}】：括注说紧接上一章，而第 ${fromChapter} 章标注的是全书第 ${previousOrdinal} 日，本章标的是第 ${ordinal} 日`,
         issue: {
-          zhCN: `蓝图自己打自己：本章【时点】写着「${anchor}」——括注说「紧接上一章」，可括注外写的是全书第 ${ordinal} 日，而上一章标的是第 ${previousOrdinal} 日。两者不能同时成立：真紧接就应是第 ${previousOrdinal} 日，真到第 ${ordinal} 日就不算紧接。这一处不先定下来，起草时无论写出哪种都有一半是错的。`,
-          enUS: `The blueprint contradicts itself: 【时点: ${anchor}】 says it directly follows the previous chapter, yet it also places the chapter on story day ${ordinal} while the previous chapter is on day ${previousOrdinal}. Both cannot hold: if it truly follows, it is day ${previousOrdinal}; if it truly is day ${ordinal}, it does not directly follow. Until this is settled, whatever the draft writes will be half wrong.`,
+          zhCN: `蓝图自己打自己：本章【时点】写着「${anchor}」——括注说「紧接上一章」，可括注外写的是全书第 ${ordinal} 日，而第 ${fromChapter} 章标注的是第 ${previousOrdinal} 日${fromChapter === chapter.chapterNumber - 1 ? '' : '（中间几章用的是相对写法，没写绝对日序）'}。两者不能同时成立：真紧接就应接在第 ${previousOrdinal} 日之后，真到第 ${ordinal} 日就不算紧接。这一处不先定下来，起草时无论写出哪种都有一半是错的。`,
+          enUS: `The blueprint contradicts itself: 【时点: ${anchor}】 says it directly follows the previous chapter, yet it also places the chapter on story day ${ordinal} while chapter ${fromChapter} is on day ${previousOrdinal}${fromChapter === chapter.chapterNumber - 1 ? '' : ' (the chapters in between use relative wording and never state an absolute day)'}. Both cannot hold: if it truly follows, it comes after day ${previousOrdinal}; if it truly is day ${ordinal}, it does not directly follow. Until this is settled, whatever the draft writes will be half wrong.`,
         },
         suggestion: {
           zhCN: `二选一：这一章确实紧接着上一章 → 把绝对写法改成相对的（「同日午后」「当夜（紧接上一章）」都是蓝图合同认可的写法）；这一章真到了第 ${ordinal} 日 → 删掉「紧接上一章」，并注意上一章之后确实过了一天。改完再看正文要不要补日界——蓝图没自相矛盾之前，别动正文。`,
@@ -450,8 +463,83 @@ export function findTimeAnchorSelfContradictions(
         },
       })
     }
-    // ⚠️ 推进用**末端**：区间 [第七日深夜, 第八日清晨] 的下一章应从第 8 日接上。
-    if (endOrdinal !== null) previousOrdinal = endOrdinal
+    /**
+     * 推进（issue #202）：
+     * - 有绝对日序 → 用**末端**（区间 [第七日深夜, 第八日清晨] 的下一章从第 8 日接上）；
+     * - **只有相对写法** → 日序**不可比**，清空，别沿用五章前的数字。
+     */
+    if (endOrdinal !== null) {
+      previousOrdinal = endOrdinal
+      previousOrdinalAtChapter = chapter.chapterNumber
+    } else {
+      previousOrdinal = null
+      previousOrdinalAtChapter = null
+    }
+  }
+  return findings
+}
+
+/**
+ * 全书日序**回退**（issue #202）。
+ *
+ * 现场：第 83 章「第十三日开箱日午前」→ 第 84–88 章一路推进到「开箱次日深夜」→
+ * 第 89 章（结案对账）突然写回「**第三日上午**」，正文第一句也照抄。
+ * 而此前第 65 章已经用过「第三日正午」——同一部书里「第三日」出现两次，中间隔了 24 章。
+ *
+ * 为什么现有两条判据都看不见：
+ * - `findUnmetTimeAnchorFindings` 只比**相邻两侧**（本章标注 vs 本章正文），不比全书；
+ * - `findTimeAnchorSelfContradictions` 只跟**上一张**蓝图比，而且它需要括注「紧接上一章」
+ *   才开口——第 89 章把括注删掉、内容一字不改，同一条判据 0 条。
+ *
+ * 这条判据与它们**正交**：不依赖括注、不依赖相邻，只问一句
+ * 「本章写的日序，比前面已经写到的那一天更早吗」。
+ *
+ * ⚠️ 这是**计数**不是内容判断（issue §1.7.1 的划界）：「第 N 日」里的 N 是序数，
+ * 比较两个 N 的大小是算术，不做任何语义理解。因此它不判「这样写对不对」——
+ * 有意的回溯/回忆也是合法的，所以文案只陈述事实并给出两条出路（改日序 / 说明是回溯），
+ * 由作者决定，ack 机制照常可用。
+ *
+ * ⚠️ 只看**蓝图【时点】**，不扫正文：正文里的「第三日」可能是角色台词引述（「他说的第三日」），
+ * 把它当日序会让判据在对话上误报。蓝图的【时点】是作者对本章时间位置的声明，口径单一。
+ */
+export function findOrdinalRegressionFindings(
+  chapters: readonly TimeAnchoredChapter[],
+): ConsistencyFinding[] {
+  const findings: ConsistencyFinding[] = []
+  const ordered = [...chapters]
+    .filter(chapter => Number.isSafeInteger(chapter.chapterNumber))
+    .sort((left, right) => left.chapterNumber - right.chapterNumber)
+  /** 目前为止写到的**最晚**一天，以及它出现在哪一章（证据要能落到具体章）。 */
+  let reached: { ordinal: number; chapterNumber: number; anchor: string } | null = null
+  for (const chapter of ordered) {
+    const anchor = timeAnchorOf(chapter.keyEvents ?? '')
+    if (!anchor) continue
+    const ordinals = chapterBoundaryHits(anchor)
+      .map(hit => hit.ordinal).filter((value): value is number => value !== null)
+    if (ordinals.length === 0) continue
+    // 比较用**首端**（本章从哪一天接上）；推进用**末端**（本章写到哪一天）。
+    const startOrdinal = ordinals[0]!
+    const endOrdinal = ordinals.at(-1)!
+    if (reached !== null && startOrdinal < reached.ordinal) {
+      findings.push({
+        // 章号是既成事实，不随写作推进而变（#86/#89/#98/#108）。
+        stableFactKey: `chapter-time:ordinal-regression:${chapter.chapterNumber}`,
+        severity: 'warning' as const,
+        sourceChapter: chapter.chapterNumber,
+        evidence: `第${chapter.chapterNumber}章蓝图【时点：${anchor}】：本章标全书第 ${startOrdinal} 日，而第 ${reached.chapterNumber} 章已经写到第 ${reached.ordinal} 日（【时点：${reached.anchor}】）`,
+        issue: {
+          zhCN: `全书日序在这一章往回跳了：本章【时点】写「${anchor}」= 第 ${startOrdinal} 日，而第 ${reached.chapterNumber} 章已经写到第 ${reached.ordinal} 日（「${reached.anchor}」）。中间几章用的是相对写法（「次日」「开箱次日」这类），没有绝对日序可比，所以此前没人发现这条回退——但全书往前读，时间是倒着走的。正文照蓝图写，这条就会进事实账本，后面每一章都从第 ${startOrdinal} 日往后算。`,
+          enUS: `The story day jumps backwards here: 【时点: ${anchor}】 places this chapter on day ${startOrdinal}, while chapter ${reached.chapterNumber} already reached day ${reached.ordinal} ("${reached.anchor}"). The chapters in between use relative wording ("next day", "the day after the unsealing"), which never states an absolute day, so nothing caught the regression — yet reading the book forward, time runs backwards. If the prose follows the blueprint, this lands in the fact ledger and every later chapter counts from day ${startOrdinal}.`,
+        },
+        suggestion: {
+          zhCN: `二选一：这一章确实在结案之后 → 把日序改成接在第 ${reached.ordinal} 日之后（写到哪一天就标哪一天）；这一章是**有意的回溯/回忆** → 在【时点】里写明它是回溯（例如「第 ${startOrdinal} 日（回溯）」），让判据与账本都认得出这不是当前时间线。不要只把数字改大而正文不动——正文第一句同样写着这个日序。`,
+          enUS: `Pick one: if this chapter really comes after the wrap-up, move the day past day ${reached.ordinal} (state whichever day it actually is); if it is deliberately a flashback, say so in 【时点】 (e.g. "day ${startOrdinal} (flashback)") so the criterion and the ledger can tell it apart from the present timeline. Don't just bump the number and leave the prose alone — the first sentence states the same day.`,
+        },
+      })
+    }
+    if (reached === null || endOrdinal > reached.ordinal) {
+      reached = { ordinal: endOrdinal, chapterNumber: chapter.chapterNumber, anchor }
+    }
   }
   return findings
 }
