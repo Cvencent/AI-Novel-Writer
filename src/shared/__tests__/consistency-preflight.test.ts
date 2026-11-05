@@ -352,7 +352,7 @@ describe('findUnregisteredBlueprintCast (issue #42)', () => {
   const castNames = ['周叙', '温珩', '陆敬堂', '阿茂', '陈阿水', '柯有顺', '陶有根', '邵德昌']
 
   it('蓝图角色不在名册时给出可见性提示，并说明后果与两条出路', () => {
-    const findings = findUnregisteredBlueprintCast({ chapterNumber: 11, blueprintCharacters: ['周叙', '任九', '温珩'], castNames })
+    const findings = findUnregisteredBlueprintCast({ schedules: [{ chapterNumber: 11, characters: ['周叙', '任九', '温珩'] }], castNames })
     expect(findings).toHaveLength(1)
     expect(findings[0]).toMatchObject({ severity: 'warning', sourceChapter: 11 })
     expect(findings[0]!.issue.zhCN).toContain('任九')
@@ -364,16 +364,93 @@ describe('findUnregisteredBlueprintCast (issue #42)', () => {
   })
 
   it('全部在册时不产生提示（正常章节不打扰作者）', () => {
-    expect(findUnregisteredBlueprintCast({ chapterNumber: 12, blueprintCharacters: ['周叙', '温珩'], castNames })).toEqual([])
+    expect(findUnregisteredBlueprintCast({ schedules: [{ chapterNumber: 12, characters: ['周叙', '温珩'] }], castNames })).toEqual([])
   })
 
-  it('每章最多 4 条，避免一次性挤占上下文', () => {
+  it('一次最多 4 条，避免一次性挤占上下文', () => {
     const findings = findUnregisteredBlueprintCast({
-      chapterNumber: 13,
-      blueprintCharacters: ['周叙', '甲一', '乙二', '丙三', '丁四', '戊五'],
+      schedules: [{ chapterNumber: 13, characters: ['周叙', '甲一', '乙二', '丙三', '丁四', '戊五'] }],
       castNames,
     })
     expect(findings).toHaveLength(4)
+  })
+})
+
+/**
+ * issue #160：徐汐式——8 章出场、9 段台词、承担主线伏笔的承重配角，从头到尾没进过角色卡。
+ *
+ * 三层都知道（蓝图 6 章列了她、这条判据 6 章各报一条、正文她在说话），但**没有一层能把它
+ * 变成一次写入**：key 带章号 → 6 章 6 个 key，逐条挂起永远消解不了；文案写着「建卡」，
+ * 弹层里这个动作点不到。所以这里断言三件事：合并、承重、自带动作。
+ */
+describe('findUnregisteredBlueprintCast (issue #160)', () => {
+  const castNames = ['周叙', '温珩', '邵广海', '叶九', '柯明远', '林棠', '全叔']
+
+  it('同一个人跨多章只报一条，key 不带章号（否则逐章重报、永远消解不了）', () => {
+    const findings = findUnregisteredBlueprintCast({
+      schedules: [64, 65, 66, 67, 68, 70].map(chapterNumber => ({
+        chapterNumber, characters: ['周叙', '徐汐'],
+      })),
+      castNames,
+    })
+    expect(findings).toHaveLength(1)
+    // 键稳定：不嵌章号，ack 一次全书静音（与 #86/#89/#98/#108 同一条规矩）。
+    expect(findings[0]!.stableFactKey).toBe('blueprint-cast:unregistered:徐汐')
+    expect(findings[0]!.stableFactKey).not.toMatch(/:\d+/u)
+  })
+
+  it('承重门槛：进 ≥3 章蓝图即算承重，文案点名「从第几章起就在报」', () => {
+    const findings = findUnregisteredBlueprintCast({
+      schedules: [64, 65, 66].map(chapterNumber => ({ chapterNumber, characters: ['徐汐'] })),
+      castNames,
+    })
+    expect(findings[0]!.issue.zhCN).toContain('第64–66章')
+    expect(findings[0]!.issue.zhCN).toContain('共 3 章')
+    expect(findings[0]!.issue.zhCN).toContain('从第64章起就在报')
+    expect(findings[0]!.evidence).toContain('共 3 章')
+  })
+
+  it('正文台词的承重判据：只进 1 章蓝图但有 ≥2 段台词，同样算承重', () => {
+    const findings = findUnregisteredBlueprintCast({
+      schedules: [{ chapterNumber: 64, characters: ['徐汐'] }],
+      castNames,
+      prose: [{
+        chapterNumber: 64,
+        content: '「我姓徐。」她开口。「徐汐。徐哥是我哥。」',
+      }],
+    })
+    expect(findings[0]!.evidence).toContain('正文 2 段台词')
+    expect(findings[0]!.issue.zhCN).toContain('持续出场')
+  })
+
+  it('轻的（一章、没台词）不升级文案，仍走「换成身份称呼」那条路', () => {
+    const findings = findUnregisteredBlueprintCast({
+      schedules: [{ chapterNumber: 3, characters: ['李五'] }],
+      castNames,
+      prose: [{ chapterNumber: 3, content: '李五把船撑开，没说话。' }],
+    })
+    expect(findings[0]!.issue.zhCN).toContain('本章蓝图')
+    expect(findings[0]!.suggestion.zhCN).toContain('身份称呼')
+  })
+
+  it('提醒自带「一键建卡」动作（文案说要建卡，界面上就得能点）', () => {
+    const findings = findUnregisteredBlueprintCast({
+      schedules: [64, 65, 66].map(chapterNumber => ({ chapterNumber, characters: ['徐汐'] })),
+      castNames,
+    })
+    expect(findings[0]!.action).toEqual({ kind: 'create-character', name: '徐汐' })
+    expect(findings[0]!.suggestion.zhCN).toContain('为「徐汐」建卡')
+  })
+
+  it('承重的排在前面（轻的会被挂起，承重的被挤出前 4 条就更容易一直没人管）', () => {
+    const findings = findUnregisteredBlueprintCast({
+      schedules: [
+        { chapterNumber: 1, characters: ['路人甲'] },
+        ...([64, 65, 66].map(chapterNumber => ({ chapterNumber, characters: ['徐汐'] }))),
+      ],
+      castNames,
+    })
+    expect(findings[0]!.action).toEqual({ kind: 'create-character', name: '徐汐' })
   })
 })
 

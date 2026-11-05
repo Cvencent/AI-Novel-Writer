@@ -1,6 +1,8 @@
 import { useEffect, useId, useState } from 'react'
 import { ChevronRight, PenLine } from 'lucide-react'
 import type { ConsistencyPreflightResult } from '../../../services/consistency-preflight'
+import { readConsistencyPreflight } from '../../../services/consistency-preflight'
+import { createCharacterCardForPreflight } from '../../../services/preflight-character-card'
 import type { ConsistencyFinding } from '../../../shared/consistency-preflight'
 import { ipc } from '../../../services/ipc-client'
 import {
@@ -493,6 +495,51 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     if (done) await start(false, done)
   }
 
+  /**
+   * 「为「X」建卡」（issue #160）：提醒自带动作时一键落一张空卡。
+   *
+   * 建成后把这一层重读一遍：卡在名册里，这条提醒（key 按名字，不含章号）自然消失。
+   * 失败只报原因、不动预检——别在作者没弄清为什么失败时把提醒藏起来。
+   */
+  const createCharacterCard = async (name: string) => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || busy) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      const outcome = await createCharacterCardForPreflight(session, {
+        name,
+        note: text(
+          `由第 ${chapterNumber} 章的写前预检建卡（蓝图里连续出场但名册里没有）。内容待补。`,
+          `Created by the Chapter ${chapterNumber} write preflight: cast in the blueprint but missing from the roster. Details to be filled in.`,
+        ),
+      })
+      if (!isProjectSessionCurrent(session)) return
+      if (outcome.status === 'failed') {
+        setMessage(text(`建卡失败：${outcome.error}`, `Could not create the card: ${outcome.error}`))
+        return
+      }
+      // 名册变了：这一层重读，免得作者照旧看到「没有这个人」。
+      const refreshed = await readConsistencyPreflight(session, [{
+        chapterNumber, title: blueprint.title, role: blueprint.role, purpose: blueprint.purpose,
+        keyEvents: blueprint.keyEvents,
+        characters: blueprint.characters.split(/[、,，]/u).map(value => value.trim()).filter(Boolean),
+        suspenseHook: blueprint.suspenseHook ?? '', costsAndTurns: blueprint.costsAndTurns ?? '',
+        foreshadowing: blueprint.foreshadowing, userGuidance: blueprint.userGuidance, notes: '',
+      }], chapterDefaultWordsTarget(useProjectStore.getState().currentProject?.novelConfig.wordsPerChapter))
+      if (!isProjectSessionCurrent(session)) return
+      setPreflight(refreshed)
+      setMessage(outcome.status === 'already-exists'
+        ? text(`角色名单里已经有「${name}」，不需要再建。`, `The roster already has “${name}”.`)
+        : text(`已为「${name}」建卡（姓名 + 定位）。接下来在角色名单里补身世、称呼与首次出场即可。`,
+          `Created a card for “${name}” (name + role). Add their background, how they are addressed, and first appearance on the roster.`))
+    } catch (error) {
+      if (isProjectSessionCurrent(session)) setMessage(error instanceof Error ? error.message : String(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const unacknowledgeFinding = async (stableFactKey: string) => {
     const done = await changeArrangement(text('恢复该提醒失败', 'Could not show this reminder again.'),
       session => ipc.invokeWithProjectSession(session, 'db:consistency-ack-revoke', stableFactKey, session.projectPath))
@@ -584,6 +631,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           onCheckContent={() => void checkContent()}
           onCheckAbility={() => void checkAbility()}
           onCheckMemory={() => void checkMemory()}
+          onCreateCharacter={name => void createCharacterCard(name)}
           repairProposal={repairProposal}
           onApplyRepairField={field => void applyRepair([field])}
           onApplyRepairAll={() => void applyRepair(null)}

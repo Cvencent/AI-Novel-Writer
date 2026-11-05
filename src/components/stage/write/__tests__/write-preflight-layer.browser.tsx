@@ -340,3 +340,72 @@ describe('动作行不许把按钮甩出弹层 (issue #165)', () => {
     expect(host!.querySelector('.stage-preflight-actions')?.textContent).not.toContain('核对能力限制')
   })
 })
+
+/**
+ * issue #160：提醒**自己说要建卡**的时候，界面上就得能点。
+ *
+ * 现场：文案写着「就在角色名单里为「徐汐」建卡」，弹层里 `建卡` 两个字一次都点不到，
+ * 于是那条提醒从第 64 章重报到第 70 章。这条测试钉住三件事：
+ *   1. 带 `action.create-character` 的提醒渲染出这个按钮，并把名字带给调用方；
+ *   2. 不带动作的提醒**不**渲染它（绝大多数提醒不该多出一个按钮）；
+ *   3. 批量写作（不传 `onCreateCharacter`）不渲染它——那里作者还没进那一章的上下文。
+ */
+describe('未建档角色的一键建卡出口 (issue #160)', () => {
+  const castFinding = {
+    stableFactKey: 'blueprint-cast:unregistered:徐汐',
+    severity: 'warning' as const,
+    sourceChapter: 70,
+    evidence: '「徐汐」进了第64–70章的蓝图出场名单、正文 9 段台词，角色卡名册里没有这个人',
+    issue: { zhCN: '徐汐持续出场但没有角色卡。', enUS: '徐汐 appears but has no card.' },
+    suggestion: { zhCN: '点「为「徐汐」建卡」。', enUS: 'Use “Create a card for 徐汐”.' },
+    action: { kind: 'create-character' as const, name: '徐汐' },
+  }
+
+  const mountWithAction = async (options: { withHandler?: boolean; findings?: unknown[] } = {}) => {
+    const created: string[] = []
+    host = document.createElement('div')
+    host.className = 'paper-ink stage-shell'
+    host.style.cssText = 'width:360px;overflow:hidden;position:relative'
+    document.body.append(host)
+    root = createRoot(host)
+    const common = {
+      preflight: { ...preflight, findings: (options.findings ?? [castFinding]) as never },
+      busy: false,
+      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onRevoke: vi.fn(),
+      onAcknowledge: vi.fn(), onUnacknowledge: vi.fn(),
+      onOpenLayer: vi.fn(), currentChapter: 75,
+    }
+    const extra = options.withHandler === false ? {} : { onCreateCharacter: (name: string) => created.push(name) }
+    await act(async () => root!.render(<WritePreflight {...common} {...extra} />))
+    return created
+  }
+
+  it('renders the create-card button and hands the name to the caller', async () => {
+    const created = await mountWithAction()
+    await expect.element(page.getByRole('button', { name: '为「徐汐」建卡' })).toBeVisible()
+    await act(async () => page.getByRole('button', { name: '为「徐汐」建卡' }).click())
+    expect(created).toEqual(['徐汐'])
+  })
+
+  it('does not render it for findings that carry no action', async () => {
+    await mountWithAction({ findings: [finding('cast:absent:全叔', 9)] })
+    expect([...host!.querySelectorAll('button')].map(node => node.textContent).filter(t => t?.includes('建卡'))).toEqual([])
+  })
+
+  it('stays hidden in the batch dialog (no handler): there is no single chapter context', async () => {
+    await mountWithAction({ withHandler: false })
+    expect([...host!.querySelectorAll('button')].map(node => node.textContent).filter(t => t?.includes('建卡'))).toEqual([])
+    // 「我已知」仍在，作者不是没有出口。
+    await expect.element(page.getByRole('button', { name: '我已知，稍后处理' }).first()).toBeVisible()
+  })
+
+  it('keeps the new button inside the popover edges (issue #165 不会因此复发)', async () => {
+    await mountWithAction()
+    const shell = host!.getBoundingClientRect()
+    for (const button of [...host!.querySelectorAll('button')]) {
+      const rect = button.getBoundingClientRect()
+      expect(rect.left, `${button.textContent} 左边越界`).toBeGreaterThanOrEqual(shell.left - 0.5)
+      expect(rect.right, `${button.textContent} 右边越界`).toBeLessThanOrEqual(shell.right + 0.5)
+    }
+  })
+})

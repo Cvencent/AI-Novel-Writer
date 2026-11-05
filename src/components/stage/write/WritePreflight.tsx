@@ -71,6 +71,15 @@ interface WritePreflightProps {
   onCheckAbility?: () => void
   /** 「核对记忆回指」（#167）。不传时不渲染。 */
   onCheckMemory?: () => void
+  /**
+   * 「为「X」建卡」（issue #160）：提醒**自带**可执行动作时给这个出口。
+   *
+   * 现场：文案写着「就在角色名单里为「徐汐」建卡」，弹层里 `建卡` 两个字一次都点不到，
+   * 那条提醒于是从第 64 章一路重报到第 70 章。这里把动作接上——一键按名建一张空卡并落库。
+   *
+   * ⚠️ **可选**：批量写作对话框（一次写多章）不传它——那里作者还没进到那一章的上下文。
+   */
+  onCreateCharacter?: (name: string) => void
   /** 模型给出的改写建议（差异面板）。null 表示当前没有待确认的改写。 */
   repairProposal?: RepairProposal | null
   onApplyRepairField?: (field: string) => void
@@ -90,7 +99,7 @@ interface WritePreflightProps {
  */
 export default function WritePreflight({
   preflight, busy, onIgnoreOnce, onRerun, onSave, onRevoke, onAcknowledge, onUnacknowledge, onOpenLayer, currentChapter,
-  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent, onCheckAbility, onCheckMemory,
+  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent, onCheckAbility, onCheckMemory, onCreateCharacter,
 }: WritePreflightProps) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
@@ -142,6 +151,22 @@ export default function WritePreflight({
               <Button variant="text" size="sm" disabled={busy} onClick={() => onAcknowledge(finding.stableFactKey)}>
                 {text('我已知，稍后处理', 'Noted — deal with it later')}
               </Button>
+              {/*
+                issue #160：提醒**自带**动作时优先给这个出口。
+                「为「徐汐」建卡」排在「我已知」之后但在「去角色名单改」之前——它是一条
+                **真能一键做完**的事，而「去角色名单改」只是把人送过去还得手打。
+                判据没有动作（绝大多数提醒）时这一段不渲染，作者的出口不变。
+              */}
+              {finding.action?.kind === 'create-character' && onCreateCharacter !== undefined ? (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => onCreateCharacter(finding.action!.name)}
+                >
+                  {text(`为「${finding.action.name}」建卡`, `Create a card for ${finding.action.name}`)}
+                </Button>
+              ) : null}
               {/*
                 issue #137：这条提醒该去哪一层改。
                 ⚠️ 只有写前那一刻真能改的才给按钮：读已定稿正文的判据（`prose:*`）此刻

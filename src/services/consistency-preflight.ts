@@ -95,11 +95,29 @@ export async function readConsistencyPreflight(
     .filter(Boolean)
   // 蓝图引入了不在名册里的角色（issue #42）：任九式。放在这里而不是只在起草命令里，
   // 是因为审稿与写前预检共用同一个结果，作者在定稿前也能看到。
-  const unregisteredFindings = blueprints.flatMap(blueprint => findUnregisteredBlueprintCast({
-    chapterNumber: blueprint.chapterNumber,
-    blueprintCharacters: blueprint.characters,
+  // issue #160：改成**按名字合并全书**——同一个人不再逐章重报（key 去掉章号），
+  // 承重的（多章出场 / 有台词）排在前面，并带上「一键建卡」动作。
+  const unregisteredFindings = findUnregisteredBlueprintCast({
+    // 全书蓝图 + 调用方传进来的这一章（后者可能还没落库，或被作者刚改过）——
+    // 同一章以调用方那份为准，否则「刚在弹层里加了一个名字」这条判据会看不见。
+    schedules: [
+      ...(Array.isArray(allBlueprints) ? allBlueprints : [])
+        .filter(blueprint => !blueprints.some(current => current.chapterNumber === blueprint.chapterNumber))
+        .map(blueprint => ({
+          chapterNumber: blueprint.chapterNumber,
+          characters: Array.isArray(blueprint.characters) ? blueprint.characters : [],
+        })),
+      ...blueprints.map(blueprint => ({
+        chapterNumber: blueprint.chapterNumber,
+        characters: Array.isArray(blueprint.characters) ? blueprint.characters : [],
+      })),
+    ],
     castNames,
-  }))
+    prose: recentProse.map(row => ({
+      chapterNumber: row.chapterNumber,
+      content: String(row.content ?? ''),
+    })),
+  })
   // 在册角色缺外貌锚点（issue #40）：与 #42 同一层——都是「角色卡不完整会让下游静默失明」。
   // 这里只在**还没写外貌**的角色上提示一次，作者补上后自然消失。
   const appearanceGaps = findAppearanceGaps({

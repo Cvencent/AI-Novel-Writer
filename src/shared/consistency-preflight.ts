@@ -60,6 +60,17 @@ export interface ConsistencyFinding {
   evidence: string
   issue: { zhCN: string; enUS: string }
   suggestion: { zhCN: string; enUS: string }
+  /**
+   * 这条提醒**能一键落库的动作**（issue #160）。
+   *
+   * 现场：预检文案写着「就在角色名单里为「徐汐」建卡（姓名 + 定位即可）」，可弹层里
+   * 只有「保存安排 / 我已知」，`建卡` 两个字一次都点不到——文案指向一个动作，界面上却没有它。
+   * 那条提醒于是从第 64 章一路重报到第 70 章，谁都没做成。
+   *
+   * ⚠️ 只放**机械可执行**的动作（这里只有「按这个名字建一张空卡」），不放需要判断的内容：
+   * 卡的正文（身份、动机、外貌）仍然只能由作者或模型写。
+   */
+  action?: { kind: 'create-character'; name: string }
 }
 
 export interface ReviewLike {
@@ -690,39 +701,129 @@ export function findAppearanceGaps(input: AppearanceGapInput): ConsistencyFindin
  * characters 行为锚点，没卡就没处写；一致性检查器只按名册取角色，他永远在检查盲区；
  * 下一章起草时「上一章谁跟他说过什么」对他是空白，只能临时发挥。
  *
- * 这里只做**可见性**（作者写前就能看到），不自动建卡：自动生成的卡会带着凭空捏造的身份
+* 这里只做**可见性**（作者写前就能看到），不自动建卡：自动生成的卡会带着凭空捏造的身份
  * 与定位进入后续所有提示词，那比缺卡更糟。
+ *
+ * ## issue #160：发现是自动的，补建却是跨页手动的，且逐章重报
+ *
+ * 现场那本书第 64 章起多了一个承重配角（8 章、32 次、9 段台词、一条主线伏笔的承重点），
+ * 角色卡里始终没有她。三层其实**都知道了**：蓝图 6 章把她写进出场名单、这条判据 6 章各报
+ * 一条、正文里她一直在说话——但**没有任何一层能把它变成一次写入**：
+ *
+ * - key 带章号 → 6 章 6 个 key，「我已知」只能逐条挂起，角色本身依旧不存在；
+ * - 文案写着「就在角色名单里建卡」，而弹层里 `建卡` 两个字**一次都点不到**；
+ * - 从第 64 章一路重报到第 70 章，没有任何一处告诉作者「这条一直没做」。
+ *
+ * 三处都改了：
+ *   1. **按名字合并**，key 去掉章号（`blueprint-cast:unregistered:<名字>`）——同一个人
+ *      全书只有一条提醒，ack/豁免也就只挂一个键（与 #86/#89/#98/#108 的键稳定性同一条规矩）；
+ *   2. 判据自己带**动作**（`action.create-character`），界面据此给按钮，一键按名建卡；
+ *   3. 算**承重程度**（进了几章蓝图、正文里有几段台词），承重的排在前面并写明
+ *      「已经报了 N 章都没建」——轻的（只出现一章、没台词）仍走「换成身份称呼」那条路。
+ *
+ * ⚠️ 「承重」只数**结构量**（章数、引号内出现的次数），不判这个人重不重要——那是内容判断，
+ * 归模型与作者。「有台词的台词」由引号这一**形式**标记界定，与 `quote-style.ts` 同一口径。
  */
-export interface UnregisteredCastInput {
+export interface UnregisteredCastSchedule {
   chapterNumber: number
-  blueprintCharacters: readonly string[]
+  characters: readonly string[]
+}
+
+export interface UnregisteredCastInput {
+  /** 全部蓝图（每章一条）：同名角色跨章合并，不再按章重报。 */
+  schedules: readonly UnregisteredCastSchedule[]
   /** characters 表里的在册角色名（retired=0）。 */
   castNames: readonly string[]
+  /** 已定稿正文：只用来数「这个名字在几段引号台词里被说过」。 */
+  prose?: readonly { chapterNumber: number; content: string }[]
+}
+
+/** 承重门槛：进 ≥3 章蓝图，或至少 2 段引号台词（issue #160 建议 ②）。 */
+export const UNREGISTERED_CAST_HEAVY_CHAPTERS = 3
+export const UNREGISTERED_CAST_HEAVY_DIALOGUE_LINES = 2
+
+/** 引号对（形式类，与 `quote-style.ts` 同一族）：只用来数「这句是不是台词」。 */
+const QUOTED_SPAN = /「[^」]*」|『[^』]*』|“[^”]*”|”[^”\n]*”/gu
+
+/**
+ * 这个名字牵涉几段引号台词（按段计数，不按字数）。
+ *
+ * 两处都算：**台词内容里出现她的名字**（「徐汐。徐哥是我哥。」）、
+ * 以及**同一段里提名了她**（徐汐说：「有个人开口前……」→ 引号本身不含名字）。
+ * 段落 = 一次说话的回合（正文按空行/换行分段），所以「同一段里几句引号」算她的几句。
+ *
+ * ⚠️ 这是**结构**判定（引号这一形式 + 同段共现），不判「这句是不是她说的」——
+ * 那需要听语气，归模型。这里只用它量「这个人占了多少篇幅」，供承重/轻量分档。
+ */
+export function quotedLineCount(content: string, name: string): number {
+  const source = String(content ?? '')
+  if (!source.includes(name)) return 0
+  let count = 0
+  for (const paragraph of source.split(/\n+/u)) {
+    if (!paragraph.includes(name)) continue
+    count += [...paragraph.matchAll(QUOTED_SPAN)].length
+  }
+  return count
 }
 
 export function findUnregisteredBlueprintCast(input: UnregisteredCastInput): ConsistencyFinding[] {
   const cast = new Set(input.castNames.map(name => normalizedKeyPart(castDisplayName(name))))
-  const findings: ConsistencyFinding[] = []
-  for (const raw of input.blueprintCharacters) {
-    const name = castDisplayName(raw)
-    const key = normalizedKeyPart(name)
-    if (!name || !key || cast.has(key)) continue
-    findings.push({
-      stableFactKey: `blueprint-cast:unregistered:${input.chapterNumber}:${key}`,
+  const byName = new Map<string, { name: string; chapters: number[] }>()
+  for (const schedule of input.schedules) {
+    if (!Number.isSafeInteger(schedule.chapterNumber)) continue
+    for (const raw of schedule.characters ?? []) {
+      const name = castDisplayName(raw)
+      const key = normalizedKeyPart(name)
+      if (!name || !key || cast.has(key)) continue
+      const entry = byName.get(key) ?? { name, chapters: [] }
+      if (!entry.chapters.includes(schedule.chapterNumber)) entry.chapters.push(schedule.chapterNumber)
+      byName.set(key, entry)
+    }
+  }
+
+  const findings: Array<{ finding: ConsistencyFinding, heavy: boolean }> = []
+  for (const [key, entry] of byName) {
+    const chapters = [...entry.chapters].sort((left, right) => left - right)
+    const dialogueLines = (input.prose ?? []).reduce(
+      (total, row) => total + quotedLineCount(String(row.content ?? ''), entry.name), 0)
+    const heavy = chapters.length >= UNREGISTERED_CAST_HEAVY_CHAPTERS
+      || dialogueLines >= UNREGISTERED_CAST_HEAVY_DIALOGUE_LINES
+    // 章号只进 sourceChapter，**不进 key**（#160）：key 一旦带章号，同一个人就变成 N 条提醒。
+    const firstChapter = chapters[0]!
+    const lastChapter = chapters[chapters.length - 1]!
+    const span = chapters.length === 1
+      ? `第${firstChapter}章`
+      : `第${firstChapter}–${lastChapter}章（共 ${chapters.length} 章）`
+    const weight = dialogueLines > 0 ? `、正文 ${dialogueLines} 段台词` : ''
+    findings.push({ heavy, finding: {
+      stableFactKey: `blueprint-cast:unregistered:${key}`,
       severity: 'warning',
-      sourceChapter: input.chapterNumber,
-      evidence: `第${input.chapterNumber}章蓝图角色「${name}」不在角色卡名册（${input.castNames.join('、') || '空'}）`,
+      sourceChapter: lastChapter,
+      evidence: `「${entry.name}」进了${span}的蓝图出场名单${weight}，角色卡名册里没有这个人（名册：${input.castNames.join('、') || '空'}）`,
       issue: {
-        zhCN: `本章蓝图把「${name}」列为出场角色，但角色卡里没有这个人：定稿后不会为他回写状态，一致性检查也覆盖不到他，下一章起草时对他的记忆是空白。`,
-        enUS: `This chapter's blueprint casts “${name}”, who has no character card. No state will be written for them after finalization, consistency checks skip them, and the next chapter starts with no memory of them.`,
+        zhCN: heavy
+          ? `「${entry.name}」在${span}里持续出场${weight}，但角色卡里始终没有这个人：定稿后不会为她回写状态、一致性检查也覆盖不到她，下一章起草时对她的记忆是空白。这条从第${firstChapter}章起就在报，一直没有消解——再挂起下去，她的处境只能靠模型自己记。`
+          : `本章蓝图把「${entry.name}」列为出场角色，但角色卡里没有这个人：定稿后不会为他回写状态，一致性检查也覆盖不到他，下一章起草时对他的记忆是空白。`,
+        enUS: heavy
+          ? `“${entry.name}” appears in ${chapters.length} blueprint chapter(s)${weight} but has no character card. No state will be written after finalization, consistency checks skip them, and the next chapter starts with no memory of them. This has been reported since Chapter ${firstChapter} without being resolved.`
+          : `This chapter's blueprint casts “${entry.name}”, who has no character card. No state will be written for them after finalization, consistency checks skip them, and the next chapter starts with no memory of them.`,
       },
       suggestion: {
-        zhCN: `要保留这个角色，就在「角色名单」里为「${name}」建卡（姓名 + 定位即可），并把本章标为他的首次出场；只当一次性路人时，请把蓝图与正文里的名字换成无名的身份称呼（如「账房伙计」）。`,
-        enUS: `To keep them, add “${name}” to the character roster (name plus role) and mark this chapter as their first appearance. For a walk-on, replace the name in the blueprint and prose with a role label instead.`,
+        zhCN: heavy
+          ? `这个人已经在承担主线，别再挂起：点「为「${entry.name}」建卡」先落一张空卡（姓名 + 定位），再把她的身世、称呼变化与在第${firstChapter}章的首次出场补进卡里。卡本身的内容仍要你或模型来写——判据不替她编身份，只负责让这张卡存在。`
+          : `要保留这个角色，就点「为「${entry.name}」建卡」（姓名 + 定位即可），并把本章标为他的首次出场；只当一次性路人时，请把蓝图与正文里的名字换成无名的身份称呼（如「账房伙计」）。`,
+        enUS: heavy
+          ? `This character already carries the plot, so stop deferring: use “Create a card for ${entry.name}” to write a blank card (name + role), then fill in their background, how they are addressed, and their first appearance in Chapter ${firstChapter}. The card's content is yours or the model's to write — the check only makes sure the card exists.`
+          : `To keep them, use “Create a card for ${entry.name}” (name plus role) and mark this chapter as their first appearance. For a walk-on, replace the name in the blueprint and prose with a role label instead.`,
       },
-    })
+      action: { kind: 'create-character', name: entry.name },
+    } })
   }
-  return findings.slice(0, 4)
+  // 承重的先出（#160 建议 ②）：轻的可以被挂起，承重的被挤到第 5 条之后就更容易一直没人管。
+  return findings
+    .sort((left, right) => Number(right.heavy) - Number(left.heavy))
+    .slice(0, 4)
+    .map(item => item.finding)
 }
 
 /**

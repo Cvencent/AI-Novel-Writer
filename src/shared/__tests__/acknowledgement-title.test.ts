@@ -38,12 +38,17 @@ function walk(dir: string, out: string[] = []): string[] {
  *
  * ⚠️ 只认**反引号/引号包起来的字符串值**——`stableFactKey: string`（类型标注）与
  * 注释里的 `stableFactKey:` 都不是产出点（第一版把注释也扫进来了，测试自己报了假阳性）。
+ *
+ * ⚠️ 还必须限定在**属性位置**（`{` 或 `,` 之后）：`finalized-prose-audit.ts` 的
+ * `console.warn('[finalized-prose-audit] duplicate stableFactKey:', …)` 里也有这个字面量，
+ * 但它前面是引号内的空格——那是日志文案，不是产出点。这一条让守卫从「一直假红」回到
+ * 「只在真有问题时红」（守卫长期红着 = 没人看它，比绿着更糟）。
  */
 function stableFactKeyPrefixes(): Map<string, string[]> {
   const found = new Map<string, string[]>()
   for (const file of walk(join(ROOT, 'src')).concat(walk(join(ROOT, 'electron')))) {
     const text = readFileSync(file, 'utf8')
-    for (const match of text.matchAll(/stableFactKey:\s*([`'"])([^`'"]*)\1/gu)) {
+    for (const match of text.matchAll(/(?:^|[{,])\s*stableFactKey:\s*([`'"])([^`'"]*)\1/gmu)) {
       const raw = match[2]!
       // 静态前缀 = 去掉所有 `${…}` 之后、按 `:` 分段的已确定部分。
       const beforeDynamic = raw.split('${')[0]!
