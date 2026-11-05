@@ -4,6 +4,7 @@ import {
   APPEARANCE_REVIEW_RECENT_CHAPTERS,
   buildAppearanceReviewPrompt,
   parseAppearanceReview,
+  parseAppearanceUsage,
 } from '../appearance-consistency'
 
 const CARD = {
@@ -119,5 +120,98 @@ describe('parseAppearanceReview (issue #153)', () => {
     const one = { characterName: '叶九', chapterNumber: 51, quote: '笑停在脸上。', explanation: 'x' }
     const fenced = '```json\n' + answer([one, one]) + '\n```'
     expect(parseAppearanceReview(fenced, request)).toHaveLength(1)
+  })
+})
+
+/**
+ * issue #153 第一部分：角色卡上**有**的显眼标志，正文一次都没用到。
+ *
+ * 现场量化：7 张卡上 25 个显眼标志，衣着/随身物被写 379 次，身体特征只有 30 次（12.6 倍）；
+ * 全叔出场 40 余章「背驼手粗」0 次、邵广海的金戒指 0 次、周叙「眼窝很深」0 次。
+ *
+ * ⚠️ 这一轴是**提示**不是缺陷（这一章可能真的不需要写它），所以：
+ * - 默认**不开**（`checkUsage`），否则每点一次「核对角色外观」都会刷出一堆「本章没写他的戒指」；
+ * - 与「相悖」**分开解析**：未使用那一段形状不对，不能把已经判定好的相悖结论一起丢掉。
+ */
+describe('appearance usage axis (issue #153 第一部分)', () => {
+  const usageRequest = { chapters: CHAPTERS, cards: [CARD], language: 'zh-CN' as const, checkUsage: true }
+
+  it('is off by default: the plain request still asks only for contradictions', () => {
+    const { system } = buildAppearanceReviewPrompt(request)
+    expect(system).not.toContain('unusedMarks')
+    expect(system).toContain('{"contradictions"')
+  })
+
+  it('asks for coverage too when enabled, with an explicit JSON shape', () => {
+    const { system } = buildAppearanceReviewPrompt(usageRequest)
+    expect(system).toContain('unusedMarks')
+    expect(system).toContain('确实出场')
+    // 只有出场的角色才在范围内——否则每个配角都会被报一遍。
+    expect(system).toContain('没出场的人不在范围内')
+    // 换措辞写同一特征算用上了（按意思判断，不按字面）。
+    expect(system).toContain('按**意思**判断')
+  })
+
+  it('keeps the contradiction instructions intact in the same prompt', () => {
+    const { system } = buildAppearanceReviewPrompt(usageRequest)
+    // 两轴同时问，但「没写不等于写错」这条不能因为加了覆盖统计就消失。
+    expect(system).toContain('没写不等于写错')
+    expect(system).toContain('逐字引用')
+  })
+
+  const answer = (usage: unknown) => JSON.stringify({ contradictions: [], unusedMarks: usage })
+
+  it('accepts a mark that is verbatim on the card, keeping only sampled chapter numbers', () => {
+    const parsed = parseAppearanceUsage(
+      answer([{ characterName: '叶九', mark: '右小指缺半节', chapters: [5, 51, 999], explanation: '只写了衣着' }]),
+      usageRequest,
+    )
+    expect(parsed).toEqual([{
+      characterName: '叶九',
+      mark: '右小指缺半节',
+      chapters: [5, 51],
+      explanation: '只写了衣着',
+    }])
+  })
+
+  it('drops a mark the model paraphrased (the author would search the card and find nothing)', () => {
+    // 「右手小指缺失」不在卡上原文里 → 必须丢弃。
+    expect(parseAppearanceUsage(
+      answer([{ characterName: '叶九', mark: '右手小指缺失', chapters: [5], explanation: 'x' }]),
+      usageRequest,
+    )).toEqual([])
+  })
+
+  it('also accepts a mark taken from the notes field (that is part of the card too)', () => {
+    const parsed = parseAppearanceUsage(
+      answer([{ characterName: '叶九', mark: '右手小指的旧伤', chapters: [51], explanation: 'x' }]),
+      usageRequest,
+    )
+    expect(parsed).toHaveLength(1)
+  })
+
+  it('drops entries for characters that are not on any card', () => {
+    expect(parseAppearanceUsage(
+      answer([{ characterName: '徐汐', mark: '右小指缺半节', chapters: [5], explanation: 'x' }]),
+      usageRequest,
+    )).toEqual([])
+  })
+
+  it('drops an entry whose chapters are all outside the sampled window', () => {
+    // 指的全是没核过的章 → 这条判断没有依据。
+    expect(parseAppearanceUsage(
+      answer([{ characterName: '叶九', mark: '右小指缺半节', chapters: [301], explanation: 'x' }]),
+      usageRequest,
+    )).toEqual([])
+  })
+
+  it('returns null for malformed output instead of silently adopting nothing', () => {
+    expect(parseAppearanceUsage('{not json', usageRequest)).toBeNull()
+    expect(parseAppearanceUsage(JSON.stringify({ contradictions: [] }), usageRequest)).toBeNull()
+  })
+
+  it('dedupes the same mark reported twice', () => {
+    const entry = { characterName: '叶九', mark: '右小指缺半节', chapters: [5], explanation: 'x' }
+    expect(parseAppearanceUsage(answer([entry, entry]), usageRequest)).toHaveLength(1)
   })
 })

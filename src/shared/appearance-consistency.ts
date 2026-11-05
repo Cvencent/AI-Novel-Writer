@@ -54,7 +54,35 @@ export interface AppearanceReviewRequest {
   cards: readonly AppearanceReviewCard[]
   /** 最多检查多少章（越靠后的章越重要：那是作者刚写完的）。 */
   recentChapters?: number
+  /**
+   * 是否同时问「卡上的显眼标志这几章用没用上」（issue #153 第一部分）。
+   * 默认 **false**：那是**提示**不是缺陷，不该混进每次「核对角色外观」的产出里——
+   * 否则作者每点一次都要面对一堆「本章没写他的金戒指」。
+   */
+  checkUsage?: boolean
   language: 'zh-CN' | 'en-US'
+}
+
+/**
+ * 「卡上这条标志最近都没被用到」——issue #153 的第一部分。
+ *
+ * 与上面的「相悖」是**两个不同的轴**，但同一次调用里问完最省（同一批章节已经在上下文里）：
+ * - 相悖：正文写了，但写反了（左手/右手、换了部位）→ 必须改；
+ * - 未使用：正文压根没写这条标志 → 只是**提示**，作者可以接受（本章不需要写到它）。
+ *
+ * ⚠️ 这一轴只报**出场了但一次都没用上**的角色：角色这几章根本没出场时不报
+ * （否则每本书每个人都会被报一遍，与 #149 的「整类跳过」同一条纪律）。
+ * ⚠️ 「哪些算显眼标志」由模型从卡上原文里挑，规则不存词表；规则只负责把卡上原文逐条编号，
+ * 并要求模型回引**卡上的原话**（回引不到就丢弃 → 作者能核对它指的那一条）。
+ */
+export interface AppearanceUnusedMark {
+  /** 角色的精确名字（必须在传入的卡里）。 */
+  characterName: string
+  /** 卡上的那条标志（必须能在该角色的 appearance/notes 原文里逐字找到）。 */
+  mark: string
+  /** 在这些章里该角色出场，但一次都没写到这条标志。 */
+  chapters: number[]
+  explanation: string
 }
 
 /** 章数上限的默认值：与其它「读已定稿正文」的判据同一量级（16~20 章）。 */
@@ -85,6 +113,7 @@ export function buildAppearanceReviewPrompt(
   const cards = request.cards.filter(card => String(card.name ?? '').trim()
     && `${card.appearance ?? ''}${card.notes ?? ''}`.trim())
 
+  const usage = request.checkUsage === true
   const system = en
     ? [
       'You check whether a chapter contradicts a character card’s description of how that character looks.',
@@ -92,16 +121,36 @@ export function buildAppearanceReviewPrompt(
       '(a mark on the other side, a different body part, a different number, a description that belongs to someone else).',
       'Do NOT report a chapter that merely fails to mention a detail — silence is not a contradiction.',
       'Every report must quote the exact sentence from the chapter. If you cannot quote it, do not report it.',
-      'Output one JSON object: {"contradictions":[{"characterName":"<exact name from the cards>","chapterNumber":<n>,"quote":"<exact sentence from that chapter>","explanation":"<one sentence: what the card says vs what the prose says>"}]}',
-      'If nothing contradicts, output {"contradictions":[]}. No commentary outside the JSON.',
+      ...(usage ? [
+        'ALSO check coverage: for each character who DOES appear in these chapters, name the distinctive marks on their card that the prose never uses at all.',
+        'Judge by meaning — the prose may describe the same feature in other words, and that counts as used.',
+        'Only consider a character who actually appears in these chapters; an absent character is out of scope.',
+        'Quote the mark exactly as it is written on the card; do not merge two marks into one.',
+        'At most 3 per character. Vivid writing that still lacks a particular mark counts as missing that mark.',
+        'Output one JSON object: {"contradictions":[{"characterName":"<exact name from the cards>","chapterNumber":<n>,"quote":"<exact sentence from that chapter>","explanation":"<one sentence: what the card says vs what the prose says>"}],"unusedMarks":[{"characterName":"<exact name from the cards>","mark":"<verbatim words from that card>","chapters":[<where they appear>],"explanation":"<one sentence>"}]}',
+        'If nothing to report, output {"contradictions":[],"unusedMarks":[]}. No commentary outside the JSON.',
+      ] : [
+        'Output one JSON object: {"contradictions":[{"characterName":"<exact name from the cards>","chapterNumber":<n>,"quote":"<exact sentence from that chapter>","explanation":"<one sentence: what the card says vs what the prose says>"}]}',
+        'If nothing contradicts, output {"contradictions":[]}. No commentary outside the JSON.',
+      ]),
     ].join('\n')
     : [
       '你的任务是核对：正文有没有**与角色卡的外观/身体描述相悖**的地方。',
       '只报**相悖**——正文与卡上的说法不能同时成立（记在另一侧、换了一个部位、数目不同、把别人的描述安到了这个人身上）。',
       '**不要**报「这一章没有提到卡上的某个细节」——没写不等于写错。',
       '每条都必须**逐字引用正文里的一句**。引不出来就不要报。',
-      '输出一个 JSON 对象：{"contradictions":[{"characterName":"<卡上的精确名字>","chapterNumber":<章号>,"quote":"<该章正文里的原句>","explanation":"<一句话说明：卡上说什么、正文说什么>"}]}',
-      '没有相悖时输出 {"contradictions":[]}。JSON 之外不要写任何解释。',
+      ...(usage ? [
+        '**另外**统计覆盖：对这几章里**确实出场**的角色，指出卡上有、而正文一次都没写到的显眼标志。',
+        '按**意思**判断——正文换了措辞写同一个特征，也算用上了。',
+        '只考虑**这几章真的出场了**的角色；没出场的人不在范围内（否则人人都会被报一遍）。',
+        '引用标志时**逐字照抄卡上那句话**，不要改写、不要把两条合成一条。',
+        '每个角色最多 3 条。正文写得很生动但仍缺某条标志时，仍要报那一条。',
+        '输出一个 JSON 对象：{"contradictions":[{"characterName":"<卡上的精确名字>","chapterNumber":<章号>,"quote":"<该章正文里的原句>","explanation":"<一句话说明：卡上说什么、正文说什么>"}],"unusedMarks":[{"characterName":"<卡上的精确名字>","mark":"<卡上原文>","chapters":[<他出场的章号>],"explanation":"<一句话>"}]}',
+        '没有可报的就输出 {"contradictions":[],"unusedMarks":[]}。JSON 之外不要写任何解释。',
+      ] : [
+        '输出一个 JSON 对象：{"contradictions":[{"characterName":"<卡上的精确名字>","chapterNumber":<章号>,"quote":"<该章正文里的原句>","explanation":"<一句话说明：卡上说什么、正文说什么>"}]}',
+        '没有相悖时输出 {"contradictions":[]}。JSON 之外不要写任何解释。',
+      ]),
     ].join('\n')
 
   const cardText = cards.map(card => [
@@ -169,6 +218,70 @@ export function parseAppearanceReview(
     if (seen.has(key)) continue
     seen.add(key)
     result.push({ characterName, chapterNumber, quote, explanation })
+  }
+  return result
+}
+
+/**
+ * 解析「卡上有、正文没用到」的第二轴（issue #153 第一部分）。
+ *
+ * 与 `parseAppearanceReview` 分开，是因为**语义不同**：相悖是缺陷（必须改），
+ * 未使用是提示（作者可能只是不需要写它）。两者分开之后，哪一轴解析失败可以各自处理，
+ * 不会因为「未使用那一段形状不对」把相悖的结论一起丢掉。
+ *
+ * 四道收窄：
+ * - 坏 JSON / `unusedMarks` 不是数组 → null；
+ * - `characterName` 不在传入的卡里 → 丢弃（模型编了个人名）；
+ * - **`mark` 必须逐字出现在该角色的 appearance/notes 原文里** → 否则丢弃
+ *   （这一条是关键：模型常把「右小指缺半节」改写成「右手小指缺失」，作者按改写去卡上找会找不到）；
+ * - `chapters` 里只保留在样本范围内的章号；一个都不剩 → 丢弃（说明它指的那些章根本没核过）。
+ */
+export function parseAppearanceUsage(
+  raw: string,
+  request: Pick<AppearanceReviewRequest, 'chapters' | 'cards' | 'recentChapters'>,
+): AppearanceUnusedMark[] | null {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(stripFence(String(raw ?? '').trim()))
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+  const list = (parsed as { unusedMarks?: unknown }).unusedMarks
+  if (!Array.isArray(list)) return null
+  const limit = request.recentChapters ?? APPEARANCE_REVIEW_RECENT_CHAPTERS
+  const sampled = new Set([...request.chapters]
+    .filter(chapter => Number.isSafeInteger(chapter.chapterNumber) && String(chapter.content ?? '').trim())
+    .sort((left, right) => left.chapterNumber - right.chapterNumber)
+    .slice(-limit)
+    .map(chapter => chapter.chapterNumber))
+  const cardText = new Map(request.cards.map(card => [
+    String(card.name ?? '').trim(),
+    `${card.appearance ?? ''}\n${card.notes ?? ''}`,
+  ]))
+  const result: AppearanceUnusedMark[] = []
+  const seen = new Set<string>()
+  for (const entry of list) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue
+    const record = entry as Record<string, unknown>
+    const characterName = String(record.characterName ?? '').trim()
+    const mark = String(record.mark ?? '').trim()
+    const source = cardText.get(characterName)
+    if (!source) continue
+    if (!mark || !source.includes(mark)) continue
+    const chapters = (Array.isArray(record.chapters) ? record.chapters : [])
+      .map(value => Number(value))
+      .filter(value => Number.isSafeInteger(value) && sampled.has(value))
+    if (chapters.length === 0) continue
+    const key = `${characterName}:${mark}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push({
+      characterName,
+      mark,
+      chapters: [...new Set(chapters)].sort((left, right) => left - right),
+      explanation: String(record.explanation ?? '').trim(),
+    })
   }
   return result
 }

@@ -23,7 +23,7 @@ import { captureProjectSession, isProjectSessionCurrent } from '../../project-se
 import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useAnchoredLayer } from '../../ui/use-anchored-layer'
 import {
-  appearanceContradictionFindings, applyRepairDiffs, checkAppearanceAgainstCards,
+  appearanceContradictionFindings, appearanceUnusedMarkFindings, applyRepairDiffs, checkAppearanceAgainstCards,
   proposeLayerRepair, reviewAbilityLimits, reviewBlueprintAgainstProse, reviewEvidenceShapes, reviewMemoryAnchors, reviewProseContent, reviewProseStyle,
   reviewSensoryChannels, sensoryVerdictFindings,
 } from '../../../services/preflight-repair'
@@ -429,15 +429,27 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     setBusy(true)
     setMessage(null)
     try {
-      const outcome = await checkAppearanceAgainstCards(session, chapters, cards, locale)
+      // issue #153 第一部分：同一次调用里顺便统计「卡上的显眼标志这几章用没用上」——
+      // 那需要同一批章节已经在上下文里，再发一次一模一样的大请求是浪费。
+      const outcome = await checkAppearanceAgainstCards(session, chapters, cards, locale, true)
       if (!isProjectSessionCurrent(session)) return
       if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
-      const found = appearanceContradictionFindings(outcome.contradictions)
+      const found = [
+        ...appearanceContradictionFindings(outcome.contradictions),
+        ...appearanceUnusedMarkFindings(outcome.unusedMarks),
+      ]
       if (found.length === 0) {
-        setMessage(text('模型没有找到正文与角色卡相悖的地方。', 'The model found no place where the prose contradicts a character card.'))
+        setMessage(text('模型没有找到正文与角色卡相悖的地方，也没有发现卡上标志一次没被用到。',
+          'The model found neither a contradiction with a character card nor an unused card mark.'))
         return
       }
-      // 结果并入当前提醒列表（作者已有的 ack/保存安排机制照常可用）。
+      // 两类结果一起并入提醒列表（作者已有的 ack/保存安排机制照常可用）。
+      // 分开说清各有几条：相悖必须改，未使用只是提示。
+      if (outcome.contradictions.length > 0 && outcome.unusedMarks.length > 0) {
+        setMessage(text(
+          `发现 ${outcome.contradictions.length} 处与角色卡相悖、${outcome.unusedMarks.length} 条卡上标志这几章没用上。`,
+          `${outcome.contradictions.length} contradiction(s) with the cards; ${outcome.unusedMarks.length} card mark(s) never used.`))
+      }
       setPreflight(current => current ? { ...current, findings: [...current.findings, ...found] } : current)
       show()
     } finally {

@@ -36,9 +36,11 @@ import type { PreflightLayer } from '../shared/preflight-route'
 import {
   buildAppearanceReviewPrompt,
   parseAppearanceReview,
+  parseAppearanceUsage,
   type AppearanceContradiction,
   type AppearanceReviewCard,
   type AppearanceReviewChapter,
+  type AppearanceUnusedMark,
 } from '../shared/appearance-consistency'
 import {
   buildProseConflictPrompt,
@@ -229,6 +231,11 @@ export async function applyRepairDiffs(
 export interface AppearanceCheckOutcome {
   status: 'ok' | 'failed'
   contradictions: AppearanceContradiction[]
+  /**
+   * 卡上有、这几章一次没用到的显眼标志（issue #153 第一部分）。
+   * `checkUsage` 没开时恒为空——那是可选的一轴，不混进默认「核对角色外观」。
+   */
+  unusedMarks: AppearanceUnusedMark[]
   error?: string
 }
 
@@ -237,10 +244,12 @@ export async function checkAppearanceAgainstCards(
   chapters: readonly AppearanceReviewChapter[],
   cards: readonly AppearanceReviewCard[],
   locale: 'zh-CN' | 'en-US' = 'zh-CN',
+  /** 同时统计「卡上的标志这几章用没用」（issue #153 第一部分）。默认关。 */
+  checkUsage = false,
 ): Promise<AppearanceCheckOutcome> {
   const en = locale === 'en-US'
-  const request = { chapters, cards, language: locale }
-  if (chapters.length === 0 || cards.length === 0) return { status: 'ok', contradictions: [] }
+  const request = { chapters, cards, language: locale, checkUsage }
+  if (chapters.length === 0 || cards.length === 0) return { status: 'ok', contradictions: [], unusedMarks: [] }
   const { system, user } = buildAppearanceReviewPrompt(request)
   const response = await useLLMStore.getState().generate(
     [{ role: 'system', content: system }, { role: 'user', content: user }],
@@ -248,15 +257,44 @@ export async function checkAppearanceAgainstCards(
     { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
   )
   if (!response.success) {
-    return { status: 'failed', contradictions: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
+    return { status: 'failed', contradictions: [], unusedMarks: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
   }
   const parsed = parseAppearanceReview(response.content, request)
   if (!parsed) {
-    return { status: 'failed', contradictions: [], error: en
+    return { status: 'failed', contradictions: [], unusedMarks: [], error: en
       ? 'The model did not return a valid contradiction list.'
       : '模型返回的不是合法的「相悖」清单。' }
   }
-  return { status: 'ok', contradictions: parsed }
+  // 第二轴单独解析（见 parseAppearanceUsage 的注释）：它失败**不影响**相悖的结论。
+  const unusedMarks = checkUsage ? parseAppearanceUsage(response.content, request) ?? [] : []
+  return { status: 'ok', contradictions: parsed, unusedMarks }
+}
+
+/**
+ * 把「卡上有、正文没用」转成一致性发现（issue #153 第一部分）。
+ *
+ * ⚠️ 这是**提示**，不是缺陷：这一章可能真的不需要写到他的金戒指。
+ * 所以文案必须给出「接受它」的读法（「这次不需要写」与「写忘了」是两件事），
+ * 并且 key 只锚在**角色 + 那条标志**上（不带章号）：同一个人不会被逐章重报一遍
+ * （与 #160/#86 同一条纪律）。章号集合放在 evidence 里，作者照样能定位。
+ */
+export function appearanceUnusedMarkFindings(
+  marks: readonly AppearanceUnusedMark[],
+): ConsistencyFinding[] {
+  return marks.map(item => ({
+    stableFactKey: `character:appearance-unused:${item.characterName}:${item.mark}`,
+    severity: 'warning' as const,
+    sourceChapter: item.chapters[item.chapters.length - 1]!,
+    evidence: `「${item.characterName}」在第 ${item.chapters.join('、')} 章出场，卡上的「${item.mark}」一次没写到`,
+    issue: {
+      zhCN: `角色卡把「${item.mark}」当作「${item.characterName}」的显眼标志，但他在第 ${item.chapters.join('、')} 章出场时一次都没写到这里。${item.explanation ? `（${item.explanation}）` : ''}读者认人靠的往往正是这一半——衣服和手里的东西每场都用得上，身体标志却不会自己出现；只写前者，人物会慢慢变成「道具架」。`,
+      enUS: `The card treats “${item.mark}” as a distinctive mark of ${item.characterName}, but it never appears in chapters ${item.chapters.join(', ')} where they are present.${item.explanation ? ` (${item.explanation})` : ''} Readers recognize people by exactly this half — clothing and props are needed in every scene, body marks are not, so writing only the former turns characters into prop racks.`,
+    },
+    suggestion: {
+      zhCN: `这一次不需要写它也完全可以——但如果好几章都只写衣着与随身物，可以择一处让他自己动到这个标志（抬手、按住、缩回），一句话就够，不要另起一段描写。另一条路是承认这条标志不再是识别点，把它从卡上删掉（卡上留着却从不出现，后面的判据还会继续按它核对）。`,
+      enUS: `It is fine for this chapter to skip it. But if several chapters rely only on clothing and props, let the mark come into play once in a gesture (raised, pressed, withdrawn) — one clause, no separate description. Alternatively, if the mark no longer identifies them, remove it from the card; otherwise later checks will keep matching against it.`,
+    },
+  }))
 }
 
 /** 把模型判出来的相悖转成一致性发现（供预检/审稿同一出口展示）。 */

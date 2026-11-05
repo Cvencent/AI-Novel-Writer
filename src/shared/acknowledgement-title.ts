@@ -68,6 +68,8 @@ const FAMILY_LABELS: Readonly<Record<string, AcknowledgementTitle>> = Object.fre
   'cast:name-drift': { zhCN: '已登记角色名漂移', enUS: 'cast name drift' },
   'character': { zhCN: '角色卡问题', enUS: 'character card' },
   'character:appearance-gap': { zhCN: '角色卡缺外貌锚点', enUS: 'missing appearance anchor' },
+  'character:appearance-unused': { zhCN: '卡上的显眼标志一次没被写到', enUS: 'card mark never used in the prose' },
+  'character:appearance-contradiction': { zhCN: '正文与角色卡相悖', enUS: 'prose contradicts the card' },
   'blueprint-cast': { zhCN: '蓝图角色与名册不符', enUS: 'blueprint cast vs roster' },
   'blueprint-cast:near-name': { zhCN: '名字与在册角色仅一字之差', enUS: 'near-cast name' },
   'blueprint-cast:unregistered': { zhCN: '蓝图里有未建档角色', enUS: 'unregistered blueprint cast' },
