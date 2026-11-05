@@ -44,12 +44,46 @@ export interface AbilityReviewChapter {
  */
 const LIMIT_CUE = /(?:不|无法|不能|失去|失效|衰减|为零|除非|只有|一旦|否则)/u
 
+/**
+ * **取数上限（字符数，不是句数）**——issue #171。
+ *
+ * 旧实现是 `slice(0, 8)`：按**文本顺序**取前 8 句，等于「世界观开头写了什么就判什么」。
+ * 实测那本书 3480 字世界观里，唯一一条能力硬限制（触发条件／失效条件）在候选里排**第 11 位**，
+ * 从没进过提示词；喂进去的 8 句有 4 句是制度简介、1 句是 Markdown 小标题、2 句是加粗残句。
+ * 模型手上只剩另一条限制可当依据，于是把 10 处「明明先写了洇湿」的溯读全判成绕过。
+ *
+ * 改成按**字符预算**取，且**不再按顺序丢句**：世界观在这个量级（2–4k 字）本来就该全给——
+ * 这个预算能覆盖约 12k 字，相对本章正文可以忽略。顺序截断的失败方式是**静默**的
+ * （模型不报错，只是拿不到那条限制），所以宁可给多、让模型自己挑，也不替它决定哪几句重要。
+ */
+export const ABILITY_LIMIT_MAX_CHARS = 12_000
+
+/**
+ * Markdown 结构性残句：标题行、纯加粗短语、分隔线（issue #171 实测 8 句里 3 句是这类）。
+ *
+ * 它们被切句切成「### 2. 规则漏洞："湿票不入底"」「**名字**：……」这种片段——不是限制，
+ * 却占掉原本给限制的名额。判据只看**形态**（行首标记、去掉符号后剩不下实质内容），不看词义。
+ */
+function isStructuralFragment(sentence: string): boolean {
+  if (/^#{1,6}\s/u.test(sentence)) return true
+  if (/^[-*_]{3,}$/u.test(sentence)) return true
+  const bare = sentence.replace(/[*`#>\-_"'“”「」『』：:，,。．.\s]/gu, '')
+  return bare.length < 4
+}
+
 export function limitSentencesOf(worldbuilding: string): string[] {
-  return String(worldbuilding ?? '')
-    .split(/(?<=[。！？\n])/u)
-    .map(sentence => sentence.trim())
-    .filter(sentence => sentence.length >= 6 && LIMIT_CUE.test(sentence))
-    .slice(0, 8)
+  const picked: string[] = []
+  let used = 0
+  for (const raw of String(worldbuilding ?? '').split(/(?<=[。！？\n])/u)) {
+    const sentence = raw.trim()
+    if (sentence.length < 6) continue
+    if (isStructuralFragment(sentence)) continue
+    if (!LIMIT_CUE.test(sentence)) continue
+    if (used + sentence.length > ABILITY_LIMIT_MAX_CHARS) break
+    used += sentence.length
+    picked.push(sentence)
+  }
+  return picked
 }
 
 export interface AbilityReviewIssue {
@@ -82,6 +116,10 @@ export function buildAbilityReviewPrompt(request: AbilityReviewRequest): { syste
       'You are given the limits the author wrote into the worldbuilding, and some chapters.',
       'Report ONLY places where the prose shows the ability succeeding in a way those limits forbid.',
       'Do not report a chapter that merely fails to mention the limit — silence is not a violation.',
+      // issue #171：限制多数是**条件式**的（「靠岸且干燥之后」才失效）。前置条件不成立时，
+      // 正文里能力成功**不是**绕过——而那本书 10 条误报全部是这一形态。
+      'Most limits are CONDITIONAL: read the condition in the quoted limit, then check whether the prose actually satisfies it.',
+      'If the prose shows the condition failing to hold (the paper was wetted again, the character was still aboard), the ability succeeding is NOT a violation.',
       'Do not invent limits: quote one from the list you were given.',
       'Every report must quote the exact sentence from that chapter. If you cannot quote it, do not report it.',
       'If the prose shows the character supplying the missing condition themselves, say so in the explanation — that is the same violation.',
@@ -92,6 +130,10 @@ export function buildAbilityReviewPrompt(request: AbilityReviewRequest): { syste
       '下面是作者写进世界观里的**限制**，以及要核对的章节正文。',
       '只报**正文明确写出了「限制之下能力仍然成功」**的地方。',
       '不要报「这一章没有提到那条限制」——没写不等于绕过。',
+      // issue #171：10 条误报全部出在这一条上——限制写的是「靠岸且干燥之后」，
+      // 而正文每次都先写了纸面被洇湿（条件不成立），溯读成功并不绕过限制。
+      '细读限制里的**条件**：多数限制是条件式的（「靠岸且干燥之后才失效」「离船上岸才衰减」）。',
+      '**前置条件不成立时，能力成功不算绕过**——正文若写明条件并未满足（纸又被洇湿、人还在船上），那是符合限制的，不要报。',
       '不要自己造限制：`violatedLimit` 必须来自给你的限制清单。',
       '每条都必须**逐字引用**该章正文里的一句。引不出来就不要报。',
       '如果正文里是角色**自己补上了缺失的条件**（自带水／换到别处／临时借用），要在 explanation 里写出来——那同样算绕过。',

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { abilityReviewFindings, buildAbilityReviewPrompt, limitSentencesOf, parseAbilityReview } from '../ability-review'
+import { ABILITY_LIMIT_MAX_CHARS, abilityReviewFindings, buildAbilityReviewPrompt, limitSentencesOf, parseAbilityReview } from '../ability-review'
 
 const LIMITS = ['离船上岸，墨干气散，能力立刻衰减到几乎为零。']
 const CHAPTERS = [
@@ -85,5 +85,79 @@ describe('abilityReviewFindings', () => {
       chapterNumber: 36, quote: 'q', violatedLimit: 'l', explanation: 'e',
     }])
     expect(finding!.stableFactKey).toBe('ability:limit-bypassed:36')
+  })
+})
+
+/**
+ * issue #171：喂给模型的限制清单**按文件顺序截前 8 句**，把这本书唯一的硬限制挤了出去。
+ *
+ * 现场：3480 字世界观里含限制语素的候选句 38 句；「夜航船舱内常年潮润，正是天然触发场；
+ * 离船上岸，墨干气散，能力立刻衰减到几乎为零」排在**第 11 位**，从没进过提示词。
+ * 喂进去的 8 句里还有 3 句是 Markdown 标题/加粗残句（不是限制），
+ * 模型于是拿另一条「靠岸干燥后湿痕干死」当唯一依据，把 10 处「先写了洇湿」的溯读全判成绕过。
+ */
+describe('limitSentencesOf 取数口径 (issue #171)', () => {
+  // 复刻现场结构：前 10 句是机制铺垫，真正的触发条件排在第 11 位之后。
+  const filler = Array.from({ length: 10 }, (_, index) => `第${index + 1}条铺垫，记录不能写死，必须重蘸重记。`)
+  const trigger = '夜航船舱内常年潮润，正是天然触发场；离船上岸，墨干气散，能力立刻衰减到几乎为零。'
+  const worldbuilding = [...filler, trigger, '规矩叫湿票不入底，只有船上那一联能证明你上过船。'].join('\n')
+
+  it('does not truncate by position: a limit past the 8th candidate still reaches the model', () => {
+    const picked = limitSentencesOf(worldbuilding)
+    // 旧实现在这里返回 8 句且不含触发条件；这正是本报的根因。
+    expect(picked.some(sentence => sentence.includes('离船上岸'))).toBe(true)
+    expect(picked.length).toBeGreaterThan(8)
+  })
+
+  it('bounds by characters instead of sentence count', () => {
+    const huge = `${'一句很长很长的铺垫句子，含不能二字。'.repeat(400)}离船上岸，墨干气散，衰减。`
+    const picked = limitSentencesOf(huge)
+    const chars = picked.reduce((total, sentence) => total + sentence.length, 0)
+    expect(chars).toBeLessThanOrEqual(ABILITY_LIMIT_MAX_CHARS)
+  })
+
+  it('drops Markdown structural fragments that are not limits at all', () => {
+    const worldbuildingWithHeadings = [
+      '### 2. 规则漏洞："湿票不入底"',
+      '**名字**：',
+      '---',
+      trigger,
+    ].join('\n')
+    const picked = limitSentencesOf(worldbuildingWithHeadings)
+    expect(picked.some(sentence => /^#{1,6}\s/u.test(sentence))).toBe(false)
+    expect(picked.some(sentence => /^-{3,}$/u.test(sentence))).toBe(false)
+    // 真正的限制仍然在里面。
+    expect(picked.some(sentence => sentence.includes('离船上岸'))).toBe(true)
+  })
+
+  it('still returns nothing when the worldbuilding declares no limit', () => {
+    expect(limitSentencesOf('这是一条夜航船上的故事。船上人多，码头上也热闹。')).toEqual([])
+  })
+})
+
+/**
+ * issue #171 建议 ④：限制多数是**条件式**的，提示词必须让模型先读条件再判。
+ *
+ * 现场 10 条误报的共同形态：限制是「**靠岸干燥之后**，湿痕一起干死，读不出来」，
+ * 而 10 处正文全部**先写了纸面被水汽洇湿**（条件不成立），溯读成功并不绕过限制。
+ * 这条约束写在提示词里（模型判），不写规则——「条件成不成立」要读懂句子。
+ */
+describe('buildAbilityReviewPrompt 条件式限制 (issue #171)', () => {
+  it('tells the model to read the condition inside the limit first', () => {
+    const { system } = buildAbilityReviewPrompt(request)
+    expect(system).toContain('条件')
+    expect(system).toContain('前置条件不成立时，能力成功不算绕过')
+  })
+
+  it('keeps the existing guards (silence is not a violation, quote must locate)', () => {
+    const { system } = buildAbilityReviewPrompt(request)
+    expect(system).toContain('没写不等于绕过')
+    expect(system).toContain('逐字引用')
+  })
+
+  it('has the same rule on the English side', () => {
+    const { system } = buildAbilityReviewPrompt({ ...request, language: 'en-US' })
+    expect(system).toContain('CONDITIONAL')
+    expect(system).toContain('NOT a violation')
   })
 })
