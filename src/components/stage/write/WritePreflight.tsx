@@ -103,6 +103,21 @@ interface WritePreflightProps {
    */
   onCheckDeadline?: () => void | Promise<void>
   /**
+   * 「去那一章出新版本」（issue #137 剩余那一半的**可做部分**）。
+   *
+   * 现场：一条提醒落在**已定稿的章**上时，卡片只写一句
+   * 「先给那一章出新版本再重新定稿」——**没有任何按钮**。作者读完这句，
+   * 只能自己记住章号、退出弹层、翻到那一章、找版本入口、出新版、再定稿。
+   * 这正是 issue 说的「13 条提醒要手工跨 5 个页面改 13 次」里最贵的一种
+   * （其它层至少有「去 X 改」按钮，这一档连按钮都没有）。
+   *
+   * 接上这个出口后，卡片多一颗「去第 N 章出新版本」，一键把作者送到那一章——
+   * **只导航，不替他决定要不要修**（与「去修复定稿后处理」同一处置，issue #55）。
+   *
+   * ⚠️ **可选**：批量写作对话框（一次写多章）不传它。
+   */
+  onOpenFinalizedChapter?: (chapterNumber: number) => void
+  /**
    * 「核对日期一致」（issue #216）：请模型判「同一件事的日期在不同章里是否一致」。
    * 现场是父亲沉船那夜在第 3–14 章写「七月十七」、第 95 章变成「九月十七」，错值还进了账本。
    * 不传时不渲染。
@@ -137,7 +152,7 @@ interface WritePreflightProps {
  */
 export default function WritePreflight({
   preflight, busy, onIgnoreOnce, onRerun, onSave, onRevoke, onAcknowledge, onUnacknowledge, onOpenLayer, currentChapter,
-  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent, onCheckAbility, onCheckMemory, onCheckBlueprintFacts, onCheckEvidence, onCheckHandwriting, onCheckBlueprintInternal, onCheckLossRestatement, onCheckDeadline, onCheckDateConflict, onCreateCharacter,
+  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent, onCheckAbility, onCheckMemory, onCheckBlueprintFacts, onCheckEvidence, onCheckHandwriting, onCheckBlueprintInternal, onCheckLossRestatement, onCheckDeadline, onCheckDateConflict, onCreateCharacter, onOpenFinalizedChapter,
 }: WritePreflightProps) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
@@ -269,7 +284,20 @@ export default function WritePreflight({
                 </Button>
               ) : (
                 <span className="stage-preflight-not-here">
-                  {route.blockedBy === 'needs-finalized-prose'
+                  {route.blockedBy === 'needs-finalized-prose' && route.targetChapter !== undefined
+                      && onOpenFinalizedChapter !== undefined
+                    ? (
+                      /*
+                       * issue #137：这一档原来**只有一句说明、没有按钮** ——
+                       * 而它说的动作（出新版本 → 重新定稿）在别的页面里是现成的。
+                       * 这里补一个出口，让作者一键到那一章去办（只导航，不替他决定）。
+                       */
+                      <Button variant="secondary" size="sm" disabled={busy}
+                        onClick={() => onOpenFinalizedChapter(route.targetChapter!)}>
+                        {text(`去第 ${route.targetChapter} 章出新版本`, `Make a new version of Chapter ${route.targetChapter}`)}
+                      </Button>
+                    )
+                    : route.blockedBy === 'needs-finalized-prose'
                     ? text(
                       // 点名**是哪一章**（issue #212）：一刀切的文案会让作者以为要重开「来源章」，
                       // 而区间型提醒（第 42–55 章连着没跨日）压根不是重开一章能解决的。

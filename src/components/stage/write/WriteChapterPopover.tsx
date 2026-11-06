@@ -1121,6 +1121,16 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
             close(false)
             navigate(route.destination)
           }}
+          /*
+           * issue #137：「这条落在已定稿的章上」那一档原来**只有说明、没有出口** ——
+           * 卡片让作者「先给那一章出新版本再重新定稿」，却不给任何按钮。
+           * 这里把他送到那一章：版本入口与「应用为新版本」都在那一页
+           * （ChapterActions）。**只导航，不替他决定要不要修。**
+           */
+          onOpenFinalizedChapter={target => {
+            close(false)
+            navigate({ kind: 'chapter', chapterNumber: target })
+          }}
         />
       )}
       {message && <p className="stage-write-error" role="alert">{message}</p>}

@@ -555,3 +555,61 @@ describe('「这些要点按钮才跑」要有可见提示 (issue #194)', () => 
     expect(note.textContent).toContain('自动预检查不出')
   })
 })
+
+/**
+ * issue #137：落在**已定稿章**上的那批提醒，原来只有一句说明、**没有任何按钮**。
+ *
+ * 卡片让作者「先给那一章出新版本再重新定稿」，可是读完这句他只能自己记住章号、
+ * 退出弹层、翻到那一章、找版本入口——这正是 issue 说的
+ * 「13 条提醒要手工跨 5 个页面改 13 次」里最贵的一种（其它层至少有「去 X 改」按钮）。
+ *
+ * 现在补一个出口：把作者送到那一章（版本入口与「应用为新版本」都在那一页），
+ * **只导航，不替他决定要不要修**（与「去修复定稿后处理」同一处置，#55）。
+ */
+describe('已定稿章的提醒要有出口 (issue #137)', () => {
+  it('offers a button that takes the author to that chapter, and names the chapter', async () => {
+    const openedChapters: number[] = []
+    host = document.createElement('div')
+    host.className = 'paper-ink stage-shell'
+    document.body.append(host)
+    root = createRoot(host)
+    await act(async () => root!.render(
+      <WritePreflight
+        preflight={preflight} busy={false}
+        onIgnoreOnce={vi.fn()} onRerun={vi.fn()} onSave={vi.fn()} onRevoke={vi.fn()}
+        onAcknowledge={vi.fn()} onUnacknowledge={vi.fn()}
+        currentChapter={59}
+        // ⚠️ 这一档整块（含「去 X 改」与新的「出新版本」）都挂在 onOpenLayer 之下
+        // —— 没有它整块不渲染。真实调用点两个都传（WriteChapterPopover）。
+        onOpenLayer={vi.fn()}
+        onOpenFinalizedChapter={chapter => openedChapters.push(chapter)}
+      />,
+    ))
+    // 第 45 章那条的 sourceChapter 早于当前章（59）→ 判成「已定稿、写前改不动」。
+    const buttons = [...host!.querySelectorAll('button')]
+    const jump = buttons.find(item => /出新版本/.test(item.textContent ?? ''))
+    expect(jump, '要有「去第 N 章出新版本」按钮').toBeTruthy()
+    expect(jump!.textContent).toContain('45')
+    await act(async () => (jump as HTMLButtonElement).click())
+    expect(openedChapters).toEqual([45])
+  })
+
+  it('falls back to the explanatory text when no handler is wired (batch dialog)', async () => {
+    // 批量写作对话框没有单章上下文 → 不传 handler，退回纯说明，不给一颗点了没反应的按钮。
+    host = document.createElement('div')
+    host.className = 'paper-ink stage-shell'
+    document.body.append(host)
+    root = createRoot(host)
+    await act(async () => root!.render(
+      <WritePreflight
+        preflight={preflight} busy={false}
+        onIgnoreOnce={vi.fn()} onRerun={vi.fn()} onSave={vi.fn()} onRevoke={vi.fn()}
+        onAcknowledge={vi.fn()} onUnacknowledge={vi.fn()}
+        currentChapter={59}
+        onOpenLayer={vi.fn()}
+      />,
+    ))
+    expect([...host!.querySelectorAll('button')].some(item => /出新版本/.test(item.textContent ?? ''))).toBe(false)
+    expect(host!.textContent).toContain('重新定稿')
+  })
+})
