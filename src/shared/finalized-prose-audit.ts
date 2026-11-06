@@ -44,7 +44,6 @@
  */
 import type { ConsistencyFinding } from './consistency-preflight'
 import {
-  abilityBudgetFindings,
   assertionReversalFindings,
   findClosingLabelConflicts,
   findPendingLandingConvergence,
@@ -161,13 +160,13 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
     content: chapter.content,
   })))
 
-  // 编号位数（#47）与能力上限（#51）：单章自洽，逐章跑。
+  // 编号位数（#47）：单章自洽，逐章跑。
   const numbering = auditSample.flatMap(chapter => numberingFindings({
     chapterNumber: chapter.chapterNumber, content: chapter.content,
   }))
-  const ability = auditSample.flatMap(chapter => abilityBudgetFindings({
-    chapterNumber: chapter.chapterNumber, content: chapter.content,
-  }))
+  // 能力上限（#51）原先是「用尽声明 + 成功使用」两张词表，按用户 2026-11-05 的定规
+  // 已改由模型判（`ability-review.ts` 的第二类 `exhausted-then-reused`），作者主动触发。
+  const ability: ConsistencyFinding[] = []
   // 自报「N 个字」与引出的实体不符（issue #131）：与编号位数同族，单章自洽，逐章跑。
   const declaredCount = auditSample.flatMap(chapter => declaredCharacterCountFindings({
     chapterNumber: chapter.chapterNumber, content: chapter.content,

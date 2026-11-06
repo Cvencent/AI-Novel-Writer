@@ -4,7 +4,6 @@ import { foreshadowingKeywords, selectDiscriminatingKeywords, type Foreshadowing
 import { findRepeatedEntranceShots } from './entrance-shot'
 // 段落起手主语（issue #94）：与 #81 同族但读的是**每一段的第一个词**。
 // 物件过手动作的固定化（issue #95）：折好→塞进某处 这一套三拍。
-import { findAbilityReuseContradictions } from './ability-budget'
 import { findDeclaredDigitCountMismatches } from './numbering-consistency'
 // 自报「N 个字」与紧随其后的实体不符（issue #131）：与 #47 同族，另一个量词形态。
 import { findDeclaredCharacterCountMismatches } from './declared-character-count'
@@ -1443,30 +1442,11 @@ export function mergeConsistencyFindingsIntoReview(
   return { ...review, items: [...(Array.isArray(review.items) ? review.items : []), ...mapped] }
 }
 
-// --- 以下三项由审稿路径移到 shared（issue #83）：写前预检与审稿共用同一份实现 ---
+// --- 以下两项由审稿路径移到 shared（issue #83）：写前预检与审稿共用同一份实现 ---
 
-/**
- * 能力／资源上限的自相矛盾 → 一致性发现（issue #51）。
- *
- * 只报能直接机器判的那一类：**同一章内先声明资源用尽、随后又成功使用**。
- * 跨章的「还剩几次」需要一个结构化消耗账字段（本轮未做，见 issue 评论）。
- */
-export function abilityBudgetFindings(chapter: { chapterNumber: number; content: string }): ConsistencyFinding[] {
-  return findAbilityReuseContradictions(chapter.content).map(contradiction => ({
-    stableFactKey: `ability-budget:reuse:${chapter.chapterNumber}:${contradiction.index}`,
-    severity: 'warning' as const,
-    sourceChapter: chapter.chapterNumber,
-    evidence: `第${chapter.chapterNumber}章：「${contradiction.declaration}」→ 随后「${contradiction.reuse}」`,
-    issue: {
-      zhCN: `能力的上限被自己作废了：这里刚声明资源已经用尽（「${contradiction.declaration.slice(0, 40)}…」），紧接着又成功用了一次。读者据此会认为这套限制不作数，前面的取舍也就不成立。`,
-      enUS: `A stated limit is voided inside the same passage: the text declares the resource exhausted, then the ability succeeds again a few lines later. Readers conclude the constraint does not hold, which voids every earlier trade-off built on it.`,
-    },
-    suggestion: {
-      zhCN: '三选一：把用尽声明挪到这次使用之后；写出恢复条件（换班次、补水、换物件）并说明为什么这次还能读；或删掉这次使用。别让两句留在同一段里自相抵消。',
-      enUS: 'Pick one: move the exhaustion statement after this use; write the recovery condition (new shift, refill, another object) and why this read is still possible; or drop this use. Do not leave both claims in the same passage canceling each other.',
-    },
-  }))
-}
+// 「同一章先说用尽、随后又成功」原先由 `ability-budget.ts` 的两张词表判（issue #51）。
+// 按用户 2026-11-05 的定规（内容判断不许词表、不许短语匹配）已改由模型判：
+// `ability-review.ts` 的第二类 `exhausted-then-reused`，由作者主动触发「核对能力限制」。
 
 /**
  * 「N 个字」的自报计数与紧随其后实体不符 → 一致性发现（issue #131）。

@@ -515,7 +515,9 @@ export async function reviewAbilityLimits(
 ): Promise<AbilityReviewOutcome> {
   const en = locale === 'en-US'
   const limits = limitSentencesOf(worldbuilding)
-  if (limits.length === 0 || chapters.length === 0) return { status: 'ok', findings: [] }
+  // ⚠️ 以前 `limits.length === 0` 就直接返回：第二类（同一章先声明用尽、随后又成功）
+  // 不需要限制清单，那样会被整条静默跳过（issue #163 第六批）。现在只要求有章节。
+  if (chapters.length === 0) return { status: 'ok', findings: [] }
   const request = { limits, chapters, language: locale }
   const { system, user } = buildAbilityReviewPrompt(request)
   const call = await askReviewModel([{ role: 'system', content: system }, { role: 'user', content: user }], session)
@@ -524,8 +526,8 @@ export async function reviewAbilityLimits(
   const issues = parseAbilityReview(response.content, request)
   if (!issues) {
     return { status: 'failed', findings: [], error: en
-      ? 'The model did not return a valid limit-violation list.'
-      : '模型返回的不是合法的「限制被绕过」清单。' }
+      ? 'The model did not return a valid ability list (limit bypass / exhausted-then-reused).'
+      : '模型返回的不是合法的「能力限制」清单（限制被绕过 / 先说用尽后又用）。' }
   }
   return { status: 'ok', findings: abilityReviewFindings(issues) }
 }

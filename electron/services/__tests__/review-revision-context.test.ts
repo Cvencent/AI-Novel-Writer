@@ -11,7 +11,7 @@ import { SqliteSchemaAdapter } from '../../migrations/sqlite-schema-adapter'
 import { getProjectDb } from '../../database'
 import { ReviewRepository } from '../../repositories/review-repository'
 import { textHash } from '../../repositories/generation-run-repository'
-import { abilityBudgetFindings, assertionReversalFindings, captureReviewRevisionContext, numberingFindings, reviewRevisionRequest } from '../review-revision-context'
+import { assertionReversalFindings, captureReviewRevisionContext, numberingFindings, reviewRevisionRequest } from '../review-revision-context'
 vi.mock('../../database', () => ({ getProjectDb: vi.fn() }))
 const Database = createRequire(import.meta.url)('better-sqlite3') as typeof import('better-sqlite3')
 const connections: import('better-sqlite3').Database[] = []
@@ -215,28 +215,11 @@ describe('assertionReversalFindings (issue #52)', () => {
   })
 })
 
-// issue #51：能力上限被同一段自相抵消（第 13 章「用尽」后紧接着又读出）。
-describe('abilityBudgetFindings (issue #51)', () => {
-  it('同一段内声明用尽后再次成功使用时给出可定位提示', () => {
-    const findings = abilityBudgetFindings({
-      chapterNumber: 13,
-      content: '纸面发了脆，最后一次溯读已经用尽，本班次再读不出第二处。凑近灯，一行字浮出来。',
-    })
-    expect(findings).toHaveLength(1)
-    expect(findings[0]!.severity).toBe('warning')
-    expect(findings[0]!.sourceChapter).toBe(13)
-    expect(findings[0]!.stableFactKey).toContain('ability-budget:reuse:13')
-    expect(findings[0]!.evidence).toContain('用尽')
-    expect(findings[0]!.suggestion.zhCN).toContain('恢复条件')
-  })
-
-  it('用尽后没有再用时不报（正常「这次真用完了」）', () => {
-    expect(abilityBudgetFindings({
-      chapterNumber: 5,
-      content: '最后一次溯读已经用尽。他把票根收回怀里，夜里什么也没再发生。',
-    })).toEqual([])
-  })
-})
+// issue #51 → #163 第六批：这一档原先靠两张词表（「用尽声明」/「成功使用」）判，
+// 按用户 2026-11-05 的定规已下线——判「这句话是不是在说用尽」「这个动作算不算又用了一次」
+// 要读懂句子。规则侧只剩「能不能定位」的事，所以这里不再有断言：
+//   · 审稿：提示词第 15 条本来就要求模型判这件事；
+//   · 写前预检：`ability-review.ts` 的第二类 `exhausted-then-reused`（作者主动触发）。
 
 describe('章末收束体检（issue #65 / #66）', () => {
   /** 造一本已定稿若干章的书，正文末段各按需要给。 */

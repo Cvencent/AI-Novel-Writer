@@ -161,3 +161,113 @@ describe('buildAbilityReviewPrompt 条件式限制 (issue #171)', () => {
     expect(system).toContain('NOT a violation')
   })
 })
+
+/**
+ * issue #163 第六批：`ability-budget.ts` 的两张词表下线
+ * （`EXHAUSTED_DECLARATION` = 用尽声明、`SUCCESSFUL_USE` = 本书的能力表现）。
+ *
+ * 同一个按钮上补第二类问题，由模型回答：
+ * **同一章内**先声明用尽，随后在没有恢复条件的情况下又成功用了一次。
+ */
+describe('第二类：先说用尽、随后又成功 (issue #163)', () => {
+  const CHAPTERS_KIND2 = [
+    { chapterNumber: 44, content: '这一班的水汽已经用完，本次再也不能读。他把手按在票面上，字浮了出来。' },
+    { chapterNumber: 45, content: '他把手按在票面上，字浮了出来。这次水汽够。' },
+  ]
+  const request2 = { limits: LIMITS, chapters: CHAPTERS_KIND2, language: 'zh-CN' as const }
+  const raw = (issues: unknown) => JSON.stringify({ issues })
+  const EXHAUSTED = '这一班的水汽已经用完，本次再也不能读。'
+  const REUSED = '字浮了出来。'
+
+  it('asks the second question in the prompt, without any word list', () => {
+    const { system } = buildAbilityReviewPrompt(request2)
+    expect(system).toContain('exhausted-then-reused')
+    expect(system).toContain('同一章内')
+    expect(system).toContain('declaration')
+    // 判定「什么叫用尽、什么算又用了一次」不许落成语义词表。
+    expect(system).not.toContain('用尽声明表')
+    expect(system).not.toContain('溯读')
+  })
+
+  it('still runs the second kind when the worldbuilding declares no limit', () => {
+    const { system, user } = buildAbilityReviewPrompt({ ...request2, limits: [] })
+    expect(system).toContain('限制清单为空时只查第二类')
+    expect(user).toContain('没有取到限制句')
+    expect(user).toContain('第44章')
+  })
+
+  it('has the second question on the English side too', () => {
+    const { system } = buildAbilityReviewPrompt({ ...request2, language: 'en-US' })
+    expect(system).toContain('SECOND kind')
+    expect(system).toContain('exhausted-then-reused')
+  })
+
+  it('accepts the second kind only when BOTH quotes locate in the same chapter', () => {
+    const issues = parseAbilityReview(raw([{
+      kind: 'exhausted-then-reused',
+      chapterNumber: 44,
+      declaration: EXHAUSTED,
+      quote: REUSED,
+      explanation: '中间没有写恢复条件。',
+    }]), request2)
+    expect(issues).toHaveLength(1)
+    expect(issues![0]!.kind).toBe('exhausted-then-reused')
+    expect(issues![0]!.declaration).toBe(EXHAUSTED)
+  })
+
+  it('drops it when the exhaustion claim cannot be located verbatim (author could not find it)', () => {
+    const issues = parseAbilityReview(raw([{
+      kind: 'exhausted-then-reused',
+      chapterNumber: 44,
+      declaration: '这句话本章并没有写。',
+      quote: REUSED,
+      explanation: '',
+    }]), request2)
+    expect(issues).toEqual([])
+  })
+
+  it('drops it when the two quotes come from different chapters', () => {
+    // quote 出自 45 章、declaration 出自 44 章 → 不可能是「同一章内部」的矛盾。
+    const issues = parseAbilityReview(raw([{
+      kind: 'exhausted-then-reused',
+      chapterNumber: 45,
+      declaration: EXHAUSTED,
+      quote: REUSED,
+      explanation: '',
+    }]), request2)
+    expect(issues).toEqual([])
+  })
+
+  it('drops an unknown kind instead of guessing (wrong kind gives the author the wrong fix)', () => {
+    const issues = parseAbilityReview(raw([{
+      kind: 'some-new-kind',
+      chapterNumber: 44,
+      quote: REUSED,
+      violatedLimit: LIMITS[0],
+      explanation: '',
+    }]), request2)
+    expect(issues).toEqual([])
+  })
+
+  it('does not require a limit for the second kind (a limit is not part of that claim)', () => {
+    const issues = parseAbilityReview(raw([{
+      kind: 'exhausted-then-reused',
+      chapterNumber: 44,
+      declaration: EXHAUSTED,
+      quote: REUSED,
+      explanation: '',
+    }]), { ...request2, limits: [] })
+    expect(issues).toHaveLength(1)
+  })
+
+  it('keys the second kind on chapter + the claim, so two claims in one chapter stay separate', () => {
+    const [first, second] = abilityReviewFindings([
+      { kind: 'exhausted-then-reused', chapterNumber: 44, quote: REUSED, violatedLimit: '', declaration: EXHAUSTED, explanation: '' },
+      { kind: 'exhausted-then-reused', chapterNumber: 44, quote: REUSED, violatedLimit: '', declaration: '另一项资源也见底了。', explanation: '' },
+    ])
+    expect(first!.stableFactKey).toContain('ability:exhausted-then-reused:44:')
+    expect(first!.stableFactKey).not.toBe(second!.stableFactKey)
+    expect(first!.evidence).toContain(EXHAUSTED)
+    expect(first!.suggestion.zhCN).toContain('恢复条件')
+  })
+})

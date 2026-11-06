@@ -423,8 +423,10 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       const worldbuilding = String((core as { worldbuilding?: string } | null)?.worldbuilding ?? '')
       const chapters = await recentFinalized(session)
       if (!isProjectSessionCurrent(session)) return
-      if (!worldbuilding.trim()) {
-        setMessage(text('世界观里没有可核对的限制句。', 'The worldbuilding declares no limit to check against.'))
+      // ⚠️ 世界观为空**不再**提前返回：这一档还查「同一章先说用尽、随后又成功」，
+      // 那条不需要限制句（issue #163 第六批）。服务层只要求有已定稿章。
+      if (chapters.length === 0) {
+        setMessage(text('还没有已定稿的章可核对。', 'No finalized chapter to check yet.'))
         return
       }
       const outcome = await reviewAbilityLimits(session, worldbuilding, chapters, locale)

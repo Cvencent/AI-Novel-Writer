@@ -44,8 +44,6 @@
   "src/services/workflows/commands/architecture.command.ts::ZH_PROGRESS_MARK_RE::5142d6a4",
   "src/services/workflows/commands/directory.command.ts::<inline>::bc195666",
   "src/services/workflows/novel-config-expansion.ts::CHAPTER_OUTLINE_LINE::c83f285c",
-  "src/shared/ability-budget.ts::EXHAUSTED_DECLARATION::9d7b5259",
-  "src/shared/ability-budget.ts::SUCCESSFUL_USE::a4c3260b",
   "src/shared/ability-review.ts::LIMIT_CUE::4829b361",
   "src/shared/arc-outline-contract.ts::ARC_BEAT_LINE::006023a6",
   "src/shared/arc-outline-contract.ts::ARC_HEADING::0048ed26",

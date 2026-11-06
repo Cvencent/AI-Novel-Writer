@@ -8,7 +8,6 @@ import { findBlueprintContinuityRisks } from '../../src/shared/consistency-prefl
 // issue #83：这三项的实现已移到 `src/shared/consistency-preflight.ts`（写前预检与审稿
 // 共用同一份）。这里既在本文件内调用、又要保持既有 import 路径不变，所以「import + re-export」。
 import {
-  abilityBudgetFindings,
   assertionReversalFindings,
   findClosingLabelConflicts,
   findPendingLandingConvergence,
@@ -16,7 +15,6 @@ import {
   numberingFindings,
 } from '../../src/shared/consistency-preflight'
 export {
-  abilityBudgetFindings,
   assertionReversalFindings,
   numberingFindings,
 }
@@ -197,9 +195,10 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
         // 命中即错，不需要词表。样本是本章正文（最近定稿的编号体系在前面章节里，
         // 但「同一句自相矛盾」永远发生在当章）。
         ...numberingFindings({ chapterNumber: source.chapterNumber, content: source.content }),
-        // 能力／资源上限的自相矛盾（issue #51）：第 13 章同一段先说「最后一次溯读已经用尽、
-        // 本班次再读不出第二处」，紧接着又写「一行字浮出来」——核心能力的定价机制被自己作废。
-        ...abilityBudgetFindings({ chapterNumber: source.chapterNumber, content: source.content }),
+        // 能力／资源上限的自相矛盾（issue #51）原先在规则侧用两张词表判
+        // （用尽声明 / 成功使用），按用户 2026-11-05 的定规已下线：
+        // 审稿提示词第 15 条本来就要求模型判这件事，预检里则由 `ability-review.ts`
+        // 的第二类 `exhausted-then-reused` 承接（作者主动触发）。
         // 跨章「断言反转」（issue #52）：第 16 章正文「是叶九的手」，第 19 章正文「不是叶九的手」，
         // 而第 19 章整章推理架在后一句上。比对源是**前序定稿正文**——它们与本章正文都在这份上下文里。
         ...assertionReversalFindings(

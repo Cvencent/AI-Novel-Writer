@@ -28,6 +28,12 @@ import type { ConsistencyFinding } from './consistency-preflight'
  *
  * ⚠️ 限制原文必须是**世界观里真的写着**的句子（`LIMIT_SENTENCE` 只做「取含限制语素的句子」这种
  * **位置**判断，不判断限制内容本身）；取不到就不判——没有声明过的规则无所谓被绕过。
+ *
+ * ## 两类问题（issue #163 第六批）
+ *
+ * 同一个按钮问两件事：① 世界观声明的限制有没有被正文绕过（需要限制原文）；
+ * ② **同一章内**有没有先声明用尽、随后又成功用（不需要限制清单）。
+ * 第二类原来由 `ability-budget.ts` 的两张词表判，已下线——理由见 `ABILITY_REVIEW_KINDS`。
  */
 
 export interface AbilityReviewChapter {
@@ -86,11 +92,38 @@ export function limitSentencesOf(worldbuilding: string): string[] {
   return picked
 }
 
+/**
+ * 这一档要模型回答的**两类**问题（同一个按钮、同一次调用）。
+ *
+ * 第二类是 issue #163 第六批搬过来的：`ability-budget.ts` 原先用两张词表
+ * （「用尽声明」/「成功使用」）判「同一章先说用尽、随后又成功」，而
+ * 「这句话是不是在说用尽」「这个动作算不算又成功用了一次」都要读懂句子——
+ * 正是 §1.7 禁止的写死内容逻辑。`SUCCESSFUL_USE` 那张甚至是**这本书**的能力表现。
+ */
+export const ABILITY_REVIEW_KINDS = {
+  'limit-bypassed': {
+    zhCN: '世界观声明的限制被正文绕过',
+    enUS: 'a declared limit is bypassed on the page',
+  },
+  'exhausted-then-reused': {
+    zhCN: '同一章先声明用尽、随后又成功使用',
+    enUS: 'declared exhausted, then used again in the same chapter',
+  },
+} as const
+
+export type AbilityReviewKind = keyof typeof ABILITY_REVIEW_KINDS
+
+export const ABILITY_REVIEW_KIND_IDS = Object.freeze(Object.keys(ABILITY_REVIEW_KINDS) as AbilityReviewKind[])
+
 export interface AbilityReviewIssue {
   chapterNumber: number
+  /** 缺省按 `limit-bypassed` 解析（旧模型输出不带这个字段）。 */
+  kind?: AbilityReviewKind
   quote: string
-  /** 违反的是哪一条限制（模型从给的限制句里挑，或复述）。 */
+  /** 违反的是哪一条限制（模型从给的限制句里挑，或复述）；`exhausted-then-reused` 不需要。 */
   violatedLimit: string
+  /** `exhausted-then-reused`：声明用尽的那一句（必须逐字出自同一章）。 */
+  declaration?: string
   explanation: string
 }
 
@@ -123,7 +156,12 @@ export function buildAbilityReviewPrompt(request: AbilityReviewRequest): { syste
       'Do not invent limits: quote one from the list you were given.',
       'Every report must quote the exact sentence from that chapter. If you cannot quote it, do not report it.',
       'If the prose shows the character supplying the missing condition themselves, say so in the explanation — that is the same violation.',
-      'Output one JSON object: {"issues":[{"chapterNumber":<n>,"quote":"<exact sentence>","violatedLimit":"<one of the limits>","explanation":"<one sentence>"}]}',
+      // 第二类（issue #163 第六批）：不需要限制清单，判的是同一章内部的自相抵消。
+      'Also check a SECOND kind, which needs no limit list: INSIDE ONE CHAPTER, a passage declares the ability or resource exhausted (no further use now), and a later passage in the same chapter shows a successful use with no stated recovery (refilled, a fresh opportunity, another object).',
+      'For that kind use "kind":"exhausted-then-reused" and give two quotes: declaration (the exhaustion claim) and quote (the later successful use); both must be verbatim from the SAME chapter.',
+      'Note: "one use left" is not exhaustion — it still allows one use; only a second successful use after spending that one is a contradiction.',
+      'If the limit list is empty, check only this second kind. Do not invent limits.',
+      'Output one JSON object: {"issues":[{"kind":"limit-bypassed|exhausted-then-reused","chapterNumber":<n>,"quote":"<exact sentence>","violatedLimit":"<one of the limits; limit-bypassed only>","declaration":"<exhaustion claim; exhausted-then-reused only>","explanation":"<one sentence>"}]}',
       'If nothing violates, output {"issues":[]}. No commentary outside the JSON.',
     ].join('\n')
     : [
@@ -137,11 +175,19 @@ export function buildAbilityReviewPrompt(request: AbilityReviewRequest): { syste
       '不要自己造限制：`violatedLimit` 必须来自给你的限制清单。',
       '每条都必须**逐字引用**该章正文里的一句。引不出来就不要报。',
       '如果正文里是角色**自己补上了缺失的条件**（自带水／换到别处／临时借用），要在 explanation 里写出来——那同样算绕过。',
-      '输出一个 JSON 对象：{"issues":[{"chapterNumber":<章号>,"quote":"<原句>","violatedLimit":"<来自限制清单的一条>","explanation":"<一句话>"}]}',
+      // 第二类（issue #163 第六批）：不需要限制清单，判的是同一章内部的自相抵消。
+      // 旧 `ability-budget.ts` 用「用尽声明」+「成功使用」两张词表做这件事，已下线。
+      '再查**第二类**（不需要限制清单也能查）：**同一章内**先声明某项能力/资源已经用尽、本次不能再使用，随后在没有写出恢复条件（重新补足、换一次机会、换一件）的情况下又成功用了一次。',
+      '这一类用 "kind":"exhausted-then-reused"，并给两个引文：declaration（用尽声明那一句）与 quote（之后成功使用的那一句），两句必须**逐字出自同一章**正文。',
+      '注意：「只剩一次」不是「已用尽」——它仍然允许一次使用，花掉这一次之后又成功用第二次才算矛盾。',
+      '限制清单为空时只查第二类，不要自己造限制。',
+      '输出一个 JSON 对象：{"issues":[{"kind":"limit-bypassed|exhausted-then-reused","chapterNumber":<章号>,"quote":"<原句>","violatedLimit":"<来自限制清单的一条，仅 limit-bypassed>","declaration":"<用尽声明原句，仅 exhausted-then-reused>","explanation":"<一句话>"}]}',
       '没有就输出 {"issues":[]}。JSON 之外不要写任何解释。',
     ].join('\n')
 
-  const limitText = request.limits.map((item, index) => `${index + 1}. ${item}`).join('\n')
+  const limitText = request.limits.length
+    ? request.limits.map((item, index) => `${index + 1}. ${item}`).join('\n')
+    : (en ? '(the worldbuilding declares no limit)' : '（世界观里没有取到限制句）')
   const chapterText = chapters.map(chapter => [
     en ? `### Chapter ${chapter.chapterNumber}` : `### 第${chapter.chapterNumber}章`,
     String(chapter.content),
@@ -187,16 +233,41 @@ export function parseAbilityReview(
     const chapterNumber = Number(record.chapterNumber)
     const quote = String(record.quote ?? '').trim()
     const violatedLimit = String(record.violatedLimit ?? '').trim()
+    const kind = asAbilityReviewKind(record.kind)
+    const declaration = String(record.declaration ?? '').trim()
+    if (kind === null) continue
     if (!Number.isSafeInteger(chapterNumber) || !byNumber.has(chapterNumber)) continue
     const body = byNumber.get(chapterNumber)!
     if (!quote || !body.includes(quote)) continue
-    if (!violatedLimit || !limits.some(item => item === violatedLimit || item.includes(violatedLimit) || violatedLimit.includes(item))) continue
-    const key = `${chapterNumber}:${quote}`
+    if (kind === 'exhausted-then-reused') {
+      // 声明句也必须逐字出自同一章，否则作者点开卡片找不到它。
+      if (!declaration || !body.includes(declaration)) continue
+    } else if (!violatedLimit || !limits.some(item => item === violatedLimit || item.includes(violatedLimit) || violatedLimit.includes(item))) {
+      continue
+    }
+    const key = `${kind}:${chapterNumber}:${quote}`
     if (seen.has(key)) continue
     seen.add(key)
-    result.push({ chapterNumber, quote, violatedLimit, explanation: String(record.explanation ?? '').trim() })
+    result.push({
+      chapterNumber,
+      kind,
+      quote,
+      violatedLimit,
+      declaration: declaration || undefined,
+      explanation: String(record.explanation ?? '').trim(),
+    })
   }
   return result
+}
+
+/**
+ * 模型给的 `kind` 必须是我们认识的两种之一；缺省按旧口径（`limit-bypassed`）。
+ * 未知值整条丢弃——宁可少报一条，也不要按错的种类给作者一段不合用的修法。
+ */
+function asAbilityReviewKind(value: unknown): AbilityReviewKind | null {
+  const raw = String(value ?? '').trim()
+  if (!raw) return 'limit-bypassed'
+  return (ABILITY_REVIEW_KIND_IDS as readonly string[]).includes(raw) ? raw as AbilityReviewKind : null
 }
 
 function stripFence(value: string): string {
@@ -204,9 +275,15 @@ function stripFence(value: string): string {
   return fenced ? fenced[1]! : value
 }
 
-/** 把模型判出的「限制被绕过」转成一致性发现。 */
+/** 把模型判出的问题转成一致性发现（两类）。 */
 export function abilityReviewFindings(issues: readonly AbilityReviewIssue[]): ConsistencyFinding[] {
-  return issues.map(issue => ({
+  return issues.map(issue => (issue.kind ?? 'limit-bypassed') === 'exhausted-then-reused'
+    ? exhaustedThenReusedFinding(issue)
+    : limitBypassedFinding(issue))
+}
+
+function limitBypassedFinding(issue: AbilityReviewIssue): ConsistencyFinding {
+  return {
     // 章号是既成事实；不带当前章（#86/#89/#98/#108）。
     stableFactKey: `ability:limit-bypassed:${issue.chapterNumber}`,
     severity: 'warning' as const,
@@ -220,5 +297,29 @@ export function abilityReviewFindings(issues: readonly AbilityReviewIssue[]): Co
       zhCN: `二选一：① 让这一次**付出代价**再成功（角色自己补上缺失条件的过程要写出来，并且花掉别的东西）；② 若这条限制已不打算要了，就回去**改世界观**与相关伏笔，别让章程和正文各说一套。`,
       enUS: `Either make this instance pay first (show the character supplying the missing condition and spending something for it), or, if the limit is no longer wanted, go back and change the worldbuilding and its foreshadowing so the rule and the prose agree.`,
     },
-  }))
+  }
+}
+
+/**
+ * 同一章内部「先用尽、后又成功」。
+ *
+ * 键带声明句前 8 字：同一章可能有两处（不同资源），只用章号会让 ack 一条清两条
+ * （#164 的「同 key 埋掉没修的那条」形态）。章号与引文都是既成事实，键不随写作推进变。
+ */
+function exhaustedThenReusedFinding(issue: AbilityReviewIssue): ConsistencyFinding {
+  const declaration = issue.declaration ?? ''
+  return {
+    stableFactKey: `ability:exhausted-then-reused:${issue.chapterNumber}:${declaration.slice(0, 8)}`,
+    severity: 'warning' as const,
+    sourceChapter: issue.chapterNumber,
+    evidence: `第${issue.chapterNumber}章：「${declaration}」→ 随后「${issue.quote}」`,
+    issue: {
+      zhCN: `能力的上限被自己作废了：这里刚声明资源已经用尽（「${declaration.slice(0, 40)}」），紧接着又成功用了一次（「${issue.quote.slice(0, 40)}」）——${issue.explanation || '两处之间没有写出恢复条件。'}。读者据此会认为这套限制不作数，前面所有「能力有代价」的取舍也就一起失效。`,
+      enUS: `A stated limit is voided inside the same chapter: the text declares the resource exhausted (“${declaration.slice(0, 40)}”), then the ability succeeds again shortly after (“${issue.quote.slice(0, 40)}”) — ${issue.explanation || 'no recovery is written between them.'} Readers conclude the constraint does not hold, which voids every earlier trade-off built on it.`,
+    },
+    suggestion: {
+      zhCN: '三选一：把用尽声明挪到这次使用之后；写出恢复条件（重新补足、换一次机会、换一件）并说明为什么这次还能用；或删掉这次使用。别让两句留在同一段里自相抵消。',
+      enUS: 'Pick one: move the exhaustion statement after this use; write the recovery condition (refilled, a fresh opportunity, another object) and why this use is still possible; or drop this use. Do not leave both claims in the same passage canceling each other.',
+    },
+  }
 }

@@ -161,7 +161,7 @@ describe('auditFinalizedProse (issue #83)', () => {
     expect(findings.some(finding => finding.stableFactKey.startsWith('numbering:digits:16'))).toBe(true)
   })
 
-  it('reports a stated limit voided inside the same chapter (issue #51)', () => {
+  it('no longer judges ability exhaustion by rules — that moved to the model (issues #51 / #163)', () => {
     const findings = auditFinalizedProse({
       chapters: [{
         chapterNumber: 13,
@@ -169,7 +169,11 @@ describe('auditFinalizedProse (issue #83)', () => {
       }],
       castNames: [], blueprints: [],
     })
-    expect(findings.some(finding => finding.stableFactKey.startsWith('ability-budget:reuse:13'))).toBe(true)
+    // 「这句话是不是在说用尽」「这个动作算不算又成功用了一次」要读懂句子——
+    // 旧实现靠 `EXHAUSTED_DECLARATION` + `SUCCESSFUL_USE` 两张词表，已下线。
+    // 现在由 `ability-review.ts` 的第二类 `exhausted-then-reused`（作者主动触发）承接；
+    // 这条断言钉住「规则侧不再自己冒出这一类」。
+    expect(findings.some(finding => finding.stableFactKey.startsWith('ability-budget'))).toBe(false)
   })
 
   it('reports a promise whose target chapter never names it (issue #68)', () => {
