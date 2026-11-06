@@ -479,11 +479,21 @@ export function createReviewOnlyWorkflow(
           const finalized = (await ipc.invokeWithProjectSession(session, 'db:draft-export-snapshot', session.projectPath)
             .catch(() => [])) as Array<{ chapterNumber: number, content: string }>
           const blueprints = (await ipc.invokeWithProjectSession(session, 'db:blueprint-get', frozenParams.chapterNumber, session.projectPath).catch(() => null)) as
-            { key_events?: unknown, foreshadowing?: unknown, costs_and_turns?: unknown } | null
+            { key_events?: unknown, foreshadowing?: unknown, costs_and_turns?: unknown, notes?: unknown, purpose?: unknown, suspense_hook?: unknown } | null
+          // ⚠️ 取数口径与弹层「核对蓝图自洽」对齐（6 字段）：#172 的现场（两套值）在 notes、
+          // #222 的现场（互斥处置）在 keyEvents——漏字段就是漏检，且是静默的。
+          // （db:blueprint-get 返回 snake_case 行；两个命名都兜，避免依赖行映射细节。）
           const claims = blueprints ? [{
             chapterNumber: frozenParams.chapterNumber,
-            claims: [blueprints.key_events, blueprints.foreshadowing, blueprints.costs_and_turns]
-              .map(value => String(value ?? '')).filter(Boolean).join('\n'),
+            claims: [
+              blueprints.notes ?? (blueprints as Record<string, unknown>).notes,
+              blueprints.key_events ?? (blueprints as Record<string, unknown>).keyEvents,
+              blueprints.purpose ?? (blueprints as Record<string, unknown>).purpose,
+              blueprints.suspense_hook ?? (blueprints as Record<string, unknown>).suspenseHook,
+              blueprints.costs_and_turns ?? (blueprints as Record<string, unknown>).costsAndTurns,
+              blueprints.foreshadowing ?? (blueprints as Record<string, unknown>).foreshadowing,
+            ]
+              .map(value => String(value ?? '').trim()).filter(Boolean).join('\n'),
           }] : []
           const result = await runDeepReviewChecks({
             session,
