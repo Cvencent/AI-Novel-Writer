@@ -101,6 +101,23 @@ function installIpc() {
     }
     if (channel === 'db:blueprint-get') return BLUEPRINT
     if (channel === 'db:character-get-all') return [{ id: 1 }]
+    /**
+     * issue #211：这个 mock 缺了名册通道（`readConsistencyPreflight` 走
+     * `db:character-roster-read`）。缺了它 → `.catch(() => null)` → 名册为空 →
+     * 「未登记角色」把蓝图里三个人全报出来、`findAppearanceGaps` 再报「没有外貌/动机」，
+     * 于是首次点击按设计只弹预检（#53），`startWorkflow` 自然 0 次调用。
+     *
+     * **点击没有被吞**——是这个 mock 与真实 IPC 面对不上：真实项目的角色卡有名册、
+     * 有动机与外貌，这一章就不会带预检。把卡填全，测试才回到它本来要断言的
+     * 「同一蓝图下直接写作」那条路径上。
+     */
+    if (channel === 'db:character-roster-read') return {
+      entries: [
+        { name: '林舟', role: 'protagonist', motivation: '想查清母亲留下的那张车票。', appearance: '瘦高，左手无名指缺半节，常穿深灰夹克。' },
+        { name: '老周', role: 'supporting', motivation: '把当年的事压住。', appearance: '矮胖，戴旧式圆框眼镜，制服领口发亮。' },
+        { name: '阿满', role: 'supporting', motivation: '跟着林舟。', appearance: '十七八岁，短发，右耳有一颗痣。' },
+      ],
+    }
     if (channel === 'db:draft-get-finalized') return { chapterNumber: Number(args[0]) }
     if (channel === 'db:post-process-get-latest-run') {
       if (!blockedPreviousChapter) return null
@@ -317,7 +334,19 @@ describe('写作此章弹层', () => {
     expect(exemptions).toEqual([])
   })
 
-  it('保存安排后重检并开始写；已保存的安排可以在弹层里撤销', async () => {
+  /**
+   * ⚠️ 行为在 issue #170 变了，测试没跟上（issue #211 顺带修）：
+   *
+   * 原实现在「保存安排」落库后 `await start(false)` —— **重算整份预检并开写**。
+   * #170 把这一段删掉是有原因的：`readConsistencyPreflight` 的返回值不含模型判据的结论，
+   * 重算会把刚花两万 tok 核出来的卡片整体清空（现场 60 → 50、模型条目 0 条）。
+   * 所以现在「保存安排」= **只动这一条**（落库 → 从 findings 里去掉它 → 进 exemptions），
+   * 弹层留着、不重算、也不自动开写——作者接着处理下一条，或自己点主按钮。
+   *
+   * 但 #170 没改这条测试，于是它一直在断言「保存后 startWorkflow 会被调用一次」，
+   * 也就一直红着（#211 里 12 条失败的其中 1 条）。
+   */
+  it('保存安排只动这一条（不重算、也不自动开写），已保存的安排可以在弹层里撤销', async () => {
     continuityProjections = [{
       draftId: 1, chapterNumber: 1, chapterTitle: '终局', chapterNotes: '老周死亡',
       source: { draftId: 1, finalizationId: 'finalization-1', chapterNumber: 1, contentHash: 'a'.repeat(64) },
@@ -329,10 +358,17 @@ describe('写作此章弹层', () => {
     const popover = page.getByRole('dialog', { name: '本次写作选项' })
     await act(async () => popover.getByLabelText('安排说明').fill('老周以幽灵身份出现，是刻意安排。'))
     await act(async () => popover.getByRole('button', { name: '保存安排' }).click())
-    await vi.waitFor(() => expect(startWorkflow).toHaveBeenCalledOnce())
-    expect(exemptions).toMatchObject([{ reason: '老周以幽灵身份出现，是刻意安排。', revoked: false }])
+    // 落库成功即可断言（不再等 startWorkflow —— 它按设计不会被调用）。
+    await vi.waitFor(() => expect(exemptions).toMatchObject([{ reason: '老周以幽灵身份出现，是刻意安排。', revoked: false }]))
+    // 只动这一条：被保存的那条从提醒里消失，**别的提醒还在**（不重算 → 不会被清空）。
+    await expect.element(popover.getByRole('region', { name: '一致性预检' })).toBeVisible()
+    expect(popover.getByText('老周已经死亡')).toBeTruthy()
+    // 不自动开写：作者接着处理下一条，或自己点主按钮。
+    expect(startWorkflow).not.toHaveBeenCalled()
 
-    await act(async () => page.getByRole('button', { name: '本次写作选项' }).click())
+    // 弹层这时**已经关着**（「保存安排」不重开它，也不自动开写）；直接展开「已保存安排」。
+    // 原来这里先点了一次「本次写作选项」箭头 —— 那会**打开**弹层，随后在展开的分组上再点
+    // 一次反而关掉它，于是等不到『已保存安排（1）』（旧实现保存后会重开弹层，所以那时是对的）。
     await popover.getByText('已保存安排（1）').click()
     await act(async () => popover.getByRole('button', { name: '撤销' }).click())
     await vi.waitFor(() => expect(exemptions).toMatchObject([{ revoked: true }]))
