@@ -38,7 +38,18 @@ const BASELINE = JSON.parse(readFileSync(join(__dirname, 'literal-tables.baselin
 describe('判据层不许新增写死的中文词表/正则 (用户 2026-11-05 / issue #163)', () => {
   // 基线用**仓库相对路径**（`src/shared/x.ts::表名::指纹`），扫描器给的是绝对路径 → 统一下一步。
   const repoRoot = join(__dirname, '..', '..', '..')
-  const tables = scanLiteralTables(join(repoRoot, 'src', 'shared'))
+  /**
+   * ⚠️ **全仓扫，不只 `src/shared`**（issue #163 建议 ①）。
+   *
+   * 原来只扫一个目录，于是 `src/services` 与 `electron` 里的表**没有任何守卫**。
+   * 本轮实测：`src/shared` 99 张、`src/services` **36 张**、`electron` 12 张 ——
+   * 后 48 张此前完全在盲区里（迁移期往那儿加一张内容词表，守卫一句话都不会说）。
+   */
+  const tables = [
+    ...scanLiteralTables(join(repoRoot, 'src', 'shared')),
+    ...scanLiteralTables(join(repoRoot, 'src', 'services')),
+    ...scanLiteralTables(join(repoRoot, 'electron')),
+  ]
   /**
    * 一条表的身份 = **文件 + 表名 + 整表指纹**（issue #168）。
    *
@@ -49,7 +60,9 @@ describe('判据层不许新增写死的中文词表/正则 (用户 2026-11-05 /
    */
   const keyOf = (table: { file: string; name: string; samples: string[] }) => {
     const relative = table.file.split('\\').join('/')
-    const at = relative.indexOf('src/shared/')
+    // 仓库相对路径：三个扫描根都要归一，否则 electron/ 下的表会带绝对路径进基线
+    // （跨机器/跨检出路径不一致 → 基线失效）。
+    const at = Math.max(relative.indexOf('src/shared/'), relative.indexOf('src/services/'), relative.indexOf('electron/'))
     const path = at >= 0 ? relative.slice(at) : relative
     return `${path}::${table.name}::${tableFingerprint(table.samples)}`
   }
