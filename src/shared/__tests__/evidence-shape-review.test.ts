@@ -49,8 +49,10 @@ describe('buildEvidenceShapePrompt (issue #156)', () => {
     expect(system).toContain('impossible-cause')
     // issue #182：第三档「保管关系」（谁持有 / 锁没锁 / 哪个房间）也进来了。
     expect(system).toContain('custody-drift')
+    // issue #209：第四档「容器件数」（进去 N 件、出来 M 件，且没人问）。
+    expect(system).toContain('container-count-drift')
     // 只许报这几类：否则模型会把「物证没再出现」这类正常延续也报上来。
-    expect(system).toContain('只报下面这三类问题')
+    expect(system).toContain('只报下面这几类问题')
   })
 
   it('excludes changes the prose itself explains', () => {
@@ -376,5 +378,84 @@ describe('参照物落空的物件比对 (issue #176)', () => {
     const { system } = buildEvidenceShapePrompt(request)
     expect(system).toContain('同一个容器的内装物')
     expect(system).toContain('一圆一缺')
+  })
+})
+
+/**
+ * issue #209：同一个容器封进去 2 件、当着人面开出来只剩 1 件，**而没人问**。
+ *
+ * 现场原文（定稿正文，第 91 → 92 章）：
+ * - ch91「袖套抽出第三格页，**连同存根联**塞进牛皮复核袋，封条抹平，压了两道。」
+ * - ch92「封条两侧完好，浆糊干透。」「封时记的，第三格页，有字一张。」「袋口撑开，抽出内里**一张**纸，摊平。」
+ *
+ * 三处同时不成立：**件数**（进 2 出 1）、**验看单只记 1 件**（而那一刻两件是同一只手一起塞进去的）、
+ * **反应**（周叙是要求「当面开袋」的那个人，一句没问）。
+ * 存根联是他拿「结案过程无异议」换来的——全书最贵的一次交易——下一章起全书 0 次出现。
+ *
+ * ⚠️ 这一类是「**消失**」不是「矛盾」：原来那三档都在问「两处是不是对不上」，
+ * 而这一段单看任何一处都成立 —— 得问「进去几件、出来几件」才问得出来。
+ */
+describe('container-count-drift：封进去几件、开出来几件 (issue #209)', () => {
+  const bagChapters = [
+    { chapterNumber: 90, content: '周叙在「结案过程无异议」确认书上按下拇指，落了名。存根联归他。' },
+    { chapterNumber: 91, content: '袖套抽出第三格页，连同存根联塞进牛皮复核袋，封条抹平，压了两道。' },
+    { chapterNumber: 92, content: '封条两侧完好，浆糊干透。\n\n「封时记的，第三格页，有字一张。」\n\n袋口撑开，抽出内里一张纸，摊平。' },
+  ]
+
+  it('tells the model to count what went in against what came out', () => {
+    const { system } = buildEvidenceShapePrompt({ chapters: bagChapters, language: 'zh-CN' })
+    expect(system).toContain('container-count-drift')
+    // 取数形态写成「进去 N 件 / 出来 M 件」，而不是任何物件词表。
+    expect(system).toContain('封进去的东西多了一件或少了一件')
+    expect(system).toContain('没有任何人问起')
+  })
+
+  it('excludes the case the prose itself explains', () => {
+    // 正文自己交代过（有人留下、被扣下、当场取走）不算问题。
+    const { system } = buildEvidenceShapePrompt({ chapters: bagChapters, language: 'zh-CN' })
+    expect(system).toContain('正文自己交代过')
+  })
+
+  it('does not build a word list for containers or objects (user 2026-11-05 定规)', () => {
+    // 提示词里不许出现本书的物件名 —— 那等于把这本书编进代码。
+    const { system, user } = buildEvidenceShapePrompt({ chapters: bagChapters, language: 'zh-CN' })
+    // ⚠️ 提示词（system）里不许出现本书的物件名——那等于把这本书编进代码。
+    // （源码里的注释提到它们是可以的：那是解释缺陷来源，不是喂给模型的判据。）
+    for (const term of ['存根联', '复核袋', '第三格']) {
+      expect(system, `提示词不该出现「${term}」`).not.toContain(term)
+    }
+    // 原文本身当然要喂进去（那是样本，不是判据）。
+    expect(user).toContain('存根联')
+  })
+
+  it('accepts the new kind and still requires both quotes to be verbatim', () => {
+    const request = { chapters: bagChapters }
+    const quote = '袖套抽出第三格页，连同存根联塞进牛皮复核袋，封条抹平，压了两道。'
+    const conflicting = '袋口撑开，抽出内里一张纸，摊平。'
+    const good = JSON.stringify({ issues: [{
+      kind: 'container-count-drift', chapterNumber: 92, quote: conflicting,
+      conflictingChapterNumber: 91, conflictingQuote: quote, explanation: '封袋时有第三格页与存根联两件，开袋只剩一件',
+    }] })
+    expect(parseEvidenceShapeReview(good, request)).toHaveLength(1)
+    // 引文对不上 → 整条丢弃（作者要能按它回原文核对）。
+    const bad = JSON.stringify({ issues: [{
+      kind: 'container-count-drift', chapterNumber: 92, quote: '这句不在正文里',
+      conflictingChapterNumber: 91, conflictingQuote: quote, explanation: 'x',
+    }] })
+    expect(parseEvidenceShapeReview(bad, request)).toEqual([])
+  })
+
+  it('words a pure count mismatch differently, and asks for the missing thing to be accounted for', () => {
+    const [finding] = evidenceShapeFindings([{
+      chapterNumber: 92, kind: 'container-count-drift', quote: '袋口撑开，抽出内里一张纸，摊平。',
+      conflictingChapterNumber: 91, conflictingQuote: '袖套抽出第三格页，连同存根联塞进牛皮复核袋，封条抹平，压了两道。',
+      explanation: '封袋两件，开袋一件',
+    }])
+    expect(finding!.stableFactKey).toBe('prose:evidence-shape:92')
+    expect(finding!.evidence).toContain('对不上件数')
+    expect(finding!.issue.zhCN).toContain('少了一件')
+    // 出路是「补一句交代那件去哪了」，不是「改形态」。
+    expect(finding!.suggestion.zhCN).toContain('补一句交代')
+    expect(finding!.suggestion.zhCN).toContain('事实账本')
   })
 })

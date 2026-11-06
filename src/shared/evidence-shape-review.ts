@@ -72,7 +72,7 @@ export interface EvidenceShapeIssue {
   chapterNumber: number
   /** `same-object-drift`：同一件物证在被当成证据的几章里形态不一致；
    *  `impossible-cause`：物证的形态被归因到一个物理上不成立的部位/动作。 */
-  kind: 'same-object-drift' | 'impossible-cause' | 'custody-drift'
+  kind: 'same-object-drift' | 'impossible-cause' | 'custody-drift' | 'container-count-drift'
   /** 正文原句（必须能在 `chapterNumber` 的正文里逐字找到）。 */
   quote: string
   /** 与之相悖的另一处——另一章的正文原句（跨章漂移时必给）；同一章内矛盾时可等于 quote。 */
@@ -90,6 +90,10 @@ export const EVIDENCE_SHAPE_KINDS = Object.freeze({
     '物证的形态被归因到一个物理上不成立的人或动作（某人的某个部位缺了半节 → 于是印上有缺口，但他按印时用的不是那个部位；或者那件物证根本不会留下这种痕迹）',
     'a physical trace attributed to a body part or action that could not have produced it',
   ],
+  'container-count-drift': [
+    '同一个容器（封套、箱、盒、卷宗夹、袋子这类收存件）封进去的东西**多了一件／少了一件**：进去时正文写明装了 N 件，开出来只剩 M 件（N ≠ M），而开袋这一场没有任何人问起、也没有一句交代那件去哪了（issue #209）',
+    'the same container is sealed with one set of things inside and opened holding fewer or more, with nobody asking and no line explaining where the missing thing went (issue #209)',
+  ],
   'custody-drift': [
     '同一件被扣押/收存的实物，它的**保管人、锁具状态、所在房间**在相邻章之间变了，而正文没有写任何交接（issue #182）',
     'the keeper, locked state, or room of a seized object changes between chapters with no handover on the page',
@@ -105,14 +109,14 @@ export function buildEvidenceShapePrompt(request: EvidenceShapeRequest): { syste
     .slice(-limit)
   const cards = (request.cards ?? []).filter(card => String(card.name ?? '').trim()
     && `${card.appearance ?? ''}${card.notes ?? ''}`.trim())
-  const kinds = (['same-object-drift', 'impossible-cause', 'custody-drift'] as const)
+  const kinds = (['same-object-drift', 'impossible-cause', 'custody-drift', 'container-count-drift'] as const)
     .map(kind => `- "${kind}": ${en ? EVIDENCE_SHAPE_KINDS[kind][1] : EVIDENCE_SHAPE_KINDS[kind][0]}`)
     .join('\n')
 
   const system = en
     ? [
       'Read the chapters. Some objects are used as EVIDENCE in the plot (a fingerprint, a mark, a seal, a torn edge, a receipt).',
-      'Report only these three kinds of problem:',
+      'Report only these kinds of problem:',
       kinds,
       'Judge by meaning, not by a fixed word list: the same object may be named differently in each chapter, and a different object may share a description.',
       'The CONTENTS of one container count as this axis too: the same box lid rim, lining, drawer or envelope holding writing in one chapter and a seal in another, or a page one time and a fingerprint another — report it when the prose never says it was taken out or swapped.',
@@ -126,12 +130,13 @@ export function buildEvidenceShapePrompt(request: EvidenceShapeRequest): { syste
       // 钥匙在管物人腰上，全章没有一句交接。而这一层原来没有任何判据。
       'For "custody", a change the prose itself narrates (someone hands the key over, the room is reassigned, a seal is broken on the page) is NOT a problem.',
       'Only report when the same seized object changes keeper, locked state, or room between chapters AND no handover is written.',
-      'Output one JSON object: {"issues":[{"kind":"<one of the three kinds above>","chapterNumber":<n>,"quote":"<exact sentence>","conflictingChapterNumber":<n>,"conflictingQuote":"<exact sentence>","explanation":"<one sentence>"}]}',
+      'Output one JSON object: {"issues":[{"kind":"<one of the kinds above>","chapterNumber":<n>,"quote":"<exact sentence>","conflictingChapterNumber":<n>,"conflictingQuote":"<exact sentence>","explanation":"<one sentence>"}]}',
+      'Container counts count too: when the same container (a sealed evidence bag, an envelope, a box, a folder) is sealed with N things inside (or with "X together with it") and opened holding fewer, and nobody in the opening scene asks about the missing one and no line explains where it went, report it. If the prose itself explains it (someone kept it, it was seized, it was taken out on the page), do not report.',
       'Report at most 3 issues. If nothing qualifies, output {"issues":[]}. No commentary outside the JSON.',
     ].join('\n')
     : [
       '读这些章节。有些物件在情节里被当作**证据**用来锁定人或事实。',
-      '只报下面这三类问题：',
+      '只报下面这几类问题：',
       kinds,
       '按**意思**判断，不要按固定词表：同一件物证在不同章里可能换了叫法，不同物件也可能共用同一个描述。',
       // issue #186：现场是「同一个盒子的**内装物**」——ch78 盒盖内沿是**一行字**、夹层是**一页泡毁的纸**；
@@ -152,7 +157,15 @@ export function buildEvidenceShapePrompt(request: EvidenceShapeRequest): { syste
       // issue #182：保管关系（谁持有 / 锁没锁 / 哪个房间）也是物证状态的一部分，原来没人比对过。
       '判「保管关系」这一档时：正文**自己写出来的**交接（有人交出钥匙、房间改派、当着人撬封）不算问题；',
       '只有当同一件被扣押的实物在相邻章之间换了保管人 / 锁具状态 / 所在房间，而正文**没有写任何交接**时才报。',
-      '输出一个 JSON 对象：{"issues":[{"kind":"<上面三类之一>","chapterNumber":<章号>,"quote":"<原句>","conflictingChapterNumber":<章号>,"conflictingQuote":"<原句>","explanation":"<一句话>"}]}',
+      '输出一个 JSON 对象：{"issues":[{"kind":"<上面几类之一>","chapterNumber":<章号>,"quote":"<原句>","conflictingChapterNumber":<章号>,"conflictingQuote":"<原句>","explanation":"<一句话>"}]}',
+      // issue #209：现场是「连同 X 塞进袋子」→ 下一章当众开袋只剩一张纸
+      // 开袋那一场「抽出内里一张纸」，而那件随装的东西从此全书消失，
+      // 要求当面开袋的人一句没问、验看记录也只记了一件。**这一类是「消失」，不是「矛盾」**——
+      // 只问「有没有互相矛盾」问不出来，得问「进去几件、出来几件」。
+      '**容器件数**也算一档：同一个容器（封套、箱、盒、卷宗夹、袋子这类收存件）**封进去的东西多了一件或少了一件**——',
+      '进去时正文写明装了 N 件或明确「连同 X 一起装进去」，开出来只剩 M 件（N ≠ M），',
+      '而开袋那一场**没有任何人问起**、也没有一句交代那件去哪了。',
+      '正文自己交代过（有人留下、被扣下、当场取走）的不算问题；读者只看到「少了一件且没人提」时才报。',
       '最多 3 条。没有就输出 {"issues":[]}。JSON 之外不要写任何解释。',
     ].join('\n')
 
@@ -208,7 +221,8 @@ export function parseEvidenceShapeReview(
     const conflictingChapterNumber = Number(record.conflictingChapterNumber)
     const quote = String(record.quote ?? '').trim()
     const conflictingQuote = String(record.conflictingQuote ?? '').trim()
-    if (kind !== 'same-object-drift' && kind !== 'impossible-cause' && kind !== 'custody-drift') continue
+    if (!(kind in EVIDENCE_SHAPE_KINDS)) continue
+    const resolvedKind = kind as EvidenceShapeIssue['kind']
     if (!byNumber.has(chapterNumber) || !byNumber.has(conflictingChapterNumber)) continue
     if (!quote || !byNumber.get(chapterNumber)!.includes(quote)) continue
     if (!conflictingQuote || !byNumber.get(conflictingChapterNumber)!.includes(conflictingQuote)) continue
@@ -217,7 +231,7 @@ export function parseEvidenceShapeReview(
     seen.add(key)
     result.push({
       chapterNumber,
-      kind,
+      kind: resolvedKind,
       quote,
       conflictingChapterNumber,
       conflictingQuote,
@@ -254,19 +268,28 @@ export function evidenceShapeFindings(issues: readonly EvidenceShapeIssue[]): Co
     const hasCause = list.some(item => item.kind === 'impossible-cause')
     /** issue #182：第三档 —— 物证本身没变，变的是「谁保管 / 锁没锁 / 在哪个房间」。 */
     const hasCustody = list.some(item => item.kind === 'custody-drift')
-    const onlyCustody = hasCustody && !hasDrift && !hasCause
+    /**
+     * issue #209：第四档 —— 封进去的东西开出来少了一件，且没人问、没交代。
+     * 与前三档并列（**不新开按钮**）：都是「物证被安静地写坏了」，只是坏法不同
+     * （#182 也是这样并进第三档的，而不是各开一颗）。
+     */
+    const hasCount = list.some(item => item.kind === 'container-count-drift')
+    const onlyCustody = hasCustody && !hasDrift && !hasCause && !hasCount
+    const onlyCount = hasCount && !hasDrift && !hasCause && !hasCustody
     return {
       // 章号是既成事实；合并后天然唯一（#164）。
       stableFactKey: `prose:evidence-shape:${chapterNumber}`,
       severity: 'warning' as const,
       sourceChapter: chapterNumber,
-      evidence: `第${chapterNumber}章 ${quotes} 与前文 ${refs} 对不上${explanations ? `（${explanations}）` : ''}`,
+      evidence: `第${chapterNumber}章 ${quotes} ${onlyCount ? `与封袋时的 ${refs} 对不上件数` : `与前文 ${refs} 对不上`}${explanations ? `（${explanations}）` : ''}`,
       issue: {
-        zhCN: `本章${onlyCustody ? '把一件被扣押的实物写成了换了保管人／锁具状态／所在房间，而正文没有任何交接' : hasCustody ? '把一件物证的保管关系写变了，同时它的形态或成因也立不住' : hasDrift && hasCause ? '把一件物证当作证据，但它的形态与成因都立不住' : hasCause ? '把一件物证的成因写成了物理上不成立的那种（那个部位／那个动作根本留不下这种痕迹）' : '把一件物证当作证据，而它的形态与前面那一章对不上'}：${quotes}；前文是${refs}。物证类错误最伤的地方在于它**安静地通过所有检查**——账本会把它原样收下，之后每一章都当已知事实注入，而读者只要回头翻一次就能看出这条路走不通。${explanations ? `（${explanations}）` : ''}`,
-        enUS: `This chapter ${onlyCustody ? 'changes the keeper, locked state, or room of a seized object with no handover on the page' : hasCustody ? 'changes the custody of an object AND its shape or cause does not hold up' : hasCause && hasDrift ? 'uses an object as evidence, but both its physical cause and its shape do not hold up' : hasCause ? 'attributes a trace to a physical cause that could not have produced it' : 'uses an object as evidence, but its shape does not match the earlier chapter'}: ${quotes}; earlier it was ${refs}. Evidence errors are the quietest kind — the fact ledger records them verbatim and every later chapter inherits them, while a reader only has to page back once to see the chain cannot work.${explanations ? ` (${explanations})` : ''}`,
+        zhCN: `本章${onlyCount ? '开出来的容器比封进去时少了一件（或多了一件），而开袋这一场没有任何人问起、也没有一句交代那件去哪了' : onlyCustody ? '把一件被扣押的实物写成了换了保管人／锁具状态／所在房间，而正文没有任何交接' : hasCustody ? '把一件物证的保管关系写变了，同时它的形态或成因也立不住' : hasDrift && hasCause ? '把一件物证当作证据，但它的形态与成因都立不住' : hasCause ? '把一件物证的成因写成了物理上不成立的那种（那个部位／那个动作根本留不下这种痕迹）' : '把一件物证当作证据，而它的形态与前面那一章对不上'}：${quotes}；前文是${refs}。物证类错误最伤的地方在于它**安静地通过所有检查**——账本会把它原样收下，之后每一章都当已知事实注入，而读者只要回头翻一次就能看出这条路走不通。${explanations ? `（${explanations}）` : ''}`,
+        enUS: `This chapter ${onlyCount ? 'opens the same container with fewer things inside than were sealed into it, while nobody in the scene asks and no line explains where the missing one went' : onlyCustody ? 'changes the keeper, locked state, or room of a seized object with no handover on the page' : hasCustody ? 'changes the custody of an object AND its shape or cause does not hold up' : hasCause && hasDrift ? 'uses an object as evidence, but both its physical cause and its shape do not hold up' : hasCause ? 'attributes a trace to a physical cause that could not have produced it' : 'uses an object as evidence, but its shape does not match the earlier chapter'}: ${quotes}; earlier it was ${refs}. Evidence errors are the quietest kind — the fact ledger records them verbatim and every later chapter inherits them, while a reader only has to page back once to see the chain cannot work.${explanations ? ` (${explanations})` : ''}`,
       },
       suggestion: {
-        zhCN: `二选一，别两头都改：① **按物证重写推理**——把它真正能证明的那一点说清楚（是同一枚印、但缺口来源另说；或者这个部位本就按不出缺口，改用别的证据锁人）；② **按推理改物证**——把形态写成与前文一致的那一种，并补一处能解释它怎么变成这样的动作。改完要看**事实账本**：这条证据已经作为已知事实进了后面几章的起草输入，账本里那句转述也得跟着改。`,
+        zhCN: onlyCount
+          ? '二选一，别两头都改：① **补一句交代**——那件东西被谁留下、扣下、或当场取走（一件消失的道具最少要有一句话说明去向）；② **把件数改对**——若本来就只装了一件，就把封袋那一场的「连同 X」去掉。改完要看**事实账本**：少了的那件若曾被当成证据（例如它正是某次交易换来的），账本里它的下落也得写清楚，否则下一章起草时它等于不存在。'
+          : `二选一，别两头都改：① **按物证重写推理**——把它真正能证明的那一点说清楚（是同一枚印、但缺口来源另说；或者这个部位本就按不出缺口，改用别的证据锁人）；② **按推理改物证**——把形态写成与前文一致的那一种，并补一处能解释它怎么变成这样的动作。改完要看**事实账本**：这条证据已经作为已知事实进了后面几章的起草输入，账本里那句转述也得跟着改。`,
         enUS: `Pick one, do not patch both ends: either rewrite the inference so it rests on what the object can actually prove, or change the object's description so it matches what was already written and add one on-page action that explains how it came to be that way. Then check the fact ledger — this evidence is already an established fact feeding later drafts, and its paraphrase there has to change too.`,
       },
     }
