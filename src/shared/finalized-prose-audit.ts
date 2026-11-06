@@ -80,7 +80,6 @@ import { findGaugeScaleMismatches } from './gauge-scale'
 import { findRepeatedSentenceFindings, findShortSentenceReuseFindings } from './repeated-sentence'
 import { findUnreconcilableAgeFindings } from './character-age-ledger'
 // 口头约定被复述反了（#142）：承诺句的极性比对。
-import { findPromisePolarityReversals } from './promise-polarity'
 // 标题点到的人本章没出场（#144）：标题与本章正文/蓝图比对。
 import { findTitleBodyMismatchFindings } from './title-body-mismatch'
 import { closingShotOf } from './blueprint-semantic-contract'
@@ -334,8 +333,9 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   // 只有 8 字、跨度 33 章 → 一次都命不中。这一档管 6–11 字的叙述短句，按**分布**判
   // （≥3 章且首末跨度 ≥8）。需要名册排除「人名 + 同一动作」这种正常写法（「周叙没动。」8 章）。
   const shortSentenceReuse = findShortSentenceReuseFindings(chapters, castNames)
-  // 承诺极性（#142）：用全量已定稿章——约定可能在十几章前，窗口切小会漏掉首现处。
-  const promiseReversals = findPromisePolarityReversals(chapters)
+  // 承诺极性（#142）：「约定方向被复述反」要读懂句子——按用户 2026-11-05 定规已改由模型判
+  // （`promise-polarity-review.ts`，并进审稿深度检查 promise 维度），规则侧不再断言。
+  const promiseReversals: ConsistencyFinding[] = []
   // 标题与本章比对（#144）：把本章蓝图标题接到对应章的正文上。
   const titleByChapter = new Map(blueprints.map(item => [item.chapterNumber, String(item.title ?? '')]))
   const keyEventsByChapter = new Map(blueprints.map(item => [item.chapterNumber, String(item.keyEvents ?? '')]))

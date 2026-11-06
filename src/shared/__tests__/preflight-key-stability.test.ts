@@ -21,7 +21,7 @@ import { findUnmetTimeAnchorFindings } from '../chapter-time-anchor'
 import { findInventoryShortfallFindings } from '../inventory-count'
 import { findGaugeScaleMismatches } from '../gauge-scale'
 import { findRepeatedSentenceFindings, findShortSentenceReuseFindings } from '../repeated-sentence'
-import { findPromisePolarityReversals } from '../promise-polarity'
+import { promisePolarityFindings } from '../promise-polarity-review'
 import { findTitleBodyMismatchFindings } from '../title-body-mismatch'
 import { glyphRadicalFindings } from '../glyph-radical'
 import { findCastNameDriftFindings } from '../cast-name-drift'
@@ -185,10 +185,12 @@ describe('no preflight key may change when only currentChapter advances (issue #
         { chapterNumber: 59, content: '周叙看了两息，指腹按进印泥，压在栏上。' },
         { chapterNumber: 60, content: '船开了。周叙看了两息，指腹按进印泥，压在栏上。' },
       ])],
-      ['findPromisePolarityReversals', () => findPromisePolarityReversals([
-        { chapterNumber: 60, content: '「答应我。座号不写进任何册。」' },
-        { chapterNumber: 63, content: '「你答应过写进册。」' },
-      ])],
+      // issue #163 第七批：规则侧 promise-polarity.ts 已下线，key 稳定性由新模块的 findings 承担
+      // （章号是既成事实 + 原句前缀，重复执行同 key）。
+      ['promisePolarityFindings', () => promisePolarityFindings([{
+        firstChapterNumber: 60, secondChapterNumber: 63,
+        firstQuote: '「答应我。座号不写进任何册。」', secondQuote: '「你答应过写进册。」', explanation: '',
+      }])],
       ['findTitleBodyMismatchFindings', () => findTitleBodyMismatchFindings([
         { chapterNumber: 67, title: '温珩按住了那一角布', content: '周叙把布铺在舵板上。', castNames: ['周叙', '温珩'] },
       ])],

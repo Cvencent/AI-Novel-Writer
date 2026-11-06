@@ -128,8 +128,6 @@
   "src/shared/plot-outline-contract.ts::OUTLINE_SECTIONS::71ae3d46",
   "src/shared/plot-outline-contract.ts::STALE_COVERAGE_TAIL::8b84d312",
   "src/shared/pre-draft-fact-checklist.ts::TIME_ANCHOR::005caa0a",
-  "src/shared/promise-polarity.ts::ACTION_PHRASE::79f2de48",
-  "src/shared/promise-polarity.ts::PROMISE_VERBS::022d2b2f",
   "src/shared/refinement-fact-diff.ts::PRONOUN_LEAD::cd8f7407",
   "src/shared/repeated-revocation.ts::HANDLING_ACTION::93b8dcc2",
   "src/shared/repeated-revocation.ts::IRREVERSIBLE::2f9275ce",

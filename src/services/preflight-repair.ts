@@ -137,7 +137,7 @@ import {
  * 这样每个 `review*` 的返回类型里那个 `status: 'failed'` 才真的成立，
  * 调用方（11 颗核对按钮）已有的 `if (outcome.status === 'failed') setMessage(...)` 才会跑。
  */
-async function askReviewModel(
+export async function askReviewModel(
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
   session: ProjectSessionContext,
   locale: 'zh-CN' | 'en-US' = 'zh-CN',

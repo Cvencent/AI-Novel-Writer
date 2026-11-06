@@ -60,7 +60,9 @@ describe('auditFinalizedProse (issue #83)', () => {
   })
 
   /** issue #142：口头约定被复述反了，必须从共用出口报出来。 */
-  it('surfaces a promise restated backwards from the shared exit (issue #142)', () => {
+  /** issue #142 → #163 第七批：口头约定方向改由模型判（promise-polarity-review.ts，
+   *  并进审稿深度检查 promise 维度）。规则侧 audit 不再断言——这条钉住「不回归」。 */
+  it('no longer judges promise polarity by rules — that moved to the model (issues #142 / #163)', () => {
     const findings = auditFinalizedProse({
       chapters: [
         { chapterNumber: 60, content: '「答应我。座号不写进任何册。」周叙看着他。' },
@@ -68,10 +70,8 @@ describe('auditFinalizedProse (issue #83)', () => {
       ],
       castNames: [], blueprints: [],
     })
-    const promise = findings.filter(finding => finding.stableFactKey.startsWith('promise:polarity:'))
-    expect(promise).toHaveLength(1)
-    expect(promise[0]!.evidence).toContain('不写进册')
-  })
+    expect(findings.filter(finding => finding.stableFactKey.startsWith('promise:polarity:'))).toEqual([])
+  }),
 
   /** issue #140：整句逐字复用必须从共用出口报出来。 */
   it('surfaces a whole sentence copied across chapters from the shared exit (issue #140)', () => {

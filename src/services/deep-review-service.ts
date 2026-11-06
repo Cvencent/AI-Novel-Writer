@@ -42,6 +42,12 @@ import {
   reviewProseStyle,
   reviewSensoryChannels,
 } from './preflight-repair'
+import {
+  buildPromisePolarityPrompt,
+  parsePromisePolarityReview,
+  promisePolarityFindings,
+  PROMISE_POLARITY_RECENT_CHAPTERS,
+} from '../shared/promise-polarity-review'
 import { CONTENT_AXES_FOR_BUTTON } from '../shared/content-review'
 import { useLocaleStore } from '../stores/locale-store'
 
@@ -232,6 +238,21 @@ export async function runDeepReviewChecks(input: DeepCheckInput): Promise<DeepCh
           if (outcome.status === 'failed') { failures.push({ key, error: outcome.error ?? '' }); break }
           count = outcome.findings.length
           findings.push(...outcome.findings)
+          break
+        }
+        case 'promise': {
+          // issue #163 第七批：口头约定方向改由模型判（旧 PROMISE_VERBS/ACTION_PHRASE 词表下线）。
+          const chaptersForPromise = [...finalized, input.chapter]
+            .filter(chapter => Number.isSafeInteger(chapter.chapterNumber) && String(chapter.content ?? '').trim())
+          const request = { chapters: chaptersForPromise, language: locale, recentChapters: PROMISE_POLARITY_RECENT_CHAPTERS }
+          const { system, user } = buildPromisePolarityPrompt(request)
+          const call = await import('./preflight-repair').then(mod => mod.askReviewModel(
+            [{ role: 'system', content: system }, { role: 'user', content: user }], input.session))
+          if ('error' in call) { failures.push({ key, error: call.error }); break }
+          const issues = parsePromisePolarityReview(call.response.content, request)
+          if (!issues) { failures.push({ key, error: text('模型返回的不是合法的「约定方向」清单。', 'The model did not return a valid promise list.') }); break }
+          count = promisePolarityFindings(issues).length
+          findings.push(...promisePolarityFindings(issues))
           break
         }
       }

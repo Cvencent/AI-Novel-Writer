@@ -36,6 +36,7 @@ export type DeepReviewDimensionKey =
   | 'lossRestatement'
   | 'deadline'
   | 'dateConflict'
+  | 'promise'
 
 /** 顺序即原预检按钮的顺序（作者已经熟悉这个排布）。 */
 export const DEEP_REVIEW_DIMENSIONS: readonly DeepReviewDimension[] = Object.freeze([
@@ -52,6 +53,7 @@ export const DEEP_REVIEW_DIMENSIONS: readonly DeepReviewDimension[] = Object.fre
   { key: 'lossRestatement', zh: '代价重述', en: 'Re-charged costs', zhDesc: '同一笔损失被再次宣告', enDesc: 'the same loss declared twice' },
   { key: 'deadline', zh: '期限结算', en: 'Deadline settlement', zhDesc: '宣告的期限有没有结算', enDesc: 'declared deadlines get settled' },
   { key: 'dateConflict', zh: '日期一致', en: 'Date consistency', zhDesc: '同一件事的日期跨章一致', enDesc: 'dates consistent across chapters' },
+  { key: 'promise', zh: '口头约定方向', en: 'Promise direction', zhDesc: '同一句约定被复述成相反方向', enDesc: 'a spoken promise restated backwards' },
 ])
 
 /** 与 chapter_creation_log 同一目录约定：项目数据目录下的设置文件。 */
