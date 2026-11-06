@@ -51,6 +51,10 @@ export const CONTENT_AXES = Object.freeze({
     '前文已经写明的**身份、资格或认知**在本章被无声推翻：某人此前已被确立为「已登记 / 有资格 / 被认识 / 已在其中」，本章却把他写成「尚未登记 / 无资格被拦下 / 没人认识」；或者反过来，本章声称某人向来如此，而前文写的是另一回事。中间**没有任何一句交代这个变化**（issue #208 / #199）',
     'an identity, qualification or recognition already established in earlier chapters is silently overturned here: someone written earlier as registered / qualified / known is now written as unregistered, turned away as unqualified, or treated as a stranger — or this chapter asserts something was always so while the earlier text said otherwise. No line accounts for the change (issue #208 / #199)',
   ],
+  'content-overlap': [
+    '本章把**前文已经完整写过的一段事件**又写了一遍：同一组动作／同一段因果链（某件东西被翻出、某件事被处置、某个人被安置）在此前某章已经发生并收过线，本章再来一次，且时间线还倒回去了（前章已经推到「多年后」，本章回到「当天」）；两处给出的后续也不一样（issue #206）',
+    'this chapter replays an event the book already wrote and closed: the same sequence of actions or the same causal chain (something dug out, something disposed of, someone placed) happened in an earlier chapter, and here it happens again — with the timeline moving backwards (the earlier chapter already jumped ahead, this one is back on the day) and with a different outcome (issue #206)',
+  ],
 } as const)
 
 /**
@@ -113,6 +117,13 @@ export const CONTENT_AXIS_GUIDANCE = Object.freeze({
     fix: [
       '**补一句桥接**（首次换称时写「就是昨日那位管清库的」这类），或**统一成一个称呼**：要么全用职务名，要么全用那个代称。**不要只改其中一处**——两处都改才叫统一，改一处会让读者更确定这是两个人。这一拍往往正是情节的支点（谁封的袋、谁动过那张纸），读者认不出人，整段推理就变成流水账。',
       'Add one bridging line the first time the label changes ("the one who sealed it yesterday"), or settle on a single label throughout — job title or nickname, not both. Do not fix only one instance: changing one and not the other makes it look even more certainly like two different people. This beat is usually the hinge of the plot, so a reader who cannot tell who is who loses the whole chain.',
+    ],
+  },
+  'content-overlap': {
+    problem: ['本章重演了前文已收线的一段事件', 'this chapter replays an event that was already written and closed'],
+    fix: [
+      '**二选一**：① 删掉本章这一遍，改成**承接**它——写那件事留下的后果、或别人对它的反应（同一件事只发生一次，第二次写的是它的余波）；② 若本章这一遍才是对的，就把前文那一遍删掉或改成**预告**（当时只是提到、并未发生）。⚠️ 两遍并排时最伤的是**时间线**：前章若已推到「多年后」，本章回到「当天」会被读成闪回，而正文没有闪回标记——读者刚合上书又被拽回去。改完还要看**事实账本**：两遍各自收进的事实现在互相矛盾，留哪一条要一起定。',
+      'Pick one: either delete this chapter pass and turn it into the consequence — show what that event left behind, or how people reacted to it (an event happens once; the second mention is its aftermath) — or, if this chapter version is right, delete or downgrade the earlier one into a mere mention. The worst part of having both is the timeline: if the earlier chapter already jumped years ahead, coming back to "that same day" reads as a flashback with no marker, and the reader is yanked back right after closing the book. Then check the fact ledger: the two passes have each recorded their own fact and they now contradict.',
     ],
   },
 } as const)

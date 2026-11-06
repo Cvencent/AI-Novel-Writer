@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { CONTENT_AXES, CONTENT_AXES_FOR_BUTTON, CONTENT_AXIS_GUIDANCE, buildContentReviewPrompt, contentReviewFindings, parseContentReview } from '../content-review'
+import { blueprintSemanticGenerationContract } from '../blueprint-semantic-contract'
 
 const CHAPTERS = [
   { chapterNumber: 3, content: '他蹲下来，把风灯搁在膝盖边。纸角在衬页里没了。' },
@@ -366,5 +367,92 @@ describe('轴清单只有一处真源，且三处不许漂 (issue #219)', () => 
   it('keeps the guard honest: the exported list is not empty', () => {
     // 防止「清单空了 → 上面几条空对比也全绿」。
     expect(CONTENT_AXES_FOR_BUTTON.length).toBeGreaterThanOrEqual(5)
+  })
+})
+
+/**
+ * issue #206：**本章把前文已经完整写过的一段事件又写了一遍**（同一组动作、同一段因果链），
+ * 而且时间线倒回去了。
+ *
+ * 现场（ch28 → ch30，同一本 30 章的书）：
+ * - ch28「拆墙是入冬后的事…**阿棠翻出那个布包**，问了一圈没人认，就拿木戳在废票根上乱压」
+ *   → 收在「**多年后**各铺留印痕」；
+ * - ch30「后墙砌完了。**泥水匠起那块翘起的旧船板，板缝里滑出一个布包**…没人认。
+ *   周叙把案角的杂物拨开，**拆开布包**」→ 时间回到「封库那天」。
+ *
+ * 同一个布包被翻出两次，去向还不同（阿棠拿去学艺 / 周叙收进内襟），
+ * 而 ch28 已经把时间推到多年后、ch30 又拉回当天（无闪回标记）。
+ *
+ * 机制在**蓝图层**：bp30 自己的 `keyEvents` 就写着「后墙砌完，泥水匠起翘船板，
+ * 板缝掉出旧布包」——不是模型自由发挥，是章节骨架重叠。
+ * 所以除了这一轴，`blueprintSemanticGenerationContract` 也补了「不得重演前几章蓝图排过的事件」。
+ */
+describe('content-overlap：本章重演了前文已收线的一段事件 (issue #206)', () => {
+  const chapters = [
+    { chapterNumber: 28, content: '拆墙是入冬后的事。阿棠翻出那个布包，问了一圈没人认，就拿木戳在废票根上乱压。多年后各铺手写簿的边角都留着深浅一致的印痕。' },
+    { chapterNumber: 30, content: '后墙砌完了。泥水匠起那块翘起的旧船板，板缝里滑出一个布包，灰扑扑的，掉在碎石里，没人认。周叙把案角的杂物拨开，拆开布包。' },
+  ]
+
+  it('offers the axis as a question about a repeated causal chain, not as a prop list', () => {
+    const { system } = buildContentReviewPrompt({ chapters, axes: ['content-overlap'], language: 'zh-CN' })
+    expect(system).toContain('content-overlap')
+    expect(system).toContain('前文已经完整写过的一段事件')
+    expect(system).toContain('时间线还倒回去')
+    // ⚠️ 不许出现本书的物件名（三次栽在这件事上，现在是固定检查项）。
+    for (const term of ['布包', '船板', '木戳', '纸角']) {
+      expect(system, `提示词不该出现「${term}」`).not.toContain(term)
+    }
+    const { user } = buildContentReviewPrompt({ chapters, axes: ['content-overlap'], language: 'zh-CN' })
+    expect(user).toContain('布包')
+  })
+
+  it('accepts the axis and keeps the quote-verbatim rule', () => {
+    const request = { chapters, axes: ['content-overlap'] as const }
+    const good = JSON.stringify({ issues: [{
+      chapterNumber: 30, axis: 'content-overlap',
+      quote: '泥水匠起那块翘起的旧船板，板缝里滑出一个布包，灰扑扑的，掉在碎石里，没人认。',
+      explanation: '第 28 章已写过同一个包裹被翻出并收在多年后，本章回到当天又翻出一次',
+    }] })
+    expect(parseContentReview(good, request)).toHaveLength(1)
+    const bad = JSON.stringify({ issues: [{
+      chapterNumber: 30, axis: 'content-overlap', quote: '这句不在正文里', explanation: 'x',
+    }] })
+    expect(parseContentReview(bad, request)).toEqual([])
+  })
+
+  it('asks to keep one pass and warns about the timeline and the fact ledger', () => {
+    const [finding] = contentReviewFindings([{
+      chapterNumber: 30, axis: 'content-overlap',
+      quote: '泥水匠起那块翘起的旧船板，板缝里滑出一个布包，灰扑扑的，掉在碎石里，没人认。', explanation: '重演',
+    }])
+    expect(finding!.stableFactKey).toBe('prose:content-overlap:30')
+    // 改法必须是这一轴专用：删一遍改承接 / 或把前文降级为预告。
+    expect(finding!.suggestion.zhCN).toContain('删掉本章这一遍')
+    expect(finding!.suggestion.zhCN).toContain('时间线')
+    expect(finding!.suggestion.zhCN).toContain('事实账本')
+    expect(finding!.suggestion.zhCN).not.toContain('换这一拍的落点')
+  })
+})
+
+/**
+ * issue #206 的**机制层**：bp30 的 `keyEvents` 自己就排了「泥水匠起船板、板缝掉出旧布包」。
+ * 契约原来只禁「重演**已定稿章节**里写过的场景」——而撞的恰是**前几章的蓝图**。
+ */
+const buildBlueprintSemanticGenerationContractZh = () => blueprintSemanticGenerationContract('zh-CN')
+
+describe('蓝图契约：不得重演前几章蓝图已排过的事件 (issue #206)', () => {
+  it('forbids replaying an event another blueprint already scheduled', () => {
+    const contract = buildBlueprintSemanticGenerationContractZh()
+    expect(contract).toContain('也不得重演前几章蓝图')
+    expect(contract).toContain('只能发生一次')
+    // 「回到当天」这条要写明，否则模型不知道时间线也是判据的一部分。
+    expect(contract).toContain('回到「当天」')
+  })
+
+  it('does not name this book’s props (no word lists in the contract either)', () => {
+    const contract = buildBlueprintSemanticGenerationContractZh()
+    for (const term of ['布包', '船板', '木戳']) {
+      expect(contract, `契约不该出现「${term}」`).not.toContain(term)
+    }
   })
 })
