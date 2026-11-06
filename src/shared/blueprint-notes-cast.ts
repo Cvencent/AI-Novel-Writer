@@ -80,6 +80,17 @@ export function notesCastNames(notes: string | null | undefined): string[] {
  * `characters` 数组是作者/模型填的；notes 是定稿后处理对**已发生**的记述。
  * 两者不一致时（本书 41/91 张蓝图），只有后者能看见「正文里真的演了但数组里没写」的人。
  */
+/**
+ * 名单里**只来自 notes 表**的条目（issue #214）。
+ *
+ * 与 `mergedBlueprintCast` 同源，但只返回「数组里没有、表里有」的那些——
+ * 判据据此把两处来源分开对待（来源是可断言的事实；「它是不是人名」才是内容判断）。
+ */
+export function notesOnlyCast(characters: readonly string[] | undefined, notes: string | null | undefined): string[] {
+  const declared = new Set((characters ?? []).map(name => String(name ?? '').trim()).filter(Boolean))
+  return notesCastNames(notes).filter(name => !declared.has(name))
+}
+
 export function mergedBlueprintCast(characters: readonly string[] | undefined, notes: string | null | undefined): string[] {
   const merged: string[] = []
   const seen = new Set<string>()

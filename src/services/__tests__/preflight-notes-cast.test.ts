@@ -60,7 +60,16 @@ describe('readConsistencyPreflight 的取数要覆盖 notes 角色动态表 (iss
     const finding = findings.find(item => item.stableFactKey === 'blueprint-cast:unregistered:灰褂')!
     // 承重档（≥3 章 或 ≥2 段台词）——这一位 10 章 / 20 段。
     expect(finding.issue.zhCN).toContain('持续出场')
-    expect(finding.action).toMatchObject({ kind: 'create-character', name: '灰褂' })
+    /**
+     * ⚠️ **不给建卡动作**（issue #214，本条在 #204 之后被改过一次）：
+     * 「灰褂」只出现在 notes 的自由文本表格里，而 notes 表第一列里还混着大量职务词
+     * （实测 30 章那本有「账房伙计 4 章 / 账房 4 章 / 管事 3 章」都够承重档）。
+     * 给按钮等于按一下就往名册里塞个假人。照报仍然照报（作者该看见），
+     * 但要说明来源、由作者判断是补卡还是把那一格改成职务。
+     */
+    expect(finding.action).toBeUndefined()
+    expect(finding.evidence).toContain('只出现在蓝图 notes')
+    expect(finding.suggestion.zhCN).toContain('判据判不了')
   })
 
   it('does not report a character who is on the roster', async () => {

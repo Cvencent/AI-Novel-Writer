@@ -726,7 +726,26 @@ export function findAppearanceGaps(input: AppearanceGapInput): ConsistencyFindin
  */
 export interface UnregisteredCastSchedule {
   chapterNumber: number
+  /** 本章出场名单（`characters` 数组 ∪ notes 角色动态表，见 `mergedBlueprintCast`）。 */
   characters: readonly string[]
+  /**
+   * 这份名单里**只来自 notes 表**的那些条目（issue #214）。
+   *
+   * 两处来源的**可信度不同**，不能当成同一份：
+   *
+   * | 来源 | 是谁写的 | 是不是人名 |
+   * |---|---|---|
+   * | `blueprints.characters` | 蓝图契约的**字段**，要求填角色名 | 通常是 |
+   * | `notes` 的「角色动态」表第一列 | **自由文本表格**，模型想写什么写什么 | 常常不是 |
+   *
+   * 实测（30 章那本）：notes 独有的 22 个条目里，「账房伙计」「账房」「管事」都够上
+   * 承重档（≥3 章），而它们**不是人**——照现在的实现会给作者一个「为『账房伙计』建卡」
+   * 的按钮，按下去名册里就多一个永远不该有的条目。
+   *
+   * ⚠️ 这里只传**来源**（一个字符串来自哪个字段，是可断言的事实），
+   * 不判「它是不是人名」——那是内容判断，归模型与作者（用户 2026-11-05 的定规）。
+   */
+  notesOnlyCharacters?: readonly string[]
 }
 
 export interface UnregisteredCastInput {
@@ -768,20 +787,23 @@ export function quotedLineCount(content: string, name: string): number {
 
 export function findUnregisteredBlueprintCast(input: UnregisteredCastInput): ConsistencyFinding[] {
   const cast = new Set(input.castNames.map(name => normalizedKeyPart(castDisplayName(name))))
-  const byName = new Map<string, { name: string; chapters: number[] }>()
+  const byName = new Map<string, { name: string; chapters: number[], fromNotes: boolean }>()
   for (const schedule of input.schedules) {
     if (!Number.isSafeInteger(schedule.chapterNumber)) continue
+    const notesOnly = new Set((schedule.notesOnlyCharacters ?? []).map(castDisplayName).map(normalizedKeyPart))
     for (const raw of schedule.characters ?? []) {
       const name = castDisplayName(raw)
       const key = normalizedKeyPart(name)
       if (!name || !key || cast.has(key)) continue
-      const entry = byName.get(key) ?? { name, chapters: [] }
+      const entry = byName.get(key) ?? { name, chapters: [], fromNotes: true }
+      // 只要在**任意一章**它是从 `characters` 数组来的，就算「字段声明过」。
+      if (!notesOnly.has(key)) entry.fromNotes = false
       if (!entry.chapters.includes(schedule.chapterNumber)) entry.chapters.push(schedule.chapterNumber)
       byName.set(key, entry)
     }
   }
 
-  const findings: Array<{ finding: ConsistencyFinding, heavy: boolean, chapters: number, dialogueLines: number }> = []
+  const findings: Array<{ finding: ConsistencyFinding, heavy: boolean, chapters: number, dialogueLines: number, fromNotes: boolean }> = []
   for (const [key, entry] of byName) {
     const chapters = [...entry.chapters].sort((left, right) => left - right)
     const dialogueLines = (input.prose ?? []).reduce(
@@ -795,11 +817,24 @@ export function findUnregisteredBlueprintCast(input: UnregisteredCastInput): Con
       ? `第${firstChapter}章`
       : `第${firstChapter}–${lastChapter}章（共 ${chapters.length} 章）`
     const weight = dialogueLines > 0 ? `、正文 ${dialogueLines} 段台词` : ''
-    findings.push({ heavy, chapters: chapters.length, dialogueLines, finding: {
+    /**
+     * 只来自 notes 表的条目（issue #214）：**照报，但不给「建卡」动作**。
+     *
+     * 为什么照报：「这一格里的名字名册里没有」是事实，作者该看见——他可能真忘了建卡，
+     * 也可能那一格本来就该写成职务（「账房伙计」）。判据负责让他看见，不替他决定。
+     * 为什么不给动作：`blueprints.characters` 是契约字段（要求填角色名），
+     * 而 notes 表第一列是自由文本；实测 22 个 notes 独有条目里「账房伙计」「账房」「管事」
+     * 都够承重档，而它们不是人。给按钮等于按一下就往名册里塞个假人。
+     */
+    const fromNotesOnly = entry.fromNotes
+    const sourceNote = fromNotesOnly
+      ? `（这一条只出现在蓝图 notes 的「角色动态」表里，不在本章的 characters 数组里）`
+      : ''
+    findings.push({ heavy, chapters: chapters.length, dialogueLines, fromNotes: fromNotesOnly, finding: {
       stableFactKey: `blueprint-cast:unregistered:${key}`,
       severity: 'warning',
       sourceChapter: lastChapter,
-      evidence: `「${entry.name}」进了${span}的蓝图出场名单${weight}，角色卡名册里没有这个人（名册：${input.castNames.join('、') || '空'}）`,
+      evidence: `「${entry.name}」进了${span}的蓝图出场名单${weight}，角色卡名册里没有这个人（名册：${input.castNames.join('、') || '空'}）${sourceNote}`,
       issue: {
         zhCN: heavy
           ? `「${entry.name}」在${span}里持续出场${weight}，但角色卡里始终没有这个人：定稿后不会为她回写状态、一致性检查也覆盖不到她，下一章起草时对她的记忆是空白。这条从第${firstChapter}章起就在报，一直没有消解——再挂起下去，她的处境只能靠模型自己记。`
@@ -809,14 +844,19 @@ export function findUnregisteredBlueprintCast(input: UnregisteredCastInput): Con
           : `This chapter's blueprint casts “${entry.name}”, who has no character card. No state will be written for them after finalization, consistency checks skip them, and the next chapter starts with no memory of them.`,
       },
       suggestion: {
-        zhCN: heavy
-          ? `这个人已经在承担主线，别再挂起：点「为「${entry.name}」建卡」先落一张空卡（姓名 + 定位），再把她的身世、称呼变化与在第${firstChapter}章的首次出场补进卡里。卡本身的内容仍要你或模型来写——判据不替她编身份，只负责让这张卡存在。`
-          : `要保留这个角色，就点「为「${entry.name}」建卡」（姓名 + 定位即可），并把本章标为他的首次出场；只当一次性路人时，请把蓝图与正文里的名字换成无名的身份称呼（如「账房伙计」）。`,
-        enUS: heavy
-          ? `This character already carries the plot, so stop deferring: use “Create a card for ${entry.name}” to write a blank card (name + role), then fill in their background, how they are addressed, and their first appearance in Chapter ${firstChapter}. The card's content is yours or the model's to write — the check only makes sure the card exists.`
-          : `To keep them, use “Create a card for ${entry.name}” (name plus role) and mark this chapter as their first appearance. For a walk-on, replace the name in the blueprint and prose with a role label instead.`,
+        zhCN: fromNotesOnly
+          ? `这一格到底是不是一个人，判据判不了——它只出现在笔记表里，没有别的地方能印证。若「${entry.name}」确实是个人（例如是个只有绰号的角色），在蓝图的人物栏里补上这个名字，提醒会转成可直接建卡的形态；若它本来就是个职务或描述（「账房伙计」「管事」这类），把那一格改成职务写法即可，不必建卡。`
+          : heavy
+            ? `这个人已经在承担主线，别再挂起：点「为「${entry.name}」建卡」先落一张空卡（姓名 + 定位），再把她的身世、称呼变化与在第${firstChapter}章的首次出场补进卡里。卡本身的内容仍要你或模型来写——判据不替她编身份，只负责让这张卡存在。`
+            : `要保留这个角色，就点「为「${entry.name}」建卡」（姓名 + 定位即可），并把本章标为他的首次出场；只当一次性路人时，请把蓝图与正文里的名字换成无名的身份称呼（如「账房伙计」）。`,
+        enUS: fromNotesOnly
+          ? `The check cannot tell whether this entry is a person: it appears only in the notes table, with nothing else to corroborate it. If “${entry.name}” really is someone (say, a character known only by a nickname), add the name to the blueprint's cast field and this becomes a card you can create in one click; if it is a job title or description (“the clerk”, “the steward”), rewrite that cell as a role and there is nothing to create.`
+          : heavy
+            ? `This character already carries the plot, so stop deferring: use “Create a card for ${entry.name}” to write a blank card (name + role), then fill in their background, how they are addressed, and their first appearance in Chapter ${firstChapter}. The card's content is yours or the model's to write — the check only makes sure the card exists.`
+            : `To keep them, use “Create a card for ${entry.name}” (name plus role) and mark this chapter as their first appearance. For a walk-on, replace the name in the blueprint and prose with a role label instead.`,
       },
-      action: { kind: 'create-character', name: entry.name },
+      // ⚠️ notes 独有的条目**不给建卡动作**（issue #214）：那会让作者一键往名册里塞一个假人。
+      ...(fromNotesOnly ? {} : { action: { kind: 'create-character' as const, name: entry.name } }),
     } })
   }
   /**
@@ -829,7 +869,29 @@ export function findUnregisteredBlueprintCast(input: UnregisteredCastInput): Con
    * 现在同档内按「出场章数 → 台词段数」降序，重量大的不会因为出现得晚就被切掉。
    */
   return findings
+    /**
+     * notes 独有的条目排在同重量之后（issue #214）。
+     *
+     * 它们**可信度更低**（自由文本表格 vs 契约字段），而在 `slice(0, 4)` 的限额下，
+     * 一个够承重的职务词会把真人挤掉。实测那本 30 章的书今天没浮上来，只是因为
+     * 前四名正好是章数更高的真人（马六 16 / 任九 14 / 鲁二 12 / 葛阿满 8）——
+     * 章数一涨（「账房伙计」ch1–10 已 4 章），它就会顶掉别人。
+     */
+    /**
+     * 排序（issue #214）：**承重档内，字段声明的排在 notes 独有的之前**。
+     *
+     * 实测两本书的取舍都成立：
+     * - 30 章那本：`characters` 声明的四个承重条目（马六 16 / 任九 14 / 鲁二 12 / 葛阿满 8 章）
+     *   占满 4 条限额，notes 独有、够承重但**不是人**的「账房伙计 4 章 / 账房 4 章 / 管事 3 章」
+     *   被挡在外面 —— 这正是 #214 要的效果；
+     * - 93 章那本：声明的承重条目只有徐汐（16 章），于是 notes 独有但演了 9 章 71 段台词的
+     *   「灰褂」仍然进到第 2 条 —— #204 要看见的人没有被牺牲。
+     *
+     * ⚠️ 只看**承重档之内**：轻量档里 notes 独有不该被压到任何声明条目之下，
+     * 否则会改变 #160 的既有结论（轻量条目本来就只提示「换成身份称呼」）。
+     */
     .sort((left, right) => Number(right.heavy) - Number(left.heavy)
+      || Number(left.heavy ? left.fromNotes : false) - Number(right.heavy ? right.fromNotes : false)
       || right.chapters - left.chapters
       || right.dialogueLines - left.dialogueLines)
     .slice(0, 4)

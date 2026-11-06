@@ -10,7 +10,7 @@ import { ENTRANCE_WINDOW_CHAPTERS } from '../shared/entrance-shot'
 import { findTitleShapeConvergenceFindings } from '../shared/title-shape'
 // issue #204：notes 的「角色动态」表是唯一逐角色列名字的字段，而所有判据只读
 // `characters` 数组 —— 只在 notes 里出现的人于是整条线隐形。
-import { mergedBlueprintCast } from '../shared/blueprint-notes-cast'
+import { mergedBlueprintCast, notesOnlyCast } from '../shared/blueprint-notes-cast'
 import { auditFinalizedProse } from '../shared/finalized-prose-audit'
 // issue #120：ack 区渲染人话（配不上当轮 finding 时用封闭目录翻译）。
 import { acknowledgementTitleOf } from '../shared/acknowledgement-title'
@@ -111,10 +111,14 @@ export async function readConsistencyPreflight(
           // issue #204：`characters` 数组 ∪ notes 角色动态表 —— 本书 41/91 张蓝图两者不一致，
           // 只在 notes 里出现的人（演了 9 章 58 段台词那位）原来整条线隐形。
           characters: mergedBlueprintCast(blueprint.characters, blueprint.notes),
+          // issue #214：两处来源可信度不同（契约字段 vs 自由文本表格），分开传下去：
+          // notes 独有的条目照报但不给「建卡」动作（那会一键往名册里塞个假人）。
+          notesOnlyCharacters: notesOnlyCast(blueprint.characters, blueprint.notes),
         })),
       ...blueprints.map(blueprint => ({
         chapterNumber: blueprint.chapterNumber,
         characters: mergedBlueprintCast(blueprint.characters, blueprint.notes),
+        notesOnlyCharacters: notesOnlyCast(blueprint.characters, blueprint.notes),
       })),
     ],
     castNames,
