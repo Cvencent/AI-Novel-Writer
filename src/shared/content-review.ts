@@ -36,8 +36,11 @@ export const CONTENT_AXES = Object.freeze({
     'the same prop destroyed or given away more than once',
   ],
   'prop-moved': [
-    '同一件道具在几章之间换了持有者或容器，但正文没有写出交接动作',
-    'a prop changing hands or containers across chapters without an on-page handover',
+    '同一件道具**换了持有者或所在处**，而正文没有写出那一次交接动作。三种形状都算（issue #193 / #194）：'
+    + '（a）**同一章之内**——前一拍写它被收回某处、或在某只手里，后一拍它已经在另一只手里（那处已经空了），中间只有「递回去再试」这类**借用**、没有「交给／带走／还回来」这类**交付**；'
+    + '（b）**跨章**——它被明确交出、归档、封存或随某物一起归到某处之后，后面的章节又从原持有者身上取出、或在别处出现，中间没有取回动作；'
+    + '（c）若持有者变了之后，**原持有者还要用它干他本来那件活**（下一拍他仍在做那件离了它做不成的事），也要报——那是逻辑断裂，不只是交接没写。',
+    'a prop changes hands or location with no on-page handover. Three shapes count (issue #193 / #194): (a) WITHIN one chapter, a beat puts it away or in one person’s hands and the next beat has it in someone else’s (or the place is now empty), with only a borrow-and-try-again beat in between, never a hand-over, take-away or give-back; (b) ACROSS chapters, it is explicitly handed in, archived, sealed, or filed away with something else, and a later chapter produces it again from the original holder with no retrieval shown; (c) the original holder still has to do the work that requires it in the very next beat, which is a logical break rather than a missing handover.',
   ],
   'stale-duration': [
     '同一处状态（空着／关着／停着）用了两个互不相容的时长（先说三天，后说一个多月）',
@@ -92,9 +95,9 @@ export const CONTENT_AXIS_GUIDANCE = Object.freeze({
     ],
   },
   'prop-moved': {
-    problem: ['道具换了持有者／容器却没有交接', 'a prop changed hands or containers with no handover'],
+    problem: ['道具换了持有者／所在处却没有交接', 'a prop changed hands or place with no handover'],
     fix: [
-      '**补一句交接动作**：谁在什么时候、什么条件下把它交给谁（或在什么地方取出／放回）。不是换个说法重描，而是把「它怎么到这里的」写出来。',
+      '**补一句交接动作**：谁在什么时候、什么条件下把它交给谁（或在什么地方取出／放回）。不是换个说法重描，而是把「它怎么到这里的」写出来。⚠️「**递回去让他再试一次**」不是交接——那是借；真正的交接要写清它**留在谁那里**。⚠️ 若下一拍原持有者还要用它干那件离了它做不成的事，这一处是**逻辑断裂**，光补一句交接不够：要么把物还给原持有者，要么改写他随后那件活。',
       'Write the handover: who gives it to whom, when, under what condition (or where it was taken out and put back). This is not a rewording — it is the missing step of how it got here.',
     ],
   },

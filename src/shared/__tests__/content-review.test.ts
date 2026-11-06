@@ -456,3 +456,94 @@ describe('蓝图契约：不得重演前几章蓝图已排过的事件 (issue #2
     }
   })
 })
+
+/**
+ * issue #194 / #193：同一件物**换了持有者或所在处**却没写交接。
+ *
+ * 两处现场是同一个判断类，所以**加宽已有轴**而不是新开一轴/一颗按钮
+ * （issue 作者自己也写「我倾向加宽」，理由是本仓已有 12 颗「核对…」）：
+ *
+ * **#194（跨章）**：
+ * ```
+ * ch22 周叙从内衬摸出木戳。手指再探，夹出转印过刻名墨路的纸角…
+ * ch23 压印的纸角随签收单归了货栈档。          ← 明确离开周叙、归了档
+ * ch28 他从内衬里掏出三样：一枚木戳，一片转印过墨路的存根纸角…   ← 中间没有取回动作
+ * ```
+ * 与 #113（ch14 塞衬页 → 册子被收走 → ch17 又从内衬）是同一形状。
+ *
+ * **#193（章内）**：
+ * ```
+ * ch27 第 27 行「压到日头偏西，戳收回内衬。」
+ *      第 39 行「戳递回去」（那是递回去让阿棠再试 = 借，不是交付）
+ *      第 51 行「木戳不在内衬里了。」
+ *      第 53 行「第二日照旧到石墩上坐着，戳在阿棠手里。」  ← 且他第二天还要压印
+ * ```
+ * 两处都被原来那句「**在几章之间**换了持有者或容器」挡在窗口外（一个跨章但形态不同、
+ * 一个压根在章内）。
+ */
+describe('prop-moved 覆盖三种形状：章内换手、跨章复活、原持有者还要用它 (issue #194 / #193)', () => {
+  const paperChapters = [
+    { chapterNumber: 22, content: '周叙从内衬摸出木戳。手指再探，夹出转印过刻名墨路的纸角，边角发毛。纸角覆在签收单尾格的纸背上。' },
+    { chapterNumber: 23, content: '压印的纸角随签收单归了货栈档。' },
+    { chapterNumber: 28, content: '他从内衬里掏出三样：一枚木戳，一片转印过墨路的存根纸角，一截侧面刻着旧名、被手汗磨圆的船牌。' },
+  ]
+
+  it('tells the model that the cross-chapter shape counts even when it is not "changed container"', () => {
+    const { system } = buildContentReviewPrompt({ chapters: paperChapters, axes: ['prop-moved'], language: 'zh-CN' })
+    expect(system).toContain('prop-moved')
+    // 跨章那一支：交出/归档/封存之后又从原持有者身上取出
+    expect(system).toContain('归到某处之后')
+    expect(system).toContain('没有取回动作')
+  })
+
+  it('covers the in-chapter shape and says a borrow is not a handover', () => {
+    const { system } = buildContentReviewPrompt({ chapters: paperChapters, axes: ['prop-moved'], language: 'zh-CN' })
+    // 章内那一支：原来完全不在取数口径里（「在几章之间」）。
+    expect(system).toContain('同一章之内')
+    expect(system).toContain('借用')
+    expect(system).toContain('交付')
+  })
+
+  it('covers the logical break where the original holder still needs it', () => {
+    const { system } = buildContentReviewPrompt({ chapters: paperChapters, axes: ['prop-moved'], language: 'zh-CN' })
+    // #193 的功能冲突：他第二天还要压印，而戳在别人手里。
+    expect(system).toContain('离了它做不成的事')
+    expect(system).toContain('逻辑断裂')
+  })
+
+  it('does not name this book’s props (fixed checklist item since #209/#213/#208/#206)', () => {
+    const { system, user } = buildContentReviewPrompt({ chapters: paperChapters, axes: ['prop-moved'], language: 'zh-CN' })
+    for (const term of ['纸角', '木戳', '内衬', '货栈档', '船牌']) {
+      expect(system, `提示词不该出现「${term}」`).not.toContain(term)
+    }
+    // 原文照喂（那是样本）。
+    expect(user).toContain('纸角')
+  })
+
+  it('keeps both quotes verbatim for both shapes', () => {
+    const request = { chapters: paperChapters, axes: ['prop-moved'] as const }
+    const crossChapter = JSON.stringify({ issues: [{
+      chapterNumber: 28, axis: 'prop-moved',
+      quote: '他从内衬里掏出三样：一枚木戳，一片转印过墨路的存根纸角，一截侧面刻着旧名、被手汗磨圆的船牌。',
+      explanation: '第 23 章纸角已随签收单归了货栈档，本章又从内衬掏出，中间没有取回动作',
+    }] })
+    expect(parseContentReview(crossChapter, request)).toHaveLength(1)
+
+    const inChapter = JSON.stringify({ issues: [{
+      chapterNumber: 27, axis: 'prop-moved',
+      quote: '木戳不在内衬里了。',
+      explanation: '同一章前面写「戳收回内衬」，这里内衬已经空了，中间只有「戳递回去」这次借用',
+    }] })
+    expect(parseContentReview(inChapter, { chapters: [{ chapterNumber: 27, content: '压到日头偏西，戳收回内衬。\n\n戳递回去。\n\n木戳不在内衬里了。' }], axes: ['prop-moved'] }))
+      .toHaveLength(1)
+  })
+
+  it('tells the author a borrow is not a handover, and that a logical break needs more than a sentence', () => {
+    const [finding] = contentReviewFindings([{
+      chapterNumber: 27, axis: 'prop-moved', quote: '木戳不在内衬里了。', explanation: '章内换手',
+    }])
+    expect(finding!.suggestion.zhCN).toContain('不是交接')
+    expect(finding!.suggestion.zhCN).toContain('留在谁那里')
+    expect(finding!.suggestion.zhCN).toContain('逻辑断裂')
+  })
+})

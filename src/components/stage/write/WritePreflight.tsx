@@ -312,6 +312,17 @@ export default function WritePreflight({
             七个按钮合计 658px 而容器只有 288px，justify-content:flex-end
             把左侧那四个甩出弹层（stage-shell 又是 overflow:hidden，滚不过去）
             ——作者一个都点不到。现在拆成两行。 */}
+        {/*
+          issue #194 建议 ②：**物证链断裂自动预检查不出来，要说出来**。
+          那一族（某件东西被交出/归档之后又在别处出现、或在同一章里换了持有者）
+          由模型判据覆盖 —— 而模型调用**只由作者点按钮触发**（本仓既定规则：
+          预检不自动跑模型，见本文件各 `onCheck*` 的注释）。所以这里给一句可见提示，
+          让作者知道「这一档要点一下才会查」，而不是以为自动预检已经查过了。
+        */}
+        <p className="stage-preflight-checks-note">
+          {text('下面这些要用模型逐章读一遍（每次一次调用，约 60–100 秒），不会自动跑。其中「跨章重复与状态」「物证形态」两档覆盖物证链：某件东西被交出、归档之后又在别处出现，或在同一章里换了持有者而没写交接——自动预检查不出这一类。',
+            'These run a model pass over the chapters (one call each, roughly 60–100s) and never run on their own. “Repeated moves & status” and “Evidence objects” are the two that cover the prop chain: something handed in or filed away turning up again elsewhere, or changing hands within one chapter with no handover — the automatic pass cannot see those.')}
+        </p>
         <div className="stage-preflight-checks">
           {checkButton('onCheckMemory', '核对记忆回指', 'Check remembered scenes', onCheckMemory)}
           {checkButton('onCheckAbility', '核对能力限制', 'Check ability limits', onCheckAbility)}

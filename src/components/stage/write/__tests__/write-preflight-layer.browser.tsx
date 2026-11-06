@@ -504,3 +504,54 @@ describe('「核对…」进行中要有可见状态 (issue #192)', () => {
     await act(async () => { resolveCheck?.(); await Promise.resolve() })
   })
 })
+
+/**
+ * issue #194 建议 ②：**物证链断裂自动预检查不出来，要说出来**。
+ *
+ * 那一族（某件东西被交出/归档之后又在别处出现、或在同一章里换了持有者）由模型判据
+ * 覆盖 —— 而模型调用**只由作者点按钮触发**（本仓既定规则：预检不自动跑模型）。
+ * 所以我们在按钮行上方给一句可见提示，让作者知道「这一档要点一下才查得到」，
+ * 而不是以为自动预检已经查过了。
+ *
+ * ⚠️ 我第一版把这句写成带 Markdown 粗体的文案，被本仓 #154/#169 的
+ * 「作者可见文本不许带标记」断言当场红掉——那正是它该拦的。
+ */
+describe('「这些要点按钮才跑」要有可见提示 (issue #194)', () => {
+  it('says the model checks do not run on their own, and names the prop chain', async () => {
+    host = document.createElement('div')
+    host.className = 'paper-ink stage-shell'
+    document.body.append(host)
+    root = createRoot(host)
+    const common = {
+      preflight, busy: false,
+      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onRevoke: vi.fn(),
+      onAcknowledge: vi.fn(), onUnacknowledge: vi.fn(),
+      onCheckContent: vi.fn(), onCheckEvidence: vi.fn(),
+    }
+    await act(async () => root!.render(<WritePreflight {...common} />))
+    const note = host!.querySelector('.stage-preflight-checks-note')
+    expect(note, '要在「核对…」按钮行上方给一句说明').not.toBeNull()
+    expect(note!.textContent).toContain('不会自动跑')
+    // 要点名是哪两档覆盖物证链，否则作者不知道点哪一颗。
+    expect(note!.textContent).toContain('物证链')
+    // 与 #154/#169 同一规矩：作者可见文本不许出现 Markdown 标记。
+    expect(note!.textContent).not.toContain('**')
+  })
+
+  it('points at the automatic pass explicitly, so nobody assumes it was covered', async () => {
+    host = document.createElement('div')
+    host.className = 'paper-ink stage-shell'
+    document.body.append(host)
+    root = createRoot(host)
+    const common = {
+      preflight, busy: false,
+      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onRevoke: vi.fn(),
+      onAcknowledge: vi.fn(), onUnacknowledge: vi.fn(),
+      onCheckContent: vi.fn(), onCheckEvidence: vi.fn(),
+    }
+    await act(async () => root!.render(<WritePreflight {...common} />))
+    const note = host!.querySelector('.stage-preflight-checks-note')!
+    // 「自动预检查不出这一类」——这句话是这一档提示存在的理由。
+    expect(note.textContent).toContain('自动预检查不出')
+  })
+})
