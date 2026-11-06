@@ -152,6 +152,22 @@ const CURRENT_CHAPTER_TARGETS: ReadonlySet<string> = new Set(['cast:absent'])
  */
 const INTERVAL_TARGETS: ReadonlySet<string> = new Set(['chapter-time:undated'])
 
+/**
+ * 「读的是**设定层**、没有真实章号」的键族（issue #226）。
+ *
+ * `timeline:design-anchor:*` 的判据读的是前提/世界观/人物群像三段（`designSections`），
+ * 不读任何正文——它的 `sourceChapter` 只是 findings 记账的**占位章号**（判据里写死 1，
+ * 「架构阶段没有章号」）。旧口径拿它当真章号去比：占位 1 恒小于当前章 N → 被判成
+ * 「旧章、写前改不了」，卡片渲染「去第 1 章出新版本」；点过去落在第 1 章正文重写页，
+ * 与要改的设定层文本毫无关系（用户原话：「跳过了跳到第一章，然后呢，然后就没有然后了呀」）。
+ * 「去设定改」「修复」两颗按钮因此永远不出现。
+ *
+ * 设定层文本**不按章存储**——改设定页就是全书的权威，没有「旧章」概念。
+ * 这类键族**不进旧章拦截**：`sourceChapter` 是占位值时整个「源章 < 当前章」的合取不成立，
+ * 走默认分支 = 可修（destination 是设定页）。
+ */
+const PLACEHOLDER_CHAPTER_SOURCES: ReadonlySet<string> = new Set(['timeline:design-anchor'])
+
 /** key 末尾的章号（`chapter-time:undated:42` → 42）；读不到时 undefined。 */
 function trailingChapterOf(stableFactKey: string): number | undefined {
   const last = String(stableFactKey ?? '').split(':').at(-1)
@@ -217,6 +233,11 @@ export function preflightRouteOf(
   }
   // 旧章（已定稿）的提醒：写前改不动，与 `prose` 层同一处置。
   const { currentChapter, sourceChapter } = options
+  // 占位章号不参与「旧章」判断（issue #226）：设定层判据没有真实章号，sourceChapter 只是
+  // 记账占位——拿它当真章号会把「去设定改」错杀成「去第 1 章出新版本」。
+  if (PLACEHOLDER_CHAPTER_SOURCES.has(familyOf(stableFactKey))) {
+    return { layer, destination, repairable: true, ...(typeof currentChapter === 'number' ? { targetChapter: currentChapter } : {}) }
+  }
   if (typeof currentChapter === 'number' && typeof sourceChapter === 'number'
     && Number.isSafeInteger(currentChapter) && Number.isSafeInteger(sourceChapter)
     && sourceChapter < currentChapter) {

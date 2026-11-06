@@ -229,3 +229,43 @@ describe('targetChapter：来源章 ≠ 要改的章 (issue #212)', () => {
     expect(preflightRouteOf('cast:absent:叶九:89').repairable).toBe(true)
   })
 })
+
+/**
+ * issue #226：`timeline:design-anchor:*` 的 `sourceChapter` 是**记账占位章号**（判据写死 1，
+ * 「架构阶段没有章号」），不是真章号。旧口径拿它当真：占位 1 恒小于当前章 N →
+ * 被判成「旧章、写前改不了」，卡片渲染「去第 1 章出新版本」；「去设定改」「修复」
+ * 两颗按钮永远不出现。点过去落在第 1 章正文重写页，与要改的设定层文本毫无关系
+ * （用户原话：「跳过了跳到第一章，然后呢，然后就没有然后了呀」）。
+ *
+ * 设定层文本不按章存储——改设定页就是全书的权威，没有「旧章」概念。
+ */
+describe('占位章号不进旧章拦截 (issue #226)', () => {
+  it('routes a design-anchor finding to the world layer as repairable, never as an old chapter', () => {
+    // 当前章 95、占位源章 1 —— 旧实现在这里给出 repairable:false + targetChapter:1。
+    const route = preflightRouteOf('timeline:design-anchor:落水', {
+      currentChapter: 95, sourceChapter: 1,
+    })
+    expect(route.layer).toBe('world')
+    expect(route.repairable).toBe(true)
+    expect(route.blockedBy).toBeUndefined()
+    expect(route.targetChapter).not.toBe(1)
+  })
+
+  it('does not offer the "make a new version of chapter N" exit for the placeholder', () => {
+    // needs-finalized-prose 是「去第 N 章出新版本」按钮的唯一渲染条件（WritePreflight）。
+    const route = preflightRouteOf('timeline:design-anchor:落水', {
+      currentChapter: 95, sourceChapter: 1,
+    })
+    expect(route.blockedBy).not.toBe('needs-finalized-prose')
+  })
+
+  it('keeps real old-chapter findings blocked (the placeholder carve-out must not widen)', () => {
+    // 真旧章判据不受影响：蓝图层的真章号 < 当前章 → 仍走旧章拦截。
+    const route = preflightRouteOf('chapter-title:unmet:45', {
+      currentChapter: 95, sourceChapter: 45,
+    })
+    expect(route.repairable).toBe(false)
+    expect(route.blockedBy).toBe('needs-finalized-prose')
+    expect(route.targetChapter).toBe(45)
+  })
+})
