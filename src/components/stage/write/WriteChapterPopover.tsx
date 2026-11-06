@@ -1071,12 +1071,25 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           都在作者点「开始」**之前**出现，重复点击的费用与版本失控才有控制点。
         */}
         {activeChapterRun && (
-          <p className="stage-write-error" role="alert">
-            {text(
-              `上一次「${activeChapterRun.title}」还在运行中；同一章不能同时开两条管线。等它完成、或取消它再开始。`,
-              `"${activeChapterRun.title}" is still running; two pipelines cannot write the same chapter at once. Wait for it to finish or cancel it first.`,
-            )}
-          </p>
+          <div className="stage-write-error" role="alert">
+            <p style={{ margin: 0 }}>
+              {text(
+                `上一次「${activeChapterRun.title}」还在运行中；同一章不能同时开两条管线。等它完成、或取消它再开始。`,
+                `"${activeChapterRun.title}" is still running; two pipelines cannot write the same chapter at once. Wait for it to finish or cancel it first.`,
+              )}
+            </p>
+            {/*
+              issue #224 ②：旧 run 的**可见入口**——作者不用退出弹层去找运行侧页。
+              只导航，不替他决定取消还是等待。
+            */}
+            <Button
+              variant="text"
+              size="sm"
+              onClick={() => { close(false); useStageStore.setState({ sheet: { kind: 'run', tab: 'active' } }) }}
+            >
+              {text('去运行侧页查看', 'Open the run panel')}
+            </Button>
+          </div>
         )}
         {existingDrafts !== null && existingDrafts.filter(draft => draft.status !== 'finalized').length > 0 && (() => {
           const drafts = existingDrafts.filter(draft => draft.status !== 'finalized')

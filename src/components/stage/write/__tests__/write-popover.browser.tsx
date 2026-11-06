@@ -646,5 +646,8 @@ describe('同章重复写作的簿记提示 (issue #224)', () => {
       resourceKeys: [`chapter:5`],
     } as never] })
     await vi.waitFor(() => expect(page.getByText(/上一次「第 5 章 · 写稿」还在运行中/)).toBeVisible())
+    // issue #224 ②：旧 run 的可见入口——一键去运行侧页，不用退出弹层自己找。
+    await userEvent.click(page.getByRole('button', { name: '去运行侧页查看' }))
+    await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull())
   })
 })
