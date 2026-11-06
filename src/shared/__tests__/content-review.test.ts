@@ -182,3 +182,72 @@ describe('按轴给建议与解释 (issue #185)', () => {
     expect(finding!.stableFactKey).toBe('prose:prop-moved:82')
   })
 })
+
+/**
+ * issue #213：同一个人（或同一件东西）在相邻章之间换了提称，而**没有一句把两个接起来**。
+ *
+ * 现场（第 91 → 92 章，同一个经办人）：
+ * - ch91「一个套蓝布袖套的中年人才夹着薄册过来」「**袖套**翻开册子」「**袖套**抽出第三格页，
+ *   连同存根联塞进牛皮复核袋」（这一章一律叫「袖套」，共 7 次）
+ * - ch92「桌另一头，**管流程册的经办**把笔搁下」「**经办**出去了一趟…腋下夹着牛皮复核袋」
+ * - ch94 还是「经办」（手里的薄册与第 91 章那本对得上）
+ *
+ * 「袖套」全书 7 次全在第 91 章，「经办」在 91 章只出现 1 次（就是问路那句）；
+ * 全书没有一句桥接。而**谁封的袋、谁开的袋**正是这条主线的支点 ——
+ * 读者认不出是同一个人，整段推理就变成流水账。
+ *
+ * ⚠️ 与 `cast-name-drift`（#102，陆敬堂/穆敬堂，一字之差）不同：那条是**字形相近**、
+ * 纯结构可判；本条是两个**完全不同的提称**（职务名 vs 衣着代称），
+ * 只能靠读懂「这两处说的是不是同一个人」——所以交模型，不写词表。
+ */
+describe('appellation-unbridged：换了提称却没有桥接 (issue #213)', () => {
+  const bagChapters = [
+    { chapterNumber: 90, content: '周叙在「结案过程无异议」确认书上按下拇指。' },
+    { chapterNumber: 91, content: '一个套蓝布袖套的中年人才夹着薄册过来。袖套翻开册子。袖套抽出第三格页，连同存根联塞进牛皮复核袋。' },
+    { chapterNumber: 92, content: '桌另一头，管流程册的经办把笔搁下。经办出去了一趟，腋下夹着牛皮复核袋。' },
+  ]
+
+  it('offers the axis to the model, described as a question and not as a list of titles', () => {
+    const { system } = buildContentReviewPrompt({ chapters: bagChapters, axes: ['appellation-unbridged'], language: 'zh-CN' })
+    expect(system).toContain('appellation-unbridged')
+    expect(system).toContain('没有一句把两个提称接起来')
+    // ⚠️ 不许出现本书的提称 —— 那等于把这本书编进代码。
+    for (const term of ['袖套', '经办', '灰褂', '薄册']) {
+      expect(system, `提示词不该出现「${term}」`).not.toContain(term)
+    }
+  })
+
+  it('accepts the axis and keeps the quote-verbatim rule', () => {
+    const request = { chapters: bagChapters, axes: ['appellation-unbridged'] as const }
+    const good = JSON.stringify({ issues: [{
+      chapterNumber: 92, axis: 'appellation-unbridged', quote: '管流程册的经办把笔搁下', explanation: '两章说的是同一个经办人，但没有一句把两个提称接起来',
+    }] })
+    expect(parseContentReview(good, request)).toHaveLength(1)
+    // 引文对不上 → 整条丢弃。
+    const bad = JSON.stringify({ issues: [{
+      chapterNumber: 92, axis: 'appellation-unbridged', quote: '这句不在正文里', explanation: 'x',
+    }] })
+    expect(parseContentReview(bad, request)).toEqual([])
+  })
+
+  it('asks for a bridging line or a single label — and says not to fix only one of the two', () => {
+    const [finding] = contentReviewFindings([{
+      chapterNumber: 92, axis: 'appellation-unbridged', quote: '管流程册的经办把笔搁下',
+      explanation: '两章是同一个经办人，中间没有桥接',
+    }])
+    expect(finding!.stableFactKey).toBe('prose:appellation-unbridged:92')
+    // 轴名要写进正文（#185）：作者一眼看出这是哪一类。
+    expect(finding!.issue.zhCN).toContain('提称')
+    expect(finding!.suggestion.zhCN).toContain('补一句桥接')
+    expect(finding!.suggestion.zhCN).toContain('不要只改其中一处')
+  })
+
+  it('keeps the guidance per-axis so this one is not worded like a repeated-move fix', () => {
+    const [finding] = contentReviewFindings([{
+      chapterNumber: 92, axis: 'appellation-unbridged', quote: '管流程册的经办把笔搁下', explanation: '',
+    }])
+    // #185 的教训：五轴共用一句建议时，改法对不上这一轴。这里必须是「统一称呼/补桥接」。
+    expect(finding!.suggestion.zhCN).not.toContain('换这一拍的落点')
+    expect(finding!.suggestion.zhCN).toContain('统一成一个称呼')
+  })
+})

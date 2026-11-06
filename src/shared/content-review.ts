@@ -43,6 +43,10 @@ export const CONTENT_AXES = Object.freeze({
     '同一处状态（空着／关着／停着）用了两个互不相容的时长（先说三天，后说一个多月）',
     'one state described with two incompatible durations',
   ],
+  'appellation-unbridged': [
+    '同一个人或同一件东西在相邻章之间换了一个提称（职务名 / 衣着代称 / 「那个人」），而正文**没有一句把两个提称接起来**，读者无法确认是不是同一个（issue #213）',
+    'one person or object is referred to by a different label in a later chapter (a job title, a piece of clothing, "that one") with no line linking the two labels, so a reader cannot tell it is the same one (issue #213)',
+  ],
 } as const)
 
 /**
@@ -91,6 +95,13 @@ export const CONTENT_AXIS_GUIDANCE = Object.freeze({
     fix: [
       '**统一成同一个时长**，并交代这段时间里状态有没有变过（一直空着？中间被人动过？）。两个数字并排出现时，读者只会觉得作者自己也没记住。',
       'Settle on one duration and say whether the state changed in between (still empty? touched meanwhile?). Two figures side by side only tell readers the author lost track.',
+    ],
+  },
+  'appellation-unbridged': {
+    problem: ['同一个人／东西换了提称却没有接起来', 'the same person or thing gets a new label with nothing linking them'],
+    fix: [
+      '**补一句桥接**（首次换称时写「就是昨日那位管清库的」这类），或**统一成一个称呼**：要么全用职务名，要么全用那个代称。**不要只改其中一处**——两处都改才叫统一，改一处会让读者更确定这是两个人。这一拍往往正是情节的支点（谁封的袋、谁动过那张纸），读者认不出人，整段推理就变成流水账。',
+      'Add one bridging line the first time the label changes ("the one who sealed it yesterday"), or settle on a single label throughout — job title or nickname, not both. Do not fix only one instance: changing one and not the other makes it look even more certainly like two different people. This beat is usually the hinge of the plot, so a reader who cannot tell who is who loses the whole chain.',
     ],
   },
 } as const)

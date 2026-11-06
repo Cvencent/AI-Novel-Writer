@@ -486,7 +486,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       const chapters = await recentFinalized(session)
       if (!isProjectSessionCurrent(session)) return
       const outcome = await reviewProseContent(session, chapters,
-        ['repeated-reaction', 'repeated-device', 'prop-terminal', 'prop-moved', 'stale-duration'], locale)
+        ['repeated-reaction', 'repeated-device', 'prop-terminal', 'prop-moved', 'stale-duration', 'appellation-unbridged'], locale)
       if (!isProjectSessionCurrent(session)) return
       if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
       mergeFindings(outcome.findings)
