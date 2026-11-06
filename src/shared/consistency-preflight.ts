@@ -33,6 +33,15 @@ export interface ConsistencyExemption {
 }
 
 /**
+ * 「确认无误，不再提醒」（issue #228）落在 `consistency_exemptions.reason` 里的**固定文案**。
+ *
+ * 一键出口（不填原因）：作者看过、判断这条是误报/不成立。与「保存安排（刻意为之）」
+ * 用同一张表、同一个撤销通道，但 reason 是这个常量——折叠区据此把两类分开显示，
+ * 「刻意为之」的台账不被误报淹没。⚠️ 比较用 `===`；已存的旧条目文案不受影响。
+ */
+export const CONFIRMED_NO_ISSUE_REASON = '确认无误'
+
+/**
  * 预检提醒的「我已知，稍后处理」（issue #79）。
  *
  * 与 `ConsistencyExemption` 分开：那条表示「这是我刻意这么写的」，

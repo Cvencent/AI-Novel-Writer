@@ -4,6 +4,7 @@ import type { ConsistencyPreflightResult } from '../../../services/consistency-p
 import type { ConsistencyFinding } from '../../../shared/consistency-preflight'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { preflightRouteOf, type PreflightRoute } from '../../../shared/preflight-route'
+import { CONFIRMED_NO_ISSUE_REASON } from '../../../shared/consistency-preflight'
 import PreflightRepairPanel, { type RepairProposal } from './PreflightRepairPanel'
 import { stripEmphasis } from '../../../shared/author-visible-text'
 import { Button } from '../../ui/Button'
@@ -27,6 +28,8 @@ interface WritePreflightProps {
   onIgnoreOnce: () => void
   onRerun: () => void
   onSave: (stableFactKey: string, reason: string) => void
+  /** 「确认无误，不再提醒」（issue #228）：一键认可「这条是误报/不成立」，与「刻意为之」分开。 */
+  onConfirmNoIssue: (stableFactKey: string) => void
   onRevoke: (stableFactKey: string) => void
   /** 「我已知，稍后处理」（issue #79）：与「保存安排」分开，只表示知道，不表示刻意为之。 */
   onAcknowledge: (stableFactKey: string) => void
@@ -151,7 +154,7 @@ interface WritePreflightProps {
  *  3. 「带提醒继续写」——本次不处理，也不落任何状态（仍然是一次性的）。
  */
 export default function WritePreflight({
-  preflight, busy, onIgnoreOnce, onRerun, onSave, onRevoke, onAcknowledge, onUnacknowledge, onOpenLayer, currentChapter,
+  preflight, busy, onIgnoreOnce, onRerun, onSave, onConfirmNoIssue, onRevoke, onAcknowledge, onUnacknowledge, onOpenLayer, currentChapter,
   onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent, onCheckAbility, onCheckMemory, onCheckBlueprintFacts, onCheckEvidence, onCheckHandwriting, onCheckBlueprintInternal, onCheckLossRestatement, onCheckDeadline, onCheckDateConflict, onCreateCharacter, onOpenFinalizedChapter,
 }: WritePreflightProps) {
   const text = useLocaleStore(s => s.text)
@@ -253,6 +256,15 @@ export default function WritePreflight({
               />
               <Button variant="secondary" size="sm" disabled={busy || !reason.trim()} onClick={() => onSave(finding.stableFactKey, reason)}>
                 {text('保存安排', 'Save arrangement')}
+              </Button>
+              {/*
+                issue #228：第三个出口——「我看过了，这条是对的/误报，不需要处理」。
+                一键（不填原因；固定文案「确认无误」落 consistency_exemptions 的 reason），
+                与「保存安排（我刻意这么写的）」「我已知（真问题回头改）」语义分开。
+                假阳性的处理成本不该由作者每次重复支付。
+              */}
+              <Button variant="text" size="sm" disabled={busy} onClick={() => onConfirmNoIssue(finding.stableFactKey)}>
+                {text('确认无误，不再提醒', 'Confirmed fine — stop reminding')}
               </Button>
               <Button variant="text" size="sm" disabled={busy} onClick={() => onAcknowledge(finding.stableFactKey)}>
                 {text('我已知，稍后处理', 'Noted — deal with it later')}
@@ -392,19 +404,42 @@ export default function WritePreflight({
         </div>
         </>
       )}
-      {saved.length > 0 && (
-        <details className="stage-preflight-saved">
-          <summary>{text(`已保存安排（${saved.length}）`, `Saved arrangements (${saved.length})`)}</summary>
-          {saved.map(exemption => (
-            <div key={exemption.stableFactKey} className="stage-preflight-exemption">
-              <span>{exemption.reason}</span>
-              <Button variant="text" size="sm" disabled={busy} onClick={() => onRevoke(exemption.stableFactKey)}>
-                <RotateCcw size={13} aria-hidden />{text('撤销', 'Revoke')}
-              </Button>
-            </div>
-          ))}
-        </details>
-      )}
+      {(() => {
+        // issue #228：「确认无误」类与「刻意为之」分开显示——误报的确认不该淹没
+        // 真正刻意安排的台账，作者找「故意保留的设定」时不该翻一排「确认无误」。
+        const confirmedFine = saved.filter(exemption => exemption.reason === CONFIRMED_NO_ISSUE_REASON)
+        const intentional = saved.filter(exemption => exemption.reason !== CONFIRMED_NO_ISSUE_REASON)
+        return (
+          <>
+            {intentional.length > 0 && (
+              <details className="stage-preflight-saved">
+                <summary>{text(`已保存安排（${intentional.length}）`, `Saved arrangements (${intentional.length})`)}</summary>
+                {intentional.map(exemption => (
+                  <div key={exemption.stableFactKey} className="stage-preflight-exemption">
+                    <span title={exemption.stableFactKey}>{exemption.reason}</span>
+                    <Button variant="text" size="sm" disabled={busy} onClick={() => onRevoke(exemption.stableFactKey)}>
+                      <RotateCcw size={13} aria-hidden />{text('撤销', 'Revoke')}
+                    </Button>
+                  </div>
+                ))}
+              </details>
+            )}
+            {confirmedFine.length > 0 && (
+              <details className="stage-preflight-saved">
+                <summary>{text(`已确认无误（${confirmedFine.length}）`, `Confirmed fine (${confirmedFine.length})`)}</summary>
+                {confirmedFine.map(exemption => (
+                  <div key={exemption.stableFactKey} className="stage-preflight-exemption">
+                    <span title={exemption.stableFactKey}>{text('我看过了，这条不成立', 'Reviewed — not an issue')}</span>
+                    <Button variant="text" size="sm" disabled={busy} onClick={() => onRevoke(exemption.stableFactKey)}>
+                      <RotateCcw size={13} aria-hidden />{text('恢复提醒', 'Show again')}
+                    </Button>
+                  </div>
+                ))}
+              </details>
+            )}
+          </>
+        )
+      })()}
       {/* 这些与「已保存安排」分开展示：它们是「已知未改」，不是「刻意为之」（issue #79）。 */}
       {acknowledged.length > 0 && (
         <details className="stage-preflight-saved">

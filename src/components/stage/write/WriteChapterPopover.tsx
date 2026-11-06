@@ -6,7 +6,7 @@ import { createCharacterCardForPreflight } from '../../../services/preflight-cha
 import { CONTENT_AXES_FOR_BUTTON } from '../../../shared/content-review'
 import { mergeModelFindings } from '../../../shared/merge-model-findings'
 import { MEMORY_ANCHOR_TARGET_CHAPTERS } from '../../../shared/memory-anchor-review'
-import type { ConsistencyFinding } from '../../../shared/consistency-preflight'
+import { CONFIRMED_NO_ISSUE_REASON, type ConsistencyFinding } from '../../../shared/consistency-preflight'
 import { ipc } from '../../../services/ipc-client'
 import {
   chapterDefaultWordsTarget,
@@ -1093,6 +1093,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           onIgnoreOnce={() => void start(true)}
           onRerun={() => void start(false)}
           onSave={(key, reason) => void saveArrangement(key, reason)}
+          onConfirmNoIssue={key => void saveArrangement(key, CONFIRMED_NO_ISSUE_REASON)}
           onRevoke={key => void revokeArrangement(key)}
           onAcknowledge={key => void acknowledgeFinding(key)}
           onUnacknowledge={key => void unacknowledgeFinding(key)}

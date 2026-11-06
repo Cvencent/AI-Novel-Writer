@@ -8,6 +8,7 @@ import { CHAPTER_WORDS_TARGET_MAX, CHAPTER_WORDS_TARGET_MIN, normalizeChapterWor
 import { useLLMStore } from '../../../stores/llm-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { useBatchChapterForm, type BatchChapterProps } from '../../dialogs/use-batch-chapter-form'
+import { CONFIRMED_NO_ISSUE_REASON } from '../../../shared/consistency-preflight'
 import { captureProjectSession } from '../../project-session-gate'
 import { Button } from '../../ui/Button'
 import { Notice } from '../../ui/Notice'
@@ -153,6 +154,7 @@ function BatchWriteDialogSession(props: BatchChapterProps) {
             onIgnoreOnce={() => void form.handleStart(true)}
             onRerun={() => void form.handleStart(false)}
             onSave={(key, reason) => void form.saveArrangement(key, reason)}
+            onConfirmNoIssue={key => void form.saveArrangement(key, CONFIRMED_NO_ISSUE_REASON)}
             onRevoke={key => void form.revokeArrangement(key)}
             onAcknowledge={key => void form.acknowledgeFinding(key)}
             onUnacknowledge={key => void form.unacknowledgeFinding(key)}

@@ -275,7 +275,7 @@ describe('预检正文剥离 Markdown 粗体 (issue #154)', () => {
     await act(async () => root!.render(
       <WritePreflight
         preflight={emphasised} busy={false}
-        onIgnoreOnce={vi.fn()} onRerun={vi.fn()} onSave={vi.fn()} onRevoke={vi.fn()}
+        onIgnoreOnce={vi.fn()} onRerun={vi.fn()} onSave={vi.fn()} onConfirmNoIssue={vi.fn()} onRevoke={vi.fn()}
         onAcknowledge={vi.fn()} onUnacknowledge={vi.fn()}
       />,
     ))
@@ -576,7 +576,7 @@ describe('已定稿章的提醒要有出口 (issue #137)', () => {
     await act(async () => root!.render(
       <WritePreflight
         preflight={preflight} busy={false}
-        onIgnoreOnce={vi.fn()} onRerun={vi.fn()} onSave={vi.fn()} onRevoke={vi.fn()}
+        onIgnoreOnce={vi.fn()} onRerun={vi.fn()} onSave={vi.fn()} onConfirmNoIssue={vi.fn()} onRevoke={vi.fn()}
         onAcknowledge={vi.fn()} onUnacknowledge={vi.fn()}
         currentChapter={59}
         // ⚠️ 这一档整块（含「去 X 改」与新的「出新版本」）都挂在 onOpenLayer 之下
@@ -603,7 +603,7 @@ describe('已定稿章的提醒要有出口 (issue #137)', () => {
     await act(async () => root!.render(
       <WritePreflight
         preflight={preflight} busy={false}
-        onIgnoreOnce={vi.fn()} onRerun={vi.fn()} onSave={vi.fn()} onRevoke={vi.fn()}
+        onIgnoreOnce={vi.fn()} onRerun={vi.fn()} onSave={vi.fn()} onConfirmNoIssue={vi.fn()} onRevoke={vi.fn()}
         onAcknowledge={vi.fn()} onUnacknowledge={vi.fn()}
         currentChapter={59}
         onOpenLayer={vi.fn()}
@@ -611,5 +611,69 @@ describe('已定稿章的提醒要有出口 (issue #137)', () => {
     ))
     expect([...host!.querySelectorAll('button')].some(item => /出新版本/.test(item.textContent ?? ''))).toBe(false)
     expect(host!.textContent).toContain('重新定稿')
+  })
+})
+
+/**
+ * issue #228：第三个出口「确认无误，不再提醒」。
+ *
+ * 现场：character-age 判据把制度规则「年满十八岁当天…」（无主语人物）报成
+ * 「写了年龄但归不到人」。作者的两点表态：可以接受模型识别有错，但**必须有一个
+ * 不处理的按钮，表示我看过了、是对的、不需要处理**——旧口径只有三选一：
+ * 「保存安排」要填原因且语义是「我故意」；「我已知」= 被迫承认是真问题；
+ * 「带提醒继续写」之后每章重报。
+ */
+describe('第三个出口：确认无误，不再提醒 (issue #228)', () => {
+  it('offers the one-click exit between "Save arrangement" and "Noted"', async () => {
+    const confirmed: string[] = []
+    host = document.createElement('div')
+    host.className = 'paper-ink stage-shell'
+    document.body.append(host)
+    root = createRoot(host)
+    await act(async () => root!.render(
+      <WritePreflight
+        preflight={preflight} busy={false}
+        onIgnoreOnce={vi.fn()} onRerun={vi.fn()} onSave={vi.fn()} onConfirmNoIssue={key => confirmed.push(key)} onRevoke={vi.fn()}
+        onAcknowledge={vi.fn()} onUnacknowledge={vi.fn()}
+      />,
+    ))
+    const buttons = [...host!.querySelectorAll('button')]
+    const fine = buttons.find(item => /确认无误/.test(item.textContent ?? ''))
+    expect(fine, '要有「确认无误，不再提醒」按钮').toBeTruthy()
+    await act(async () => (fine as HTMLButtonElement).click())
+    expect(confirmed).toEqual([preflight.findings[0]!.stableFactKey])
+    // 一键：不需要先填原因（输入框为空时它也必须可点）。
+    expect((host!.querySelector('input[aria-label="安排说明"]') as HTMLInputElement).value).toBe('')
+  })
+
+  it('separates confirmed-fine entries from intentional arrangements in the saved lists', () => {
+    const withBoth: ConsistencyPreflightResult = {
+      ...preflight,
+      exemptions: [
+        { stableFactKey: 'k-intentional', reason: '铁匠铺早就关了，是刻意的', revoked: false },
+        { stableFactKey: 'k-fine', reason: '确认无误', revoked: false },
+      ],
+    }
+    host = document.createElement('div')
+    host.className = 'paper-ink stage-shell'
+    document.body.append(host)
+    root = createRoot(host)
+    void withBoth
+    const { container } = { container: host }
+    void container
+    // 直接走组件渲染（ exemptions 决定折叠区内容）：
+    act(() => root!.render(
+      <WritePreflight
+        preflight={withBoth} busy={false}
+        onIgnoreOnce={vi.fn()} onRerun={vi.fn()} onSave={vi.fn()} onConfirmNoIssue={vi.fn()} onRevoke={vi.fn()}
+        onAcknowledge={vi.fn()} onUnacknowledge={vi.fn()}
+      />,
+    ))
+    const summaries = [...host!.querySelectorAll('summary')].map(item => item.textContent ?? '')
+    expect(summaries.some(item => item.includes('已保存安排（1）'))).toBe(true)
+    expect(summaries.some(item => item.includes('已确认无误（1）'))).toBe(true)
+    // 「刻意为之」小节里不能混进「确认无误」条目。
+    const intentional = [...host!.querySelectorAll('details')].find(details => (details.querySelector('summary')?.textContent ?? '').includes('已保存安排'))!
+    expect(intentional.textContent).not.toContain('我看过了')
   })
 })
