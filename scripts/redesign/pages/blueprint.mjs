@@ -90,7 +90,14 @@ export async function continuePastPreflight(page, { timeout = 3_000 } = {}) {
   // 用 :visible 限定：本页同时可能存在「本次写作选项」这类 role=dialog 的弹层。
   const dialog = page.locator('[role="dialog"]:visible').first()
   const visible = await dialog.waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false)
-  if (!visible) return { outcome: 'no-dialog' }
+  /**
+   * `no-dialog` 也要能说出来（issue #210）。
+   *
+   * 原来三种 outcome 里只有前两种由调用方写日志，`no-dialog` 什么都不留：
+   * 于是日志里「点完就跳到停滞」，看不出中间发生过什么。它本身就是诊断信息
+   * （是弹层没出现、还是晚于 3 秒才出现），必须带回给调用方。
+   */
+  if (!visible) return { outcome: 'no-dialog', waitedMs: timeout }
   const summary = await dialog.innerText().catch(() => '')
   const go = dialog.getByRole('button', { name: /^(带提醒继续写|Continue with reminders)$/ })
   if (await go.count().catch(() => 0) === 0) return { outcome: 'no-continue-button', summary: summary.slice(0, 400) }

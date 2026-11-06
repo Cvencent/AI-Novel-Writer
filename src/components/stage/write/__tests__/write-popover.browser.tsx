@@ -453,6 +453,32 @@ describe('写作此章弹层', () => {
     expect(main.disabled).toBe(false)
   })
 
+  /**
+   * issue #210：「点下去」到「弹层出现」之间必须有可读的状态。
+   *
+   * 现场：点「写第 31 章」后 10 分钟零反馈——没有弹层、没有 chapter-draft 运行、
+   * 没有模型调用、界面一个字都没变，作者无从判断是坏了还是在等。
+   * #192 已经把「弹层内的等待」做出了秒数；这一条是同一个原则往上一层。
+   */
+  it('主按钮在进行中改写成带秒数的准备文案（issue #210）', async () => {
+    let release: () => void = () => {}
+    continuityGate = new Promise(resolve => { release = resolve })
+    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" />)
+    const main = page.getByRole('button', { name: '写第 5 章' }).element() as HTMLButtonElement
+    expect(main.textContent).toBe('写第 5 章')
+    await act(async () => main.click())
+    // 点下去立刻换成「正在准备一致性预检… 已等 N 秒」，不再只有一个不动的标签。
+    expect(main.textContent).toContain('正在准备一致性预检')
+    expect(main.textContent).toMatch(/已等 \d+ 秒/u)
+    // 秒数要真的在走（等 1.2 秒后应至少到 1）。
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1200)) })
+    const waited = Number(/已等 (\d+) 秒/u.exec(main.textContent ?? '')?.[1] ?? 0)
+    expect(waited).toBeGreaterThanOrEqual(1)
+    continuityGate = null
+    await act(async () => release())
+    await vi.waitFor(() => expect(main.textContent).toBe('写第 5 章'))
+  })
+
   it('保存安排时按钮不可再点；保存失败写明原因，不开始写', async () => {
     continuityProjections = DEAD_KEEPER
     let finishSave: (result: { success: boolean; error?: string }) => void = () => {}

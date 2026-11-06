@@ -644,6 +644,9 @@ for (let chapter = from; chapter <= to; chapter += 1) {
         const preflight = await blueprintPage.continuePastPreflight(page)
         if (preflight.outcome === 'continued') log(`  一致性预检有提醒，已点「带提醒继续写」：${preflight.summary.replace(/\s+/g, ' ').slice(0, 160)}`)
         else if (preflight.outcome === 'no-continue-button') log(`  弹层出现但没有「带提醒继续写」按钮（可能不是一致性预检）：${String(preflight.summary ?? '').replace(/\s+/g, ' ').slice(0, 200)}`)
+        // issue #210：`no-dialog` 原来完全静默，日志里「点完就跳到停滞」，看不出中间发生过什么。
+        // 这一行本身是诊断信息：弹层没出现 ≠ 点了没生效，但两者在界面上一样无反馈。
+        else log(`  点完 ${preflight.waitedMs ?? 3000} 毫秒内没等到任何弹层（no-dialog）——正文还没开始，稍后按「草稿」判据继续等`)
         await runSheet.waitForRunDone(page, GENERATION_TIMEOUT_MS)
         const draft = await pollUntilOrStall(page, session, async () => {
           const list = await invokeSession(page, session, 'db:draft-list', target, session.projectPath)

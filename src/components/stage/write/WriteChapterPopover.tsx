@@ -75,6 +75,22 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
   const [repairQueue, setRepairQueue] = useState<Array<{ layer: 'world' | 'cast' | 'outline' | 'blueprint' | 'prose'; findings: readonly ConsistencyFinding[] }>>([])
   const [starting, setStarting] = useState(false)
   /**
+   * 「点下去」到「弹层出现」之间要有一段可读的状态（issue #210）。
+   *
+   * 现场：点「写第 31 章」后 10 分钟零反馈——没有弹层、没有 chapter-draft 运行、
+   * 没有模型调用、界面一个字都没变。作者无从判断是坏了还是在等。
+   * （根因可能是预检算得久，也可能是点了没生效；两者在用户看来一样，
+   * 所以无论哪一种是主因，这一段都必须有反馈。）
+   */
+  const [startingSeconds, setStartingSeconds] = useState(0)
+  useEffect(() => {
+    if (!starting) { setStartingSeconds(0); return }
+    setStartingSeconds(0)
+    const startedAt = Date.now()
+    const timer = setInterval(() => setStartingSeconds(Math.floor((Date.now() - startedAt) / 1000)), 1000)
+    return () => clearInterval(timer)
+  }, [starting])
+  /**
    * `mergeFindings` 想给作者的那句「新增 N 条 / N 条已挂起」（issue #170）。
    * 用 ref 暂存、在 setState 之外落地——在 updater 里调另一个 setState 会触发
    * 「在更新期间更新另一个组件/state」的告警。
@@ -962,6 +978,8 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       icon={<PenLine size={15} aria-hidden />}
       disabled={busy}
       busy={starting}
+      busyLabel={text(`正在准备一致性预检… 已等 ${startingSeconds} 秒`, `Preparing the consistency check… ${startingSeconds}s`)}
+
       onRun={() => void start(preflightSeen)}
       optionsLabel={text('本次写作选项', 'Options for this run')}
       popoverClassName="stage-write-pop"
