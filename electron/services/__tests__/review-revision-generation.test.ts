@@ -784,6 +784,50 @@ describe('review and revision generation through the actual owner and SQLite', (
     expect(RevisionRepository.getFull(later.id, f.db)).toMatchObject({ status: 'pending', content: prose + '后来候选' })
     expect(f.db.prepare('SELECT COUNT(*) FROM revisions').pluck().get()).toBe(2)
   })
+  /**
+   * issue #201：`read-recovery` 是纯读取，不许把它自己的容量吃掉、更不许挤掉正在用的那份。
+   *
+   * 现场推演：`readRecovery` 每次都 `remember` 一条新记录，而运行侧页对**每个**审稿 run
+   * 都调一次 —— 打开一次侧页就吃掉 N 条（Map 上限 64、纯 FIFO）。塞满之后最早那条
+   * （很可能正是 `prepare` 写进去、等着 `admit` 用的那条）被删 → 点「审稿」报
+   * `GENERATION_REVIEW_CONTEXT_REQUIRED`。
+   *
+   * 这条测试就是 issue 建议 ③ 的那条守卫：prepare 一条 → 大量读取 → 断言它仍可取。
+   */
+  it('reading recovery repeatedly never evicts the admission context a pending begin will use (issue #201)', async () => {
+    const f = fixture(), prepared = f.prepare(), view = f.owner.begin(f.selection(prepared))
+    // 先发一次真实尝试，好让 readRecovery 走进「有 run、可恢复」这条分支。
+    f.owner.bindMaterialDecision(view.handle, materialDecision('审稿'))
+    await f.owner.execute({ handle: view.handle, invocationNonce: 'first', task: { purpose: 'review-chapter', output: 'structured-data', messages: [{ role: 'user', content: '审稿' }] } })
+
+    const recovery = f.owner.readReviewRevisionRecovery(view.handle)
+    expect(recovery.contextId, '可恢复的 run 必须给出 contextId').toBeTruthy()
+    // 同一 run 反复读：必须返回**同一个** contextId（不再每次新建一条）。
+    for (let index = 0; index < 100; index += 1) {
+      expect(f.owner.readReviewRevisionRecovery(view.handle).contextId).toBe(recovery.contextId)
+    }
+    /**
+     * 关键断言：那条 `prepare` 出来的准入凭据**仍然可通过准入**（100 次读取远超 64 上限）。
+     * ⚠️ 用一个新的 `uiActionNonce`：同一个 nonce 会先撞 `GENERATION_NONCE_CONFLICT`
+     * （那是 begin 后半段的预算幂等校验），而 `admit` 在那之前就跑了 —— 换个 nonce
+     * 才能证明「准入本身过了」。
+     */
+    expect(() => f.owner.begin({ ...f.selection(prepared), uiActionNonce: 'reclick-admission' })).not.toThrow()
+    // 而 recovery 给出的 id 也是可准入的（作者点「继续」走的正是它）。
+    expect(() => f.owner.begin({ ...f.selection(prepared), uiActionNonce: 'reclick-recovery',
+      reviewRevisionContextId: recovery.contextId! } as BeginGenerationRequest)).not.toThrow()
+  })
+
+  it('keeps a recovery context reusable across other runs so a busy sidebar cannot lock the author out', async () => {
+    // 多开几条 run 造出容量压力：任何一条 recovery 的写入都不许把仍在等待的准入凭据挤掉。
+    const f = fixture()
+    const first = f.prepare(), firstView = f.owner.begin(f.selection(first))
+    f.owner.bindMaterialDecision(firstView.handle, materialDecision('审稿'))
+    await f.owner.execute({ handle: firstView.handle, invocationNonce: 'a', task: { purpose: 'review-chapter', output: 'structured-data', messages: [{ role: 'user', content: '审稿' }] } })
+    for (let index = 0; index < 70; index += 1) f.owner.readReviewRevisionRecovery(firstView.handle)
+    expect(() => f.owner.begin({ ...f.selection(first), uiActionNonce: 'after-busy-sidebar' })).not.toThrow()
+  })
+
   it('does not write a review when a cancelled provider returns late', async () => {
     let finish!: () => void
     let started!: () => void

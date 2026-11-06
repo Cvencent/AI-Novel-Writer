@@ -26,16 +26,54 @@ const handleOf = (run: DurableGenerationRun): MainGenerationRunHandle => ({ proj
 const contextHash = (context: ReviewRevisionContext) => textHash(JSON.stringify(context))
 
 /** Admission contexts are disposable; recovery and formal-effect truth live in the existing run ledger. */
+type AdmissionContextKind = 'admission' | 'recovery'
+
 export class ReviewRevisionGeneration {
-  private readonly contexts = new Map<string, PreparedReviewRevisionContext>()
+  /**
+   * `contextId` → 那条准入记录（issue #201）。
+   *
+   * 为什么区分 `kind`：`prepare`（写）产出的凭据丢了就得让作者重做一次预检，
+   * 而 `readRecovery`（读）产出的随时能从 run 账本重建 —— **容量吃紧时该先丢后者**。
+   */
+  private readonly contexts = new Map<string, { prepared: PreparedReviewRevisionContext; kind: AdmissionContextKind }>()
+  /** `runId` → 当前那条 recovery 的 contextId，用于「同一状态复用同一个 id」。 */
+  private readonly recoveryContextIdByRun = new Map<string, string>()
   constructor(private readonly db: Database.Database, private readonly runs: GenerationRunRepository,
     private readonly scope: { projectId: string; epoch: string }, private readonly assertCurrent: () => void) {}
 
-  private remember(context: ReviewRevisionContext, lineage: { parentRootActionId?: string; modelId?: string } = {}): PreparedReviewRevisionContext {
+  private remember(context: ReviewRevisionContext, lineage: { parentRootActionId?: string; modelId?: string } = {},
+    kind: AdmissionContextKind = 'admission'): PreparedReviewRevisionContext {
     const prepared = { contextId: randomUUID(), context: structuredClone(context), ...lineage }
-    if (this.contexts.size >= 64) this.contexts.delete(this.contexts.keys().next().value!)
-    this.contexts.set(prepared.contextId, prepared)
+    this.evictForCapacity()
+    this.contexts.set(prepared.contextId, { prepared: structuredClone(prepared), kind })
     return structuredClone(prepared)
+  }
+
+  /**
+   * 容量淘汰（issue #201）。
+   *
+   * 现场：`read-recovery` 每次调用都 `remember` 一条新记录，而运行侧页会对**每个**审稿 run
+   * 调一次它 —— 「打开侧页」这个动作按「审稿 run 数」吃掉 Map 容量（上限 64，纯 FIFO）。
+   * 于是**正在用的那条（prepare 写进去的）会被自己的恢复列表挤掉**，
+   * 点「审稿」时 `admit` 取不到 → `GENERATION_REVIEW_CONTEXT_REQUIRED`。
+   *
+   * 淘汰顺序：先丢 recovery（可从账本重建），实在没有才丢最老的 admission。
+   */
+  private evictForCapacity(): void {
+    if (this.contexts.size < 64) return
+    // 先丢 recovery 条目（能从 run 账本重建），不受本次写入的是哪一类影响：
+    // 即使写进来的也是 recovery，丢掉的也是别人那条「随时可重建」的。
+    for (const [contextId, entry] of this.contexts) {
+      if (entry.kind === 'recovery') { this.forget(contextId); return }
+    }
+    // 只装了 admission（作者连点很多次预检）时才动它们，且仍从最老的开始。
+    const oldest = this.contexts.keys().next().value
+    if (oldest !== undefined) this.forget(oldest)
+  }
+
+  private forget(contextId: string): void {
+    this.contexts.delete(contextId)
+    for (const [runId, id] of this.recoveryContextIdByRun) if (id === contextId) this.recoveryContextIdByRun.delete(runId)
   }
   private context(run: DurableGenerationRun): ReviewRevisionContext {
     const context = run.binding.sourceManifest.reviewRevisionContext as ReviewRevisionContext | undefined
@@ -158,7 +196,7 @@ export class ReviewRevisionGeneration {
       if (selection.reviewRevisionContextId) throw new Error('GENERATION_REVIEW_CONTEXT_INVALID')
       return undefined
     }
-    const prepared = selection.reviewRevisionContextId && this.contexts.get(selection.reviewRevisionContextId)
+    const prepared = selection.reviewRevisionContextId && this.contexts.get(selection.reviewRevisionContextId)?.prepared
     if (!prepared) throw new Error('GENERATION_REVIEW_CONTEXT_REQUIRED')
     const { context } = prepared, finalized = context.source.status === 'finalized'
     const prompt = context.operation === 'review-chapter' ? 'consistency_check' : context.operation === 'refine-draft' ? 'refine_chapter' : 'refine_from_review'
@@ -198,7 +236,7 @@ export class ReviewRevisionGeneration {
     return structuredClone(prepared)
   }
   private assertPrepared(contextId: string, run: DurableGenerationRun): void {
-    if (!isDeepStrictEqual(this.contexts.get(contextId)?.context, this.context(run))) throw new Error('GENERATION_REVIEW_CONTEXT_REQUIRED')
+    if (!isDeepStrictEqual(this.contexts.get(contextId)?.prepared.context, this.context(run))) throw new Error('GENERATION_REVIEW_CONTEXT_REQUIRED')
   }
   private record(run: DurableGenerationRun, artifact: ArtifactRef, effect: Omit<Effect, 'artifact' | 'contextHash'>): ReviewRevisionCommitReceipt {
     const proof = this.proveArtifact(run, artifact), row = this.attempts(run.runId).find(row => row.attempt_id === proof.row.attempt_id)!
@@ -287,6 +325,26 @@ export class ReviewRevisionGeneration {
       return receipt
     }).immediate()
   }
+  /**
+   * 同一个 run、同一份 context 的 recovery 凭据要**稳定**（issue #201）。
+   *
+   * 原来每次 `readRecovery` 都 `remember` 一条新的：运行侧页对每个审稿 run 调一次，
+   * 打开一次侧页就吃掉 N 条容量（Map 上限 64、纯 FIFO），**正在用的那条会被挤掉** →
+   * 点「审稿」时 `admit` 报 `GENERATION_REVIEW_CONTEXT_REQUIRED`。
+   *
+   * 现在按 `runId` 复用：同一 run 且有同一条记录在 Map 里 → 返回同一个 id。
+   * ⚠️ 只在「同 run + 同 context」时复用 —— `canResume` / `saved` 变化会走不到这里
+   * （那两分支本来就不返回 contextId），所以不会把旧状态当成新状态。
+   */
+  private recoveryContextId(run: DurableGenerationRun, context: ReviewRevisionContext): string {
+    const existingId = this.recoveryContextIdByRun.get(run.runId)
+    const existing = existingId === undefined ? undefined : this.contexts.get(existingId)
+    if (existing && existing.kind === 'recovery' && isDeepStrictEqual(existing.prepared.context, context))
+      return existingId!
+    const contextId = this.remember(context, this.parent(context), 'recovery').contextId
+    this.recoveryContextIdByRun.set(run.runId, contextId)
+    return contextId
+  }
   readRecovery(handle: MainGenerationRunHandle, sourcesMatch: (run: DurableGenerationRun) => boolean,
     snapshot: (run: DurableGenerationRun) => MainGenerationSnapshot | undefined): ReviewRevisionRecovery {
     const run = this.requireRun(handle), context = this.context(run), saved = this.saved(run)?.receipt
@@ -312,8 +370,8 @@ export class ReviewRevisionGeneration {
     }
     return { handle: handleOf(run), context: structuredClone(context), modelId: (run.binding.sourceManifest.modelReceipt as { modelId: string }).modelId,
       sourceStatus: current ? 'current' : 'conflict', canResume, ...(saved ? { saved } : {}),
-      ...(canResume && !saved ? { contextId: this.remember(context, this.parent(context)).contextId } : {}), ...(composition ? { composition } : {}),
+      ...(canResume && !saved ? { contextId: this.recoveryContextId(run, context) } : {}), ...(composition ? { composition } : {}),
       lastCompositionFinishReason, ...(latestArtifact ? { latestArtifact, latestArtifactFinishReason } : {}), attemptedPurposes }
   }
-  close(): void { this.contexts.clear() }
+  close(): void { this.contexts.clear(); this.recoveryContextIdByRun.clear() }
 }
