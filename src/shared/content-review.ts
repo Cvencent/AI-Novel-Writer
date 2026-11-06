@@ -36,11 +36,8 @@ export const CONTENT_AXES = Object.freeze({
     'the same prop destroyed or given away more than once',
   ],
   'prop-moved': [
-    '同一件道具**换了持有者或所在处**，而正文没有写出那一次交接动作。三种形状都算（issue #193 / #194）：'
-    + '（a）**同一章之内**——前一拍写它被收回某处、或在某只手里，后一拍它已经在另一只手里（那处已经空了），中间只有「递回去再试」这类**借用**、没有「交给／带走／还回来」这类**交付**；'
-    + '（b）**跨章**——它被明确交出、归档、封存或随某物一起归到某处之后，后面的章节又从原持有者身上取出、或在别处出现，中间没有取回动作；'
-    + '（c）若持有者变了之后，**原持有者还要用它干他本来那件活**（下一拍他仍在做那件离了它做不成的事），也要报——那是逻辑断裂，不只是交接没写。',
-    'a prop changes hands or location with no on-page handover. Three shapes count (issue #193 / #194): (a) WITHIN one chapter, a beat puts it away or in one person’s hands and the next beat has it in someone else’s (or the place is now empty), with only a borrow-and-try-again beat in between, never a hand-over, take-away or give-back; (b) ACROSS chapters, it is explicitly handed in, archived, sealed, or filed away with something else, and a later chapter produces it again from the original holder with no retrieval shown; (c) the original holder still has to do the work that requires it in the very next beat, which is a logical break rather than a missing handover.',
+    "同一件道具**换了持有者或所在处**，而正文没有写出那一次交接动作。五种形状都算（issue #190 / #191 / #193 / #194）：（a）**同一章之内**——前一拍写它被收回某处、或在某只手里，后一拍它已经在另一只手里（那处已经空了），中间只有「递回去再试一次」这类**借用**、没有「交给／带走／还回来」这类**交付**；（b）**跨章**——它被明确交出、归档、封存或随某物一起归到某处之后，后面的章节又从原持有者身上取出、或在别处出现，中间没有取回动作；（c）若持有者变了之后，**原持有者还要用它干他本来那件活**（下一拍他仍在做那件离了它做不成的事），也要报——那是逻辑断裂，不只是交接没写。（d）**被封存的东西未经启封就出现**——它已被写成随某物一起封上、送检送出、入库归档，后面又在**别处**（另一个人的私包、另一张桌上）被当随身物或现有物清点、取出、对笔，而中间没有任何启封／取出动作；（e）**固定存放点被整体搬动却没有搬运动作**——一个容器（柜、箱、架子）此前一直被写成钉在某处、靠某面墙、锁在某个房间里，后文它却出现在另一个房间／场地，而中间没有一句「谁搬的、几人抬的、什么时候」；",
+    "a prop changes hands, location, or sealed state with no on-page action accounting for it. Five shapes count (issue #190 / #191 / #193 / #194): (a) WITHIN one chapter, a beat puts it away or in one person’s hands and the next beat has it in someone else’s (or the place is now empty), with only a borrow-and-try-again beat in between, never a hand-over, take-away or give-back; (b) ACROSS chapters, it is explicitly handed in, archived, sealed, or filed away with something else, and a later chapter produces it again from the original holder with no retrieval shown; (c) the original holder still has to do the work that requires it in the very next beat, which is a logical break rather than a missing handover; (d) something already written as SEALED (a seal pressed on it, sent off for inspection, filed into storage) later turns up elsewhere in a private bag or on a table and is inventoried or produced as a current item, with no unsealing or retrieval shown; (e) a FIXED container (a cabinet, a box, a rack) previously written as bolted to a wall or locked in one room now stands in another room, with no line saying who moved it, how many carried it, or when.",
   ],
   'stale-duration': [
     '同一处状态（空着／关着／停着）用了两个互不相容的时长（先说三天，后说一个多月）',
@@ -97,7 +94,7 @@ export const CONTENT_AXIS_GUIDANCE = Object.freeze({
   'prop-moved': {
     problem: ['道具换了持有者／所在处却没有交接', 'a prop changed hands or place with no handover'],
     fix: [
-      '**补一句交接动作**：谁在什么时候、什么条件下把它交给谁（或在什么地方取出／放回）。不是换个说法重描，而是把「它怎么到这里的」写出来。⚠️「**递回去让他再试一次**」不是交接——那是借；真正的交接要写清它**留在谁那里**。⚠️ 若下一拍原持有者还要用它干那件离了它做不成的事，这一处是**逻辑断裂**，光补一句交接不够：要么把物还给原持有者，要么改写他随后那件活。',
+      '**补一句交接动作**：谁在什么时候、什么条件下把它交给谁（或在什么地方取出／放回）。不是换个说法重描，而是把「它怎么到这里的」写出来。⚠️「**递回去让他再试一次**」不是交接——那是借；真正的交接要写清它**留在谁那里**。⚠️ 若下一拍原持有者还要用它干那件离了它做不成的事，这一处是**逻辑断裂**，光补一句交接不够：要么把物还给原持有者，要么改写他随后那件活。⚠️ 已被封存的东西再出现（(d)），必须先写一次**启封／取出**（谁启、在哪、谁在场），或者承认它其实没被封进去——只说「誊封时抄的」这类新说法不算交代，那是换了一个来源。⚠️ 固定存放点换了房间（(e)），要么补一次**搬运动作**（谁搬、几人、何时、谁许可），要么把这一场改成**人走到柜子跟前**（原来的写法是可行的，别让同一句台词对应两种物理上互斥的实现）。',
       'Write the handover: who gives it to whom, when, under what condition (or where it was taken out and put back). This is not a rewording — it is the missing step of how it got here.',
     ],
   },

@@ -547,3 +547,104 @@ describe('prop-moved 覆盖三种形状：章内换手、跨章复活、原持�
     expect(finding!.suggestion.zhCN).toContain('逻辑断裂')
   })
 })
+
+/**
+ * issue #190 / #191：与 #194/#193 是**同一族**（物件的状态/所在处变了却没写那一次动作），
+ * 所以继续**加宽 `prop-moved`**，不新开轴：
+ *
+ * **#190（封存状态）**：ch63 便条当场验完「压回箱盖」，同章收尾「箱盖合上，封条按下去」
+ * （那是送检箱）→ ch84 同一张纸从柯明远的**公文包**里被当随身物清点出来
+ * （「一张窄纸条压上桌面，边角起毛，上头三个数，墨色深浅不一」），中间 20 章没有启封。
+ *
+ * **#191（固定存放点被整体搬动）**：ch78「私柜靠墙」、ch82「办公楼墙边，私柜挂着一把锁」、
+ * ch84「历年签字底单在**我私柜里**」→ ch85「**私柜是两个人抬进来的**」，
+ * 一夜之间到了正厅，全书没有一句搬运动作。
+ */
+describe('prop-moved 再扩两档：封存后未经启封出现 / 固定存放点被搬动 (issue #190 / #191)', () => {
+  const sealChapters = [
+    { chapterNumber: 63, content: '周叙把便条翻个面，压回箱盖。柯明远在箱盖四边刷了一遭，浆糊水汽在封条底下洇开一线。箱盖合上，封条按下去。' },
+    { chapterNumber: 84, content: '公文包打开。一张窄纸条压上桌面，边角起毛，上头三个数，墨色深浅不一。「誊封时抄的座号。」柯明远说。' },
+  ]
+  const cabinetChapters = [
+    { chapterNumber: 78, content: '盒子进了私柜。钥匙在锁孔里转了一圈，铜扣按紧。私柜靠墙。柯明远的手在锁上压着，没挪开。' },
+    { chapterNumber: 82, content: '办公楼墙边，私柜挂着一把锁，没锁死。柜门拉开，铜墨盒不在。' },
+    { chapterNumber: 85, content: '铜碰木头，磕了一声。「历年签字底单。全部。」私柜是两个人抬进来的。柜门拉开，底单一沓一沓摊上桌。' },
+  ]
+
+  it('adds the sealed-state shape and says a new explanation is not a retrieval', () => {
+    const { system } = buildContentReviewPrompt({ chapters: sealChapters, axes: ['prop-moved'], language: 'zh-CN' })
+    expect(system).toContain('未经启封')
+    expect(system).toContain('送检送出')
+    // 建议里要挡掉「换个说法解释来源」这条假出路。
+    const [finding] = contentReviewFindings([{ chapterNumber: 84, axis: 'prop-moved', quote: '一张窄纸条压上桌面', explanation: '封存后又出现' }])
+    expect(finding!.suggestion.zhCN).toContain('启封')
+    expect(finding!.suggestion.zhCN).toContain('不算交代')
+  })
+
+  it('adds the moved-fixed-place shape and offers the "walk to it" alternative', () => {
+    const { system } = buildContentReviewPrompt({ chapters: cabinetChapters, axes: ['prop-moved'], language: 'zh-CN' })
+    expect(system).toContain('固定存放点')
+    expect(system).toContain('靠某面墙')
+    expect(system).toContain('谁搬的、几人抬的')
+    // 改法要给两条出路：补搬运动作，或改成「人走到柜子跟前」。
+    const [finding] = contentReviewFindings([{ chapterNumber: 85, axis: 'prop-moved', quote: '私柜是两个人抬进来的。', explanation: '柜子整体换了房间' }])
+    expect(finding!.suggestion.zhCN).toContain('搬运动作')
+    expect(finding!.suggestion.zhCN).toContain('人走到柜子跟前')
+  })
+
+  it('does not name this book’s props (fixed checklist item)', () => {
+    const { system, user } = buildContentReviewPrompt({ chapters: sealChapters, axes: ['prop-moved'], language: 'zh-CN' })
+    for (const term of ['便条', '私柜', '公文包', '封条', '窄纸条']) {
+      expect(system, `提示词不该出现「${term}」`).not.toContain(term)
+    }
+    expect(user).toContain('便条')
+  })
+
+  it('counts five shapes now, and names them in both languages', () => {
+    const zh = buildContentReviewPrompt({ chapters: sealChapters, axes: ['prop-moved'], language: 'zh-CN' }).system
+    expect(zh).toContain('五种形状')
+    const en = buildContentReviewPrompt({ chapters: sealChapters, axes: ['prop-moved'], language: 'en-US' }).system
+    expect(en).toContain('Five shapes')
+    expect(en).toContain('sealed state')
+  })
+})
+
+/**
+ * ⚠️ 我在本轮踩到的一个**静默陷阱**：`CONTENT_AXES[axis]` 是 `[中文, 英文]` 二元组，
+ * 而提示词与 finding 只读 **`[0]` / `[1]`**。我一开始把新形状写成
+ * `'前半句'\n + '后半句'`（数组的第三个元素），**提示词里一个字都看不到，测试也不报**
+ * ——「加了但永远问不到」的第二形态（#219 修的是清单漏轴，这个是**轴里漏内容**）。
+ *
+ * 所以这里钉住：**每条轴的每一种语言都是一个字符串**，元素数恰好 2。
+ */
+describe('轴描述必须是「中文 + 英文」两个整串，不许靠数组追加 (本轮踩到的静默陷阱)', () => {
+  it('every axis has exactly two elements, both non-empty strings', () => {
+    for (const [axis, value] of Object.entries(CONTENT_AXES)) {
+      expect(Array.isArray(value), `${axis} 应写成 [中文, 英文]`).toBe(true)
+      expect((value as readonly string[]).length, `${axis} 应恰好 2 个元素（多写的会被静默丢弃）`).toBe(2)
+      for (const text of value as readonly string[]) {
+        expect(typeof text).toBe('string')
+        expect(text.trim().length).toBeGreaterThan(0)
+      }
+    }
+  })
+
+  it('renders the whole description into the prompt, including its later clauses', () => {
+    // issue #190/#191 的内容在**同一条描述的后半段**：若有人把它拆成数组第二项，
+    // 这段断言会红（这正是我本轮踩的坑）。
+    const { system } = buildContentReviewPrompt({
+      chapters: [{ chapterNumber: 1, content: '正文。' }], axes: ['prop-moved'], language: 'zh-CN',
+    })
+    const line = system.split('\n').find(item => item.includes('prop-moved'))!
+    expect(line).toContain('未经启封')
+    expect(line).toContain('固定存放点')
+    expect(line).toContain('谁搬的、几人抬的')
+  })
+
+  it('keeps the guidance table free of the same trap (each axis has one problem + one fix per language)', () => {
+    for (const [axis, guide] of Object.entries(CONTENT_AXIS_GUIDANCE)) {
+      expect((guide as { problem: readonly string[] }).problem.length, `${axis} problem`).toBe(2)
+      expect((guide as { fix: readonly string[] }).fix.length, `${axis} fix`).toBe(2)
+    }
+  })
+})
