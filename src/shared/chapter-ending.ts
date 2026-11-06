@@ -154,6 +154,46 @@ const LEADING_PERSON = /^(?:他|她|我|他们|她们|我们|咱们|两人|两�
  * 于是不进命中集）——与 issue 给的逐章结果一致。句首是名字就不管它在句中作主语还是作定语，
  * 这一维只回答「读者看到的第一个词是不是一个人」。
  */
+/**
+ * 末句里**句首之外**是否有在册角色在做事（issue #197）。
+ *
+ * 现场：第 80 章末句「袖里的绳圈折着，帆布边被风掀起一角，**全叔把针拔出来**，线拖得老长。」
+ * 句首是物件（「袖里的绳圈」），前半句定格画面，最后落在全叔的动作上——这正是中文叙事
+ * 里最常见的「背景前置 + 人落点」写法，也正是 `suggestion` 里要作者去做的事。
+ * 而旧判据只比**句首**（`leadsWithPerson`），于是把它算成「没有人」；而这一章恰好是
+ * 10 章窗里第 4 个命中 —— **一条误判撑起整条 40% 收敛提醒**（删掉它 3/10 < 阈值 4，整条不报）。
+ *
+ * 判据只做**位置**判断，不理解语义：
+ * - 只看**最后一个分句**（最后一个逗号/顿号之后）——「先景物、后人」的落点在那儿；
+ * - 判据是「该分句以角色名或人称代词**起手**」，与句首用的是同一套封闭形式类
+ *   （`LEADING_PERSON` + 名册逐字相接），不引入任何题材词；
+ * - ⚠️ **不做「句中包含名字」**：那会把「顶缺的伙计睡在温珩隔壁铺」这种**只是提到某人**
+ *   的句子算成人物落点（issue #111 明确指出过，`leadsWithPerson` 的注释里也写着）。
+ *
+ * 「袖里的绳圈折着，帆布边被风掀起一角，全叔把针拔出来，线拖得老长」→ 最后一个分句
+ * 「线拖得老长」起手不是人 → 仍不算。所以这里不是「整句找名字」，而是找**收束的那一拍**。
+ */
+export function endsOnPerson(sentence: string, castNames: readonly string[]): boolean {
+  const core = String(sentence ?? '').trim()
+  if (!core) return false
+  // 分句切分只用逗号/顿号（封闭标点，不是题材词）；引号内的逗号先剔除，避免把台词切开。
+  const withoutQuotes = core.replace(/[“「『][^”」』]*[”」』]/gu, '')
+  const clauses = withoutQuotes.split(/[，,、；;]/u).map(clause => clause.trim()).filter(Boolean)
+  /**
+   * 只看**收束的那两拍**：末分句，以及它的前一个分句。
+   *
+   * 取两拍是因为中文的落点常写成「人做动作 + 一句余韵」（「全叔把针拔出来，线拖得老长」）；
+   * 只取末分句会把这类句子继续判成「没有人」，而那正是 issue #197 的那一句。
+   * 再往前取就会把「只是提到某人」的句子算进来——那正是 #111 明确排除的。
+   */
+  return clauses.slice(-2).some(clause => {
+    // 「没人／无人扶正」是「没有人在做」的**明白写法**：它出现在末句里恰恰是无人称标志。
+    // 第 39 章「舵轮偏着半圈，没人扶正。」必须仍是命中，不能被「句中有人称」这条改掉。
+    if (/^(?:没|无)(?:有)?人/u.test(clause)) return false
+    return leadsWithPerson(clause, castNames)
+  })
+}
+
 export function leadsWithPerson(sentence: string, castNames: readonly string[]): boolean {
   const core = String(sentence ?? '').trim().replace(/^[“「『"]+/u, '')
   if (!core) return true
@@ -201,7 +241,17 @@ export function endingLandingOf(input: EndingLandingInput): EndingLanding {
   const lastSentence = (sentences.at(-1) ?? '').trim()
   if (!lastSentence) return 'other'
   if (closesInsideDialogue(lastSentence)) return 'other'
+  // 句首有人在 → 人落点（issue #111 判据 ②）。
   if (leadsWithPerson(lastSentence, input.castNames ?? [])) return 'subject'
+  /**
+   * 句首是物、**句中有人接手**也是人落点（issue #197）。
+   *
+   * 现场：第 80 章末句「袖里的绳圈折着，帆布边被风掀起一角，全叔把针拔出来，线拖得老长。」
+   * 旧判据只看句首 → 算成「没有人」；而这一章恰好是 10 章窗里第 4 个命中，
+   * **一条误判撑起整条 40% 收敛提醒**（去掉它 3/10 < 阈值 4，整条不报）。
+   * 而 `suggestion` 恰恰是让作者「让视角人物在末句做一个动作」——这一句已经做到了。
+   */
+  if (endsOnPerson(lastSentence, input.castNames ?? [])) return 'subject'
   return continuesPastSentence(lastSentence) ? 'subjectless-pending' : 'other'
 }
 

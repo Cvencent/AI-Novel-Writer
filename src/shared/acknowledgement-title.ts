@@ -43,7 +43,7 @@ const FAMILY_LABELS: Readonly<Record<string, AcknowledgementTitle>> = Object.fre
   'chapter-ending': { zhCN: '章末收束问题', enUS: 'chapter ending' },
   'chapter-ending:label-mismatch': { zhCN: '收束标注与正文不符', enUS: 'closing label vs prose' },
   'chapter-ending:ultimatum-streak': { zhCN: '连续多章通牒式台词收尾', enUS: 'ultimatum endings in a row' },
-  'chapter-ending:subjectless-pending': { zhCN: '末句都是「物 + 未完结 + 无人称」', enUS: 'subjectless pending endings' },
+  'chapter-ending:subjectless-pending': { zhCN: '末句都是「物 + 未完结 + 句首无人称」', enUS: 'subjectless pending endings' },
   'chatper-ending:subjectless-pending': { zhCN: '末句都是「物 + 未完结 + 无人称」', enUS: 'subjectless pending endings' },
   // —— 标题 ——
   'chapter-title': { zhCN: '章节标题问题', enUS: 'chapter title' },

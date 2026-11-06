@@ -19,6 +19,7 @@ import {
   openingConvergence,
 } from './chapter-opening'
 import {
+  LANDING_MIN_HITS,
   chapterEndingProfile,
   closingLabelConflicts,
   pendingLandingConvergence,
@@ -945,14 +946,20 @@ export function findUltimatumStreak(input: ChapterEndingStreakInput): Consistenc
 }
 
 /**
- * 末句落点收敛：连续多章收在「一件物 + 未完结标记 + 没有人」上（issue #111）。
+ * 末句落点收敛：连续多章收在「一件物 + 未完结标记 + 句首不出现人」上（issue #111 / #197）。
  *
  * 与 #66 是两条不同的轴，而且样本不重叠：#66 管**语用**（末句是不是通牒式台词），
  * 本条管**形态**（末句是不是一条无人称的未完结叙述句）。本书 #66 集中在 ch15–27、
  * 本条集中在 ch36–47——`chapterEndingProfile` 那两个字段对命中的 6 章取同一个值，
  * 一个字都区分不出来。
  *
- * 判据（结构性，见 `chapter-ending.ts` 的 `endingLandingOf`）：不是台词 + 句首没有人 + 含未完结标记。
+ * 判据（结构性，见 `chapter-ending.ts` 的 `endingLandingOf`）：不是台词 + 句首不出现人 + 含未完结标记。
+ *
+ * ⚠️ issue #197：原来这里（和类名 `subjectless-pending`）写的是「**没有人**」，而判据实际
+ * 只保证「**句首**不是人」——第 80 章末句「袖里的绳圈折着…全叔把针拔出来」物起手、人收尾，
+ * 就被这张标签说了谎。现在 `endingLandingOf` 已经能认这种写法（`endsOnPerson`），
+ * 文案也改成「句首不出现人」，不再声称「没有人」。类名保留 `subjectless-pending`
+ * 只是为了不改既有 stableFactKey（改 key 会让所有历史 ack 失效）。
  * 物每次都换（墨盒／舵轮／茶碗盖／名单／灯壳里的一卷），**句式一次没换**。
  * 窗口与阈值（W=10 / K=4）由语料标定：本书后段 10 章 4–6 章命中、前段 35 章仅 2 章。
  */
@@ -971,7 +978,27 @@ export function findPendingLandingConvergence(input: {
   const ranges = `${windowChapters[0]}–${windowChapters[windowChapters.length - 1]}`
   const hitChapters = hit.hits.map(item => item.chapterNumber)
   const share = Math.round(hitChapters.length / hit.window.length * 100)
-  const samples = hit.hits.slice(-3).map(item => `第${item.chapterNumber}章「${item.lastSentence.slice(0, 36)}」`).join('、')
+  /**
+   * 证据要**把每一条都举出来**（issue #197）。
+   *
+   * 原来 `slice(-3)` 静默截断：4 条命中只展示最后 3 条，被砍掉的正好是第 80 章那一条
+   * （唯一句中有人物落点的、也就是被判错的那一条）。于是作者看到的 3 条全像是真的，
+   * 而 issue 里那行「命中章：80、82、85、88」列的是 4 个章号——**说 4 章、只举 3 条**，
+   * 两边不一致本身就会让作者以为是 3 章（#98 是同一族教训：采样把反例切掉了）。
+   *
+   * 这里**全举**，不做字符预算：窗口固定 10 章、每条末句再截到 30 字，
+   * 上限就是 ~400 字，不需要截断；也免得 #171 那种「按顺序丢句」把最后几条悄悄吞掉。
+   */
+  const samples = hit.hits.map(item => `第${item.chapterNumber}章「${item.lastSentence.slice(0, 30)}」`).join('、')
+  /**
+   * 临界要说出来（issue #197 建议 ③ 里能做的那一小半）。
+   *
+   * W=10 / K=4 是在另一本书上标定的，在本书上余量可能只有 1 章——「刚好达线」和
+   * 「明显收敛」在作者眼里是两件事：前者说明这条提醒本身很脆（下一章换个落点就消失），
+   * 后者才是「这一段的收束确实单一」。不改阈值（按本书密度动态标定需要真实分布，
+   * 不是这一轮能定的），但把「刚好达线」写明白。
+   */
+  const borderline = hitChapters.length === LANDING_MIN_HITS
   return [{
     // key 锚在「哪一种落点收敛」上，**不带章号**（#86/#89/#98/#108 的教训：
     // 末章号随窗口滚动会让 key 每章都变，作者点「我已知」永远关不掉）。
@@ -979,7 +1006,7 @@ export function findPendingLandingConvergence(input: {
     severity: 'warning' as const,
     // 证据落在**已定稿的那几章**里，不是正在写的这一章（issue #79）。
     sourceChapter: windowChapters[windowChapters.length - 1]!,
-    evidence: `最近 ${hit.window.length} 章（第 ${ranges} 章）里 ${hitChapters.length} 章（${share}%）末句都是「一件物 + 未完结标记 + 没有人」：${samples}`,
+    evidence: `最近 ${hit.window.length} 章（第 ${ranges} 章）里 ${hitChapters.length} 章（${share}%）末句都是「一件物 + 未完结标记 + 句首不出现人」${borderline ? '（刚好达到判断线，再有一章换个落点这条就不成立）' : ''}：${samples}`,
     issue: {
       zhCN: `最近 ${hit.window.length} 章（第 ${ranges} 章）里有 **${hitChapters.length} 章（${share}%）** 的**最后一句话**是同一个骨架：先定格一件东西，再给它一个「还没结束」的状态，句首不出现人（命中章：${hitChapters.join('、')}）。物每次都换（上面证据里逐条列着是哪几件），但读者合上每一章时听到的节拍是同一个。章末是读者决定「要不要点下一章」的地方：连着这么多章用同一种形式收束，悬念的形式感会盖过内容本身。`,
       enUS: `${hitChapters.length} of the last ${hit.window.length} chapters (chapters ${ranges}) — ${share}% — close on the same skeleton: park an object, give it an unfinished state, and let no person lead the sentence (chapters ${hitChapters.join(', ')}). The object changes every time (the evidence above lists which ones) — but the beat the reader hears at the end of each chapter is identical. The closing line is where a reader decides whether to tap the next chapter; a dozen chapters closing on the same form makes the shape of suspense eclipse its content.`,

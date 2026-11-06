@@ -87,7 +87,7 @@ describe('ack 区不再渲染内部键 (issue #120)', () => {
 
   it('最长匹配生效（两段优先于一段）', () => {
     expect(acknowledgementFamilyTitle('prose-flavor:motif:41').zhCN).toBe('同一意象反复承担情绪')
-    expect(acknowledgementFamilyTitle('chapter-ending:subjectless-pending').zhCN).toBe('末句都是「物 + 未完结 + 无人称」')
+    expect(acknowledgementFamilyTitle('chapter-ending:subjectless-pending').zhCN).toBe('末句都是「物 + 未完结 + 句首无人称」')
     expect(acknowledgementFamilyTitle('prop:revival:内襟').zhCN).toBe('被写死的物证又自己回来')
     // 只认得一段时退回一段。
     expect(acknowledgementFamilyTitle('thread:some-new-suffix:7').zhCN).toBe('叙事线索停摆/逾期')
