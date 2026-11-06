@@ -38,6 +38,7 @@ export type DeepReviewDimensionKey =
   | 'dateConflict'
   | 'promise'
   | 'entranceShot'
+  | 'repeatedRevocation'
 
 /** 顺序即原预检按钮的顺序（作者已经熟悉这个排布）。 */
 export const DEEP_REVIEW_DIMENSIONS: readonly DeepReviewDimension[] = Object.freeze([
@@ -56,6 +57,7 @@ export const DEEP_REVIEW_DIMENSIONS: readonly DeepReviewDimension[] = Object.fre
   { key: 'dateConflict', zh: '日期一致', en: 'Date consistency', zhDesc: '同一件事的日期跨章一致', enDesc: 'dates consistent across chapters' },
   { key: 'promise', zh: '口头约定方向', en: 'Promise direction', zhDesc: '同一句约定被复述成相反方向', enDesc: 'a spoken promise restated backwards' },
   { key: 'entranceShot', zh: '登场句同构', en: 'Entrance similarity', zhDesc: '同一角色的登场段跨章几乎逐字相同', enDesc: 'the same character entering near-verbatim chapter after chapter' },
+  { key: 'repeatedRevocation', zh: '重复丧失宣告', en: 'Repeated loss declarations', zhDesc: '同一项不可逆丧失被宣告两次', enDesc: 'the same irreversible loss declared twice' },
 ])
 
 /** 与 chapter_creation_log 同一目录约定：项目数据目录下的设置文件。 */

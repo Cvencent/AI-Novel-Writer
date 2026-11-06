@@ -63,7 +63,6 @@ import { glyphRadicalFindings } from './glyph-radical'
 import { findCastNameDriftFindings } from './cast-name-drift'
 // 期限宣告未对账（#101）：期限「只写不读」——宣告了但下一章整章不再提。
 // 同一项不可逆处境变更被宣告两次（#105）：账本记两遍、第一次从未落地。
-import { findRepeatedRevocationFindings } from './repeated-revocation'
 // 章节标题「同题加尾」复用（#110）：合同只判精确同名、且只管新生成的那一批。
 import { findDuplicateChapterTitleFindings } from './chapter-title-uniqueness'
 // 引号风格漂移（issue #118）：某章整章换了引号，与全书多数派不一致。
@@ -279,14 +278,9 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
   // 同一项不可逆处境变更被宣告两次（issue #105）：第 12 章把「售票口的位置」记为不可逆丧失，
   // 之后 34 章正文里她照常在柜台上，第 47 章又宣告一次。需要**两边证据**——蓝图账本
   // （两次「从此…」）+ 已定稿正文（其间该处境仍反复出现），所以这里同时喂两份。
-  const repeatedRevocation = findRepeatedRevocationFindings({
-    ledger: blueprints.map(blueprint => ({
-      chapterNumber: blueprint.chapterNumber,
-      costs: String(blueprint.costsAndTurns ?? ''),
-    })),
-    prose: chapters,
-    castNames,
-  })
+  // 同一项不可逆处境变更被宣告两次（issue #105 → #163 第九批）：「宣告是不是同一项」要读懂句子，
+  // 已改由模型判（`repeated-revocation-review.ts`，并进审稿深度检查 repeatedRevocation 维度）。
+  const repeatedRevocation: ConsistencyFinding[] = []
 
   // 章节标题「同题加尾」复用（issue #110）：合同侧只判精确同名、且只在新生成那一批生效，
   // 已定稿的旧章节不会再过合同——所以这里用**全书蓝图 title** 再查一遍。

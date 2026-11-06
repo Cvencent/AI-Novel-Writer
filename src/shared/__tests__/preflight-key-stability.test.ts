@@ -10,7 +10,7 @@ import {
 import { lossRestatementReviewFindings } from '../loss-restatement-review'
 import { findUndatedStreakFindings } from '../chapter-time-anchor'
 import { deadlineReviewFindings } from '../deadline-review'
-import { findRepeatedRevocationFindings } from '../repeated-revocation'
+import { repeatedRevocationFindings } from '../repeated-revocation-review'
 import { findDuplicateChapterTitleFindings } from '../chapter-title-uniqueness'
 import { handwritingReviewFindings } from '../handwriting-review'
 import { findQuoteStyleDriftFindings } from '../quote-style'
@@ -157,10 +157,12 @@ describe('no preflight key may change when only currentChapter advances (issue #
       // 期限那一族已改成模型判据（#163），这里直接喂它的产出转 findings 那一段：
       // key 锚在**期限制**上（同形于旧实现），不带会滚动的章号。
       ['deadlineReviewFindings', () => deadlineReviewFindings([{ chapterNumber: 1, quote: '明早交不出就完了。', deadline: '明早交完', explanation: '' }])],
-      ['findRepeatedRevocationFindings', () => findRepeatedRevocationFindings({
-        ledger: [{ chapterNumber: 1, costs: '从此不能再上柜台' }, { chapterNumber: 12, costs: '柜台从此不能再用' }],
-        prose: SAMPLE_BOOK, castNames: CAST,
-      })],
+      // issue #163 第九批：规则侧 repeated-revocation.ts 已下线，key 稳定性由新模块 findings 承担
+      // （key 锚两章 + 账本句前缀）。
+      ['repeatedRevocationFindings', () => repeatedRevocationFindings([{
+        firstChapterNumber: 1, secondChapterNumber: 12,
+        firstQuote: '从此不能再上柜台', secondQuote: '柜台从此不能再用', explanation: '',
+      }])],
       ['findDuplicateChapterTitleFindings', () => findDuplicateChapterTitleFindings({
         chapters: [{ chapterNumber: 1, title: '压印' }, { chapterNumber: 2, title: '压印的' }],
       })],

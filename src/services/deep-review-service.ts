@@ -48,6 +48,12 @@ import {
   promisePolarityFindings,
   PROMISE_POLARITY_RECENT_CHAPTERS,
 } from '../shared/promise-polarity-review'
+import {
+  buildRepeatedRevocationPrompt,
+  parseRepeatedRevocationReview,
+  repeatedRevocationFindings,
+  REVOCATION_RECENT_CHAPTERS,
+} from '../shared/repeated-revocation-review'
 import { CONTENT_AXES_FOR_BUTTON } from '../shared/content-review'
 import { useLocaleStore } from '../stores/locale-store'
 
@@ -253,6 +259,20 @@ export async function runDeepReviewChecks(input: DeepCheckInput): Promise<DeepCh
           if (!issues) { failures.push({ key, error: text('模型返回的不是合法的「约定方向」清单。', 'The model did not return a valid promise list.') }); break }
           count = promisePolarityFindings(issues).length
           findings.push(...promisePolarityFindings(issues))
+          break
+        }
+        case 'repeatedRevocation': {
+          // issue #163 第九批：同一项不可逆丧失被宣告两次——旧三张词表下线，交模型。
+          const ledger = input.claims.map(claim => ({ chapterNumber: claim.chapterNumber, costs: claim.claims }))
+          const request = { ledger, prose: [...finalized, input.chapter], language: locale, recentChapters: REVOCATION_RECENT_CHAPTERS }
+          const { system, user } = buildRepeatedRevocationPrompt(request)
+          const call = await import('./preflight-repair').then(mod => mod.askReviewModel(
+            [{ role: 'system', content: system }, { role: 'user', content: user }], input.session))
+          if ('error' in call) { failures.push({ key, error: call.error }); break }
+          const issues = parseRepeatedRevocationReview(call.response.content, request)
+          if (!issues) { failures.push({ key, error: text('模型返回的不是合法的「重复丧失宣告」清单。', 'The model did not return a valid repeated-loss list.') }); break }
+          count = repeatedRevocationFindings(issues).length
+          findings.push(...repeatedRevocationFindings(issues))
           break
         }
         case 'entranceShot': {
