@@ -37,7 +37,9 @@ describe('preflightRouteOf (issue #137)', () => {
   })
 
   it('marks plan-layer findings repairable: they have writable channels and need no prose', () => {
-    for (const key of ['ability-limit:bypass:13', 'cast:name-drift:23', 'chapter-time:undated:1', 'blueprint:key-events:oversize:7']) {
+    // ⚠️ `chapter-time:undated` 已从这一组移出（issue #212）：它是**区间型**（要改第 A–B 章
+    // 一整段），写前那一刻改不了。它原来在这里被断言成可修，而那正是本条要修的错误标记。
+    for (const key of ['ability-limit:bypass:13', 'cast:name-drift:23', 'blueprint:key-events:oversize:7']) {
       expect(preflightRouteOf(key), key).toMatchObject({ repairable: true })
     }
   })
@@ -135,8 +137,12 @@ describe('preflightRouteOf 的第二维：源章 vs 当前章 (issue #137)', () 
   })
 
   it('keeps plan-layer findings repairable when they belong to the upcoming chapter', () => {
-    const route = preflightRouteOf('chapter-time:undated:1', { currentChapter: 70, sourceChapter: 70 })
+    // 用单章形态的键（`chapter-time:anchor-unmet`）：那一章的时点就落在一张蓝图上，本章能改。
+    const route = preflightRouteOf('chapter-time:anchor-unmet:70', { currentChapter: 70, sourceChapter: 70 })
     expect(route.repairable).toBe(true)
+    expect(route.targetChapter).toBe(70)
+    // 对照：区间型同一族但**不可修**（issue #212）。
+    expect(preflightRouteOf('chapter-time:undated:1', { currentChapter: 70, sourceChapter: 70 }).repairable).toBe(false)
   })
 
   it('keeps the old one-dimensional behaviour when no chapter numbers are given', () => {
@@ -146,13 +152,16 @@ describe('preflightRouteOf 的第二维：源章 vs 当前章 (issue #137)', () 
 
   it('divides a layer group into fixable and blocked keys instead of merging them', () => {
     const groups = groupPreflightRoutes([
-      { stableFactKey: 'chapter-time:undated:1', sourceChapter: 70 },
+      // 本章能改的那条：时点落在**本章**蓝图（sourceChapter = 当前章）。
+      { stableFactKey: 'chapter-time:anchor-unmet:70', sourceChapter: 70 },
+      // 改不了的：旧章（45 < 70）；区间型（issue #212，目标在 key 的首章）。
       { stableFactKey: 'chapter-time:anchor-unmet:45', sourceChapter: 45 },
+      { stableFactKey: 'chapter-time:undated:1', sourceChapter: 70 },
       { stableFactKey: 'prop:revival:票根', sourceChapter: 60 },
     ], { currentChapter: 70 })
     const blueprint = groups.find(group => group.layer === 'blueprint')!
-    expect(blueprint.ks).toEqual(['chapter-time:undated:1'])
-    expect(blueprint.blocked).toEqual(['chapter-time:anchor-unmet:45'])
+    expect(blueprint.ks).toEqual(['chapter-time:anchor-unmet:70'])
+    expect(blueprint.blocked).toEqual(['chapter-time:anchor-unmet:45', 'chapter-time:undated:1'])
     expect(blueprint.repairable).toBe(true)
     // prose 层整组都不可修，且带原因。
     const prose = groups.find(group => group.layer === 'prose')!
@@ -196,12 +205,23 @@ describe('targetChapter：来源章 ≠ 要改的章 (issue #212)', () => {
     expect(route.targetChapter).toBe(21)
   })
 
-  it('keeps interval-shaped findings pointing at their own chapter, not the current one', () => {
-    // 「第 42–55 章连着 14 章没跨日」的 key 锚在区间首章（42）。它改不了，也**不该**
-    // 标成「改本章蓝图」——旧实现把它标成可修，于是拿第 95 章的蓝图去改第 42–55 章的问题。
-    const route = preflightRouteOf('chapter-time:undated:42', { currentChapter: 95, sourceChapter: 42 })
+  it('refuses an interval-shaped finding even though its sourceChapter IS the current chapter', () => {
+    /**
+     * ⚠️ 这条要按**生产真实形状**喂：`chapter-time:undated` 报的 `sourceChapter`
+     * 是**当前章**（`chapter-time-anchor.ts` 写的是 `currentChapter`），不是区间末章。
+     * 所以旧口径 `sourceChapter >= currentChapter` 恰好成立 → 被判成「现在就能修」，
+     * 而修复固定用当前章读层文本 → 拿第 95 章的蓝图去改第 42–55 章的问题。
+     * 目标章必须从 **key**（区间首章）读，不能从 sourceChapter 读。
+     */
+    const route = preflightRouteOf('chapter-time:undated:42', { currentChapter: 95, sourceChapter: 95 })
     expect(route.repairable).toBe(false)
+    expect(route.blockedBy).toBe('needs-finalized-prose')
     expect(route.targetChapter).toBe(42)
+  })
+
+  it('reads the interval target from the key even without any chapter options', () => {
+    expect(preflightRouteOf('chapter-time:undated:42').repairable).toBe(false)
+    expect(preflightRouteOf('chapter-time:undated:42').targetChapter).toBe(42)
   })
 
   it('falls back to no targetChapter when the caller gives no chapters', () => {

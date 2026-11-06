@@ -136,6 +136,26 @@ const LAYER_DESTINATIONS: Readonly<Record<PreflightLayer, PreflightRoute['destin
  */
 const CURRENT_CHAPTER_TARGETS: ReadonlySet<string> = new Set(['cast:absent'])
 
+/**
+ * 「要改的是**一整段多章**」的键族，目标章 = key 里那个章号（区间首章）（issue #212）。
+ *
+ * `chapter-time:undated:42` = 「第 42–55 章连着 14 章没跨日」：key 锚在首章，而它的
+ * `sourceChapter` 报的是**当前章**（`chapter-time-anchor.ts` 里写的是 `currentChapter`）。
+ * 于是旧口径 `sourceChapter >= currentChapter` 恰好成立 → 被判成「现在就能修」，
+ * 而「修复」固定用当前章读层文本 → 拿第 95 章的蓝图去改第 42–55 章的问题，
+ * 模型只能回「不需要改」（现场 387 tok 的回复就是这句）。
+ *
+ * 这类**写前那一刻改不了**：要改的是 N 张已定稿蓝图的时点。
+ */
+const INTERVAL_TARGETS: ReadonlySet<string> = new Set(['chapter-time:undated'])
+
+/** key 末尾的章号（`chapter-time:undated:42` → 42）；读不到时 undefined。 */
+function trailingChapterOf(stableFactKey: string): number | undefined {
+  const last = String(stableFactKey ?? '').split(':').at(-1)
+  const value = Number(last)
+  return Number.isSafeInteger(value) && value > 0 ? value : undefined
+}
+
 /** 键族（前两段）能截出来时返回它，否则退回第一段。 */
 function familyOf(stableFactKey: string): string {
   const segments = String(stableFactKey ?? '').split(':')
@@ -183,6 +203,14 @@ export function preflightRouteOf(
   const destination = LAYER_DESTINATIONS[layer]
   if (layer === 'prose') {
     return { layer, destination, repairable: false, blockedBy: 'needs-finalized-prose' }
+  }
+  /**
+   * 区间型提醒（issue #212）：目标章是 key 里那个首章，**写前改不了**。
+   * 必须在下面那条「当前章」判断之前拦下——否则它会被判成可修（见 INTERVAL_TARGETS 注释）。
+   */
+  if (INTERVAL_TARGETS.has(familyOf(stableFactKey))) {
+    return { layer, destination, repairable: false, blockedBy: 'needs-finalized-prose',
+      ...(trailingChapterOf(stableFactKey) === undefined ? {} : { targetChapter: trailingChapterOf(stableFactKey) }) }
   }
   // 旧章（已定稿）的提醒：写前改不动，与 `prose` 层同一处置。
   const { currentChapter, sourceChapter } = options
