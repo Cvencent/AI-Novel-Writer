@@ -96,9 +96,9 @@ const FAMILY_LABELS: Readonly<Record<string, AcknowledgementTitle>> = Object.fre
   'prose-flavor:physiological': { zhCN: '模板化生理反应超配额', enUS: 'physiological cliché over quota' },
   'prose-flavor:summary-tail': { zhCN: '段尾总结腔', enUS: 'summarising tail' },
   'prose-flavor:motif': { zhCN: '同一意象反复承担情绪', enUS: 'motif over quota' },
-  'prose-flavor:sentence-length': { zhCN: '平均句长超上限', enUS: 'sentence length above ceiling' },
-  'prose-flavor:sentence-length-floor': { zhCN: '叙述句均长低于下限', enUS: 'sentence length below floor' },
-  'prose-flavor:sentence-length-drift': { zhCN: '叙述句长单向收敛', enUS: 'sentence length drifting down' },
+  // ⚠️ 句长三族目录已删（issue #227，用户 2026-11-06 定规：句长配额全部下线）。
+  // 历史 ack 的 key（prose-flavor:sentence-length*）还在库里，未知前缀由
+  // `acknowledgementFamilyTitle` 的 FALLBACK 兜底（「一致性提醒」），不会崩。
   'prose:repeated-reaction': { zhCN: '同一反应式短句跨章复现', enUS: 'same reaction line repeats across chapters' },
   'prose:repeated-device': { zhCN: '同一场景装置反复开场', enUS: 'same staging move opens scenes' },
   'prose:prop-terminal': { zhCN: '同一道具被终结两次以上', enUS: 'prop terminated more than once' },

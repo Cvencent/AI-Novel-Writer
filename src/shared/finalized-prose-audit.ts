@@ -15,7 +15,7 @@
  *   5. 伏笔承诺未在目标章落地（#68）——读承诺 + 目标章正文
  *   6. 连续多章通牒式收尾（#66）——读相邻多章正文
  *   7. 跨章断言反转（#52）——读前章 + 后章正文（历史回看）
- *   8. 「AI 味」配额（#93）——比喻／生理反应／段尾总结／平均句长，配额取自起草清单原文
+ *   8. 「AI 味」配额（#93）——比喻／生理反应／段尾总结（句长配额已按 issue #227 下线）
  *   9. 段落起手固定化（#94）——每一段的第一个词是主角名/代词
  *  10. 物件过手动作固定化（#95）——折好→塞进某处 这一套三拍覆盖了多少章
  *  11. 字形断言（#99）——「半个 X 字，Y 旁」把偏旁说错（温写成立人旁、徐写成走之底）
@@ -52,10 +52,9 @@ import {
   numberingFindings,
   declaredCharacterCountFindings,
 } from './consistency-preflight'
-// 「AI 味」的可机器判子集（issue #93）：超配额、段尾总结腔、平均句长。
+// 「AI 味」的可机器判子集（issue #93）：超配额、段尾总结腔（句长按 issue #227 下线）。
 // 文风判据拆成两半（用户 2026-11-05：内容判断交模型）：
 // 句长是**形式**，留在这里；比喻/生理套话/段尾总结/意象是**内容**，交模型（见 prose-style-review.ts）。
-import { sentenceLengthDriftFindings, sentenceLengthFindings } from './sentence-length'
 // 段落起手（#94）与物件过手（#95）：同一类「跨章看同一种写法」的位置轴补位。
 import { findOrdinalRegressionFindings, findTimeAnchorSelfContradictions, findUndatedStreakFindings, findUnmetTimeAnchorFindings } from './chapter-time-anchor'
 // 字形断言（#99）：正文里「半个 X 字，Y 旁」把偏旁说错——单章可判，且是最容易机器判的一类。
@@ -220,14 +219,11 @@ export function auditFinalizedProse(input: FinalizedProseAuditInput): Consistenc
     return auditAssertionReversals(before, chapter, castNames)
   })
 
-  // 「AI 味」配额（issue #93）：比喻／生理反应／段尾总结／句长。
-  // 用的是**起草清单里那套配额原文**，于是起草侧禁的与审稿侧报的是同一件事。
-  // 句长这一轴既有**章内**判据（quotaSample，配额是章内的），也有**跨章趋势**
-  // （issue #114：单章读不出的单向收敛，需要全量已定稿章当基准序列）。
-  const proseFlavor = [
-    ...sentenceLengthFindings(auditSample, nextChapter),
-    ...sentenceLengthDriftFindings(chapters),
-  ]
+  // 「AI 味」配额（issue #93）：比喻／生理反应／段尾总结——已全部交模型判
+  // （`prose-style-review.ts`，作者主动触发）。句长配额按用户 2026-11-06 定规
+  // **全部下线**（issue #227）：「模型想怎么写怎么写」，多长算合适是文风判断，
+  // 不归产品——上限/下限/跨章漂移三族判据与起草清单里的双边规则一并删除。
+  const proseFlavor: ConsistencyFinding[] = []
 
   // 段落起手固定化（issue #94）与物件过手动作固定化（issue #95）：
   // 都是「跨章看同一种写法」的位置轴，与上面几项同一出口。
