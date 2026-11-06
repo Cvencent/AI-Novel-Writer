@@ -20,7 +20,7 @@ import { useDraftStore } from '../../../stores/draft-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
 import { includedCount, useReviewChecklist } from '../../editor/review-checklist'
-import { finalizationReviewBlocked } from '../../editor/review-finalization'
+import { finalizationReviewBlocked, unhandledReviewFindings } from '../../editor/review-finalization'
 import { reviewDimensions, type useDraftActions } from '../../editor/use-draft-actions'
 import { deleteDraftVersion } from '../../panels/sidebar/draft-deletion'
 import { deleteFinalizedChapter } from '../../panels/sidebar/finalized-chapter-deletion'
@@ -604,6 +604,17 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
           <li><b>{text('自动做定稿后处理。', 'Runs post-finalization steps.')}</b>{text('完成后在本章页面显示每一步的结果，失败的步骤可以单独重试。', 'Each step’s result appears on this chapter; a failed step can be retried on its own.')}</li>
           <li><b>{text('之后不能直接修改。', 'No direct edits afterwards.')}</b>{text('要再改，从版本历史回退为新草稿。', 'To change it again, roll back to a new draft from version history.')}</li>
         </ul>
+        {(() => {
+          // issue #230：审稿已经看见、但作者没处理就定稿——那个事实不能静默流失。
+          // 现场是审稿报告整个没被确认（E2E 生成后直接定稿），cycle 里的发现从没进过确认清单。
+          const unhandledCount = unhandledReviewFindings(checklist.items, Boolean(checklist.confirmed))
+          if (unhandledCount <= 0) return null
+          return (
+            <Notice tone="warn" title={text(`审稿有 ${unhandledCount} 条发现还没处理`, `The review has ${unhandledCount} unhandled ${pluralEn(unhandledCount, 'finding')}`)}>
+              {text('它们仍标记为未解决，定稿不会等它们。可以先回审稿报告逐条确认（修掉或标记不修改），也可以坚持定稿——这里只是把「审稿看见过」这件事还给你。', 'They are still marked unresolved and finalization does not wait for them. You can go back to the review report and settle each one (revise or mark as no-change), or finalize anyway — this is only the fact that the review saw them, given back to you.')}
+            </Notice>
+          )
+        })()}
         {tab.dirty && <Notice tone="info" title={text('还没保存的修改会一并定稿', 'Unsaved edits are included')}>{text('定稿以你现在看到的正文为准。', 'Finalization uses the text exactly as you see it now.')}</Notice>}
       </InkDialog>
       <InkDialog
