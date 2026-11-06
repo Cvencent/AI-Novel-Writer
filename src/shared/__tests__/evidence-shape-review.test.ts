@@ -57,6 +57,9 @@ describe('buildEvidenceShapePrompt (issue #156)', () => {
     expect(system).toContain('container-count-drift')
     // 只许报这几类：否则模型会把「物证没再出现」这类正常延续也报上来。
     expect(system).toContain('只报下面这几类问题')
+    // issue #230：第五形状「物理属性拓扑」（印面数、版/痕哪一面、叠印同面还是跨面）——措辞进提示词才不丢。
+    expect(system).toContain('物理属性拓扑')
+    expect(system).toContain('叠印是同面还是跨面')
   })
 
   it('excludes changes the prose itself explains', () => {
