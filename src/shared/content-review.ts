@@ -117,6 +117,20 @@ export const CONTENT_AXIS_GUIDANCE = Object.freeze({
   },
 } as const)
 
+/**
+ * 界面那颗「核对…」按钮**要问哪些轴**（issue #219）。
+ *
+ * 为什么要有这个常量：轴名原来要在**三处**各写一遍（本表 / `CONTENT_AXIS_GUIDANCE` /
+ * 界面调用点硬编码数组），而没有任何守卫保证三处一致。漏在第三处的后果是**静默**的：
+ * 那个轴永远不会被问、永远不会产出 finding，而代码与测试看起来全绿
+ * （`#144`/`#151` 同一条教训：「判据写了 ≠ 判据能跑」）。
+ *
+ * 现在产品代码只引用这一个常量 —— **新增轴只需改这张表**，漏不了。
+ *
+ * ⚠️ 若将来要「只跑一部分轴」（某个轴太贵/太慢），**改这里**而不是在调用点手写数组；
+ * 那也仍然是一处，且这条注释与守卫都会跟着它。
+ */
+export const CONTENT_AXES_FOR_BUTTON: readonly ContentAxis[] = Object.freeze(Object.keys(CONTENT_AXES) as ContentAxis[])
 export type ContentAxis = keyof typeof CONTENT_AXES
 
 export interface ContentReviewChapter {

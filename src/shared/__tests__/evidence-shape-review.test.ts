@@ -1,6 +1,10 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import {
+  EVIDENCE_SHAPE_KIND_IDS,
+  EVIDENCE_SHAPE_KINDS,
   EVIDENCE_SHAPE_RECENT_CHAPTERS,
   buildEvidenceShapePrompt,
   evidenceShapeFindings,
@@ -457,5 +461,36 @@ describe('container-count-drift：封进去几件、开出来几件 (issue #209)
     // 出路是「补一句交代那件去哪了」，不是「改形态」。
     expect(finding!.suggestion.zhCN).toContain('补一句交代')
     expect(finding!.suggestion.zhCN).toContain('事实账本')
+  })
+})
+
+/**
+ * issue #219：档位清单也曾经要在两处各写一遍（`EVIDENCE_SHAPE_KINDS` 与
+ * `buildEvidenceShapePrompt` 里的内联数组）。漏在内联数组那一处的后果是**静默**的：
+ * 那个档位永远不会被问、永远不会产出 finding，而代码与测试看起来全绿。
+ *
+ * 已改成只从 `EVIDENCE_SHAPE_KIND_IDS` 取（与 `#209` 把 `parse` 的白名单改成查表同一种做法）。
+ */
+describe('档位清单只有一处真源 (issue #219)', () => {
+  it('the prompt asks about every kind in the table', () => {
+    const { system } = buildEvidenceShapePrompt({ chapters: [{ chapterNumber: 1, content: '正文。' }], language: 'zh-CN' })
+    for (const kind of EVIDENCE_SHAPE_KIND_IDS) {
+      expect(system, `提示词里没有档位「${kind}」`).toContain(`"${kind}"`)
+    }
+  })
+
+  it('the exported id list matches the table keys exactly', () => {
+    expect([...EVIDENCE_SHAPE_KIND_IDS]).toEqual(Object.keys(EVIDENCE_SHAPE_KINDS))
+  })
+
+  it('the prompt does not carry a second hand-written list of kinds', () => {
+    // ⚠️ 结构守卫：源码里 `const kinds = ([` 这种内联数组不许再出现（那就是第二份清单）。
+    const source = readFileSync(join(__dirname, '..', 'evidence-shape-review.ts'), 'utf8')
+    expect(source).not.toMatch(/const kinds = \(\[/u)
+    expect(source).toContain('EVIDENCE_SHAPE_KIND_IDS')
+  })
+
+  it('keeps the guard honest: the table is not empty', () => {
+    expect(EVIDENCE_SHAPE_KIND_IDS.length).toBeGreaterThanOrEqual(4)
   })
 })

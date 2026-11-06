@@ -100,6 +100,10 @@ export const EVIDENCE_SHAPE_KINDS = Object.freeze({
   ],
 } as const)
 
+/** 档位清单的唯一真源（issue #219）：提示词与解析都从它取，不再手写一遍。 */
+export const EVIDENCE_SHAPE_KIND_IDS: readonly EvidenceShapeIssue['kind'][] =
+  Object.freeze(Object.keys(EVIDENCE_SHAPE_KINDS) as EvidenceShapeIssue['kind'][])
+
 export function buildEvidenceShapePrompt(request: EvidenceShapeRequest): { system: string, user: string } {
   const en = request.language === 'en-US'
   const limit = request.recentChapters ?? EVIDENCE_SHAPE_RECENT_CHAPTERS
@@ -109,7 +113,8 @@ export function buildEvidenceShapePrompt(request: EvidenceShapeRequest): { syste
     .slice(-limit)
   const cards = (request.cards ?? []).filter(card => String(card.name ?? '').trim()
     && `${card.appearance ?? ''}${card.notes ?? ''}`.trim())
-  const kinds = (['same-object-drift', 'impossible-cause', 'custody-drift', 'container-count-drift'] as const)
+  // issue #219：kind 清单**只从表里取**（原来这里手写一份，漏一个档就永远问不到）。
+  const kinds = EVIDENCE_SHAPE_KIND_IDS
     .map(kind => `- "${kind}": ${en ? EVIDENCE_SHAPE_KINDS[kind][1] : EVIDENCE_SHAPE_KINDS[kind][0]}`)
     .join('\n')
 

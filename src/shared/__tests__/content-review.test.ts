@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { CONTENT_AXES, buildContentReviewPrompt, contentReviewFindings, parseContentReview } from '../content-review'
+import { CONTENT_AXES, CONTENT_AXES_FOR_BUTTON, CONTENT_AXIS_GUIDANCE, buildContentReviewPrompt, contentReviewFindings, parseContentReview } from '../content-review'
 
 const CHAPTERS = [
   { chapterNumber: 3, content: '他蹲下来，把风灯搁在膝盖边。纸角在衬页里没了。' },
@@ -323,5 +325,46 @@ describe('established-status-reset：已确立的身份／资格被无声推翻 
     expect(finding!.suggestion.zhCN).toContain('事实账本')
     // 改法必须是这一轴专用的，不能复用 repeated-* 那句「换这一拍的落点」（#185 的教训）。
     expect(finding!.suggestion.zhCN).not.toContain('换这一拍的落点')
+  })
+})
+
+/**
+ * issue #219：轴名原来要在**三处**各写一遍（`CONTENT_AXES` / `CONTENT_AXIS_GUIDANCE` /
+ * 界面调用点硬编码数组），而没有任何守卫保证一致。漏在第三处的后果是**静默**的：
+ * 那个轴永远不会被问、永远不会产出 finding，而代码与测试看起来全绿。
+ *
+ * 这一族在本仓已出过四次，都是「接口上手工对齐，必然漂」：
+ *   #189 `firstFailedCheck` 的产出穿不过 IPC 白名单
+ *   #200 `readRecovery` 缺 `parentRootActionId`
+ *   #205 `pollUntilOrStall` 六个调用点漏传一个 `session`
+ *   #219 本条
+ *
+ * 修法两层：① 调用点不再手写（引用 `CONTENT_AXES_FOR_BUTTON`，产品代码只认一处）；
+ * ② 这条守卫钉住①②一致 + 调用点确实在用那个常量。
+ */
+describe('轴清单只有一处真源，且三处不许漂 (issue #219)', () => {
+  it('CONTENT_AXES and CONTENT_AXIS_GUIDANCE cover exactly the same axes', () => {
+    // 两张表必须同键：只加①②之一，会出现「能被问到但没有改法」或「有改法但问不到」。
+    expect(Object.keys(CONTENT_AXIS_GUIDANCE).sort()).toEqual(Object.keys(CONTENT_AXES).sort())
+  })
+
+  it('the button asks for every axis, taken from the single exported list', () => {
+    // 界面默认全问：清单 = CONTENT_AXES 的键（顺序也一致，便于人读日志）。
+    expect([...CONTENT_AXES_FOR_BUTTON]).toEqual(Object.keys(CONTENT_AXES))
+  })
+
+  it('the call site references the constant instead of hardcoding the names', () => {
+    // ⚠️ 这条是**结构守卫**：扫源码，确认调用点不再出现手写的轴名字面量。
+    // 「守卫生效的证据是它曾经红过」——把调用点改回硬编码数组，这条会红。
+    const source = readFileSync(join(__dirname, '..', '..', 'components', 'stage', 'write', 'WriteChapterPopover.tsx'), 'utf8')
+    expect(source).toContain('CONTENT_AXES_FOR_BUTTON')
+    for (const axis of Object.keys(CONTENT_AXES)) {
+      expect(source, `调用点又手写了轴名「${axis}」`).not.toContain(`'${axis}'`)
+    }
+  })
+
+  it('keeps the guard honest: the exported list is not empty', () => {
+    // 防止「清单空了 → 上面几条空对比也全绿」。
+    expect(CONTENT_AXES_FOR_BUTTON.length).toBeGreaterThanOrEqual(5)
   })
 })

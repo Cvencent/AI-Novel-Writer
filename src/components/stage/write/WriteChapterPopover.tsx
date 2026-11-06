@@ -3,6 +3,7 @@ import { ChevronRight, PenLine } from 'lucide-react'
 import type { ConsistencyPreflightResult } from '../../../services/consistency-preflight'
 import { readConsistencyPreflight } from '../../../services/consistency-preflight'
 import { createCharacterCardForPreflight } from '../../../services/preflight-character-card'
+import { CONTENT_AXES_FOR_BUTTON } from '../../../shared/content-review'
 import { mergeModelFindings } from '../../../shared/merge-model-findings'
 import { MEMORY_ANCHOR_TARGET_CHAPTERS } from '../../../shared/memory-anchor-review'
 import type { ConsistencyFinding } from '../../../shared/consistency-preflight'
@@ -485,8 +486,8 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     try {
       const chapters = await recentFinalized(session)
       if (!isProjectSessionCurrent(session)) return
-      const outcome = await reviewProseContent(session, chapters,
-        ['repeated-reaction', 'repeated-device', 'prop-terminal', 'prop-moved', 'stale-duration', 'appellation-unbridged', 'established-status-reset'], locale)
+      // issue #219：轴清单**只从 content-review 取**（原来这里手写了一份，漏一个轴就静默失效）。
+      const outcome = await reviewProseContent(session, chapters, CONTENT_AXES_FOR_BUTTON, locale)
       if (!isProjectSessionCurrent(session)) return
       if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
       mergeFindings(outcome.findings)
