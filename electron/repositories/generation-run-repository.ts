@@ -799,13 +799,23 @@ export class GenerationRunRepository {
      *    running，直到下次冷启动才由 recoverInterrupted 收成 paused。这里把那条收尾前移，
      *    **不打 blocked_code**——它没失败，不该挡住后续以它为父级的合法续接。
      *
-     *  幂等：已 blocked / sealed / paused 的 root 跳过。返回被判死的 runId。 */
+     *  幂等：已 blocked / sealed / paused 的 root 跳过。返回被判死的 runId。
+     *
+     *  ⚠️ issue #207：原来这里写死 `o.active_since_ms IS NULL`（「没有在途请求」才收），
+     *  于是**「声称正在执行、但它其实早就死了」**的那一类永远收不掉 —— 实测隔离库里
+     *  6 个僵尸 run，5 个被上一次收割修复，剩下的 1 个正是 `active_since_ms` 有值的。
+     *  根因是进程退出时没有结算在途运行（主进程从未在退出时关过项目库，见 main.ts），
+     *  而「在途」的时间戳一旦落库就再没人清它。
+     *  现在改成**按空闲时长判**：`active_since_ms` 距今超过 idleMs 也算僵尸。
+     *  正常的慢调用（实测审稿 200 秒）远小于 idleMs（15 分钟），不受影响。
+     */
     reapIdleRuns(idleMs = GENERATION_IDLE_TIMEOUT_MS): string[] {
         return this.transaction(() => {
             const rows = (this.db().prepare(`
         SELECT r.run_id, r.root_action_id,
                json_extract(a.usage_receipt_json,'$.result.settledAt') AS settledAt,
-               json_extract(a.usage_receipt_json,'$.result.finishReason') AS finishReason
+               json_extract(a.usage_receipt_json,'$.result.finishReason') AS finishReason,
+               o.active_since_ms AS activeSinceMs
           FROM generation_runs r
           JOIN generation_roots o ON o.root_action_id = r.root_action_id
           LEFT JOIN generation_attempts a ON a.rowid = (
@@ -813,10 +823,12 @@ export class GenerationRunRepository {
          WHERE r.status = 'running'
            AND json_extract(o.action_json,'$.status') = 'active'
            AND o.blocked_code IS NULL
-           AND o.active_since_ms IS NULL
            AND a.attempt_id IS NOT NULL
-      `).all() as { run_id: string; root_action_id: string; settledAt: number | null; finishReason: string | null }[])
-                .filter(row => row.settledAt !== null && this.now() - row.settledAt >= idleMs);
+      `).all() as { run_id: string; root_action_id: string; settledAt: number | null; finishReason: string | null; activeSinceMs: number | null }[])
+                .filter(row => row.activeSinceMs !== null
+                    // 「正在执行」的声明也过期了 → 那个执行者早就不在了（issue #207）。
+                    ? this.now() - row.activeSinceMs >= idleMs
+                    : row.settledAt !== null && this.now() - row.settledAt >= idleMs);
             const reaped: string[] = [];
             for (const row of rows) {
                 if (row.finishReason !== 'stop') {

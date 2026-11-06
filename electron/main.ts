@@ -38,6 +38,8 @@ import { decideRenderCrash, renderCrashMessage } from './services/render-crash-p
 // issue #169：原生对话框是**纯文本**，判据文案里的 Markdown 粗体会原样显示成 `**`。
 // `stripEmphasis` 原本只在 React 侧用；主进程这个出口同样是「给作者看」，也要剥。
 import { stripEmphasis } from '../src/shared/author-visible-text'
+import { closeProjectDatabase } from './database'
+import { installProjectDatabaseQuitSettlement } from './services/project-database-quit-settlement'
 import { registerStartupController } from './controllers/startup-controller'
 import { resolveGlobalDataRoots } from './services/app-data-locator'
 import { runGlobalDataMigration, activateGlobalData } from './services/global-data-migration'
@@ -242,6 +244,16 @@ async function runPackagedOfficialHomepageSmoke(token: string) {
     registerController: options => registerOfficialHomepageController(options),
   })
 }
+
+// 退出时结算在途运行（issue #207）：`closeProjectDatabase()` 会同步触发
+// `onProjectDatabaseBeforeClose` → owner.suspendForProjectClose → recoverInterrupted，
+// 把所有 root 收成 paused。此前这条链只在切换/关闭项目时走过，**退出应用时不走**，
+// 于是正常退出后库里留下一批永远 running 的 run。
+installProjectDatabaseQuitSettlement(
+  { onWillQuit: listener => { app.on('will-quit', listener) } },
+  closeProjectDatabase,
+  error => { console.error('[main] quit settlement failed', error) },
+)
 
 // macOS: 关闭所有窗口不退出
 app.on('window-all-closed', () => {

@@ -295,3 +295,31 @@ it('never persists stop completion for a prefix whose terminal flush failed, inc
         const reopened=new GenerationRunRepository(()=>db),receipt=reopened.receipt(result.attempt.attemptId);expect(receipt.result?.finishReason).toBe('error');expect(receipt.budget.blockedCode).toBe('GENERATION_STORAGE_FAILED');expect(receipt.artifact?.text).toBe('');
     } finally {if(db.open)db.close();fs.rmSync(root,{recursive:true,force:true})}
 });
+
+/**
+ * issue #207：僵尸 run 的第二种形态 ——「**声称正在执行**，但那个执行者早就死了」。
+ *
+ * 现场：一次 sim 正常退出后库里 6 个 run 停在 running，其中 5 个能被已有的空闲收割修好，
+ * 剩下的 1 个 `generation_roots.active_since_ms` **有值** —— 原来那条 SQL 写死
+ * `AND o.active_since_ms IS NULL`（「没有在途请求」才收），于是这一类**永远收不掉**：
+ * 进程退出时没结算，而「在途」的时间戳一旦落库再没人清。
+ *
+ * 现在按空闲时长判：`active_since_ms` 距今超过 idleMs 也算僵尸。
+ * 正常的慢调用（实测审稿 200 秒）远小于 idleMs（15 分钟），不受影响。
+ */
+it('reaps a root that still claims to be executing once that claim is older than the idle timeout (issue #207)', () => {
+    const f = fixture(), run = f.repository.open(f.open)
+    const reserved = f.repository.reserve(run.runId, 'call', textHash('call'), 200, 100)
+    // 「声称正在执行」是 markDispatched 落的时间戳（reserve 只占预算，不代表已发请求）。
+    f.repository.markDispatched(reserved.attempt.attemptId)
+    const claiming = f.db.prepare('SELECT active_since_ms FROM generation_roots WHERE root_action_id=?').pluck().get(run.rootActionId) as number | null
+    expect(claiming, 'reserve 之后 root 应当声称正在执行').not.toBeNull()
+    // 慢调用还没到空闲阈值 → 不收割（否则正常的 200 秒长流会被误杀）。
+    expect(f.repository.reapIdleRuns()).toEqual([])
+    expect(f.repository.get(run.runId)!.status).toBe('running')
+    // 超过空闲阈值：那个执行者不可能还在 → 判死，运行面板出现失败卡片与恢复入口。
+    f.setNow((claiming as number) + 15 * 60_000 + 1)
+    expect(f.repository.reapIdleRuns()).toEqual([run.runId])
+    expect(f.repository.get(run.runId)!.status).toBe('failed')
+    expect(f.repository.budget(run.rootActionId).blockedCode).toBe('ROOT_IDLE_TIMEOUT')
+})
