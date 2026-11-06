@@ -146,6 +146,9 @@ export function createGenerationRunService(deps: GenerationRunServiceDependencie
             let text = receipt.artifact!.text, durable = text, revision = receipt.artifact!.revision, storageFailed = false, streamFailed = false, terminal = false, suspended = false;
             let diagnostics: GenerationTransportDiagnostics | undefined;
             let diagnosticsAt = performance.now();
+            // issue #233：attempt 级耗时——settle 时随 result 落库，日志页展示「跑了多久」。
+            // 起点=markDispatched 完成后；此前行的 created_at 没有毫秒精度，不能做差。
+            const dispatchStartedAt = performance.now();
             let agentProtocolText = '';
             const events = new Map<string, string>();
             const notify = () => { try {
@@ -265,7 +268,7 @@ export function createGenerationRunService(deps: GenerationRunServiceDependencie
                 }
                 else retainInterruptedAgentText();
                 flush();
-                receipt = deps.repository.settle(attemptId, usage, storageFailed ? 'error' : result.finishReason, undefined, diagnostics);
+                receipt = deps.repository.settle(attemptId, usage, storageFailed ? 'error' : result.finishReason, undefined, diagnostics, Math.max(0, Math.round(performance.now() - dispatchStartedAt)));
             }
             catch (error) {
                 if (diagnostics && !diagnostics.endReason) diagnostics = { ...diagnostics, ...safeTransportError(error),
@@ -283,7 +286,7 @@ export function createGenerationRunService(deps: GenerationRunServiceDependencie
                             || error instanceof Error && /^(NETWORK_ERROR|ECONNRESET|ETIMEDOUT|FETCH_FAILED)$/.test(error.message) ? 'NETWORK_ERROR' : 'GENERATION_PROVIDER_FAILED';
                         const failureCode = storageFailed ? 'GENERATION_STORAGE_FAILED' : timedOut ? 'ROOT_BUDGET_EXHAUSTED'
                             : streamFailed ? 'GENERATION_STREAM_INVALID' : controller.signal.aborted ? 'GENERATION_CANCELLED' : known;
-                        receipt = deps.repository.settle(attemptId, null, null, failureCode, diagnostics);
+                        receipt = deps.repository.settle(attemptId, null, null, failureCode, diagnostics, Math.max(0, Math.round(performance.now() - dispatchStartedAt)));
                     }
                     else
                         receipt = current;

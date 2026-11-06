@@ -353,3 +353,30 @@ it('treats a material decision bound after begin as the same action, not a chang
     expect(() => f.repository.open({ ...f.open, budget: { ...f.open.budget, maxPhysicalRequests: 99 } }))
         .toThrow('GENERATION_NONCE_CONFLICT')
 })
+
+/**
+ * issue #233 建议②：attempt 级耗时随 settle 落库（result.elapsedMs），
+ * 生成日志页据此展示「跑了多久」；旧记录没有该键 → 展示层按无数据处理。
+ */
+describe('attempt elapsedMs is persisted with settle (issue #233)', () => {
+  it('writes a non-negative elapsedMs for both settled and failed attempts', async () => {
+    const f = fixture();
+    const run = f.repository.open({ ...f.open, budget: { ...f.open.budget, maxPhysicalRequests: 4 } });
+    const dispatch = vi.fn(async () => ({ usage: { ...usage, promptTokens: 200, totalTokens: 250 }, finishReason: 'stop' }));
+    await createGenerationRunService({ repository: f.repository, dispatch }).execute({ ...f.request(run.runId, 'a1'), usagePolicy: { ...f.policy, canBoundTotalLiability: false } });
+    const settledRow = f.db.prepare("SELECT usage_receipt_json AS raw FROM generation_attempts ORDER BY rowid LIMIT 1").get() as { raw: string };
+    const settled = JSON.parse(settledRow.raw) as { result?: { elapsedMs?: number } };
+    expect(typeof settled.result?.elapsedMs).toBe('number');
+    expect(settled.result!.elapsedMs! >= 0).toBe(true);
+
+    const failed = await createGenerationRunService({
+      repository: f.repository,
+      dispatch: vi.fn(async () => { throw new Error('ECONNRESET-ish') }),
+    }).execute({ ...f.request(run.runId, 'a2'), usagePolicy: { ...f.policy, canBoundTotalLiability: false } });
+    expect(failed.attempt.status).toBe('unknown');
+    const failedRow = f.db.prepare("SELECT usage_receipt_json AS raw FROM generation_attempts ORDER BY rowid DESC LIMIT 1").get() as { raw: string };
+    const failedResult = JSON.parse(failedRow.raw) as { result?: { elapsedMs?: number } };
+    expect(typeof failedResult.result?.elapsedMs).toBe('number');
+    expect(failedResult.result!.elapsedMs! >= 0).toBe(true);
+  });
+});

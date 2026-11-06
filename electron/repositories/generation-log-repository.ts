@@ -31,6 +31,8 @@ export interface ModelCallSummary {
   finishReason: string | null
   /** 失败码与可判定的传输诊断（ECONNREFUSED 等），没有则空串。 */
   failureDetail: string
+  /** attempt 级耗时毫秒（dispatch 起点→settle，issue #233 建议②）；旧记录没有则 null。 */
+  elapsedMs: number | null
 }
 
 /** 单次调用中模型发起的一个工具调用。 */
@@ -141,6 +143,7 @@ function readSettleResult(row: AttemptRow): {
   reasoningTokens: number | null
   finishReason: string | null
   failureDetail: string
+  elapsedMs: number | null
 } {
   const rawResult = safeJson<{ result?: unknown }>(row.usage_receipt_json, {}).result
   const result = safeJson<{
@@ -153,6 +156,7 @@ function readSettleResult(row: AttemptRow): {
     finishReason?: unknown
     failureCode?: unknown
     diagnostics?: unknown
+    elapsedMs?: unknown
   }>(typeof rawResult === 'string' ? rawResult : null, {})
   const usage = result.usage && typeof result.usage === 'object' ? result.usage : {}
   const numberOf = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null
@@ -166,6 +170,7 @@ function readSettleResult(row: AttemptRow): {
     reasoningTokens: numberOf(usage.reasoningTokens),
     finishReason: typeof result.finishReason === 'string' && result.finishReason.trim() ? result.finishReason : null,
     failureDetail: [failureCode, diagnostics].filter(Boolean).join(' '),
+    elapsedMs: numberOf(result.elapsedMs),
   }
 }
 
@@ -203,6 +208,7 @@ export class GenerationLogRepository {
         reasoningTokens: settle.reasoningTokens,
         finishReason: settle.finishReason,
         failureDetail: settle.failureDetail,
+        elapsedMs: settle.elapsedMs,
       }
     })
   }
@@ -237,6 +243,7 @@ export class GenerationLogRepository {
       reasoningTokens: settle.reasoningTokens,
       finishReason: settle.finishReason,
       failureDetail: settle.failureDetail,
+      elapsedMs: settle.elapsedMs,
       promptMessages: readMessages(row),
       output: artifactPayload.text ?? '',
       toolCalls: readToolCalls(readMessages(row)),

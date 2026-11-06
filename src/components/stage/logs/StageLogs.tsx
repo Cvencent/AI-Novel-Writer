@@ -26,6 +26,8 @@ interface ModelCallSummary {
   finishReason: string | null
   /** 失败码与传输诊断串（无失败为空）。 */
   failureDetail: string
+  /** attempt 级耗时毫秒（issue #233 建议②）；旧记录没有则 null。 */
+  elapsedMs: number | null
 }
 
 /** 状态列的人话映射（issue #233）：内部值直接显示会让「没记录收尾」读成术语。 */
@@ -74,6 +76,7 @@ function normalizeDetail(raw: unknown): ModelCallDetail | null {
     inputTokens: typeof record.inputTokens === 'number' ? record.inputTokens : null,
     finishReason: typeof record.finishReason === 'string' && record.finishReason ? record.finishReason : null,
     failureDetail: typeof record.failureDetail === 'string' ? record.failureDetail : '',
+    elapsedMs: typeof record.elapsedMs === 'number' ? record.elapsedMs : null,
     hasPrompt: messages.length > 0,
     hasOutput: typeof record.output === 'string' && record.output.length > 0,
     promptTrimmed: record.promptTrimmed === true,
@@ -117,6 +120,7 @@ export default function StageLogs() {
         inputTokens: typeof call?.inputTokens === 'number' ? call.inputTokens : null,
         finishReason: typeof call?.finishReason === 'string' ? call.finishReason : null,
         failureDetail: typeof call?.failureDetail === 'string' ? call.failureDetail : '',
+        elapsedMs: typeof call?.elapsedMs === 'number' ? call.elapsedMs : null,
       })))
       setError('')
     } catch (cause) {
@@ -205,6 +209,7 @@ export default function StageLogs() {
                       <p className="stage-logs-trimmed">
                         {detail.actualTokens !== null && text(`实际消耗 ${detail.actualTokens.toLocaleString()} token（申请上限 ${call.requestedOutputTokens?.toLocaleString() ?? '—'}）。`, `Actual usage ${detail.actualTokens.toLocaleString()} tokens (requested cap ${call.requestedOutputTokens?.toLocaleString() ?? '—'}).`)}
                         {detail.actualTokens === null && text('这条记录没有实际用量数据（旧版本不记录）。', 'No actual usage recorded for this call (older versions did not record it).')}
+                        {detail.elapsedMs !== null && text(`耗时 ${(detail.elapsedMs / 1000).toFixed(1)} 秒。`, `Took ${(detail.elapsedMs / 1000).toFixed(1)}s.`)}
                         {detail.finishReason && text(`收尾原因：${detail.finishReason === 'length' ? '输出/推理撞到上限被截断' : detail.finishReason === 'stop' ? '正常结束' : detail.finishReason}。`, `Finish reason: ${detail.finishReason}.`)}
                         {detail.finishReason === 'length' && !detail.output && text('推理把输出预算吃满、正文一个字都没输出——换更小的任务或限制推理预算。', 'Reasoning consumed the whole output budget with no response text — try a smaller task or cap reasoning.')}
                       </p>

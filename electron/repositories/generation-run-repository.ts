@@ -783,7 +783,9 @@ export class GenerationRunRepository {
         });
     }
     settle(attemptId: string, usage: GenerationUsageReceipt | null, finishReason: string | null = null, failureCode?: string,
-        diagnostics?: import('../../src/shared/generation-contract').GenerationTransportDiagnostics): GenerationExecutionReceipt {
+        diagnostics?: import('../../src/shared/generation-contract').GenerationTransportDiagnostics,
+        /** issue #233：attempt 级耗时毫秒（dispatch 起点→settle），随 result 落库供日志页展示。 */
+        elapsedMs?: number): GenerationExecutionReceipt {
         return this.transaction(() => {
             const receipt = this.receipt(attemptId);
             this.assertPlotOutlineWritable(receipt.run.runId);
@@ -792,7 +794,7 @@ export class GenerationRunRepository {
             if (usage?.trusted)
                 receipt.attempt.actualTokens = usage.actualTokens;
             const old = this.db().prepare('SELECT usage_receipt_json FROM generation_attempts WHERE attempt_id=?').pluck().get(attemptId) as string;
-            this.db().prepare('UPDATE generation_attempts SET attempt_json=?,usage_receipt_json=? WHERE attempt_id=?').run(encode(receipt.attempt), encode({ ...JSON.parse(old), result: { usage, finishReason, ...(failureCode ? { failureCode } : {}), ...(diagnostics ? { diagnostics } : {}), settledAt: this.now() } }), attemptId);
+            this.db().prepare('UPDATE generation_attempts SET attempt_json=?,usage_receipt_json=? WHERE attempt_id=?').run(encode(receipt.attempt), encode({ ...JSON.parse(old), result: { usage, finishReason, ...(failureCode ? { failureCode } : {}), ...(diagnostics ? { diagnostics } : {}), ...(Number.isSafeInteger(elapsedMs) ? { elapsedMs } : {}), settledAt: this.now() } }), attemptId);
             // Old receipts without a policy retain their original hard-bound rule.
             // Estimated overruns remain actual root usage, never clipped or erased.
             if (JSON.parse(old).usagePolicy?.canBoundTotalLiability !== false
