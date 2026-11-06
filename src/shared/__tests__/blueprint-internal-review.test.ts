@@ -1,3 +1,4 @@
+import type { BlueprintInternalIssue } from '../blueprint-internal-review'
 import { describe, expect, it } from 'vitest'
 
 import Database from 'better-sqlite3'
@@ -87,8 +88,10 @@ describe('parseBlueprintInternalReview (issue #172)', () => {
     explanation: '同一个结的收法给了两个道数',
   }
 
-  it('keeps a report whose two quotes both locate verbatim in that plan', () => {
-    expect(parseBlueprintInternalReview(JSON.stringify({ issues: [conflict] }), request)).toEqual([conflict])
+  it('keeps a report whose two quotes both locate verbatim in that plan (kind defaults to the old reading)', () => {
+    // 旧模型输出不带 kind → parse 补默认值 value-contradiction（兼容历史行为）。
+    expect(parseBlueprintInternalReview(JSON.stringify({ issues: [conflict] }), request))
+      .toEqual([{ ...conflict, kind: 'value-contradiction' }])
   })
 
   it('drops a report whose quote the model paraphrased', () => {
@@ -247,5 +250,81 @@ describe('建议不许写死样本 (issue #180)', () => {
     // 合并时引用的是**第一条**的两处原文（不是随机挑一条当样本）。
     expect(finding!.suggestion.zhCN).toContain('攥着周叙的手往下压')
     expect(finding!.suggestion.zhCN).not.toContain('压三道')
+  })
+})
+
+/**
+ * issue #222：同章蓝图对**同一件物**给出两个不能同时成立的处置。
+ *
+ * 现场结构（bp99，去本书化）：一方声明「没有实物佐证不能入卷」，
+ * 同章末尾又写「收页…跟着卷走」——「收下」与「不能入卷」压在同一句里，
+ * 起草照抄，读者读不出它到底进没进卷（那正是这场戏的目的）。
+ * 判断「两个处置能不能同时成立、中间有没有解除障碍」要读懂句子，交模型。
+ */
+describe('第二类：互斥处置 (issue #222)', () => {
+  const BP_99_LIKE = {
+    chapterNumber: 99,
+    text: '文书员收下旁证却说无实物佐证不能入卷，交出字条则裁决要改，主角把字条折回布包。文书员收页，抽出封套，「这张纸往下跟着卷走」。',
+  }
+  const request = { chapters: [BP_99_LIKE] }
+  const refusal = '文书员收下旁证却说无实物佐证不能入卷'
+  const acceptance = '这张纸往下跟着卷走'
+  const exclusive: BlueprintInternalIssue = {
+    kind: 'exclusive-disposition',
+    chapterNumber: 99,
+    firstQuote: refusal,
+    secondQuote: acceptance,
+    explanation: '同一章先声明无实物佐证不能入卷，又让这张纸随卷带走，中间没有解除障碍的句子',
+  }
+
+  it('asks the second question in the prompt, in both languages', () => {
+    const { system } = buildBlueprintInternalPrompt({ chapters: [BP_99_LIKE], language: 'zh-CN' })
+    expect(system).toContain('exclusive-disposition')
+    expect(system).toContain('互斥处置')
+    expect(system).toContain('没有 X 不能入卷')
+    expect(system).toContain('进没进卷')
+    const en = buildBlueprintInternalPrompt({ chapters: [BP_99_LIKE], language: 'en-US' }).system
+    expect(en).toContain('exclusive disposition')
+    expect(en).toContain('did it ever enter the file')
+  })
+
+  it('accepts the second kind when both quotes locate in that plan', () => {
+    const issues = parseBlueprintInternalReview(JSON.stringify({ issues: [exclusive] }), request)
+    expect(issues).toHaveLength(1)
+    expect(issues![0]!.kind).toBe('exclusive-disposition')
+  })
+
+  it('drops an unknown kind instead of guessing', () => {
+    const issues = parseBlueprintInternalReview(JSON.stringify({ issues: [{ ...exclusive, kind: 'made-up-kind' }] }), request)
+    expect(issues).toEqual([])
+  })
+
+  it('defaults a missing kind to the old value-contradiction reading', () => {
+    // 旧模型输出不带 kind → 仍按第一类解析（兼容历史行为）。
+    const issues = parseBlueprintInternalReview(JSON.stringify({ issues: [{
+      chapterNumber: 79, firstQuote: '收完压一道', secondQuote: '温珩的结要压三道', explanation: '',
+    }] }), { chapters: [CHAPTER_79] })
+    expect(issues).toHaveLength(1)
+    expect(issues![0]!.kind).toBe('value-contradiction')
+  })
+
+  it('the exclusive finding says the scene question and offers obstacle-lifting repairs', () => {
+    const [finding] = blueprintInternalFindings([exclusive])
+    expect(finding!.issue.zhCN).toContain('进没进卷')
+    // 修法按种类走：第二类给「保留拒收 / 解除障碍」二选一，并引用本条自己的两处原文。
+    expect(finding!.suggestion.zhCN).toContain('保留拒收')
+    expect(finding!.suggestion.zhCN).toContain('解除')
+    expect(finding!.suggestion.zhCN).toContain(refusal)
+    expect(finding!.suggestion.zhCN).toContain(acceptance)
+    expect(finding!.suggestion.enUS).toContain('obstacle')
+  })
+
+  it('the value-contradiction finding keeps the original lead-in and repair', () => {
+    const [finding] = blueprintInternalFindings([{
+      chapterNumber: 79, firstQuote: '收完压一道', secondQuote: '温珩的结要压三道', explanation: '',
+    }])
+    expect(finding!.issue.zhCN).toContain('两套不能同时成立的值')
+    expect(finding!.suggestion.zhCN).toContain('选一个值当权威')
+    expect(finding!.suggestion.zhCN).not.toContain('保留拒收')
   })
 })

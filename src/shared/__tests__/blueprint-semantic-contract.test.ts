@@ -320,6 +320,36 @@ describe('blueprint intra-chapter prop coherence (issue #19)', () => {
   })
 })
 
+/**
+ * issue #222 / #223：同章道具自相矛盾的另外两种形状。
+ *
+ * #222 现场：bp99 把「文书员**收下**旁证**却说**无实物佐证**不能入卷**」压进同一句，
+ * 又写「这张纸往下跟着卷走」——起草照抄，读者读不出旁证进没进卷（那正是这场戏的目的）。
+ * #223 现场：bp31 写「夹进**收料簿**页缝」，后文「骆守拙**翻页时**纸角掉出」——
+ * 翻的是折子，载体没点名，纸角凭空从另一本簿册里滑出来。
+ */
+describe('blueprint exclusive disposition and carrier naming (issue #222 / #223)', () => {
+  it('the immutable contract forbids refuse-then-accept in one chapter', () => {
+    const zh = blueprintSemanticGenerationContract('zh-CN')
+    expect(zh).toContain('互斥处置')
+    expect(zh).toContain('中间没有任何一句解除该障碍')
+    expect(zh).toContain('只作附卷不作证据')
+    const en = blueprintSemanticGenerationContract('en-US')
+    expect(en).toContain('mutually exclusive dispositions')
+    expect(en).toContain('inadmissible')
+    expect(en).toContain('the reader cannot tell whether the item ever entered the file')
+  })
+
+  it('the immutable contract requires the carrier to be named when a paper falls out', () => {
+    const zh = blueprintSemanticGenerationContract('zh-CN')
+    expect(zh).toContain('载体必须点名')
+    expect(zh).toContain('不得压成一个「翻页时」「顺手」这类两处都能指的短语')
+    const en = blueprintSemanticGenerationContract('en-US')
+    expect(en).toContain('the carrier must be named')
+    expect(en).toContain('do not compress both into one bare phrase')
+  })
+})
+
 // issue #36：代价要留账——本样本四次「遗忘」代价都在同章 320 字内自愈，蓝图阶段就已
 // 把「怎么找回来」写进了代价字段，起草只是执行。
 describe('blueprint cost ledger (issue #36)', () => {

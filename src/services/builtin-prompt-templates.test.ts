@@ -83,6 +83,32 @@ describe('prop handoff rules (issue #38)', () => {
   })
 })
 
+// issue #222 / #223：同章道具自相矛盾的另外两种形状（互斥处置 / 载体不点名）。
+// #222：bp99 把「收下旁证却说不能入卷」压进同一句，随后「跟着卷走」；
+// #223：bp31「夹进收料簿页缝」后「翻页时掉出」——翻的是折子，载体没点名。
+describe('intra-chapter disposition and carrier rules (issue #222 / #223)', () => {
+  const full = BUILTIN_PROMPTS.find(template => template.key === 'chapter_blueprint')
+  const chunk = BUILTIN_PROMPTS.find(template => template.key === 'chapter_blueprint_chunk')
+  const review = BUILTIN_PROMPTS.find(template => template.key === 'consistency_check')
+
+  it('both blueprint templates forbid refuse-then-accept without lifting the obstacle', () => {
+    expect(full?.content).toContain('拒绝收下某物或声明它「没有 X 不能入卷」')
+    expect(full?.content).toContain('只作附卷')
+    expect(chunk?.content).toContain('拒绝收下某物或声明它「没有 X 不能入卷」')
+    expect(chunk?.content).toContain('只作附卷')
+  })
+
+  it('both blueprint templates require the carrier to be named when a paper falls out', () => {
+    expect(full?.content).toContain('两份不同的簿册各自都装着它而中间没有挪动动作，是矛盾')
+    expect(chunk?.content).toContain('两份不同的簿册各自都装着它而中间没有挪动动作，是矛盾')
+  })
+
+  it('the review prop-handoff dimension also asks about the carrier', () => {
+    expect(review?.content).toContain('换了持有者或所在载体')
+    expect(review?.content).toContain('两份不同的簿册/文书/容器里，而两次之间没有任何取出或放入的动作')
+  })
+})
+
 // issue #36：代价写了却被当场抹平（四次「遗忘」都在 320 字内自愈）。
 describe('cost ledger rules (issue #36)', () => {
   const full = BUILTIN_PROMPTS.find(template => template.key === 'chapter_blueprint')

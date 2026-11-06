@@ -52,11 +52,37 @@ export const BLUEPRINT_INTERNAL_RECENT_CHAPTERS = 8
 
 export interface BlueprintInternalIssue {
   chapterNumber: number
+  /** 缺省按 `value-contradiction` 解析（旧模型输出不带这个字段）。 */
+  kind?: BlueprintInternalKind
   /** 两处互斥表述的原文（都必须能在该章蓝图里逐字找到）。 */
   firstQuote: string
   secondQuote: string
   explanation: string
 }
+
+/**
+ * 这一档要模型回答的**两类**问题（issue #172 现场是第一类；#222 补第二类）。
+ *
+ * 第二类是「互斥处置」：同一章蓝图让一方**拒绝收下某物或声明它不能入卷**，
+ * 又让这物**被收下、封存或随卷带走**，中间没有任何一句解除该障碍。
+ * 现场（bp99）：「文书员收下旁证**却说**无实物佐证**不能入卷**……这张纸往下跟着卷走」——
+ * 「收下」与「不能入卷」压在同一句里，起草模型照抄，读者读不出旁证到底进没进卷。
+ * 判断「这两个处置能不能同时成立」要读懂句子，交模型；规则只校验引文可定位。
+ */
+export const BLUEPRINT_INTERNAL_KINDS = {
+  'value-contradiction': {
+    zhCN: '同一件具体事物被写成两个不相容的值',
+    enUS: 'one concrete thing is given two incompatible values',
+  },
+  'exclusive-disposition': {
+    zhCN: '同一件物被同时写成「拒收/不能入卷」与「收下/随卷走」',
+    enUS: 'an item is both refused as inadmissible and accepted into the record in the same chapter',
+  },
+} as const
+
+export type BlueprintInternalKind = keyof typeof BLUEPRINT_INTERNAL_KINDS
+
+export const BLUEPRINT_INTERNAL_KIND_IDS = Object.freeze(Object.keys(BLUEPRINT_INTERNAL_KINDS) as BlueprintInternalKind[])
 
 export function buildBlueprintInternalPrompt(request: BlueprintInternalReviewRequest): { system: string, user: string } {
   const en = request.language === 'en-US'
@@ -69,27 +95,35 @@ export function buildBlueprintInternalPrompt(request: BlueprintInternalReviewReq
   const system = en
     ? [
       'You are given chapter blueprints (the plan the prose is written from).',
-      'Report ONLY cases where ONE chapter\'s own plan contradicts itself about the same concrete thing:',
-      'the same object, gesture, procedure or quantity is described with two incompatible values',
+      'Report ONLY cases where ONE chapter\'s own plan contradicts itself. Two kinds count:',
+      'Kind 1 (value contradiction): the same object, gesture, procedure or quantity is described with two incompatible values',
       '(one press vs three presses, two people vs three, left hand vs right hand, before dawn vs after noon).',
       'Two mentions of the same thing that agree are fine. Two different things that happen to share a word are NOT a conflict.',
+      'Kind 2 (exclusive disposition): one party refuses to accept an item or declares it inadmissible ("cannot be filed without X"),',
+      'and the same chapter also has that item accepted, sealed, or carried off into the record — with no line in between lifting the obstacle',
+      '(the condition met, the ruling changed, or the item explicitly filed as an attachment rather than evidence).',
+      'The question "did it ever enter the file" is usually the whole point of that scene; an unanswered one is the defect.',
+      'For kind 2 quote the refusal and the acceptance verbatim; they must both be in the same chapter\'s plan.',
       'Do NOT compare across chapters — each report must concern a single chapter.',
       'Judge by meaning, not by a fixed word list or number pattern: the number may be written in words or digits.',
       'Quote both phrases verbatim from that chapter\'s plan. If you cannot quote both, do not report.',
       'If unsure, do not report — a false alarm makes the author hunt for a contradiction that is not there.',
-      'Output one JSON object: {"issues":[{"chapterNumber":<n>,"firstQuote":"<exact words>","secondQuote":"<exact words>","explanation":"<one sentence: which concrete thing, which two values>"}]}',
+      'Output one JSON object: {"issues":[{"kind":"value-contradiction|exclusive-disposition","chapterNumber":<n>,"firstQuote":"<exact words>","secondQuote":"<exact words>","explanation":"<one sentence: which concrete thing, which two values/dispositions>"}]}',
       'If nothing conflicts, output {"issues":[]}. No commentary outside the JSON.',
     ].join('\n')
     : [
       '下面是章节蓝图（正文照着它写）。',
-      '只报**同一章蓝图自己**对**同一件具体事物**给出两套不能同时成立的数值/工序：',
-      '同一件物、同一个动作、同一道工序或同一个数量，被写成两个不相容的值（压一道 vs 压三道、两个人 vs 三个人、左手 vs 右手、天亮前 vs 午后）。',
+      '只报**同一章蓝图自己**与自己矛盾的地方。两类都算：',
+      '第一类（数值矛盾）：同一件物、同一个动作、同一道工序或同一个数量，被写成两个不相容的值（压一道 vs 压三道、两个人 vs 三个人、左手 vs 右手、天亮前 vs 午后）。',
       '同一件事被提两次而说法一致，不算；两件不同的事恰好共用一个词，也不算。',
+      '第二类（互斥处置）：一方拒绝收下某物、或声明它「没有 X 不能入卷」，同一章又让这物被收下、封存或随卷带走——中间没有任何一句解除该障碍（条件被满足、口径被改、或写明这物只作附卷不作证据）。',
+      '「这物到底进没进卷」往往正是那一场戏的全部目的；没人回答它就是缺陷。',
+      '第二类要逐字引用「拒绝/声明」与「收下/带走」两处，且都必须在同一章蓝图里。',
       '**不要跨章比较**——每条都必须是同一章内部的问题。',
       '按**意思**判断，不要按固定词表或数字形式：数字可能写成汉字也可能写成阿拉伯数字。',
       '两处都必须**逐字引用**该章蓝图里的原文。引不出来就不要报。',
       '不确定就不要报——误报会让作者去找一个并不存在的矛盾。',
-      '输出一个 JSON 对象：{"issues":[{"chapterNumber":<章号>,"firstQuote":"<原文>","secondQuote":"<原文>","explanation":"<一句话：同一件什么、两个什么值>"}]}',
+      '输出一个 JSON 对象：{"issues":[{"kind":"value-contradiction|exclusive-disposition","chapterNumber":<章号>,"firstQuote":"<原文>","secondQuote":"<原文>","explanation":"<一句话：同一件什么、哪两个值/哪两个处置>"}]}',
       '没有就输出 {"issues":[]}。JSON 之外不要写任何解释。',
     ].join('\n')
 
@@ -135,23 +169,36 @@ export function parseBlueprintInternalReview(
     const chapterNumber = Number(record.chapterNumber)
     const firstQuote = String(record.firstQuote ?? '').trim()
     const secondQuote = String(record.secondQuote ?? '').trim()
+    const kind = asBlueprintInternalKind(record.kind)
+    if (kind === null) continue
     const body = byNumber.get(chapterNumber)
     if (!body) continue
     if (!firstQuote || !body.includes(firstQuote)) continue
     if (!secondQuote || !body.includes(secondQuote)) continue
     // 两处必须真的不同——同一条引用两次不是矛盾。
     if (firstQuote === secondQuote) continue
-    const key = `${chapterNumber}:${firstQuote}:${secondQuote}`
+    const key = `${kind}:${chapterNumber}:${firstQuote}:${secondQuote}`
     if (seen.has(key)) continue
     seen.add(key)
     result.push({
       chapterNumber,
+      kind,
       firstQuote,
       secondQuote,
       explanation: String(record.explanation ?? '').trim(),
     })
   }
   return result
+}
+
+/**
+ * 模型给的 `kind` 必须是我们认识的两类之一；缺省按旧口径（`value-contradiction`），
+ * 与历史输出兼容。未知值整条丢弃——宁可少报一条，也不要按错的种类给作者一段不合用的修法。
+ */
+function asBlueprintInternalKind(value: unknown): BlueprintInternalKind | null {
+  const raw = String(value ?? '').trim()
+  if (!raw) return 'value-contradiction'
+  return (BLUEPRINT_INTERNAL_KIND_IDS as readonly string[]).includes(raw) ? raw as BlueprintInternalKind : null
 }
 
 function stripFence(value: string): string {
@@ -175,14 +222,23 @@ export function blueprintInternalFindings(issues: readonly BlueprintInternalIssu
   return [...grouped.entries()].map(([chapterNumber, list]) => {
     const pairs = list.map(item => `「${item.firstQuote}」vs「${item.secondQuote}」`).join('；')
     const explanations = list.map(item => item.explanation).filter(Boolean).join('；')
+    // 两类共用一个 key 族：key 锚在章节上（既成事实），同一章两类并存时合并在一条里
+    // （#164：一章节一个判断一条，ack 不会埋掉没修的那类）。
+    const hasExclusive = list.some(item => (item.kind ?? 'value-contradiction') === 'exclusive-disposition')
+    const leadZh = hasExclusive
+      ? `本章蓝图对同一件物写出了两个不能同时成立的处置——一方拒收/声明它不能入卷，它又被收下/随卷带走。读者读不出这物到底进没进卷，而那正是这一场戏要回答的。`
+      : `本章蓝图**自己**对同一件具体事物写了两套不能同时成立的值。正文会照着蓝图写，于是同一个细节在章内出现两次、数字不同——而这类细节往往正是这一章的落幅所依赖的那一下（读者一旦对上，情绪就泄了）。`
+    const leadEn = hasExclusive
+      ? `This chapter's plan gives one item two dispositions that cannot both hold — one party refuses it as inadmissible while it is also accepted into the record. The reader cannot tell whether it ever entered the file, and that is the question the scene exists to answer.`
+      : `This chapter's plan contradicts itself about one concrete thing. The prose is written from the plan, so the same detail appears twice in one chapter with different values — and such details are often exactly what the chapter's closing beat rests on.`
     return {
       stableFactKey: `blueprint:internal-contradiction:${chapterNumber}`,
       severity: 'warning' as const,
       sourceChapter: chapterNumber,
-      evidence: `第${chapterNumber}章蓝图内部对同一件事给了两套值：${pairs}${explanations ? `（${explanations}）` : ''}`,
+      evidence: `第${chapterNumber}章蓝图内部自相矛盾：${pairs}${explanations ? `（${explanations}）` : ''}`,
       issue: {
-        zhCN: `本章蓝图**自己**对同一件具体事物写了两套不能同时成立的值：${pairs}。正文会照着蓝图写，于是同一个细节在章内出现两次、数字不同——而这类细节往往正是这一章的落幅所依赖的那一下（读者一旦对上，情绪就泄了）。${explanations ? `（${explanations}）` : ''}`,
-        enUS: `This chapter's plan contradicts itself about one concrete thing: ${pairs}. The prose is written from the plan, so the same detail appears twice in one chapter with different values — and such details are often exactly what the chapter's closing beat rests on.${explanations ? ` (${explanations})` : ''}`,
+        zhCN: `${leadZh}${pairs}。${explanations ? `（${explanations}）` : ''}`,
+        enUS: `${leadEn} ${pairs}.${explanations ? ` (${explanations})` : ''}`,
       },
       suggestion: {
         /**
@@ -191,9 +247,14 @@ export function blueprintInternalFindings(issues: readonly BlueprintInternalIssu
          * 那段绳结话——包括讲按字口供、讲油布包的那两条，作者照它去改根本无从下手。
          *
          * 现在改成**引用这一条 finding 自己的两处原文**，并按它们各自的形状给改法。
+         * #222 第二类：障碍要么被解除、要么这物留在卷外——二选一，中间态最伤。
          */
-        zhCN: `二选一，别两处都改模棱两可：①**选一个值当权威**——在「${list[0]!.firstQuote}」与「${list[0]!.secondQuote}」里定一个，把另一处按它统一；②**如果两处本来讲的是两件事**，就在第二处写清区别，别让读者以为是同一个值。两边都不确定时，还有第三条最省事的路：**把那一处改成不报具体值的写法**（只说这件事发生了，不落在数字或处数上）。改完顺带核一下正文：蓝图这一处若是落幅支点，正文里那两句也得跟着统一。`,
-        enUS: `Pick one value as authoritative — choose between “${list[0]!.firstQuote}” and “${list[0]!.secondQuote}” and align the other occurrence with it; or, if the two mentions really are two different things, make the difference explicit so readers do not read them as the same value. When neither side is settled, the cheapest route is to drop the specific value from that spot entirely (say the thing happened without pinning a number). Then check the prose: if this detail carries the closing beat, both mentions there have to match too.`,
+        zhCN: hasExclusive
+          ? `二选一，别让两个处置并排留在蓝图里：①**保留拒收**——「${list[0]!.firstQuote}」成立，那这一场就停在障碍上，把「它进没进卷」留成真正的悬念，后续章节要接；②**让障碍被解除**——在两处之间补一句怎么解除的（条件被满足、口径被改、或写明只作附卷不作证据），然后「${list[0]!.secondQuote}」才成立。正文已照蓝图写时，优先核对正文里有没有那句「解除」，没有就补或删。`
+          : `二选一，别两处都改模棱两可：①**选一个值当权威**——在「${list[0]!.firstQuote}」与「${list[0]!.secondQuote}」里定一个，把另一处按它统一；②**如果两处本来讲的是两件事**，就在第二处写清区别，别让读者以为是同一个值。两边都不确定时，还有第三条最省事的路：**把那一处改成不报具体值的写法**（只说这件事发生了，不落在数字或处数上）。改完顺带核一下正文：蓝图这一处若是落幅支点，正文里那两句也得跟着统一。`,
+        enUS: hasExclusive
+          ? `Pick one disposition — do not leave both in the plan: either keep the refusal (“${list[0]!.firstQuote}”) and let the scene stop at that obstacle, leaving "did it enter the file" as a real open question for later chapters; or lift the obstacle between the two beats with one line (the condition was met, the ruling changed, or the item is filed as an attachment, not evidence) so that “${list[0]!.secondQuote}” becomes valid. If the prose already followed the plan, check first whether that lifting line exists there — add it or cut the crossing beat.`
+          : `Pick one value as authoritative — choose between “${list[0]!.firstQuote}” and “${list[0]!.secondQuote}” and align the other occurrence with it; or, if the two mentions really are two different things, make the difference explicit so readers do not read them as the same value. When neither side is settled, the cheapest route is to drop the specific value from that spot entirely (say the thing happened without pinning a number). Then check the prose: if this detail carries the closing beat, both mentions there have to match too.`,
       },
     }
   })
