@@ -342,6 +342,10 @@ const FINALIZED_FACT_PRECEDENCE = {
     noRetroactiveExecution: '不得把已撤回、取消或被取代的计划追溯写成已执行',
     newAction: '作者或本章蓝图要求在本章发生的事件，必须在本章通过具体行动及其实际后果发生；复述、确认或记账前章已发生的结果不能替代本章要求发生的动作或结果',
     actionConsistency: '付款、收回、失去等状态改变必须按事件先后写清',
+    // issue #231：有主格位不得换主人——两种出路（写改变动作 / 写明是另一处）都要在合同里。
+    slotOwnership: '有主格位不得换主人',
+    slotOwnershipChange: '必须写出改变的动作（谁除的名、谁改的留、什么时候、为什么）',
+    slotOwnershipDistinct: '就要写清它跟前文那一格不是同一处',
     // issue #84：时间承接契约改成「以本章蓝图的【时点】标注为准」，未标注时才退回同日。
     timeRuleStart: '【时间承接】本章紧接上一章结尾：**以本章蓝图 keyEvents 末端「【时点：…】」标注的时点为准**',
     timeRuleEnd: '则写“昨晚”“昨天傍晚”）。',
@@ -357,6 +361,9 @@ const FINALIZED_FACT_PRECEDENCE = {
     noRetroactiveExecution: 'never retroactively portray a withdrawn, cancelled, or superseded plan as executed',
     newAction: 'Events required by the author or this chapter blueprint to happen in this chapter must happen through concrete action and actual consequence here; merely repeating, confirming, or accounting for an outcome already completed in an earlier chapter cannot replace the action or outcome required in this chapter',
     actionConsistency: 'Keep the order and result of paying, recovering, or losing money or property consistent',
+    slotOwnership: 'Owned slots do not change hands silently',
+    slotOwnershipChange: 'write the change on the page (who struck the name, who changed the reservation, when, and why)',
+    slotOwnershipDistinct: 'make that explicit (a different number, a positional difference, or a character noting the distinction)',
     timeRuleStart: "[Time continuity] This chapter follows directly on the previous chapter's ending: **take the time from this chapter's blueprint keyEvents `【时点: …】` label**",
     timeRuleEnd: '"earlier this evening"; if it says "evening" and this chapter is "the next morning", write "last night" or "yesterday evening").',
     lengthContract: '[Chapter length contract]',
@@ -2693,7 +2700,7 @@ ${headingPrefix}第3章：潮门
     },
   ])('puts the $writingLanguage finalized-fact precedence rule in initial and continuation requests', async ({
     writingLanguage, heading, unresolved, verification, planDecision, supportedDecision, authorBoundary, noRetroactiveExecution,
-    newAction, actionConsistency,
+    newAction, actionConsistency, slotOwnership, slotOwnershipChange, slotOwnershipDistinct,
     timeRuleStart, timeRuleEnd, lengthContract, continuationContext,
   }) => {
     const runtime = fakeOutcomes(
@@ -2716,6 +2723,10 @@ ${headingPrefix}第3章：潮门
     expect(rule).toContain(unresolved)
     expect(rule).toContain(verification)
     for (const anchor of [planDecision, supportedDecision, authorBoundary, noRetroactiveExecution, newAction, actionConsistency]) expect(rule).toContain(anchor)
+    // issue #231：有主格位的两条出路（写改变动作 / 写明是另一处）都要进合同。
+    expect(rule).toContain(slotOwnership)
+    expect(rule).toContain(slotOwnershipChange)
+    expect(rule).toContain(slotOwnershipDistinct)
     expect(initial).toContain(timeRuleStart)
     expect(initial).toContain(timeRuleEnd)
     expect(initial.split(heading)).toHaveLength(2)

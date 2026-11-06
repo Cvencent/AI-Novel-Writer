@@ -55,6 +55,10 @@ export const CONTENT_AXES = Object.freeze({
     '本章把**前文已经完整写过的一段事件**又写了一遍：同一组动作／同一段因果链（某件东西被翻出、某件事被处置、某个人被安置）在此前某章已经发生并收过线，本章再来一次，且时间线还倒回去了（前章已经推到「多年后」，本章回到「当天」）；两处给出的后续也不一样（issue #206）',
     'this chapter replays an event the book already wrote and closed: the same sequence of actions or the same causal chain (something dug out, something disposed of, someone placed) happened in an earlier chapter, and here it happens again — with the timeline moving backwards (the earlier chapter already jumped ahead, this one is back on the day) and with a different outcome (issue #206)',
   ],
+  'reassigned-slot': [
+    '同一个**有主的格位/名额**被改了归属，而正文没有任何一句把两次说法接起来（issue #231）：某个编号的格子、某个座次、某个名额、某个待填的位置，前文已经写明它是谁的（空着留给某人、已落了某人的名、某人为某人留着），本章却写成它是给另一个人留的／属于另一个人——两种归属互斥，中间没有「改留」「转让」「除名」这类被写出来的改变动作。这是长篇里读者记得最牢的压力源之一（「主角自己的位置被顶掉」），突然改口等于把之前的紧张感作废',
+    'the OWNERSHIP of a named slot/seat/quota changes with no line bridging the two claims (issue #231): a numbered cell, a seat, a reserved place, a slot waiting to be filled was previously written as belonging to or reserved for one person (left empty for them, their name already in it, someone keeping it for them), and this chapter states it was left for or belongs to someone else — the two claims contradict and no line writes the change (reassignment, transfer, removal)',
+  ],
 } as const)
 
 /**
@@ -124,6 +128,13 @@ export const CONTENT_AXIS_GUIDANCE = Object.freeze({
     fix: [
       '**二选一**：① 删掉本章这一遍，改成**承接**它——写那件事留下的后果、或别人对它的反应（同一件事只发生一次，第二次写的是它的余波）；② 若本章这一遍才是对的，就把前文那一遍删掉或改成**预告**（当时只是提到、并未发生）。⚠️ 两遍并排时最伤的是**时间线**：前章若已推到「多年后」，本章回到「当天」会被读成闪回，而正文没有闪回标记——读者刚合上书又被拽回去。改完还要看**事实账本**：两遍各自收进的事实现在互相矛盾，留哪一条要一起定。',
       'Pick one: either delete this chapter pass and turn it into the consequence — show what that event left behind, or how people reacted to it (an event happens once; the second mention is its aftermath) — or, if this chapter version is right, delete or downgrade the earlier one into a mere mention. The worst part of having both is the timeline: if the earlier chapter already jumped years ahead, coming back to "that same day" reads as a flashback with no marker, and the reader is yanked back right after closing the book. Then check the fact ledger: the two passes have each recorded their own fact and they now contradict.',
+    ],
+  },
+  'reassigned-slot': {
+    problem: ['同一个有主的格位/名额被改了归属却没有交代', 'the ownership of a named slot or reserved place changes with no bridging line'],
+    fix: [
+      '**二选一**：① 若两次说法指的**不是同一个**格位/名额，把它与前文那一格区分开（换个编号、写明位置差异、或借人物一句「不是那一格」），别让读者把两处读成同一格；② 若**确实是同一格**且归属变了，就要写出那次改变的动作（谁除的名、谁改的留、什么时候、为什么），并同步**事实账本**里的旧条目——否则下一章起草会继承旧归属。⚠️ 这是读者记得最牢的压力源之一：前文「他的名字要被写进那一格」的紧张感，到后面突然改口又没解释，等于整段作废。',
+      'Pick one: either make it a DIFFERENT slot or seat than the one established earlier (a different number, an explicit distinction, a character noting "not that one"), or, if it really is the same slot and the ownership changed, write the change on the page (who struck the name, who changed the reservation, when, and why) and update the matching entry in the fact ledger — otherwise the next chapter inherits the old owner. This is one of the pressures readers remember best: the earlier tension of "his name is about to go into that slot" is voided by an unexplained change.',
     ],
   },
 } as const)

@@ -648,3 +648,39 @@ describe('轴描述必须是「中文 + 英文」两个整串，不许靠数组�
     }
   })
 })
+
+/**
+ * issue #231：贯穿全书的「待核栏第三格」（前 40 章一直写着周叙的名字），
+ * 第 101 章突然写成「父亲给徐汐留的活人空位」——同一格位被改了归属，
+ * 正文没有一句把两次说法接起来，错值还进了事实账本。
+ * 新轴 `reassigned-slot` 交模型判（「这句话在说哪个格位」「归属是否互斥」都是内容判断）；
+ * 起草合同同步补【有主格位不得换主人】通用约束（修法③）。
+ */
+describe('reassigned-slot 轴 (issue #231)', () => {
+  it('asks the model about slot ownership in both languages', () => {
+    const { system } = buildContentReviewPrompt({
+      chapters: [{ chapterNumber: 101, content: '正文。' }], axes: ['reassigned-slot'], language: 'zh-CN',
+    })
+    expect(system).toContain('reassigned-slot')
+    expect(system).toContain('格位/名额')
+    expect(system).toContain('两种归属互斥')
+    expect(system).toContain('没有「改留」「转让」「除名」这类被写出来的改变动作')
+    const en = buildContentReviewPrompt({
+      chapters: [{ chapterNumber: 101, content: 'text.' }], axes: ['reassigned-slot'], language: 'en-US',
+    }).system
+    expect(en).toContain('OWNERSHIP of a named slot')
+    expect(en).toContain('no line writes the change')
+  })
+
+  it('carries the axis into guidance with its own problem and fix', () => {
+    const guide = CONTENT_AXIS_GUIDANCE['reassigned-slot']
+    expect(guide.problem[0]).toContain('格位/名额')
+    expect(guide.fix[0]).toContain('二选一')
+    expect(guide.fix[0]).toContain('事实账本')
+    expect(guide.fix[1]).toContain('fact ledger')
+  })
+
+  it('is asked by the review button (axes catalogue covers it)', () => {
+    expect([...CONTENT_AXES_FOR_BUTTON]).toContain('reassigned-slot')
+  })
+})
