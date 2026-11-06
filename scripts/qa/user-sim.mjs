@@ -27,6 +27,7 @@ import * as runSheet from '../redesign/pages/run-sheet.mjs'
 import * as stage from '../redesign/pages/stage.mjs'
 import { withTimeout, closeAppWithTimeout } from './harness-timeouts.mjs'
 import { acquireRunLock, clearStaleElectronHandles } from './run-lock.mjs'
+import { asarMtimeMs, releaseAsarMtimes } from './lib/install-window.mjs'
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const option = name => process.argv.find(arg => arg.startsWith(`--${name}=`))?.slice(name.length + 3)
@@ -52,21 +53,6 @@ const GENERATION_TIMEOUT_MS = Number(option('gen-timeout-min') ?? 25) * 60_000
  * 而**报告自己能不能说清「这次崩溃是不是安装窗口造成的」**，不该靠人每次手比 mtime
  * （已经犯过两次：一次读旧值、一次把 27 分钟读成 27 分钟）。
  */
-function asarMtimeMs(exePath) {
-  if (!exePath) return null
-  // exe 在 <install>\AI小说作家.exe，asar 在 <install>\resources\app.asar
-  const candidates = [
-    path.join(path.dirname(exePath), 'resources', 'app.asar'),
-    path.join(exePath, 'resources', 'app.asar'),
-  ]
-  for (const candidate of candidates) {
-    try {
-      return Math.round(fs.statSync(candidate).mtimeMs)
-    } catch { /* 试下一个 */ }
-  }
-  return null
-}
-
 function resolveExe() {
   const explicit = option('exe')
   if (explicit) {
@@ -366,6 +352,11 @@ const report = {
    * 这一轮的崩溃/异常**不能算产品缺陷**。报告自己说了算，不靠人每次手比 mtime。
    */
   installWindowSuspect: false,
+  /** 判定依据（issue #218）：哪一路证据触发、release 侧看到的新构建时间。 */
+  installWindowReason: null,
+  releaseAsarMtimeAtStart: null,
+  releaseAsarMtimeAtEnd: null,
+  releaseBuiltDuringRun: null,
   projectPath: null,
   steps: [],
   consoleErrors: [],
@@ -858,11 +849,36 @@ function writeReport(target = reportTarget) {
    * 前者能覆盖「起跑那一刻刚好在装」的边界情况（那时 mtime 已经新了，但安装还没写完 asar）。
    */
   report.asarMtimeAtEnd = asarMtimeMs(report.exe)
+  /**
+   * 第二路证据（issue #218）：本次运行窗口里，**release 目录下有没有新构建出来的包**。
+   *
+   * 为什么需要它：装到安装目录是修卡的**最后一步**（先构建、再 robocopy /MIR），
+   * 所以应用完全可能「先被替换掉别的文件而死」，而 app.asar 还没轮到 ——
+   * 上面那条单文件判据就读不出「撞窗口」。而 release 侧的新 asar mtime 一定落在
+   * 构建那一刻：实测那一次正是 12:11:51 构建出 1.5.207、12:13:07 应用崩溃，
+   * 而安装目录的 app.asar 从头到尾没变（11:27:23）→ 单看安装目录会漏报。
+   *
+   * ⚠️ 只看「新于本次起跑」的构建：别的并行任务早先留下的包不算。
+   */
+  const startedMsForInstall = Date.parse(report.startedAt)
+  const finishedMsForInstall = Date.parse(report.finishedAt)
+  const releaseBuilds = releaseAsarMtimes(repo, { startedAtMs: startedMsForInstall, finishedAtMs: finishedMsForInstall })
+  report.releaseAsarMtimeAtStart = releaseBuilds.startedAtMax ?? null
+  report.releaseAsarMtimeAtEnd = releaseBuilds.endedAtMax ?? null
+  report.releaseBuiltDuringRun = releaseBuilds.newestInRunWindow ?? null
   if (report.asarMtimeAtStart !== null && report.asarMtimeAtEnd !== null) {
     const startedMs = Date.parse(report.startedAt)
     const finishedMs = Date.parse(report.finishedAt)
     report.installWindowSuspect = report.asarMtimeAtEnd > report.asarMtimeAtStart
       && report.asarMtimeAtEnd >= startedMs && report.asarMtimeAtEnd <= finishedMs
+    // 安装目录没变、但 release 里在本次运行期间构建出了新包 → 也算撞窗口（见上）。
+    if (!report.installWindowSuspect) {
+      const built = releaseBuilds.newestInRunWindow
+      if (built !== null && built >= startedMsForInstall) {
+        report.installWindowSuspect = true
+        report.installWindowReason = "release 目录在本次运行期间构建出了新包（安装目录的 app.asar 尚未被替换，但应用已可能被 /MIR 换掉别的文件）"
+      }
+    }
   }
   report.failedSteps = report.steps.filter(item => !item.ok).map(item => item.name)
   report.stalled = report.steps.filter(item => /停滞/.test(item.error ?? '')).map(item => item.name)
