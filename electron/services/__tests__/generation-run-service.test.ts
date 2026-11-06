@@ -323,3 +323,33 @@ it('reaps a root that still claims to be executing once that claim is older than
     expect(f.repository.get(run.runId)!.status).toBe('failed')
     expect(f.repository.budget(run.rootActionId).blockedCode).toBe('ROOT_IDLE_TIMEOUT')
 })
+
+/**
+ * issue #215：同 nonce 的幂等判据不许把「begin 之后才绑上去的字段」算进逐字比较。
+ *
+ * `bindMaterialDecision` 会在 begin **之后**往 `sourceManifest` 里写
+ * `materialDecision` / `materialDecisionHash`，并因此改掉 `contextSnapshotId`
+ * （它是 `context:${hash(contextSourcesHash, materialDecisionHash)}`）。
+ * 于是「重试再准备一份（没有裁决）→ 同 nonce 再 begin」必然逐字不等 → 撞 NONCE_CONFLICT。
+ *
+ * 这里从**最底层**钉住这条：绑过裁决的那份与没绑过的那份，只要其余输入一致，就算同一次动作。
+ */
+it('treats a material decision bound after begin as the same action, not a changed input (issue #215)', () => {
+    const f = fixture(), run = f.repository.open(f.open)
+    const decision = {
+        version: 1 as const, verdict: 'admitted' as const, promptHash: textHash('审稿'),
+        capacity: { maxInputUnits: 18_000, methodVersion: 'utf8-bytes-v1', admittedUnits: 0 },
+        coverage: { required: 0, included: 0, complete: true }, included: [], omitted: [],
+    }
+    // 模拟 bindMaterialDecision 的效果：往 manifest 里写裁决（真实路径由 owner 做）。
+    const bound = { ...run.binding, sourceManifest: { ...run.binding.sourceManifest, materialDecision: decision, materialDecisionHash: textHash('x') },
+        contextSnapshotId: 'context:changed-by-decision' }
+    const priorBeforeBound = { ...f.open, sourceManifest: run.binding.sourceManifest }
+    // 直接调 private 判据不可行，改用 open() 的公开行为：
+    // 先绑（改库），再用**一份没有裁决的请求**走同 nonce。
+    f.db.prepare('UPDATE generation_runs SET binding_json=? WHERE run_id=?').run(JSON.stringify(bound), run.runId)
+    expect(() => f.repository.open(priorBeforeBound)).not.toThrow()
+    // 对照：真正换了输入（budget 变了）仍要拒绝。
+    expect(() => f.repository.open({ ...f.open, budget: { ...f.open.budget, maxPhysicalRequests: 99 } }))
+        .toThrow('GENERATION_NONCE_CONFLICT')
+})

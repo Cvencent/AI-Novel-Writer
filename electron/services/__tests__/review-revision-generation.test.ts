@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
+import { isDeepStrictEqual } from 'node:util'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { initializeLegacyBaselineSchema } from '../../migrations/baseline-schema'
 import { getDesktopMigrationRegistry, CURRENT_DESKTOP_SCHEMA_VERSION } from '../../migrations/desktop-registry'
@@ -915,3 +916,51 @@ describe('review and revision generation through the actual owner and SQLite', (
     expect(f.spy).toHaveBeenCalledTimes(2)
     expect(f.db.prepare('SELECT COUNT(*) FROM generation_attempts').pluck().get()).toBe(2)
   })})
+
+/**
+ * issue #215：审稿 ECONNRESET 之后的重试撞 `GENERATION_NONCE_CONFLICT`。
+ *
+ * 真实路径（本机实测复现）：
+ *   ① prepare → begin（此时 sourceManifest 里**没有** materialDecision）
+ *   ② `bindMaterialDecision`（写进 materialDecision + materialDecisionHash，
+ *      并因此改掉 `contextSnapshotId` —— 它是 `context:${hash(contextSourcesHash, materialDecisionHash)}`）
+ *   ③ execute 因 ECONNRESET 失败
+ *   ④ 重试再走一次 prepare → begin：这一份**没有** materialDecision（裁决是第 ② 步绑的）
+ *      → 与 run 上冻结的那份逐字不等 → NONCE_CONFLICT → 界面空等 720 秒
+ *
+ * 根因不是 issue 猜的「reviewRevisionContext 被重算」——**两次 prepare 的 context 逐字相同**
+ * （下面那条断言钉住这一点）。真因是幂等判据把「begin 之后才绑上去的字段」也算进了逐字比较。
+ */
+it('retrying a failed review reuses the same run instead of hitting GENERATION_NONCE_CONFLICT (issue #215)', async () => {
+  const f = fixture(async () => { throw new Error('NETWORK_ERROR') })
+  const first = f.prepare(), selA = f.selection(first)
+  const view = f.owner.begin(selA)
+  f.owner.bindMaterialDecision(view.handle, materialDecision('审稿'))
+  await f.owner.execute({ handle: view.handle, invocationNonce: 'attempt-1',
+    task: { purpose: 'review-chapter', output: 'structured-data', messages: [{ role: 'user', content: '审稿' }] } }).catch(() => {})
+
+  // 重试：与命令层一样再走一次 prepare，然后用**同一个** uiActionNonce 再 begin。
+  const second = f.prepare()
+  // ⚠️ 两次 prepare 的 context 逐字相同 —— 所以「context 被重算」不是这条的原因。
+  expect(isDeepStrictEqual(first.context, second.context)).toBe(true)
+  const again = f.owner.begin({ ...f.selection(second), uiActionNonce: selA.uiActionNonce })
+  // 幂等复用同一个 run：不再抛错，也不再新建一条。
+  expect(again.handle.runId).toBe(view.handle.runId)
+  expect(f.db.prepare('SELECT COUNT(*) FROM generation_runs').pluck().get()).toBe(1)
+})
+
+it('still rejects a same-nonce request whose frozen inputs genuinely changed (issue #215 不许放宽这条)', () => {
+  // 「同 nonce 换了输入」必须照旧拒绝 —— 否则幂等判据就形同虚设。
+  const f = fixture()
+  const prepared = f.prepare(), selection = f.selection(prepared)
+  f.owner.begin(selection)
+  /**
+   * 造一份**只改了冻结输入、其余准入项全过**的 selection：同 nonce、同 context，
+   * 但 `authorInputs` 里的正文字段变了（那会进 sourceManifest / fingerprint）。
+   * ⚠️ 不能只改 `reviewRevisionContextId` —— 那会先撞
+   * `GENERATION_REVIEW_CONTEXT_MISMATCH`（准入表比 sourceManifest 更早）。
+   */
+  const tampered = { ...selection, authorInputs: [{ id: 'review-revision-context', text: '{}' }] }
+  expect(() => f.owner.begin({ ...tampered, uiActionNonce: selection.uiActionNonce }))
+    .toThrow()
+})

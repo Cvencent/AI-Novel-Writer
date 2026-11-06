@@ -292,6 +292,48 @@ export class GenerationRunRepository {
         const rows = this.db().prepare('SELECT attempt_json FROM generation_attempts WHERE run_id=?').all(runId) as { attempt_json: string }[];
         return rows.some(row => (JSON.parse(row.attempt_json) as PhysicalAttempt).status !== 'cancelled-before-dispatch');
     }
+    /**
+     * 同 nonce 的第二次请求，算不算「同一个动作的重试」（issue #215）？
+     *
+     * 原来这里做的是**逐字全等**（sourceManifest / sourceRefs / fingerprint / contextSnapshotId
+     * 全部 `isDeepStrictEqual`）。而审稿这类请求在第一次 begin **之后**还会走一步
+     * `bindMaterialDecision`：那一步会把 `materialDecision` 与 `materialDecisionHash` 写进
+     * `sourceManifest`，并因此改掉 `contextSnapshotId`（`context:${hash(contextSources, materialDecision)}`）。
+     *
+     * 于是真实重试路径必然撞车（本机实测复现）：
+     * ① prepare → begin（此时 sourceManifest 里**没有** materialDecision）
+     * ② bindMaterialDecision（写进去，snapshotId 随之变）
+     * ③ execute 因 ECONNRESET 失败
+     * ④ 重试再走一次 prepare → begin —— 这一份**没有** materialDecision（裁决是第 ② 步才绑的）
+     *    → 与 run 上冻结的那份不等 → `GENERATION_NONCE_CONFLICT`
+     *
+     * 修法：比较时**排除「begin 之后才会被绑上去的那两个字段」**，并把随之派生的
+     * `contextSnapshotHash` 一并排除 —— 与 owner 里既有的 `materialDecisionProjection`
+     * 同一口径（它早就这么算了，只是这条幂等判据没跟上）。
+     *
+     * ⚠️ 其余字段仍逐字全等：真正的「同 nonce 换了输入」照旧拒绝。
+     */
+    private sameAdmittedBinding(prior: RunBinding, next: RunBinding): boolean {
+        const strip = (binding: RunBinding) => ({
+            // ⚠️ 不比 `epoch`：服务重启会铸一个新 epoch，而同一个动作必须复用同一个 run
+            // （既有断言 `mints stable nonce root/run across service restarts` 正是这一条）。
+            // 也不比 `projectId`：它由 openKey 与顶层校验管，不属这份逐字比较。
+            // ⚠️ 不比 `contextSnapshotId`：它 = `context:${hash(contextSourcesHash, materialDecisionHash)}`
+            // （`generation-source-binding.ts`），而 `materialDecisionHash` 正是 begin **之后**
+            // 才绑上去的那个 —— 比它就等于把同一件事再算一遍。
+            // 口径与 owner 里既有的 `materialDecisionProjection` 完全一致（它也不比这一项）。
+            sourceManifest: Object.fromEntries(Object.entries(binding.sourceManifest)
+                .filter(([key]) => key !== 'materialDecision' && key !== 'materialDecisionHash')),
+            fingerprint: Object.fromEntries(Object.entries(binding.fingerprint)
+                .filter(([key]) => key !== 'contextSnapshotHash')),
+            sourceRefs: binding.sourceRefs.map(ref => { const copy: Partial<SourceRef> = { ...ref }; delete copy.epoch; return copy }),
+        })
+        const left = strip(prior), right = strip(next)
+        // 若两侧**都**绑过材料裁决，那就要逐字相等（都绑了还不同 = 真的换了输入）。
+        if (prior.sourceManifest.materialDecision !== undefined && next.sourceManifest.materialDecision !== undefined
+            && !isDeepStrictEqual(prior.sourceManifest.materialDecision, next.sourceManifest.materialDecision)) return false
+        return isDeepStrictEqual(left, right)
+    }
     open(request: OpenGenerationRunRequest): DurableGenerationRun {
         const frozen = binding(request);
         return this.transaction(() => {
@@ -311,7 +353,8 @@ export class GenerationRunRepository {
                 this.assertBlueprintRecoveryWritable(existing.run_id);
                 this.assertPlotOutlineWritable(existing.run_id);
                 const prior = this.get(existing.run_id);
-                if (!isDeepStrictEqual(prior.binding.sourceManifest, frozen.sourceManifest) || !isDeepStrictEqual(prior.binding.sourceRefs.map(ref => { const copy: Partial<SourceRef> = { ...ref }; delete copy.epoch; return copy; }), frozen.sourceRefs.map(ref => { const copy: Partial<SourceRef> = { ...ref }; delete copy.epoch; return copy; })) || encode(prior.binding.fingerprint) !== encode(frozen.fingerprint) || prior.binding.contextSnapshotId !== frozen.contextSnapshotId || encode(this.budget(prior.rootActionId).policy) !== encode(request.budget))
+                if (!this.sameAdmittedBinding(prior.binding, frozen)
+                    || encode(this.budget(prior.rootActionId).policy) !== encode(request.budget))
                     fail('GENERATION_NONCE_CONFLICT');
                 return prior;
             }
