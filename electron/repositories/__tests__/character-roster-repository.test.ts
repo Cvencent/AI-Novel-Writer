@@ -1300,3 +1300,108 @@ describe('cs_* 字段 provenance 缺键的持久化补标 (issue #225)', () => {
     expect(snapshot.status).toBe('inconsistent')
   })
 })
+
+/**
+ * issue #225 建议 ③：mergeDerivedCurrentState 遇到受保护的旧值（author/legacy）
+ * 跳过该字段——旧实现静默 continue，commit 账本记了回写、卡上没写，「两套账」
+ * 从此分叉且无任何信号。现在跳过明细随 receipt.skippedCharacterStateFields 带回。
+ */
+describe('受保护字段的 skipped 明细随 receipt 带回 (issue #225 ③)', () => {
+  it('reports author-protected skips in the receipt while applying other derived fields', () => {
+    const initial = CharacterRosterRepository.commit(commitRequest())
+    const authored = CharacterRosterRepository.commit({
+      operationId: 'manual-state-source-skipped',
+      expectedRevision: initial.revision,
+      schemaVersion: 1,
+      intent: 'manual_edit',
+      entries: initial.snapshot.entries.map((entry, index) => index === 0 ? {
+        ...entry,
+        currentState: {
+          location: '作者设定的山庄',
+          powerLevel: '',
+          physicalState: '',
+          mentalState: '',
+          keyItems: '',
+          recentEvents: '',
+          updatedAtChapter: 1,
+        },
+      } : entry),
+    })
+    insertDraft(2, 2, 'finalized')
+    const existing = authored.snapshot.entries[0]!
+    const source = finalizedSource(2, 2)
+    const derived = CharacterRosterRepository.commit({
+      operationId: 'derived-state-skipped',
+      expectedRevision: authored.revision,
+      schemaVersion: 1,
+      intent: 'chapter_progress',
+      source,
+      entries: [{
+        ...existing,
+        currentState: {
+          ...existing.currentState!,
+          location: '模型试图覆盖的码头',
+          mentalState: '警觉',
+          updatedAtChapter: 2,
+          provenance: {
+            location: { kind: 'derived', source },
+            mentalState: { kind: 'derived', source },
+          },
+        },
+      }],
+    })
+    // 卡上：作者值保持；receipt：跳过明细可诊断。
+    expect(derived.snapshot.entries[0]?.currentState?.location).toBe('作者设定的山庄')
+    expect(derived.skippedCharacterStateFields).toEqual([
+      { characterName: '林舟', field: 'location', reason: 'author-protected' },
+    ])
+  })
+
+  it('reports legacy-protected skips the same way', () => {
+    const initial = CharacterRosterRepository.commit(commitRequest())
+    // 先给林舟一个完整 currentState（commit seam 写入会补 provenance），再把 location 改成 legacy。
+    CharacterRosterRepository.commit({
+      operationId: 'seed-state-for-legacy',
+      expectedRevision: initial.revision,
+      schemaVersion: 1,
+      intent: 'manual_edit',
+      entries: initial.snapshot.entries.map((entry, index) => index === 0 ? {
+        ...entry,
+        currentState: { location: '旧码头', powerLevel: '', physicalState: '', mentalState: '', keyItems: '', recentEvents: '', updatedAtChapter: 1 },
+      } : entry),
+    })
+    // 直接把卡上的 location 改成 legacy 保护值（模拟 v2 之前的存量语义）。
+    const row = db.prepare("SELECT cs_provenance FROM characters WHERE name='林舟'").pluck().get() as string
+    const provenance = JSON.parse(row || '{}') as Record<string, unknown>
+    provenance.location = { kind: 'legacy' }
+    db.prepare("UPDATE characters SET cs_location='存量写的旧码头', cs_provenance=? WHERE name='林舟'").run(JSON.stringify(provenance))
+    // direct write 使 factHash 过期（cs_* 进 fullFactHash）——按既有 repair 语义恢复对账。
+    CharacterRosterRepository.repairFactHashIfSafe(db)
+    insertDraft(2, 2, 'finalized')
+    const existing = CharacterRosterRepository.read().entries.find(entry => entry.name === '林舟')!
+    const source = finalizedSource(2, 2)
+    const derived = CharacterRosterRepository.commit({
+      operationId: 'derived-state-legacy-skip',
+      expectedRevision: CharacterRosterRepository.read().revision,
+      schemaVersion: 1,
+      intent: 'chapter_progress',
+      source,
+      entries: [{
+        ...existing,
+        currentState: {
+          ...existing.currentState!,
+          location: '模型给出的新位置',
+          updatedAtChapter: 2,
+          provenance: {
+            ...existing.currentState!.provenance,
+            location: { kind: 'derived', source },
+          },
+        },
+      }],
+    })
+    expect(derived.snapshot.entries.find(entry => entry.name === '林舟')?.currentState?.location).toBe('存量写的旧码头')
+    expect(derived.skippedCharacterStateFields).toEqual([
+      { characterName: '林舟', field: 'location', reason: 'legacy-protected' },
+    ])
+  })
+})

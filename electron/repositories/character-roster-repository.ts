@@ -549,10 +549,20 @@ function assertCurrentFinalizedSource(
   ) throw new Error('角色状态来源已失效，已拒绝过期后处理写入')
 }
 
+/** 一个被保护而未写入的角色状态字段（issue #225 建议 ③）。 */
+export interface SkippedCharacterStateField {
+  characterName: string
+  field: string
+  reason: 'author-protected' | 'legacy-protected'
+}
+
 function mergeDerivedCurrentState(
   existing: CharacterRosterCharacterState | undefined,
   candidate: CharacterRosterCharacterState,
   source: FinalizedSourceIdentity,
+  /** issue #225 ③：跳过的字段在这里累积（调用方收集进 receipt），不再静默 continue。 */
+  skipped: SkippedCharacterStateField[],
+  characterName: string,
 ): CharacterRosterCharacterState | undefined {
   const merged: CharacterRosterCharacterState = existing
     ? { ...existing, provenance: { ...existing.provenance } }
@@ -574,8 +584,15 @@ function mergeDerivedCurrentState(
     const previousSource = existing?.provenance?.[field]
     const previousValue = existing?.[field] ?? ''
     // Unknown legacy and explicit author values are never silently reclassified or overwritten.
-    if (previousValue && previousSource?.kind !== 'derived') continue
-    if (previousSource?.kind === 'author' || previousSource?.kind === 'legacy') continue
+    if (previousValue && previousSource?.kind !== 'derived') {
+      // issue #225 ③：跳过要有返回信息——「两套账分叉」此前从这里静默发生。
+      skipped.push({ characterName, field, reason: previousSource?.kind === 'author' ? 'author-protected' : 'legacy-protected' })
+      continue
+    }
+    if (previousSource?.kind === 'author' || previousSource?.kind === 'legacy') {
+      skipped.push({ characterName, field, reason: previousSource.kind === 'author' ? 'author-protected' : 'legacy-protected' })
+      continue
+    }
     merged[field] = candidate[field]
     merged.provenance ??= {}
     merged.provenance[field] = provenance
@@ -592,6 +609,8 @@ function mergeIncrementalEntriesWithExisting(
   existingEntries: CharacterRosterEntry[],
   intent: Extract<CharacterRosterCommitIntent, 'blueprint_sync' | 'chapter_progress'>,
   source?: FinalizedSourceIdentity,
+  /** issue #225 ③：受保护未写入的字段在这里累积（进 receipt）。 */
+  skipped: SkippedCharacterStateField[] = [],
 ): CharacterRosterEntry[] {
   if (intent === 'chapter_progress') {
     if (!source) throw new Error('章节状态更新缺少定稿来源收据')
@@ -627,7 +646,7 @@ function mergeIncrementalEntriesWithExisting(
         ? candidate.relationships
         : existing.relationships,
       ...(intent === 'chapter_progress' && candidate.currentState && source
-        ? { currentState: mergeDerivedCurrentState(existing.currentState, candidate.currentState, source) }
+        ? { currentState: mergeDerivedCurrentState(existing.currentState, candidate.currentState, source, skipped, existing.name) }
         : {}),
     }
     return merged
@@ -1194,6 +1213,8 @@ export class CharacterRosterRepository {
       }
 
       let renameByOriginal = new Map<string, string>()
+      // issue #225 ③：受保护未写入的角色状态字段——随 receipt 带回，两套账分叉可诊断。
+      const skippedCharacterStateFields: SkippedCharacterStateField[] = []
       const committedEntries = isLegacyCardsAdoption
         ? existingEntries
         : isManualEdit
@@ -1211,6 +1232,7 @@ export class CharacterRosterRepository {
                   existingEntries,
                    intent as Extract<CharacterRosterCommitIntent, 'blueprint_sync' | 'chapter_progress'>,
                    request.source,
+                   skippedCharacterStateFields,
                  )
               : request.entries
       const writingLanguage = ProjectCoreRepository.get()?.writingLanguage ?? DEFAULT_WRITING_LANGUAGE
@@ -1268,6 +1290,7 @@ export class CharacterRosterRepository {
         revision: nextRevision,
         idempotent: false,
         snapshot,
+        ...(skippedCharacterStateFields.length > 0 ? { skippedCharacterStateFields } : {}),
       }
     }).immediate()
   }

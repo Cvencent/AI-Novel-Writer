@@ -182,4 +182,17 @@ export interface CharacterRosterCommitReceipt {
   revision: number
   idempotent: boolean
   snapshot: CharacterRosterSnapshot
+  /**
+   * 章节推进时被**保护而未写入**的角色状态字段（issue #225 建议 ③）。
+   *
+   * `mergeDerivedCurrentState` 遇到 author/legacy 保护的旧值时跳过该字段——
+   * 旧实现静默 `continue`，commit 账本记了回写、卡上没写，「两套账」从此分叉且无信号。
+   * 现在跳过明细随 receipt 带回；调用方（后处理回执与生成日志）据此可诊断。
+   * 空数组 / 缺省 = 本轮没有跳过任何字段。
+   */
+  skippedCharacterStateFields?: Array<{
+    characterName: string
+    field: string
+    reason: 'author-protected' | 'legacy-protected'
+  }>
 }
