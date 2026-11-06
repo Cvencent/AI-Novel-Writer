@@ -91,6 +91,8 @@
   "src/shared/consistency-preflight.ts::NEGATED_ASSERTION_PHRASE::49f8c4c1",
   "src/shared/consistency-preflight.ts::SCENE_ROSTER_LINE::b75d889f",
   "src/shared/date-conflict-review.ts::DATE_FORM::f97eda9e",
+  "src/shared/date-conflict-review.ts::QUANTITY_DIFF::0060d88e",
+  "src/shared/date-conflict-review.ts::QUANTITY_FORM::06558c33",
   "src/shared/deadline-review.ts::<inline>::5e386123",
   "src/shared/deadline-review.ts::DEADLINE_TIME_FORM::7bc114c8",
   "src/shared/declared-character-count.ts::RESIDUAL_MARKERS::cdee6a77",

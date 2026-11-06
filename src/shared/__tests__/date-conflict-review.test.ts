@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import {
   DATE_CONFLICT_MAX_MENTIONS,
+  dateMentionSentences,
   buildDateConflictPrompt,
   dateConflictFindings,
-  dateMentionSentences,
   parseDateConflictReview,
 } from '../date-conflict-review'
 
@@ -194,5 +194,94 @@ describe('dateConflictFindings：key 稳定、文案指向要改的那一处', (
     const [finding] = dateConflictFindings([issue])
     const copy = `${finding!.issue.zhCN}${finding!.evidence}${finding!.suggestion.zhCN}`.replace(/其他/gu, '')
     expect(copy).not.toMatch(/[他她]/u)
+  })
+})
+
+/**
+ * issue #220：**跨章数量差量对账**——同一份单据的同一个栏位，两处读出不同的量级。
+ *
+ * 现场（同一张三年理赔单的死亡人数栏）：
+ * ```
+ * ch85（副本）指腹按上死亡人数栏。刮白在墨下浮起。原字比上报数多一个。
+ * ch97（正本）上报的死亡人数上头压着后写的数。底下的原字先动，多出几画。
+ *              他数了两遍，多出数人。
+ * ```
+ * 而全书核心事实是「多载**一人**」（ch15/23/55/71/73/74/86 各处一致）。
+ * 三处并排：**+1（ch85）／+数人（ch97）／无数字（ch98 同一正本）**。
+ *
+ * ⚠️ 与 #216（日期）的关系：取数思路同族（跨章同一件事的两个值），所以**并进同一个模块、
+ * 同一颗按钮**，而不是再开一颗——issue 自己也是这么建议的。
+ */
+describe('数量差量也算候选：跨章同一栏位的量级对不上 (issue #220)', () => {
+  const quantityChapters = [
+    { chapterNumber: 85, content: '周叙蹲下去，指腹按上死亡人数栏。刮白在墨下浮起。原字比上报数多一个。' },
+    { chapterNumber: 97, content: '上报的死亡人数上头压着后写的数。底下的原字先动，多出几画。他数了两遍，多出数人。' },
+  ]
+
+  it('picks a quantity-delta sentence as a candidate and marks its family', () => {
+    const mentions = dateMentionSentences(quantityChapters)
+    const quantity = mentions.filter(item => item.kind === 'quantity')
+    expect(quantity.map(item => item.chapterNumber)).toEqual([85, 97])
+    expect(quantity[0]!.sentence).toContain('多一个')
+    expect(quantity[1]!.sentence).toContain('多出数人')
+  })
+
+  it('carries the two preceding sentences, so the field name reaches the model', () => {
+    /**
+     * ⚠️ 这是我实测发现的缺陷：栏位名在候选句**之前两句**
+     * （ch85「指腹按上死亡人数栏。」、ch97「上报的死亡人数上头压着后写的数。」）。
+     * 只给候选句，模型看到的是两句孤立的读数，无从判断说的是不是同一个栏位——
+     * 而那正是「算不算冲突」的前提。
+     */
+    const { user } = buildDateConflictPrompt({ chapters: quantityChapters, language: 'zh-CN' })
+    expect(user).toContain('死亡人数栏')
+    expect(user).toContain('上报的死亡人数')
+    expect(user).toContain('（上文：')
+  })
+
+  it('does not flood the prompt: only delta-framed quantities qualify', () => {
+    // 98 章语料上「几个/多少」出现 1100 次；要求同句有比较/改动框架后只剩 11 处。
+    const noisy = [
+      { chapterNumber: 1, content: '桌上摆着三个碗。他拿起一个。剩下两个。走了两步。又一个人进来。' },
+      { chapterNumber: 2, content: '原字比上报数多一个。' },
+    ]
+    expect(dateMentionSentences(noisy).map(item => item.chapterNumber)).toEqual([2])
+  })
+
+  it('asks the model about the quantity family in both languages', () => {
+    const zh = buildDateConflictPrompt({ chapters: quantityChapters, language: 'zh-CN' }).system
+    expect(zh).toContain('数量差量')
+    expect(zh).toContain('同一个栏位')
+    // 不确定量 vs 确定量也要报（「多出数人」vs「多一个」正是这一形态）。
+    expect(zh).toContain('不确定量')
+    const en = buildDateConflictPrompt({ chapters: quantityChapters, language: 'en-US' }).system
+    expect(en).toContain('QUANTITY-DELTA')
+    expect(en).toContain('INDEFINITE')
+  })
+
+  it('still names the general shape (not only dates) in the finding copy', () => {
+    const [finding] = dateConflictFindings([{
+      earlierChapter: 85, laterChapter: 97,
+      earlierMention: '多一个', laterMention: '多出数人',
+      event: '死亡人数栏的原字比上报数多几人', explanation: '全书口径是「多载一人」',
+    }])
+    expect(finding!.evidence).toContain('同一个值')
+    expect(finding!.issue.zhCN).toContain('量级')
+    // 日期那一族的老文案不该再独占（原来写的是「的日期在两处对不上」）。
+    expect(finding!.issue.zhCN).not.toContain('的日期在两处对不上')
+  })
+
+  it('keeps both quotes verbatim for a quantity pair', () => {
+    const request = { chapters: quantityChapters }
+    const good = JSON.stringify({ issues: [{
+      earlierChapter: 85, laterChapter: 97, earlierMention: '多一个', laterMention: '多出数人',
+      event: '死亡人数栏', explanation: '全书是「多载一人」',
+    }] })
+    expect(parseDateConflictReview(good, request)).toHaveLength(1)
+    const bad = JSON.stringify({ issues: [{
+      earlierChapter: 85, laterChapter: 97, earlierMention: '这句不在正文里', laterMention: '多出数人',
+      event: 'x', explanation: 'y',
+    }] })
+    expect(parseDateConflictReview(bad, request)).toEqual([])
   })
 })
