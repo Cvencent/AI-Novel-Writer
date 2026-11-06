@@ -620,3 +620,57 @@ it('rejects full-book generation above ten chapters and does not normalize an em
   expect(onConfirm).not.toHaveBeenCalled()
   await expect.element(page.getByRole('spinbutton', { name: '本次蓝图章数' })).toHaveValue(null)
 })
+
+/**
+ * issue #232：写满总章数后蓝图对话框的三种死法。
+ *
+ * 现场复刻：100 章全部有蓝图、总章数 100。旧口径三种失败弹同一句
+ * 「请选择有效的连续 1–10 章。全量范围过大时请改选数量或范围」——而它建议的
+ * 两条出路（改数量/改范围）在 100/100 下都不存在合法值，真正的出路（调大总章数）
+ * 在设定页，一个字没提。另有「接着生成」模式下起止章框可编辑但值被完全忽略。
+ */
+describe('写满总章数后的蓝图范围引导 (issue #232)', () => {
+  it('tells the author to raise the total when "Next" would start past the book', async () => {
+    useProjectStore.setState({ currentProject: { ...project, novelConfig: { ...project.novelConfig, totalChapters: 100 } } as never })
+    blueprintChapterNumbers = Array.from({ length: 100 }, (_, index) => index + 1)
+    authoritativeNextChapter = 101
+    const onConfirm = vi.fn(async () => true)
+    await act(async () => root.render(<GenerateBlueprintsDialog isOpen onClose={() => {}} existingCount={100} onConfirm={onConfirm} />))
+    // 写满时对话框直接给出真正的出路，不等作者撞报错。
+    await expect.element(page.getByText('已写满 100 / 100 章')).toBeVisible()
+    await act(async () => page.getByRole('button', { name: '开始生成' }).click())
+    expect(onConfirm).not.toHaveBeenCalled()
+    await expect.element(page.getByText(/已到全书总章数（100 章）/)).toBeVisible()
+    await expect.element(page.getByText(/设定 → 篇幅/).first()).toBeVisible()
+    // 旧文案不再出现：它建议的两条出路在当前状态下都是死路。
+    await expect.element(page.getByText(/全量范围过大时请改选数量或范围/)).not.toBeInTheDocument()
+  })
+
+  it('says the real cause when a custom range starts past the total', async () => {
+    useProjectStore.setState({ currentProject: { ...project, novelConfig: { ...project.novelConfig, totalChapters: 100 } } as never })
+    blueprintChapterNumbers = Array.from({ length: 100 }, (_, index) => index + 1)
+    authoritativeNextChapter = 101
+    const onConfirm = vi.fn(async () => true)
+    await act(async () => root.render(<GenerateBlueprintsDialog isOpen onClose={() => {}} existingCount={100} onConfirm={onConfirm} />))
+    await act(async () => page.getByRole('radio', { name: /第/ }).click())
+    const spins = page.getByRole('spinbutton')
+    await act(async () => spins.nth(1).fill('101'))
+    await act(async () => spins.nth(2).fill('101'))
+    await act(async () => page.getByRole('button', { name: '开始生成' }).click())
+    expect(onConfirm).not.toHaveBeenCalled()
+    await expect.element(page.getByText(/起始章 101 超过全书总章数（100 章）/)).toBeVisible()
+  })
+
+  it('disables the start/end inputs outside the custom-range mode (no more silently ignored values)', async () => {
+    useProjectStore.setState({ currentProject: { ...project, novelConfig: { ...project.novelConfig, totalChapters: 100 } } as never })
+    blueprintChapterNumbers = [1, 2]
+    authoritativeNextChapter = 3
+    await act(async () => root.render(<GenerateBlueprintsDialog isOpen onClose={() => {}} existingCount={2} onConfirm={vi.fn(async () => true)} />))
+    // 默认是「接着生成」：起止章禁用，值再也无法被填进去后被忽略。
+    await expect.element(page.getByRole('spinbutton', { name: '蓝图起始章' })).toBeDisabled()
+    await expect.element(page.getByRole('spinbutton', { name: '蓝图结束章' })).toBeDisabled()
+    // 切到范围模式后可编辑。
+    await act(async () => page.getByRole('radio', { name: /第/ }).click())
+    await expect.element(page.getByRole('spinbutton', { name: '蓝图起始章' })).toBeEnabled()
+  })
+})

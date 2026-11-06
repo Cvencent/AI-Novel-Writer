@@ -285,7 +285,32 @@ export function useDirectoryConfigForm({ isOpen, onClose, existingCount, onConfi
       assertPlanningActionRange({ from: start, to: end })
       if (end > total || (rangeMode === 'range' && start < frozenAppendStart)) throw new Error('range')
     } catch {
-      setLaunchError(text(`请选择有效的连续 1–${PLANNING_ACTION_CHAPTER_LIMIT} 章。全量范围过大时请改选数量或范围。`, `Select 1-${PLANNING_ACTION_CHAPTER_LIMIT} valid consecutive chapters. If the full range is larger, choose a quantity or range.`))
+      // issue #232：按**实际原因**分档给文案。旧口径三种失败弹同一句
+      // 「请选择有效的连续 1–10 章。全量范围过大时请改选数量或范围」——而写满
+      // 总章数之后，「改选数量」与「改选范围」都不存在合法值，真正的出路
+      // （调大总章数）在设定页，一句话都没提。
+      if (rangeMode === 'front' && frozenAppendStart > total) {
+        setLaunchError(text(
+          `已到全书总章数（${total} 章）：接着生成会从第 ${frozenAppendStart} 章开始，超出全书。要先到「设定 → 篇幅」把总章数调大，蓝图范围才会放开。`,
+          `The book is at its planned total of ${total} chapters, and “Next” would start at chapter ${frozenAppendStart}, past the end. Raise the total under Settings → Length first; the blueprint range follows it.`,
+        ))
+        return
+      }
+      if (rangeMode === 'range' && Number(rangeStart) > total) {
+        setLaunchError(text(
+          `起始章 ${Number(rangeStart)} 超过全书总章数（${total} 章）。要先到「设定 → 篇幅」把总章数调大，才能生成第 ${Number(rangeStart)} 章之后的蓝图。`,
+          `Chapter ${Number(rangeStart)} is past the book's planned total of ${total}. Raise the total under Settings → Length before generating blueprints beyond chapter ${total}.`,
+        ))
+        return
+      }
+      if (rangeMode === 'range' && start < frozenAppendStart) {
+        setLaunchError(text(
+          `已有蓝图到第 ${frozenAppendStart - 1} 章：指定范围只能从第 ${frozenAppendStart} 章往后补，不能覆盖已有蓝图。要重做已有章节，用蓝图页每章的「重新生成」。`,
+          `Blueprints already reach chapter ${frozenAppendStart - 1}; a custom range can only extend from chapter ${frozenAppendStart} onward and cannot overwrite existing ones. To redo an existing chapter, use that chapter's "Regenerate" on the blueprint page.`,
+        ))
+        return
+      }
+      setLaunchError(text(`请选择有效的连续 1–${PLANNING_ACTION_CHAPTER_LIMIT} 章。`, `Select 1-${PLANNING_ACTION_CHAPTER_LIMIT} valid consecutive chapters.`))
       return
     }
     let target: number

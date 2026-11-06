@@ -29,6 +29,11 @@ export default function GenerateBlueprintsDialog(props: DirectoryConfigProps) {
     : hasPriorAuthority
       ? text(`正文已定稿到第 ${appendStart - 1} 章，蓝图从第 ${appendStart} 章开始。`, `The manuscript is finalized through chapter ${appendStart - 1}; blueprints start at chapter ${appendStart}.`)
       : text(`按细纲为章节生成蓝图。作品共 ${total} 章。`, `Generate chapter blueprints from the plot outline. The book has ${total} ${pluralEn(total, 'chapter')}.`)
+  // issue #232：写满总章数时在对话框里**直接说**，并给出真正的出路——
+  // 不再让作者对着「改选数量或范围」这两条死路自己想到去设定页。
+  const bookFullNotice = props.existingCount >= total && total > 0
+    ? text(`蓝图已覆盖全部 ${total} 章。要继续往后写，先到「设定 → 篇幅」把总章数调大；已定稿的正文不受影响。`, `Blueprints already cover all ${total} chapters. To continue, raise the total under Settings → Length first; finalized chapters are not affected.`)
+    : null
 
   return (
     <InkDialog
@@ -53,6 +58,7 @@ export default function GenerateBlueprintsDialog(props: DirectoryConfigProps) {
       )}
     >
       <div className="stage-bp-dialog-body">
+        {bookFullNotice && <Notice tone="warn" title={text(`已写满 ${total} / ${total} 章`, `At ${total} / ${total} chapters`)}>{bookFullNotice}</Notice>}
         {form.progressError && <p className="stage-dialog-error" role="alert">{form.progressError}</p>}
         {form.diagnostics.length > 0 && (
           <Notice tone="warn" title={text('旧的生成记录不能续接', 'Previous generation runs cannot continue')}>
@@ -100,11 +106,18 @@ export default function GenerateBlueprintsDialog(props: DirectoryConfigProps) {
           <label className="stage-bp-option">
             <input type="radio" name={ids.range} checked={form.rangeMode === 'range'} onChange={() => form.setRangeMode('range')} />
             {text('第', 'Chapters')}
+            {/*
+              issue #232：起止章**只在「第章至第章」模式生效**——旧实现任何模式下都可编辑，
+              填进去的值在「接着生成」里被完全忽略（提交走的是最高蓝图+1 与本次章数），
+              作者看到数字进去了、报错却在说别的，以为软件坏了。现在非该模式时禁用并说明。
+            */}
             <input
               type="number" className="pi-input stage-bp-num" min={1} max={total} step={1}
               aria-label={text('蓝图起始章', 'First blueprint chapter')}
               value={form.rangeStart} onChange={event => form.setRangeStart(numberValue(event.target.value))}
               onFocus={() => form.setRangeMode('range')}
+              disabled={form.rangeMode !== 'range'}
+              title={form.rangeMode !== 'range' ? text('先选择「第…章至第…章」模式后可编辑', 'Pick the "Chapters … to …" mode to edit') : undefined}
             />
             {text('章至第', 'to')}
             <input
@@ -112,6 +125,8 @@ export default function GenerateBlueprintsDialog(props: DirectoryConfigProps) {
               aria-label={text('蓝图结束章', 'Last blueprint chapter')}
               value={form.rangeEnd} onChange={event => form.setRangeEnd(numberValue(event.target.value))}
               onFocus={() => form.setRangeMode('range')}
+              disabled={form.rangeMode !== 'range'}
+              title={form.rangeMode !== 'range' ? text('先选择「第…章至第…章」模式后可编辑', 'Pick the "Chapters … to …" mode to edit') : undefined}
             />
             {text('章', '')}
           </label>
