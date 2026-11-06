@@ -206,7 +206,7 @@ export function handwritingReviewFindings(issues: readonly HandwritingConflictIs
         enUS: `The same writer “${owner}” is given two **mutually exclusive** hands: ${evidence}. If the book identifies people by handwriting, readers cannot build a reference table — every identification has to be taken on trust; and when a chapter uses one of those traits to rule the person out, looking back shows the two chapters contradict each other and the deduction collapses.`,
       },
       suggestion: {
-        zhCN: `把「${owner}」的笔迹特征**固定下来**：在角色卡里写下他两三类可核对的特征（起笔／转折／收笔／笔压），此后每次判读只**引用**、不再重新描述。改法二选一：①选定其中一套，把另一处按它重写；②如果确实要写「笔迹变了」（手受伤、被人仿写、被指使），就在正文里写明**为什么会变**——让变化成为情节，而不是让特征随机漂移。`,
+        zhCN: `把「${owner}」的笔迹特征**固定下来**：在角色卡里写下两三类可核对的特征（起笔／转折／收笔／笔压），此后每次判读只**引用**、不再重新描述。改法二选一：①选定其中一套，把另一处按它重写；②如果确实要写「笔迹变了」（手受伤、被人仿写、被指使），就在正文里写明**为什么会变**——让变化成为情节，而不是让特征随机漂移。`,
         enUS: `Fix “${owner}”'s handwriting once: record two or three checkable traits (entry, turn, exit, pressure) on the character card and only **cite** them afterwards. To repair: (1) keep one set and rewrite the other occurrence after it; or (2) if the hand really changed (injury, forgery, coercion), say on the page **why** — make the change plot instead of letting traits drift.`,
       },
     }

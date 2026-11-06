@@ -206,11 +206,13 @@ export function findUnreconcilableAgeFindings(
       sourceChapter: chapter.chapterNumber,
       evidence: `第${chapter.chapterNumber}章写了年龄（${quotes}），但这些句子都没有点名在册角色，年龄归不到任何人`,
       issue: {
-        zhCN: `本章给出了年龄（${quotes}），可这些句子说的是「她」而不是某个在册角色的名字，所以这条年龄**没有任何落点**：角色卡里没有它，事实账本里也没有它。等后面再写这个人时，程序——以及作者自己——都无从知道她多大，也就无从发现「前文当成孩子、后文按成年人处置」这类矛盾。`,
-        enUS: `This chapter states an age (${quotes}), but it says "she" rather than naming a carded character, so the age lands nowhere: it is not in any character card nor in the fact ledger. When this person appears again, neither the program nor the author has any recorded age to check against — so "written as a child earlier, handled as an adult later" cannot be caught.`,
+        // ⚠️ 不写「她」/「他」（issue #217）：判据只知道这些句子**没有点名在册角色**，
+        // 并不知道那个人是谁、是男是女——写死一个代词就是在替作者认人。
+        zhCN: `本章给出了年龄（${quotes}），可这些句子用的是人称代词而不是某个在册角色的名字，所以这条年龄**没有任何落点**：角色卡里没有它，事实账本里也没有它。等后面再写这个人时，程序——以及作者自己——都无从知道其年龄，也就无从发现「前文当成孩子、后文按成年人处置」这类矛盾。`,
+        enUS: `This chapter states an age (${quotes}), but these sentences use a personal pronoun rather than naming a carded character, so the age lands nowhere: it is not in any character card nor in the fact ledger. When this person appears again, neither the program nor the author has any recorded age to check against — so "written as a child earlier, handled as an adult later" cannot be caught.`,
       },
       suggestion: {
-        zhCN: `二选一：① 在这一句里点名（「那一年徐汐七岁」），并把年龄写进她的角色卡——名字 + 年龄是最小的对账依据；② 若这个人还不需要建卡，就把年龄改成不依赖它也能读懂的写法（「那一年她还没到腰高」），别留下一个没有归属的数字。`,
+        zhCN: `二选一：① 在这一句里点名（「那一年徐汐七岁」），并把年龄写进该角色的卡里——名字 + 年龄是最小的对账依据；② 若这个人还不需要建卡，就把年龄改成不依赖它也能读懂的写法（「那一年还不到腰高」），别留下一个没有归属的数字。`,
         enUS: `Either name the person in that sentence ("that year Xu Xi was seven") and record the age on their character card — a name plus an age is the minimum basis for checking later — or, if the character does not need a card yet, rewrite the age so it does not leave an unattributed number behind.`,
       },
     })

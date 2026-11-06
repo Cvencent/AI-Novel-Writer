@@ -207,7 +207,7 @@ export function findGaugeScaleMismatches(
         enUS: `The gauge conversion and this chapter's own headcount differ by an order of magnitude: this line says ${conversion.reading}${conversion.unit || ''} equals ${impliedPeople} people, while the same chapter carries ${declared}. The same scale is being used as two different capacities.`,
       },
       suggestion: {
-        zhCN: `把换算与载客量对齐：要么改这一句的换算（若 ${declared} 人才是这一读数该代表的数量），要么改读数。这类数字是读者核证据的唯一凭据，差一次之后他就不再核第二次。`,
+        zhCN: `把换算与载客量对齐：要么改这一句的换算（若 ${declared} 人才是这一读数该代表的数量），要么改读数。这类数字是读者核证据的唯一凭据，差一次之后读者就不再核第二次。`,
         enUS: `Align the conversion with the headcount: either change what this line claims the reading means (if ${declared} is the right figure for it), or change the reading itself. Readers use this number to check the evidence, and one mismatch teaches them to stop checking.`,
       },
     })

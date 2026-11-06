@@ -257,8 +257,9 @@ describe('findBlueprintContinuityRisks', () => {
       // #86 的建议 1（与 #55/#69 同一教训）：只说「确认支线是否被遗忘」等于没给动作，
       // 作者当时就是点了「带提醒继续写」直接往下走。
       const finding = absentAt(20)!
-      expect(finding.suggestion.zhCN).toContain('让他回来')
-      expect(finding.suggestion.zhCN).toContain('写明他的退场')
+      // issue #217：文案改成中性说法（不许写死「他/她」）。
+      expect(finding.suggestion.zhCN).toContain('让这个角色回来')
+      expect(finding.suggestion.zhCN).toContain('写明退场')
       expect(finding.suggestion.enUS).toContain('bring them back')
       expect(finding.suggestion.enUS).toContain('write the exit')
     })
@@ -690,7 +691,7 @@ describe('cast absence monitoring covers supporting characters (issue #107)', ()
     // 文案要按 role 说「配角」，不能说「主要角色」——否则作者以为判据把配角当主角了。
     expect(finding!.issue.zhCN).toContain('配角')
     expect(finding!.issue.zhCN).not.toContain('主要角色')
-    expect(finding!.suggestion.zhCN).toContain('写明他的退场')
+    expect(finding!.suggestion.zhCN).toContain('写明退场')
   })
 
   it('the ablation holds: the same data with role=antagonist also reports (root cause was the role filter)', () => {

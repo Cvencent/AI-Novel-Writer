@@ -309,7 +309,7 @@ export function findExpandedContinuityRisks(input: {
         suggestion: {
           // 出路要给**两个都可执行**的分支（issue #86 的建议 1，与 #55/#69 同一教训：
           // 只说「确认是否被遗忘」等于没给动作——作者当时按了「带提醒继续写」就往下走了）。
-          zhCN: `二选一：①让他回来——安排一次状态推进、远程影响或短暂登场；②他这条线就是收束了——在正文里写明他的退场及其原因（例如写明他搬走了、调离了、或者不再管这件事），别让读者以为作者忘了。两种情况都要落到正文，不要在预检弹层里点「继续」了事。`,
+          zhCN: `二选一：①让这个角色回来——安排一次状态推进、远程影响或短暂登场；②这条人物线就是收束了——在正文里写明退场及其原因（例如写明是搬走了、调离了、或者不再管这件事），别让读者以为作者忘了。两种情况都要落到正文，不要在预检弹层里点「继续」了事。`,
           enUS: `Pick one: (1) bring them back \u2014 schedule a state advance, an off-page consequence, or a brief appearance; (2) their thread really is closed \u2014 write the exit and its cause into the prose (for example, say outright that they moved away, were reassigned, or stopped pursuing the matter), so readers do not think the author forgot. Either way it must land on the page; do not just click “continue” on the preflight notice.`,
         },
       })
@@ -323,7 +323,7 @@ export function findExpandedContinuityRisks(input: {
         stableFactKey: `cast:thin:${normalizedKeyPart(character.name)}`,
         severity: 'warning', sourceChapter: input.currentChapter, evidence: `${character.name} 的动机一栏是空的`,
         issue: {
-          zhCN: `${roleLabelZh}“${character.name}”没有填写动机。长期写作时模型容易把他工具化。`,
+          zhCN: `${roleLabelZh}“${character.name}”没有填写动机。长期写作时模型容易把这个角色工具化。`,
           enUS: `${roleLabelEn} “${character.name}” has no motivation. Long-form drafting will tend to use them as a plot tool.`,
         },
         suggestion: {
@@ -448,7 +448,7 @@ export function findSynopsisCastMismatches(input: SynopsisChapterCastInput): Con
       sourceChapter: input.chapterNumber,
       evidence: `蓝图第${input.chapterNumber}章角色「${name}」在本章细纲中未出现`,
       issue: {
-        zhCN: `本章蓝图把「${name}」列为出场角色，但本章细纲从头到尾没有提到他。起草时不要用他来顶替细纲点名的角色。`,
+        zhCN: `本章蓝图把「${name}」列为出场角色，但本章细纲从头到尾没有提到。起草时不要用它来顶替细纲点名的角色。`,
         enUS: `The blueprint schedules “${name}”, but this chapter's synopsis never mentions them. Do not let them stand in for a character the synopsis does name.`,
       },
       suggestion: {
@@ -648,7 +648,7 @@ export function findNearCastNameFindings(input: NearCastInput): ConsistencyFindi
     // 而全仓没有任何加别名的入口（character_aliases 只在自己内部被写：建卡写自身 name、
     // 改名把旧名置为历史别名）。作者照着提示找不到按钮，只剩「带提醒继续写」，提示就等于噪音。
     suggestion: {
-      zhCN: `二选一：确认是同一人，就在下方「说明为何属于刻意安排」里写下依据（例如「「${name}」是「${near}」在两章里的署名」）并点「保存安排」——这条提醒之后全书不再重复弹；确实是新角色，就在角色名单里为「${name}」建卡，并把本章标为他的首次出场。`,
+      zhCN: `二选一：确认是同一人，就在下方「说明为何属于刻意安排」里写下依据（例如「「${name}」是「${near}」在两章里的署名」）并点「保存安排」——这条提醒之后全书不再重复弹；确实是新角色，就在角色名单里为「${name}」建卡，并把本章标为首次出场。`,
       enUS: `Either confirm it is the same person by writing the reason below (for example, ““${name}” is ${near}’s signature in these chapters”) and choosing Save arrangement — that stops this reminder for the rest of the book — or treat it as a new character: add “${name}” to the roster and mark this chapter as their first appearance.`,
     },
   }))
@@ -686,7 +686,7 @@ export function findAppearanceGaps(input: AppearanceGapInput): ConsistencyFindin
         enUS: `“${entry.name.trim()}” has no appearance on their card, so there is no fixed anchor when drafting; their looks are improvised per chapter, and consistency checks cannot cover them.`,
       },
       suggestion: {
-        zhCN: `在「角色名单」里给「${entry.name.trim()}」补一段外貌（一两句即可：身形、惯常衣着、显眼标志），之后各章沿用；他已在正文出场时，可照已写过的描写回填，不要另起一套外形。`,
+        zhCN: `在「角色名单」里给「${entry.name.trim()}」补一段外貌（一两句即可：身形、惯常衣着、显眼标志），之后各章沿用；若已在正文出场过，可照已写过的描写回填，不要另起一套外形。`,
         enUS: `Add an appearance line for “${entry.name.trim()}” on the character roster (one or two sentences: build, usual clothing, a distinctive mark) and reuse it; if they already appeared, backfill from what the prose described instead of inventing a new look.`,
       },
     }))
@@ -836,9 +836,19 @@ export function findUnregisteredBlueprintCast(input: UnregisteredCastInput): Con
       sourceChapter: lastChapter,
       evidence: `「${entry.name}」进了${span}的蓝图出场名单${weight}，角色卡名册里没有这个人（名册：${input.castNames.join('、') || '空'}）${sourceNote}`,
       issue: {
+        /**
+         * ⚠️ 文案里**不许出现「他」「她」**（issue #217）。
+         *
+         * 原实现轻/重两个分支一个用「他」、一个用「她」，全是照当年样本（#160 的徐汐、
+         * #42 的任九）写死的。而判据只有名字，没有任何性别依据（`characters` 表没有该字段）——
+         * 实测写第 95 章时 3 张卡全被写成「她」，其中一张说的还是主角已经死了的父亲。
+         * 面向作者的文案认错人，比不写代词更糟：作者会先怀疑软件搞错了角色，
+         * 进而怀疑整条提醒。所以统一改成**中性说法**（「这个角色」「其」），
+         * 不做「从正文数他/她」那种猜测——那会把一个内容判断塞进文案层。
+         */
         zhCN: heavy
-          ? `「${entry.name}」在${span}里持续出场${weight}，但角色卡里始终没有这个人：定稿后不会为她回写状态、一致性检查也覆盖不到她，下一章起草时对她的记忆是空白。这条从第${firstChapter}章起就在报，一直没有消解——再挂起下去，她的处境只能靠模型自己记。`
-          : `本章蓝图把「${entry.name}」列为出场角色，但角色卡里没有这个人：定稿后不会为他回写状态，一致性检查也覆盖不到他，下一章起草时对他的记忆是空白。`,
+          ? `「${entry.name}」在${span}里持续出场${weight}，但角色卡里始终没有这个人：定稿后不会回写状态、一致性检查也覆盖不到，下一章起草时对其的记忆是空白。这条从第${firstChapter}章起就在报，一直没有消解——再挂起下去，这个角色的处境只能靠模型自己记。`
+          : `本章蓝图把「${entry.name}」列为出场角色，但角色卡里没有这个人：定稿后不会回写状态，一致性检查也覆盖不到，下一章起草时对其的记忆是空白。`,
         enUS: heavy
           ? `“${entry.name}” appears in ${chapters.length} blueprint chapter(s)${weight} but has no character card. No state will be written after finalization, consistency checks skip them, and the next chapter starts with no memory of them. This has been reported since Chapter ${firstChapter} without being resolved.`
           : `This chapter's blueprint casts “${entry.name}”, who has no character card. No state will be written for them after finalization, consistency checks skip them, and the next chapter starts with no memory of them.`,
@@ -847,8 +857,8 @@ export function findUnregisteredBlueprintCast(input: UnregisteredCastInput): Con
         zhCN: fromNotesOnly
           ? `这一格到底是不是一个人，判据判不了——它只出现在笔记表里，没有别的地方能印证。若「${entry.name}」确实是个人（例如是个只有绰号的角色），在蓝图的人物栏里补上这个名字，提醒会转成可直接建卡的形态；若它本来就是个职务或描述（「账房伙计」「管事」这类），把那一格改成职务写法即可，不必建卡。`
           : heavy
-            ? `这个人已经在承担主线，别再挂起：点「为「${entry.name}」建卡」先落一张空卡（姓名 + 定位），再把她的身世、称呼变化与在第${firstChapter}章的首次出场补进卡里。卡本身的内容仍要你或模型来写——判据不替她编身份，只负责让这张卡存在。`
-            : `要保留这个角色，就点「为「${entry.name}」建卡」（姓名 + 定位即可），并把本章标为他的首次出场；只当一次性路人时，请把蓝图与正文里的名字换成无名的身份称呼（如「账房伙计」）。`,
+            ? `这个角色已经在承担主线，别再挂起：点「为「${entry.name}」建卡」先落一张空卡（姓名 + 定位），再把其身份背景、称呼变化与在第${firstChapter}章的首次出场补进卡里。卡本身的内容仍要你或模型来写——判据不替其编身份，只负责让这张卡存在。`
+            : `要保留这个角色，就点「为「${entry.name}」建卡」（姓名 + 定位即可），并把本章标为首次出场；只当一次性路人时，请把蓝图与正文里的名字换成无名的身份称呼（如「账房伙计」）。`,
         enUS: fromNotesOnly
           ? `The check cannot tell whether this entry is a person: it appears only in the notes table, with nothing else to corroborate it. If “${entry.name}” really is someone (say, a character known only by a nickname), add the name to the blueprint's cast field and this becomes a card you can create in one click; if it is a job title or description (“the clerk”, “the steward”), rewrite that cell as a role and there is nothing to create.`
           : heavy
@@ -1084,7 +1094,7 @@ export function findPendingLandingConvergence(input: {
       enUS: `${hitChapters.length} of the last ${hit.window.length} chapters (chapters ${ranges}) — ${share}% — close on the same skeleton: park an object, give it an unfinished state, and let no person lead the sentence (chapters ${hitChapters.join(', ')}). The object changes every time (the evidence above lists which ones) — but the beat the reader hears at the end of each chapter is identical. The closing line is where a reader decides whether to tap the next chapter; a dozen chapters closing on the same form makes the shape of suspense eclipse its content.`,
     },
     suggestion: {
-      zhCN: `换几种落点交替使用：①**落在人身上**——让视角人物在末句做一个动作或判断（例如「他按平封皮，起身往门外走」），把态度写进主体；②**落在台词上**——用一句没说完或没回答的话收（但别写成二选一的胁迫式台词）；③**落在画面上但不带否定**——定格场景，不给「还/仍/只剩/不掉」这类未完结标记（「灯影把库门那道水痕照得发亮」）；④**切断**——直接把决定留到下一章开头再生效。规则是：最近十章的末句落点不得连续落在同一类上。`,
+      zhCN: `换几种落点交替使用：①**落在人身上**——让视角人物在末句做一个动作或判断（例如「按平封皮，起身往门外走」），把态度写进主体；②**落在台词上**——用一句没说完或没回答的话收（但别写成二选一的胁迫式台词）；③**落在画面上但不带否定**——定格场景，不给「还/仍/只剩/不掉」这类未完结标记（「灯影把库门那道水痕照得发亮」）；④**切断**——直接把决定留到下一章开头再生效。规则是：最近十章的末句落点不得连续落在同一类上。`,
       enUS: `Alternate the landing: (1) land on a person — end with the viewpoint character making a move or a judgement, putting the attitude in the subject; (2) land on a line of speech — close on something unsaid or unanswered (but avoid the two-way/threat shape); (3) land on an image without negation — freeze the scene and drop the “still / only left / cannot” marker; (4) cut away — let the decision take effect at the start of the next chapter. Rule: the last-sentence landing must not fall in the same class across ten chapters in a row.`,
     },
   }]
@@ -1233,7 +1243,7 @@ export function findDialogueOpenerConvergence(input: ChapterOpeningStreakInput):
       enUS: `In ${widest!.chapters.length} chapters, the elder or the antagonist opens with the same words — “${widest!.opener}” — with a different tail each time. When every advance of a thread uses the same move (drop half a sentence, then withdraw), readers stop tracking what they learned where and only remember that someone hinted again. The sentence shape replaces the actual information gain.`,
     },
     suggestion: {
-      zhCN: `换投放方式：让线索从物证、行动或第三方的反应里露出来（一页账、一个没说出口的动作、别人对他的态度变了），而不是又由同一个长辈开口；也可以让这次把话说完——信息一次给足，比第五次抛半句更有推进力。若确实要保持「说不下去」的感觉，换个场合或换个说话人，别让「长辈开口 = 你爸当年也」成为读者的预判。`,
+      zhCN: `换投放方式：让线索从物证、行动或第三方的反应里露出来（一页账、一个没说出口的动作、别人的态度变了），而不是又由同一个长辈开口；也可以让这次把话说完——信息一次给足，比第五次抛半句更有推进力。若确实要保持「说不下去」的感觉，换个场合或换个说话人，别让「长辈开口 = 你爸当年也」成为读者的预判。`,
       enUS: `Deliver the thread a different way: let it surface through an object, an action, or a third party's reaction (a ledger page, an unfinished gesture, a change in how others treat him) rather than the same elder speaking. Or let them finish the sentence this time — one complete revelation advances more than a fifth half-sentence. If the unable-to-say-it beat matters, change the setting or the speaker so that “an elder speaks = another 你爸当年也” does not become the reader's expectation.`,
     },
   }]
@@ -1342,7 +1352,7 @@ export function findMissingCastInArch(input: MissingCastInArchInput): Consistenc
         enUS: `“${name}”${role ? ` (${role})` : ''} is on the character roster but has no entry in the generated character group portrait — the document authors actually read and edit at the architecture stage. Missing an antagonist is the worst case: without motivation, speech habits, or behavioural anchors, they are improvised in every chapter, which is where cross-chapter drift and consistency blind spots come from.`,
       },
       suggestion: {
-        zhCN: `在「人物群像」里为「${name}」补一段（哪怕三五行：他要什么、他挡在谁前面、他说话的调子）。他已经在正文或关系行里出现过的话，照已写的内容回填，不要另起一套设定。`,
+        zhCN: `在「人物群像」里为「${name}」补一段（哪怕三五行：想要什么、挡在谁前面、说话的调子）。若已在正文或关系行里出现过，照已写的内容回填，不要另起一套设定。`,
         enUS: `Add a paragraph for “${name}” to the character group portrait — three to five lines is enough: what they want, whom they block, how they talk. If they already appear in the prose or in a relationship line, backfill from what was written instead of inventing a new version.`,
       },
     }]
@@ -1402,7 +1412,7 @@ export function findEntranceShotFindings(input: EntranceShotInput): ConsistencyF
       enUS: `“${hit.character}” enters almost word for word the same way in chapters ${hit.chapters.join(', ')} (${hit.commonSubstring.length} identical characters after stripping punctuation). An entrance is how readers rebuild the scene each chapter; the same line about standing somewhere in the same clothes stops carrying information and gets skipped. It hurts more than a repeated closing shot — the entrance is the start button of every scene.`,
     },
     suggestion: {
-      zhCN: `换这次登场要交代的东西：他累不累、衣服干没干、手里拿着什么、跟谁站在一起、是先出声还是先动手。**同一个角色连续几章的首次出现不得用同一套姿态＋穿戴交代**——前文已经用过的那套写法要换掉，被换掉的十几个字正是本可以写信息的地方。`,
+      zhCN: `换这次登场要交代的东西：累不累、衣服干没干、手里拿着什么、跟谁站在一起、是先出声还是先动手。**同一个角色连续几章的首次出现不得用同一套姿态＋穿戴交代**——前文已经用过的那套写法要换掉，被换掉的十几个字正是本可以写信息的地方。`,
       enUS: `Change what the entrance tells us: whether they are tired, whether the clothes are dry, what is in their hands, who they stand beside, whether they speak or act first. A character's first appearance must not repeat the same posture-plus-clothing formula in adjacent chapters. Earlier chapters have already used versions of that formula, so it can be changed — the freed-up words are exactly where new information could go.`,
     },
   }))

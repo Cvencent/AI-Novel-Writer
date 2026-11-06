@@ -188,11 +188,11 @@ export function lossRestatementReviewFindings(issues: readonly LossRestatementIs
     sourceChapter: item.chapterNumbers[item.chapterNumbers.length - 1]!,
     evidence: `「${item.referent}」的缺失在第 ${item.chapterNumbers.join('、')} 章各被当新损失宣告一次：${item.quote}`,
     issue: {
-      zhCN: `同一笔记忆缺失（「${item.referent}」）在第 ${item.chapterNumbers.join('、')} 章各被宣告了一次，每次读起来都像刚发生的损失。金手指的代价是这本书张力的来源，同一笔被反复宣告，读者学到的是「这个代价可以重复计价」——后面再写「他又忘了一件事」就没有分量了。${item.explanation ? `（${item.explanation}）` : ''}`,
+      zhCN: `同一笔记忆缺失（「${item.referent}」）在第 ${item.chapterNumbers.join('、')} 章各被宣告了一次，每次读起来都像刚发生的损失。金手指的代价是这本书张力的来源，同一笔被反复宣告，读者学到的是「这个代价可以重复计价」——后面再写「又忘了一件事」就没有分量了。${item.explanation ? `（${item.explanation}）` : ''}`,
       enUS: `The same memory loss (“${item.referent}”) is announced once in each of chapters ${item.chapterNumbers.join(', ')}, each time reading like a fresh loss. When a power's cost is repeatedly re-charged for the same thing, readers learn that the cost is repeatable — later "he forgot something again" beats land with no weight.${item.explanation ? ` (${item.explanation})` : ''}`,
     },
     suggestion: {
-      zhCN: `后续章再提这件事时，二选一：① 写成**延续**（让读者读得出「他一直没想起来」）；② 写成**新的获取尝试**（再溯读一次、求人提醒、换个法子查），并把这次尝试的代价落账。不要每次都用同一种「他记得 X，Y 是空的」重新宣告一遍。`,
+      zhCN: `后续章再提这件事时，二选一：① 写成**延续**（让读者读得出「一直没想起来」）；② 写成**新的获取尝试**（再溯读一次、求人提醒、换个法子查），并把这次尝试的代价落账。不要每次都用同一种「记得 X，Y 是空的」重新宣告一遍。`,
       enUS: `When later chapters revisit this, write it as a **continuation** (readers can tell it is still unremembered), or as a **new attempt** (re-reading, asking someone, another route) with its own cost recorded. Do not re-announce it each time with the same “he remembers X, but Y is blank”.`,
     },
   }))
