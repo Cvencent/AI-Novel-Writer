@@ -17,6 +17,20 @@ export interface ModelCallSummary {
    * 与 hasPrompt=false 的区别：false 是这次调用本来就没记录 Prompt，true 是曾经有、后来按策略清掉了。
    */
   promptTrimmed: boolean
+  /**
+   * 实际消耗 token（issue #233）：来自 usage_receipt_json.result.usage.actualTokens——
+   * 「申请上限」（requestedOutputTokens）每一行都一样、等于没有信息；作者要回答
+   * 「这一步花了多少」需要的是这个。
+   */
+  actualTokens: number | null
+  /** 请求侧 token（同源，旧记录没有则 null）。 */
+  inputTokens: number | null
+  completionTokens: number | null
+  reasoningTokens: number | null
+  /** 这次调用结束的收尾原因（`stop` / `length` / null）。 */
+  finishReason: string | null
+  /** 失败码与可判定的传输诊断（ECONNREFUSED 等），没有则空串。 */
+  failureDetail: string
 }
 
 /** 单次调用中模型发起的一个工具调用。 */
@@ -117,6 +131,45 @@ function readToolCalls(messages: readonly { role: string; content: string }[]): 
 }
 
 /**
+ * 读 usage_receipt_json.result（settle 时写入的收尾事实，issue #233）。
+ * 旧记录没有这个键 → 全部返回 null/空，各字段按「无数据」处理，不让页面崩。
+ */
+function readSettleResult(row: AttemptRow): {
+  actualTokens: number | null
+  inputTokens: number | null
+  completionTokens: number | null
+  reasoningTokens: number | null
+  finishReason: string | null
+  failureDetail: string
+} {
+  const rawResult = safeJson<{ result?: unknown }>(row.usage_receipt_json, {}).result
+  const result = safeJson<{
+    usage?: {
+      inputTokens?: unknown
+      completionTokens?: unknown
+      reasoningTokens?: unknown
+      actualTokens?: unknown
+    } | null
+    finishReason?: unknown
+    failureCode?: unknown
+    diagnostics?: unknown
+  }>(typeof rawResult === 'string' ? rawResult : null, {})
+  const usage = result.usage && typeof result.usage === 'object' ? result.usage : {}
+  const numberOf = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null
+  const failureCode = typeof result.failureCode === 'string' && result.failureCode.trim() ? result.failureCode : ''
+  const diagnostics = result.diagnostics && typeof result.diagnostics === 'object'
+    ? JSON.stringify(result.diagnostics) : ''
+  return {
+    actualTokens: numberOf(usage.actualTokens),
+    inputTokens: numberOf(usage.inputTokens),
+    completionTokens: numberOf(usage.completionTokens),
+    reasoningTokens: numberOf(usage.reasoningTokens),
+    finishReason: typeof result.finishReason === 'string' && result.finishReason.trim() ? result.finishReason : null,
+    failureDetail: [failureCode, diagnostics].filter(Boolean).join(' '),
+  }
+}
+
+/**
  * 生成日志的只读投影。
  *
  * Prompt 早已持久化在 generation_attempts.usage_receipt_json 的 replayTask 里，
@@ -132,6 +185,7 @@ export class GenerationLogRepository {
       const attempt = safeJson<{ status?: string; requestedOutputTokens?: number }>(row.attempt_json, {})
       const usage = safeJson<{ purpose?: string; artifactIdentity?: { artifactId?: string } }>(row.usage_receipt_json, {})
       const model = safeJson<{ modelId?: string }>(row.usage_receipt_json, {})
+      const settle = readSettleResult(row)
       return {
         attemptId: row.attempt_id,
         runId: row.run_id,
@@ -143,6 +197,12 @@ export class GenerationLogRepository {
         hasPrompt: readMessages(row).length > 0,
         hasOutput: Boolean(usage.artifactIdentity?.artifactId),
         promptTrimmed: wasPromptTrimmed(row),
+        actualTokens: settle.actualTokens,
+        inputTokens: settle.inputTokens,
+        completionTokens: settle.completionTokens,
+        reasoningTokens: settle.reasoningTokens,
+        finishReason: settle.finishReason,
+        failureDetail: settle.failureDetail,
       }
     })
   }
@@ -159,6 +219,7 @@ export class GenerationLogRepository {
       ? database.prepare('SELECT artifact_json FROM generation_artifacts WHERE artifact_id = ?').get(artifactId) as { artifact_json: string } | undefined
       : undefined
     const artifactPayload = safeJson<{ text?: string }>(artifact?.artifact_json ?? null, {})
+    const settle = readSettleResult(row)
     return {
       attemptId: row.attempt_id,
       runId: row.run_id,
@@ -170,6 +231,12 @@ export class GenerationLogRepository {
       hasPrompt: readMessages(row).length > 0,
       hasOutput: Boolean(artifactPayload.text),
       promptTrimmed: wasPromptTrimmed(row),
+      actualTokens: settle.actualTokens,
+      inputTokens: settle.inputTokens,
+      completionTokens: settle.completionTokens,
+      reasoningTokens: settle.reasoningTokens,
+      finishReason: settle.finishReason,
+      failureDetail: settle.failureDetail,
       promptMessages: readMessages(row),
       output: artifactPayload.text ?? '',
       toolCalls: readToolCalls(readMessages(row)),

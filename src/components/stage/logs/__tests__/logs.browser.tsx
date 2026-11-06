@@ -166,3 +166,59 @@ describe('StageLogs', () => {
     expect(document.body.textContent ?? '').toContain('日志读取失败')
   })
 })
+
+/**
+ * issue #233：token 列原来是「申请上限」（100 行全是 32768，等于没有信息），
+ * 状态列直接显示内部英文值，unknown 展开后只有「（这次调用没有返回文本）」——
+ * 库里写着的 ECONNREFUSED / reasoning-exhausted 一个字都不见。
+ */
+describe('实际用量与失败原因 (issue #233)', () => {
+  const callsWithUsage = [
+    { ...calls[0]!, actualTokens: 2054, inputTokens: 12000, finishReason: 'stop', failureDetail: '' },
+    { ...calls[1]!, status: 'unknown', actualTokens: null, finishReason: null, failureDetail: 'GENERATION_PROVIDER_FAILED code=ECONNREFUSED' },
+  ]
+
+  it('shows actual / requested in the token column instead of only the cap', async () => {
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === 'db:generation-log-list') return callsWithUsage
+      if (channel === 'db:generation-log-read') return { ...detail, actualTokens: 2054, failureDetail: '' }
+      return { success: true }
+    })
+    await render()
+    const textContent = document.body.textContent ?? ''
+    expect(textContent).toContain('2,054 / 8,192 tok')
+    expect(textContent).toContain('没有收尾记录')
+    // 旧记录没有实际值时标注「申请」，不再冒充用量。
+    expect(textContent).toContain('申请 4,096 tok')
+  })
+
+  it('surfaces the failure reason at the top of the detail, not just "no response text"', async () => {
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === 'db:generation-log-list') return callsWithUsage
+      if (channel === 'db:generation-log-read') return { ...callsWithUsage[1]!, promptMessages: [], output: '', toolCalls: [] }
+      return { success: true }
+    })
+    await render()
+    const row = [...document.querySelectorAll('button')].find(b => b.textContent?.includes('arc-outline:from:1'))!
+    await act(async () => { row.click() })
+    await act(async () => { await Promise.resolve() })
+    const textContent = document.body.textContent ?? ''
+    expect(textContent).toContain('GENERATION_PROVIDER_FAILED code=ECONNREFUSED')
+    expect(textContent).toContain('这条记录没有实际用量数据')
+  })
+
+  it('explains reasoning-exhausted when finishReason is length with no output', async () => {
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === 'db:generation-log-list') return callsWithUsage
+      if (channel === 'db:generation-log-read') return { ...callsWithUsage[0]!, finishReason: 'length', output: '', actualTokens: 32768 }
+      return { success: true }
+    })
+    await render()
+    const row = [...document.querySelectorAll('button')].find(b => b.textContent?.includes('plot-outline:chapter:151'))!
+    await act(async () => { row.click() })
+    await act(async () => { await Promise.resolve() })
+    const textContent = document.body.textContent ?? ''
+    expect(textContent).toContain('输出/推理撞到上限被截断')
+    expect(textContent).toContain('推理把输出预算吃满')
+  })
+})

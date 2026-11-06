@@ -18,6 +18,21 @@ interface ModelCallSummary {
   hasOutput: boolean
   /** 完整 Prompt 已被保留策略清理（曾经有，不是本来就没有）。 */
   promptTrimmed: boolean
+  /** 实际消耗 token（issue #233）：settle 时记录，旧记录没有则 null。 */
+  actualTokens: number | null
+  /** 请求侧 token。 */
+  inputTokens: number | null
+  /** 收尾原因（stop / length / null）。 */
+  finishReason: string | null
+  /** 失败码与传输诊断串（无失败为空）。 */
+  failureDetail: string
+}
+
+/** 状态列的人话映射（issue #233）：内部值直接显示会让「没记录收尾」读成术语。 */
+function statusLabel(status: string, text: (zh: string, en: string) => string): string {
+  if (status === 'settled') return text('完成', 'Settled')
+  if (status === 'unknown') return text('没有收尾记录', 'No settle record')
+  return status
 }
 
 /** 展开后的完整详情。 */
@@ -55,6 +70,10 @@ function normalizeDetail(raw: unknown): ModelCallDetail | null {
     status: String(record.status ?? 'unknown'),
     modelName: String(record.modelName ?? ''),
     requestedOutputTokens: typeof record.requestedOutputTokens === 'number' ? record.requestedOutputTokens : null,
+    actualTokens: typeof record.actualTokens === 'number' ? record.actualTokens : null,
+    inputTokens: typeof record.inputTokens === 'number' ? record.inputTokens : null,
+    finishReason: typeof record.finishReason === 'string' && record.finishReason ? record.finishReason : null,
+    failureDetail: typeof record.failureDetail === 'string' ? record.failureDetail : '',
     hasPrompt: messages.length > 0,
     hasOutput: typeof record.output === 'string' && record.output.length > 0,
     promptTrimmed: record.promptTrimmed === true,
@@ -90,7 +109,15 @@ export default function StageLogs() {
     if (!projectPath) return
     try {
       const list = await ipc.invoke('db:generation-log-list', PAGE_SIZE, projectPath)
-      setCalls(Array.isArray(list) ? list as ModelCallSummary[] : [])
+      // issue #233：主进程新字段（actualTokens 等）在旧记录/测试 mock 里可能缺失——
+      // 统一归一成 null，渲染层的数字方法不会撞 undefined。
+      setCalls((Array.isArray(list) ? list as ModelCallSummary[] : []).map(call => ({
+        ...call,
+        actualTokens: typeof call?.actualTokens === 'number' ? call.actualTokens : null,
+        inputTokens: typeof call?.inputTokens === 'number' ? call.inputTokens : null,
+        finishReason: typeof call?.finishReason === 'string' ? call.finishReason : null,
+        failureDetail: typeof call?.failureDetail === 'string' ? call.failureDetail : '',
+      })))
       setError('')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
@@ -145,9 +172,17 @@ export default function StageLogs() {
               <button type="button" className="stage-logs-row" aria-expanded={open} onClick={() => void toggle(call.attemptId)}>
                 {open ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
                 <span className="stage-logs-purpose">{call.purpose || text('（无阶段）', '(no stage)')}</span>
-                <span className="stage-logs-status" data-status={call.status}>{call.status}</span>
+                <span className="stage-logs-status" data-status={call.status}>{statusLabel(call.status, text)}</span>
                 {call.modelName && <span className="stage-logs-model">{call.modelName}</span>}
-                {call.requestedOutputTokens !== null && <span className="stage-logs-tokens">{call.requestedOutputTokens} tok</span>}
+                {/*
+                  issue #233：token 列原来是「申请上限」——100 行全是 32768，等于没有信息。
+                  改成「实际 / 上限」；实际值缺失（旧记录）时只显示上限并标注「申请」。
+                */}
+                {call.actualTokens !== null && call.requestedOutputTokens !== null
+                  ? <span className="stage-logs-tokens">{call.actualTokens.toLocaleString()} / {call.requestedOutputTokens.toLocaleString()} tok</span>
+                  : call.requestedOutputTokens !== null
+                    ? <span className="stage-logs-tokens" title={text('实际用量未记录，这是申请的输出上限', 'Actual usage not recorded; this is the requested cap')}>{text('申请', 'Cap')} {call.requestedOutputTokens.toLocaleString()} tok</span>
+                    : null}
                 {call.promptTrimmed && <span className="stage-logs-row-trimmed">{text('Prompt 已清理', 'Prompt trimmed')}</span>}
               </button>
               {open && (
@@ -156,6 +191,23 @@ export default function StageLogs() {
                   {!detail && !detailLoading && <p className="stage-logs-empty">{text('这条调用没有可显示的记录。', 'No record available for this call.')}</p>}
                   {detail && (
                     <>
+                      {/*
+                        issue #233：失败原因/收尾原因/实际用量——库里一直有
+                        （usage_receipt_json.result），详情页从没显示过。作者要回答
+                        「为什么没出东西」时，「推理吃满预算」与「网关连不上」该做的
+                        动作完全相反，必须在最上面看到。
+                      */}
+                      {detail.failureDetail && (
+                        <p className="stage-logs-trimmed" role="alert">
+                          <strong>{text('失败：', 'Failed: ')}</strong><code>{detail.failureDetail}</code>
+                        </p>
+                      )}
+                      <p className="stage-logs-trimmed">
+                        {detail.actualTokens !== null && text(`实际消耗 ${detail.actualTokens.toLocaleString()} token（申请上限 ${call.requestedOutputTokens?.toLocaleString() ?? '—'}）。`, `Actual usage ${detail.actualTokens.toLocaleString()} tokens (requested cap ${call.requestedOutputTokens?.toLocaleString() ?? '—'}).`)}
+                        {detail.actualTokens === null && text('这条记录没有实际用量数据（旧版本不记录）。', 'No actual usage recorded for this call (older versions did not record it).')}
+                        {detail.finishReason && text(`收尾原因：${detail.finishReason === 'length' ? '输出/推理撞到上限被截断' : detail.finishReason === 'stop' ? '正常结束' : detail.finishReason}。`, `Finish reason: ${detail.finishReason}.`)}
+                        {detail.finishReason === 'length' && !detail.output && text('推理把输出预算吃满、正文一个字都没输出——换更小的任务或限制推理预算。', 'Reasoning consumed the whole output budget with no response text — try a smaller task or cap reasoning.')}
+                      </p>
                       {detail.promptTrimmed && (
                         <p className="stage-logs-trimmed">
                           {text(
