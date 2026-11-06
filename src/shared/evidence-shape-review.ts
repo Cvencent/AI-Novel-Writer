@@ -72,7 +72,7 @@ export interface EvidenceShapeIssue {
   chapterNumber: number
   /** `same-object-drift`：同一件物证在被当成证据的几章里形态不一致；
    *  `impossible-cause`：物证的形态被归因到一个物理上不成立的部位/动作。 */
-  kind: 'same-object-drift' | 'impossible-cause' | 'custody-drift' | 'container-count-drift'
+  kind: 'same-object-drift' | 'impossible-cause' | 'custody-drift' | 'container-count-drift' | 'reading-drift'
   /** 正文原句（必须能在 `chapterNumber` 的正文里逐字找到）。 */
   quote: string
   /** 与之相悖的另一处——另一章的正文原句（跨章漂移时必给）；同一章内矛盾时可等于 quote。 */
@@ -97,6 +97,10 @@ export const EVIDENCE_SHAPE_KINDS = Object.freeze({
   'custody-drift': [
     '同一件被扣押/收存的实物，它的**保管人、锁具状态、所在房间**在相邻章之间变了，而正文没有写任何交接（issue #182）',
     'the keeper, locked state, or room of a seized object changes between chapters with no handover on the page',
+  ],
+  'reading-drift': [
+    '同一件物证被**两次读取**，两次读出的结论互相排斥——而物证本身的形态在两次之间没有变（issue #195）。典型形状：同一片纸/一枚印/一处痕，章 A 读出的底字或数字是 X，章 B 用同一种手法再读一次，读出的却是 Y（X 与 Y 不可能同时是这同一处的读数）；或是**读的是哪一面**在几次之间互相颠倒（一处写「这一面压上去」，别处写「另一面贴住」，说的却是同一处读数）。**已经读过一遍的东西又被当成新发现读一遍**，也要报。',
+    'the SAME piece of evidence is READ twice and the two readings contradict, while the object itself did not change between them (issue #195): chapter A read the hidden character or figure as X, chapter B reads the same spot again by the same method and gets Y; or WHICH SIDE is being read flips between chapters. A thing already read once and then re-read as a fresh discovery also counts.',
   ],
 } as const)
 
@@ -138,6 +142,7 @@ export function buildEvidenceShapePrompt(request: EvidenceShapeRequest): { syste
       'Output one JSON object: {"issues":[{"kind":"<one of the kinds above>","chapterNumber":<n>,"quote":"<exact sentence>","conflictingChapterNumber":<n>,"conflictingQuote":"<exact sentence>","explanation":"<one sentence>"}]}',
       'Container counts count too: when the same container (a sealed evidence bag, an envelope, a box, a folder) is sealed with N things inside (or with "X together with it") and opened holding fewer, and nobody in the opening scene asks about the missing one and no line explains where it went, report it. If the prose itself explains it (someone kept it, it was seized, it was taken out on the page), do not report.',
       'Report at most 3 issues. If nothing qualifies, output {"issues":[]}. No commentary outside the JSON.',
+      'A piece of evidence READ twice with contradictory readings also counts (issue #195): the object did not change, the ANSWER did — the same spot read as A in one chapter and B in a later one by the same method, or the side being read flipping between chapters. A thing already read once and re-read as a fresh discovery also counts.',
     ].join('\n')
     : [
       '读这些章节。有些物件在情节里被当作**证据**用来锁定人或事实。',
@@ -171,6 +176,7 @@ export function buildEvidenceShapePrompt(request: EvidenceShapeRequest): { syste
       '进去时正文写明装了 N 件或明确「连同 X 一起装进去」，开出来只剩 M 件（N ≠ M），',
       '而开袋那一场**没有任何人问起**、也没有一句交代那件去哪了。',
       '正文自己交代过（有人留下、被扣下、当场取走）的不算问题；读者只看到「少了一件且没人提」时才报。',
+      '**同一件物证被读过两次、两次结论互斥**也要报（issue #195）：重点不是形态变了，而是**读出来的答案变了**——同一处的底字/数字/印记，前一章读成 A、后一章用同一种手法读成 B；或者**读的是哪一面**在几次之间颠倒了。已经读过一遍的东西又被当成新发现读一遍，也算。',
       '最多 3 条。没有就输出 {"issues":[]}。JSON 之外不要写任何解释。',
     ].join('\n')
 
@@ -279,23 +285,33 @@ export function evidenceShapeFindings(issues: readonly EvidenceShapeIssue[]): Co
      * （#182 也是这样并进第三档的，而不是各开一颗）。
      */
     const hasCount = list.some(item => item.kind === 'container-count-drift')
-    const onlyCustody = hasCustody && !hasDrift && !hasCause && !hasCount
-    const onlyCount = hasCount && !hasDrift && !hasCause && !hasCustody
+    /**
+     * issue #195：第五档 —— 物证本身没变，**两次读出来的结论**互斥。
+     * 与其余四档并列（**不新开按钮**）：坏法不同（前面是「物在哪/是什么形态」，这里是「读出了什么」）。
+     */
+    const hasReading = list.some(item => item.kind === 'reading-drift')
+    const onlyReading = hasReading && !hasDrift && !hasCause && !hasCustody && !hasCount
+    const onlyCustody = hasCustody && !hasDrift && !hasCause && !hasCount && !hasReading
+    const onlyCount = hasCount && !hasDrift && !hasCause && !hasCustody && !hasReading
     return {
       // 章号是既成事实；合并后天然唯一（#164）。
       stableFactKey: `prose:evidence-shape:${chapterNumber}`,
       severity: 'warning' as const,
       sourceChapter: chapterNumber,
-      evidence: `第${chapterNumber}章 ${quotes} ${onlyCount ? `与封袋时的 ${refs} 对不上件数` : `与前文 ${refs} 对不上`}${explanations ? `（${explanations}）` : ''}`,
+      evidence: `第${chapterNumber}章 ${quotes} ${onlyCount ? `与封袋时的 ${refs} 对不上件数` : onlyReading ? `与前文 ${refs} 的**读数**对不上` : `与前文 ${refs} 对不上`}${explanations ? `（${explanations}）` : ''}`,
       issue: {
-        zhCN: `本章${onlyCount ? '开出来的容器比封进去时少了一件（或多了一件），而开袋这一场没有任何人问起、也没有一句交代那件去哪了' : onlyCustody ? '把一件被扣押的实物写成了换了保管人／锁具状态／所在房间，而正文没有任何交接' : hasCustody ? '把一件物证的保管关系写变了，同时它的形态或成因也立不住' : hasDrift && hasCause ? '把一件物证当作证据，但它的形态与成因都立不住' : hasCause ? '把一件物证的成因写成了物理上不成立的那种（那个部位／那个动作根本留不下这种痕迹）' : '把一件物证当作证据，而它的形态与前面那一章对不上'}：${quotes}；前文是${refs}。物证类错误最伤的地方在于它**安静地通过所有检查**——账本会把它原样收下，之后每一章都当已知事实注入，而读者只要回头翻一次就能看出这条路走不通。${explanations ? `（${explanations}）` : ''}`,
-        enUS: `This chapter ${onlyCount ? 'opens the same container with fewer things inside than were sealed into it, while nobody in the scene asks and no line explains where the missing one went' : onlyCustody ? 'changes the keeper, locked state, or room of a seized object with no handover on the page' : hasCustody ? 'changes the custody of an object AND its shape or cause does not hold up' : hasCause && hasDrift ? 'uses an object as evidence, but both its physical cause and its shape do not hold up' : hasCause ? 'attributes a trace to a physical cause that could not have produced it' : 'uses an object as evidence, but its shape does not match the earlier chapter'}: ${quotes}; earlier it was ${refs}. Evidence errors are the quietest kind — the fact ledger records them verbatim and every later chapter inherits them, while a reader only has to page back once to see the chain cannot work.${explanations ? ` (${explanations})` : ''}`,
+        zhCN: `本章${onlyReading ? '把同一件物证**又读了一遍**，而这一次读出来的答案与前面那次互相排斥——物证本身的形态没变，变的是**读数**' : onlyCount ? '开出来的容器比封进去时少了一件（或多了一件），而开袋这一场没有任何人问起、也没有一句交代那件去哪了' : onlyCustody ? '把一件被扣押的实物写成了换了保管人／锁具状态／所在房间，而正文没有任何交接' : hasCustody ? '把一件物证的保管关系写变了，同时它的形态或成因也立不住' : hasDrift && hasCause ? '把一件物证当作证据，但它的形态与成因都立不住' : hasCause ? '把一件物证的成因写成了物理上不成立的那种（那个部位／那个动作根本留不下这种痕迹）' : '把一件物证当作证据，而它的形态与前面那一章对不上'}：${quotes}；前文是${refs}。物证类错误最伤的地方在于它**安静地通过所有检查**——账本会把它原样收下，之后每一章都当已知事实注入，而读者只要回头翻一次就能看出这条路走不通。${explanations ? `（${explanations}）` : ''}`,
+        enUS: `This chapter ${onlyReading ? 'READS the same piece of evidence again and gets an answer that contradicts the earlier reading — the object did not change, the reading did' : onlyCount ? 'opens the same container with fewer things inside than were sealed into it, while nobody in the scene asks and no line explains where the missing one went' : onlyCustody ? 'changes the keeper, locked state, or room of a seized object with no handover on the page' : hasCustody ? 'changes the custody of an object AND its shape or cause does not hold up' : hasCause && hasDrift ? 'uses an object as evidence, but both its physical cause and its shape do not hold up' : hasCause ? 'attributes a trace to a physical cause that could not have produced it' : 'uses an object as evidence, but its shape does not match the earlier chapter'}: ${quotes}; earlier it was ${refs}. Evidence errors are the quietest kind — the fact ledger records them verbatim and every later chapter inherits them, while a reader only has to page back once to see the chain cannot work.${explanations ? ` (${explanations})` : ''}`,
       },
       suggestion: {
-        zhCN: onlyCount
+        zhCN: onlyReading
+          ? '二选一，别两头都改：① **按后一次为准**——把前面那次读数改写掉（它是「读错了一层」，例如把后来覆上去的墨当成原来的笔迹），并在正文里交代为什么上一次读错了；② **按前一次为准**——把后一次的发现降级或删掉，但那往往等于删掉一整场戏，要先想清楚。⚠️ 还要看**「读的是哪一面」**：这一族的现场里正/背面在几章之间来回颠倒，而整个手法靠的就是「近水的那一面」。定完之后，两次读数各自收进**事实账本**的那条也得跟着改——它们现在互相矛盾。'
+          : onlyCount
           ? '二选一，别两头都改：① **补一句交代**——那件东西被谁留下、扣下、或当场取走（一件消失的道具最少要有一句话说明去向）；② **把件数改对**——若本来就只装了一件，就把封袋那一场的「连同 X」去掉。改完要看**事实账本**：少了的那件若曾被当成证据（例如它正是某次交易换来的），账本里它的下落也得写清楚，否则下一章起草时它等于不存在。'
           : `二选一，别两头都改：① **按物证重写推理**——把它真正能证明的那一点说清楚（是同一枚印、但缺口来源另说；或者这个部位本就按不出缺口，改用别的证据锁人）；② **按推理改物证**——把形态写成与前文一致的那一种，并补一处能解释它怎么变成这样的动作。改完要看**事实账本**：这条证据已经作为已知事实进了后面几章的起草输入，账本里那句转述也得跟着改。`,
-        enUS: `Pick one, do not patch both ends: either rewrite the inference so it rests on what the object can actually prove, or change the object's description so it matches what was already written and add one on-page action that explains how it came to be that way. Then check the fact ledger — this evidence is already an established fact feeding later drafts, and its paraphrase there has to change too.`,
+        enUS: onlyReading
+          ? 'Pick one, do not patch both ends: either settle on the later reading and rewrite the earlier one (it misread a layer, say), stating on the page why the first was wrong — or settle on the earlier one and downgrade or delete the later discovery, which usually costs a whole scene, so decide deliberately. Also `+ String.fromCharCode(96) + `check WHICH SIDE was read`+ String.fromCharCode(96) +`: in this family the front/back flips between chapters while the whole method depends on the wet side. Then fix the fact ledger: the two readings are both recorded as established facts and they now contradict.'
+          : `Pick one, do not patch both ends: either rewrite the inference so it rests on what the object can actually prove, or change the object's description so it matches what was already written and add one on-page action that explains how it came to be that way. Then check the fact ledger — this evidence is already an established fact feeding later drafts, and its paraphrase there has to change too.`,
       },
     }
   })

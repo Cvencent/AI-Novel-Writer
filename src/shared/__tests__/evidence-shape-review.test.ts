@@ -494,3 +494,82 @@ describe('档位清单只有一处真源 (issue #219)', () => {
     expect(EVIDENCE_SHAPE_KIND_IDS.length).toBeGreaterThanOrEqual(4)
   })
 })
+
+/**
+ * issue #195：同一件物证被**读过两次**，两次读出的结论互斥——而物证本身没变。
+ *
+ * 现场（同一片黄纸角，两次「借凝水溯读」）：
+ * ```
+ * ch49 纸角接在手里，背面洇着旧墨。贴到掌心的潮气上，翻出一个半边——三点水。温。
+ * ch50 正面。刮痕底下翻出一个半边，三点水。温。底下残笔，头三个是一七四。
+ * ch87 他伸手翻过来，背面朝上……断口处露出半个字，左边三点水。
+ * ch88 纸角按上去，背面贴住湿木。……纸角把被涂的原字顶上来……一个「徐」字……
+ *      涂痕盖在上头。改笔一笔一笔补成「温」。
+ * ```
+ * 如果底层是「温」，ch88 整章的核心发现（徐哥原本写「徐」，被改笔补成「温」）不成立；
+ * 如果是「徐」，ch50 那次「刮痕底下……温」就是读错了。**同一个字位、同一种手法，不能同时成立。**
+ *
+ * 与既有四档都不同：它们管「物在哪 / 什么形态 / 成因成立吗」，
+ * 这一档管「**读出了什么**」——形态没变，变的是读数。
+ * 所以并进同一颗按钮（第五档），不新开一颗。
+ */
+describe('reading-drift：同一物证两次读数互斥 (issue #195)', () => {
+  const paperChapters = [
+    { chapterNumber: 49, content: '纸角接在手里，背面洇着旧墨。贴到掌心的潮气上，翻出一个半边——三点水。温。' },
+    { chapterNumber: 50, content: '正面。刮痕底下翻出一个半边，三点水。温。底下残笔，头三个是一七四。' },
+    { chapterNumber: 88, content: '纸角按上去，背面贴住湿木。纸背把被涂的原字顶上来——双人旁先露，捺脚后到。一个「徐」字。涂痕盖在上头。改笔一笔一笔补成「温」。' },
+  ]
+
+  it('offers the kind to the model, described as a question about the reading', () => {
+    const { system } = buildEvidenceShapePrompt({ chapters: paperChapters, language: 'zh-CN' })
+    expect(system).toContain('reading-drift')
+    expect(system).toContain('读出来的答案变了')
+    // 要点名「哪一面」也是判据的一部分（现场正/背面在四章之间来回颠倒）。
+    expect(system).toContain('哪一面')
+  })
+
+  it('does not name this book’s objects (fixed checklist item)', () => {
+    const { system, user } = buildEvidenceShapePrompt({ chapters: paperChapters, language: 'zh-CN' })
+    for (const term of ['黄纸角', '三点水', '刮痕', '涂痕', '一七四', '正面']) {
+      expect(system, `提示词不该出现「${term}」`).not.toContain(term)
+    }
+    expect(user).toContain('纸角')
+  })
+
+  it('accepts the new kind and still requires both quotes to be verbatim', () => {
+    const request = { chapters: paperChapters }
+    const good = JSON.stringify({ issues: [{
+      kind: 'reading-drift', chapterNumber: 88,
+      quote: '纸背把被涂的原字顶上来——双人旁先露，捺脚后到。一个「徐」字。',
+      conflictingChapterNumber: 50, conflictingQuote: '正面。刮痕底下翻出一个半边，三点水。温。',
+      explanation: '同一处底字，第 50 章读成温，第 88 章读成徐',
+    }] })
+    expect(parseEvidenceShapeReview(good, request)).toHaveLength(1)
+    const bad = JSON.stringify({ issues: [{
+      kind: 'reading-drift', chapterNumber: 88, quote: '这句不在正文里',
+      conflictingChapterNumber: 50, conflictingQuote: '正面。刮痕底下翻出一个半边，三点水。温。', explanation: 'x',
+    }] })
+    expect(parseEvidenceShapeReview(bad, request)).toEqual([])
+  })
+
+  it('words a pure reading conflict differently, and asks about which side was read', () => {
+    const [finding] = evidenceShapeFindings([{
+      chapterNumber: 88, kind: 'reading-drift',
+      quote: '纸背把被涂的原字顶上来——双人旁先露，捺脚后到。一个「徐」字。',
+      conflictingChapterNumber: 50, conflictingQuote: '正面。刮痕底下翻出一个半边，三点水。温。',
+      explanation: '同一处底字两次读数互斥',
+    }])
+    expect(finding!.stableFactKey).toBe('prose:evidence-shape:88')
+    expect(finding!.evidence).toContain('读数')
+    expect(finding!.issue.zhCN).toContain('读数')
+    // 改法要问「哪一面」，并提醒账本里两条读数现在互相矛盾。
+    expect(finding!.suggestion.zhCN).toContain('哪一面')
+    expect(finding!.suggestion.zhCN).toContain('事实账本')
+  })
+
+  it('counts five kinds now, and the prompt asks about all of them', () => {
+    expect(EVIDENCE_SHAPE_KIND_IDS).toHaveLength(5)
+    const { system } = buildEvidenceShapePrompt({ chapters: paperChapters, language: 'zh-CN' })
+    for (const kind of EVIDENCE_SHAPE_KIND_IDS) expect(system).toContain(`"${kind}"`)
+  })
+})
