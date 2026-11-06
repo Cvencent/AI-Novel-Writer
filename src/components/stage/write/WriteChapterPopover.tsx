@@ -22,6 +22,7 @@ import { useLLMStore } from '../../../stores/llm-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useStageStore } from '../../../stores/navigation/stage-store'
 import { useProjectStore } from '../../../stores/project-store'
+import { useWorkflowStore, workflowResourceKey } from '../../../stores/workflow-store'
 import { captureProjectSession, isProjectSessionCurrent } from '../../project-session-gate'
 import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useAnchoredLayer } from '../../ui/use-anchored-layer'
@@ -76,6 +77,14 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
   const [repairQueue, setRepairQueue] = useState<Array<{ layer: 'world' | 'cast' | 'outline' | 'blueprint' | 'prose'; findings: readonly ConsistencyFinding[] }>>([])
   const [starting, setStarting] = useState(false)
   /**
+   * 本章已有未定稿草稿的簿记提示（issue #224）。
+   *
+   * 现场：同一章三轮「写第 N 章」各开一条全新管线（短纲 17889 tok×3 输入完全相同、
+   * 产出 2832/9077/13948 漂移），弹层一个字没提「本章已有 2 版草稿」——作者不知道
+   * 自己在重复花钱。打开弹层时读一次 draft-list，把版本数、字数、状态摆出来。
+   */
+  const [existingDrafts, setExistingDrafts] = useState<Array<{ version: number; status: string; wordCount: number }> | null>(null)
+  /**
    * 「点下去」到「弹层出现」之间要有一段可读的状态（issue #210）。
    *
    * 现场：点「写第 31 章」后 10 分钟零反馈——没有弹层、没有 chapter-draft 运行、
@@ -105,6 +114,14 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
   const selectedModelId = modelId ?? preferredFunctionModelId(models, functionModels, 'draft_generation', defaultModelId)
   const modelError = generationModelError(models, selectedModelId, text)
   const userGuidance = guidance ?? blueprint.userGuidance
+  /**
+   * 同章活动运行提示（issue #224 ②）：写稿工作流声明 `chapter:N` 写资源键，
+   * 同章的旧 run 还在 running 时再点会被 `getResourceConflict` 拒——但那是
+   * **点了之后**才报。这里在弹层里先说，作者不用撞一次拒绝才知道。
+   * 僵尸 running（进程中断留下的）也在这里可见（issue #224 影响 4）。
+   */
+  const activeChapterRun = useWorkflowStore(s => s.activeRuns.find(run => run.status === 'running'
+    && (run.resourceKeys ?? []).includes(workflowResourceKey('chapter', chapterNumber))))
 
   useEffect(() => {
     if (writeRequest?.chapterNumber !== chapterNumber) return
@@ -122,7 +139,15 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
         setPreflight(current => current ?? { findings: [], exemptions, acknowledgements: [], castNames: [] })
       }
     }).catch(() => undefined)
-  }, [open])
+    // issue #224：同章已有草稿的簿记信息，打开时读一次（读取失败静默——提示是增强，不是门槛）。
+    void ipc.invokeWithProjectSession(session, 'db:draft-list', chapterNumber, session.projectPath).then(drafts => {
+      if (!isProjectSessionCurrent(session)) return
+      const metas = (Array.isArray(drafts) ? drafts : []) as Array<{ version?: unknown; status?: unknown; wordCount?: unknown }>
+      setExistingDrafts(metas
+        .filter(item => Number.isSafeInteger(item.version) && typeof item.status === 'string')
+        .map(item => ({ version: item.version as number, status: item.status as string, wordCount: typeof item.wordCount === 'number' ? item.wordCount : 0 })))
+    }).catch(() => undefined)
+  }, [open, chapterNumber])
 
   /** expected 是发起时的那次打开：保存安排后接着开写时，作品已换就不写，蓝图与章号属于原来那部。 */
   const start = async (ignoreFindingsOnce: boolean, expected?: ProjectSessionContext) => {
@@ -1041,6 +1066,30 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       popoverClassName="stage-write-pop"
     >
       <div className="pi-field">
+        {/*
+          issue #224：两块簿记提示——同章活动运行与已有未定稿草稿。
+          都在作者点「开始」**之前**出现，重复点击的费用与版本失控才有控制点。
+        */}
+        {activeChapterRun && (
+          <p className="stage-write-error" role="alert">
+            {text(
+              `上一次「${activeChapterRun.title}」还在运行中；同一章不能同时开两条管线。等它完成、或取消它再开始。`,
+              `"${activeChapterRun.title}" is still running; two pipelines cannot write the same chapter at once. Wait for it to finish or cancel it first.`,
+            )}
+          </p>
+        )}
+        {existingDrafts !== null && existingDrafts.filter(draft => draft.status !== 'finalized').length > 0 && (() => {
+          const drafts = existingDrafts.filter(draft => draft.status !== 'finalized')
+          const latest = drafts[drafts.length - 1]!
+          return (
+            <p className="stage-write-bookkeeping">
+              {text(
+                `本章已有 ${drafts.length} 个未定稿草稿（${drafts.map(draft => `v${draft.version} ${draft.wordCount} 字`).join('、')}）。重新生成会产生新版本 v${latest.version + 1}，且短纲会重新生成、内容可能与已有版本不同；已有草稿不受影响，之后仍可对比或审稿。`,
+                `This chapter already has ${drafts.length} unfinalized draft(s) (${drafts.map(draft => `v${draft.version}, ${draft.wordCount} chars`).join('; ')}). Regenerating creates v${latest.version + 1} with a freshly generated outline that may differ; existing drafts stay available for comparison or review.`,
+              )}
+            </p>
+          )
+        })()}
         <label htmlFor={modelFieldId}>{text('本次模型', 'Model for this run')} <em>{text('只用于这一次', 'This run only')}</em></label>
         <select
           id={modelFieldId}

@@ -43,6 +43,8 @@ let exemptionSave: () => Promise<{ success: boolean; error?: string }>
 let continuityGate: Promise<void> | null = null
 // issue #55：让守卫按「第 N 章后处理未完成」阻断，用来断言弹层给出出口。
 let blockedPreviousChapter: number | null = null
+// issue #224：同章已有草稿的簿记提示——测试用它摆出「本章已有未定稿草稿」的现场。
+let draftListOverride: Array<{ version: number; status: string; wordCount: number }> | null = null
 
 const DEAD_KEEPER = [{
   draftId: 1, chapterNumber: 1, chapterTitle: '终局', chapterNotes: '老周死亡',
@@ -142,6 +144,7 @@ function installIpc() {
       return { success: true }
     }
     if (channel === 'fs:read-json') return { success: false }
+    if (channel === 'db:draft-list') return draftListOverride ?? []
     if (channel === 'fs:write-json') {
       writtenLogs.push(args[1])
       return { success: true }
@@ -193,6 +196,7 @@ beforeEach(async () => {
   useLLMStore.setState({ models: [model('glm'), model('grok')], defaultModelId: 'grok', loaded: true })
   useWorkflowStore.setState({ activeRuns: [], history: [], startWorkflow: startWorkflow as never, addLog: vi.fn() as never })
   useStageStore.setState({ writeRequest: null })
+  draftListOverride = null
   installIpc()
   container = document.createElement('div')
   document.body.append(container)
@@ -604,5 +608,43 @@ describe('守卫阻断时的弹层出口（issue #55）', () => {
     } finally {
       blockedPreviousChapter = null
     }
+  })
+})
+
+/**
+ * issue #224：同一章反复点「写第 N 章」零簿记提示——三条管线叠加、短纲同输入
+ * 三种产出（2832/9077/13948）、僵尸 running 无人可见。修法是**入口层给信息**：
+ * 弹层打开时列出本章已有未定稿草稿与活动运行。均为簿记判断，无词表、无模型。
+ */
+describe('同章重复写作的簿记提示 (issue #224)', () => {
+  it('lists existing unfinalized drafts and warns a new version will be created', async () => {
+    draftListOverride = [
+      { version: 1, status: 'draft', wordCount: 641 },
+      { version: 2, status: 'draft', wordCount: 890 },
+    ]
+    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" />)
+    await userEvent.click(page.getByRole('button', { name: '本次写作选项' }))
+    await vi.waitFor(() => expect(page.getByText(/本章已有 2 个未定稿草稿/)).toBeVisible())
+    await vi.waitFor(() => expect(page.getByText(/v1 641 字、v2 890 字/)).toBeVisible())
+    await vi.waitFor(() => expect(page.getByText(/重新生成会产生新版本 v3/)).toBeVisible())
+  })
+
+  it('stays silent when the chapter has no unfinalized drafts', async () => {
+    draftListOverride = [{ version: 1, status: 'finalized', wordCount: 800 }]
+    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" />)
+    await userEvent.click(page.getByRole('button', { name: '本次写作选项' }))
+    await vi.waitFor(() => expect(page.getByText('本次模型')).toBeVisible())
+    expect(document.body.textContent).not.toContain('未定稿草稿')
+  })
+
+  it('shows an active run on the same chapter before the author hits start', async () => {
+    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" />)
+    await userEvent.click(page.getByRole('button', { name: '本次写作选项' }))
+    useWorkflowStore.setState({ activeRuns: [{
+      id: 'run-224', projectPath: SESSION.projectPath, type: 'chapter_creation', title: '第 5 章 · 写稿',
+      status: 'running', steps: [], currentStepIndex: 0, startedAt: '',
+      resourceKeys: [`chapter:5`],
+    } as never] })
+    await vi.waitFor(() => expect(page.getByText(/上一次「第 5 章 · 写稿」还在运行中/)).toBeVisible())
   })
 })

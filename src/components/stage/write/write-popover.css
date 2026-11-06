@@ -63,6 +63,14 @@
   white-space: pre-line;
 }
 
+/* 同章已有未定稿草稿的簿记提示（issue #224）：是提示不是错误，用弱化色。 */
+.stage-write-bookkeeping {
+  margin: 0 0 var(--s-2);
+  font-size: var(--fs-12);
+  color: var(--ink-3);
+  white-space: pre-line;
+}
+
 .stage-write-foot {
   margin: 0;
   padding-top: var(--s-3);
