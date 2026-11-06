@@ -42,7 +42,7 @@ async function mount(options: { withLayerButton?: boolean; currentChapter?: numb
   root = createRoot(host)
   const common = {
     preflight, busy: false,
-    onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onRevoke: vi.fn(),
+    onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onConfirmNoIssue: vi.fn(), onRevoke: vi.fn(),
     onAcknowledge: vi.fn(), onUnacknowledge: vi.fn(),
   }
   await act(async () => root!.render(
@@ -134,7 +134,7 @@ describe('修复出口与差异确认 (issue #137)', () => {
     root = createRoot(host)
     const common = {
       preflight: source, busy: false,
-      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onRevoke: vi.fn(),
+      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onConfirmNoIssue: vi.fn(), onRevoke: vi.fn(),
       onAcknowledge: vi.fn(), onUnacknowledge: vi.fn(),
       onOpenLayer: vi.fn(), currentChapter: 45,
       onRepair: vi.fn(), onRepairAll: vi.fn(),
@@ -219,7 +219,7 @@ describe('跨层修复的剩余层提示 (issue #137)', () => {
     root = createRoot(host)
     const common = {
       preflight, busy: false,
-      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onRevoke: vi.fn(),
+      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onConfirmNoIssue: vi.fn(), onRevoke: vi.fn(),
       onAcknowledge: vi.fn(), onUnacknowledge: vi.fn(),
       onOpenLayer: vi.fn(), currentChapter: 45,
       onRepair: vi.fn(), onRepairAll: vi.fn(),
@@ -309,7 +309,7 @@ describe('动作行不许把按钮甩出弹层 (issue #165)', () => {
     root = createRoot(host)
     const common = {
       preflight, busy: false,
-      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onRevoke: vi.fn(),
+      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onConfirmNoIssue: vi.fn(), onRevoke: vi.fn(),
       onAcknowledge: vi.fn(), onUnacknowledge: vi.fn(),
       onOpenLayer: vi.fn(), currentChapter: 45,
       onRepair: vi.fn(), onRepairAll: vi.fn(),
@@ -379,7 +379,7 @@ describe('未建档角色的一键建卡出口 (issue #160)', () => {
     const common = {
       preflight: { ...preflight, findings: (options.findings ?? [castFinding]) as never },
       busy: false,
-      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onRevoke: vi.fn(),
+      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onConfirmNoIssue: vi.fn(), onRevoke: vi.fn(),
       onAcknowledge: vi.fn(), onUnacknowledge: vi.fn(),
       onOpenLayer: vi.fn(), currentChapter: 75,
     }
@@ -437,7 +437,7 @@ describe('「核对…」进行中要有可见状态 (issue #192)', () => {
     const pending = new Promise<void>(resolve => { resolveCheck = resolve })
     const common = {
       preflight, busy: false,
-      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onRevoke: vi.fn(),
+      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onConfirmNoIssue: vi.fn(), onRevoke: vi.fn(),
       onAcknowledge: vi.fn(), onUnacknowledge: vi.fn(),
     }
     await act(async () => root!.render(
@@ -545,7 +545,7 @@ describe('「这些要点按钮才跑」要有可见提示 (issue #194)', () => 
     root = createRoot(host)
     const common = {
       preflight, busy: false,
-      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onRevoke: vi.fn(),
+      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onConfirmNoIssue: vi.fn(), onRevoke: vi.fn(),
       onAcknowledge: vi.fn(), onUnacknowledge: vi.fn(),
       onCheckContent: vi.fn(), onCheckEvidence: vi.fn(),
     }
