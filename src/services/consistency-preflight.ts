@@ -8,6 +8,9 @@ import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuit
 import { DIALOGUE_OPENER_WINDOW_CHAPTERS, OPENING_SHAPE_WINDOW_CHAPTERS } from '../shared/chapter-opening'
 import { ENTRANCE_WINDOW_CHAPTERS } from '../shared/entrance-shot'
 import { findTitleShapeConvergenceFindings } from '../shared/title-shape'
+// issue #204：notes 的「角色动态」表是唯一逐角色列名字的字段，而所有判据只读
+// `characters` 数组 —— 只在 notes 里出现的人于是整条线隐形。
+import { mergedBlueprintCast } from '../shared/blueprint-notes-cast'
 import { auditFinalizedProse } from '../shared/finalized-prose-audit'
 // issue #120：ack 区渲染人话（配不上当轮 finding 时用封闭目录翻译）。
 import { acknowledgementTitleOf } from '../shared/acknowledgement-title'
@@ -66,12 +69,12 @@ export async function readConsistencyPreflight(
     currentChapter,
     blueprints: (Array.isArray(allBlueprints) ? allBlueprints : []).map(blueprint => ({
       chapterNumber: blueprint.chapterNumber,
-      characters: Array.isArray(blueprint.characters) ? blueprint.characters : [],
+      characters: mergedBlueprintCast(blueprint.characters, blueprint.notes),
       // 出场判定也要看描述文本（issue #74）：只读 characters 数组会把
       // 「描述里有他、数组里没他」报成整章缺席。
       descriptionText: [
         blueprint.keyEvents, blueprint.purpose, blueprint.costsAndTurns ?? '',
-        blueprint.suspenseHook, blueprint.foreshadowing ?? '',
+        blueprint.suspenseHook, blueprint.foreshadowing ?? '', blueprint.notes ?? '',
       ].filter(Boolean).join(' '),
     })),
     cast: (Array.isArray(roster?.entries) ? roster.entries : []).map(entry => ({
@@ -105,11 +108,13 @@ export async function readConsistencyPreflight(
         .filter(blueprint => !blueprints.some(current => current.chapterNumber === blueprint.chapterNumber))
         .map(blueprint => ({
           chapterNumber: blueprint.chapterNumber,
-          characters: Array.isArray(blueprint.characters) ? blueprint.characters : [],
+          // issue #204：`characters` 数组 ∪ notes 角色动态表 —— 本书 41/91 张蓝图两者不一致，
+          // 只在 notes 里出现的人（演了 9 章 58 段台词那位）原来整条线隐形。
+          characters: mergedBlueprintCast(blueprint.characters, blueprint.notes),
         })),
       ...blueprints.map(blueprint => ({
         chapterNumber: blueprint.chapterNumber,
-        characters: Array.isArray(blueprint.characters) ? blueprint.characters : [],
+        characters: mergedBlueprintCast(blueprint.characters, blueprint.notes),
       })),
     ],
     castNames,
@@ -136,7 +141,7 @@ export async function readConsistencyPreflight(
     castNames,
     descriptionText: [
       blueprint.keyEvents, blueprint.purpose, blueprint.suspenseHook, blueprint.costsAndTurns ?? '',
-      blueprint.foreshadowing ?? '',
+      blueprint.foreshadowing ?? '', blueprint.notes ?? '',
     ].join('\n'),
   }))
   // 蓝图「冲突与转折」长成了准正文（issue #64）：只做可见性提示，不改写也不拦稿

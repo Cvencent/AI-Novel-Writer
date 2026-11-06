@@ -781,7 +781,7 @@ export function findUnregisteredBlueprintCast(input: UnregisteredCastInput): Con
     }
   }
 
-  const findings: Array<{ finding: ConsistencyFinding, heavy: boolean }> = []
+  const findings: Array<{ finding: ConsistencyFinding, heavy: boolean, chapters: number, dialogueLines: number }> = []
   for (const [key, entry] of byName) {
     const chapters = [...entry.chapters].sort((left, right) => left - right)
     const dialogueLines = (input.prose ?? []).reduce(
@@ -795,7 +795,7 @@ export function findUnregisteredBlueprintCast(input: UnregisteredCastInput): Con
       ? `第${firstChapter}章`
       : `第${firstChapter}–${lastChapter}章（共 ${chapters.length} 章）`
     const weight = dialogueLines > 0 ? `、正文 ${dialogueLines} 段台词` : ''
-    findings.push({ heavy, finding: {
+    findings.push({ heavy, chapters: chapters.length, dialogueLines, finding: {
       stableFactKey: `blueprint-cast:unregistered:${key}`,
       severity: 'warning',
       sourceChapter: lastChapter,
@@ -819,9 +819,19 @@ export function findUnregisteredBlueprintCast(input: UnregisteredCastInput): Con
       action: { kind: 'create-character', name: entry.name },
     } })
   }
-  // 承重的先出（#160 建议 ②）：轻的可以被挂起，承重的被挤到第 5 条之后就更容易一直没人管。
+  /**
+   * 承重的先出，且**承重之间按分量排**（issue #160 建议 ② + #204）。
+   *
+   * 原来只按「承重 / 轻量」两档排、同档保持插入顺序（= 名字首次出现的章号顺序），
+   * 再 `slice(0, 4)`。合并 notes 表之后这条规则会**把最重的那个人挤掉**：
+   * 实测这本书里演了 8 章 58 段台词的那位排在最后（第 82 章才首次出现），
+   * 被三个 6 章的路人+一个 2 章的路人挡在外面 —— 而那正是 #204 要看见的人。
+   * 现在同档内按「出场章数 → 台词段数」降序，重量大的不会因为出现得晚就被切掉。
+   */
   return findings
-    .sort((left, right) => Number(right.heavy) - Number(left.heavy))
+    .sort((left, right) => Number(right.heavy) - Number(left.heavy)
+      || right.chapters - left.chapters
+      || right.dialogueLines - left.dialogueLines)
     .slice(0, 4)
     .map(item => item.finding)
 }
