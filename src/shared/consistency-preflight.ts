@@ -1,7 +1,6 @@
 import type { FinalizedContinuityProjection } from './finalized-continuity'
 import { blueprintKeyEventsOversize } from './blueprint-length'
 import { foreshadowingKeywords, selectDiscriminatingKeywords, type ForeshadowingCommitment } from './foreshadowing-commitments'
-import { findRepeatedEntranceShots } from './entrance-shot'
 // 段落起手主语（issue #94）：与 #81 同族但读的是**每一段的第一个词**。
 // 物件过手动作的固定化（issue #95）：折好→塞进某处 这一套三拍。
 import { findDeclaredDigitCountMismatches } from './numbering-consistency'
@@ -1401,31 +1400,6 @@ export function findMissingCastInArch(input: MissingCastInArchInput): Consistenc
  * 判据**无词表**（本仓在 #30/#43/#70/#80 反复吃过词表过拟合的亏）：不比「有哪些穿戴词」，
  * 而是问同一角色的登场段在不同章里字面有多像——去标点后取最长公共子串。
  */
-export interface EntranceShotInput {
-  chapters: ReadonlyArray<{ chapterNumber: number; content: string }>
-  castNames: readonly string[]
-  /** findings 的 sourceChapter 用（通常是当前章）。 */
-  currentChapter: number
-}
-
-export function findEntranceShotFindings(input: EntranceShotInput): ConsistencyFinding[] {
-  return findRepeatedEntranceShots(input.chapters, { castNames: input.castNames }).map(hit => ({
-    stableFactKey: `entrance:repeat:${hit.character}`,
-    severity: 'warning' as const,
-    // 证据落在**最后命中那一章**（issue #79 的口径：不写成正在写的章）。
-    sourceChapter: hit.chapters[hit.chapters.length - 1]!,
-    evidence: `「${hit.character}」在第 ${hit.chapters.join('、')} 章的登场段逐字重合 ${hit.commonSubstring.length} 字：「${hit.commonSubstring.slice(0, 40)}」`,
-    issue: {
-      zhCN: `「${hit.character}」在第 ${hit.chapters.join('、')} 章的登场段几乎逐字相同（去标点后重合 ${hit.commonSubstring.length} 字：「${hit.commonSubstring.slice(0, 30)}」）。人物登场是读者每章重建画面的锚点，同一个角色几十章里都用同一句「站在某处、穿着某样」交代，画面就不再提供信息，读者会跳过这一段。它比章末收敛更伤——收尾每章只出现一次，登场句是**每场戏的开机键**。`,
-      enUS: `“${hit.character}” enters almost word for word the same way in chapters ${hit.chapters.join(', ')} (${hit.commonSubstring.length} identical characters after stripping punctuation). An entrance is how readers rebuild the scene each chapter; the same line about standing somewhere in the same clothes stops carrying information and gets skipped. It hurts more than a repeated closing shot — the entrance is the start button of every scene.`,
-    },
-    suggestion: {
-      zhCN: `换这次登场要交代的东西：累不累、衣服干没干、手里拿着什么、跟谁站在一起、是先出声还是先动手。**同一个角色连续几章的首次出现不得用同一套姿态＋穿戴交代**——前文已经用过的那套写法要换掉，被换掉的十几个字正是本可以写信息的地方。`,
-      enUS: `Change what the entrance tells us: whether they are tired, whether the clothes are dry, what is in their hands, who they stand beside, whether they speak or act first. A character's first appearance must not repeat the same posture-plus-clothing formula in adjacent chapters. Earlier chapters have already used versions of that formula, so it can be changed — the freed-up words are exactly where new information could go.`,
-    },
-  }))
-}
-
 export function mergeConsistencyFindingsIntoReview(
   review: ReviewLike,
   findings: readonly ConsistencyFinding[],

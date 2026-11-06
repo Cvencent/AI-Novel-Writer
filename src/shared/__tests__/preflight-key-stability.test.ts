@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 
 import {
   findDialogueOpenerConvergence,
-  findEntranceShotFindings,
   findExpandedContinuityRisks,
   findOpeningShapeConvergence,
   findPendingLandingConvergence,
@@ -115,7 +114,6 @@ function allFindings(currentChapter: number): ConsistencyFinding[] {
     // 同一笔遗忘那一族已改成模型判据（#163），这里直接喂它的产出转 findings 那一段：
     // key 锚在**损失本身**上，不带会滚动的章号。
     ...lossRestatementReviewFindings([{ referent: '三个结', chapterNumbers: [19, 20], quoteChapterNumber: 19, quote: '那里空了', explanation: '' }]),
-    ...findEntranceShotFindings({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter }),
     ...findUndatedStreakFindings(SAMPLE_BOOK, currentChapter),
     ...glyphRadicalFindings(SAMPLE_BOOK),
     ...findCastNameDriftFindings({ chapters: SAMPLE_BOOK, castNames: CAST }),
@@ -152,7 +150,6 @@ describe('no preflight key may change when only currentChapter advances (issue #
       ['findOpeningShapeConvergence', n => findOpeningShapeConvergence({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter: n })],
       ['findDialogueOpenerConvergence', n => findDialogueOpenerConvergence({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter: n })],
       ['lossRestatementReviewFindings', () => lossRestatementReviewFindings([{ referent: '三个结', chapterNumbers: [19, 20], quoteChapterNumber: 19, quote: '那里空了', explanation: '' }])],
-      ['findEntranceShotFindings', n => findEntranceShotFindings({ chapters: SAMPLE_BOOK, castNames: CAST, currentChapter: n })],
       ['findUndatedStreakFindings', n => findUndatedStreakFindings(SAMPLE_BOOK, n)],
       ['glyphRadicalFindings', () => glyphRadicalFindings(SAMPLE_BOOK)],
       ['findCastNameDriftFindings', () => findCastNameDriftFindings({ chapters: SAMPLE_BOOK, castNames: CAST })],

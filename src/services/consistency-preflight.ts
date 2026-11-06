@@ -4,9 +4,8 @@ import { findAppearanceGaps, findBlueprintContinuityRisks, findExpandedContinuit
   findNearCastNameFindings, findOversizedBlueprintKeyEvents, findUnregisteredBlueprintCast,
   findDialogueOpenerConvergence, findOpeningShapeConvergence,
   findDesignTimelineConflicts, findMissingCastInArch,
-  findEntranceShotFindings } from '../shared/consistency-preflight'
+} from '../shared/consistency-preflight'
 import { DIALOGUE_OPENER_WINDOW_CHAPTERS, OPENING_SHAPE_WINDOW_CHAPTERS } from '../shared/chapter-opening'
-import { ENTRANCE_WINDOW_CHAPTERS } from '../shared/entrance-shot'
 import { findTitleShapeConvergenceFindings } from '../shared/title-shape'
 // issue #204：notes 的「角色动态」表是唯一逐角色列名字的字段，而所有判据只读
 // `characters` 数组 —— 只在 notes 里出现的人于是整条线隐形。
@@ -231,21 +230,8 @@ export async function readConsistencyPreflight(
   // 12 章足够覆盖「最多三次宣告、每次间隔 ≤4 章」的最坏情况。
   // 已被写死的物证又回来（issue #78）：窗口要覆盖「消亡章 → 再现章」的跨度，
   // 实测样本是 21 章消亡、28/30 章再现，只看最近 6 章会漏掉。
-  // 人物登场句同构（issue #81）：这一位置此前三组检测都看不到（章首/章末/核心戏）。
-  // 窗口用判据自己导出的 `ENTRANCE_WINDOW_CHAPTERS`（issue #92）——原来这里硬编码 10，
-  // 而判据允许相隔 8 章配对、链子还能更长：实测 39 章的书全书 7 组、10 章窗口 **0 组**，
-  // 窗口一滑过去就永久静音，而预检标题仍显示正数条数（作者以为检查过了）。
-  const entranceShotFindings = recentProse.length === 0 ? [] : findEntranceShotFindings({
-    chapters: recentProse
-      .filter(row => Number.isSafeInteger(row.chapterNumber) && row.chapterNumber < currentChapter)
-      .sort((left, right) => left.chapterNumber - right.chapterNumber)
-      .slice(-ENTRANCE_WINDOW_CHAPTERS)
-      .map(row => ({ chapterNumber: row.chapterNumber, content: String(row.content ?? '') })),
-    castNames: (Array.isArray(roster?.entries) ? roster.entries : [])
-      .map(entry => (typeof entry.name === 'string' ? entry.name.trim() : ''))
-      .filter(Boolean),
-    currentChapter,
-  })
+  // 人物登场句同构（issue #81 → #163 第八批）：词表依赖（ENTRANCE_ACTION/ENTRANCE_DRESS）下线，
+  // 这一档由审稿深度检查的 entranceShot 维度承接（模型挑登场段 + 结构比对）。自动预检不再报。
   // 全章体检（issue #83）：收束标注（#65）／编号位数（#47）／能力上限（#51）／
   // 正文层跨章重复（#32/#33/#49）／伏笔未送达（#68）／通牒式收尾连胜（#66）／
   // 跨章断言反转（#52）——这 7 项原来**只接在审稿路径**上，而实测那本书 23 章
@@ -283,7 +269,7 @@ export async function readConsistencyPreflight(
   const allFindings = [...terminalFindings, ...expandedFindings, ...unregisteredFindings, ...appearanceGaps,
     ...nearNameFindings, ...keyEventsLengthFindings, ...openingFindings, ...timelineFindings,
     ...missingArchCastFindings, ...propTerminationFindings, ...lossRestatementFindings,
-    ...propRevivalFindings, ...entranceShotFindings, ...titleShapeFindings,
+    ...propRevivalFindings, ...titleShapeFindings,
     ...finalizedProseAuditFindings]
   const findingByKey = new Map(allFindings.map(item => [item.stableFactKey, item]))
   const acknowledgedWithTitles = acknowledgements.map(item => ({

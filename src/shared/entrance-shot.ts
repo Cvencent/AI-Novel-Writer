@@ -108,79 +108,8 @@ export interface ChapterProse {
   content: string
 }
 
-/**
- * 「进场动作 + 穿戴」的实体登场标记（issue #87 的根因修复）。
- *
- * 为什么需要它：把「本章第一次提到该名字的段」当作登场段是**错的**——
- * 宿主章里「先提名、后到场」是常态（回忆、他人提及、点名喊人、档案里先出现），
- * 于是真正的登场段被整段跳过。实测那本书（36 章）：
- *
- *   ch7  第 9 段（回忆引述）「……温珩说"一直空着"。」 ← 旧判据取这一段
- *        第 16 段（实体登场）「温珩站在舱门口，赤脚，靛蓝短褂下摆垂着。」 ← 该取这一段
- *   ch9  第 13 段（全叔台词里点名）「"……原本不属于温珩。"」 ← 旧判据取这一段
- *        第 24 段（实体登场）「舱门口有赤脚踩木板的声响。温珩站在那儿，靛蓝短褂下摆往下滴。」
- *
- * 旧判据因此把 ch7↔ch14 比成「他手」（2 字、不报），而两段**实体登场**是 13 字。
- * 更糟的是它对「越复杂的写法越瞎」：越爱用回忆/他人提及的章，越命中不到。
- *
- * 判据是**结构**不是词表：段里同时出现 ①该角色名 ②进场动作（站/进来/走/蹲/靠/坐…）
- * ③穿戴或随身物（短褂/长衫/围裙/袖口/下摆/赤脚/公文包…）。三条缺一不可，
- * 免得「他记得温珩说过话」这种既无动作又无穿戴的段被误当成登场。
- */
-const ENTRANCE_ACTION = /(?:站在|站定|站到|进来|走进|走入|走到|走在|进来|进舱|进来|踏进|跨进|迈|从[^，。]{0,6}走进|蹲在|蹲下|靠着|靠在|倚在|坐在|来到|赶到|出现|进了|推门|掀帘|上场|到了)/u
-const ENTRANCE_DRESS = /(?:短褂|长衫|绸褂|围裙|袖口|袖子|下摆|领口|衣襟|赤脚|光脚|靴|鞋|帽|公文包|竹尺|烟盒|风灯|缆绳|手里的|手里攥|手里拿|捏着|抱着|肩上|胳膊上|手里)/u
 
-/** 这一段是不是「实体登场」（角色名 + 进场动作 + 穿戴/随身物同段）。 */
-export function isEntranceParagraph(paragraph: string, name: string): boolean {
-  const text = String(paragraph ?? '')
-  if (!text.includes(name)) return false
-  return ENTRANCE_ACTION.test(text) && ENTRANCE_DRESS.test(text)
-}
 
-/**
- * 收集每章每个角色的**登场段**（优先取「实体登场」那一段，issue #87）。
- *
- * 取段顺序（同一章内）：
- *   ① 第一个「实体登场」段（角色名 + 进场动作 + 穿戴/随身物同段）—— 最准；
- *   ② 找不到时退回「第一个出现该名字的段」—— 保底，避免整章没有任何命中
- *      （有些章确实只靠对白/回忆交代一个角色，那也仍是本章给他的位置）。
- *
- * 用**段落**而不是单句：22 字逐字的那一对（ch9↔ch10）共有的
- * 「舱门口有赤脚踩木板的声响」在**前一句**里，角色名在第二句——
- * 按单句取会把那半句丢掉，22 字逐字就只剩 6 字、落不到门槛上。
- */
-export function characterEntrances(
-  chapters: readonly ChapterProse[],
-  castNames: readonly string[],
-): CharacterEntrance[] {
-  const names = [...new Set(castNames.map(name => String(name ?? '').trim()).filter(Boolean))]
-    // 长名优先：名册里同时有「全叔」与「全叔的旧油布围裙」这类时，先匹配长的那条更准。
-    .sort((left, right) => right.length - left.length)
-  if (names.length === 0) return []
-  const entrances: CharacterEntrance[] = []
-  const ordered = [...chapters]
-    .filter(chapter => Number.isSafeInteger(chapter.chapterNumber) && String(chapter.content ?? '').trim())
-    .sort((left, right) => left.chapterNumber - right.chapterNumber)
-  for (const chapter of ordered) {
-    // 段落口径与 `closingParagraph` 一致：按空行切块。
-    const paragraphs = String(chapter.content)
-      .split(/\n\s*\n/u)
-      .map(block => block.trim())
-      .filter(Boolean)
-    for (const name of names) {
-      // ① 实体登场优先。
-      let index = paragraphs.findIndex(paragraph => isEntranceParagraph(paragraph, name))
-      // ② 退回「第一次出现」。
-      if (index < 0) index = paragraphs.findIndex(paragraph => paragraph.includes(name))
-      if (index < 0) continue
-      entrances.push({
-        character: name, chapterNumber: chapter.chapterNumber,
-        sentence: paragraphs[index]!, sentenceIndex: index + 1,
-      })
-    }
-  }
-  return entrances
-}
 
 /**
  * 找出「同一个角色的登场句在多章几乎逐字相同」。
@@ -189,12 +118,12 @@ export function characterEntrances(
  * 会产生大量假阳性。按角色归一是这条的正确口径（与 #49 的结论一致）。
  */
 export function findRepeatedEntranceShots(
-  chapters: readonly ChapterProse[],
-  options: { castNames?: readonly string[]; minCommon?: number; maxGap?: number } = {},
+  entrances: readonly CharacterEntrance[],
+  options: { minCommon?: number; maxGap?: number } = {},
 ): EntranceRepetition[] {
+  // issue #163 第八批：登场段由模型挑选（entrance-selection-review.ts），本函数只做跨章比对。
   const minCommon = options.minCommon ?? ENTRANCE_COMMON_MIN
   const maxGap = options.maxGap ?? ENTRANCE_MAX_GAP
-  const entrances = characterEntrances(chapters, options.castNames ?? [])
   if (entrances.length === 0) return []
 
   // 按角色分组，组内按章号排序。

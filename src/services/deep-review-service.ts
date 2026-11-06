@@ -255,6 +255,47 @@ export async function runDeepReviewChecks(input: DeepCheckInput): Promise<DeepCh
           findings.push(...promisePolarityFindings(issues))
           break
         }
+        case 'entranceShot': {
+          // issue #163 第八批：登场段挑选改由模型（entrance-selection-review.ts），
+          // 跨章同构比对沿用既有的 findRepeatedEntranceShots（结构比对，§1.7 划界合法）。
+          const { buildEntranceSelectionPrompt, parseEntranceSelection, entranceSelectionToEntrances } =
+            await import('../shared/entrance-selection-review')
+          const { findRepeatedEntranceShots } = await import('../shared/entrance-shot')
+          const allChapters = [...finalized, input.chapter]
+            .filter(chapter => Number.isSafeInteger(chapter.chapterNumber) && String(chapter.content ?? '').trim())
+          const castNames = [...new Set(input.cards.map(card => card.name))].filter(Boolean)
+          let totalEntrances = 0
+          for (const character of castNames) {
+            const request = { character, chapters: allChapters, language: locale }
+            const { system, user } = buildEntranceSelectionPrompt(request)
+            const call = await import('./preflight-repair').then(mod => mod.askReviewModel(
+              [{ role: 'system', content: system }, { role: 'user', content: user }], input.session))
+            if ('error' in call) { failures.push({ key, error: `${character}: ${call.error}` }); continue }
+            const selections = parseEntranceSelection(call.response.content, request)
+            if (!selections || selections.length === 0) continue
+            const entrances = entranceSelectionToEntrances(selections, character)
+            totalEntrances += entrances.length
+            const repetitions = findRepeatedEntranceShots(entrances)
+            for (const repetition of repetitions) {
+              findings.push({
+                stableFactKey: `entrance:repeat:${repetition.character}`,
+                severity: 'warning' as const,
+                sourceChapter: repetition.chapters[repetition.chapters.length - 1]!,
+                evidence: `「${repetition.character}」在第 ${repetition.chapters.join('、')} 章的登场段逐字重合 ${repetition.commonSubstring.length} 字：「${repetition.commonSubstring.slice(0, 40)}」`,
+                issue: {
+                  zhCN: `「${repetition.character}」在第 ${repetition.chapters.join('、')} 章的登场段几乎逐字相同（去标点后重合 ${repetition.commonSubstring.length} 字：「${repetition.commonSubstring.slice(0, 30)}」）。人物登场是读者每章重建画面的锚点，同一个角色几十章里都用同一句「站在某处、穿着某样」交代，画面就不再提供信息。`,
+                  enUS: `“${repetition.character}” enters almost word for word the same way in chapters ${repetition.chapters.join(', ')} (${repetition.commonSubstring.length} identical characters after stripping punctuation). The same line about standing somewhere in the same clothes stops carrying information.`,
+                },
+                suggestion: {
+                  zhCN: `换掉那套固定交代：他累不累、衣服干没干、手里拿着什么、跟谁站在一起、先出声还是先动手——把「他怎么做这件事」写成可辨认这个人的信息。`,
+                  enUS: `Change that fixed formula: how tired they are, whether their clothes are dry, what they carry, who they stand beside, whether they speak or act first — make how they do it identifying.`,
+                },
+              })
+            }
+          }
+          lines.push(text(`· ${label}：为 ${castNames.length} 个角色挑了登场段（共 ${totalEntrances} 段）。`, `· ${label}: selected entrances for ${castNames.length} characters (${totalEntrances} paragraphs).`))
+          break
+        }
       }
       if (count !== null) lines.push(text(`· ${label}：${count} 条发现。`, `· ${label}: ${count} finding(s).`))
     } catch (error) {
