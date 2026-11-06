@@ -347,21 +347,21 @@ export default function WritePreflight({
       ) : null}
       {findings.length > 0 && (
         <>
-        {/* issue #165：四个「核对…」是一次耗时模型调用（实测 61 秒），与
-            「全部修复／带提醒继续写」这种即时动作不同类。原先挤在同一行，
-            七个按钮合计 658px 而容器只有 288px，justify-content:flex-end
-            把左侧那四个甩出弹层（stage-shell 又是 overflow:hidden，滚不过去）
-            ——作者一个都点不到。现在拆成两行。 */}
         {/*
-          issue #194 建议 ②：**物证链断裂自动预检查不出来，要说出来**。
-          那一族（某件东西被交出/归档之后又在别处出现、或在同一章里换了持有者）
-          由模型判据覆盖 —— 而模型调用**只由作者点按钮触发**（本仓既定规则：
-          预检不自动跑模型，见本文件各 `onCheck*` 的注释）。所以这里给一句可见提示，
-          让作者知道「这一档要点一下才会查」，而不是以为自动预检已经查过了。
+          issue #229 ③：13 颗「核对…」按钮的**正确家是定稿时的审稿**——那里现在
+          默认跑这些维度（可勾选），上一章写完时就发现物证链断裂，而不是让作者在
+          写下一章前一颗颗点。预检这里收成一个默认折叠的「深度检查」细节：
+          需要在写前手动补查时仍然可以点（与审稿同一套 `reviewXxx` 实现），但
+          不再占一屏、免责文案也不再需要——职责归位后「为什么这里有不自动跑的按钮」
+          这个问题本身就消失了。
         */}
+        <details className="stage-preflight-deep-checks">
+          <summary>
+            {text('深度检查（默认在上一章审稿时自动做；写前补查点这里）', 'Deep checks (run automatically with the previous chapter’s review; expand to re-run here)')}
+          </summary>
         <p className="stage-preflight-checks-note">
-          {text('下面这些要用模型逐章读一遍（每次一次调用，约 60–100 秒），不会自动跑。其中「跨章重复与状态」「物证形态」两档覆盖物证链：某件东西被交出、归档之后又在别处出现，或在同一章里换了持有者而没写交接——自动预检查不出这一类。',
-            'These run a model pass over the chapters (one call each, roughly 60–100s) and never run on their own. “Repeated moves & status” and “Evidence objects” are the two that cover the prop chain: something handed in or filed away turning up again elsewhere, or changing hands within one chapter with no handover — the automatic pass cannot see those.')}
+          {text('这些要用模型逐章读一遍（每次一次调用，约 60–100 秒）。其中「跨章重复与状态」「物证形态」两档覆盖物证链：某件东西被交出、归档之后又在别处出现，或在同一章里换了持有者而没写交接——自动预检查不出这一类。',
+            'These run a model pass over the chapters (one call each, roughly 60–100s). “Repeated moves & status” and “Evidence objects” are the two that cover the prop chain: something handed in or filed away turning up again elsewhere, or changing hands within one chapter with no handover — the automatic pass cannot see those.')}
         </p>
         <div className="stage-preflight-checks">
           {checkButton('onCheckMemory', '核对记忆回指', 'Check remembered scenes', onCheckMemory)}
@@ -378,6 +378,7 @@ export default function WritePreflight({
           {checkButton('onCheckDeadline', '核对期限结算', 'Check deadline settlement', onCheckDeadline)}
           {checkButton('onCheckDateConflict', '核对日期一致', 'Check date consistency', onCheckDateConflict)}
         </div>
+        </details>
         {/*
           issue #192：这一行是**唯一的**进行中信号。原来 60–97 秒里弹层逐字不变，
           作者只能从「按钮变灰」推断状态——而灰掉同时意味着「不可用」，两者无法区分。

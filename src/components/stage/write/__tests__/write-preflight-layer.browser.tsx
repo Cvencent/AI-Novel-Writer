@@ -517,7 +517,7 @@ describe('「核对…」进行中要有可见状态 (issue #192)', () => {
  * 「作者可见文本不许带标记」断言当场红掉——那正是它该拦的。
  */
 describe('「这些要点按钮才跑」要有可见提示 (issue #194)', () => {
-  it('says the model checks do not run on their own, and names the prop chain', async () => {
+  it('collapses the deep checks into a details section that names the prop chain (issue #229)', async () => {
     host = document.createElement('div')
     host.className = 'paper-ink stage-shell'
     document.body.append(host)
@@ -529,10 +529,12 @@ describe('「这些要点按钮才跑」要有可见提示 (issue #194)', () => 
       onCheckContent: vi.fn(), onCheckEvidence: vi.fn(),
     }
     await act(async () => root!.render(<WritePreflight {...common} />))
-    const note = host!.querySelector('.stage-preflight-checks-note')
-    expect(note, '要在「核对…」按钮行上方给一句说明').not.toBeNull()
-    expect(note!.textContent).toContain('不会自动跑')
-    // 要点名是哪两档覆盖物证链，否则作者不知道点哪一颗。
+    // 折叠区默认收起：summary 告诉作者这些检查默认在上一章审稿时做。
+    const details = host!.querySelector('details.stage-preflight-deep-checks')
+    expect(details, '深度检查要折叠成一个 details').not.toBeNull()
+    expect(details!.querySelector('summary')!.textContent).toContain('默认在上一章审稿时自动做')
+    // 免责文案改写：不再是「不会自动跑」（它们现在会在审稿里自动跑），而是解释这里能补查。
+    const note = details!.querySelector('.stage-preflight-checks-note')
     expect(note!.textContent).toContain('物证链')
     // 与 #154/#169 同一规矩：作者可见文本不许出现 Markdown 标记。
     expect(note!.textContent).not.toContain('**')

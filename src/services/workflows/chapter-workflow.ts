@@ -102,6 +102,13 @@ export interface ReviewOnlyParams {
   reviewFocus?: string
   reviewCycleId?: string
   expectedMergedHash?: string
+  /**
+   * 深度检查维度（issue #229 ①②）：审稿完成后自动追加的模型核对（原写前预检的
+   * 13 颗「核对…」按钮搬家到这里）。省略时按持久化偏好执行（缺省全勾）。
+   */
+  deepCheckKeys?: import('../../shared/deep-review-dimensions').DeepReviewDimensionKey[]
+  /** 深度检查的取数 IPC 会话；缺省时回退到工作流自身的 session（chapterWorkflow 流转的会话）。 */
+  projectSession?: ProjectSessionContext
 }
 
 export interface FinalizeOnlyParams {
@@ -431,6 +438,68 @@ export function createReviewOnlyWorkflow(
             line => callbacks.log(line),
             { isCancelled: () => context.cancelled, limit: transientRetryLimitFor('review-chapter') },
           )
+        },
+      },
+      {
+        // issue #229 ①：模型判据的正确家是定稿时的审稿——上一章写完时默认做（可勾选）。
+        // 这一步把原写前预检的 13 颗「核对…」按钮搬过来：按持久化偏好逐维跑
+        // （每维一次模型调用，串行），发现并进运行日志；作者据此走「按 N 项意见修稿」。
+        name: localize(uiLocale, '深度检查', 'Deep checks'),
+        description: localize(
+          uiLocale,
+          '按勾选的维度逐项跑模型核对（物证链、跨章重复、期限、日期等）',
+          'Run the selected model checks (evidence chain, cross-chapter repeats, deadlines, dates, …)',
+        ),
+        executor: async (_step, context, callbacks) => {
+          const { runDeepReviewChecks, readDeepReviewSelection } = await import('../deep-review-service')
+          const { ipc } = await import('../ipc-client')
+          const session = frozenParams.projectSession ?? workflowProjectSession(frozenParams.projectPath, sourceProjectSession)
+          // 勾选优先用作者本次传的；没传就按持久化偏好（缺省全勾）。
+          const selection = frozenParams.deepCheckKeys
+            ? Object.fromEntries((await import('../../shared/deep-review-dimensions')).DEEP_REVIEW_DIMENSIONS
+              .map(dimension => [dimension.key, frozenParams.deepCheckKeys!.includes(dimension.key)]))
+            : await readDeepReviewSelection(session)
+          const keys = (await import('../../shared/deep-review-dimensions')).DEEP_REVIEW_DIMENSIONS
+            .map(dimension => dimension.key)
+            .filter(key => selection[key])
+          if (keys.length === 0) {
+            callbacks.log(localize(uiLocale, '深度检查：全部维度已取消勾选，跳过。', 'Deep checks: every dimension is unchecked, skipping.'))
+            return
+          }
+          // 取数：本章正文（未定稿）+ 全部已定稿正文 + 角色卡 + 本章蓝图断言。
+          const cards = (await (async () => {
+            const roster = await ipc.invokeWithProjectSession(session, 'db:character-roster-read', session.projectPath).catch(() => null)
+            return ((roster?.entries ?? []) as Array<{ name?: unknown, appearance?: unknown, notes?: unknown }>).flatMap(entry => {
+              const name = String(entry.name ?? '').trim()
+              const appearance = String(entry.appearance ?? '')
+              const notes = String(entry.notes ?? '')
+              return name && `${appearance}${notes}`.trim() ? [{ name, appearance, notes }] : []
+            })
+          })()) as Array<{ name: string, appearance: string, notes: string }>
+          const finalized = (await ipc.invokeWithProjectSession(session, 'db:draft-export-snapshot', session.projectPath)
+            .catch(() => [])) as Array<{ chapterNumber: number, content: string }>
+          const blueprints = (await ipc.invokeWithProjectSession(session, 'db:blueprint-get', frozenParams.chapterNumber, session.projectPath).catch(() => null)) as
+            { key_events?: unknown, foreshadowing?: unknown, costs_and_turns?: unknown } | null
+          const claims = blueprints ? [{
+            chapterNumber: frozenParams.chapterNumber,
+            claims: [blueprints.key_events, blueprints.foreshadowing, blueprints.costs_and_turns]
+              .map(value => String(value ?? '')).filter(Boolean).join('\n'),
+          }] : []
+          const result = await runDeepReviewChecks({
+            session,
+            chapter: { chapterNumber: frozenParams.chapterNumber, content: frozenParams.draftContent },
+            finalizedChapters: finalized.map(row => ({ chapterNumber: row.chapterNumber, content: String(row.content ?? '') })),
+            cards,
+            claims,
+            worldbuilding: '',
+            keys,
+            onProgress: line => callbacks.log(line),
+            cancelled: () => context.cancelled,
+          })
+          for (const line of result.lines) callbacks.log(line)
+          for (const failure of result.failures) {
+            callbacks.log(localize(uiLocale, `深度检查失败 · ${failure.key}：${failure.error}`, `Deep check failed · ${failure.key}: ${failure.error}`))
+          }
         },
       },
     ],
