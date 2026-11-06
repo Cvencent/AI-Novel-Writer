@@ -26,7 +26,7 @@ import { navigate } from '../../../stores/navigation/navigation-intents'
 import { useAnchoredLayer } from '../../ui/use-anchored-layer'
 import {
   appearanceContradictionFindings, appearanceUnusedMarkFindings, applyRepairDiffs, checkAppearanceAgainstCards,
-  proposeLayerRepair, reviewAbilityLimits, reviewBlueprintAgainstProse, reviewBlueprintInternals, reviewEvidenceShapes, reviewDeadlines, reviewHandwritingTraits, reviewLossRestatements, reviewMemoryAnchors, reviewProseContent, reviewProseStyle,
+  proposeLayerRepair, reviewAbilityLimits, reviewBlueprintAgainstProse, reviewBlueprintInternals, reviewEvidenceShapes, reviewDateConflicts, reviewDeadlines, reviewHandwritingTraits, reviewLossRestatements, reviewMemoryAnchors, reviewProseContent, reviewProseStyle,
   reviewSensoryChannels, sensoryVerdictFindings,
 } from '../../../services/preflight-repair'
 import { advanceRepairQueue, planRepairCalls, remainingRepairLayers, shouldContinueRepairChain } from '../../../shared/preflight-repair'
@@ -791,6 +791,40 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
    * 旧实现是四张题材措辞表（天亮前/日落前/明早… + 不许/别想/扣下… + 期限已过/逾期…），
    * 只对这本书的写法成立；按用户 2026-11-05 的定规改由模型判。
    */
+  /**
+   * 「核对日期一致」（issue #216）——**交给模型判**。
+   *
+   * 现场：父亲沉船那夜在第 3/7/12/13/14 章一律「七月十七」，第 95 章变成「九月十七」，
+   * 而第 14 章已用对白锁死「这个日期 = 父亲出事那趟」。错值还进了蓝图 → 正文 → 事实账本。
+   * 规则只取「X 月 Y 日」这种**写法**的句子，并校验两处引文都能逐字定位；
+   * 「是不是同一件事、哪个对」由模型判。
+   */
+  const checkDateConflicts = async () => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || busy) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      const chapters = await recentFinalized(session)
+      if (!isProjectSessionCurrent(session)) return
+      if (chapters.length < 2) {
+        setMessage(text('至少要有两章已定稿正文才能比对跨章日期。',
+          'At least two finalized chapters are needed to compare dates across chapters.'))
+        return
+      }
+      const outcome = await reviewDateConflicts(session, chapters, locale)
+      if (!isProjectSessionCurrent(session)) return
+      if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
+      mergeFindings(outcome.findings)
+    } catch (error) {
+      if (isProjectSessionCurrent(session)) {
+        setMessage(error instanceof Error && error.message.trim() ? error.message : text('核对失败。', 'The check failed.'))
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const checkDeadlines = async () => {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
     if (!session || busy) return
@@ -1074,6 +1108,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           onCheckBlueprintInternal={() => checkBlueprintInternal()}
           onCheckLossRestatement={() => checkLossRestatement()}
           onCheckDeadline={() => checkDeadlines()}
+          onCheckDateConflict={() => checkDateConflicts()}
           onCreateCharacter={name => void createCharacterCard(name)}
           repairProposal={repairProposal}
           onApplyRepairField={field => void applyRepair([field])}

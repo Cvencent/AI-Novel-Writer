@@ -51,6 +51,12 @@ import {
   type BlueprintClaimChapter,
 } from '../shared/prose-conflict-review'
 import {
+  buildDateConflictPrompt,
+  dateConflictFindings,
+  parseDateConflictReview,
+  type DateConflictChapter,
+} from '../shared/date-conflict-review'
+import {
   buildDeadlineReviewPrompt,
   deadlineReviewFindings,
   parseDeadlineReview,
@@ -791,4 +797,42 @@ export async function reviewDeadlines(
       : '模型返回的不是合法的「期限未结算」清单。' }
   }
   return { status: 'ok', findings: deadlineReviewFindings(issues) }
+}
+
+/**
+ * 同一事件的日期在不同章里不一致（issue #216）——**一次模型调用**。
+ *
+ * 现场：父亲那趟船出事那一夜，第 3/7/12/13/14 章一律「七月十七」，第 95 章变成「九月十七」，
+ * 而第 14 章已经用对白锁死「这个日期 = 父亲出事那趟」。错值还进了蓝图 → 正文 → 事实账本，
+ * 后面每一章起草都继承它。
+ *
+ * 规则只做取数（日期**写法**这一形式类）+ 校验引文可逐字定位；
+ * 「这两处是不是同一个事件、哪个是对的」全交模型——换个说法指同一件事，没有词表追得上。
+ */
+export interface DateConflictOutcome {
+  status: 'ok' | 'failed'
+  findings: ConsistencyFinding[]
+  error?: string
+}
+
+export async function reviewDateConflicts(
+  session: ProjectSessionContext,
+  chapters: readonly DateConflictChapter[],
+  locale: 'zh-CN' | 'en-US' = 'zh-CN',
+): Promise<DateConflictOutcome> {
+  const en = locale === 'en-US'
+  const usable = chapters.filter(chapter => Number.isSafeInteger(chapter.chapterNumber) && String(chapter.content ?? '').trim())
+  // 少于两章就没有「跨章对照」可言。
+  if (usable.length < 2) return { status: 'ok', findings: [] }
+  const request = { chapters: usable, language: locale }
+  const { system, user } = buildDateConflictPrompt(request)
+  const call = await askReviewModel([{ role: 'system', content: system }, { role: 'user', content: user }], session)
+  if ('error' in call) return { status: 'failed', findings: [], error: call.error }
+  const issues = parseDateConflictReview(call.response.content, request)
+  if (!issues) {
+    return { status: 'failed', findings: [], error: en
+      ? 'The model did not return a valid date-conflict list.'
+      : '模型返回的不是合法的「日期冲突」清单。' }
+  }
+  return { status: 'ok', findings: dateConflictFindings(issues) }
 }

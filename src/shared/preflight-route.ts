@@ -95,6 +95,9 @@ const PREFIX_LAYERS: Readonly<Record<string, PreflightLayer>> = Object.freeze({
   'chapter-ending': 'blueprint',
   'blueprint': 'blueprint',
   'deadline': 'blueprint',
+  // 同一事件的日期跨章不一致（issue #216）：日期落在正文，但**改法是改正文**（或蓝图时点），
+  // 而区间型与「旧章」的处置由 targetChapter 那套判据接管。
+  'date': 'blueprint',
   'foreshadowing': 'blueprint',
   'thread': 'blueprint',
   'repeated-revocation': 'blueprint',

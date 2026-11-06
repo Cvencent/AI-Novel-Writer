@@ -59,6 +59,7 @@ const FAMILY_LABELS: Readonly<Record<string, AcknowledgementTitle>> = Object.fre
   'character-age': { zhCN: '人物年龄问题', enUS: 'character age' },
   'character-age:unreconcilable': { zhCN: '正文写了年龄却归不到人', enUS: 'age stated but unattributable' },
   'deadline': { zhCN: '期限宣告未对账', enUS: 'unsettled deadline' },
+  'date:conflict': { zhCN: '同一件事的日期不一致', enUS: 'same event, two dates' },
   'deadline:unsettled': { zhCN: '期限宣告了却没结算', enUS: 'deadline never settled' },
   'timeline': { zhCN: '设定层时间锚点冲突', enUS: 'timeline anchor conflict' },
   // —— 角色 ——

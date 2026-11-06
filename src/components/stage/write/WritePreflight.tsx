@@ -102,6 +102,12 @@ interface WritePreflightProps {
    * 原先靠四张题材措辞表判，按用户定规改由模型判。不传时不渲染。
    */
   onCheckDeadline?: () => void | Promise<void>
+  /**
+   * 「核对日期一致」（issue #216）：请模型判「同一件事的日期在不同章里是否一致」。
+   * 现场是父亲沉船那夜在第 3–14 章写「七月十七」、第 95 章变成「九月十七」，错值还进了账本。
+   * 不传时不渲染。
+   */
+  onCheckDateConflict?: () => void | Promise<void>
 
   /**
    * 「为「X」建卡」（issue #160）：提醒**自带**可执行动作时给这个出口。
@@ -131,7 +137,7 @@ interface WritePreflightProps {
  */
 export default function WritePreflight({
   preflight, busy, onIgnoreOnce, onRerun, onSave, onRevoke, onAcknowledge, onUnacknowledge, onOpenLayer, currentChapter,
-  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent, onCheckAbility, onCheckMemory, onCheckBlueprintFacts, onCheckEvidence, onCheckHandwriting, onCheckBlueprintInternal, onCheckLossRestatement, onCheckDeadline, onCreateCharacter,
+  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent, onCheckAbility, onCheckMemory, onCheckBlueprintFacts, onCheckEvidence, onCheckHandwriting, onCheckBlueprintInternal, onCheckLossRestatement, onCheckDeadline, onCheckDateConflict, onCreateCharacter,
 }: WritePreflightProps) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
@@ -319,6 +325,7 @@ export default function WritePreflight({
           {checkButton('onCheckBlueprintInternal', '核对蓝图自洽', 'Check plan consistency', onCheckBlueprintInternal)}
           {checkButton('onCheckLossRestatement', '核对代价重述', 'Check re-charged costs', onCheckLossRestatement)}
           {checkButton('onCheckDeadline', '核对期限结算', 'Check deadline settlement', onCheckDeadline)}
+          {checkButton('onCheckDateConflict', '核对日期一致', 'Check date consistency', onCheckDateConflict)}
         </div>
         {/*
           issue #192：这一行是**唯一的**进行中信号。原来 60–97 秒里弹层逐字不变，
