@@ -18,6 +18,7 @@ import {
   type CharacterRosterRole,
   type CharacterRosterSnapshot,
   type CharacterStateFieldProvenance,
+  type CharacterStateTextField,
 } from '../../src/shared/character-roster'
 import type { FinalizedSourceIdentity } from '../../src/shared/finalized-continuity'
 import { isContentHash } from '../../src/shared/source-ref'
@@ -972,10 +973,97 @@ function assertReadBack(
  * 外部 interface 只有 read/commit；校验、投影、幂等、事务与回读验证都留在
  * implementation 内。当前旧角色写入路径仍可兼容，后续 ticket 再统一收口。
  */
+/**
+ * issue #225 的收尾：补标动了事实（provenance 进 fullFactHash），把 meta.fact_hash
+ * 重算到补标后的值。
+ *
+ * ⚠️ 只在「本次补标确实写了数据」时执行，且**先验证不一致只能由补标解释**：
+ * 当前 entries 剥掉 provenance 后的哈希必须恰好等于 meta.fact_hash——静态字段
+ * 或 cs_* 值不同（如旧旁路直写改了 notes）说明不一致另有其因，必须保持
+ * fails closed（见「fails closed when a legacy direct card write」测试），绝不掩耳盗铃。
+ */
+function repairFactHashAfterBackfill(db: BetterSqlite3.Database, backfilled: boolean): CharacterRosterSnapshot | null {
+  if (!backfilled) return null
+  const meta = readMeta(db)
+  if (meta.migration_state !== 'ready') return null
+  const entries = hasCharacterIdentitySchema(db)
+    ? identityProjectionEntries(db)
+    : sortedEntries(CharacterRepository.getAll(db).map(entryFromCharacter))
+  const factHash = fullFactHash(entries)
+  const repaired = readSnapshot(db)
+  if (repaired.status === 'ready' || repaired.status === 'empty') return repaired
+  // 只有 fact_hash 一处对不上才允许修：值与投影一致、meta.fact_hash 恰等于
+  // 「剥掉 provenance 的哈希」＝不一致完全由补标引起。
+  const entriesWithoutProvenance = entries.map(entry => entry.currentState
+    ? { ...entry, currentState: (() => { const { provenance: _p, ...rest } = entry.currentState; void _p; return rest })() }
+    : entry)
+  if (meta.fact_hash !== fullFactHash(entriesWithoutProvenance)) return null
+  const updated = db.prepare("UPDATE character_roster_meta SET fact_hash=?, updated_at=datetime('now') WHERE id='main'").run(factHash)
+  if (updated.changes !== 1) throw new Error('CHARACTER_ROSTER_BACKFILL_REPAIR_FAILED')
+  const finalSnapshot = readSnapshot(db)
+  if (finalSnapshot.status !== 'ready' && finalSnapshot.status !== 'empty') throw new Error('CHARACTER_ROSTER_BACKFILL_REPAIR_FAILED')
+  return finalSnapshot
+}
+
+/**
+ * 「有值的 cs_* 字段但 provenance 缺该字段键」的存量自愈（issue #225）。
+ *
+ * 这些字段是 v2 之前写入的：`cs_provenance` 列晚于数据出现，旧写入路径不维护
+ * 字段级来源。后果：① 起草上下文的兜底只挡**显式** `kind:'legacy'`，缺失键的
+ * 旧值（如 #18/#45 时代挂错人的「本章目标」）被当作者事实注入；② 定稿后处理
+ * 的 merge 拿 `previousSource?.kind !== 'derived'` 当保护判据，缺失键时产物是
+ * **静默 continue**——模型产出新值、commit 账本记了回写、卡上没写，两套账
+ * 分叉且没有任何信号。
+ *
+ * 处理：**持久化**补 `kind:'legacy'`（不是读出层补——fullFactHash 把 provenance
+ * 算进事实，读出补标会让哈希漂移），语义与 `normalizeState` 对预 v2 值完全同构：
+ * 值保持可见，但永远不会成为作者事实；后续定稿产出的新值照常走「待确认候选」
+ * 通道由作者决定。幂等：只动「有值且缺键」的字段，跑第二遍没有可补的键。
+ * 返回补了的行数（0 = 幂等空跑）。
+ */
+function backfillCharacterStateProvenance(db: BetterSqlite3.Database): number {
+  // 主键在两种 schema 里不同：identity 项目用 character_id，legacy 项目用 name。
+  const keyColumn = hasCharacterIdentitySchema(db) ? 'character_id' : 'name'
+  const rows = db.prepare(`SELECT ${keyColumn} AS key, cs_provenance, cs_location, cs_power_level, cs_physical_state, cs_mental_state, cs_key_items, cs_recent_events FROM characters`).all() as
+    Array<Record<string, string | null>>
+  let touched = 0
+  for (const row of rows) {
+    let provenance: Record<string, unknown>
+    try {
+      const parsed: unknown = JSON.parse(String(row.cs_provenance ?? '') || '{}')
+      provenance = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : {}
+    } catch { provenance = {} }
+    let changed = false
+    for (const field of CHARACTER_STATE_TEXT_FIELDS) {
+      const value = String(row[STATE_COLUMNS[field]] ?? '')
+      if (!value.trim() || Object.hasOwn(provenance, field)) continue
+      provenance[field] = { kind: 'legacy' }
+      changed = true
+    }
+    if (!changed) continue
+    db.prepare(`UPDATE characters SET cs_provenance=?, updated_at=datetime('now') WHERE ${keyColumn}=?`)
+      .run(JSON.stringify(provenance), row.key)
+    touched += 1
+  }
+  return touched
+}
+
+/** cs_* 字段 → 列名（与 summary-repository 的 STATE_COLUMNS 同一映射）。 */
+const STATE_COLUMNS: Record<CharacterStateTextField, string> = {
+  location: 'cs_location', powerLevel: 'cs_power_level', physicalState: 'cs_physical_state',
+  mentalState: 'cs_mental_state', keyItems: 'cs_key_items', recentEvents: 'cs_recent_events',
+}
+
 export class CharacterRosterRepository {
   static read(db = requiredDb()): CharacterRosterSnapshot {
     ensureCharacterRosterSchema(db)
-    return readSnapshot(db)
+    // issue #225：先把「有值 cs_* 字段但 provenance 缺键」的存量持久化补成
+    // `kind:'legacy'`（幂等），再读快照。必须在 readSnapshot 之前——补标改变
+    // fullFactHash 的输入，读后再补会让同一次 read 的 entries 与 meta.fact_hash 对不上。
+    const backfilled = db.transaction(() => backfillCharacterStateProvenance(db))()
+    return repairFactHashAfterBackfill(db, backfilled > 0) ?? readSnapshot(db)
   }
 
   /**

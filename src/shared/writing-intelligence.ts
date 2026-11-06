@@ -67,9 +67,15 @@ export interface WritingFact {
 export interface CharacterStateCommit {
   characterId: string
   state: Record<string, unknown>
-}
-
-export interface ForeshadowingCommit {
+  /**
+   * issue #225：true = 这一笔是**待确认候选**（还没落到卡上）。
+   * 旧口径所有条目都不带标记，诊断者会把「提出了候选」读成「已回写」——
+   * 两套账（commit 账本 vs cs_provenance）从此分叉。
+   */
+  pending?: boolean
+  /** 降级原因（透传自候选）：作者值保护 / legacy 保护 / 本章 0 出场。 */
+  reason?: string
+}export interface ForeshadowingCommit {
   title: string
   status: string
 }

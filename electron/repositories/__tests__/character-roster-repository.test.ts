@@ -156,7 +156,7 @@ function rawRosterStorage() {
 }
 
 describe('CharacterRosterRepository public read/commit seam', () => {
-  it('keeps a pre-provenance ready roster ready after adding the empty provenance column', () => {
+  it('keeps a pre-provenance ready roster ready after adding the empty provenance column, backfilling legacy on first read (issue #225)', () => {
     const request = commitRequest({
       entries: commitRequest().entries.map((entry, index) => index === 0
         ? {
@@ -189,8 +189,12 @@ describe('CharacterRosterRepository public read/commit seam', () => {
     ensureCharacterRosterSchema(db)
 
     const upgraded = CharacterRosterRepository.read()
-    expect(upgraded).toMatchObject({ status: 'ready', factHash: legacyFactHash })
-    expect(upgraded.entries[0]?.currentState).not.toHaveProperty('provenance')
+    // issue #225 起语义更新：升列后首次 read 会把缺键的存量补成 legacy 并刷新
+    // factHash（否则这些值会永久卡住 derived 链路并被起草兜底误当作者事实）。
+    // ready 不变，但 factHash 不再等于旧的「无 provenance 基线」——它等于补标后的事实。
+    expect(upgraded.status).toBe('ready')
+    expect(upgraded.entries[0]?.currentState?.provenance?.recentEvents?.kind).toBe('legacy')
+    expect(upgraded.factHash).not.toBe(legacyFactHash)
   })
 
   it('keeps the persisted name-only factHash for a project without the identity schema', () => {
@@ -1241,4 +1245,58 @@ it('runs the main generation source guard inside the write transaction but not o
   expect(accepted).toHaveBeenCalledTimes(1)
   expect(CharacterRosterRepository.commit(request, rejected).idempotent).toBe(true)
   expect(rejected).toHaveBeenCalledTimes(1)
+})
+
+/**
+ * issue #225：读路径的存量自愈——「有值的 cs_* 字段但 provenance 缺该字段键」
+ * 在 `CharacterRosterRepository.read` 时被**持久化**补成 `kind:'legacy'`。
+ *
+ * 为什么必须在写库侧补而不是读出层：fullFactHash 把 provenance 算进事实，
+ * 读出补标会让哈希漂移、ready 名单被误判 inconsistent。补标后 fact_hash 由
+ * `repairFactHashAfterBackfill` 重算——且只在「不一致完全由补标引起」（剥掉
+ * provenance 的哈希恰等于旧 meta.fact_hash）时才修，旧旁路直写造成的
+ * inconsistent 必须保持 fails closed。
+ */
+
+/**
+ * issue #225：读路径的存量自愈——「有值的 cs_* 字段但 provenance 缺该字段键」
+ * 在 `CharacterRosterRepository.read` 时被**持久化**补成 `kind:'legacy'`。
+ *
+ * ⚠️ 缺键只会出现在 **v2 之前的存量库**（旧写入路径直写 SQL，不经 normalizeState；
+ * 经 commit seam 写入的数据已被 normalizeState 补齐）。为什么在写库侧补而不是
+ * 读出层：fullFactHash 把 provenance 算进事实，读出补标会让哈希漂移、ready 名单
+ * 被误判 inconsistent。补标后的 fact_hash 由 repairFactHashAfterBackfill 重算——
+ * 且只在「不一致完全由补标引起」（剥掉 provenance 的哈希恰等于旧 meta.fact_hash）
+ * 时才修；旧旁路直写造成的 inconsistent 必须保持 fails closed。
+ */
+describe('cs_* 字段 provenance 缺键的持久化补标 (issue #225)', () => {
+  it('backfills kind:legacy on read and keeps the roster ready with a refreshed fact hash', () => {
+    const committed = CharacterRosterRepository.commit(commitRequest())
+    // 手工把第 0 张卡改回「v2 之前」的存量形态：recentEvents 有值、provenance 整列清空
+    // （默认 commitRequest 的 entries 没有 currentState，先直写一版状态再清来源）。
+    db.prepare("UPDATE characters SET cs_recent_events='刚抵达港口', cs_updated_at_chapter=1, cs_provenance='{}' WHERE name=?").run('林舟')
+    const legacyEntries = committed.snapshot.entries.map((entry, index) => index === 0
+      ? { ...entry, currentState: { location: '', powerLevel: '', physicalState: '', mentalState: '', keyItems: '', recentEvents: '刚抵达港口', updatedAtChapter: 1 } }
+      : entry)
+    // 旧对账基线 = 剥掉 provenance 后的哈希（legacy 项目 fact_hash 存的就是它）。
+    db.prepare("UPDATE character_roster_meta SET fact_hash=? WHERE id='main'").run(
+      createHash('sha256').update(JSON.stringify(legacyEntries), 'utf8').digest('hex'))
+
+    const upgraded = CharacterRosterRepository.read()
+    expect(upgraded.status).toBe('ready')
+    const state = upgraded.entries.find(entry => entry.name === '林舟')!.currentState!
+    expect(state.recentEvents).not.toBe('')
+    expect(state.provenance!.recentEvents!.kind).toBe('legacy')
+    // 幂等：再读一遍仍是 ready、标记仍在。
+    const again = CharacterRosterRepository.read()
+    expect(again.status).toBe('ready')
+    expect(again.entries.find(entry => entry.name === '林舟')!.currentState!.provenance!.recentEvents!.kind).toBe('legacy')
+  })
+
+  it('does not repair an inconsistency caused by a direct card write (fails closed preserved)', () => {
+    CharacterRosterRepository.commit(commitRequest())
+    CharacterRepository.upsert({ ...CharacterRepository.getByName('林舟')!, notes: '旧旁路直接改写' })
+    const snapshot = CharacterRosterRepository.read()
+    expect(snapshot.status).toBe('inconsistent')
+  })
 })

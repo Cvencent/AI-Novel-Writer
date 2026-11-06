@@ -179,12 +179,20 @@ export class WritingIntelligenceRepository {
     const candidates = Array.isArray(stateStore) ? stateStore
       : stateStore && typeof stateStore === 'object' && Array.isArray((stateStore as { pending?: unknown[] }).pending)
         ? (stateStore as { pending: unknown[] }).pending : []
+    // issue #225：这一列的原口径把「提出了待确认候选」与「已回写卡上」记成同一种条目——
+    // 被 legacy/author 保护降级的候选也在这里，且不带任何标记。诊断者读账本会以为
+    // 「ch30 的 recentEvents 已经回写」，而卡上还是 ch27 的旧值（两套账分叉）。
+    // 这些条目全部来自 `character_state_candidates`（未采纳的候选仓），所以**每一笔
+    // 都是 pending**；`reason` 直接透传候选自带的降级原因（author-protected /
+    // legacy-protected / character-absent）。真源仍是 `cs_provenance`。
     const characterStates = candidates.flatMap(candidate => {
       if (!candidate || typeof candidate !== 'object') return []
       const value = candidate as Record<string, unknown>
       const characterId = typeof value.characterId === 'string' ? value.characterId : ''
       if (!characterId) return []
-      return [{ characterId, state: { field: value.field, value: value.value, chapterNumber: (value.source as { chapterNumber?: number } | undefined)?.chapterNumber } }]
+      return [{ characterId, state: { field: value.field, value: value.value, chapterNumber: (value.source as { chapterNumber?: number } | undefined)?.chapterNumber },
+        pending: true,
+        ...(typeof value.reason === 'string' ? { reason: value.reason } : {}) }]
     })
     const foreshadowing = database.prepare(`SELECT p.title,c.event_type AS status,c.evidence
       FROM narrative_thread_confirmations c JOIN narrative_thread_plans p ON p.id=c.plan_id

@@ -70,7 +70,7 @@ describe('writing intelligence repository', () => {
       const commit = WritingIntelligenceRepository.commitFinalizedChapter(3, draftId, db)
       expect(commit).toMatchObject({ chapterNumber: 3, draftId, finalizationId: 'fin-3', contentHash: 'a'.repeat(64) })
       expect(commit.facts).toEqual([{ kind: 'plot', statement: '林岚拿到账册', evidence: '林岚进入库房。' }])
-      expect(commit.characterStates).toEqual([{ characterId: 'char-1', state: { field: 'location', value: '库房', chapterNumber: 3 } }])
+      expect(commit.characterStates).toEqual([{ characterId: 'char-1', state: { field: 'location', value: '库房', chapterNumber: 3 }, pending: true }])
       expect(commit.foreshadowing).toEqual([{ title: '缺页账册', status: 'planted', evidence: '林岚进入库房。' }])
       expect(commit.quality.weightedScore).toBe(panel.weightedScore)
       expect(WritingIntelligenceRepository.rebuildChapterCommit(3, db).commitId).toBe(commit.commitId)
@@ -124,6 +124,34 @@ describe('writing intelligence repository', () => {
       // 真正写出账本之后，这一章才从缺口里消失。
       expect(WritingIntelligenceRepository.commitFinalizedChapter(3, draftId, db).chapterNumber).toBe(3)
       expect(WritingIntelligenceRepository.listChapterCommitGaps(db).some(gap => gap.chapterNumber === 3)).toBe(false)
+    } finally { db.close() }
+  })
+})
+
+/**
+ * issue #225：commit 账本的 characterStates 原口径把「提出了待确认候选」与
+ * 「已回写卡上」记成同一种条目——被 legacy/author 保护降级的候选也在这里、
+ * 不带标记，诊断者读账本会以为回写已完成，而卡上还是旧值（两套账分叉）。
+ * 现在每笔候选条目带 `pending:true`（这些条目本来就全部来自
+ * `character_state_candidates`——未采纳候选仓），`reason` 透传降级原因。
+ */
+describe('chapter commit 标记待确认状态条目 (issue #225)', () => {
+  it('marks candidate-derived entries as pending and carries the downgrade reason', () => {
+    const { db, draftId } = fixture()
+    try {
+      db.prepare(`INSERT INTO summary_snapshots(draft_id,chapter_number,chapter_notes,continuity_facts,
+        character_state_candidates,source_finalization_id,source_content_hash)
+        VALUES(?,3,'注',?, '[]',?,?)`).run(draftId, '[]', 'fin-3p', 'b'.repeat(64))
+      db.prepare(`UPDATE summary_snapshots SET character_state_candidates=? WHERE draft_id=?`).run(
+        JSON.stringify({ pending: [
+          { characterId: 'char-1', field: 'recentEvents', value: '旧值被保护', source: { chapterNumber: 3 }, reason: 'legacy-protected' },
+          { characterId: 'char-2', field: 'location', value: '不成立的更新', source: { chapterNumber: 3 }, reason: 'character-absent' },
+        ], receipts: [] }), draftId)
+      const commit = WritingIntelligenceRepository.commitFinalizedChapter(3, draftId, db)
+      expect(commit.characterStates).toEqual([
+        { characterId: 'char-1', state: { field: 'recentEvents', value: '旧值被保护', chapterNumber: 3 }, pending: true, reason: 'legacy-protected' },
+        { characterId: 'char-2', state: { field: 'location', value: '不成立的更新', chapterNumber: 3 }, pending: true, reason: 'character-absent' },
+      ])
     } finally { db.close() }
   })
 })
