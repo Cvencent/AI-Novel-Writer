@@ -58,7 +58,15 @@ export async function generateRange(page, from, to) {
   if (await runSheet.sheet(page).isVisible()) await runSheet.closeIfOpen(page)
   await openGenerate(page)
   const dialog = generateDialog(page)
-  await dialog.getByLabel('蓝图起始章').fill(String(from))
+  // issue #235：#232 之后起止章默认 disabled（要先选「第…章至第…章」单选才可编辑）。
+  // 先读合同再操作：若起点输入框 disabled，先点范围单选；顺便把合同状态记进日志，
+  // 未来交互合同再变时能在 call log 里直接看到原因。
+  const startInput = dialog.getByLabel('蓝图起始章')
+  if (await startInput.isDisabled()) {
+    await dialog.getByRole('radio').nth(1).check()
+    console.log('[blueprint.generateRange] start input was disabled; switched to range mode (issue #235)')
+  }
+  await startInput.fill(String(from))
   await dialog.getByLabel('蓝图结束章').fill(String(to))
   await dialog.getByRole('button', { name: '开始生成' }).click()
   // 生成对话框收起后警告才出现；先等它收起，否则「对话框或警告」会先命中还在卸载的对话框。
