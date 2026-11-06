@@ -54,7 +54,7 @@ const FORBIDDEN_IN_COPY: ReadonlyArray<{ label: string, pattern: RegExp }> = [
  * 分块方式：从 `zhCN:`/`enUS:`/`evidence:` 起，到下一个同级字段名或 `}` 为止（上限 40 行），
  * 用大括号深度把模板字符串里的 `${…}` 也算在同一块里。
  */
-function userFacingBlocks(source: string): Array<{ line: number, text: string }> {
+export function userFacingBlocks(source: string): Array<{ line: number, text: string }> {
   const lines = source.split(String.fromCharCode(10))
   const blocks: Array<{ line: number, text: string }> = []
   for (let index = 0; index < lines.length; index += 1) {
@@ -64,6 +64,12 @@ function userFacingBlocks(source: string): Array<{ line: number, text: string }>
     let opened = false
     for (let cursor = index; cursor < lines.length && cursor - index < 40; cursor += 1) {
       const line = lines[cursor]!
+      // ⚠️ **注释不是文案**（issue #112 的文档明说：维护者注释里保留 issue 编号是对的）。
+      // 旧版会从 `evidence:` 那一行继续吃进 `issue: {` 之后的注释——因为 `${…}` 让
+      // `opened` 为真、单行字段的早退又不成立——于是 #217 加的
+      // 「// ⚠️ 不写「她」/「他」（issue #217）」把这条守卫判红。那是**假阳性**，
+      // 不是文案里漏了编号；这一行在 2026-11-06 之后一直是红的（issue #163 本轮顺手修）。
+      if (cursor > index && /^\s*(?:\/\/|\/\*|\*)/u.test(line)) break
       collected.push(line)
       for (const character of line) {
         if (character === '{' || character === '(' || character === '[') { depth += 1; opened = true }
@@ -111,5 +117,23 @@ describe('面向用户的预检文案不含开发者内部产物 (issue #112)', 
     expect(FORBIDDEN_IN_COPY.some(({ pattern }) => pattern.test('zhCN: `若怕落回 #66 的通牒`'))).toBe(true)
     // 正常文案不能命中。
     expect(FORBIDDEN_IN_COPY.some(({ pattern }) => pattern.test('zhCN: `在正文里写明他的退场及其原因`'))).toBe(false)
+  })
+
+  it('does not swallow maintenance comments that follow a field (#217 regression)', () => {
+    // 复刻真实形态：`evidence:` 里带 `${…}`（opened 为真），下一行是 `issue: {`，
+    // 再下一行是维护者注释，里面写着自己的 issue 编号。
+    const source = [
+      '      evidence: `第${chapter.chapterNumber}章写了年龄`,',
+      '      issue: {',
+      '        // ⚠️ 不写「她」/「他」（issue #217）',
+      '        zhCN: `第 ${chapter.chapterNumber} 章写了年龄。`,',
+      '      },',
+    ].join(String.fromCharCode(10))
+    const blocks = userFacingBlocks(source)
+    expect(blocks.length).toBeGreaterThan(0)
+    // 注释不是文案：它不该进入任一字段块，否则守卫会把「维护者注释里有编号」判成文案泄漏。
+    for (const block of blocks) expect(block.text).not.toContain('issue #217')
+    // 但真正的文案仍然被扫到（否则上面的断言凭「什么都没扫」也能绿）。
+    expect(blocks.some(block => block.text.includes('章写了年龄。'))).toBe(true)
   })
 })
