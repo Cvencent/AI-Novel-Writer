@@ -524,7 +524,7 @@ describe('「这些要点按钮才跑」要有可见提示 (issue #194)', () => 
     root = createRoot(host)
     const common = {
       preflight, busy: false,
-      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onRevoke: vi.fn(),
+      onIgnoreOnce: vi.fn(), onRerun: vi.fn(), onSave: vi.fn(), onConfirmNoIssue: vi.fn(), onRevoke: vi.fn(),
       onAcknowledge: vi.fn(), onUnacknowledge: vi.fn(),
       onCheckContent: vi.fn(), onCheckEvidence: vi.fn(),
     }
