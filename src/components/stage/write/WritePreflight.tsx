@@ -264,7 +264,15 @@ export default function WritePreflight({
               ) : (
                 <span className="stage-preflight-not-here">
                   {route.blockedBy === 'needs-finalized-prose'
-                    ? text('这条落在已定稿的章上：要改得先把那一章出新版本再重新定稿', 'This sits in a finalized chapter; fixing it needs a new version of that chapter, re-finalized')
+                    ? text(
+                      // 点名**是哪一章**（issue #212）：一刀切的文案会让作者以为要重开「来源章」，
+                      // 而区间型提醒（第 42–55 章连着没跨日）压根不是重开一章能解决的。
+                      route.targetChapter === undefined
+                        ? '这条落在已定稿的章上：要改得先把那一章出新版本再重新定稿'
+                        : `这条要改的是第 ${route.targetChapter} 章（已定稿）：先给那一章出新版本再重新定稿。整段多章的形态问题（如「第 A–B 章连着没跨日」）无法靠改《本章蓝图》解决。`,
+                      route.targetChapter === undefined
+                        ? 'This sits in a finalized chapter; fixing it needs a new version of that chapter, re-finalized'
+                        : `This needs chapter ${route.targetChapter} (already finalized): make a new version of that chapter and re-finalize. Multi-chapter shapes (e.g. "chapters A–B never state a day change") cannot be fixed by editing this chapter's blueprint.`)
                     : text('这条暂时没有可改的层', 'No editable layer for this one yet')}
                 </span>
               )}

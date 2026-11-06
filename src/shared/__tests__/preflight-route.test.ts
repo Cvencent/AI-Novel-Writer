@@ -168,3 +168,44 @@ describe('preflightRouteOf 的第二维：源章 vs 当前章 (issue #137)', () 
     expect(group!.blockedBy).toBe('needs-finalized-prose')
   })
 })
+
+/**
+ * issue #212：**「要改哪一章」不等于「来源章」**。
+ *
+ * 现场（写第 95 章、46 条提醒）：
+ * - 44 条被标成「落在已定稿的章上」，其中一大半其实是「第 42–55 章连着 14 章没跨日」这种
+ *   多章形态——重开一章也解决不了；
+ * - 只有 2 条给了按钮，而那 2 条把**第 95 章**的蓝图交给模型去改第 42–55 章的问题 →
+ *   模型只能回「不需要改」；
+ * - 最该在本章解决的两条（「反派叶九已连续 6 章没进蓝图」）反而被判死，
+ *   同屏建议写「安排一次登场」、阻断文案写「去重开第 89 章」——两句话互相矛盾。
+ */
+describe('targetChapter：来源章 ≠ 要改的章 (issue #212)', () => {
+  it('lets a current-chapter fix win over an old source chapter', () => {
+    // 来源是第 89 章（他上次出现的地方），出路「让他回来」做的是本章的事。
+    const route = preflightRouteOf('cast:absent:叶九:89', { currentChapter: 95, sourceChapter: 89 })
+    expect(route.repairable).toBe(true)
+    expect(route.targetChapter).toBe(95)
+  })
+
+  it('names the old chapter when the finding really does belong to it', () => {
+    const route = preflightRouteOf('chapter-title:duplicate:15:21', { currentChapter: 95, sourceChapter: 21 })
+    expect(route.repairable).toBe(false)
+    expect(route.blockedBy).toBe('needs-finalized-prose')
+    // 文案要能点名「第 21 章」，而不是一句笼统的「那一章」。
+    expect(route.targetChapter).toBe(21)
+  })
+
+  it('keeps interval-shaped findings pointing at their own chapter, not the current one', () => {
+    // 「第 42–55 章连着 14 章没跨日」的 key 锚在区间首章（42）。它改不了，也**不该**
+    // 标成「改本章蓝图」——旧实现把它标成可修，于是拿第 95 章的蓝图去改第 42–55 章的问题。
+    const route = preflightRouteOf('chapter-time:undated:42', { currentChapter: 95, sourceChapter: 42 })
+    expect(route.repairable).toBe(false)
+    expect(route.targetChapter).toBe(42)
+  })
+
+  it('falls back to no targetChapter when the caller gives no chapters', () => {
+    expect(preflightRouteOf('cast:absent:叶九:89').targetChapter).toBeUndefined()
+    expect(preflightRouteOf('cast:absent:叶九:89').repairable).toBe(true)
+  })
+})

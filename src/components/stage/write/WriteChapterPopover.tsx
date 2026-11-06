@@ -203,7 +203,26 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       return route.repairable && (route.layer === 'blueprint' || route.layer === 'world')
     })
     if (fixable.length === 0) {
-      setMessage(text('这几条都落在已定稿的章上，要改得先出那一章的新版本。', 'These all sit in finalized chapters; fixing them needs a new version of that chapter.'))
+      /**
+       * 一条都修不了时，**按原因分组说清楚**，不要用一句笼统的话盖住（issue #212 建议 ④）。
+       *
+       * 现场：46 条提醒点「全部修复」，44 条被标成「落在已定稿的章上」，
+       * 而其中一大半其实是「要改的是第 42–55 章那一段」这种多章形态，重开一章也解决不了。
+       * 作者从一句「都落在已定稿的章上」里读不出这个区别。
+       */
+      const reasons = new Map<string, number>()
+      for (const finding of targets) {
+        const route = preflightRouteOf(finding.stableFactKey, { currentChapter: chapterNumber, sourceChapter: finding.sourceChapter })
+        const bucket = route.layer === 'prose' ? text('读的是已定稿正文，要改得先出那一章的新版本', 'they read finalized prose, so that chapter needs a new version first')
+          : route.layer === 'cast' ? text('要改的是角色名单（本层没有字段级写通道）', 'they need the roster changed (no field-level channel here)')
+            : route.blockedBy === 'unknown-layer' ? text('判据没有登记可改的层', 'the check has no writable layer registered')
+              : text('要改的是别的章（不是本章蓝图）', 'they belong to other chapters, not this chapter’s blueprint')
+        reasons.set(bucket, (reasons.get(bucket) ?? 0) + 1)
+      }
+      setMessage(text(
+        `这 ${targets.length} 条一条都改不了，原因分三类：${[...reasons].map(([reason, count]) => `${reason} ${count} 条`).join('；')}。`,
+        `None of these ${targets.length} can be fixed here: ${[...reasons].map(([reason, count]) => `${reason} (${count})`).join('; ')}.`,
+      ))
       return
     }
     const calls = planRepairCalls(fixable.map(finding => ({

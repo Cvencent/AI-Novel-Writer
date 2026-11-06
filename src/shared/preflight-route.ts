@@ -41,6 +41,17 @@ export interface PreflightRoute {
   repairable: boolean
   /** 不可修时给作者的一句话（可读原因）。 */
   blockedBy?: 'needs-finalized-prose' | 'characters-arch-readonly' | 'unknown-layer'
+  /**
+   * 这条提醒**要改哪一章**（issue #212）。
+   *
+   * 「来源章」不等于「要改的章」：`cast:absent:叶九:89` 的来源是第 89 章（他上次出现的地方），
+   * 而它的出路「安排一次登场」要改的是**当前这一章**的蓝图；反过来
+   * `chapter-time:undated:42`（第 42–55 章连着没跨日）的来源是第 42 章，要改的却是那一整段。
+   * 旧实现只拿「来源章」当判据，于是前者被误判成「旧章改不了」（同屏写着「要去重开第 89 章」，
+   * 而真正该改的是本章），后者被误判成「现在就能改」（拿第 95 章的蓝图去改第 42–55 章的问题，
+   * 模型只能回「不需要改」）。
+   */
+  targetChapter?: number
 }
 
 /**
@@ -114,6 +125,23 @@ const LAYER_DESTINATIONS: Readonly<Record<PreflightLayer, PreflightRoute['destin
   prose: { kind: 'stage', stage: 'manuscript' },
 })
 
+/**
+ * 「要改的是**当前这一章**」的键族（issue #212）。
+ *
+ * 判据的**来源章**在旧章、但出路落在本章：`cast:absent:*` 说「这个角色已连续 N 章没进蓝图」，
+ * 它的两个出路（让他登场 / 写明退场）做的都是本章的事。这类不该因为来源章早于当前章而被判死。
+ *
+ * ⚠️ 这是**分派约定**（键族 → 目标章），与 `PREFIX_LAYERS` 同族，属 §1.7.1 允许的那一层；
+ * 不是「内容判断」。新增判据要落进这张目录时，必须同时想清楚「它的出路在哪一章」。
+ */
+const CURRENT_CHAPTER_TARGETS: ReadonlySet<string> = new Set(['cast:absent'])
+
+/** 键族（前两段）能截出来时返回它，否则退回第一段。 */
+function familyOf(stableFactKey: string): string {
+  const segments = String(stableFactKey ?? '').split(':')
+  return segments.slice(0, Math.min(2, segments.length)).join(':')
+}
+
 /** 前缀最长匹配（与 `acknowledgementFamilyTitle` 同一手法：先比两段，再比一段）。 */
 function layerOf(stableFactKey: string): PreflightLayer | null {
   const segments = String(stableFactKey ?? '').split(':')
@@ -161,9 +189,17 @@ export function preflightRouteOf(
   if (typeof currentChapter === 'number' && typeof sourceChapter === 'number'
     && Number.isSafeInteger(currentChapter) && Number.isSafeInteger(sourceChapter)
     && sourceChapter < currentChapter) {
-    return { layer, destination, repairable: false, blockedBy: 'needs-finalized-prose' }
+    /**
+     * 但要改的是**本章**时不算旧章（issue #212）：`cast:absent:*` 的来源是「他上次出现的章」，
+     * 出路（让他回来 / 写明退场）落在本章蓝图上。旧实现把它判死，同一张卡片上
+     * 建议写「安排一次登场」、阻断文案写「去重开第 89 章」——两句话互相矛盾。
+     */
+    if (CURRENT_CHAPTER_TARGETS.has(familyOf(stableFactKey))) {
+      return { layer, destination, repairable: true, targetChapter: currentChapter }
+    }
+    return { layer, destination, repairable: false, blockedBy: 'needs-finalized-prose', targetChapter: sourceChapter }
   }
-  return { layer, destination, repairable: true }
+  return { layer, destination, repairable: true, ...(typeof currentChapter === 'number' ? { targetChapter: currentChapter } : {}) }
 }
 
 /**
