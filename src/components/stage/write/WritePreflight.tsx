@@ -64,7 +64,7 @@ interface WritePreflightProps {
   onCheckAppearance?: () => void | Promise<void>
   /** 「核对感官通道」（issue #151 的规则修正）：同样请模型判，不传时不渲染。 */
   onCheckSensory?: () => void | Promise<void>
-  /** 「核对文风」「核对重复写法」（用户 2026-11-05：内容判断交模型）。不传时不渲染。 */
+  /** 「核对文风」「核对跨章重复与状态」（用户 2026-11-05：内容判断交模型）。不传时不渲染。 */
   onCheckStyle?: () => void | Promise<void>
   onCheckContent?: () => void | Promise<void>
   /** 「核对能力限制」（#100）。不传时不渲染。 */
@@ -316,7 +316,7 @@ export default function WritePreflight({
           {checkButton('onCheckMemory', '核对记忆回指', 'Check remembered scenes', onCheckMemory)}
           {checkButton('onCheckAbility', '核对能力限制', 'Check ability limits', onCheckAbility)}
           {checkButton('onCheckStyle', '核对文风', 'Check prose style', onCheckStyle)}
-          {checkButton('onCheckContent', '核对重复写法', 'Check repeated moves', onCheckContent)}
+          {checkButton('onCheckContent', '核对跨章重复与状态', 'Check repeated moves & status', onCheckContent)}
           {checkButton('onCheckSensory', '核对感官通道', 'Check sensory coverage', onCheckSensory)}
           {checkButton('onCheckAppearance', '核对角色外观', 'Check appearance vs cards', onCheckAppearance)}
           {checkButton('onCheckBlueprintFacts', '核对蓝图与前文', 'Check blueprint vs prose', onCheckBlueprintFacts)}

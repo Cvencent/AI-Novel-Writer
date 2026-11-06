@@ -26,7 +26,7 @@ describe('buildContentReviewPrompt', () => {
   it('judges by meaning and requires a verbatim quote', () => {
     const { system } = buildContentReviewPrompt(request)
     expect(system).toContain('按**意思**判断')
-    expect(system).toContain('同一个动作换措辞写仍然算')
+    expect(system).toContain('同一个问题换措辞写仍然算')
     expect(system).toContain('逐字引用')
   })
 
@@ -249,5 +249,79 @@ describe('appellation-unbridged：换了提称却没有桥接 (issue #213)', () 
     // #185 的教训：五轴共用一句建议时，改法对不上这一轴。这里必须是「统一称呼/补桥接」。
     expect(finding!.suggestion.zhCN).not.toContain('换这一拍的落点')
     expect(finding!.suggestion.zhCN).toContain('统一成一个称呼')
+  })
+})
+
+/**
+ * issue #208 / #199：前文已确立的**身份、资格或认知**被本章无声推翻。
+ *
+ * 两处现场（同一个判断类）：
+ *
+ * **#208（官方登记状态）**：ch87 温珩当着人「笔尖落在册页上。温珩两个字进了名」，
+ * ch91 他凭「在册船员」的身份在联名栏按印（经办刚用「一格一案」拒掉另一张申请，说明他是核过资格的）；
+ * ch92 却被廊下杂役一句「**在册的进**」拦住。全书「除名/撤名/注销/出册」**0 次**
+ * ——中间没有任何一句交代身份变了。
+ *
+ * **#199（人物认知）**：ch26–28 阿棠是「铺口带了个年轻散工」、跟周叙学过压印、还拿走过木戳；
+ * ch29 掌柜「**这谁？**」+ 伙计摇头 + 落笔写「杂」。前四章把他立住了，本章当陌生人。
+ *
+ * ⚠️ 为什么原来一层都没抓到：角色卡没有「名册/身份」字段（`characters` 表无此列），
+ * `cast:absent` 判的是「该出场却没出场」（这里他出场了），
+ * `memory-anchor` 判的是「回指没有前文锚点」（这里是**反向**：有锚点却当没有）。
+ * 而「这一章说的和前文是不是同一回事」本来就是内容判断 → 交模型。
+ */
+describe('established-status-reset：已确立的身份／资格被无声推翻 (issue #208 / #199)', () => {
+  const rosterChapters = [
+    { chapterNumber: 87, content: '灰褂把名册摊上桌面。「温珩。入册，谁担保。」笔尖落在册页上。温珩两个字进了名。' },
+    { chapterNumber: 91, content: '袖套翻开册子。「第三格页单独留册，得两名在册船员联名。验实物。」温珩上前，拇指按下去。' },
+    { chapterNumber: 92, content: '廊下杂役扫了温珩一眼。「在册的进。」手横在门框前。温珩停了脚。' },
+  ]
+
+  it('offers the axis to the model as a question, not as a list of institutional words', () => {
+    const { system } = buildContentReviewPrompt({ chapters: rosterChapters, axes: ['established-status-reset'], language: 'zh-CN' })
+    expect(system).toContain('established-status-reset')
+    expect(system).toContain('身份、资格或认知')
+    expect(system).toContain('没有任何一句交代这个变化')
+    // ⚠️ 不许出现本书的身份词 —— 那等于把这本书编进代码（#209 第一版就栽在这里）。
+    for (const term of ['在册', '除名', '名册', '散工', '拦在廊下']) {
+      expect(system, `提示词不该出现「${term}」`).not.toContain(term)
+    }
+    // 原文当然要喂（那是样本）。
+    const { user } = buildContentReviewPrompt({ chapters: rosterChapters, axes: ['established-status-reset'], language: 'zh-CN' })
+    expect(user).toContain('在册')
+  })
+
+  it('covers the recognition case in the same axis rather than a second one', () => {
+    // #199（没人认识 vs 前四章认识）与 #208 是同一个判断类：前文立住了、本章推翻。
+    const { system } = buildContentReviewPrompt({ chapters: rosterChapters, axes: ['established-status-reset'], language: 'zh-CN' })
+    expect(system).toContain('被认识')
+    expect(system).toContain('没人认识')
+    // 不新开轴（用户定规：同类判断合并成一档）。
+    expect(Object.keys(CONTENT_AXES)).toContain('established-status-reset')
+  })
+
+  it('accepts the axis and keeps the quote-verbatim rule', () => {
+    const request = { chapters: rosterChapters, axes: ['established-status-reset'] as const }
+    const good = JSON.stringify({ issues: [{
+      chapterNumber: 92, axis: 'established-status-reset', quote: '「在册的进。」手横在门框前。',
+      explanation: '第 87 章他已入册、第 91 章还凭在册身份按了印，本章却被当作未在册拦下，中间没有除名交代',
+    }] })
+    expect(parseContentReview(good, request)).toHaveLength(1)
+    const bad = JSON.stringify({ issues: [{
+      chapterNumber: 92, axis: 'established-status-reset', quote: '这句不在正文里', explanation: 'x',
+    }] })
+    expect(parseContentReview(bad, request)).toEqual([])
+  })
+
+  it('asks to account for the change on the page, and warns about the fact ledger', () => {
+    const [finding] = contentReviewFindings([{
+      chapterNumber: 92, axis: 'established-status-reset', quote: '「在册的进。」手横在门框前。',
+      explanation: '前文已入册，本章被当未在册',
+    }])
+    expect(finding!.stableFactKey).toBe('prose:established-status-reset:92')
+    expect(finding!.suggestion.zhCN).toContain('补一句交代')
+    expect(finding!.suggestion.zhCN).toContain('事实账本')
+    // 改法必须是这一轴专用的，不能复用 repeated-* 那句「换这一拍的落点」（#185 的教训）。
+    expect(finding!.suggestion.zhCN).not.toContain('换这一拍的落点')
   })
 })

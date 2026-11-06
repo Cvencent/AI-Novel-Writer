@@ -47,6 +47,10 @@ export const CONTENT_AXES = Object.freeze({
     '同一个人或同一件东西在相邻章之间换了一个提称（职务名 / 衣着代称 / 「那个人」），而正文**没有一句把两个提称接起来**，读者无法确认是不是同一个（issue #213）',
     'one person or object is referred to by a different label in a later chapter (a job title, a piece of clothing, "that one") with no line linking the two labels, so a reader cannot tell it is the same one (issue #213)',
   ],
+  'established-status-reset': [
+    '前文已经写明的**身份、资格或认知**在本章被无声推翻：某人此前已被确立为「已登记 / 有资格 / 被认识 / 已在其中」，本章却把他写成「尚未登记 / 无资格被拦下 / 没人认识」；或者反过来，本章声称某人向来如此，而前文写的是另一回事。中间**没有任何一句交代这个变化**（issue #208 / #199）',
+    'an identity, qualification or recognition already established in earlier chapters is silently overturned here: someone written earlier as registered / qualified / known is now written as unregistered, turned away as unqualified, or treated as a stranger — or this chapter asserts something was always so while the earlier text said otherwise. No line accounts for the change (issue #208 / #199)',
+  ],
 } as const)
 
 /**
@@ -97,6 +101,13 @@ export const CONTENT_AXIS_GUIDANCE = Object.freeze({
       'Settle on one duration and say whether the state changed in between (still empty? touched meanwhile?). Two figures side by side only tell readers the author lost track.',
     ],
   },
+  'established-status-reset': {
+    problem: ['前文已确立的身份／资格被本章无声推翻', 'an established status is silently overturned here'],
+    fix: [
+      '**二选一，别两头都改**：① 在本章补一句交代它为什么变了（被除名、资格到期、换了管辖、此人确实不是原来那位）——**变化必须落在正文里**；② 若本章的写法才是对的，就把前文那几处一起改掉，并同时修正**事实账本与章节要点**里那条状态，否则后面每一章起草都会继承旧值。身份/资格类错误最伤的是它**看起来像角色的正常反应**（新掌柜不认人、门房按规矩拦人），读者直到回头翻前文才会发现前后打架。',
+      'Pick one, do not patch both ends: either add a line here explaining why it changed (struck off, qualification expired, different jurisdiction, this really is not the same person) — the change has to land on the page — or, if this chapter is right, correct the earlier passages too **and** the matching entry in the fact ledger and chapter summary, or every later chapter will inherit the old value. Status errors are insidious because the scene reads like normal behaviour (a new clerk who does not know the staff, a gatekeeper following the rule); only a reader paging back sees the contradiction.',
+    ],
+  },
   'appellation-unbridged': {
     problem: ['同一个人／东西换了提称却没有接起来', 'the same person or thing gets a new label with nothing linking them'],
     fix: [
@@ -141,7 +152,7 @@ export function buildContentReviewPrompt(request: ContentReviewRequest): { syste
 
   const system = en
     ? [
-      'Read the chapters and report ONLY the kinds of repetition listed below.',
+      'Read the chapters and report ONLY the kinds of cross-chapter problem listed below.',
       axisLines,
       'Judge by meaning, not by a fixed word list: the same move written with different words still counts; a word appearing often in different meanings does not.',
       'Each report must quote one exact sentence (or clause) from that chapter. If you cannot quote it, do not report it.',
@@ -150,9 +161,9 @@ export function buildContentReviewPrompt(request: ContentReviewRequest): { syste
       'Report at most 3 issues per axis. If nothing qualifies, output {"issues":[]}. No commentary outside the JSON.',
     ].join('\n')
     : [
-      '读这些章节，只报下面这几类重复现象：',
+      '读这些章节，只报下面这几类**跨章**问题：',
       axisLines,
-      '按**意思**判断，不要按固定词表：同一个动作换措辞写仍然算；一个词在不同意思上出现多次不算。',
+      '按**意思**判断，不要按固定词表：同一个问题换措辞写仍然算；一个词在不同意思上出现多次不算。',
       '每条都必须**逐字引用**该章正文里的一句（或一个分句）。引不出来就不要报。',
       '不要编造正文里没有的道具或事件。不确定就不要报。',
       '输出一个 JSON 对象：{"issues":[{"chapterNumber":<章号>,"axis":"<上面某一类>","quote":"<原句>","explanation":"<一句话>"}]}',
