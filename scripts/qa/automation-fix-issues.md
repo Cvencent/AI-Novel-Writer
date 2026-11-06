@@ -206,6 +206,23 @@ const BODY_PARTS = ['无名指','小指','拇指','食指','中指','虎口','�
 **落点速查**：生成类 → `src/services/workflows/commands/*.command.ts` 的 `promptKeys` 与
 `src/shared/*-contract.ts`；审稿/判据类 → `src/shared/*-review.ts` 的 `buildXxxPrompt`。
 
+### 7. 每轮收尾前必做：踩坑总结归档（用户 2026-11-06 定规）
+
+**用户原话**：「你要把你遇到的这些问题都记下来，下次跑任务就不会再犯了……这个规则你也要定的，
+就是每次你跑的时候遇到了什么问题，然后你要总结起来，以后就不会再犯了。」
+
+**规则（每轮强制）**：
+
+1. **当场能守卫的就写进本文档**（像 §4 的 robocopy 三坑、烟测标记验证那样）——写清
+   「现象 → 为什么 → 修法」，不写感想。改完这一处，下一轮定时卡的 prompt 就会带着它跑。
+2. **跨轮有效的教训同步进 `qa-issue-ledger.md`**（那一轮的版本段下面），一两行，格式：
+   `⚠️ 教训标题 — 一句话根因 + 一句话修法`。
+3. **只在单轮内有效的一次性问题**（某个测试文件当时坏了、某次网络抖动）不归档，避免噪音。
+4. **判断标准**：这个问题如果下轮重跑还会在同一个地方再踩一次 → 必须归档；
+   只有「想起来才知道」的背景信息 → 记忆文件；两者都够格 → 先文档后记忆。
+5. **归档时机**：在「打包/覆盖安装」步骤之前做，不要等小结——踩坑时印象最全，且打包失败
+   的坑（本轮 robocopy 三坑）恰恰发生在归档之后。
+
 ### 2. 验证
 
 改完必须跑：
@@ -248,6 +265,20 @@ pnpm run prepare:native-node       # 关键：切回 Node ABI，否则下次 vit
 - **不要**跑 `pnpm run build:win`（完整发行门，含 installer smoke，耗时数小时且要求 release 证据链）。
 - 打包完验证：`release/<version>/win-unpacked/resources/app.asar.unpacked/node_modules/better-sqlite3/build/Release/better_sqlite3.node` 大小应为 **1903104**（Electron ABI）。若为 1902080 说明打进去的是 Node 版，必须重来。
 - 安装：`release/<version>/win-unpacked` 直接覆盖到 `F:\aiNovel\ai-novel-writer\`。**先用 `tasklist` 确认用户的 app 没在运行**；在运行就跳过安装，在 issue 里写「已修复待下次启动安装」。
+- ⚠️ **robocopy 在 Git Bash 里的三个坑（2026-11-06 实测，全部踩过）**：
+  1. **MSYS 路径转换吃掉开关**：`robocopy src dst /MIR` 里的 `/MIR` 会被 Git Bash 转成
+     `C:/Program Files/Git/MIR` → robocopy 报 `错误: 无效参数 #3`、rc=16、**什么都没复制**。
+     修法：命令前加 `MSYS_NO_PATHCONV=1`，或把整条 robocopy 写进 `.ps1` 用 PowerShell 跑。
+  2. **退出码被管道吃掉**：`robocopy … | tail -1` 之后 `echo $?` 拿到的是 tail 的退出码。
+     修法：先把输出重定向到日志文件（`> /tmp/rc.log 2>&1; RC=$?`），再读日志。
+     ⚠️ robocopy 的退出码语义：**0=无事可做、1=复制了文件（成功）**、≥8 才是真错误。
+  3. **残留实例锁住安装目录**：上一轮烟测的实例没退（或用户 app 在跑）时，robocopy 默认
+     每个被锁文件重试 30 次×等 30 秒 → **看起来像卡死十几分钟**。修法：覆盖前先按
+     `ExecutablePath` 精确清掉安装目录实例（用 node 调 PowerShell 取 JSON 后过滤，绝不在
+     bash 里内联中文 exe 名），并给 robocopy 加 `/R:1 /W:1`（失败快报，不要 30 次长等）。
+- ⚠️ **覆盖安装必须验证「真的装上了」**（2026-11-06：rc 假 0 导致安装目录仍是旧版，差点当成功收尾）：
+  安装后用 node 读安装目录的 `app.asar`，在 buffer 里找**本轮新增的一句独有文案**（一个新提示词约束、
+  一条新按钮文案都行）——找到才算装上；同时看 mtime 是否是刚才的时间。只信 robocopy 退出码不算数。
 - **烟测必须用隔离 userData，且跑完必须确认退出**（2026-11-03 事故）：
   覆盖安装后拉起应用做烟测时，**绝不能省略 `--user-data-dir`**。省略就是落到用户的
   `C:\Users\vencent\AppData\Roaming\ai-novel-writer`，一旦烟测实例没退出，它就会**占住 `lockfile`**，
@@ -261,6 +292,14 @@ pnpm run prepare:native-node       # 关键：切回 Node ABI，否则下次 vit
   收尾再确认用户的 `lockfile` 没有被这次烟测创建/占用（`ls "$env:APPDATA\ai-novel-writer\lockfile"`）。
 - **查进程别用内联中文**：`Where-Object { $_.Name -eq 'AI小说作家.exe' }` 写在 bash 双引号里会因编码失真
   匹配不到任何进程（我会据此误判「没有实例在跑」）。改用 `.ps1` 文件、已知 PID，或用 node 取 JSON 后按前缀过滤。
+- ⚠️ **关残留实例用 `ExecutablePath` 过滤，别在 CommandLine 里匹配中文/转义路径**（2026-11-06）：
+  用 node 调 PowerShell 取 JSON 后按 `String(p.ExecutablePath).includes('ai-novel-writer')` 筛主进程
+  （CommandLine **不含** `--type=` 的那条），`taskkill /PID <pid> /T /F` 连树杀。其余子进程报
+  「找不到」rc=128 是正常现象（/T 已连带杀掉），不要当成失败重试。
+- ⚠️ **烟测的「拉起 app」也踩过编码坑**：`Start-Process 'F:\...\AI小说作家.exe'` 内联中文在部分
+  bash→PowerShell 组合下静默失败（30 秒后 0 进程）。稳妥做法：PowerShell 用通配
+  `Start-Process (Get-Item 'F:\aiNovel\ai-novel-writer\AI*.exe').FullName`，
+  或 node `spawn` 直接给完整路径；存活检查同样用 node 取 JSON 后按 ExecutablePath 过滤。
 - **不要**建 GitHub Release、不要打 tag —— 用户明确要求只到本机安装这一步。
 
 ### 5. 关闭 issue
