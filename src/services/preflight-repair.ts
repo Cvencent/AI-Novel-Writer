@@ -22,8 +22,9 @@
  * - **细纲层不在这里**：它是按段落（`arcIndex` + revision）替换的，字段口径与另两层不同。
  * - **正文层**只读（只能新版本 + 重新定稿）。
  */
+
 import { ipc } from './ipc-client'
-import type { ProjectSessionContext } from '../shared/ipc-channels'
+import type { LLMResponse, ProjectSessionContext } from '../shared/ipc-channels'
 import { useLLMStore } from '../stores/llm-store'
 import type { ConsistencyFinding } from '../shared/consistency-preflight'
 import {
@@ -33,6 +34,7 @@ import {
   type RepairFieldDiff,
 } from '../shared/preflight-repair'
 import type { PreflightLayer } from '../shared/preflight-route'
+
 import {
   buildAppearanceReviewPrompt,
   parseAppearanceReview,
@@ -112,6 +114,41 @@ import {
   type SensoryReviewChapter,
   type SensoryVerdictSummary,
 } from '../shared/sensory-review'
+
+/**
+ * 这次核对用的模型调用：**失败是返回值，不是异常**（issue #203）。
+ *
+ * 现场：点「核对物证形态」等到 305 秒，通道 504。`generate()` 最后一句是
+ * `requireIpcSuccess(response, '模型生成')` —— 它按契约**抛异常**，而下面 13 个 `review*`
+ * 函数都只写了 `if (!response.success) return { status: 'failed', … }`（假设不抛）。
+ * 异常于是穿过 `review*`、穿过按钮的 `try`，被 `finally` 吞掉 → 进度行消失、卡片没变、
+ * 弹层一个字都没多：**失败与「查过了没问题」在界面上长得一模一样**。
+ *
+ * 这里把两条路都收成一个值：
+ * - 抛异常 → `{ error: 异常文案 }`；
+ * - 返回 `success: false` → `{ error: 响应里的原因 || 兜底文案 }`。
+ *
+ * 这样每个 `review*` 的返回类型里那个 `status: 'failed'` 才真的成立，
+ * 调用方（11 颗核对按钮）已有的 `if (outcome.status === 'failed') setMessage(...)` 才会跑。
+ */
+async function askReviewModel(
+  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+  session: ProjectSessionContext,
+  locale: 'zh-CN' | 'en-US' = 'zh-CN',
+): Promise<{ response: LLMResponse } | { error: string }> {
+  const fallback = locale === 'en-US' ? 'The model call failed.' : '模型调用失败。'
+  let response: LLMResponse
+  try {
+    response = await useLLMStore.getState().generate(messages, undefined,
+      { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } })
+  } catch (error) {
+    // 异常文案本身就是主进程归类过的原因（超时/504/连接被拒），直接带给作者。
+    const message = error instanceof Error ? error.message : String(error ?? '')
+    return { error: message.trim() || fallback }
+  }
+  if (!response.success) return { error: response.error?.trim() || fallback }
+  return { response }
+}
 
 /** 能做字段级补丁的层（其余层走各自的页面或只能重定稿）。 */
 export const FIELD_PATCH_LAYERS: readonly PreflightLayer[] = ['blueprint', 'world']
@@ -200,14 +237,9 @@ export async function proposeLayerRepair(
   }
   const request = { layer, chapterNumber, current, findings }
   const { system, user } = buildRepairPrompt(request, locale)
-  const response = await useLLMStore.getState().generate(
-    [{ role: 'system', content: system }, { role: 'user', content: user }],
-    undefined,
-    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
-  )
-  if (!response.success) {
-    return { status: 'failed', layer, chapterNumber, error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
-  }
+  const call = await askReviewModel([{ role: 'system', content: system }, { role: 'user', content: user }], session)
+  if ('error' in call) return { status: 'failed', layer, chapterNumber, error: call.error }
+  const response = call.response
   const patch = parseRepairPatch(response.content, request)
   if (!patch) {
     return { status: 'failed', layer, chapterNumber, error: en
@@ -275,14 +307,9 @@ export async function checkAppearanceAgainstCards(
   const request = { chapters, cards, language: locale, checkUsage }
   if (chapters.length === 0 || cards.length === 0) return { status: 'ok', contradictions: [], unusedMarks: [] }
   const { system, user } = buildAppearanceReviewPrompt(request)
-  const response = await useLLMStore.getState().generate(
-    [{ role: 'system', content: system }, { role: 'user', content: user }],
-    undefined,
-    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
-  )
-  if (!response.success) {
-    return { status: 'failed', contradictions: [], unusedMarks: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
-  }
+  const call = await askReviewModel([{ role: 'system', content: system }, { role: 'user', content: user }], session)
+  if ('error' in call) return { status: 'failed', contradictions: [], unusedMarks: [], error: call.error }
+  const response = call.response
   const parsed = parseAppearanceReview(response.content, request)
   if (!parsed) {
     return { status: 'failed', contradictions: [], unusedMarks: [], error: en
@@ -366,14 +393,9 @@ export async function reviewSensoryChannels(
   const request = { chapters, language: locale }
   if (chapters.length === 0) return { status: 'ok', summary: null }
   const { system, user } = buildSensoryReviewPrompt(request)
-  const response = await useLLMStore.getState().generate(
-    [{ role: 'system', content: system }, { role: 'user', content: user }],
-    undefined,
-    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
-  )
-  if (!response.success) {
-    return { status: 'failed', summary: null, error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
-  }
+  const call = await askReviewModel([{ role: 'system', content: system }, { role: 'user', content: user }], session)
+  if ('error' in call) return { status: 'failed', summary: null, error: call.error }
+  const response = call.response
   const verdicts = parseSensoryReview(response.content, request)
   if (!verdicts) {
     return { status: 'failed', summary: null, error: en
@@ -429,14 +451,9 @@ export async function reviewProseStyle(
   const request = { chapters, language: locale }
   if (chapters.length === 0) return { status: 'ok', findings: [] }
   const { system, user } = buildStyleReviewPrompt(request)
-  const response = await useLLMStore.getState().generate(
-    [{ role: 'system', content: system }, { role: 'user', content: user }],
-    undefined,
-    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
-  )
-  if (!response.success) {
-    return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
-  }
+  const call = await askReviewModel([{ role: 'system', content: system }, { role: 'user', content: user }], session)
+  if ('error' in call) return { status: 'failed', findings: [], error: call.error }
+  const response = call.response
   const issues = parseStyleReview(response.content, request)
   if (!issues) {
     return { status: 'failed', findings: [], error: en
@@ -465,14 +482,9 @@ export async function reviewProseContent(
   const request = { chapters, axes, language: locale }
   if (chapters.length === 0 || axes.length === 0) return { status: 'ok', findings: [] }
   const { system, user } = buildContentReviewPrompt(request)
-  const response = await useLLMStore.getState().generate(
-    [{ role: 'system', content: system }, { role: 'user', content: user }],
-    undefined,
-    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
-  )
-  if (!response.success) {
-    return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
-  }
+  const call = await askReviewModel([{ role: 'system', content: system }, { role: 'user', content: user }], session)
+  if ('error' in call) return { status: 'failed', findings: [], error: call.error }
+  const response = call.response
   const issues = parseContentReview(response.content, request)
   if (!issues) {
     return { status: 'failed', findings: [], error: en
@@ -500,14 +512,9 @@ export async function reviewAbilityLimits(
   if (limits.length === 0 || chapters.length === 0) return { status: 'ok', findings: [] }
   const request = { limits, chapters, language: locale }
   const { system, user } = buildAbilityReviewPrompt(request)
-  const response = await useLLMStore.getState().generate(
-    [{ role: 'system', content: system }, { role: 'user', content: user }],
-    undefined,
-    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
-  )
-  if (!response.success) {
-    return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
-  }
+  const call = await askReviewModel([{ role: 'system', content: system }, { role: 'user', content: user }], session)
+  if ('error' in call) return { status: 'failed', findings: [], error: call.error }
+  const response = call.response
   const issues = parseAbilityReview(response.content, request)
   if (!issues) {
     return { status: 'failed', findings: [], error: en
@@ -551,14 +558,9 @@ export async function reviewMemoryAnchors(
   const { system, user, callbacks } = buildMemoryAnchorPrompt(request)
   // issue #175：没有回指句就**不发请求**，但要让调用方知道「没发」而不是「发了没找到」。
   if (callbacks.length === 0) return { status: 'ok', findings: [], skipped: 'no-callbacks' }
-  const response = await useLLMStore.getState().generate(
-    [{ role: 'system', content: system }, { role: 'user', content: user }],
-    undefined,
-    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
-  )
-  if (!response.success) {
-    return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
-  }
+  const call = await askReviewModel([{ role: 'system', content: system }, { role: 'user', content: user }], session)
+  if ('error' in call) return { status: 'failed', findings: [], error: call.error }
+  const response = call.response
   // issue #184：把**模型实际看到的那一份**候选池交给解析器（而不是让它重算一份）。
   const issues = parseMemoryAnchorReview(response.content, request, callbacks)
   if (!issues) {
@@ -597,14 +599,9 @@ export async function reviewBlueprintAgainstProse(
   if (usableClaims.length === 0 || earlierChapters.length === 0) return { status: 'ok', findings: [] }
   const request = { claims: usableClaims, earlierChapters, language: locale }
   const { system, user } = buildProseConflictPrompt(request)
-  const response = await useLLMStore.getState().generate(
-    [{ role: 'system', content: system }, { role: 'user', content: user }],
-    undefined,
-    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
-  )
-  if (!response.success) {
-    return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
-  }
+  const call = await askReviewModel([{ role: 'system', content: system }, { role: 'user', content: user }], session)
+  if ('error' in call) return { status: 'failed', findings: [], error: call.error }
+  const response = call.response
   const issues = parseProseConflictReview(response.content, request)
   if (!issues) {
     return { status: 'failed', findings: [], error: en
@@ -642,14 +639,9 @@ export async function reviewEvidenceShapes(
   // 没有正文就没有可核对的东西；只有一章时仍可能判「这一章内的成因不成立」。
   if (chapters.length === 0) return { status: 'ok', findings: [] }
   const { system, user } = buildEvidenceShapePrompt(request)
-  const response = await useLLMStore.getState().generate(
-    [{ role: 'system', content: system }, { role: 'user', content: user }],
-    undefined,
-    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
-  )
-  if (!response.success) {
-    return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
-  }
+  const call = await askReviewModel([{ role: 'system', content: system }, { role: 'user', content: user }], session)
+  if ('error' in call) return { status: 'failed', findings: [], error: call.error }
+  const response = call.response
   const issues = parseEvidenceShapeReview(response.content, request)
   if (!issues) {
     return { status: 'failed', findings: [], error: en
@@ -682,14 +674,9 @@ export async function reviewHandwritingTraits(
   const request = { chapters, castNames, language: locale }
   if (chapters.length === 0) return { status: 'ok', findings: [] }
   const { system, user } = buildHandwritingReviewPrompt(request)
-  const response = await useLLMStore.getState().generate(
-    [{ role: 'system', content: system }, { role: 'user', content: user }],
-    undefined,
-    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
-  )
-  if (!response.success) {
-    return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
-  }
+  const call = await askReviewModel([{ role: 'system', content: system }, { role: 'user', content: user }], session)
+  if ('error' in call) return { status: 'failed', findings: [], error: call.error }
+  const response = call.response
   const issues = parseHandwritingReview(response.content, request)
   if (!issues) {
     return { status: 'failed', findings: [], error: en
@@ -724,14 +711,9 @@ export async function reviewBlueprintInternals(
   if (usable.length === 0) return { status: 'ok', findings: [] }
   const request = { chapters: usable, language: locale }
   const { system, user } = buildBlueprintInternalPrompt(request)
-  const response = await useLLMStore.getState().generate(
-    [{ role: 'system', content: system }, { role: 'user', content: user }],
-    undefined,
-    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
-  )
-  if (!response.success) {
-    return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
-  }
+  const call = await askReviewModel([{ role: 'system', content: system }, { role: 'user', content: user }], session)
+  if ('error' in call) return { status: 'failed', findings: [], error: call.error }
+  const response = call.response
   const issues = parseBlueprintInternalReview(response.content, request)
   if (!issues) {
     return { status: 'failed', findings: [], error: en
@@ -764,14 +746,9 @@ export async function reviewLossRestatements(
   if (usable.length < 2) return { status: 'ok', findings: [] }
   const request = { chapters: usable, language: locale }
   const { system, user } = buildLossRestatementPrompt(request)
-  const response = await useLLMStore.getState().generate(
-    [{ role: 'system', content: system }, { role: 'user', content: user }],
-    undefined,
-    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
-  )
-  if (!response.success) {
-    return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
-  }
+  const call = await askReviewModel([{ role: 'system', content: system }, { role: 'user', content: user }], session)
+  if ('error' in call) return { status: 'failed', findings: [], error: call.error }
+  const response = call.response
   const issues = parseLossRestatementReview(response.content, request)
   if (!issues) {
     return { status: 'failed', findings: [], error: en
@@ -804,14 +781,9 @@ export async function reviewDeadlines(
   if (usable.length < 2) return { status: 'ok', findings: [] }
   const request = { chapters: usable, language: locale }
   const { system, user } = buildDeadlineReviewPrompt(request)
-  const response = await useLLMStore.getState().generate(
-    [{ role: 'system', content: system }, { role: 'user', content: user }],
-    undefined,
-    { projectSession: session, purpose: 'generation', responseFormat: { type: 'json_object' } },
-  )
-  if (!response.success) {
-    return { status: 'failed', findings: [], error: response.error || (en ? 'The model call failed.' : '模型调用失败。') }
-  }
+  const call = await askReviewModel([{ role: 'system', content: system }, { role: 'user', content: user }], session)
+  if ('error' in call) return { status: 'failed', findings: [], error: call.error }
+  const response = call.response
   const issues = parseDeadlineReview(response.content, request)
   if (!issues) {
     return { status: 'failed', findings: [], error: en

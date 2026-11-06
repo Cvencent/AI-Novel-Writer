@@ -316,6 +316,15 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
         return
       }
       mergeFindings(outcome.findings)
+    } catch (error) {
+      // issue #203：核对调用的失败要**说出来**。原来这 11 颗按钮只有 try/finally，
+      // 异常被 finally 吃掉 → 进度行消失、卡片没变、弹层一个字都没多，
+      // 与「点了、模型说没问题」完全无法区分（实测 305 秒 504 那次）。
+      // 服务层（preflight-repair 的 askReviewModel）已经把模型异常转成 failed 返回值，
+      // 这里兜住剩下的：读库失败、项目已切换、解析意外抛错。
+      if (isProjectSessionCurrent(session)) {
+        setMessage(error instanceof Error && error.message.trim() ? error.message : text('核对失败。', 'The check failed.'))
+      }
     } finally {
       setBusy(false)
     }
@@ -348,6 +357,15 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       if (!isProjectSessionCurrent(session)) return
       if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
       mergeFindings(outcome.findings)
+    } catch (error) {
+      // issue #203：核对调用的失败要**说出来**。原来这 11 颗按钮只有 try/finally，
+      // 异常被 finally 吃掉 → 进度行消失、卡片没变、弹层一个字都没多，
+      // 与「点了、模型说没问题」完全无法区分（实测 305 秒 504 那次）。
+      // 服务层（preflight-repair 的 askReviewModel）已经把模型异常转成 failed 返回值，
+      // 这里兜住剩下的：读库失败、项目已切换、解析意外抛错。
+      if (isProjectSessionCurrent(session)) {
+        setMessage(error instanceof Error && error.message.trim() ? error.message : text('核对失败。', 'The check failed.'))
+      }
     } finally {
       setBusy(false)
     }
@@ -377,6 +395,15 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       if (!isProjectSessionCurrent(session)) return
       if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
       mergeFindings(outcome.findings)
+    } catch (error) {
+      // issue #203：核对调用的失败要**说出来**。原来这 11 颗按钮只有 try/finally，
+      // 异常被 finally 吃掉 → 进度行消失、卡片没变、弹层一个字都没多，
+      // 与「点了、模型说没问题」完全无法区分（实测 305 秒 504 那次）。
+      // 服务层（preflight-repair 的 askReviewModel）已经把模型异常转成 failed 返回值，
+      // 这里兜住剩下的：读库失败、项目已切换、解析意外抛错。
+      if (isProjectSessionCurrent(session)) {
+        setMessage(error instanceof Error && error.message.trim() ? error.message : text('核对失败。', 'The check failed.'))
+      }
     } finally {
       setBusy(false)
     }
@@ -398,6 +425,15 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       if (!isProjectSessionCurrent(session)) return
       if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
       mergeFindings(outcome.findings)
+    } catch (error) {
+      // issue #203：核对调用的失败要**说出来**。原来这 11 颗按钮只有 try/finally，
+      // 异常被 finally 吃掉 → 进度行消失、卡片没变、弹层一个字都没多，
+      // 与「点了、模型说没问题」完全无法区分（实测 305 秒 504 那次）。
+      // 服务层（preflight-repair 的 askReviewModel）已经把模型异常转成 failed 返回值，
+      // 这里兜住剩下的：读库失败、项目已切换、解析意外抛错。
+      if (isProjectSessionCurrent(session)) {
+        setMessage(error instanceof Error && error.message.trim() ? error.message : text('核对失败。', 'The check failed.'))
+      }
     } finally {
       setBusy(false)
     }
@@ -419,6 +455,15 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       if (!isProjectSessionCurrent(session)) return
       if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
       mergeFindings(outcome.findings)
+    } catch (error) {
+      // issue #203：核对调用的失败要**说出来**。原来这 11 颗按钮只有 try/finally，
+      // 异常被 finally 吃掉 → 进度行消失、卡片没变、弹层一个字都没多，
+      // 与「点了、模型说没问题」完全无法区分（实测 305 秒 504 那次）。
+      // 服务层（preflight-repair 的 askReviewModel）已经把模型异常转成 failed 返回值，
+      // 这里兜住剩下的：读库失败、项目已切换、解析意外抛错。
+      if (isProjectSessionCurrent(session)) {
+        setMessage(error instanceof Error && error.message.trim() ? error.message : text('核对失败。', 'The check failed.'))
+      }
     } finally {
       setBusy(false)
     }
@@ -452,6 +497,15 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       }
       setPreflight(current => current ? { ...current, findings: [...current.findings, ...found] } : current)
       show()
+    } catch (error) {
+      // issue #203：核对调用的失败要**说出来**。原来这 11 颗按钮只有 try/finally，
+      // 异常被 finally 吃掉 → 进度行消失、卡片没变、弹层一个字都没多，
+      // 与「点了、模型说没问题」完全无法区分（实测 305 秒 504 那次）。
+      // 服务层（preflight-repair 的 askReviewModel）已经把模型异常转成 failed 返回值，
+      // 这里兜住剩下的：读库失败、项目已切换、解析意外抛错。
+      if (isProjectSessionCurrent(session)) {
+        setMessage(error instanceof Error && error.message.trim() ? error.message : text('核对失败。', 'The check failed.'))
+      }
     } finally {
       setBusy(false)
     }
@@ -511,6 +565,15 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       }
       setPreflight(current => current ? { ...current, findings: [...current.findings, ...found] } : current)
       show()
+    } catch (error) {
+      // issue #203：核对调用的失败要**说出来**。原来这 11 颗按钮只有 try/finally，
+      // 异常被 finally 吃掉 → 进度行消失、卡片没变、弹层一个字都没多，
+      // 与「点了、模型说没问题」完全无法区分（实测 305 秒 504 那次）。
+      // 服务层（preflight-repair 的 askReviewModel）已经把模型异常转成 failed 返回值，
+      // 这里兜住剩下的：读库失败、项目已切换、解析意外抛错。
+      if (isProjectSessionCurrent(session)) {
+        setMessage(error instanceof Error && error.message.trim() ? error.message : text('核对失败。', 'The check failed.'))
+      }
     } finally {
       setBusy(false)
     }
@@ -548,6 +611,15 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       if (!isProjectSessionCurrent(session)) return
       if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
       mergeFindings(outcome.findings)
+    } catch (error) {
+      // issue #203：核对调用的失败要**说出来**。原来这 11 颗按钮只有 try/finally，
+      // 异常被 finally 吃掉 → 进度行消失、卡片没变、弹层一个字都没多，
+      // 与「点了、模型说没问题」完全无法区分（实测 305 秒 504 那次）。
+      // 服务层（preflight-repair 的 askReviewModel）已经把模型异常转成 failed 返回值，
+      // 这里兜住剩下的：读库失败、项目已切换、解析意外抛错。
+      if (isProjectSessionCurrent(session)) {
+        setMessage(error instanceof Error && error.message.trim() ? error.message : text('核对失败。', 'The check failed.'))
+      }
     } finally {
       setBusy(false)
     }
@@ -579,6 +651,15 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       if (!isProjectSessionCurrent(session)) return
       if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
       mergeFindings(outcome.findings)
+    } catch (error) {
+      // issue #203：核对调用的失败要**说出来**。原来这 11 颗按钮只有 try/finally，
+      // 异常被 finally 吃掉 → 进度行消失、卡片没变、弹层一个字都没多，
+      // 与「点了、模型说没问题」完全无法区分（实测 305 秒 504 那次）。
+      // 服务层（preflight-repair 的 askReviewModel）已经把模型异常转成 failed 返回值，
+      // 这里兜住剩下的：读库失败、项目已切换、解析意外抛错。
+      if (isProjectSessionCurrent(session)) {
+        setMessage(error instanceof Error && error.message.trim() ? error.message : text('核对失败。', 'The check failed.'))
+      }
     } finally {
       setBusy(false)
     }
@@ -618,6 +699,15 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       if (!isProjectSessionCurrent(session)) return
       if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
       mergeFindings(outcome.findings)
+    } catch (error) {
+      // issue #203：核对调用的失败要**说出来**。原来这 11 颗按钮只有 try/finally，
+      // 异常被 finally 吃掉 → 进度行消失、卡片没变、弹层一个字都没多，
+      // 与「点了、模型说没问题」完全无法区分（实测 305 秒 504 那次）。
+      // 服务层（preflight-repair 的 askReviewModel）已经把模型异常转成 failed 返回值，
+      // 这里兜住剩下的：读库失败、项目已切换、解析意外抛错。
+      if (isProjectSessionCurrent(session)) {
+        setMessage(error instanceof Error && error.message.trim() ? error.message : text('核对失败。', 'The check failed.'))
+      }
     } finally {
       setBusy(false)
     }
@@ -646,6 +736,15 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       if (!isProjectSessionCurrent(session)) return
       if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
       mergeFindings(outcome.findings)
+    } catch (error) {
+      // issue #203：核对调用的失败要**说出来**。原来这 11 颗按钮只有 try/finally，
+      // 异常被 finally 吃掉 → 进度行消失、卡片没变、弹层一个字都没多，
+      // 与「点了、模型说没问题」完全无法区分（实测 305 秒 504 那次）。
+      // 服务层（preflight-repair 的 askReviewModel）已经把模型异常转成 failed 返回值，
+      // 这里兜住剩下的：读库失败、项目已切换、解析意外抛错。
+      if (isProjectSessionCurrent(session)) {
+        setMessage(error instanceof Error && error.message.trim() ? error.message : text('核对失败。', 'The check failed.'))
+      }
     } finally {
       setBusy(false)
     }
@@ -674,6 +773,15 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       if (!isProjectSessionCurrent(session)) return
       if (outcome.status === 'failed') { setMessage(outcome.error ?? text('核对失败。', 'The check failed.')); return }
       mergeFindings(outcome.findings)
+    } catch (error) {
+      // issue #203：核对调用的失败要**说出来**。原来这 11 颗按钮只有 try/finally，
+      // 异常被 finally 吃掉 → 进度行消失、卡片没变、弹层一个字都没多，
+      // 与「点了、模型说没问题」完全无法区分（实测 305 秒 504 那次）。
+      // 服务层（preflight-repair 的 askReviewModel）已经把模型异常转成 failed 返回值，
+      // 这里兜住剩下的：读库失败、项目已切换、解析意外抛错。
+      if (isProjectSessionCurrent(session)) {
+        setMessage(error instanceof Error && error.message.trim() ? error.message : text('核对失败。', 'The check failed.'))
+      }
     } finally {
       setBusy(false)
     }
