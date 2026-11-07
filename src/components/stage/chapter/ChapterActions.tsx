@@ -21,6 +21,8 @@ import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
 import { includedCount, useReviewChecklist } from '../../editor/review-checklist'
 import { finalizationReviewBlocked, unhandledReviewFindings } from '../../editor/review-finalization'
+import { DEEP_REVIEW_DIMENSIONS, type DeepReviewDimensionKey } from '../../../shared/deep-review-dimensions'
+import { readDeepReviewSelection, writeDeepReviewSelection } from '../../../services/deep-review-service'
 import { reviewDimensions, type useDraftActions } from '../../editor/use-draft-actions'
 import { deleteDraftVersion } from '../../panels/sidebar/draft-deletion'
 import { deleteFinalizedChapter } from '../../panels/sidebar/finalized-chapter-deletion'
@@ -97,6 +99,24 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
   })
   const dims = reviewDimensions(text)
   const [checkedDims, setCheckedDims] = useState<Record<string, boolean>>(() => Object.fromEntries(dims.map(dim => [dim.key, true])))
+  // issue #239：深度检查维度的勾选——默认全勾，挂载时读持久化偏好；改动即落盘。
+  // #229 关闭时只交付了读路径（writeDeepReviewSelection 全仓零调用），这里补 UI 与写路径。
+  const [deepChecked, setDeepChecked] = useState<Record<DeepReviewDimensionKey, boolean> | null>(null)
+  useEffect(() => {
+    const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!projectSession) return
+    void readDeepReviewSelection(projectSession).then(selection => {
+      if (isProjectSessionCurrent(projectSession)) setDeepChecked(selection)
+    }).catch(() => undefined)
+  }, [])
+  const setDeepCheckedPersist = (key: DeepReviewDimensionKey, checked: boolean) => {
+    const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
+    setDeepChecked(current => {
+      const next = { ...(current ?? Object.fromEntries(DEEP_REVIEW_DIMENSIONS.map(dimension => [dimension.key, true])) as Record<DeepReviewDimensionKey, boolean>), [key]: checked }
+      if (projectSession) void writeDeepReviewSelection(projectSession, next).catch(() => undefined)
+      return next
+    })
+  }
   const [reviseModelId, setReviseModelId] = useState<string | null>(null)
   const [ask, setAsk] = useState<Ask>(null)
   const [refinePrompt, setRefinePrompt] = useState('')
@@ -380,6 +400,18 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
               <p className="pi-popover-title">{text('重点检查维度', 'Review focus')}</p>
               {dims.map(dim => (
                 <Check key={dim.key} checked={Boolean(checkedDims[dim.key])} onChange={checked => setCheckedDims(current => ({ ...current, [dim.key]: checked }))} label={<span className="stage-ch-dim">{dim.label}<small>{dim.desc}</small></span>} />
+              ))}
+              {/*
+                issue #239：深度检查的维度勾选（#229 关闭说明里承诺的「可勾选」的另一半）。
+                默认全勾；改动即持久化到项目目录（writeDeepReviewSelection），下一次审稿的
+                深度检查步骤按这份偏好跑。与上面的 review_focus（只管本次审稿的侧重点）
+                是两回事：这里管的是随审稿追加的 16 维模型核对做不做。
+              */}
+              <p className="pi-popover-title">{text('深度检查维度（随审稿自动做）', 'Deep checks (run with the review)')}</p>
+              {DEEP_REVIEW_DIMENSIONS.map(dimension => (
+                <Check key={dimension.key} checked={deepChecked ? Boolean(deepChecked[dimension.key]) : true}
+                  onChange={checked => setDeepCheckedPersist(dimension.key, checked)}
+                  label={<span className="stage-ch-dim">{text(dimension.zh, dimension.en)}<small>{text(dimension.zhDesc, dimension.enDesc)}</small></span>} />
               ))}
               <p className="stage-ch-options-foot">{text('只用于这一次审稿', 'Applies to this review only')}</p>
             </SplitAction>
