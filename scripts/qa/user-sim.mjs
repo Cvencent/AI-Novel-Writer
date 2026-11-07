@@ -694,6 +694,25 @@ for (let chapter = from; chapter <= to; chapter += 1) {
           }
         })()
         log(`  深度检查收尾：${finalizeReady ? '完成（连续 3 次确认），开始定稿' : '超时（30 分钟仍 busy，继续尝试定稿）'}`)
+        // #238 第十三轮教训：审稿+深度检查结算成 paused 后，「定稿…」菜单仍 disabled
+        // （paused 在 activeChapterRunKey 白名单里=仍占章节）。作者出路=运行侧页「取消」。
+        // sim 这里走 UI 路径：打开运行侧页 → 对可见的「取消」按钮逐个点（paused run 会被
+        // cancelWorkflow 置 cancelling→清场），等 activeRuns 清空后再点定稿。
+        try {
+          const runsNow = await invokeSession(page, session, 'generation:list')
+          const hasPaused = Array.isArray(runsNow) && runsNow.some(item => item?.status === 'paused')
+          if (hasPaused) {
+            log('  发现 paused 运行——经运行侧页「取消」解锁定稿（#238 语义 A 出路）')
+            const { runSheet: rs } = await import('../redesign/pages/run-sheet.mjs')
+            await rs.openFromPalette(page).catch(() => {})
+            const cancelButtons = page.getByRole('button', { name: /^取消「/ })
+            const n = Math.min(await cancelButtons.count(), 4)
+            for (let k = 0; k < n; k++) await cancelButtons.first().click({ timeout: 10_000 }).catch(() => {})
+            await rs.closeIfOpen(page).catch(() => {})
+            log(`  已点 ${n} 个「取消」，等清场…`)
+            await page.waitForTimeout(8_000)
+          }
+        } catch (e) { log(`  paused 运行取消异常（继续尝试定稿）：${String(e).slice(0, 80)}`) }
         await chapterView.finalize(page, chapter)
         await pollUntilOrStall(page, session, async () => {
           const list = await invokeSession(page, session, 'db:draft-list', chapter, session.projectPath)
