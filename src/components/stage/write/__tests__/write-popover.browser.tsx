@@ -92,6 +92,9 @@ function model(id: string): ModelProfile {
   }
 }
 
+const originalInvoke = undefined
+void originalInvoke
+
 function installIpc() {
   const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
     if (channel === 'db:draft-authority-sequence') return {
@@ -637,6 +640,26 @@ describe('同章重复写作的簿记提示 (issue #224)', () => {
     expect(document.body.textContent).not.toContain('未定稿草稿')
   })
 
+  it('surfaces a launch exception in the popover instead of vanishing (issue #236)', async () => {
+    // launch 链路里任何异常原来逃成 unhandled rejection：busy 复位、无弹层、无 message
+    // ——「炸没反应」。这里用参数持久化 IPC 拒绝来注入异常（它在 preflight 之后、
+    // startWorkflow 之前，处在原 try/finally 的洞里）。
+    const failPersistence = { value: false }
+    const api = window.aiNovelAPI as { invoke: (channel: string, ...args: unknown[]) => Promise<unknown> }
+    const base = api.invoke
+    api.invoke = async (channel: string, ...args: unknown[]) => {
+      if (channel === 'db:blueprint-get-all' && failPersistence.value) throw new Error('SIMULATED_LAUNCH_FAILURE')
+      return base(channel, ...args)
+    }
+    await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" />)
+    await userEvent.click(page.getByRole('button', { name: '本次写作选项' }))
+    failPersistence.value = true
+    await userEvent.click(page.getByRole('button', { name: '写第 5 章' }))
+    // 异常后弹层必须出现且写明原因——可见反馈，不是静默复位。
+    await vi.waitFor(() => expect(page.getByText('SIMULATED_LAUNCH_FAILURE')).toBeVisible())
+    // busy 已复位（可再试），不是卡死在加载态。
+    await vi.waitFor(() => expect(page.getByRole('button', { name: '写第 5 章' })).toBeEnabled())
+  })
   it('shows an active run on the same chapter before the author hits start', async () => {
     await render(<WriteChapterPopover chapterNumber={5} blueprint={blueprintWritePrefill(BLUEPRINT)} label="写第 5 章" />)
     await userEvent.click(page.getByRole('button', { name: '本次写作选项' }))

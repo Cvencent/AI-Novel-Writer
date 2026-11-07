@@ -1,5 +1,6 @@
 import { installMainGenerationTransport } from './services/generation/generation-runtime'
 import { mainGenerationTransport } from './services/generation/main-generation-transport'
+import { installGlobalRejectionLogging } from './startup-observability'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import RendererStartup from './components/startup/RendererStartup'
@@ -11,6 +12,9 @@ import './components/stage/stage.css'
 
 
 installMainGenerationTransport(mainGenerationTransport)
+// issue #236 ②：unhandledrejection / uncaught error 转发进 console.error（诊断收集可见），
+// 「吞异常」不再静默。组件内错误出口仍各自负责（同轮 start() 已补 catch）。
+installGlobalRejectionLogging()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

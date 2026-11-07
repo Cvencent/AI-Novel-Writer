@@ -195,11 +195,21 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           return
         }
       }
-    } finally {
-      setBusy(false)
-      setStarting(false)
+      } catch (error) {
+        // issue #236：launch 链路里任何异常（守卫读库、参数持久化、IPC）原来都逃进
+        // unhandled rejection——busy 复位、无弹层、无 message，正是「点了没反应」
+        // 的「炸没反应」形态（#210 是「慢没反馈」，#224 是「重复没簿记」）。
+        // 与同文件 changeArrangement 同型：异常时弹层必须出现并写明原因——
+        // 「点了没反应」这一族的终点是**任何路径都以可见反馈收尾**。
+        if (isProjectSessionCurrent(session)) {
+          setMessage(error instanceof Error && error.message.trim() ? error.message : text('启动写作失败。', 'Could not start writing.'))
+          show()
+        }
+      } finally {
+        setBusy(false)
+        setStarting(false)
+      }
     }
-  }
 
   /** 保存或撤销一致性安排：进行中按钮不可再点，失败时在弹层里写明原因。成功时返回发起时的会话。 */
   const changeArrangement = async (failure: string, call: (session: ProjectSessionContext) => Promise<{ success: boolean; error?: string }>) => {
