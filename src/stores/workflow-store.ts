@@ -290,8 +290,13 @@ export function activeChapterRunKey(
 ): string {
   if (!projectPath || chapterNumber === undefined) return ''
   const resourceKey = workflowResourceKey('chapter', chapterNumber)
+  // issue #238 重开：只有**真在跑**的 run 才占章节——与 isTypeRunning（下方 :507 附近）同一口径。
+  // paused/waiting 是「可恢复的挂起」，不该挡定稿：作者恰恰需要在暂停时定稿已完成的正文。
+  // 旧口径无 status 过滤，深度检查结算后前端那条 run 留在数组里（哪怕已 paused），
+  // 「定稿…」就永远灰——sim 第六/十二轮两次实证。
   const run = activeRuns.find(candidate => candidate.projectPath === projectPath
     && candidate.type === 'chapter_creation'
+    && (candidate.status === 'running' || candidate.status === 'waiting' || candidate.status === 'paused' || candidate.status === 'cancelling')
     && candidate.resourceKeys?.includes(resourceKey))
   return run ? run.id : ''
 }
