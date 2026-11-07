@@ -607,7 +607,13 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
       return false
     }
     if (isProjectSessionCurrent(projectSession)) {
-      toast.success(text('已把修稿应用为新版本草稿', 'Applied the revision as a new draft version'))
+      // issue #234（口径 B）：「应用为新版本」的下一步是**审稿再定稿**，不是直接定稿——
+      // 旧 toast 只说「应用成功」，作者（尤其从预检「去第 N 章出新版本」过来的）
+      // 不知道接下来该做什么，新版本就此搁成死版本。
+      toast.success(text(
+        '已把修稿应用为新版本草稿。下一步：对这一版跑 AI 审稿（含深度检查），确认后再定稿。',
+        'Applied the revision as a new draft. Next: run the AI review (with deep checks) on it, then finalize after confirming.',
+      ))
       reload()
     }
     return true
