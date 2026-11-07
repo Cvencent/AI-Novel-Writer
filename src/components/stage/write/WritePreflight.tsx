@@ -58,6 +58,9 @@ interface WritePreflightProps {
    * 不传时该按钮不渲染——宁可少一个按钮，也不要给一个点了没反应的。
    */
   onRepair?: (findings: readonly ConsistencyFinding[]) => void
+  /** issue #241 ②：修复调用进行中的可见状态（「正在按提醒生成修复… 已等 N 秒」）。
+   * 不传时按钮只 disabled——那正是「所有东西都卡着、不知道它在做什么」的病灶。 */
+  repairBusyLabel?: string
   /** 「全部修复」：把当前能修的所有提醒按层分组，每层一次调用。 */
   onRepairAll?: () => void
   /**
@@ -155,7 +158,7 @@ interface WritePreflightProps {
  */
 export default function WritePreflight({
   preflight, busy, onIgnoreOnce, onRerun, onSave, onConfirmNoIssue, onRevoke, onAcknowledge, onUnacknowledge, onOpenLayer, currentChapter,
-  onRepair, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent, onCheckAbility, onCheckMemory, onCheckBlueprintFacts, onCheckEvidence, onCheckHandwriting, onCheckBlueprintInternal, onCheckLossRestatement, onCheckDeadline, onCheckDateConflict, onCreateCharacter, onOpenFinalizedChapter,
+  onRepair, repairBusyLabel, onRepairAll, repairProposal, onApplyRepairField, onApplyRepairAll, onDismissRepair, onCheckAppearance, onCheckSensory, onCheckStyle, onCheckContent, onCheckAbility, onCheckMemory, onCheckBlueprintFacts, onCheckEvidence, onCheckHandwriting, onCheckBlueprintInternal, onCheckLossRestatement, onCheckDeadline, onCheckDateConflict, onCreateCharacter, onOpenFinalizedChapter,
 }: WritePreflightProps) {
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
@@ -329,7 +332,7 @@ export default function WritePreflight({
               */}
               {onRepair === undefined || !route.repairable ? null : (route.layer === 'blueprint' || route.layer === 'world') ? (
                 <Button variant="secondary" size="sm" disabled={busy} onClick={() => onRepair([finding])}>
-                  {text('修复', 'Fix it')}
+                  {repairBusyLabel ?? text('修复', 'Fix it')}
                 </Button>
               ) : null}
             </div>
@@ -397,7 +400,7 @@ export default function WritePreflight({
         <div className="stage-preflight-actions">
           {onRepairAll === undefined ? null : (
             <Button variant="secondary" size="sm" disabled={busy} onClick={onRepairAll}>
-              {text('全部修复', 'Fix all')}
+              {repairBusyLabel ?? text('全部修复', 'Fix all')}
             </Button>
           )}
           <Button variant="text" size="sm" disabled={busy} onClick={onIgnoreOnce}>{text('带提醒继续写', 'Continue with reminders')}</Button>

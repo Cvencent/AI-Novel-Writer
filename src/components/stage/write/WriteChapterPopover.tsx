@@ -75,6 +75,27 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
   const [repairSource, setRepairSource] = useState<{ layer: 'world' | 'cast' | 'outline' | 'blueprint' | 'prose'; chapterNumber: number | null } | null>(null)
   // 「全部修复」的跨层排队（issue #137）：一层一次确认，采纳后自动提出下一层。
   const [repairQueue, setRepairQueue] = useState<Array<{ layer: 'world' | 'cast' | 'outline' | 'blueprint' | 'prose'; findings: readonly ConsistencyFinding[] }>>([])
+  /**
+  * issue #241 ①：本轮**已采纳过修复**的提醒键（内存，弹层关掉清）。
+  * 采纳后 start(false) 重检若该键仍在（判据命中的依据在被改字段之外，或模型 diff
+  * 与判据抽取的名词片段未对齐），列表要**标注**而不是装没看见——否则作者看到
+  * 「我采纳了、它还报、还能再点修复」，修复闭环的信任一次就没了。
+  */
+  const [appliedRepairKeys, setAppliedRepairKeys] = useState<Set<string>>(new Set())
+  /** 本轮修复的目标键（提案生成时暂存；采纳后进 appliedRepairKeys）。 */
+  const [repairTargetKeys, setRepairTargetKeys] = useState<Set<string>>(new Set())
+  /**
+  * issue #241 ②：修复按钮的 busy 计时——「正在按提醒生成修复… 已等 N 秒」。
+  * 复用 startingSeconds 的 interval 模式（#210 修法）；模型 30–120s，
+  * 没有它作者唯一能感知的是「所有按钮都灰了」。
+  */
+  const [repairSeconds, setRepairSeconds] = useState<number | null>(null)
+  useEffect(() => {
+    if (repairSeconds === null) return
+    const timer = setInterval(() => setRepairSeconds(current => (current ?? 0) + 1), 1000)
+    return () => clearInterval(timer)
+  }, [repairSeconds !== null])
+
   const [starting, setStarting] = useState(false)
   /**
    * 本章已有未定稿草稿的簿记提示（issue #224）。
@@ -184,6 +205,18 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           setMessage(null)
           setRepairChapter(null)
           setPreflight(outcome.preflight)
+          {
+            // issue #241 ①：本轮已采纳过修复、且重检后**仍命中的**条目要标注——
+            // 作者看到的是「我采纳了、它还报」，不标注就是修复闭环失信。
+            const stillReported = [...appliedRepairKeys].filter(key =>
+              outcome.preflight.findings.some(finding => finding.stableFactKey === key))
+            if (stillReported.length > 0) {
+              const involved = stillReported.map(key => key.split(":").slice(0, 2).join(":")).join("；")
+              setMessage(text(
+                `你刚采纳过的修复，重检后仍有 ${stillReported.length} 条被继续报出——可能判据命中的依据在别的段落/字段。可改用「去 X 改」或「确认无误，不再提醒」。（涉及：${involved}）`,
+                `You just applied fixes, but ${stillReported.length} of them were reported again after the recheck — the check may match text outside the fields you changed. Use "Go to X" or "Confirmed fine" instead.`))
+            }
+          }
           show()
           return
         default: {
@@ -271,6 +304,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
     setRepairQueue(calls.slice(1))
     setBusy(true)
     setMessage(null)
+    setRepairSeconds(0)
     try {
       const outcome = await proposeLayerRepair(session, call.layer, chapterNumber, call.findings, locale)
       if (!isProjectSessionCurrent(session)) return
@@ -280,6 +314,8 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
         return
       }
       setRepairSource({ layer: call.layer, chapterNumber })
+      // issue #241 ①：本轮修复目标键——采纳后 start(false) 重检若仍命中，要标注而不是装没看见。
+      setRepairTargetKeys(new Set(call.findings.map(finding => finding.stableFactKey)))
       setRepairProposal({
         layerLabel: call.layer === 'world' ? text('世界观/设定', 'worldbuilding') : text('本章蓝图', 'this chapter’s blueprint'),
         chapterNumber,
@@ -287,6 +323,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
         remainingLayers: calls.length - 1,
       })
       show()
+      setRepairSeconds(null)
     } finally {
       setBusy(false)
     }
@@ -910,6 +947,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       // 跨层排队（issue #137）：这一层采纳了改动、且还有别的层 → 提出下一层。
       // ⚠️ 只在**真的采纳了改动**时继续：作者点「都不改」时不能推进，
       //    否则那几层的提醒会在没有任何改动的情况下被当作已处理。
+      setAppliedRepairKeys(current => new Set([...current, ...repairTargetKeys]))
       const remaining = advanceRepairQueue(repairQueue, repairSource.layer)
       setRepairQueue(remaining)
       const next = remaining[0]
@@ -1171,6 +1209,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
           onUnacknowledge={key => void unacknowledgeFinding(key)}
           currentChapter={chapterNumber}
           onRepair={targets => void requestRepair(targets)}
+          repairBusyLabel={repairSeconds !== null ? text(`正在按提醒生成修复… 已等 ${repairSeconds} 秒`, `Generating fix… s`) : undefined}
           onRepairAll={() => void requestRepair(preflight.findings)}
           onCheckAppearance={() => checkAppearance()}
           onCheckSensory={() => checkSensory()}
