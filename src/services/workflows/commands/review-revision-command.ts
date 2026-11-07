@@ -43,6 +43,12 @@ export abstract class ReviewRevisionCommand extends BaseWorkflowCommand<string> 
         || 'code' in error && ['SOURCE_DRAFT_CHANGED', 'GENERATION_SOURCE_CHANGED', 'GENERATION_REVIEW_SOURCE_CHANGED'].includes(String(error.code)))) {
         throwIfSourceDraftChanged({ errorCode: 'SOURCE_DRAFT_CHANGED' }, workflowUiLocale(params.context), this.operation === 'review-chapter' ? 'review' : 'refine')
       }
+      // issue #237：审稿失败原来只上抛（工作流步进器标 failed），但模型已经跑完的
+      // 两次调用（各 28 万 reserved tokens 级）产出静默丢失——至少要让运行日志知道
+      // 「审稿在哪一步、为什么没落库」。
+      params.callbacks.log(workflowUiText(params.context,
+        `审稿失败：${error instanceof Error ? error.message : String(error)}`,
+        `Review failed: ${error instanceof Error ? error.message : String(error)}`))
       throw error
     }
   }

@@ -37,7 +37,9 @@ const REPORT_PATH = path.resolve(option('report') ?? path.join(repo, '.runtime',
 const CHAPTERS = Number(option('chapters') ?? 3)
 const WORDS = Number(option('words') ?? 800)
 const PROXY = { url: option('proxy') ?? 'http://127.0.0.1:8790/v1', key: 'test_key' }
-const REVIEW_SHEET_TIMEOUT_MS = Number(option('review-timeout-min') ?? 12) * 60_000
+ // issue #237：深度检查（1.5.229 起）默认随审稿追加，16 维逐项模型调用
+// 串行可达 20+ 分钟——默认超时从 12 分钟上调到 30；仍可用 --review-timeout-min 覆盖。
+const REVIEW_SHEET_TIMEOUT_MS = Number(option('review-timeout-min') ?? 30) * 60_000
 const ARC_TIMEOUT_MS = Number(option('arc-timeout-min') ?? 25) * 60_000
 const GENERATION_TIMEOUT_MS = Number(option('gen-timeout-min') ?? 25) * 60_000
 
