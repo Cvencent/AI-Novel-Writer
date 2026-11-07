@@ -40,6 +40,8 @@ const PROXY = { url: option('proxy') ?? 'http://127.0.0.1:8790/v1', key: 'test_k
  // issue #237：深度检查（1.5.229 起）默认随审稿追加，16 维逐项模型调用
 // 串行可达 20+ 分钟——默认超时从 12 分钟上调到 30；仍可用 --review-timeout-min 覆盖。
 const REVIEW_SHEET_TIMEOUT_MS = Number(option('review-timeout-min') ?? 30) * 60_000
+// 深度检查收尾等待：与审稿同预算（16 维串行 13-22 分钟，#237）。
+const DEEP_REVIEW_DRAIN_MS = Number(option('deep-review-min') ?? 30) * 60_000
 const ARC_TIMEOUT_MS = Number(option('arc-timeout-min') ?? 25) * 60_000
 const GENERATION_TIMEOUT_MS = Number(option('gen-timeout-min') ?? 25) * 60_000
 
@@ -667,6 +669,16 @@ for (let chapter = from; chapter <= to; chapter += 1) {
         }
         await chapterView.reviewSheet(page).waitFor({ state: 'visible', timeout: REVIEW_SHEET_TIMEOUT_MS })
         const excerpt = await chapterView.reviewSheet(page).innerText().catch(() => '')
+        // 深度检查（1.5.229 起）随审稿追加、16 维串行 13-22 分钟；期间章节 busy、「定稿…」菜单
+        // disabled（#237 第四/五轮现场）。修卡关闭 #237 时维持此行为——harness 侧等章节
+        // 不再 busy 再点定稿，而不是在灰按钮上等满超时。与 hasActiveGeneration 同口径：
+        // generation:list 无 running 即视为收尾（depth check 的 run 也是 running 状态）。
+        const finalizeReady = await pollUntilOrStall(page, session, async () => {
+          const runs = await invokeSession(page, session, 'generation:list')
+          const busy = Array.isArray(runs) && runs.some(item => item?.status === 'running')
+          return busy ? null : { idle: true }
+        }, { label: '深度检查收尾（无 running 运行）', stallMs: DEEP_REVIEW_DRAIN_MS, timeoutMs: DEEP_REVIEW_DRAIN_MS })
+        log(`  深度检查收尾：${finalizeReady ? '完成，开始定稿' : '超时（仍 busy，继续尝试定稿）'}`)
         await chapterView.finalize(page, chapter)
         await pollUntilOrStall(page, session, async () => {
           const list = await invokeSession(page, session, 'db:draft-list', chapter, session.projectPath)

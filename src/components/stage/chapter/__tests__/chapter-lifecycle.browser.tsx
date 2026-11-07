@@ -108,6 +108,11 @@ describe('单章视图的主按钮随五种状态变化', () => {
     await act(async () => openChapterPlan(3, BLUEPRINT.title, SESSION))
     await expect.element(page.getByRole('heading', { name: '本章蓝图' })).toBeVisible()
     await click('写作此章')
+    // 预检有提醒时（fixture 的名册/卡数据触发 2 条），应用按设计开弹层等作者决定（#53）。
+    // 点「带提醒继续写」继续——这正是作者会做的动作；随后工作流才启动。
+    const continueBtn = page.getByRole('button', { name: '带提醒继续写' })
+    await vi.waitFor(() => expect(continueBtn).toBeVisible(), { timeout: 15_000 })
+    await click('带提醒继续写')
     await vi.waitFor(() => expect(startWorkflow).toHaveBeenCalledOnce())
     const [chapterInfo] = workflows.createChapterWorkflow.mock.calls[0]
     expect({ number: chapterInfo.chapterNumber, title: chapterInfo.title, purpose: chapterInfo.purpose, characters: chapterInfo.characters })
