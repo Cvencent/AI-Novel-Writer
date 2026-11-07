@@ -151,6 +151,23 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
   const included = includedCount(checklist.items)
   const reviewBlocksFinalization = finalizationReviewBlocked(checklist.items, Boolean(checklist.confirmed))
   const canFinalize = draft.canFinalize && !reviewBlocksFinalization
+  /**
+   * issue #238：定稿不可用时**给出原因**（与 #228/#210 家族同一原则：任何不可用都要可解释）。
+   * 现场是审稿+深度检查跑完后主进程 generation:list 已清空，但前端 activeRuns 里那条
+   * 审稿 run 未被移除 → isChapterBusy 永真 → 「定稿…」永灰且无解释。
+   * busy 档的解释直接给出路：去运行侧页看（那里能看到挂着的运行并取消/等待）。
+   */
+  const finalizeBlockReason = reviewBlocksFinalization
+    ? text('复验仍有已确认未解决的意见', 'Confirmed findings remain unresolved')
+    : !draft.canFinalize
+      ? draft.finalizationConflict
+        ? text('有保留的定稿冲突（ADR 0003）', 'A preserved finalization conflict exists (ADR 0003)')
+        : draft.finalizationPending
+          ? text('上一次定稿还在发布中', 'The previous finalization is still publishing')
+          : draft.isChapterBusy
+            ? text('本章仍有进行中的运行（审稿/深度检查/写作）——可在左栏「日志」旁的运行侧页查看；若它已实际结束，重启应用可清掉这条残留状态', 'A run is still active for this chapter (review / deep checks / writing) — see the run sheet; if it has actually finished, restarting the app clears the stale state')
+            : text('项目或草稿状态未就绪', 'Project or draft is not ready')
+    : null
   const busy = draft.isChapterBusy
   const generationModels = models.filter(isGenerationModel)
   const selectedReviseModel = reviseModelId ?? preferredFunctionModelId(models, functionModels, 'draft_generation', defaultModelId)
@@ -484,6 +501,9 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
             {reviewAgain}
             {more}
             <span className="stage-ch-hint" data-tone={recheck?.recheckDisposition === 'completed' ? 'ok' : undefined}>{reviewBlocksFinalization ? text('复验仍有已确认未解决的意见，请先处理后再定稿', 'Confirmed findings remain unresolved; handle them before finalizing') : revisedHint}</span>
+            {finalizeBlockReason && !reviewBlocksFinalization && (
+              <span className="stage-ch-hint" role="note">{text(`现在不能定稿：${finalizeBlockReason}`, `Cannot finalize now: ${finalizeBlockReason}`)}</span>
+            )}
           </>
         )
       case 'final':
