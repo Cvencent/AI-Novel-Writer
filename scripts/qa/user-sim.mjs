@@ -672,23 +672,25 @@ for (let chapter = from; chapter <= to; chapter += 1) {
         // 深度检查（1.5.229 起）随审稿追加、16 维串行 13-22 分钟；期间章节 busy、「定稿…」菜单
         // disabled（#237 第四/五轮现场）。修卡关闭 #237 时维持此行为——harness 侧等章节
         // 不再 busy 再点定稿，而不是在灰按钮上等满超时。
-        // ⚠️ 第六/八轮教训：维度**间隙**里 generation:list 会短暂清空（单维调用之间 run
-        // 仍在 running，但 poll 恰好落在两维之间）→ 单次「无 running」是假阳性。
-        // 这里要求**连续 3 次 poll（间隔 3s）都 idle** 才认收尾。
+        // ⚠️ 第六/八轮教训：维度**间隙**里 generation:list 会短暂清空（单次 poll 是假阳性）。
+        // ⚠️ 第九轮教训：维度间隙可以长达 5 分钟（12:35 → 12:40 两条调用之间）——9 秒三连
+        // 也会落在间隙里。改成「连续 idle 且**总 idle 时长 ≥3 分钟**」才认收尾：正常维度间隙
+        // 实测最长 5 分钟、但两维间 idle 不会连续超过 ~2 分钟（下一维调用会立刻把 running
+        // 顶回来）；真收尾后 idle 是**持续**的。
         const finalizeReady = await (async () => {
-          let idleStreak = 0
+          let idleSince = null
           const deadline = Date.now() + DEEP_REVIEW_DRAIN_MS
           for (;;) {
             const runs = await invokeSession(page, session, 'generation:list').catch(() => null)
             const busy = Array.isArray(runs) && runs.some(item => item?.status === 'running')
             if (!busy) {
-              idleStreak += 1
-              if (idleStreak >= 3) return { idle: true }
+              idleSince ??= Date.now()
+              if (Date.now() - idleSince >= 3 * 60_000) return { idle: true, idleMs: Date.now() - idleSince }
             } else {
-              idleStreak = 0
+              idleSince = null
             }
             if (Date.now() > deadline) return null
-            await page.waitForTimeout(3_000)
+            await page.waitForTimeout(15_000)
           }
         })()
         log(`  深度检查收尾：${finalizeReady ? '完成（连续 3 次确认），开始定稿' : '超时（30 分钟仍 busy，继续尝试定稿）'}`)
