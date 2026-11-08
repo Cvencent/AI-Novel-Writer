@@ -703,12 +703,14 @@ for (let chapter = from; chapter <= to; chapter += 1) {
           const hasPaused = Array.isArray(runsNow) && runsNow.some(item => item?.status === 'paused')
           if (hasPaused) {
             log('  发现 paused 运行——经运行侧页「取消」解锁定稿（#238 语义 A 出路）')
-            const { runSheet: rs } = await import('../redesign/pages/run-sheet.mjs')
-            await rs.openFromPalette(page).catch(() => {})
+            // 顶部已有 `import * as runSheet`（:26）——这里直接复用静态导入；
+            // 动态 import 解构 { runSheet } 是取「模块内名为 runSheet 的导出」，
+            // 模块里没有这个名字 → rs undefined → 第十五轮实录的 TypeError。
+            await runSheet.openFromPalette(page).catch(() => {})
             const cancelButtons = page.getByRole('button', { name: /^取消「/ })
             const n = Math.min(await cancelButtons.count(), 4)
             for (let k = 0; k < n; k++) await cancelButtons.first().click({ timeout: 10_000 }).catch(() => {})
-            await rs.closeIfOpen(page).catch(() => {})
+            await runSheet.closeIfOpen(page).catch(() => {})
             log(`  已点 ${n} 个「取消」，等清场…`)
             await page.waitForTimeout(8_000)
           }
