@@ -724,7 +724,13 @@ export class GenerationRunRepository {
     }
     activateRootForCommittedStage(rootId: string, project: ProjectEpoch): void {
         if (!this.db().inTransaction) fail('GENERATION_DIRECTORY_TRANSACTION_REQUIRED');
-        if (this.authorEditedRoot(rootId)) fail('GENERATION_PLOT_OUTLINE_AUTHOR_SAVED');
+        if (this.authorEditedRoot(rootId)) {
+            // issue #244 现场排查：这个 fail 原来是静默的——作者只看到 BLOCKED，
+            // 不知道是「这条 run 的写入被作者接管过」。细分诊断让主进程日志可见。
+            const effects = this.db().prepare(`SELECT r.binding_json FROM generation_runs r WHERE r.root_action_id=?`).pluck().get(rootId) as string | ''
+            console.error('[activate] author-edited root:', rootId, '| effects:', effects.slice(0, 300));
+            fail('GENERATION_PLOT_OUTLINE_AUTHOR_SAVED');
+        }
         const budget = this.budget(rootId);
         if (budget.root.projectId !== project.projectId) {
             console.error('[activate] root/project epoch mismatch:', budget.root.projectId, 'vs', project.projectId);
