@@ -251,6 +251,15 @@ export function registerGenerationController(options: {
     if (request.operation === 'chapter-draft' && !request.materialDecision) throw new Error('GENERATION_MATERIAL_DECISION_REQUIRED')
     if (request.operation !== 'chapter-draft' && request.materialDecision) throw new Error('GENERATION_MATERIAL_DECISION_INVALID')
     return guardKnowledge(owner, request.preparationId ? owner.preparedKnowledge(request.preparationId) : undefined, () => owner.begin(request))
+      .catch((error: unknown) => {
+        // issue #244：BLOCKED 族错误码对作者不可读——翻译成可操作的指引。
+        // activate 的细分诊断（哪个条件挡了）已在该错误发生前由 console.error 输出。
+        const message = error instanceof Error ? error.message : String(error)
+        if (message.includes('GENERATION_DIRECTORY_CONTINUATION_BLOCKED')) {
+          throw new Error('这一章的上一轮生成有未完成的记录，已无法继续沿用。请重启应用后重试；若仍失败，请把运行侧页的失败详情截图反馈。')
+        }
+        throw error
+      })
   })
   register('generation:bind-material-decision', 1, (owner, request) =>
     owner.bindMaterialDecision(request.handle, request.materialDecision))
