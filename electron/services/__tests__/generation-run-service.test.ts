@@ -392,6 +392,19 @@ describe('activateRootForCommittedStage 的中间态宽容清理 (issue #243)', 
     expect(orphan.result?.settledAt).toBeGreaterThan(0)
   })
 
+  it('clears the orphan but keeps a mixed-form residue: orphan gone, budget overrun still blocks (issue #243)', () => {
+    const f = fixture(), run = f.repository.open(f.open)
+    const dispatched = f.repository.reserve(run.runId, 'n1', 'a'.repeat(64), 100, 50)
+    f.repository.markDispatched(dispatched.attempt.attemptId)
+    // 混合残留：预算超限 blocked_code + 孤儿 reserved attempt 并存
+    f.repository.block(run.rootActionId, 'USAGE_EXCEEDED_RESERVATION')
+    // activate：孤儿清、超限留 → 仍拒
+    expect(() => f.db.transaction(() => f.repository.activateRootForCommittedStage(run.rootActionId, { projectId: 'project', epoch: 'epoch' })).immediate())
+      .toThrow('GENERATION_DIRECTORY_CONTINUATION_BLOCKED')
+    // 孤儿已被宽容清理（attempt 状态推进），预算超限的 blocked_code 保留（不变量）
+    // ——attempt_json 的具体终值是 repo 内部细节，这里只钉两条不变量。
+    expect(f.repository.budget(run.rootActionId).blockedCode).toBe('USAGE_EXCEEDED_RESERVATION')
+  })
   it('still refuses when the root is blocked by a budget overrun (invariant not cleared)', () => {
     const f = fixture(), run = f.repository.open(f.open)
     const dispatched = f.repository.reserve(run.runId, 'n1', 'a'.repeat(64), 100, 50)
