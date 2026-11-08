@@ -46,9 +46,16 @@ export abstract class ReviewRevisionCommand extends BaseWorkflowCommand<string> 
       // issue #237：审稿失败原来只上抛（工作流步进器标 failed），但模型已经跑完的
       // 两次调用（各 28 万 reserved tokens 级）产出静默丢失——至少要让运行日志知道
       // 「审稿在哪一步、为什么没落库」。
+      // issue #242 ②：TOO_LATE 给可读文案——「这次修稿已启动过，不能重复绑定；
+      // 用重新审稿开一轮新的，或重启后重试」。原始错误码对作者不可读。
+      const tooLate = error instanceof Error && error.message.includes('GENERATION_MATERIAL_DECISION_TOO_LATE')
       params.callbacks.log(workflowUiText(params.context,
-        `审稿失败：${error instanceof Error ? error.message : String(error)}`,
-        `Review failed: ${error instanceof Error ? error.message : String(error)}`))
+        tooLate
+          ? '这次修稿已经启动过（有一次模型调用记录），不能重复绑定。请用「重新审稿」开一轮新的修稿，或重启应用后重试。'
+          : `审稿失败：${error instanceof Error ? error.message : String(error)}`,
+        tooLate
+          ? 'This revision has already been started (a model call is recorded); it cannot be bound again. Use a fresh review to start a new round, or restart the app and retry.'
+          : `Review failed: ${error instanceof Error ? error.message : String(error)}`))
       throw error
     }
   }
@@ -114,6 +121,10 @@ export abstract class ReviewRevisionCommand extends BaseWorkflowCommand<string> 
   protected abstract generateAndCommit(prepared: PreparedReviewRevisionContext, params: CommandExecuteParams): Promise<ReviewRevisionCommitReceipt>
 
   protected async bindMaterialDecision(params: CommandExecuteParams, decision: MaterialDecisionDraft, prompt: string): Promise<void> {
+    // issue #242：resume 路径（recovery 存在）上 run 已启动过（attemptCount>0），
+    // 再 bind 撞 GENERATION_MATERIAL_DECISION_TOO_LATE——materialDecision 已在首跑绑定过，resume 沿用即可。
+    // 与 #215 同根：resume 不重做首跑初始化（admit → bind → generate 各闸都要有 recovery 分支）。
+    if (this.recovery) return
     const handle = params.context.mainGenerationRunHandle
     if (!handle) throw new Error('GENERATION_REVIEW_REVISION_HANDLE_REQUIRED')
     const { task } = injectWritingSkillIntoTask({ purpose: this.operation, output: 'visible-text',
