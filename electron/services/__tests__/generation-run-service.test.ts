@@ -358,6 +358,54 @@ it('treats a material decision bound after begin as the same action, not a chang
  * issue #233 建议②：attempt 级耗时随 settle 落库（result.elapsedMs），
  * 生成日志页据此展示「跑了多久」；旧记录没有该键 → 展示层按无数据处理。
  */
+/**
+ * issue #243：activateRootForCommittedStage 的中间态宽容清理。
+ *
+ * 现场：审稿修复第一次失败（provider 层挂起、无结算）留下 reserved attempt +
+ * 失败类 blocked_code → 重试时 activate 四条件守卫必然拒 → 「失败→重试→换错误码」死循环。
+ * 修法：重试时（activate 被调 = 作者已明确要求）对两类中间态宽容——
+ *   ① 孤儿 attempt（reserved/dispatch-marked）判 failed（usage_receipt_json 补失败收据）；
+ *   ② 失败类 blocked_code 清除；预算超限两类（USAGE_EXCEEDED_RESERVATION /
+ *      ROOT_BUDGET_EXHAUSTED）**不清**——记账不变量，清了等于抹账。
+ */
+/** issue #243：activate 宽容清理——repository 层单元测试（直接造中间态，不走整链）。 */
+describe('activateRootForCommittedStage 的中间态宽容清理 (issue #243)', () => {
+  it('clears dangling reserved attempts and failure-class blocked code, then activates', () => {
+    const f = fixture(), run = f.repository.open(f.open)
+    const dispatched = f.repository.reserve(run.runId, 'n1', 'a'.repeat(64), 100, 50)
+    f.repository.markDispatched(dispatched.attempt.attemptId)
+    // provider 层挂起：attempt 停在 dispatch-marked、root 打上失败类 blocked_code
+    f.db.prepare("UPDATE generation_roots SET blocked_code='GENERATION_STORAGE_FAILED' WHERE root_action_id=?").run(run.rootActionId)
+    const budget = f.repository.budget(run.rootActionId)
+    expect(budget.blockedCode).toBe('GENERATION_STORAGE_FAILED')
+    expect(budget.attempts.some(a => a.status === 'dispatch-marked')).toBe(true)
+
+    // activate（作者重试）→ 宽容清理：孤儿 attempt 判 unknown + 失败类 blocked_code 清除 → 放行
+    f.db.transaction(() => f.repository.activateRootForCommittedStage(run.rootActionId, { projectId: "project", epoch: "epoch" }))()
+    const after = f.repository.budget(run.rootActionId)
+    expect(after.blockedCode).toBeNull()
+    expect(after.attempts.some(a => ['reserved', 'dispatch-marked'].includes(a.status))).toBe(false)
+    expect(after.root.status).toBe('active')
+    // 孤儿 attempt 有失败收据（日志页可见）
+    const orphan = JSON.parse(f.db.prepare('SELECT usage_receipt_json FROM generation_attempts WHERE attempt_id=?').pluck().get(dispatched.attempt.attemptId) as string)
+    expect(orphan.result?.failureCode).toBe('GENERATION_PROVIDER_FAILED')
+    expect(orphan.result?.settledAt).toBeGreaterThan(0)
+  })
+
+  it('still refuses when the root is blocked by a budget overrun (invariant not cleared)', () => {
+    const f = fixture(), run = f.repository.open(f.open)
+    const dispatched = f.repository.reserve(run.runId, 'n1', 'a'.repeat(64), 100, 50)
+    f.repository.markDispatched(dispatched.attempt.attemptId)
+    // 预算超限 → block（记账不变量）
+    f.repository.block(run.rootActionId, 'USAGE_EXCEEDED_RESERVATION')
+    expect(f.repository.budget(run.rootActionId).blockedCode).toBe('USAGE_EXCEEDED_RESERVATION')
+
+    // activate 不清预算超限——重试仍被拒
+    expect(() => f.db.transaction(() => f.repository.activateRootForCommittedStage(run.rootActionId, { projectId: 'project', epoch: 'epoch' })).immediate())
+      .toThrow('GENERATION_DIRECTORY_CONTINUATION_BLOCKED')
+    expect(f.repository.budget(run.rootActionId).blockedCode).toBe('USAGE_EXCEEDED_RESERVATION')
+  })
+})
 describe('attempt elapsedMs is persisted with settle (issue #233)', () => {
   it('writes a non-negative elapsedMs for both settled and failed attempts', async () => {
     const f = fixture();

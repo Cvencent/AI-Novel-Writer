@@ -726,10 +726,51 @@ export class GenerationRunRepository {
         if (!this.db().inTransaction) fail('GENERATION_DIRECTORY_TRANSACTION_REQUIRED');
         if (this.authorEditedRoot(rootId)) fail('GENERATION_PLOT_OUTLINE_AUTHOR_SAVED');
         const budget = this.budget(rootId);
-        if (budget.root.projectId !== project.projectId || !['active', 'paused'].includes(budget.root.status) || budget.blockedCode
-            || budget.attempts.some(attempt => ['reserved', 'dispatch-marked'].includes(attempt.status))) fail('GENERATION_DIRECTORY_CONTINUATION_BLOCKED');
+        if (budget.root.projectId !== project.projectId || !['active', 'paused'].includes(budget.root.status)) fail('GENERATION_DIRECTORY_CONTINUATION_BLOCKED');
+        // issue #243：上次失败留下的中间态在这里宽容清理——作者已明确要求重试，
+        // 这些残留没有任何继续存在的意义；不清则重试永远被 BLOCKED 拒。
+        // 1) 孤儿 attempt（reserved/dispatch-marked）：provider 层挂起（通道 429/页面刷新）
+        //    留下的「发起但从未结算」，判 failed（usage_receipt_json 补失败收据）。
+        // 2) 失败类 blocked_code：重试即清除。预算超限两类
+        //    （USAGE_EXCEEDED_RESERVATION / ROOT_BUDGET_EXHAUSTED）**不清**——那是
+        //    记账不变量（估算超支保留为实际用量），清了等于抹账；这类根被拒是正确的。
+        const dangling = budget.attempts.filter(attempt => ['reserved', 'dispatch-marked'].includes(attempt.status))
+        for (const attempt of dangling) {
+            const oldRaw = this.db().prepare(
+                'SELECT usage_receipt_json FROM generation_attempts WHERE attempt_id=?',
+            ).pluck().get(attempt.attemptId) as string | null
+            let oldUsage: Record<string, unknown> = {}
+            try {
+                const parsed: unknown = JSON.parse(String(oldRaw ?? '') || '{}')
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) oldUsage = parsed as Record<string, unknown>
+            } catch { /* 坏行容错：按无收据处理 */ }
+            this.db().prepare(
+                'UPDATE generation_attempts SET attempt_json=?, usage_receipt_json=? WHERE attempt_id=?',
+            ).run(
+                encode({ ...attempt, status: 'unknown' }),
+                encode({ ...oldUsage, result: { finishReason: null, failureCode: 'GENERATION_PROVIDER_FAILED', settledAt: this.now() } }),
+                attempt.attemptId,
+            )
+            attempt.status = 'unknown'
+        }
+        if (dangling.length > 0) {
+            // 孤儿结算后 root 的空闲时钟要收（不再有在途请求）。
+            this.db().prepare(
+                'UPDATE generation_roots SET active_elapsed_ms=?, active_since_ms=NULL WHERE root_action_id=?',
+            ).run(budget.activeElapsedMs, rootId)
+        }
+        if (budget.blockedCode && !['USAGE_EXCEEDED_RESERVATION', 'ROOT_BUDGET_EXHAUSTED'].includes(budget.blockedCode)) {
+            // 失败类 blocked_code：重试即清除（blocked_code 存在 generation_roots 列上）。
+            // 占位符顺序：?1=root_action_id，?2/?3=白名单（run(rootId, 白名单…)）。
+            this.db().prepare(
+                'UPDATE generation_roots SET blocked_code=NULL WHERE root_action_id=? AND blocked_code NOT IN (?, ?)',
+            ).run(rootId, 'USAGE_EXCEEDED_RESERVATION', 'ROOT_BUDGET_EXHAUSTED')
+        }
         budget.root.epoch = project.epoch; budget.root.status = 'active';
         this.db().prepare('UPDATE generation_roots SET action_json=? WHERE root_action_id=?').run(encode(budget.root), rootId);
+        // issue #243：清除后若 blocked_code 仍在（=预算超限类，未被清），**显式拒绝**——
+        // 旧实现静默放行，让预算超限的 root 假装可续接。
+        if (this.budget(rootId).blockedCode) fail('GENERATION_DIRECTORY_CONTINUATION_BLOCKED');
     }
     bindDirectoryContinuation(operationId: string, handle: DirectoryGenerationProgress['sourceHandle']): void {
         if (!this.db().inTransaction) fail('GENERATION_DIRECTORY_TRANSACTION_REQUIRED');
