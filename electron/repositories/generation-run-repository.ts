@@ -726,7 +726,14 @@ export class GenerationRunRepository {
         if (!this.db().inTransaction) fail('GENERATION_DIRECTORY_TRANSACTION_REQUIRED');
         if (this.authorEditedRoot(rootId)) fail('GENERATION_PLOT_OUTLINE_AUTHOR_SAVED');
         const budget = this.budget(rootId);
-        if (budget.root.projectId !== project.projectId || !['active', 'paused'].includes(budget.root.status)) fail('GENERATION_DIRECTORY_CONTINUATION_BLOCKED');
+        if (budget.root.projectId !== project.projectId) {
+            console.error('[activate] root/project epoch mismatch:', budget.root.projectId, 'vs', project.projectId);
+            fail('GENERATION_DIRECTORY_CONTINUATION_BLOCKED');
+        }
+        if (!['active', 'paused'].includes(budget.root.status)) {
+            console.error('[activate] root status not activatable:', budget.root.status);
+            fail('GENERATION_DIRECTORY_CONTINUATION_BLOCKED');
+        }
         // issue #243：上次失败留下的中间态在这里宽容清理——作者已明确要求重试，
         // 这些残留没有任何继续存在的意义；不清则重试永远被 BLOCKED 拒。
         // 1) 孤儿 attempt（reserved/dispatch-marked）：provider 层挂起（通道 429/页面刷新）
@@ -770,7 +777,11 @@ export class GenerationRunRepository {
         this.db().prepare('UPDATE generation_roots SET action_json=? WHERE root_action_id=?').run(encode(budget.root), rootId);
         // issue #243：清除后若 blocked_code 仍在（=预算超限类，未被清），**显式拒绝**——
         // 旧实现静默放行，让预算超限的 root 假装可续接。
-        if (this.budget(rootId).blockedCode) fail('GENERATION_DIRECTORY_CONTINUATION_BLOCKED');
+        const remaining = this.budget(rootId).blockedCode
+        if (remaining) {
+            console.error('[activate] blocked_code survived cleanup:', remaining, '| dangling settled:', dangling.length);
+            fail('GENERATION_DIRECTORY_CONTINUATION_BLOCKED');
+        }
     }
     bindDirectoryContinuation(operationId: string, handle: DirectoryGenerationProgress['sourceHandle']): void {
         if (!this.db().inTransaction) fail('GENERATION_DIRECTORY_TRANSACTION_REQUIRED');
