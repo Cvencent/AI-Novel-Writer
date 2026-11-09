@@ -337,6 +337,7 @@ export function registerGenerationController(options: {
   register('generation:confirm-batch-finalization', 1, (owner, request) => owner.confirmBatchFinalization(request))
   register('generation:read-visible-composition', 1, (owner, handle) => owner.readVisibleComposition(handle))
   register('generation:list', 0, owner => owner.list())
+  register('generation:list-summaries', 0, owner => owner.listSummaries())
   register('generation:list-directory-progress', 0, owner => owner.listDirectoryProgress())
   register('generation:pause', 1, (owner, handle) => owner.pause(handle))
   register('generation:cancel', 1, (owner, handle) => owner.cancel(handle))

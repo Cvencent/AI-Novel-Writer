@@ -316,6 +316,8 @@ export interface GenerationOwnerChannels {
   'generation:read': { args: [MainGenerationRunHandle]; return: MainGenerationRunView }
   /** 轻量列表：只要句柄与元数据；完整视图按需走 generation:read。 */
   'generation:list': { args: []; return: MainGenerationRunSummary[] }
+  /** 连恢复提示都不算的列表：只给「按 operation 找运行」的页面用（蓝图页）。 */
+  'generation:list-summaries': { args: []; return: MainGenerationRunSummary[] }
   'generation:cancel': { args: [MainGenerationRunHandle]; return: MainGenerationRunView }
   'generation:dismiss-recovery': { args: [MainGenerationRunHandle]; return: MainGenerationRunView }
   'generation:pause': { args: [MainGenerationRunHandle]; return: MainGenerationRunView }
