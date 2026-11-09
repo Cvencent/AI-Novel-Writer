@@ -73,7 +73,9 @@ export function createEditorialPanelWorkflow(params: {
     projectPath: params.projectPath,
     projectSession: Object.freeze({ ...params.projectSession }),
     uiLocale: locale,
-    resourceKeys: [workflowResourceKey('chapter', params.chapterNumber)],
+    // issue #243：编辑部评审只产报告不改正文——与写作/修稿/审稿解耦（editorial:N），
+    // 消除「连点两条审稿叠加」的源头（#243 重开实锤：双审稿叠加 → 修稿挂父 root 撞中间态）。
+    resourceKeys: [workflowResourceKey('editorial', params.chapterNumber)],
     readResourceKeys: [workflowResourceKey('architecture'), workflowResourceKey('blueprints'), workflowResourceKey('character-roster'), workflowResourceKey('continuity')],
     title: localize(locale, `第 ${params.chapterNumber} 章 · 编辑部评审`, `Chapter ${params.chapterNumber} · Editorial panel`),
     steps: [{

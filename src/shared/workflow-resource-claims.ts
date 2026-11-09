@@ -6,6 +6,8 @@ export type WorkflowResourceKind =
   | 'character-roster'
   | 'continuity'
   | 'chapter-summary'
+  // issue #243：编辑部评审只读正文产报告，与写作/修稿/审稿（chapter:N）解耦。
+  | 'editorial'
 
 export const FINALIZATION_SHARED_WRITE_RESOURCE_KINDS = Object.freeze([
   'character-roster',
