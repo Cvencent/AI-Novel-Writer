@@ -149,7 +149,7 @@ describe('Agent domain proposal confirmation', () => {
   it('previews English config impacts and sends only the selected unwritten blueprint diff to the existing gate', async () => {
     useLocaleStore.setState({ locale: 'en-US', initialized: true })
     invoke.mockImplementation(async (channel: string) => {
-      if (channel === 'db:blueprint-get-all') return [
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return [
         { ...blueprint, chapterNumber: 2, title: 'The sealed door' },
         { ...blueprint, chapterNumber: 3, title: 'The old verdict' },
         { ...blueprint, chapterNumber: 4, title: 'Draft in progress' },
@@ -214,7 +214,7 @@ describe('Agent domain proposal confirmation', () => {
   it('shows the Chinese impact preview but cancels it without any domain write', async () => {
     useLocaleStore.setState({ locale: 'zh-CN', initialized: true })
     invoke.mockImplementation(async (channel: string) => {
-      if (channel === 'db:blueprint-get-all') return [{ ...blueprint, chapterNumber: 2, title: '封闭的门' }]
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return [{ ...blueprint, chapterNumber: 2, title: '封闭的门' }]
       if (channel === 'db:draft-list-all') return []
       if (channel === 'db:narrative-thread-list') return []
       throw new Error(`unexpected channel ${channel}`)
