@@ -172,6 +172,12 @@ export class ReviewRevisionGeneration {
         modelId: (parentRun.binding.sourceManifest.modelReceipt as { modelId: string }).modelId }
     }
     if (!context.confirmation) return {}
+    // issue #244：confirmation 路径的修稿**不再挂父 root**（开新 root）。
+    // 旧实现把修稿 run 挂在审稿 run 的 root 下——审稿 run 失败/挂起后 root 被
+    // authorEditedRoot/blockedCode/attemptCount 冻结，修稿重试每次都撞 BLOCKED
+    // （#238/#242/#244 三连）。lineage 由 confirmation 快照证明（下方校验仍在）：
+    // originalReviewContentHash + source 绑定验证报告与正文的关系，不依赖 root。
+    // 仍校验 lineage 证据存在（report 未丢），只是不再把新 run 挂到那个 root 上。
     const matching = this.attempts().filter(row => {
       const effect = JSON.parse(row.usage_receipt_json)?.reviewRevisionEffect as Effect | undefined
       return effect?.kind === 'review' && effect.id === context.confirmation!.snapshot.sourceReviewId
@@ -181,7 +187,7 @@ export class ReviewRevisionGeneration {
     if (run.binding.projectId !== this.scope.projectId || !saved || saved.receipt.kind !== 'review'
       || saved.receipt.contentHash !== context.confirmation.originalReviewContentHash
       || !isDeepStrictEqual(saved.receipt.source, context.source)) throw new Error('GENERATION_REVIEW_LINEAGE_UNPROVEN')
-    return { parentRootActionId: run.rootActionId, modelId: (run.binding.sourceManifest.modelReceipt as { modelId: string }).modelId }
+    return {}
   }
   prepare(request: PrepareReviewRevisionRequest): PreparedReviewRevisionContext {
     this.assertCurrent()
