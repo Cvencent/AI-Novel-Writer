@@ -411,10 +411,27 @@ export const useDraftStore = create<DraftState>()((set, get) => ({
           expectedMergedHash: merged.receipt.reviewCycle.mergedHash,
         }, projectSession)
         definition.onStarted = started
-        await Promise.race([admission, useWorkflowStore.getState().startWorkflow(definition, false).then(runId => {
-          const run = useWorkflowStore.getState().history.find(item => item.id === runId)
-          if (run?.status === 'failed') throw new Error(run.error)
-        })])
+        // issue #245：完成合并后的自动复验曾把整条提交链挂在 Promise.race 上——
+        // 启动环节任何一处不 settle（技能快照 IPC 卡住、run 注册异常路径漏
+        // resolve），「完成合并」按钮的 busy 就永远解不开，作者只能强杀应用。
+        // 合并本身在上面的 db:revision-merge 已持久化；复验晚点启动没有损失
+        // （审稿报告里始终有「重试合并后复验」入口）。给启动环节加硬超时，
+        // 超时按 postCommitError 走既有提示，绝不拖住合并回执。
+        const admissionTimeout = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('RECHECK_ADMISSION_TIMEOUT')), 60_000)
+        })
+        try {
+          await Promise.race([admission, admissionTimeout, useWorkflowStore.getState().startWorkflow(definition, false).then(runId => {
+            const run = useWorkflowStore.getState().history.find(item => item.id === runId)
+            if (run?.status === 'failed') throw new Error(run.error)
+          })])
+        } catch (admissionError) {
+          if (admissionError instanceof Error && admissionError.message === 'RECHECK_ADMISSION_TIMEOUT') {
+            useWorkflowStore.getState().cancelWorkflow(definition.runId)
+            return { success: true, receipt: committedReceipt, postCommitError: '自动复验未能在 60 秒内启动；合并已保存，请稍后从审稿报告重试复验。' }
+          }
+          throw admissionError
+        }
       }
 
       return { success: true, receipt: committedReceipt }
