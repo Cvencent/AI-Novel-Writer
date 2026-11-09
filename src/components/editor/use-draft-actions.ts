@@ -102,13 +102,14 @@ export function useDraftActions({ tabId, filePath, content, projectKey }: DraftT
       if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
       const m = await parseDraftMeta(filePath, projectKey, projectSession)
       if (cancelled || !isProjectSessionCurrent(projectSession) || !m) return
-      const bps = await ipc.invokeWithProjectSession(
+      // 只要这一章的标题：旧实现把全库蓝图（3000 章时数 MB）搬过 IPC 再 find 一行。
+      const bp = await ipc.invokeWithProjectSession(
         projectSession,
-        'db:blueprint-get-all',
+        'db:blueprint-get',
+        m.chapterNumber,
         projectSession.projectPath,
       )
       if (cancelled || !isProjectSessionCurrent(projectSession)) return
-      const bp = Array.isArray(bps) ? bps.find((b: unknown) => (b as { chapterNumber?: number }).chapterNumber === m.chapterNumber) : null
       setMeta({ ...m, chapterTitle: bp ? (bp as { title?: string }).title : undefined, filePath, fileName: `v${m.version}`, createdAt: m.updatedAt ?? m.createdAt })
       // 使用 DB 化的虚拟 chapterDir（用于 draft-index 兼容层解析章节号）
       const chapterDir = `ai-novel://draft/ch${m.chapterNumber}`
