@@ -504,6 +504,10 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
                 只剩重跑审稿一条路。至少把「标记不修改」的出口还给作者：勾选状态
                 仍在（checklist 状态与 stage 无关），确认弃修后重验即可解锁定稿。
                 第二轮修稿需要 cycle 状态机扩展，单独跟踪。 */}
+            {/* issue #247/#248：复验后仍有已确认未解决的意见时，定稿被拦。
+                两条出路：① 逐条标记不修改后直接定稿；② 重新审稿——新一轮报告
+                基于当前正文，确认后即可再次修稿（第二轮修稿的状态机扩展在
+                #248 跟踪，当前产品里「基于旧报告直接再修」不可达）。 */}
             {reviewBlocksFinalization && (
               <Button variant="secondary" disabled={busy || checklist.confirming || checklist.processing} onClick={() => void confirmWaiver()}>
                 {text('标记不修改并确认', 'Mark as no-change and confirm')}
@@ -511,7 +515,7 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
             )}
             {reviewAgain}
             {more}
-            <span className="stage-ch-hint" data-tone={recheck?.recheckDisposition === 'completed' ? 'ok' : undefined}>{reviewBlocksFinalization ? text('复验仍有已确认未解决的意见——可逐条标记不修改后定稿，或重新审稿', 'Confirmed findings remain unresolved — mark them as no-change to finalize, or review again') : revisedHint}</span>
+            <span className="stage-ch-hint" data-tone={recheck?.recheckDisposition === 'completed' ? 'ok' : undefined}>{reviewBlocksFinalization ? text('复验仍有已确认未解决的意见。要按这些意见再修一轮：点「重新审稿」生成新报告，在新报告里确认后即可修稿；若这些意见可以不改，逐条标记不修改后即可定稿。', 'Confirmed findings remain unresolved. To revise against them: run a fresh review, confirm the new report, then revise. If they can stay as-is, mark them no-change to finalize.') : revisedHint}</span>
             {finalizeBlockReason && !reviewBlocksFinalization && (
               <span className="stage-ch-hint" role="note">{text(`现在不能定稿：${finalizeBlockReason}`, `Cannot finalize now: ${finalizeBlockReason}`)}</span>
             )}
