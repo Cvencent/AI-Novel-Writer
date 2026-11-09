@@ -33,7 +33,19 @@ function currentSession(): ProjectSessionContext | null {
  * 因此这里先用列表里的 operation 缩小范围，再只对**可能是恢复候选**的运行读完整视图与恢复上下文。
  * 助手任务与已经跑完的任务从头到尾不会被水合。
  */
-async function loadGenerationSources(session: ProjectSessionContext): Promise<{ sources: Omit<RecoverySources, 'candidates'>; partial: boolean; unreadableHandles: MainGenerationRunHandle[] }> {
+/**
+ * 单次进侧页最多深读多少条恢复候选。老项目里几个月积累的「已暂停大纲」可能有上百条，
+ * 每条都要查库水合恢复上下文（实测单条 100-300ms）；全读会把运行侧页拖到近十秒、
+ * 并让主进程在这段时间里对任何页面都不响应。先读最近的，其余按需「加载更早的」。
+ */
+const RECOVERY_SCAN_LIMIT = 24
+
+async function loadGenerationSources(session: ProjectSessionContext, scanLimit = RECOVERY_SCAN_LIMIT): Promise<{
+  sources: Omit<RecoverySources, 'candidates'>
+  partial: boolean
+  unreadableHandles: MainGenerationRunHandle[]
+  pendingRecoveryCount: number
+}> {
   const [summaries, progress] = await Promise.all([
     ipc.invokeWithProjectSession(session, 'generation:list'),
     ipc.invokeWithProjectSession(session, 'generation:list-batches'),
@@ -60,36 +72,51 @@ async function loadGenerationSources(session: ProjectSessionContext): Promise<{ 
   // 历史运行可能有几百条：全量并发深读取会把主进程和渲染层同时打满，
   // 作者切页时整个界面都加载不出来。这里限制并发、分批推进，让出主线程。
   const DEEP_READ_CONCURRENCY = 6
-  type DeepRead = { index: number; view: MainGenerationRunView; recovery: GenerationRecoveryContext }
+  // 规划类恢复（大纲/目录蓝图）只用恢复上下文：卡片正文与状态都来自 read-context，
+  // 旧实现还额外读一次完整视图——那要水合该 root 的全部 attempt、重拼可见正文并算哈希，
+  // 项目里 130 条暂停的规划运行时把运行侧页拖到近十秒。
+  const PLANNING_OPERATIONS = new Set(['generate-plot-outline', 'chapter-blueprint-directory'])
+  const scanned = candidates.slice(0, scanLimit)
+  const pendingRecoveryCount = candidates.length - scanned.length
+  type DeepRead = { index: number; view?: MainGenerationRunView; recovery: GenerationRecoveryContext }
   const settledContexts: PromiseSettledResult<DeepRead>[] = []
-  for (let start = 0; start < candidates.length; start += DEEP_READ_CONCURRENCY) {
-    const batch = candidates.slice(start, start + DEEP_READ_CONCURRENCY)
-    const settled = await Promise.allSettled(batch.map(async (summary, offset) => ({ index: start + offset,
-      view: await ipc.invokeWithProjectSession(session, 'generation:read', summary.handle),
-      recovery: await ipc.invokeWithProjectSession(session, 'generation:read-context', { handle: summary.handle }),
-    })))
+  for (let start = 0; start < scanned.length; start += DEEP_READ_CONCURRENCY) {
+    const batch = scanned.slice(start, start + DEEP_READ_CONCURRENCY)
+    const settled = await Promise.allSettled(batch.map(async (summary, offset) => {
+      const recovery = await ipc.invokeWithProjectSession(session, 'generation:read-context', { handle: summary.handle })
+      return {
+        index: start + offset,
+        view: PLANNING_OPERATIONS.has(summary.operation ?? '')
+          ? undefined
+          : await ipc.invokeWithProjectSession(session, 'generation:read', summary.handle),
+        recovery,
+      }
+    }))
     settledContexts.push(...settled)
     await new Promise(resolve => setTimeout(resolve, 0))
   }
   const contexts = settledContexts.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
-  const unreadableHandles = settledContexts.flatMap((result, index) => result.status === 'rejected' ? [candidates[index]!.handle] : [])
+  const unreadableHandles = settledContexts.flatMap((result, index) => result.status === 'rejected' ? [scanned[index]!.handle] : [])
   // 作者点过「移除卡片」的运行：产物与运行记录都还在，但不再派生恢复卡片。
   // 只看这次读到的标记，不额外查库；标记随 read-context 一起回来。
   const live = contexts.filter(item => item.recovery.recoveryDismissed !== true)
-  const reviews = await Promise.allSettled(live.filter(item => REVIEW_OPERATIONS.includes(item.recovery.operation))
+  // 非规划类恢复卡需要完整视图（候选正文、未落盘尾巴）；规划类在深读取时就没有读 view。
+  const views = live.filter((item): item is DeepRead & { view: MainGenerationRunView } => item.view !== undefined)
+  const reviews = await Promise.allSettled(views.filter(item => REVIEW_OPERATIONS.includes(item.recovery.operation))
     .map(async ({ view }) => ({ view, recovery: await ipc.invokeWithProjectSession(session, 'review-revision:read-recovery', { handle: view.handle }) })))
-  const editors = await Promise.allSettled(live.filter(item => item.recovery.operation === 'editor-inline')
+  const editors = await Promise.allSettled(views.filter(item => item.recovery.operation === 'editor-inline')
     .map(({ view }) => ipc.invokeWithProjectSession(session, 'editor-inline:read-recovery', { handle: view.handle })))
   const ours = (projectId: string) => projectId === session.projectId
   return {
     unreadableHandles,
+    pendingRecoveryCount,
     partial: [...reviews, ...editors].some(result => result.status === 'rejected'),
     sources: {
       planning: live.flatMap(item => (item.recovery.plotOutlineRecovery || item.recovery.blueprintRecovery)
         && item.recovery.planningContinuation?.state !== 'complete' && ours(item.recovery.handle.projectId) ? [item.recovery] : []),
       reviews: reviews.flatMap(result => result.status === 'fulfilled' && ours(result.value.view.handle.projectId) ? [result.value] : []),
       editors: editors.flatMap(result => result.status === 'fulfilled' && ours(result.value.view.handle.projectId) ? [result.value] : []),
-      drafts: live.filter(item => item.recovery.operation === 'chapter-draft' && !item.recovery.batchId && ours(item.view.handle.projectId)
+      drafts: views.filter(item => item.recovery.operation === 'chapter-draft' && !item.recovery.batchId && ours(item.view.handle.projectId)
         && (item.recovery.composition || item.recovery.draftShortOutline?.completedOutput || item.recovery.draftShortOutline?.retry?.kind === 'available'
           || withoutDraftReconciliationArtifacts([...item.view.artifacts, ...(item.view.candidates ?? [])], item.recovery).some(hasText)
           || item.view.unsavedTails?.some(hasText))),
@@ -132,6 +159,10 @@ export interface RunRecovery {
   unreadableCount: number
   /** 永久忽略全部无法读取的旧任务（按 runId 写恢复忽略标记）。 */
   dismissUnreadable: () => Promise<void>
+  /** 还有多少条更早的恢复记录没有深读（默认只读最近的 RECOVERY_SCAN_LIMIT 条）。 */
+  pendingCount: number
+  /** 展开扫全量；只在作者明确要看更早记录时用。 */
+  loadMore: () => void
 }
 
 /**
@@ -147,6 +178,9 @@ export function useRunRecovery(): RunRecovery {
   const [candidateError, setCandidateError] = useState('')
   const [generationList, setGeneration] = useState<Loaded<Omit<RecoverySources, 'candidates'>>>({ session: null, value: EMPTY_RECOVERY_SOURCES })
   const [generationError, setGenerationError] = useState('')
+  // 默认只深读最近的恢复候选；作者点「加载更早的」才扫全量（老项目可能有上百条）。
+  const [scanAllRecoveries, setScanAllRecoveries] = useState(false)
+  const [pendingRecoveryCount, setPendingRecoveryCount] = useState(0)
   const [snapshotTick, setSnapshotTick] = useState(0)
   const [selection, setSelection] = useState<Record<string, string[]>>({})
   const [busy, setBusy] = useState(false)
@@ -181,12 +215,15 @@ export function useRunRecovery(): RunRecovery {
     return () => { detach(); clearTimeout(timer) }
   }, [session])
 
+  useEffect(() => { setScanAllRecoveries(false); setPendingRecoveryCount(0) }, [session])
+
   useEffect(() => {
     if (!session) return
     let active = true
-    void loadGenerationSources(session).then(({ sources, partial, unreadableHandles }) => {
+    void loadGenerationSources(session, scanAllRecoveries ? Number.POSITIVE_INFINITY : RECOVERY_SCAN_LIMIT).then(({ sources, partial, unreadableHandles, pendingRecoveryCount: pending }) => {
       if (!active) return
       setGeneration({ session, value: sources })
+      setPendingRecoveryCount(pending)
       setUnreadable({ session, value: unreadableHandles })
       // 深读取失败的旧任务聚成一行可忽略的提示；只有审修/编辑恢复载荷读取失败仍按原样提示。
       setGenerationError(unreadableHandles.length > 0
@@ -196,7 +233,7 @@ export function useRunRecovery(): RunRecovery {
         : partial ? (locale === 'en-US' ? 'Some tasks could not be loaded; the other candidates remain available.' : '部分任务暂时无法读取，其他候选仍可恢复。') : '')
     }).catch(reason => { if (active) setGenerationError(reason instanceof Error ? reason.message : String(reason)) })
     return () => { active = false }
-  }, [session, endedRuns, locale, snapshotTick])
+  }, [session, endedRuns, locale, snapshotTick, scanAllRecoveries])
 
   const [unreadable, setUnreadable] = useState<Loaded<readonly MainGenerationRunHandle[]>>({ session: null, value: [] })
 
@@ -306,6 +343,8 @@ export function useRunRecovery(): RunRecovery {
 
   return {
     entries: entries.filter(entry => !dismissed.has(`${entry.kind}:${entry.key}`)),
+    pendingCount: pendingRecoveryCount,
+    loadMore: () => setScanAllRecoveries(true),
     dismiss,
     dismissAll,
     unreadableCount: session && unreadable.session && sameProjectSessionContext(unreadable.session, session) ? unreadable.value.length : 0,

@@ -19,7 +19,7 @@ export function RunRecoveryList({ recovery, liveRuns }: { recovery: RunRecovery;
   const leaseId = useProjectStore(s => s.currentProject?.sessionLease)
   const entries = recovery.entries.filter(entry => !isInFlight(entry, leaseId, liveRuns))
   const errors = [recovery.generationError, recovery.candidateError].filter(Boolean)
-  if (!entries.length && !errors.length) return null
+  if (!entries.length && !errors.length && recovery.pendingCount === 0) return null
   return (
     <section className="run-recovery" aria-label={text('可恢复的内容', 'Recoverable work')}>
       {errors.map(error => <p key={error} className="run-note" data-tone="danger" role="alert">{error}</p>)}
@@ -31,6 +31,11 @@ export function RunRecoveryList({ recovery, liveRuns }: { recovery: RunRecovery;
         </div>
       )}
       <div className="run-recovery-actions">
+        {recovery.pendingCount > 0 && (
+          <Button variant="secondary" size="sm" disabled={recovery.busy} onClick={recovery.loadMore} title={text('默认只读最近的恢复记录；更早的也还保留着', 'Only the most recent recovery records are loaded by default; older ones are kept')}>
+            {text(`加载更早的 ${recovery.pendingCount} 条恢复记录`, `Load ${recovery.pendingCount} older recovery record(s)`)}
+          </Button>
+        )}
         <Button variant="text" size="sm" disabled={recovery.busy} onClick={() => void recovery.dismissAll()} title={text('放弃下面全部可恢复卡片；正式内容不动', 'Dismiss every recoverable card below; saved content is untouched')}>
           {text('一键清除全部卡片', 'Clear all cards')}
         </Button>

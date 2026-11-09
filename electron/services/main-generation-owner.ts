@@ -450,9 +450,18 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
       return Array.isArray(inputs) && inputs.some(input => input && input.id === 'directory:requested-range')
     }
     let deep = 0
+    // 与渲染层一致：运行侧页默认只深读最近 24 条可恢复候选（见 use-run-recovery 的
+    // RECOVERY_SCAN_LIMIT）。超出的历史运行不必在这里逐条水合大纲——本函数最容易踩的
+    // 就是 130 条暂停大纲各解析一次全套 artifact（实测 2-3 秒）。它们的 hint 一律 true，
+    // 等作者明确「加载更早的」再看，届时由恢复上下文自己判定是否真有可恢复内容。
+    const HINT_SCAN_LIMIT = 24
+    let candidateIndex = 0
     const result = rows.map(row => {
       const summary = listViewOf(row)
       if (!row.operation || !recoverableOps.has(row.operation)) return { ...summary, recoverableHint: false }
+      const withinScanLimit = candidateIndex < HINT_SCAN_LIMIT
+      candidateIndex += 1
+      if (!withinScanLimit) return { ...summary, recoverableHint: true }
       if (row.operation !== 'generate-plot-outline' && row.operation !== 'chapter-blueprint-directory')
         return { ...summary, recoverableHint: true }
       const run = repository.get(row.run_id)
