@@ -1608,6 +1608,29 @@ export function registerDatabaseController() {
     }
   })
 
+  // issue #248：读 cycle 归属 root / 克隆第二轮 cycle（复验后再修一轮）。
+  ipcMain.handle('review-cycle:source-root', async (_event, request: { cycleId: string }, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) throw new Error('[ReviewCycleRepository] 数据库未连接')
+      return { success: true, rootActionId: ReviewCycleRepository.sourceRoot(request.cycleId, db).rootActionId }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('review-cycle:create-for-confirmation', async (_event, request: { sourceCycleId: string; confirmationReviewId: number; rootActionId: string }, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) throw new Error('[ReviewCycleRepository] 数据库未连接')
+      return { success: true, receipt: ReviewCycleRepository.createForConfirmation(request, db) }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
   ipcMain.handle('db:review-list', async (_event, baseDraftId: number, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return ReviewRepository.listByDraft(baseDraftId)

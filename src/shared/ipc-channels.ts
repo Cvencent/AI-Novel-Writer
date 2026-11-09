@@ -1350,6 +1350,11 @@ export interface DatabaseChannels {
   'db:review-list': { args: [baseDraftId: number, expectedProjectPath: string]; return: ReviewMeta[] }
   /** issue #247：修稿合并后的复验阶段按最新确认快照刷新 cycle 的 finding 弃修状态。 */
   'review-cycle:update-waivers-after-recheck': { args: [request: { cycleId: string; confirmationReviewId: number }, expectedProjectPath: string]; return: { success: boolean; receipt?: { cycleId: string; waivedFindingCount: number; restoredFindingCount: number }; error?: string } }
+  /** issue #248：复验后第二轮修稿——读旧 cycle 的归属 root。 */
+  'review-cycle:source-root': { args: [request: { cycleId: string }, expectedProjectPath: string]; return: { success: boolean; rootActionId?: string; error?: string } }
+  /** issue #248：从 merge-committed 的旧 cycle 克隆第二轮 cycle（findings 按最新确认决策映射）。 */
+  'review-cycle:create-for-confirmation': { args: [request: { sourceCycleId: string; confirmationReviewId: number; rootActionId: string }, expectedProjectPath: string]; return: { success: boolean; receipt?: { cycleId: string; findingCount: number }; error?: string } }
+
   'db:review-get-latest': { args: [baseDraftId: number, expectedProjectPath: string]; return: ReviewFull | null }
   'db:review-get-full': { args: [id: number, expectedProjectPath: string]; return: ReviewFull | null }
   'db:review-cycle-get': { args: [reviewId: number, expectedProjectPath: string]; return: ReviewCycleProjection | null }

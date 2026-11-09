@@ -655,6 +655,101 @@ export class ReviewCycleRepository {
     })()
   }
 
+  /**
+   * issue #248：复验（merge-committed）后作者基于复核意见**再修一轮**的 cycle 通道。
+   * 旧 cycle 已 merge-committed（attach 拒第二轮），复核审稿行 body 是 wrapped
+   * 形态（parseSavedReport 拒）——无法给复核审稿行建新 cycle。
+   * 本方法从**已 merge-committed 的旧 cycle 克隆**出第二轮 cycle：
+   *  - cycle_id 由 (root=复核 run 的 root, review_id=新确认行 id, hash) 生成，
+   *    与旧 cycle 独立；
+   *  - findings 从旧 cycle **逐行复制**（findingId/excerpt/span 全保留，
+    *    finding_set_hash 一致性随之成立）；状态映射按作者最新决策：
+    *    resolved 保持（已处理）、waive 决策置 author-waived、其余 unverified
+    *    （等待下一轮修稿/复验裁决）；
+   *  - 旧 cycle 行不动（历史不变量）。
+   * 谱系校验：确认行必须归属本 draft、快照 sourceReviewId 指向旧 cycle 的
+   * 原始审稿或其复核审稿（二者都是这条审稿谱系的报告）。
+   */
+  static createForConfirmation(input: { sourceCycleId: string; confirmationReviewId: number;
+    rootActionId: string }, db: Database.Database): { cycleId: string; findingCount: number } {
+    if (!db.inTransaction) throw new Error('REVIEW_CYCLE_TRANSACTION_REQUIRED')
+    if (!nonempty(input.sourceCycleId) || !integer(input.confirmationReviewId, 1)
+      || !nonempty(input.rootActionId)) invalid()
+    return db.transaction((): { cycleId: string; findingCount: number } => {
+      const source = db.prepare(`SELECT cycle_id,root_action_id,review_id,source_hash,finding_set_hash,
+        comparison_version,merged_hash FROM review_cycles WHERE cycle_id=?`).get(input.sourceCycleId) as
+        (CycleBindingRow & { finding_set_hash: string; comparison_version: number; merged_hash: string | null }) | undefined
+      if (!source || source.revision_status !== 'merge-committed') conflict()
+      const confirmation = db.prepare(`SELECT r.base_draft_id,c.body FROM reviews r JOIN contents c ON c.id=r.content_id
+        WHERE r.id=?`).get(input.confirmationReviewId) as { base_draft_id: number; body: string } | undefined
+      let snapshot = confirmation && parseHumanConfirmedReviewSnapshot(confirmation.body)
+      // 占位 cycleId：渲染层先落库 v2 快照（cycleId='pending:<确认行id>'，打破
+      // 「cycleId←content←cycleId」自引用），这里生成真实 cycleId 后回写确认行。
+      const placeholder = `pending:${input.confirmationReviewId}`
+      if (!confirmation || !snapshot?.sourceDraft || snapshot.schemaVersion !== 2) invalid()
+      if (snapshot.cycleId === placeholder) {
+        const realId = `cycle:${hash(JSON.stringify([input.rootActionId, input.confirmationReviewId, hash(confirmation.body)]))}`
+        const patchedBody = confirmation.body.replace(
+          new RegExp(`"cycleId":"${placeholder}"`),
+          `"cycleId":"${realId}"`)
+        if (patchedBody === confirmation.body) invalid()
+        db.prepare('UPDATE contents SET body=? WHERE id=(SELECT content_id FROM reviews WHERE id=?)')
+          .run(patchedBody, input.confirmationReviewId)
+        confirmation.body = patchedBody
+        snapshot = parseHumanConfirmedReviewSnapshot(patchedBody)
+      }
+      if (!snapshot || snapshot.cycleId !== input.sourceCycleId) invalid()
+      // 确认行归属本 draft；快照指向本谱系的原始审稿或其复核审稿。
+      const lineageReviewIds = db.prepare(`SELECT id FROM reviews WHERE base_draft_id=?`).all(confirmation.base_draft_id) as
+        Array<{ id: number }>
+      const lineageSet = new Set(lineageReviewIds.map(row => row.id))
+      if (!lineageSet.has(snapshot.sourceReviewId)) invalid()
+      const root = db.prepare('SELECT action_json FROM generation_roots WHERE root_action_id=?').get(input.rootActionId) as
+        { action_json: string } | undefined
+      const action = root && record(JSON.parse(root.action_json))
+      if (!action || action.rootActionId !== input.rootActionId || action.operation !== 'review-chapter') invalid()
+      // 复核审稿行（旧 cycle 的 recheck_attempt 产出）必须是本谱系最近一份报告：
+      // 快照 sourceReviewId 指向它时，其 review 行存在即可（findings 从旧 cycle 复制）。
+      const id = `cycle:${hash(JSON.stringify([input.rootActionId, input.confirmationReviewId, hash(confirmation.body)]))}`
+      const existing = db.prepare('SELECT cycle_id FROM review_cycles WHERE cycle_id=?').get(id)
+      if (existing) conflict()
+      const rows = db.prepare(`SELECT finding_id,source_project_id,source_epoch,source_id,source_revision,
+        source_content_hash,span_start,span_end,span_unit,excerpt_hash,occurrence,category,target_id,kind,
+        problem_text,expected_text,status,evidence_hash,confirmation_item_index FROM review_findings
+        WHERE cycle_id=? ORDER BY finding_id`).all(input.sourceCycleId) as Array<Record<string, unknown>>
+      const waivedIds = new Set(snapshot.items.filter(item => item.origin === 'ai' && item.findingId !== undefined
+        && item.decision === 'waive').map(item => item.findingId as string))
+      db.prepare(`INSERT INTO review_cycles(cycle_id,root_action_id,review_id,review_content_hash,source_hash,
+        finding_set_hash,comparison_version,revision_status,recheck_count) VALUES(?,?,?,?,?,?,?,'not-generated',0)`)
+        .run(id, input.rootActionId, input.confirmationReviewId, hash(confirmation.body), source.source_hash,
+          source.finding_set_hash, source.comparison_version)
+      const insert = db.prepare(`INSERT INTO review_findings(cycle_id,finding_id,source_project_id,source_epoch,
+        source_id,source_revision,source_content_hash,span_start,span_end,span_unit,excerpt_hash,occurrence,
+        category,target_id,kind,problem_text,expected_text,status,evidence_hash,confirmation_item_index)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      for (const row of rows) {
+        const status = row.status === 'resolved' ? 'resolved'
+          : waivedIds.has(String(row.finding_id)) ? 'author-waived' : 'unverified'
+        const evidenceHash = status === 'author-waived' ? hash(confirmation.body) : null
+        const itemIndex = status === 'author-waived'
+          ? snapshot.items.findIndex(item => item.findingId === row.finding_id) : null
+        insert.run(id, row.finding_id, row.source_project_id, row.source_epoch, row.source_id, row.source_revision,
+          row.source_content_hash, row.span_start, row.span_end, row.span_unit, row.excerpt_hash, row.occurrence,
+          row.category, row.target_id, row.kind, row.problem_text, row.expected_text, status, evidenceHash, itemIndex)
+      }
+      if (!verifyM03ReviewCycle(db)) conflict()
+      return { cycleId: id, findingCount: rows.length }
+    })()
+  }
+
+  /** issue #248：读 cycle 的归属 root（渲染层创建第二轮 cycle 前需要）。 */
+  static sourceRoot(cycleId: string, db: Database.Database): { rootActionId: string } {
+    if (!nonempty(cycleId)) invalid()
+    const row = db.prepare('SELECT root_action_id FROM review_cycles WHERE cycle_id=?').get(cycleId) as
+      { root_action_id: string } | undefined
+    if (!row || !nonempty(row.root_action_id)) invalid()
+    return { rootActionId: row.root_action_id }
+  }
   static commitAuthorConfirmation(input: { cycleId: string; confirmationReviewId: number },
     db: Database.Database): AuthorConfirmationBinding {
     if (!db.inTransaction) throw new Error('REVIEW_CYCLE_TRANSACTION_REQUIRED')

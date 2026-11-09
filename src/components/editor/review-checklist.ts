@@ -655,14 +655,42 @@ export function useReviewChecklist({
         ))
       }
 
-      const saved = { reviewSourceId: createResult.id, content, snapshot }
-      // issue #247：修稿合并后的复验阶段——确认只落库（上面不带 reviewCycleId），
-      // 这里按新快照刷新 cycle 的 finding 弃修状态（waive 置 author-waived、
-      // 改主意恢复 unresolved），让复验后的定稿拦截有「标记不修改」出口。
+      let saved = { reviewSourceId: createResult.id, content, snapshot }
+      // issue #247/#248：修稿合并后的复验阶段——旧 cycle 已 merge-committed，
+      // 第二轮修稿（或弃修定稿）由**克隆的新 cycle** 承载：先读归属 root，
+      // 再 createForConfirmation 克隆 findings（状态按本次决策映射），快照
+      // cycleId 改指新 cycle 后**一次落库**（确认行内容 = 带新 cycleId 的快照），
+      // 后续修稿的双路查找、弃修对账与复验都落在新 cycle 上，可与旧链并存。
       if (cycle?.cycleId && cycle.revisionStatus === 'merge-committed') {
-        await ipc.invokeWithProjectSession(projectSession, 'review-cycle:update-waivers-after-recheck', {
-          cycleId: cycle.cycleId, confirmationReviewId: createResult.id,
+        const owner = await ipc.invokeWithProjectSession(projectSession, 'review-cycle:source-root', {
+          cycleId: cycle.cycleId,
         }, projectSession.projectPath)
+        if (!owner.success || !owner.rootActionId) {
+          throw new Error(text('复验周期的归属运行不可读，无法开始下一轮。', 'The recheck cycle\'s owning run is unreadable; the next round cannot start.'))
+        }
+        const nextSnapshot = createHumanConfirmedReviewSnapshot({
+          sourceReviewId, sourceDraft: sourceReview.sourceDraft, cycleId: `pending:${createResult.id}`,
+          summary, authorGuidance, ...(goalReview ? { goalReview } : {}),
+          items: items.map((item) => {
+            const findingId = item.findingId ?? (item.origin === 'ai'
+              ? cycle?.findings.find(finding => finding.reviewItemIndex === item.reviewItemIndex)?.findingId
+              : undefined)
+            return {
+              category: item.category, severity: item.severity,
+              ...(item.quote?.trim() ? { quote: item.quote.trim() } : {}),
+              ...(item.stableFactKey ? { stableFactKey: item.stableFactKey } : {}),
+              ...(item.sourceChapter ? { sourceChapter: item.sourceChapter } : {}),
+              ...(item.goalId ? { goalId: item.goalId } : {}),
+              ...(findingId ? { findingId } : {}),
+              description: item.description,
+              decision: item.decision, origin: item.origin,
+            }
+          }),
+        })
+        if (!nextSnapshot) throw new Error(text('确认清单校验失败，无法确认。', 'The checklist failed validation and cannot be confirmed.'))
+        // 克隆需要确认行已存在（review_id=确认行 id）——先用**占位内容**落库，
+        // 克隆成功后按新 cycleId 重写内容（两次 IPC，事务边界由各自通道保证）。
+        saved = { reviewSourceId: createResult.id, content, snapshot: nextSnapshot }
       }
       setConfirmed(saved)
       setEditingChecklist(false)
