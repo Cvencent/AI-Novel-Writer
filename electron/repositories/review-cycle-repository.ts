@@ -782,7 +782,10 @@ export class ReviewCycleRepository {
       let usage: Record<string, unknown> | null = null
       try { usage = record(attempt && JSON.parse(attempt.usage_receipt_json)) } catch { invalid() }
       const receipt = record(usage?.reviewCycleRecheck)
-      if (!attempt || attempt.root_action_id !== plan.rootActionId || !receipt
+      // issue #246：复核 run 自 1.5.251 起开新 root（审稿 root 的预算/blocked_code
+      // 会挡复验重试）——recheck attempt 不再要求落在 plan.rootActionId 下；
+      // 谱系由收据内容（reviewCycleRecheck.cycleId/mergedHash/findingSetHash 全等）证明。
+      if (!attempt || !receipt
         || (receipt.version !== 1 && receipt.version !== 2)
         || receipt.cycleId !== cycleId || receipt.comparisonVersion !== plan.context.comparisonVersion
         || receipt.mergedHash !== plan.context.mergedHash || receipt.findingSetHash !== plan.context.findingSetHash

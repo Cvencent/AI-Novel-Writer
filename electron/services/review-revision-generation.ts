@@ -168,8 +168,12 @@ export class ReviewRevisionGeneration {
       const parentRun = this.runs.get(matching[0]!.run_id)
       if (parentRun.rootActionId !== plan.rootActionId || parentRun.binding.projectId !== this.scope.projectId)
         throw new Error('GENERATION_REVIEW_LINEAGE_UNPROVEN')
-      return { parentRootActionId: plan.rootActionId,
-        modelId: (parentRun.binding.sourceManifest.modelReceipt as { modelId: string }).modelId }
+      // issue #246：复核 run **开新 root**——不再挂审稿 root。审稿 root 的预算
+      // 记账与 blocked_code 会挡住复验（generateRevision 时 bind-material-decision
+      // 撞 GENERATION_MATERIAL_DECISION_TOO_LATE：预算超限类 blocked 不在 activate
+      // 宽容清理白名单里，复核重试死锁）。lineage 证据仍在（上方 plan/effect
+      // 校验不动）；commitRecheck 侧的 root 限定已同步放宽。
+      return { modelId: (parentRun.binding.sourceManifest.modelReceipt as { modelId: string }).modelId }
     }
     if (!context.confirmation) return {}
     // issue #244：confirmation 路径的修稿**不再挂父 root**（开新 root）。

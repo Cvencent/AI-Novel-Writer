@@ -408,7 +408,12 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
         if (!merged || typeof merged.body !== 'string' || hash(merged.body) !== cycle.merged_hash) return false
         const mergedBody = merged.body
         if (cycle.recheck_count === 1) {
-          const recheck = attempts.find(row => row.attempt_id === cycle.recheck_attempt_id)
+          // issue #246：复核 run 开新 root——recheck attempt 按收据内容全库定位，
+          // 不再限定 cycle.root_action_id（与修稿 attempt 同款放宽）。
+          const recheck = (db.prepare(`SELECT a.attempt_id,a.run_id,a.root_action_id,
+              r.root_action_id AS run_root_action_id, r.binding_json,a.attempt_json,a.usage_receipt_json
+            FROM generation_attempts a JOIN generation_runs r ON r.run_id=a.run_id ORDER BY a.rowid`).all() as AttemptRow[])
+            .find(row => row.attempt_id === cycle.recheck_attempt_id)
           const recheckEffect = recheck && effect(recheck)
           if (!recheckEffect || recheckEffect.kind !== 'review' || !integer(recheckEffect.id, 1)) return false
           const recheckReview = db.prepare('SELECT r.source_content,c.body FROM reviews r JOIN contents c ON c.id=r.content_id WHERE r.id=?')
