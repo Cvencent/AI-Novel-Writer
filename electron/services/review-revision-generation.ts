@@ -175,19 +175,20 @@ export class ReviewRevisionGeneration {
     // issue #244：confirmation 路径的修稿**不再挂父 root**（开新 root）。
     // 旧实现把修稿 run 挂在审稿 run 的 root 下——审稿 run 失败/挂起后 root 被
     // authorEditedRoot/blockedCode/attemptCount 冻结，修稿重试每次都撞 BLOCKED
-    // （#238/#242/#244 三连）。lineage 由 confirmation 快照证明（下方校验仍在）：
-    // originalReviewContentHash + source 绑定验证报告与正文的关系，不依赖 root。
-    // 仍校验 lineage 证据存在（report 未丢），只是不再把新 run 挂到那个 root 上。
+    // （#238/#242/#244 三连）。
+    // lineage 证据仍在，但**不再绑定到 root**：effect 收据证明「这份审稿真是
+    // 本应用 run 的产物」（拒绝旧版应用直接写库、绕过预算记账的 legacy 报告），
+    // 复核（recheck）审稿的 effect.id 就是复核审稿 id（commitReview recheck 分支
+    // record receipt），同样能命中——四开 12:42 现场卡的从来不是这里。
     const matching = this.attempts().filter(row => {
       const effect = JSON.parse(row.usage_receipt_json)?.reviewRevisionEffect as Effect | undefined
       return effect?.kind === 'review' && effect.id === context.confirmation!.snapshot.sourceReviewId
     })
     if (matching.length !== 1) throw new Error('GENERATION_REVIEW_LINEAGE_UNPROVEN')
-    const run = this.runs.get(matching[0]!.run_id), saved = this.saved(run)
-    if (run.binding.projectId !== this.scope.projectId || !saved || saved.receipt.kind !== 'review'
-      || saved.receipt.contentHash !== context.confirmation.originalReviewContentHash
-      || !isDeepStrictEqual(saved.receipt.source, context.source)) throw new Error('GENERATION_REVIEW_LINEAGE_UNPROVEN')
-    return {}
+    // modelId 继承保留（#237「修稿沿用审稿模型」）：作者没给修稿显式选模型时，
+    // 用审稿 run 的模型兜底——只继承模型，**不继承 root**。
+    const run = this.runs.get(matching[0]!.run_id)
+    return { modelId: (run.binding.sourceManifest.modelReceipt as { modelId: string }).modelId }
   }
   prepare(request: PrepareReviewRevisionRequest): PreparedReviewRevisionContext {
     this.assertCurrent()
@@ -236,9 +237,16 @@ export class ReviewRevisionGeneration {
     const failed = mismatches.find(([, matches]) => !matches)
     if (failed) throw new Error(`GENERATION_REVIEW_CONTEXT_MISMATCH:${failed[0]}`)
     if (!isDeepStrictEqual(context, captureReviewRevisionContext(this.db, reviewRevisionRequest(context), this.scope.projectId,
-      context.recheck?.version))
-      || !isDeepStrictEqual(this.parent(context), prepared.parentRootActionId ? { parentRootActionId: prepared.parentRootActionId, modelId: prepared.modelId } : {}))
+      context.recheck?.version)))
       throw new Error('GENERATION_REVIEW_CONTEXT_CHANGED')
+    // issue #243 ③：confirmation 修稿开新 root——parent() 只返回 { modelId }
+    // （继承审稿模型）或 { parentRootActionId, modelId }（recheck 复核挂原 plan
+    // root）。比对形状按 prepared 冻结的键位重建，两种都认。
+    const expected = this.parent(context)
+    const frozen = prepared.parentRootActionId
+      ? { parentRootActionId: prepared.parentRootActionId, modelId: prepared.modelId }
+      : prepared.modelId ? { modelId: prepared.modelId } : {}
+    if (!isDeepStrictEqual(expected, frozen)) throw new Error('GENERATION_REVIEW_CONTEXT_CHANGED')
     return structuredClone(prepared)
   }
   private assertPrepared(contextId: string, run: DurableGenerationRun): void {
@@ -320,9 +328,33 @@ export class ReviewRevisionGeneration {
       const receipt = this.record(run, artifact, { kind: 'revision', id: result.id, index: result.revisionIndex,
         contentHash: textHash(content), compositionHash: composition.textHash })
       if (context.confirmation) {
-        const cycle = this.db.prepare('SELECT cycle_id,root_action_id FROM review_cycles WHERE review_id=?')
-          .get(context.confirmation.snapshot.sourceReviewId) as { cycle_id: string; root_action_id: string } | undefined
-        if (!cycle) throw new Error('REVIEW_CYCLE_INPUT_INVALID')
+        // issue #244 四开（2026-11-09 12:42 现场）：确认快照的 sourceReviewId 在
+        // **复核（recheck）审稿**上不是 cycle 键——复核产生新的 review 行，但
+        // review_cycles.review_id 永远指向原始审稿（commitReview 的 recheck 分支
+        // 走 commitRecheck 更新原 cycle，不建新行）。作者在复核报告弹层里确认采纳
+        // → 快照 sourceReviewId = 复核审稿 id → 按它查 cycle 查不到 → 修稿跑完了
+        // 却在提交时炸 REVIEW_CYCLE_INPUT_INVALID。
+        // 双路查找：快照带 cycleId（schema v2，弹层从 cycle prop 传入）按 cycle_id
+        // 查（复核路径的正键）；否则/查不到再按 review_id 查（旧快照兜底）。
+        // attach 侧的 validateGeneratedBinding 仍会校验快照与 cycle 的 source 绑定，
+        // 错配的 cycleId 在那里被拦，这里不重复校验。
+        const snapshotCycleId = context.confirmation.snapshot.cycleId
+        const cycle = (snapshotCycleId
+          ? this.db.prepare('SELECT cycle_id,root_action_id FROM review_cycles WHERE cycle_id=?')
+            .get(snapshotCycleId) as { cycle_id: string; root_action_id: string } | undefined
+          : undefined)
+          ?? (this.db.prepare('SELECT cycle_id,root_action_id FROM review_cycles WHERE review_id=?')
+            .get(context.confirmation.snapshot.sourceReviewId) as { cycle_id: string; root_action_id: string } | undefined)
+        if (!cycle) {
+          // issue #244 四开：这个 fail 原来无诊断——作者只知道 INVALID，不知道是
+          // 快照指向的审稿没有 cycle 行。把查询键与候选行打进主进程日志。
+          const candidates = this.db.prepare('SELECT review_id,cycle_id FROM review_cycles ORDER BY rowid DESC LIMIT 5').all()
+          console.error('[commit-revision] cycle not found for confirmation:',
+            'sourceReviewId=', context.confirmation.snapshot.sourceReviewId,
+            'snapshotCycleId=', snapshotCycleId ?? '(none)',
+            'recent cycles=', JSON.stringify(candidates))
+          throw new Error('REVIEW_CYCLE_INPUT_INVALID')
+        }
         ReviewCycleRepository.attachGeneratedRevision({ cycleId: cycle.cycle_id, rootActionId: cycle.root_action_id,
           confirmationReviewId: context.confirmation.reviewSourceId,
           confirmationContentHash: textHash(context.confirmation.content), revisionId: result.id,

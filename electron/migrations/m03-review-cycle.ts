@@ -378,12 +378,19 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
           || revision.source_content !== review.source_content || hash(revision.source_content) !== cycle.source_hash) return false
         const revisionHash = hash(revision.body)
         const revisionIndex = Number(db.prepare('SELECT revision_index FROM revisions WHERE id=?').pluck().get(cycle.revision_id))
-        const revisionAttempts = attempts.filter(row => proveEffect(db, row, { kind: 'revision', id: cycle.revision_id!,
-          index: revisionIndex, contentHash: revisionHash, source: { id: review.base_draft_id,
-            chapterNumber: review.source_draft_chapter_number!, version: review.source_draft_version!,
-            status: review.source_draft_status!, content: review.source_content! },
-          confirmation: { reviewSourceId: cycle.confirmation_review_id!, content: confirmation.body,
-            originalReviewContentHash: cycle.review_content_hash, snapshot: confirmation.snapshot } }))
+        // issue #244 四开（2026-11-09 12:42 现场）：修稿 run 自 1.5.247 起**开新 root**
+        // （不再挂审稿 root——审稿 run 的中间态冻结会挡修稿重试）。修稿 attempt 的
+        // 收据在它自己的 root 下，不在 cycle.root_action_id（= 审稿 root）下——
+        // 谱系证明按 effect 内容全库定位，而非限定 root。
+        const revisionAttempts = (db.prepare(`SELECT a.attempt_id,a.run_id,a.root_action_id,
+            r.root_action_id AS run_root_action_id, r.binding_json,a.attempt_json,a.usage_receipt_json
+          FROM generation_attempts a JOIN generation_runs r ON r.run_id=a.run_id ORDER BY a.rowid`).all() as AttemptRow[])
+          .filter(row => proveEffect(db, row, { kind: 'revision', id: cycle.revision_id!,
+            index: revisionIndex, contentHash: revisionHash, source: { id: review.base_draft_id,
+              chapterNumber: review.source_draft_chapter_number!, version: review.source_draft_version!,
+              status: review.source_draft_status!, content: review.source_content! },
+            confirmation: { reviewSourceId: cycle.confirmation_review_id!, content: confirmation.body,
+              originalReviewContentHash: cycle.review_content_hash, snapshot: confirmation.snapshot } }))
         if (revisionAttempts.length !== 1) return false
       }
       if (cycle.revision_status === 'not-generated' && (revision || cycle.merged_hash !== null || cycle.recheck_count !== 0 || cycle.recheck_attempt_id !== null)) return false
