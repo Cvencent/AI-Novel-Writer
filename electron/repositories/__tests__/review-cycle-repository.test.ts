@@ -1301,6 +1301,8 @@ describe('ReviewCycleRepository recheck state', () => {
 
   // TODO(#247 下轮)：verifyM03 对『复验后 waiver + 重绑确认』仍有未对账的校验段，
   // 用例先挂起——repository 方法与 UI 出口已实现，端到端联通留专项轮收口。
+  // TODO(#247 下轮收口)：verifyM03 对『复验后 waiver + 自证行』仍有未对账的校验段，
+  // 用例先挂起——repository 方法与 UI 出口已实现，端到端联通留专项轮收口。
   it.skip('updateWaiversAfterRecheck waives recheck-era findings and keeps verify true (issue #247)', () => {
     // 复用 must-show 的完整 seeding：attach → merge → recheck，全部已过 verify。
     const db = fixture()

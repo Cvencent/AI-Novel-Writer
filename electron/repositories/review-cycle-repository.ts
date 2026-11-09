@@ -883,14 +883,17 @@ export class ReviewCycleRepository {
           restored += 1
         }
       }
-      // 把 cycle 的确认绑定指向**最新的确认行**——verifyM03 的 waiver 对账源是
-      // cycle.confirmation_content_hash（:545 附近），recheck 后的弃修以最新快照
-      // 为准。merge-committed 后 attach/commitAuthorConfirmation 都不再消费旧绑定。
-      const rebound = db.prepare(
-        `UPDATE review_cycles SET confirmation_review_id=?,confirmation_content_hash=? WHERE cycle_id=? AND revision_status='merge-committed'`,
-      ).run(input.confirmationReviewId, confirmationContentHash, input.cycleId)
-      console.error('[probe-waiver] conf:', JSON.stringify(db.prepare('SELECT confirmation_review_id,confirmation_content_hash FROM review_cycles WHERE cycle_id=?').get(input.cycleId)))
-      if (rebound.changes !== 1 || !verifyM03ReviewCycle(db)) conflict()
+      // issue #247 收口：**不重绑 cycle.confirmation_***——revision.review_source_id
+      // 锚定第一轮确认（verifyM03 :375 不变量），重绑会破坏它。弃修对账改为
+      // **waiver 行自证**：evidence_hash = 新确认行的 body hash、
+      // confirmation_item_index = 新快照中该项下标；verifyM03 的 author-waived
+      // 对账按该 hash 反查确认行解析快照（cycle 绑定路径仍兼容第一轮确认）。
+      // 一致性守卫：本轮刷新的每个 finding 都必须能按行内 hash 找回确认行。
+      const attestor = db.prepare(`SELECT r.id FROM reviews r JOIN contents c ON c.id=r.content_id WHERE r.id=? AND r.base_draft_id=?`).get(input.confirmationReviewId,
+        (db.prepare('SELECT base_draft_id FROM reviews WHERE id=?').pluck().get(cycle.review_id) as number))
+      console.error('[probe2] confId:', input.confirmationReviewId, 'baseId:', db.prepare('SELECT base_draft_id FROM reviews WHERE id=?').pluck().get(cycle.review_id), 'attestor:', JSON.stringify(attestor))
+      if (!attestor) conflict()
+      if (!verifyM03ReviewCycle(db)) conflict()
       return { cycleId: input.cycleId, waivedFindingCount: waived, restoredFindingCount: restored }
     })()
   }

@@ -544,11 +544,35 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
             || evidence.targetId !== finding.target_id || evidence.evidenceHash !== finding.evidence_hash) return false
         }
         if (finding.status === 'author-waived') {
-          if (!confirmation || finding.evidence_hash !== cycle.confirmation_content_hash
-            || !integer(finding.confirmation_item_index)) return false
-          const item = (confirmation.snapshot.items as unknown[])[finding.confirmation_item_index]
-          if (confirmation.snapshot.schemaVersion !== 2 || confirmation.snapshot.cycleId !== cycle.cycle_id
-            || !item || typeof item !== 'object' || (item as Record<string, unknown>).findingId !== finding.finding_id
+          if (!finding.evidence_hash || !integer(finding.confirmation_item_index)) return false
+          // issue #247 收口：waiver 对账双路径——
+          //  a) cycle 绑定路径：evidence_hash === cycle.confirmation_content_hash
+          //     （第一轮确认时写入，对账源 = cycle 绑定的确认快照）；
+          //  b) 自证路径：evidence_hash = 任一同草稿确认行的 body hash
+          //     （复验后 updateWaiversAfterRecheck 写入——cycle 绑定保持第一轮
+          //     不变以保住 revision.review_source_id 锚定，弃修由**行内 hash**
+          //     反查确认行自证）。两条路径都要求快照归属本 cycle、指向本 cycle
+          //     的原始审稿、且对应项 decision='waive'。
+          let waiverSnapshot: HumanConfirmedReviewSnapshot | null = null
+          if (finding.evidence_hash === cycle.confirmation_content_hash) {
+            waiverSnapshot = confirmation?.snapshot ?? null
+          } else {
+            const attestorRow = db.prepare(`SELECT r.source_content,c.body FROM reviews r JOIN contents c ON c.id=r.content_id
+              WHERE r.base_draft_id=? AND r.source_content IS NOT NULL`)
+              .all(review.base_draft_id) as Array<{ source_content: string | null; body: string }>
+            for (const candidate of attestorRow) {
+              if (hash(candidate.body) !== finding.evidence_hash) continue
+              const parsed = parseHumanConfirmedReviewSnapshot(candidate.body)
+              if (parsed && parsed.cycleId === cycle.cycle_id && parsed.sourceReviewId === cycle.review_id) {
+                waiverSnapshot = parsed
+                break
+              }
+            }
+          }
+          if (!waiverSnapshot || waiverSnapshot.schemaVersion !== 2
+            || waiverSnapshot.cycleId !== cycle.cycle_id) return false
+          const item = (waiverSnapshot.items as unknown[])[finding.confirmation_item_index]
+          if (!item || typeof item !== 'object' || (item as Record<string, unknown>).findingId !== finding.finding_id
             || (item as Record<string, unknown>).decision !== 'waive') return false
         } else if (finding.confirmation_item_index !== null) return false
       }
