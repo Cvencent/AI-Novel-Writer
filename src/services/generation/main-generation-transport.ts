@@ -46,7 +46,7 @@ export function createMainGenerationTransport(captureSession = getActiveProjectS
     },
     async list(projectSession) {
       const session = freezeSession(projectSession)
-      const rows = await ipc.invokeWithProjectSession(session, 'generation:list')
+      const rows = await ipc.invokeWithProjectSession(session, 'generation:list-summaries')
       // 只是句柄与元数据，但会话仍然要记下来：后续 read/execute 用同一个租约。
       for (const row of rows) {
         assertHandle(session, row.handle, true)

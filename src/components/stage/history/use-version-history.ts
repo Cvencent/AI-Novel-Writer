@@ -41,7 +41,8 @@ export function useVersionHistory(projectKey: string) {
     if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
     setLoading(true)
     try {
-      const blueprints = await ipc.invokeWithProjectSession(projectSession, 'db:blueprint-get-all', projectSession.projectPath)
+      // 版本历史只要章号与标题；不必把每章完整蓝图搬过 IPC。
+      const blueprints = await ipc.invokeWithProjectSession(projectSession, 'db:blueprint-list-summaries', projectSession.projectPath)
       if (!isProjectSessionCurrent(projectSession)) return
       setChapters(blueprints.map(blueprint => ({
         number: blueprint.chapterNumber,

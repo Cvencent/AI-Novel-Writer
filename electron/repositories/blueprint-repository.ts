@@ -480,6 +480,13 @@ export class BlueprintRepository {
         return rows.map(rowToData)
     }
 
+    /** 章号 + 标题的轻量列表：流程脊/落点不需要每章的完整蓝图（3000 章时省掉数 MB IPC）。 */
+    static listSummaries(db = requireProjectDb()): Array<{ chapterNumber: number; title: string }> {
+        return db.prepare(
+            'SELECT chapter_number AS chapterNumber, title FROM blueprints ORDER BY chapter_number ASC'
+        ).all() as Array<{ chapterNumber: number; title: string }>
+    }
+
     /** 获取单个蓝图 */
     static getByChapter(chapterNumber: number): BlueprintData | null {
         const db = requireProjectDb()

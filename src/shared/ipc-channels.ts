@@ -1119,6 +1119,11 @@ export interface DatabaseChannels {
 
   // 2. blueprints
   'db:blueprint-get-all': { args: [expectedProjectPath: string]; return: BlueprintData[] }
+  /** 只回章号与标题：流程脊与落点只要这两列，3000 章时不必把整份蓝图搬过 IPC。 */
+  'db:blueprint-list-summaries': {
+    args: [expectedProjectPath: string]
+    return: Array<{ chapterNumber: number; title: string }>
+  }
   'db:blueprint-get': { args: [chapterNumber: number, expectedProjectPath: string]; return: BlueprintData | null }
   'db:blueprint-upsert': { args: [data: BlueprintData, expectedProjectPath: string]; return: { success: boolean; error?: string } }
   'db:blueprint-upsert-many': { args: [items: BlueprintData[], expectedProjectPath: string]; return: { success: boolean; error?: string } }

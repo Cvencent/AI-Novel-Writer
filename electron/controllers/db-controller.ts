@@ -863,6 +863,11 @@ export function registerDatabaseController() {
     return BlueprintRepository.getAll()
   })
 
+  ipcMain.handle('db:blueprint-list-summaries', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return BlueprintRepository.listSummaries()
+  })
+
   ipcMain.handle('db:blueprint-get', async (_event, chapterNumber: number, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return BlueprintRepository.getByChapter(chapterNumber)

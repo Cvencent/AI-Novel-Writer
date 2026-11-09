@@ -38,7 +38,8 @@ export async function refreshStageWork(text: (zh: string, en: string) => string)
   try {
     const [architecture, blueprints] = await Promise.all([
       checkArchConfirmed(session),
-      ipc.invokeWithProjectSession(session, 'db:blueprint-get-all', session.projectPath),
+      // 落点/流程脊只要章号与标题；3000 章时整份蓝图（含要点、人物、悬念钩子）是数 MB 的搬运。
+      ipc.invokeWithProjectSession(session, 'db:blueprint-list-summaries', session.projectPath),
       useDraftStore.getState().loadAllDrafts(session.projectPath, session),
     ])
     if (!current()) return

@@ -25,7 +25,7 @@ export function LegacyRosterRecoveryPanel({ onRecover, busy }: {
     let disposed = false
     const client = createLegacyRosterGeneration(session)
     void (async () => {
-      const runs = await ipc.invokeWithProjectSession(session, 'generation:list')
+      const runs = await ipc.invokeWithProjectSession(session, 'generation:list-summaries')
       const run = runs.find(item => item.operation === 'legacy-character-roster-repair')
       const value = run ? await client.open({ handle: run.handle }) : undefined
       if (!disposed && isProjectSessionCurrent(session)) { setShown(value); setSessionKey(key); setError('') }

@@ -237,7 +237,7 @@ export class RepairLegacyCharacterRosterCommand extends BaseWorkflowCommand<stri
     }
     let handle = this.input.recoveryHandle
     if (!handle && !this.input.restart) {
-      const runs = await ipc.invokeWithProjectSession(session, 'generation:list')
+      const runs = await ipc.invokeWithProjectSession(session, 'generation:list-summaries')
       this.assertNotCancelled(context)
       assertLegacyRepairSessionCurrent(session)
       handle = runs.find(run => run.operation === 'legacy-character-roster-repair')?.handle
