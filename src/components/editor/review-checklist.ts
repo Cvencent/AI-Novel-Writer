@@ -632,7 +632,10 @@ export function useReviewChecklist({
           reviewIndex,
           content,
           expectedSource: sourceReview.sourceDraft,
-          ...(cycle?.cycleId ? { reviewCycleId: cycle.cycleId } : {}),
+          // issue #247：merge-committed（修稿合并后复验阶段）的 cycle 不接受再确认
+          // （commitAuthorConfirmation 只认 not-generated）——纯落库确认，随后走
+          // updateWaiversAfterRecheck 刷新 finding 弃修状态。
+          ...(cycle?.cycleId && cycle.revisionStatus !== 'merge-committed' ? { reviewCycleId: cycle.cycleId } : {}),
         }, projectSession.projectPath)
       if (createResponse.errorCode === 'SOURCE_DRAFT_CHANGED') {
         throw new Error(text(
@@ -653,6 +656,14 @@ export function useReviewChecklist({
       }
 
       const saved = { reviewSourceId: createResult.id, content, snapshot }
+      // issue #247：修稿合并后的复验阶段——确认只落库（上面不带 reviewCycleId），
+      // 这里按新快照刷新 cycle 的 finding 弃修状态（waive 置 author-waived、
+      // 改主意恢复 unresolved），让复验后的定稿拦截有「标记不修改」出口。
+      if (cycle?.cycleId && cycle.revisionStatus === 'merge-committed') {
+        await ipc.invokeWithProjectSession(projectSession, 'review-cycle:update-waivers-after-recheck', {
+          cycleId: cycle.cycleId, confirmationReviewId: createResult.id,
+        }, projectSession.projectPath)
+      }
       setConfirmed(saved)
       setEditingChecklist(false)
       setChecklistError(null)

@@ -498,9 +498,20 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
             <Button variant="primary" disabled={!canFinalize} onClick={() => setAsk('finalize')}>
               <BadgeCheck size={15} aria-hidden />{text('定稿', 'Finalize')}
             </Button>
+            {/* issue #247：复验后仍有已确认未解决的意见时，定稿被拦但 revised 状态
+                只有「定稿/重新审稿」两个按钮——提示说「请先修稿或标记不修改」，
+                两个入口都不可达（修稿/弃修确认都只在 reviewed 状态渲染），作者
+                只剩重跑审稿一条路。至少把「标记不修改」的出口还给作者：勾选状态
+                仍在（checklist 状态与 stage 无关），确认弃修后重验即可解锁定稿。
+                第二轮修稿需要 cycle 状态机扩展，单独跟踪。 */}
+            {reviewBlocksFinalization && (
+              <Button variant="secondary" disabled={busy || checklist.confirming || checklist.processing} onClick={() => void confirmWaiver()}>
+                {text('标记不修改并确认', 'Mark as no-change and confirm')}
+              </Button>
+            )}
             {reviewAgain}
             {more}
-            <span className="stage-ch-hint" data-tone={recheck?.recheckDisposition === 'completed' ? 'ok' : undefined}>{reviewBlocksFinalization ? text('复验仍有已确认未解决的意见，请先处理后再定稿', 'Confirmed findings remain unresolved; handle them before finalizing') : revisedHint}</span>
+            <span className="stage-ch-hint" data-tone={recheck?.recheckDisposition === 'completed' ? 'ok' : undefined}>{reviewBlocksFinalization ? text('复验仍有已确认未解决的意见——可逐条标记不修改后定稿，或重新审稿', 'Confirmed findings remain unresolved — mark them as no-change to finalize, or review again') : revisedHint}</span>
             {finalizeBlockReason && !reviewBlocksFinalization && (
               <span className="stage-ch-hint" role="note">{text(`现在不能定稿：${finalizeBlockReason}`, `Cannot finalize now: ${finalizeBlockReason}`)}</span>
             )}
