@@ -891,7 +891,6 @@ export class ReviewCycleRepository {
       // 一致性守卫：本轮刷新的每个 finding 都必须能按行内 hash 找回确认行。
       const attestor = db.prepare(`SELECT r.id FROM reviews r JOIN contents c ON c.id=r.content_id WHERE r.id=? AND r.base_draft_id=?`).get(input.confirmationReviewId,
         (db.prepare('SELECT base_draft_id FROM reviews WHERE id=?').pluck().get(cycle.review_id) as number))
-      console.error('[probe2] confId:', input.confirmationReviewId, 'baseId:', db.prepare('SELECT base_draft_id FROM reviews WHERE id=?').pluck().get(cycle.review_id), 'attestor:', JSON.stringify(attestor))
       if (!attestor) conflict()
       if (!verifyM03ReviewCycle(db)) conflict()
       return { cycleId: input.cycleId, waivedFindingCount: waived, restoredFindingCount: restored }
