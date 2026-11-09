@@ -97,7 +97,17 @@ export async function refreshChapterFacts(drafts: readonly { id: number }[], ses
     latestRequest.set(draft.id, request)
     return { id: draft.id, request }
   })
-  const results = await Promise.all(requests.map(({ id }) => readChapterFacts(id, session).catch(() => null)))
+  // 一次刷新可能是几百份在途稿；无上限 Promise.all 会瞬间向主进程灌上千个
+  // IPC（每稿 3-5 个读取），主进程单线程直接排队到未响应。
+  const FACTS_READ_CONCURRENCY = 8
+  const results: Array<ChapterFacts | null> = new Array(requests.length)
+  let cursor = 0
+  await Promise.all(Array.from({ length: Math.min(FACTS_READ_CONCURRENCY, requests.length) }, async () => {
+    while (cursor < requests.length) {
+      const index = cursor++
+      results[index] = await readChapterFacts(requests[index].id, session).catch(() => null)
+    }
+  }))
   if (!sameProjectSessionContext(session, getActiveProjectSessionContext())) return
   useStageStore.setState(state => {
     const byDraft = state.chapterFacts && sameProjectSessionContext(state.chapterFacts.session, session) ? { ...state.chapterFacts.byDraft } : {}
