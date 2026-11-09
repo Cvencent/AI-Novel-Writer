@@ -257,8 +257,11 @@ describe('review and revision generation through the actual owner and SQLite', (
     expect(f.spy.mock.calls.map(([request]) => (request as { model: ModelProfile }).model.id)).toEqual(['synthetic', expectedModel])
     const revisionRequest = f.spy.mock.calls[1]![0] as { model: ModelProfile }
     expect(revisionRequest.model.maxTokens).toBe(expectedModel === 'revision-model' ? 1024 : 2048)
-    expect(handle.rootActionId).toBe(original.handle.rootActionId)
-    expect(f.owner.read(handle).ledger).toMatchObject({ physicalRequests: 2, tokenLiability: 200 })
+    // issue #243 ③：confirmation 修稿开新 root（不再挂审稿 run 的 root）。
+    expect(handle.rootActionId).not.toBe(original.handle.rootActionId)
+    // ③ 后修稿独立 root：原 root 的审稿请求不再计入修稿 ledger；两次注入失败
+    // （before-dispatch 不占额、save-ack 后结算保留）后成功一次 = 1。
+    expect(f.owner.read(handle).ledger).toMatchObject({ physicalRequests: 1, tokenLiability: 100 })
     expect(f.owner.readReviewRevisionRecovery(handle).modelId).toBe(expectedModel)
     context.generationModelId = expectedModel === 'synthetic' ? 'revision-model' : 'synthetic'
     await expect(command.execute({ context, callbacks, step: {} })).resolves.toBe(revisedProse)
@@ -513,7 +516,8 @@ describe('review and revision generation through the actual owner and SQLite', (
       expectedDraft: { chapterNumber: 1, version: 1, status: 'draft', contentHash: textHash(prose) },
       authorInputs: [], uiLocale: 'zh-CN', reviewSourceId: confirmation.id, confirmedReviewContent: content }
     const prepared = f.owner.prepareReviewRevision(request)
-    expect(prepared.parentRootActionId).toBe(original.handle.rootActionId)
+    // issue #243 ③：confirmation 修稿开新 root——parent 不再返回审稿 root。
+    expect(prepared.parentRootActionId).toBeUndefined()
     expect(prepared.modelId).toBe('synthetic')
     expect(f.spy).toHaveBeenCalledTimes(2)
     expect(f.db.prepare('SELECT usage_receipt_json FROM generation_attempts WHERE run_id=?')
@@ -528,13 +532,15 @@ describe('review and revision generation through the actual owner and SQLite', (
     const confirmation = ReviewRepository.create({ baseDraftId: 1, content, expectedSource: saved.source }, f.db)
     const request: PrepareReviewRevisionRequest = { operation: 'refine-from-review', draftId: 1, expectedDraft: { chapterNumber: 1, version: 1, status: 'draft', contentHash: textHash(prose) }, authorInputs: [], uiLocale: 'zh-CN', reviewSourceId: confirmation.id, confirmedReviewContent: content }
     const prepared = f.owner.prepareReviewRevision(request)
-    expect(prepared.parentRootActionId).toBe(original.handle.rootActionId)
+    // issue #243 ③：confirmation 修稿开新 root——parent 不再返回审稿 root。
+    expect(prepared.parentRootActionId).toBeUndefined()
     expect(prepared.modelId).toBe('synthetic')
     const selection = { ...f.selection(prepared), uiActionNonce: 'confirmed-fix' }
     expect(() => f.owner.begin({ ...selection, parentRootActionId: undefined })).toThrow('GENERATION_BEGIN_INVALID')
     expect(() => f.owner.begin({ ...selection, modelId: 'other' })).toThrow()
     const view = f.owner.begin(selection)
-    expect(view.handle.rootActionId).toBe(original.handle.rootActionId)
+    // issue #243 ③：confirmation 修稿开新 root。
+    expect(view.handle.rootActionId).not.toBe(original.handle.rootActionId)
     const recovered = f.owner.readReviewRevisionRecovery(view.handle)
     expect(() => f.owner.begin({ ...selection, reviewRevisionContextId: recovered.contextId })).not.toThrow()
     const prompt = '按确认修改'
@@ -546,7 +552,8 @@ describe('review and revision generation through the actual owner and SQLite', (
         category: 'author', required: true, units: Buffer.byteLength(brief) }] })
     await f.owner.execute({ handle: view.handle, invocationNonce: 'fix-1', task: { purpose: 'refine-from-review', output: 'visible-text', messages: [{ role: 'user', content: prompt }] } })
     expect(f.db.prepare('SELECT COUNT(*) FROM generation_attempts').pluck().get()).toBe(2)
-    expect(f.db.prepare('SELECT COUNT(DISTINCT root_action_id) FROM generation_runs').pluck().get()).toBe(1)
+    // ③ 后：审稿 root + 修稿 root = 2（recheck 挂审稿 root，不再另开）。
+    expect(f.db.prepare('SELECT COUNT(DISTINCT root_action_id) FROM generation_runs').pluck().get()).toBe(2)
     const candidate = f.owner.read(view.handle).candidates![0]
     const composition = f.owner.composeVisible(view.handle, [candidate.artifactId], textHash(report), 'visible-append-v1')
     f.db.prepare('UPDATE contents SET body=? WHERE id=(SELECT content_id FROM reviews WHERE id=?)').run('作者改了确认', confirmation.id)
@@ -622,6 +629,51 @@ describe('review and revision generation through the actual owner and SQLite', (
       .toThrow('GENERATION_REVIEW_RECHECK_NOT_REQUIRED')
     expect(f.db.prepare('SELECT COUNT(*) FROM generation_attempts').pluck().get()).toBe(attemptsBeforeNoOpMerge)
     expect(f.spy).toHaveBeenCalledTimes(dispatchesBeforeNoOpMerge)
+  })
+  it('resolves the cycle by the snapshot cycleId first, falling back to review_id (issue #244 四开 12:42 现场)', async () => {
+    // 现场：commit-revision 按 snapshot.sourceReviewId 查 review_cycles 落空（快照
+    // 谱系键与 cycle.review_id 不一致时）→ 修稿跑完却在提交时炸
+    // REVIEW_CYCLE_INPUT_INVALID。修复 = 快照带 cycleId（UI 弹层传入）按 cycle_id 查
+    // 正键，review_id 只作旧快照兜底；落空时打主进程诊断日志再抛。
+    let invocation = 0
+    const f = fixture(async (_request, options) => {
+      options.onVisible({ kind: 'delta', text: ++invocation === 1 ? report : revisedProse })
+      return { finishReason: 'stop', usage: null }
+    })
+    const original = await f.run(), savedReview = f.owner.commitReview(original)
+    const cycleRow = f.db.prepare('SELECT cycle_id,review_id FROM review_cycles').get() as { cycle_id: string; review_id: number }
+    expect(cycleRow.review_id).toBe(savedReview.id)
+    const snapshot = createHumanConfirmedReviewSnapshot({ sourceReviewId: savedReview.id,
+      cycleId: cycleRow.cycle_id, sourceDraft: savedReview.source,
+      summary: '作者确认', authorGuidance: '保持克制', items: [{ category: '表达', severity: 'warning',
+        description: '补充动作', decision: 'apply', origin: 'ai' }] })!
+    const confirmationContent = serializeHumanConfirmedReviewSnapshot(snapshot)
+    const confirmation = ReviewRepository.create({ baseDraftId: 1, content: confirmationContent,
+      expectedSource: savedReview.source }, f.db)
+    const prepared = f.owner.prepareReviewRevision({ operation: 'refine-from-review', draftId: 1,
+      expectedDraft: { chapterNumber: 1, version: 1, status: 'draft', contentHash: textHash(prose) },
+      authorInputs: [], uiLocale: 'zh-CN', reviewSourceId: confirmation.id, confirmedReviewContent: confirmationContent })
+    // 1.5.247 ③：confirmation 修稿开新 root；1.5.249 修复：parent 不再按 effect 找原始
+    // run——复核审稿的确认快照按 effect 找不到原始 run（另一处四开阻断）。
+    expect(prepared.parentRootActionId).toBeUndefined()
+    const view = f.owner.begin({ ...f.selection(prepared), uiActionNonce: 'cycle-keyed-fix' })
+    const prompt = '按确认修改', brief = renderHumanConfirmedReviewBrief(snapshot, prepared.context.writingLanguage)
+    f.owner.bindMaterialDecision(view.handle, { ...materialDecision(prompt),
+      capacity: { maxInputUnits: 18_000, methodVersion: 'utf8-bytes-v1', admittedUnits: Buffer.byteLength(brief) },
+      coverage: { required: 1, included: 1, complete: true }, included: [{ sourceId: `review:confirmed:${confirmation.id}`,
+        revision: confirmation.id, contentHash: textHash(brief), category: 'author', required: true,
+        units: Buffer.byteLength(brief) }] })
+    await f.owner.execute({ handle: view.handle, invocationNonce: 'cycle-keyed-run',
+      task: { purpose: 'refine-from-review', output: 'visible-text', messages: [{ role: 'user', content: prompt }] } })
+    const candidate = f.owner.read(view.handle).candidates![0]!
+    const composition = f.owner.composeVisible(view.handle, [candidate.artifactId], textHash(revisedProse), 'visible-append-v1')
+    const savedRevision = f.owner.commitRevision({ contextId: prepared.contextId, handle: view.handle,
+      expectedCompositionHash: composition.textHash })
+    expect(savedRevision).toMatchObject({ kind: 'revision', revisionStatus: 'pending', content: revisedProse })
+    expect(f.db.prepare('SELECT review_id,confirmation_review_id,revision_id,revision_status FROM review_cycles').get())
+      .toEqual({ review_id: savedReview.id, confirmation_review_id: confirmation.id,
+        revision_id: savedRevision.id, revision_status: 'generated' })
+    expect(verifyM03ReviewCycle(f.db)).toBe(true)
   })
   it.each([1, 2] as const)('resumes a settled semantic v1 recheck and replays wrapped report derivation v%i', async reportVersion => {
     const source = prose + '门闩上的裂纹仍在。'
@@ -719,7 +771,8 @@ describe('review and revision generation through the actual owner and SQLite', (
       expect(f.db.prepare('SELECT status FROM review_findings').pluck().get()).toBe('unknown')
       expect(f.db.prepare("SELECT json_extract(usage_receipt_json,'$.reviewCycleRecheck.version') FROM generation_attempts WHERE attempt_id=?")
         .pluck().get(recheckArtifact.attemptId)).toBe(2)
-      expect(f.db.prepare('SELECT COUNT(DISTINCT root_action_id) FROM generation_runs').pluck().get()).toBe(1)
+      // ③ 后：审稿 root + 修稿 root = 2（recheck 挂审稿 root，不再另开）。
+    expect(f.db.prepare('SELECT COUNT(DISTINCT root_action_id) FROM generation_runs').pluck().get()).toBe(2)
       expect(f.db.prepare('SELECT COUNT(*) FROM generation_attempts').pluck().get()).toBe(3)
       expect(verifyM03ReviewCycle(f.db)).toBe(true)
       expect(f.spy).toHaveBeenCalledTimes(3)
