@@ -552,7 +552,7 @@ describe('review and revision generation through the actual owner and SQLite', (
         category: 'author', required: true, units: Buffer.byteLength(brief) }] })
     await f.owner.execute({ handle: view.handle, invocationNonce: 'fix-1', task: { purpose: 'refine-from-review', output: 'visible-text', messages: [{ role: 'user', content: prompt }] } })
     expect(f.db.prepare('SELECT COUNT(*) FROM generation_attempts').pluck().get()).toBe(2)
-    // ③ 后：审稿 root + 修稿 root = 2（recheck 挂审稿 root，不再另开）。
+    // ③ 后修稿开新 root：审稿 + 修稿 = 2。
     expect(f.db.prepare('SELECT COUNT(DISTINCT root_action_id) FROM generation_runs').pluck().get()).toBe(2)
     const candidate = f.owner.read(view.handle).candidates![0]
     const composition = f.owner.composeVisible(view.handle, [candidate.artifactId], textHash(report), 'visible-append-v1')
@@ -729,10 +729,10 @@ describe('review and revision generation through the actual owner and SQLite', (
     const recheckPrepared = f.owner.prepareReviewRevision({ operation: 'review-chapter', draftId: 1,
       expectedDraft: { chapterNumber: 1, version: 1, status: 'revised', contentHash: textHash(revised) },
       reviewCycleId: cycle.cycle_id, expectedMergedHash: cycle.merged_hash, authorInputs: [], uiLocale: 'zh-CN' })
-    expect(recheckPrepared.parentRootActionId).toBe(reviewView.handle.rootActionId)
+    // issue #246：复核 run 开新 root——不再继承审稿 root（其预算/blocked_code
+    // 会挡复验重试）；modelId 继承保留。
+    expect(recheckPrepared.parentRootActionId).toBeUndefined()
     expect(recheckPrepared.modelId).toBe('synthetic')
-    const forged = { ...f.selection(recheckPrepared), uiActionNonce: 'forged-recheck', parentRootActionId: undefined }
-    expect(() => f.owner.begin(forged)).toThrow('GENERATION_BEGIN_INVALID')
     const recheckView = f.owner.begin({ ...f.selection(recheckPrepared), uiActionNonce: 'recheck-root' })
     const recheckPrompt = '复核门闩 finding'
     f.owner.bindMaterialDecision(recheckView.handle, materialDecision(recheckPrompt))
@@ -771,8 +771,8 @@ describe('review and revision generation through the actual owner and SQLite', (
       expect(f.db.prepare('SELECT status FROM review_findings').pluck().get()).toBe('unknown')
       expect(f.db.prepare("SELECT json_extract(usage_receipt_json,'$.reviewCycleRecheck.version') FROM generation_attempts WHERE attempt_id=?")
         .pluck().get(recheckArtifact.attemptId)).toBe(2)
-      // ③ 后：审稿 root + 修稿 root = 2（recheck 挂审稿 root，不再另开）。
-    expect(f.db.prepare('SELECT COUNT(DISTINCT root_action_id) FROM generation_runs').pluck().get()).toBe(2)
+      // ③ 后修稿开新 root；#246 后复核也开新 root：审稿 + 修稿 + 复核 = 3。
+    expect(f.db.prepare('SELECT COUNT(DISTINCT root_action_id) FROM generation_runs').pluck().get()).toBe(3)
       expect(f.db.prepare('SELECT COUNT(*) FROM generation_attempts').pluck().get()).toBe(3)
       expect(verifyM03ReviewCycle(f.db)).toBe(true)
       expect(f.spy).toHaveBeenCalledTimes(3)
