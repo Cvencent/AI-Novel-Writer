@@ -136,6 +136,24 @@ it('flushes by the one-second timer and reports only committed revisions', async
     finish({ usage, finishReason: 'stop' });
     await operation;
 });
+it('coalesces a token burst into a single snapshot frame (issue #245 live lag)', async () => {
+    const f = fixture(), updates: unknown[] = [];
+    let finish!: (v: { usage: typeof usage; finishReason: string }) => void;
+    const service = createGenerationRunService({ repository: f.repository, onSnapshot: event => updates.push(event), dispatch: async (_r, o) => {
+        // 500 个增量：过去每个增量都会水合一次 receipt（查库 + sha256 整份正文），
+        // 生成期间主进程被打满，所有页面的 IPC 一起排队。
+        for (let index = 0; index < 500; index += 1) o.onVisible({ kind: 'delta', text: '字' });
+        return new Promise(resolve => { finish = resolve; });
+    } }), run = service.open(f.open);
+    const operation = service.execute(f.request(run.runId));
+    await new Promise(resolve => setTimeout(resolve, 150));
+    expect(updates.length).toBeGreaterThan(0);
+    expect(updates.length).toBeLessThanOrEqual(3);
+    expect((updates.at(-1) as { visibleText: string }).visibleText).toBe('字'.repeat(500));
+    finish({ usage, finishReason: 'stop' });
+    await operation;
+    expect((updates.at(-1) as { visibleText: string }).visibleText).toBe('字'.repeat(500));
+});
 it('refuses source/fingerprint change even if an injected validator mistakenly returns true', async () => {
     const f = fixture(), service = createGenerationRunService({ repository: f.repository, dispatch: vi.fn(), validateRecovery: async () => true }), run = service.open(f.open);
     service.pause(run.rootActionId);

@@ -144,6 +144,8 @@ export function createGenerationRunService(deps: GenerationRunServiceDependencie
                 return receipt;
             const attemptId = receipt.attempt.attemptId, controller = new AbortController();
             let text = receipt.artifact!.text, durable = text, revision = receipt.artifact!.revision, storageFailed = false, streamFailed = false, terminal = false, suspended = false;
+            let textBytes = Buffer.byteLength(text, 'utf8');
+            let durableBytes = textBytes;
             let diagnostics: GenerationTransportDiagnostics | undefined;
             let diagnosticsAt = performance.now();
             // issue #233：attempt 级耗时——settle 时随 result 落库，日志页展示「跑了多久」。
@@ -151,10 +153,40 @@ export function createGenerationRunService(deps: GenerationRunServiceDependencie
             const dispatchStartedAt = performance.now();
             let agentProtocolText = '';
             const events = new Map<string, string>();
-            const notify = () => { try {
-                deps.onSnapshot?.({ attemptId, visibleText: text, durableText: durable, durableRevision: revision, storageFailed, diagnostics });
-            }
-            catch { /* UI notification cannot alter durable accounting */ } };
+            /**
+             * 显示快照按 100ms 一帧合并（与 generation-controller 的 IPC 节流同一节奏）。
+             *
+             * 流式增量每秒可达数百个，而主进程收到一次 notify 就要查库水合 receipt、sha256
+             * 整份正文；生成期间主进程单核被打满，所有页面的 IPC 都要排队——作者看到的是
+             * 「一有模型在跑，整个软件都卡」。这里的节流放在**构造快照之前**，落库/flush 与
+             * 终态仍立即通知，界面看到的节奏不变。
+             */
+            const SNAPSHOT_NOTIFY_MS = 100;
+            let lastNotifyAt = 0;
+            let notifyTimer: ReturnType<typeof setTimeout> | undefined;
+            const emitSnapshot = () => {
+                lastNotifyAt = performance.now();
+                try {
+                    deps.onSnapshot?.({ attemptId, visibleText: text, durableText: durable, durableRevision: revision, storageFailed, diagnostics });
+                }
+                catch { /* UI notification cannot alter durable accounting */ }
+            };
+            const notify = (immediate = false) => {
+                if (terminal && !immediate)
+                    return;
+                const now = performance.now();
+                const wait = SNAPSHOT_NOTIFY_MS - (now - lastNotifyAt);
+                if (!immediate && wait > 0) {
+                    // 只在帧尾补发一次：连续增量不再各自建快照，最后一次状态也不会丢。
+                    notifyTimer ??= setTimeout(() => { notifyTimer = undefined; if (!terminal) emitSnapshot(); }, wait);
+                    return;
+                }
+                if (notifyTimer !== undefined) {
+                    clearTimeout(notifyTimer);
+                    notifyTimer = undefined;
+                }
+                emitSnapshot();
+            };
             const flush = () => {
                 if (storageFailed || text === durable)
                     return;
@@ -162,6 +194,7 @@ export function createGenerationRunService(deps: GenerationRunServiceDependencie
                     const artifact = deps.repository.snapshot(attemptId, revision, text);
                     revision = artifact.revision;
                     durable = artifact.text;
+                    durableBytes = Buffer.byteLength(durable, 'utf8');
                 }
                 catch {
                     storageFailed = true;
@@ -174,7 +207,7 @@ export function createGenerationRunService(deps: GenerationRunServiceDependencie
                     }
                     catch { /* retain copyable tail in memory */ }
                 }
-                notify();
+                notify(true);
             };
             const retainInterruptedAgentText = () => {
                 if (request.agentToolNames && !text && !suspended)
@@ -238,22 +271,44 @@ export function createGenerationRunService(deps: GenerationRunServiceDependencie
                             return;
                         }
                         const previous = request.agentToolNames ? agentProtocolText : text;
-                        const next = event.kind === 'cumulative' ? event.text : previous + event.text;
-                        if (!next.startsWith(previous) || /<\/?think\b/iu.test(next)) {
-                            streamFailed = true;
-                            controller.abort();
-                            return;
+                        if (event.kind === 'cumulative') {
+                            // 累计事件带整份正文：前缀校验与 think 标签检查只能在这一种事件上做。
+                            if (!event.text.startsWith(previous) || /<\/?think\b/iu.test(event.text)) {
+                                streamFailed = true;
+                                controller.abort();
+                                return;
+                            }
+                            if (request.agentToolNames) {
+                                agentProtocolText = event.text;
+                                if (Buffer.byteLength(event.text, 'utf8') > 8 * 1024 * 1024) { streamFailed = true; controller.abort(); }
+                                return;
+                            }
+                            text = event.text;
+                            textBytes = Buffer.byteLength(text, 'utf8');
                         }
-                        if (request.agentToolNames) {
-                            // Protocol may arrive as XML, DSML or raw JSON. Do not stream it
-                            // through the user-artifact channel before its role is known.
-                            agentProtocolText = next;
-                            if (Buffer.byteLength(next, 'utf8') > 8 * 1024 * 1024) { streamFailed = true; controller.abort(); }
-                            return;
+                        else {
+                            // 增量事件是拼接出来的，前缀必然成立；字节数随增量累加，
+                            // 不再对每个 token 重算整份正文的 UTF-8 长度（O(n²)）。
+                            const next = previous + event.text;
+                            // <think 可能被切成 "<thi" + "nk>" 两块拼出来：只看上一块尾部 8 个字符
+                            // 与本块的交界，不重扫整份正文（流式期间每块都扫是 O(n²)）。
+                            if (/<\/?think\b/iu.test(previous.slice(-8) + event.text)) {
+                                streamFailed = true;
+                                controller.abort();
+                                return;
+                            }
+                            if (request.agentToolNames) {
+                                // Protocol may arrive as XML, DSML or raw JSON. Do not stream it
+                                // through the user-artifact channel before its role is known.
+                                agentProtocolText = next;
+                                if (Buffer.byteLength(next, 'utf8') > 8 * 1024 * 1024) { streamFailed = true; controller.abort(); }
+                                return;
+                            }
+                            text = next;
+                            textBytes += Buffer.byteLength(event.text, 'utf8');
                         }
-                        text = next;
                         notify();
-                        if (Buffer.byteLength(text) - Buffer.byteLength(durable) >= 4096)
+                        if (textBytes - durableBytes >= 4096)
                             flush();
                     } });
                 const result = await Promise.race([provider, cancelled]);
@@ -263,6 +318,7 @@ export function createGenerationRunService(deps: GenerationRunServiceDependencie
                 if (request.agentToolNames && result.finishReason === 'stop' && !streamFailed) {
                     const parsed = parseAgentResponseProtocol(agentProtocolText, request.agentToolNames);
                     text = parsed.visibleText;
+                    textBytes = Buffer.byteLength(text, 'utf8');
                     if (parsed.toolCalls.length > 64) throw new Error('GENERATION_AGENT_ACTION_LIMIT');
                     usage = { ...usage!, agentResponse: { version: 1, visibleText: parsed.visibleText, toolCalls: parsed.toolCalls } };
                 }
@@ -298,6 +354,10 @@ export function createGenerationRunService(deps: GenerationRunServiceDependencie
             }
             finally {
                 terminal = true;
+                if (notifyTimer !== undefined) {
+                    clearTimeout(notifyTimer);
+                    notifyTimer = undefined;
+                }
                 if (timer)
                     clearInterval(timer);
                 if (deadline)
