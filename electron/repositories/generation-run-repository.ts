@@ -736,6 +736,16 @@ export class GenerationRunRepository {
             console.error('[activate] root/project epoch mismatch:', budget.root.projectId, 'vs', project.projectId);
             fail('GENERATION_DIRECTORY_CONTINUATION_BLOCKED');
         }
+        if (budget.root.status === 'cancelled') {
+            // issue #244 三开（2026-11-09 现场）：审稿失败 + 页面刷新/应用重启的 lease
+            // 回收链会把 root 置 cancelled（pause(rootId, cancel=true)）。cancelled 不是
+            // 记账不变量，只是「这条续接当时被放弃」的标记——作者显式重试 = 意图重启
+            // 续接，容忍它回 active；不清则重试永远 BLOCKED（12:27 现场）。
+            // sealed 仍拒：封账 root 的历史不可续写。
+            console.error('[activate] cancelled root re-activated by explicit retry:', rootId);
+            budget.root.status = 'active';
+            this.db().prepare("UPDATE generation_runs SET status='running' WHERE root_action_id=? AND status='cancelled'").run(rootId);
+        }
         if (!['active', 'paused'].includes(budget.root.status)) {
             console.error('[activate] root status not activatable:', budget.root.status);
             fail('GENERATION_DIRECTORY_CONTINUATION_BLOCKED');

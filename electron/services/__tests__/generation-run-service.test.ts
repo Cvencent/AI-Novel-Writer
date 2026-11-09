@@ -418,6 +418,23 @@ describe('activateRootForCommittedStage 的中间态宽容清理 (issue #243)', 
       .toThrow('GENERATION_DIRECTORY_CONTINUATION_BLOCKED')
     expect(f.repository.budget(run.rootActionId).blockedCode).toBe('USAGE_EXCEEDED_RESERVATION')
   })
+  it('re-activates a cancelled root on explicit retry (issue #244 三开 12:27 现场)', () => {
+    const f = fixture(), run = f.repository.open(f.open)
+    // lease 回收链把 root 置 cancelled（pause(rootId, cancel=true)）
+    f.repository.pause(run.rootActionId, true)
+    expect(f.repository.budget(run.rootActionId).root.status).toBe('cancelled')
+    // 作者显式重试 → activate 容忍 cancelled 回 active
+    f.db.transaction(() => f.repository.activateRootForCommittedStage(run.rootActionId, { projectId: 'project', epoch: 'epoch' })).immediate()
+    const after = f.repository.budget(run.rootActionId)
+    expect(after.root.status).toBe('active')
+    expect(f.db.prepare('SELECT status FROM generation_runs WHERE run_id=?').pluck().get(run.runId)).toBe('running')
+  })
+  it('still refuses a sealed root (history is not rewritable)', () => {
+    const f = fixture(), run = f.repository.open(f.open)
+    f.db.prepare("UPDATE generation_roots SET action_json=json_set(action_json,'$.status','sealed') WHERE root_action_id=?").run(run.rootActionId)
+    expect(() => f.db.transaction(() => f.repository.activateRootForCommittedStage(run.rootActionId, { projectId: 'project', epoch: 'epoch' })).immediate())
+      .toThrow('GENERATION_DIRECTORY_CONTINUATION_BLOCKED')
+  })
 })
 describe('attempt elapsedMs is persisted with settle (issue #233)', () => {
   it('writes a non-negative elapsedMs for both settled and failed attempts', async () => {
