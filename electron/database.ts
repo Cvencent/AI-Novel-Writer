@@ -6,6 +6,7 @@
  */
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
+import path from 'node:path'
 import { initializeLegacyBaselineSchema } from './migrations/baseline-schema'
 import { CURRENT_DESKTOP_SCHEMA_VERSION, getDesktopMigrationRegistry } from './migrations/desktop-registry'
 import { GenerationRunRepository } from './repositories/generation-run-repository'
@@ -36,21 +37,37 @@ export function createProjectDatabase(projectPath: string, importSourceSecret?: 
 export function initProjectDatabase(projectPath: string): void {
   closeProjectDatabase()
   let database: BetterSqlite3.Database | undefined
+  // issue #245：大项目（3000 章级）打开到首屏约 30 秒——先分段计时拿到证据，
+  // 再决定缓存化/并行化。各段毫秒数进主进程日志（[perf-open] 行）。
+  const openStartedAt = Date.now()
+  const timings: Array<[string, number]> = []
+  const timed = <T>(label: string, run: () => T): T => {
+    const startedAt = Date.now()
+    try { return run() } finally { timings.push([label, Date.now() - startedAt]) }
+  }
   try {
     // One open verifies the canonical schema once: the upgrade seam upgrades when
     // needed and verifies the target, then admission reuses that result. Verifying
     // separately in both seams doubled the cost on a 478 MB project.
-    const verifiedByUpgrade = upgradeCanonicalProjectData(projectPath)
-    activateCanonicalProjectData(projectPath, verifiedByUpgrade)
-    database = new Database(getProjectDatabasePath(projectPath), { fileMustExist: true })
+    const verifiedByUpgrade = timed('upgrade-canonical', () => upgradeCanonicalProjectData(projectPath))
+    timed('activate-canonical', () => activateCanonicalProjectData(projectPath, verifiedByUpgrade))
+    database = timed('sqlite-open', () => new Database(getProjectDatabasePath(projectPath), { fileMustExist: true }))
     const adapter = new SqliteSchemaAdapter(database)
-    verifySchema(adapter, getDesktopMigrationRegistry(), CURRENT_DESKTOP_SCHEMA_VERSION)
-    database.pragma('journal_mode = WAL')
-    database.pragma('foreign_keys = ON')
-    fenceProjectSession(database)
+    timed('verify-schema', () => verifySchema(adapter, getDesktopMigrationRegistry(), CURRENT_DESKTOP_SCHEMA_VERSION))
+    timed('pragmas-fence', () => {
+      database!.pragma('journal_mode = WAL')
+      database!.pragma('foreign_keys = ON')
+      fenceProjectSession(database!)
+    })
     projectDb = database
     currentProjectPath = projectPath
-    startIdleRunReaper(database)
+    timed('start-reaper', () => startIdleRunReaper(database!))
+    const total = Date.now() - openStartedAt
+    if (total >= 1500) {
+      // 只在可疑耗时（≥1.5s）时打日志，常规小项目零噪音。
+      const detail = timings.map(([label, ms]) => `${label}=${ms}ms`).join(' ')
+      console.error(`[perf-open] project open took ${total}ms | ${detail} | path=${path.basename(projectPath)}`)
+    }
   } catch (error) {
     database?.close(); deactivateProjectData(projectPath); throw error
   }

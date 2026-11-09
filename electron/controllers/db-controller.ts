@@ -1073,7 +1073,15 @@ export function registerDatabaseController() {
 
   ipcMain.handle('db:draft-list-all', async (_event, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
-    return DraftRepository.listAll()
+    // issue #245：大项目首屏分段计时——listAll 含依赖态级联（逐依赖拉正文算哈希），
+    // 是 30 秒冷启动的嫌疑大头之一。≥500ms 才打日志，小项目零噪音。
+    const startedAt = Date.now()
+    try {
+      return DraftRepository.listAll()
+    } finally {
+      const elapsed = Date.now() - startedAt
+      if (elapsed >= 500) console.error(`[perf-open] draft-list-all took ${elapsed}ms`)
+    }
   })
 
   ipcMain.handle('db:draft-get-meta', async (_event, id: number, expectedProjectPath: string) => {
