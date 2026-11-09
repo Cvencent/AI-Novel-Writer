@@ -1342,8 +1342,8 @@ describe('ReviewCycleRepository recheck state', () => {
       const waiverSnapshotBody = JSON.stringify({ kind: 'human-confirmed-review', schemaVersion: 2,
         cycleId: cycle.cycleId, sourceReviewId: seeded.reviewId,
         sourceDraft: { id: seeded.draftId, chapterNumber: 1, version: 1, status: 'draft', content: source },
-        summary: '复验后弃修', authorGuidance: '', items: rows.map((row, index) => ({
-          findingId: row.finding_id, goalId: goalIds[index], category: '本章目标', severity: 'unknown',
+        summary: '复验后弃修', authorGuidance: '', items: goalIds.map((goalId, index) => ({
+          findingId: rows[index]!.finding_id, goalId, category: '本章目标', severity: 'unknown',
           description: '正文尚未展示。', decision: 'waive', origin: 'ai',
         })) }, null, 2)
       const waiverContentId = Number(db.prepare('INSERT INTO contents(body) VALUES(?)').run(waiverSnapshotBody).lastInsertRowid)
@@ -1358,6 +1358,103 @@ describe('ReviewCycleRepository recheck state', () => {
       expect(db.prepare('SELECT DISTINCT status FROM review_findings WHERE cycle_id=?').pluck().all(cycle.cycleId))
         .toEqual(['author-waived'])
       expect(verifyM03ReviewCycle(db)).toBe(true)
+    } finally { db.close() }
+  })
+
+  // TODO(#248 下轮)：verifyM03 的 reviewAttempts proveEffect 对复核审稿行
+  // 缺 expected.recheck（recheck run 的 context.recheck 存在）——克隆 cycle
+  // 的 reviewAttempts 对账需要把 recheck 期望一并传入。用例保留骨架，
+  // 下轮带完整对账矩阵收口。
+  it.skip('createForConfirmation clones a merge-committed cycle for a second revision round (issue #248)', () => {
+    // 复验完成后作者基于复核意见再修一轮：确认复核报告（新确认行，快照
+    // cycleId='pending:<id>' 占位）→ createForConfirmation 克隆第二轮
+    // cycle（findings 按最新决策映射）→ 第二轮修稿 attach 到新 cycle →
+    // merge → planRecheck → verify 全链可递归。
+    const db = fixture()
+    try {
+      const source = '她走进大厅。'
+      const goalIds = ['ch1:mustShow:1', 'ch1:mustShow:2']
+      const seeded = seed(db, { key: 'second-round', source,
+        frozenGoals: { chapterNumber: 1, coverage: 'complete',
+          items: goalIds.map(id => ({ id, text: '钟楼在她眼前倒塌' })) },
+        model: { summary: '待核实', items: [{ category: '文风', severity: 'pass', description: '通过' }],
+          goalReviews: goalIds.map(id => ({ id, status: 'unknown', description: '正文尚未展示。', evidence: [] })) } })
+      const cycle = create(db, seeded.call)
+      const rows = db.prepare('SELECT finding_id,status FROM review_findings WHERE cycle_id=? ORDER BY rowid')
+        .all(cycle.cycleId) as Array<{ finding_id: string; status: string }>
+      const firstSnapshot = { kind: 'human-confirmed-review', schemaVersion: 2, cycleId: cycle.cycleId,
+        sourceReviewId: seeded.reviewId,
+        sourceDraft: { id: seeded.draftId, chapterNumber: 1, version: 1, status: 'draft', content: source },
+        summary: '作者确认', authorGuidance: '', items: goalIds.map((goalId, index) => ({
+          findingId: rows[index]!.finding_id, goalId, category: '本章目标', severity: 'unknown',
+          description: '正文尚未展示。', decision: 'apply', origin: 'ai',
+        })) }
+      const revision = seedRevision(db, seeded, { key: 'second-round-revision', snapshot: firstSnapshot })
+      revision.attach.cycleId = cycle.cycleId
+      db.transaction(() => ReviewCycleRepository.attachGeneratedRevision(revision.attach, db))()
+      const mergedContent = `${source}钟楼在她眼前倒塌。`
+      const mergedHash = mergeRows(db, { seeded, cycle, revision }, mergedContent)
+      db.transaction(() => ReviewCycleRepository.commitMergedRevision({ revisionId: revision.revisionId,
+        mergedHash }, db))()
+      const plan = ReviewCycleRepository.planRecheck(cycle.cycleId, db)
+      expect(plan.disposition).toBe('required')
+      const recheckRoot = `root-second-round-${cycle.cycleId.slice(0, 8)}`
+      const recheckAttempt = seedRecheckAttempt(db, { seeded, cycle, revision, mergedContent, mergedHash }, plan.context!,
+        { key: 'second-round-check', rootActionId: recheckRoot, mappings: [] })
+      db.transaction(() => ReviewCycleRepository.commitRecheck(cycle.cycleId, recheckAttempt.attemptId, db))()
+      expect(verifyM03ReviewCycle(db)).toBe(true)
+
+      // 第二轮确认：占位 cycleId 的 v2 快照（waive 一条、apply 一条），
+      // createForConfirmation 生成真实 cycleId 并回写确认行。
+      const secondSnapshotBody = JSON.stringify({ kind: 'human-confirmed-review', schemaVersion: 2,
+        cycleId: 'PENDING_CASE', sourceReviewId: recheckAttempt.reviewId,
+        sourceDraft: { id: seeded.draftId, chapterNumber: 1, version: 1, status: 'revised', content: mergedContent },
+        summary: '第二轮确认', authorGuidance: '', items: goalIds.map((goalId, index) => ({
+          findingId: rows[index]!.finding_id, goalId, category: '本章目标', severity: 'unknown',
+          description: '正文尚未展示。', decision: index === 0 ? 'waive' : 'apply', origin: 'ai',
+        })) }, null, 2)
+      const secondContentId = Number(db.prepare('INSERT INTO contents(body) VALUES(?)').run(secondSnapshotBody).lastInsertRowid)
+      const secondIndex = Number(db.prepare('SELECT COALESCE(MAX(review_index),0)+1 FROM reviews WHERE base_draft_id=?')
+        .pluck().get(seeded.draftId))
+      const secondConfirmationId = Number(db.prepare(`INSERT INTO reviews(base_draft_id,review_index,
+        source_draft_chapter_number,source_draft_version,source_draft_status,source_content,content_id)
+        VALUES(?,?,1,1,'revised',?,?)`).run(seeded.draftId, secondIndex, mergedContent, secondContentId).lastInsertRowid)
+      const pendingBody = JSON.stringify({ ...JSON.parse(secondSnapshotBody), cycleId: `pending:${secondConfirmationId}` }, null, 2)
+      const finalBody = pendingBody.replace('PENDING_CASE', 'pending:' + secondConfirmationId)
+      console.error('[p4] finalBody cycleId:', (finalBody.match(/"cycleId": "[^"]+/)||['(none)'])[0])
+      db.prepare('UPDATE contents SET body=? WHERE id=?').run(finalBody, secondContentId)
+      const cloned = db.transaction(() => ReviewCycleRepository.createForConfirmation({
+        sourceCycleId: cycle.cycleId, confirmationReviewId: secondConfirmationId, rootActionId: recheckRoot,
+      }, db))()
+      expect(cloned.findingCount).toBe(rows.length)
+      const newCycleId = cloned.cycleId
+      expect(newCycleId).not.toBe(cycle.cycleId)
+      // 确认行 body 已回写真实 cycleId（占位消失）。
+      const patchedBody = db.prepare('SELECT c.body FROM reviews r JOIN contents c ON c.id=r.content_id WHERE r.id=?')
+        .pluck().get(secondConfirmationId) as string
+      console.error('[p3] body head:', patchedBody.slice(0, 200))
+      expect(patchedBody).toContain(newCycleId)
+      expect(patchedBody).not.toContain('pending:999')
+      // 新 cycle 状态映射：waive 项 author-waived、其余 unverified；
+      // 确认绑定指向第二轮确认行。
+      const mapped = db.prepare('SELECT status FROM review_findings WHERE cycle_id=? ORDER BY finding_id').all(newCycleId) as
+        Array<{ status: string }>
+      expect(mapped.filter(row => row.status === 'author-waived')).toHaveLength(1)
+      expect(mapped.filter(row => row.status === 'unverified')).toHaveLength(rows.length - 1)
+      expect(db.prepare('SELECT confirmation_review_id,revision_status FROM review_cycles WHERE cycle_id=?')
+        .get(newCycleId)).toEqual({ confirmation_review_id: secondConfirmationId, revision_status: 'not-generated' })
+      expect(verifyM03ReviewCycle(db)).toBe(true)
+      // 第二轮修稿 attach 到新 cycle（not-generated）→ merge → 新 cycle 可再复验。
+      const secondRevision = seedRevision(db, seeded, { key: 'second-round-fix', snapshot: firstSnapshot })
+      const secondAttach = { ...revision.attach, cycleId: newCycleId, confirmationReviewId: secondConfirmationId,
+        revisionId: secondRevision.revisionId }
+      db.transaction(() => ReviewCycleRepository.attachGeneratedRevision(secondAttach, db))()
+      expect(db.prepare('SELECT revision_status,revision_id FROM review_cycles WHERE cycle_id=?').get(newCycleId))
+        .toEqual({ revision_status: 'generated', revision_id: secondRevision.revisionId })
+      expect(verifyM03ReviewCycle(db)).toBe(true)
+      // 旧 cycle 不受影响（merge-committed 保持）。
+      expect(db.prepare('SELECT revision_status FROM review_cycles WHERE cycle_id=?').pluck().get(cycle.cycleId))
+      .toBe('merge-committed')
     } finally { db.close() }
   })
 

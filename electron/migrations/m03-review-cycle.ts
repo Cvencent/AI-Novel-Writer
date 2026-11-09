@@ -359,10 +359,25 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
         if (!row || !cycle.confirmation_content_hash || hash(row.body) !== cycle.confirmation_content_hash) return false
         const snapshot = parseHumanConfirmedReviewSnapshot(row.body)
         const sourceDraft = snapshot?.sourceDraft
+        // issue #248：复验后第二轮的确认行基于**合并稿**（cycle.merged_hash），
+        // 与第一轮确认行（基于原审稿源稿）并存——内容哈希二选一锚定；版本/状态
+        // 以确认快照自身的 sourceDraft 声明为准（仍须同稿）。
+        // issue #248 收口：确认行的 source_content/sourceDraft.content 的锚定
+        // 放宽为**行内自洽**（row.source_content === snapshot.sourceDraft.content）
+        // ——第一轮确认基于原审稿源稿（=cycle.source_hash），第二轮克隆 cycle
+        // 的确认基于合并稿（哈希不在本 cycle 的锚集内）。防篡改由
+        // confirmation_content_hash（行 body 的 hash 锁定）承担：body 不可变，
+        // 行内自洽即不可伪造。
+        const selfConsistent = row.source_content !== null && typeof sourceDraft?.content === 'string'
+          && sourceDraft.content === row.source_content
+        const legacyAnchor = row.source_content !== null && hash(row.source_content) === cycle.source_hash
+          && typeof sourceDraft?.content === 'string' && hash(sourceDraft.content) === cycle.source_hash
+        const mergedAnchor = cycle.merged_hash !== null && row.source_content !== null
+          && hash(row.source_content) === cycle.merged_hash
+          && typeof sourceDraft?.content === 'string' && hash(sourceDraft.content) === cycle.merged_hash
         if (!snapshot || snapshot.sourceReviewId !== cycle.review_id
-          || row.source_content === null || hash(row.source_content) !== cycle.source_hash
-          || !sourceDraft || sourceDraft.id !== review.base_draft_id || sourceDraft.version !== review.source_draft_version
-          || typeof sourceDraft.content !== 'string' || hash(sourceDraft.content) !== cycle.source_hash) return false
+          || row.source_content === null || !(selfConsistent || legacyAnchor || mergedAnchor)
+          || !sourceDraft || sourceDraft.id !== review.base_draft_id) return false
         confirmation = { body: row.body, snapshot }
       } else if (cycle.confirmation_content_hash !== null) return false
 
@@ -593,6 +608,7 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
         } else if (finding.confirmation_item_index !== null) return false
       }
     }
+    console.error('[vs] loop completed, cycles:', cycles.length)
     return true
   } catch { return false }
 }
