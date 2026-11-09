@@ -991,7 +991,12 @@ export class GenerationRunRepository {
     }
     recoverInterrupted(): void {
         this.transaction(() => {
-            const roots = this.db().prepare('SELECT root_action_id FROM generation_roots').all() as {
+            // 只收「进程退出时仍标记 running」的 run。历史 root（cancelled/paused/sealed）
+            // 已经是终态，再逐个 budget()+pause() 等于把整库的 attempt JSON 反复解析几十遍：
+            // 实测 590 个 root / 1601 条 attempt 时单次 5 秒，而它挂在每次 owner 创建上
+            // （打开作品后第一次 generation:list / 蓝图页挂载），主进程阻塞 = 全窗口未响应。
+            const roots = this.db().prepare(`SELECT DISTINCT r.root_action_id FROM generation_runs r
+                WHERE r.status='running'`).all() as {
                 root_action_id: string;
             }[];
             for (const { root_action_id: id } of roots) {

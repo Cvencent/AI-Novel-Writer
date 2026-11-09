@@ -404,10 +404,27 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     status: row.status as MainGenerationRunView['status'],
     operation: row.operation,
   })
+  // 主进程另有 60s 的收割定时器；列表/读取路径再顺手收一次只是兜底，
+// 没必要每次刷新都扫全表（实测 70ms/次）。
+  let lastReapAt = 0
+  const reapIdleRunsThrottled = () => {
+    const now = Date.now()
+    if (now - lastReapAt < 60_000) return
+    lastReapAt = now
+    repository.reapIdleRuns()
+  }
+  // 恢复提示只给运行侧页用；历史运行的结论很少变（30 秒缓存），
+  // 否则每次打开侧页都要把 135 条历史运行的大纲恢复记录重新水合一遍（2.4 秒）。
+  const listHintCache = new Map<string, { at: number; value: boolean }>()
+  const LIST_HINT_TTL_MS = 30_000
   const list = () => {
     assertCurrent()
+    const startedAt = Date.now()
     // 运行列表是运行面板的数据源：刷新列表时顺带收割空闲超时的运行。
-    repository.reapIdleRuns()
+    const reapStartedAt = Date.now()
+    reapIdleRunsThrottled()
+    const reapMs = Date.now() - reapStartedAt
+    const selectStartedAt = Date.now()
     const rows = deps.database.prepare(`SELECT r.run_id, r.root_action_id, r.status,
         json_extract(r.binding_json,'$.projectId') AS project_id,
         json_extract(r.binding_json,'$.epoch') AS epoch,
@@ -417,20 +434,59 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
       ORDER BY r.created_at_ms DESC, r.rowid DESC`).all(deps.projectId) as {
       run_id: string; root_action_id: string; status: string; project_id: string; epoch: string; operation: string | null
     }[]
+    const selectMs = Date.now() - selectStartedAt
     // 恢复深扫描的门槛：只对「可能仍有可恢复内容」的运行做完整水合。
     // planningContinuation 只查纪要与续写记录，不水合 artifact，单价很低；
     // 老项目几百条历史运行里绝大多数的续写早已消费完（complete）或来源已失效，
     // 用它把深扫描集合从几百条压到个位数，运行侧页挂载不再拖慢整个界面。
+    //
+    // ⚠️ 只有大纲 / 目录蓝图这两类任务会得到「继续状态」；其余可恢复任务（写作、审稿、
+    // 修稿、编辑器 AI）的旧结论恒为 true。之前对每一行都 `repository.get()`（整份 binding
+    // 再 JSON.parse 一遍，实测 623 条 run 共 37MB），列表一次 3 秒；现在只有这两类才解析。
     const recoverableOps = new Set(['generate-plot-outline', 'chapter-blueprint-directory', 'chapter-draft',
       'review-chapter', 'refine-draft', 'refine-from-review', 'editor-inline'])
-    return rows.map(row => {
+    const hasDirectoryRange = (run: DurableGenerationRun): boolean => {
+      const inputs = run.binding.sourceManifest.authorInputs as Array<{ id?: unknown }> | undefined
+      return Array.isArray(inputs) && inputs.some(input => input && input.id === 'directory:requested-range')
+    }
+    let deep = 0
+    const result = rows.map(row => {
       const summary = listViewOf(row)
       if (!row.operation || !recoverableOps.has(row.operation)) return { ...summary, recoverableHint: false }
+      if (row.operation !== 'generate-plot-outline' && row.operation !== 'chapter-blueprint-directory')
+        return { ...summary, recoverableHint: true }
       const run = repository.get(row.run_id)
+      if (row.operation === 'chapter-blueprint-directory' && !hasDirectoryRange(run))
+        return { ...summary, recoverableHint: true }
+      const cached = listHintCache.get(row.run_id)
+      if (cached && Date.now() - cached.at < LIST_HINT_TTL_MS)
+        return { ...summary, recoverableHint: cached.value }
+      deep += 1
       const continuation = planningContinuation(run)
       const recoverable = !continuation || !['complete', 'source-invalid'].includes(continuation.state)
+      listHintCache.set(row.run_id, { at: Date.now(), value: recoverable })
       return { ...summary, recoverableHint: recoverable }
     })
+    const total = Date.now() - startedAt
+    if (total >= 500) console.error(`[perf-list] generation:list took ${total}ms | rows=${rows.length} reap=${reapMs}ms select=${selectMs}ms deep=${deep}`)
+    return result
+  }
+  /**
+   * 只要句柄与元数据的列表：不算 recoverableHint（那一列要对每条历史运行水合大纲/
+   * 蓝图恢复记录）。蓝图页只用 operation 筛目录任务，不需要恢复提示——它每次挂载都
+   * 调一次，走 hint 版会在主进程上花 ~2 秒（实测 623 条历史运行 / deep=135）。
+   */
+  const listSummaries = () => {
+    assertCurrent()
+    return (deps.database.prepare(`SELECT r.run_id, r.root_action_id, r.status,
+        json_extract(r.binding_json,'$.projectId') AS project_id,
+        json_extract(r.binding_json,'$.epoch') AS epoch,
+        json_extract(r.binding_json,'$.sourceManifest.operation') AS operation
+      FROM generation_runs r
+      WHERE json_extract(r.binding_json,'$.projectId') = ?
+      ORDER BY r.created_at_ms DESC, r.rowid DESC`).all(deps.projectId) as {
+      run_id: string; root_action_id: string; status: string; project_id: string; epoch: string; operation: string | null
+    }[]).map(listViewOf)
   }
   // S10B：'materialDecision'/'materialDecisionHash' 只在**取得准入之后**才可能出现在真正
   // 运行的 manifest 上（prepare 阶段早于材料装配），因此与 selectedFinalizedDraftIds 同类，
@@ -996,7 +1052,8 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     const run = requireRun(handle)
     // 每次恢复上下文读取前先收割空闲运行：renderer 流程在两次模型请求之间
     // 挂死时，run 会永远停在 running；这里把超时者判失败并落到失败卡片。
-    repository.reapIdleRuns()
+    // 运行侧页会连续读上百条恢复上下文，收割按 60s 节流（主进程另有定时器兜底）。
+    reapIdleRunsThrottled()
     const manifest = run.binding.sourceManifest, composition = repository.isPrivatePlanningHistory(run.runId) ? null : repository.readVisibleComposition(run.runId)
     const dismissed = repository.readRecoveryDismiss(run.runId)
     const plotOutline = dismissed ? null : repository.readPlotOutline(run.runId)
@@ -1193,7 +1250,7 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
       attemptCount: deps.database.prepare('SELECT COUNT(*) FROM generation_attempts WHERE run_id=?').pluck().get(run.runId) as number,
       ...(artifact ? {artifact} : {}), ...(proposal ? {proposal} : {}) }
   }
-  return { begin: (selection: BeginGenerationRequest) => begin(selection), bindMaterialDecision, execute: (request: ExecuteGenerationRequest) => execute(request), resume, list, assertSourcesCurrent, agents,
+  return { begin: (selection: BeginGenerationRequest) => begin(selection), bindMaterialDecision, execute: (request: ExecuteGenerationRequest) => execute(request), resume, list, listSummaries, assertSourcesCurrent, agents,
     readLegacyRosterSource: () => { assertCurrent(); return readLegacyRosterSource(deps.database) },
     adoptLegacyCards: (request: LegacyRosterGenerationChannels['legacy-roster:adopt-existing']['args'][0]) => { assertCurrent(); return adoptLegacyCards(deps.database, request) },
     beginLegacyRosterGeneration: (request: LegacyRosterGenerationChannels['legacy-roster:begin']['args'][0]) => {
@@ -1574,7 +1631,17 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
         output: 'visible-text', batchIntent: { mode, range, targetUnits } }, true)
       return readBatch(run.handle.runId)
     },
-    listBatches: () => { assertCurrent(); return list().filter(item => repository.get(item.handle.runId).binding.sourceManifest.batchIntent).map(item => draftEffects.readBatchHistory(item.handle.runId, deps.projectId)) },
+    listBatches: () => {
+      assertCurrent()
+      // 旧实现先 list()（要算 135 条历史运行的恢复提示，实测 2.4 秒）再逐条 repository.get
+      // 解析整份 binding 只为看 batchIntent；运行侧页打开时被调用一次，等于白卡两遍。
+      // batchIntent 直接在 SQL 里判，只有命中批量的那几条才读历史。
+      const rows = deps.database.prepare(`SELECT r.run_id FROM generation_runs r
+        WHERE json_extract(r.binding_json,'$.projectId') = ?
+          AND json_extract(r.binding_json,'$.sourceManifest.batchIntent') IS NOT NULL
+        ORDER BY r.created_at_ms DESC, r.rowid DESC`).all(deps.projectId) as { run_id: string }[]
+      return rows.map(row => draftEffects.readBatchHistory(row.run_id, deps.projectId))
+    },
     confirmBatchFinalization: (request: { batchId: string; chapterNumber: number; finalizationId: string }) => {
       const batch = readBatch(request.batchId)
       if (!batch.completedChapters.some(item => item.chapterNumber === request.chapterNumber && item.finalizationId === request.finalizationId && item.postProcessComplete)) throw new Error('GENERATION_BATCH_FINALIZATION_REQUIRED')
@@ -1590,7 +1657,7 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     },
     assertSynopsisCommit, commitPlotOutlineAuthorEdit, commitBlueprintAuthorEdit,
     withAgentChildEffect: <T>(handle: MainGenerationRunHandle, effect: () => T): T => { requireRun(handle); return agents.withChildEffect(handle, effect) },
-    read: (handle: MainGenerationRunHandle) => { repository.reapIdleRuns(); return viewOf(requireRun(handle)) },
+    read: (handle: MainGenerationRunHandle) => { reapIdleRunsThrottled(); return viewOf(requireRun(handle)) },
     listDirectoryProgress: () => {
       assertCurrent()
       const catalog = repository.listDirectoryProgress()

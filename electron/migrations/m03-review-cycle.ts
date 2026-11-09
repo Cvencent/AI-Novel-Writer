@@ -381,10 +381,18 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
         // issue #244 四开（2026-11-09 12:42 现场）：修稿 run 自 1.5.247 起**开新 root**
         // （不再挂审稿 root——审稿 run 的中间态冻结会挡修稿重试）。修稿 attempt 的
         // 收据在它自己的 root 下，不在 cycle.root_action_id（= 审稿 root）下——
-        // 谱系证明按 effect 内容全库定位，而非限定 root。
+        // 谱系证明按 effect 内容定位，而非限定 root。
+        // ⚠️ 不能全库 `.all()` 再逐行 proveEffect：3000 章级的作品有上千条 attempt，
+        // 每次开书 verify-schema 都要对上万条 JSON 做完整证明——实测 1601 条 attempt
+        // 时单片 10 秒（「打开小说很久没响应」的根因）。先用 SQLite JSON1 按
+        // effect 身份收窄到候选，再逐条 proveEffect（防篡改的完整校验一条不少）。
         const revisionAttempts = (db.prepare(`SELECT a.attempt_id,a.run_id,a.root_action_id,
             r.root_action_id AS run_root_action_id, r.binding_json,a.attempt_json,a.usage_receipt_json
-          FROM generation_attempts a JOIN generation_runs r ON r.run_id=a.run_id ORDER BY a.rowid`).all() as AttemptRow[])
+          FROM generation_attempts a JOIN generation_runs r ON r.run_id=a.run_id
+          WHERE json_extract(a.usage_receipt_json,'$.reviewRevisionEffect.kind')='revision'
+            AND json_extract(a.usage_receipt_json,'$.reviewRevisionEffect.id')=?
+            AND json_extract(a.usage_receipt_json,'$.reviewRevisionEffect.index')=?
+          ORDER BY a.rowid`).all(cycle.revision_id, revisionIndex) as AttemptRow[])
           .filter(row => proveEffect(db, row, { kind: 'revision', id: cycle.revision_id!,
             index: revisionIndex, contentHash: revisionHash, source: { id: review.base_draft_id,
               chapterNumber: review.source_draft_chapter_number!, version: review.source_draft_version!,
@@ -408,12 +416,13 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
         if (!merged || typeof merged.body !== 'string' || hash(merged.body) !== cycle.merged_hash) return false
         const mergedBody = merged.body
         if (cycle.recheck_count === 1) {
-          // issue #246：复核 run 开新 root——recheck attempt 按收据内容全库定位，
+          // issue #246：复核 run 开新 root——recheck attempt 按收据内容定位，
           // 不再限定 cycle.root_action_id（与修稿 attempt 同款放宽）。
-          const recheck = (db.prepare(`SELECT a.attempt_id,a.run_id,a.root_action_id,
+          // 按 attempt_id 单行取，不再把全库 attempt 搬进内存逐条 find。
+          const recheck = db.prepare(`SELECT a.attempt_id,a.run_id,a.root_action_id,
               r.root_action_id AS run_root_action_id, r.binding_json,a.attempt_json,a.usage_receipt_json
-            FROM generation_attempts a JOIN generation_runs r ON r.run_id=a.run_id ORDER BY a.rowid`).all() as AttemptRow[])
-            .find(row => row.attempt_id === cycle.recheck_attempt_id)
+            FROM generation_attempts a JOIN generation_runs r ON r.run_id=a.run_id
+            WHERE a.attempt_id=?`).get(cycle.recheck_attempt_id) as AttemptRow | undefined
           const recheckEffect = recheck && effect(recheck)
           if (!recheckEffect || recheckEffect.kind !== 'review' || !integer(recheckEffect.id, 1)) return false
           const recheckReview = db.prepare('SELECT r.source_content,c.body FROM reviews r JOIN contents c ON c.id=r.content_id WHERE r.id=?')

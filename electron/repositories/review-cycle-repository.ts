@@ -175,6 +175,22 @@ interface SavedReport {
 function invalid(): never { throw new Error('REVIEW_CYCLE_INPUT_INVALID') }
 function conflict(): never { throw new Error('REVIEW_CYCLE_CONFLICT') }
 
+/**
+ * 读路径的 M03 校验缓存：同一数据库 1 秒内的重复读取只做一次完整证明。
+ *
+ * 证明本身要对全库 attempt 做内容级校验（单次 ~80ms）；单章视图一次会读多个
+ * 周期、章节事实又会对每一稿各读一次——3000 章的书上这是分钟级的串行开销，
+ * 主进程被拖死就是「动不动未响应」。只缓存**成功**：失败立即返回且清掉缓存。
+ */
+let m03ReadCache: { db: Database.Database; at: number } | null = null
+function verifyM03ForRead(db: Database.Database): boolean {
+  const now = Date.now()
+  if (m03ReadCache && m03ReadCache.db === db && now - m03ReadCache.at < 1000) return true
+  const ok = verifyM03ReviewCycle(db)
+  m03ReadCache = ok ? { db, at: now } : null
+  return ok
+}
+
 function parseSavedReport(body: string): SavedReport {
   let raw: unknown
   try { raw = JSON.parse(body) } catch { invalid() }
@@ -498,7 +514,7 @@ function readRecheckCycle(cycleId: string, db: Database.Database): RecheckCycleR
   if (!cycle || cycle.revision_status !== 'merge-committed' || !cycle.merged_hash
     || !HASH.test(cycle.merged_hash) || cycle.source_content === null
     || hash(cycle.merged_body) !== cycle.merged_hash || !isCurrentMergedCycle(cycleId, cycle.merged_hash, db)
-    || !verifyM03ReviewCycle(db)) conflict()
+    || !verifyM03ForRead(db)) conflict()
   return cycle
 }
 
@@ -540,7 +556,7 @@ export class ReviewCycleRepository {
       FROM review_cycles WHERE review_id=?`).get(reviewId) as { cycle_id: string; review_id: number;
         revision_status: ReviewCycleProjection['revisionStatus']; merged_hash: string | null; recheck_count: 0 | 1 } | undefined
     if (!cycle) return null
-    if (!verifyM03ReviewCycle(db)) conflict()
+    if (!verifyM03ForRead(db)) conflict()
     const review = db.prepare(`SELECT r.source_content,c.body FROM reviews r
       JOIN contents c ON c.id=r.content_id WHERE r.id=?`).get(reviewId) as { source_content: string | null; body: string } | undefined
     if (!review || review.source_content === null) conflict()
