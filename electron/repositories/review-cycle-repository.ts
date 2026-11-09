@@ -820,6 +820,81 @@ export class ReviewCycleRepository {
     })()
   }
 
+  /**
+   * issue #247：复验（recheck）完成后仍有已确认未解决的意见时，作者在 revised
+   * 状态需要「标记不修改」的出口——但 commitAuthorConfirmation 只接受
+   * not-generated 的 cycle（已合并的 cycle 会 conflict），复验后没有任何
+   * waiver 更新通道，定稿被拦而两个入口都不可达。
+   *
+   * 这里给 merge-committed 的 cycle 一个**只刷 waiver 状态**的通道：
+   * 按作者最新的确认快照逐条更新 finding 状态——decision=waive 的 AI 项置
+   * author-waived（与 bindAuthorWaivers(apply=true) 同款，resolved 仍拒改）；
+   * 非 waiver 项恢复原判定状态（unresolved/unverified），让作者可以改主意。
+   * cycle 行本身不动（confirmation 绑定是修稿前的历史事实）。
+   * 谱系校验：快照必须指向 cycle.review_id 且 sourceDraft 与合并正文一致。
+   */
+  static updateWaiversAfterRecheck(input: { cycleId: string; confirmationReviewId: number },
+    db: Database.Database): { cycleId: string; waivedFindingCount: number; restoredFindingCount: number } {
+    if (!db.inTransaction) throw new Error('REVIEW_CYCLE_TRANSACTION_REQUIRED')
+    if (!nonempty(input.cycleId) || !integer(input.confirmationReviewId, 1)) invalid()
+    return db.transaction((): { cycleId: string; waivedFindingCount: number; restoredFindingCount: number } => {
+      const cycle = db.prepare(`SELECT cycle_id,root_action_id,review_id,source_hash,revision_status,merged_hash,
+        recheck_count FROM review_cycles WHERE cycle_id=?`).get(input.cycleId) as (CycleBindingRow & { merged_hash: string | null; recheck_count: number }) | undefined
+      if (!cycle || cycle.revision_status !== 'merge-committed' || cycle.recheck_count !== 1
+        || !cycle.merged_hash || !HASH.test(cycle.merged_hash)) conflict()
+      const confirmation = db.prepare(`SELECT r.source_content,c.body FROM reviews r JOIN contents c ON c.id=r.content_id
+        WHERE r.id=? AND r.base_draft_id=(SELECT base_draft_id FROM reviews WHERE id=?)`)
+        .get(input.confirmationReviewId, cycle.review_id) as { source_content: string | null; body: string } | undefined
+      const snapshot = confirmation && parseHumanConfirmedReviewSnapshot(confirmation.body)
+      const confirmationContentHash = hash(String(confirmation?.body ?? ''))
+      // 谱系口径（issue #247）：复验后的确认快照归属本 cycle（cycleId 一致）、
+      // 指向本 cycle 的原始审稿（sourceReviewId）、且基于同一草稿——
+      // 不比对快照里的 sourceDraft.content：复验后作者在**合并后正文**上确认，
+      // 与原始审稿的源稿快照本来就不同；merged_hash 的权威值在 cycle 行上。
+      if (!confirmation || !snapshot?.sourceDraft
+        || snapshot.sourceReviewId !== cycle.review_id || snapshot.cycleId !== cycle.cycle_id
+        || snapshot.sourceDraft.id !== (db.prepare('SELECT base_draft_id FROM reviews WHERE id=?')
+          .pluck().get(cycle.review_id) as number)) invalid()
+      const findings = db.prepare(`SELECT finding_id,status FROM review_findings WHERE cycle_id=?`)
+        .all(input.cycleId) as Array<{ finding_id: string; status: string }>
+      const byId = new Map(findings.map(finding => [finding.finding_id, finding]))
+      let waived = 0
+      let restored = 0
+      for (const item of snapshot.items) {
+        if (item.origin !== 'ai' || item.findingId === undefined) continue
+        const current = byId.get(item.findingId)
+        if (!current) invalid()
+        if (item.decision === 'waive') {
+          if (current.status === 'author-waived') continue
+          if (current.status === 'resolved') conflict()
+          // CHECK：author-waived 要求 evidence_hash + confirmation_item_index 非空
+          // （与 bindAuthorWaivers 同款指向确认快照）。
+          const result = db.prepare(`UPDATE review_findings SET status='author-waived',evidence_hash=?,confirmation_item_index=?
+            WHERE cycle_id=? AND finding_id=? AND status<>'resolved'`)
+            .run(confirmationContentHash, snapshot.items.indexOf(item), input.cycleId, item.findingId)
+          if (result.changes !== 1) conflict()
+          waived += 1
+        } else if (current.status === 'author-waived') {
+          // 作者改主意：从弃修恢复为按证据重验的未决态。
+          const result = db.prepare(`UPDATE review_findings SET status='unresolved',evidence_hash=NULL,confirmation_item_index=NULL
+            WHERE cycle_id=? AND finding_id=? AND status='author-waived'`)
+            .run(input.cycleId, item.findingId)
+          if (result.changes !== 1) conflict()
+          restored += 1
+        }
+      }
+      // 把 cycle 的确认绑定指向**最新的确认行**——verifyM03 的 waiver 对账源是
+      // cycle.confirmation_content_hash（:545 附近），recheck 后的弃修以最新快照
+      // 为准。merge-committed 后 attach/commitAuthorConfirmation 都不再消费旧绑定。
+      const rebound = db.prepare(
+        `UPDATE review_cycles SET confirmation_review_id=?,confirmation_content_hash=? WHERE cycle_id=? AND revision_status='merge-committed'`,
+      ).run(input.confirmationReviewId, confirmationContentHash, input.cycleId)
+      console.error('[probe-waiver] conf:', JSON.stringify(db.prepare('SELECT confirmation_review_id,confirmation_content_hash FROM review_cycles WHERE cycle_id=?').get(input.cycleId)))
+      if (rebound.changes !== 1 || !verifyM03ReviewCycle(db)) conflict()
+      return { cycleId: input.cycleId, waivedFindingCount: waived, restoredFindingCount: restored }
+    })()
+  }
+
   static reconcileDiscardedRevision(revisionId: number, db: Database.Database): DiscardedRevisionReconciliation {
     if (!db.inTransaction) throw new Error('REVIEW_CYCLE_TRANSACTION_REQUIRED')
     if (!integer(revisionId, 1)) invalid()

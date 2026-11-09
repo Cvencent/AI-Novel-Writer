@@ -1343,6 +1343,8 @@ export interface DatabaseChannels {
   // 6. reviews
   'db:review-create': { args: [params: { baseDraftId: number; reviewIndex?: number; content: string; expectedSource?: ExpectedDraftSource; reviewCycleId?: string }, expectedProjectPath: string]; return: { success: boolean; id?: number; reviewIndex?: number; errorCode?: SourceDraftGuardErrorCode; error?: string } }
   'db:review-list': { args: [baseDraftId: number, expectedProjectPath: string]; return: ReviewMeta[] }
+  /** issue #247：修稿合并后的复验阶段按最新确认快照刷新 cycle 的 finding 弃修状态。 */
+  'review-cycle:update-waivers-after-recheck': { args: [request: { cycleId: string; confirmationReviewId: number }, expectedProjectPath: string]; return: { success: boolean; receipt?: { cycleId: string; waivedFindingCount: number; restoredFindingCount: number }; error?: string } }
   'db:review-get-latest': { args: [baseDraftId: number, expectedProjectPath: string]; return: ReviewFull | null }
   'db:review-get-full': { args: [id: number, expectedProjectPath: string]; return: ReviewFull | null }
   'db:review-cycle-get': { args: [reviewId: number, expectedProjectPath: string]; return: ReviewCycleProjection | null }

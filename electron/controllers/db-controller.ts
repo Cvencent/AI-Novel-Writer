@@ -1589,6 +1589,20 @@ export function registerDatabaseController() {
     }
   })
 
+  // issue #247：修稿合并后的复验阶段（cycle 已 merge-committed），作者在确认清单
+  // 里把未解决意见标记为不修改——按最新确认快照刷新 cycle 的 finding 弃修状态。
+  ipcMain.handle('review-cycle:update-waivers-after-recheck', async (_event,
+    request: { cycleId: string; confirmationReviewId: number }, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) throw new Error('[ReviewCycleRepository] 数据库未连接')
+      return { success: true, receipt: ReviewCycleRepository.updateWaiversAfterRecheck(request, db) }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
   ipcMain.handle('db:review-list', async (_event, baseDraftId: number, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return ReviewRepository.listByDraft(baseDraftId)

@@ -528,7 +528,9 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
           if (occurrence !== finding.occurrence) return false
         }
         if (finding.evidence_hash !== null && !HASH.test(finding.evidence_hash)) return false
-        if (recheckEligible.has(finding.finding_id) && !unshownRecheck.has(finding.finding_id)) {
+        // issue #247：复验后作者弃修（author-waived，对账源=绑定确认快照）是
+        // 终态决策，覆盖复验的 unknown 期望——由 :544 的 waiver 对账单独把关。
+        if (recheckEligible.has(finding.finding_id) && !unshownRecheck.has(finding.finding_id) && finding.status !== 'author-waived') {
           const candidateEvidence = recheckEvidence.get(finding.finding_id)
           const evidence = candidateEvidence?.targetId === finding.target_id ? candidateEvidence : undefined
           const expectedStatus = evidence ? evidence.resolved ? 'resolved' : 'unresolved' : 'unknown'
