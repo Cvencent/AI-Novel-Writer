@@ -851,17 +851,34 @@ describe('ReviewCycleRepository generated revision state', () => {
     } finally { db.close() }
   })
 
-  it.each(['wrong-composition', 'different-root'] as const)('rejects a revision with %s proof and keeps the cycle ungenerated', (effect) => {
+  it('rejects a revision with wrong-composition proof and keeps the cycle ungenerated', () => {
     const db = fixture()
     try {
       const seeded = seed(db)
       const cycle = create(db, seeded.call)
-      const revision = seedRevision(db, seeded, { effect })
+      const revision = seedRevision(db, seeded, { effect: 'wrong-composition' })
       revision.attach.cycleId = cycle.cycleId
       expect(() => db.transaction(() => ReviewCycleRepository.attachGeneratedRevision(revision.attach, db))())
         .toThrow('REVIEW_CYCLE_INPUT_INVALID')
       expect(db.prepare('SELECT revision_status,confirmation_review_id,revision_id FROM review_cycles WHERE cycle_id=?')
         .get(cycle.cycleId)).toEqual({ revision_status: 'not-generated', confirmation_review_id: null, revision_id: null })
+    } finally { db.close() }
+  })
+  // issue #244/#246：修稿/复核 run 自 1.5.249/251 起开新 root——不同 root 但收据
+  // 内容（effect id/绑定/confirmation 快照）完整匹配的修稿是**合法形态**；root 归属
+  // 不再是谱系条件（守卫由 attach 入口的 input.rootActionId === cycle.root_action_id
+  // 单独承担）。这条从负例改为正例。
+  it('accepts a revision proof from a different root when the effect content matches (new-root semantics)', () => {
+    const db = fixture()
+    try {
+      const seeded = seed(db)
+      const cycle = create(db, seeded.call)
+      const revision = seedRevision(db, seeded, { effect: 'different-root' })
+      revision.attach.cycleId = cycle.cycleId
+      db.transaction(() => ReviewCycleRepository.attachGeneratedRevision(revision.attach, db))()
+      expect(db.prepare('SELECT revision_status,confirmation_review_id,revision_id FROM review_cycles WHERE cycle_id=?')
+        .get(cycle.cycleId)).toEqual({ revision_status: 'generated', confirmation_review_id: revision.attach.confirmationReviewId, revision_id: revision.attach.revisionId })
+      expect(verifyM03ReviewCycle(db)).toBe(true)
     } finally { db.close() }
   })
 
