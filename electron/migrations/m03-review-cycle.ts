@@ -440,9 +440,16 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
               sourceExcerpt: review.source_content!.slice(finding.span_start, finding.span_end) }
             return classifyFindingEvidenceChange(review.source_content!, mergedBody, value) === 'changed' ? [value] : []
           })
+          // issue #247 收口：unshown 的判定要求行 status==='unverified' 且确认
+          // 快照里 decision==='apply'——复验后作者弃修会把行置 author-waived，
+          // unshown 集翻转 → expectedRecheck 与 recheck 收据冻结值不一致
+          // （proveEffect gate#22 false）。对账时把 author-waived 行按收据
+          // 冻结时的语义映射回 unverified（弃修决策由 :546 起的 waiver 行
+          // 对账单独把关，不参与 unshown 重算）。
           const unshown = unshownMustShowRecheckFindings(JSON.parse(review.body), confirmation?.snapshot ?? null,
             recheckFindings.map(finding => ({ findingId: finding.finding_id, kind: finding.kind,
-              status: finding.status, targetId: finding.target_id, problemText: finding.problem_text,
+              status: finding.status === 'author-waived' ? 'unverified' : finding.status,
+              targetId: finding.target_id, problemText: finding.problem_text,
               expectedText: finding.expected_text }))).filter(finding =>
               classifyFindingEvidenceChange(review.source_content!, mergedBody, finding) === 'changed')
           eligible.push(...unshown)
