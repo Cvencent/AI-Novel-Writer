@@ -432,7 +432,7 @@ describe('project refresh context', () => {
       if (channel === 'db:character-roster-read') {
         return Promise.resolve({ status: 'empty', renderedMarkdown: '' })
       }
-      if (channel === 'db:blueprint-get-all') return Promise.resolve([{ chapterNumber: 1 }])
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return Promise.resolve([{ chapterNumber: 1 }])
       return Promise.resolve(null)
     })
 

@@ -35,7 +35,7 @@ let invoke: ReturnType<typeof vi.fn<(channel: string, ...args: unknown[]) => Pro
 beforeEach(() => {
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
     if (channel === 'db:recovery-candidate-list') return [candidate]
-    if (channel === 'generation:list-batches' || channel === 'generation:list' || channel === 'skills:list-user') return []
+    if (channel === 'generation:list-batches' || channel === 'generation:list' || channel === 'generation:list-summaries' || channel === 'skills:list-user') return []
     if (channel === 'fs:check-exists') return false
     if (channel === 'db:recovery-candidate-update') return { success: true, candidate: { ...candidate, visibleText: args[1] as string } }
     throw new Error(`未配置调用：${channel}`)

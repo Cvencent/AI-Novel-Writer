@@ -80,7 +80,7 @@ beforeEach(() => {
   invoke = vi.fn(async (channel: string) => {
     if (channel === 'db:recovery-candidate-list') return candidates
     if (channel === 'generation:list-batches') return batches
-    if (channel === 'generation:list' || channel === 'skills:list-user') return []
+    if (channel === 'generation:list' || channel === 'generation:list-summaries' || channel === 'skills:list-user') return []
     if (channel === 'fs:check-exists') return false
     if (channel === 'db:recovery-candidate-resolve') return { success: true }
     if (channel === 'db:get-llm-stats') return { totalCalls: 3, successfulCalls: 2, failedCalls: 1, knownUsageCalls: 3, totalTokens: 21400, totalPromptTokens: 15200, totalCompletionTokens: 6200 }
@@ -254,7 +254,7 @@ describe('运行侧页', () => {
     invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
       const handle = (args[0] as { handle?: { runId: string } } | undefined)?.handle
       // 列表按新契约只回句柄与元数据。
-      if (channel === 'generation:list') return [
+      if (channel === 'generation:list' || channel === 'generation:list-summaries') return [
         { handle: draft, status: 'failed', operation: 'chapter-draft' },
         { handle: review, status: 'failed', operation: 'review-chapter' },
       ]

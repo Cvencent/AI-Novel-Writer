@@ -57,7 +57,7 @@ beforeEach(() => {
     }
     if (channel === 'generation:list-directory-progress') return { progress: [], diagnostics: [] }
     if (channel === 'db:blueprint-character-sync-list-pending') return []
-    if (channel === 'db:blueprint-get-all') {
+    if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') {
       return blueprintChapterNumbers.map(chapterNumber => ({ chapterNumber }))
     }
     if (channel === 'db:draft-authority-sequence') return authorityGap === null
@@ -422,7 +422,7 @@ describe('workflow launch dialogs', () => {
     }
     invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
       if (channel === 'generation:list-directory-progress') return { progress: [], diagnostics: [] }
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       if (channel === 'db:draft-authority-sequence') return {
         status: 'empty',
         lastChapterNumber: 0,

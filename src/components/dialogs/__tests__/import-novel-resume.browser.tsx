@@ -135,10 +135,10 @@ beforeEach(async () => {
     if (channel === 'db:import-run-author-preview') return authorPreview
     if (channel === 'db:import-run-list-chapters') return durableAuthorChapterPage(args)
     if (channel === 'db:project-core-get') return null
-    if (channel === 'db:blueprint-get-all') return []
+    if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
     if (channel === 'db:draft-list') return []
     // 运行侧页读恢复项：这里都没有。
-    if (['db:recovery-candidate-list', 'generation:list', 'generation:list-batches', 'skills:list-user'].includes(channel)) return []
+    if (['db:recovery-candidate-list', 'generation:list', 'generation:list-summaries', 'generation:list-batches', 'skills:list-user'].includes(channel)) return []
     if (channel === 'fs:check-exists') return false
     return { success: true }
   })
@@ -241,7 +241,7 @@ describe('current-project reference import', () => {
         }
       }
       if (channel === 'db:project-core-get') return null
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       return { success: true }
     })
     await act(async () => useProjectStore.setState({ currentProject: { ...project } as never }))
@@ -284,7 +284,7 @@ describe('current-project reference import', () => {
       if (channel === 'db:import-run-list-resumable') return [parsing]
       if (channel === 'dialog:select-novel-files') return { success: false, error: 'retry interrupted' }
       if (channel === 'db:project-core-get') return null
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       return { success: true }
     })
     await act(async () => {
@@ -324,7 +324,7 @@ describe('current-project reference import', () => {
     invoke.mockImplementation(async (channel: string) => {
       if (channel === 'db:import-run-list-resumable') return [parsing]
       if (channel === 'db:project-core-get') return null
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       return { success: true }
     })
     await act(async () => useProjectStore.setState({ currentProject: { ...project } as never }))
@@ -364,7 +364,7 @@ describe('current-project reference import', () => {
       if (channel === 'db:import-run-list-resumable') return []
       if (channel === 'dialog:select-novel-files') return selection.promise
       if (channel === 'db:project-core-get') return null
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       return { success: true }
     })
     await act(async () => page.getByTestId('import-target-current').click())
@@ -563,7 +563,7 @@ describe('current-project reference import', () => {
         }
       }
       if (channel === 'db:project-core-get') return null
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       return { success: true }
     })
 
@@ -658,7 +658,7 @@ describe('current-project reference import', () => {
         }
       }
       if (channel === 'db:project-core-get') return null
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       return { success: true }
     })
     await act(async () => useProjectStore.setState({ currentProject: { ...project } as never }))
@@ -744,7 +744,7 @@ describe('current-project reference import', () => {
     invoke.mockImplementation(async (channel: string) => {
       if (channel === 'db:import-run-list-resumable') return [resumable]
       if (channel === 'db:project-core-get') return null
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       return { success: true }
     })
     await act(async () => useProjectStore.setState({ currentProject: { ...project } as never }))
@@ -786,7 +786,7 @@ describe('current-project reference import', () => {
       if (channel === 'db:import-run-list-resumable') return [resumable]
       if (channel === 'db:import-run-list-chapters') return durableAuthorChapterPage(args)
       if (channel === 'db:project-core-get') return null
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       return { success: true }
     })
     await act(async () => useProjectStore.setState({ currentProject: { ...project } as never }))
@@ -817,7 +817,7 @@ describe('current-project reference import', () => {
       if (channel === 'db:import-run-list-resumable') return [prepared]
       if (channel === 'dialog:select-novel-files') throw new Error('source file no longer exists')
       if (channel === 'db:project-core-get') return null
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       return { success: true }
     })
     await act(async () => useProjectStore.setState({ currentProject: { ...project } as never }))
@@ -884,7 +884,7 @@ describe('current-project reference import', () => {
         throw new Error('already parsed sources must not be read again')
       }
       if (channel === 'db:project-core-get') return null
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       return { success: true }
     })
     await act(async () => useProjectStore.setState({ currentProject: { ...project } as never }))
@@ -924,7 +924,7 @@ describe('current-project reference import', () => {
       if (channel === 'db:import-run-list-resumable') return [parsing]
       if (channel === 'db:import-run-finalize-parsing') return { success: false, error: guidance }
       if (channel === 'db:project-core-get') return null
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       return { success: true }
     })
     await act(async () => {
@@ -971,7 +971,7 @@ describe('current-project reference import', () => {
         },
       }
       if (channel === 'db:project-core-get') return null
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       return { success: true }
     })
     await act(async () => {
@@ -1002,7 +1002,7 @@ describe('current-project reference import', () => {
       if (channel === 'db:import-run-list-resumable') return listCalls++ === 0 ? [failedParsing] : []
       if (channel === 'db:import-run-restart') return restart.promise
       if (channel === 'db:project-core-get') return null
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       return { success: true }
     })
     await act(async () => useProjectStore.setState({ currentProject: { ...project } as never }))
@@ -1045,7 +1045,7 @@ describe('current-project reference import', () => {
     invoke.mockImplementation(async (channel: string) => {
       if (channel === 'db:import-run-list-resumable') return [parsing, global, style]
       if (channel === 'db:project-core-get') return null
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       return { success: true }
     })
     await act(async () => useProjectStore.setState({ currentProject: { ...project } as never }))
@@ -1085,7 +1085,7 @@ describe('current-project reference import', () => {
         },
       }
       if (channel === 'db:project-core-get') return null
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       return { success: true }
     })
     await act(async () => useProjectStore.setState({ currentProject: { ...project } as never }))
@@ -1126,7 +1126,7 @@ describe('current-project reference import', () => {
         return { success: true, run: restarted }
       }
       if (channel === 'db:project-core-get') return null
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       return { success: true }
     })
     await act(async () => {
@@ -1154,7 +1154,7 @@ describe('新外壳里的导入对话框', () => {
     invoke.mockImplementation(async (channel: string) => {
       if (channel === 'db:import-run-list-resumable') return [importRun({ id: 'first-run', status: 'failed' }), importRun({ id: 'second-run', status: 'failed' })]
       if (channel === 'db:project-core-get') return null
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       return { success: true }
     })
     await act(async () => root.render(<div className="paper-ink"><ImportNovelDialog open onClose={vi.fn()} /></div>))

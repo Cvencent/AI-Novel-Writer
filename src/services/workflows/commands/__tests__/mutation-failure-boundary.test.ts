@@ -985,7 +985,7 @@ describe('workflow mutation failure boundaries', () => {
     const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
       if (channel === 'db:continuity-list-before' || channel === 'db:character-get-all') return []
       if (channel === 'db:project-core-get') return {}
-      if (channel === 'db:blueprint-get-all') return [blueprint, { ...blueprint, chapterNumber: 2, keyEvents: '搬运设备' }]
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return [blueprint, { ...blueprint, chapterNumber: 2, keyEvents: '搬运设备' }]
       if (channel === 'db:blueprint-get') return null
       if (channel === 'db:draft-get-meta') return { id: 1, chapterNumber: 1, version: 1, status: 'draft', source: 'write' }
       if (channel === 'db:review-create') {
@@ -1403,7 +1403,7 @@ describe('workflow mutation failure boundaries', () => {
       if (channel === 'kb:search') return []
       if (channel === 'db:character-get-all') return []
       if (channel === 'db:project-core-get') return {}
-      if (channel === 'db:blueprint-get-all') return [blueprint]
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return [blueprint]
       if (channel === 'db:draft-get-meta') {
         return { id: 1, chapterNumber: 1, version: 1, status: 'draft', source: 'write' }
       }

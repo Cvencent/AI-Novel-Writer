@@ -101,7 +101,7 @@ function installIpc() {
       status: 'continuous', lastChapterNumber: blockedPreviousChapter ?? 4, nextChapterNumber: blockedPreviousChapter ? blockedPreviousChapter + 1 : 5,
       duplicateChapterNumbers: [], authorityFingerprint: 'e'.repeat(64),
     }
-    if (channel === 'db:blueprint-get-all') {
+    if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') {
       return blockedPreviousChapter ? [BLUEPRINT, { ...BLUEPRINT, chapterNumber: blockedPreviousChapter + 1 }] : [BLUEPRINT]
     }
     if (channel === 'db:blueprint-get') return BLUEPRINT

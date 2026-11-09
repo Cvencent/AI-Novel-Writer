@@ -465,7 +465,7 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
           synopsis: options.synopsis ?? '',
         }
       }
-      if (channel === 'db:blueprint-get-all') return options.blueprints ?? []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return options.blueprints ?? []
       if (channel === 'db:blueprint-get') {
         return options.blueprints?.find(blueprint => blueprint.chapterNumber === args[0]) ?? null
       }

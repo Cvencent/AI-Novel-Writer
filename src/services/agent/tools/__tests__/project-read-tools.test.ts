@@ -100,7 +100,7 @@ describe('agent project read tools', () => {
 
   it('lists sparse finalized chapters from one authoritative database read', async () => {
     const invoke = vi.fn(async (channel: string) => {
-      if (channel === 'db:blueprint-get-all') {
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') {
         return [{ chapterNumber: 3 }, { chapterNumber: 1 }, { chapterNumber: 3 }]
       }
       if (channel === 'db:draft-list-all') {
@@ -130,7 +130,7 @@ describe('agent project read tools', () => {
 
   it('fails the chapter listing when the authoritative draft read fails', async () => {
     const invoke = vi.fn(async (channel: string) => {
-      if (channel === 'db:blueprint-get-all') return [{ chapterNumber: 1 }]
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return [{ chapterNumber: 1 }]
       if (channel === 'db:draft-list-all') throw new Error('draft list failed')
       throw new Error(`Unexpected IPC channel: ${channel}`)
     })

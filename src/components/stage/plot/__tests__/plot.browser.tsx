@@ -54,7 +54,7 @@ beforeEach(() => {
   plotSnapshot = tree
   threads = [thread()]
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
-    if (channel === 'generation:list') return []
+    if (channel === 'generation:list' || channel === 'generation:list-summaries') return []
     if (channel === 'db:plot-tree-read') return {
       writingLanguage: 'zh-CN', synopsis: { content: '' },
       blueprints: [1, 2, 3].map(chapterNumber => ({ chapterNumber, title: ['灰色的信', '母亲的旧照片', '雨夜车站'][chapterNumber - 1], purpose: '', keyEvents: '' })),
@@ -64,7 +64,7 @@ beforeEach(() => {
     if (channel === 'db:plot-tree-clear') { plotSnapshot = null; return { success: true } }
     if (channel === 'db:narrative-thread-list') return threads
     if (channel === 'db:draft-list-all') return [{ id: 7, chapterNumber: 1, version: 1, status: 'finalized' }, { id: 8, chapterNumber: 2, version: 1, status: 'finalized' }]
-    if (channel === 'db:blueprint-get-all') return [{ chapterNumber: 1, title: '灰色的信' }]
+    if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return [{ chapterNumber: 1, title: '灰色的信' }]
     if (channel === 'db:narrative-thread-plan-delete') { threads = threads.filter(item => item.id !== args[0]); return { success: true } }
     if (channel === 'db:narrative-thread-event-confirm') {
       const input = args[0] as { planId: number; draftId: number; type: 'planted'; evidence: string; reason: string }

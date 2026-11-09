@@ -18,7 +18,7 @@ beforeEach(() => {
         plotStructure: '三幕式', narrativePov: '第三人称限知', writingStyle: 'restrained',
       }
     }
-    if (channel === 'db:blueprint-get-all') {
+    if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') {
       return [{ chapterNumber: 2, title: 'The Broken Beacon', notes: 'Mara finds the altered log.' }]
     }
     throw new Error(`unexpected channel ${channel}`)
@@ -77,7 +77,7 @@ describe('read_project_state language boundary', () => {
           narrativePov: '第三人称限知', writingStyle: '克制',
         }
       }
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       throw new Error(`unexpected channel ${channel}`)
     })
 

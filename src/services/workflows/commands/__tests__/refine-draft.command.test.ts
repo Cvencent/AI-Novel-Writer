@@ -1325,7 +1325,7 @@ describe('ReviewChapterCommand reasoning stage', () => {
         { text: 'FUTURE_PLAN_POLLUTANT：顾舟将在第十章离港。', score: 1, fileName: '未来计划.md' },
         { text: 'UNKNOWN_SOURCE_POLLUTANT', score: 1, fileName: 'legacy.md' },
       ]
-      if (channel === 'db:blueprint-get-all') return [{
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return [{
         chapterNumber: 3,
         title: '潮门之后',
         role: '发展',

@@ -71,7 +71,7 @@ beforeEach(() => {
     if (channel === 'kb:clear-all') return { success: true }
     if (channel === 'kb:save-document-copy') return { success: true }
     if (channel === 'kb:backfill-vectors') return { success: true, processed: 4, failed: 0 }
-    if (channel === 'db:blueprint-get-all') return []
+    if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
     if (channel === 'dialog:select-knowledge-files') return [{ grantId: 'grant-1', displayName: '守塔人小传.txt' }]
     if (channel === 'fs:grant-read-file') return { success: true, content: '守塔人姓周，在灯塔守了三十年。' }
     throw new Error(`未配置调用：${channel}`)

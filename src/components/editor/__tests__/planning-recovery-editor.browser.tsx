@@ -75,11 +75,11 @@ beforeEach(() => {
     }
     if (channel === 'db:project-core-get') return { ...sourceExpected, title: 'Recovery', synopsis: '完整大纲'.repeat(30), premise: '完整故事前提'.repeat(20), worldbuilding: '世界设定'.repeat(20) }
     // 列表按新契约只回句柄与元数据；operation 决定它是不是恢复候选。
-    if (channel === 'generation:list') return showCandidate ? [{ handle, status: 'failed', operation: context.operation }] : []
+    if (channel === 'generation:list' || channel === 'generation:list-summaries') return showCandidate ? [{ handle, status: 'failed', operation: context.operation }] : []
     if (channel === 'generation:read') return { handle, status: 'failed', artifacts: [], budget: {}, nonReplayable: true, operation: context.operation }
     if (channel === 'generation:list-batches') return []
     if (channel === 'db:recovery-candidate-list') return []
-    if (channel === 'skills:list-user' || channel === 'db:blueprint-get-all') return []
+    if (channel === 'skills:list-user' || channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
     if (channel === 'fs:check-exists') return false
     if (channel === 'fs:read-json') return { success: true, data: showCandidate ? { synopsis_incomplete: true, synopsis_generation_handle: handle } : {} }
     if (channel === 'prompt:load-global') return { templates: [], diagnostics: [] }

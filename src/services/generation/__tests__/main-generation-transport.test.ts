@@ -13,7 +13,7 @@ function fixture() {
   let listener: (snapshot: MainGenerationSnapshot) => void = () => {}
   let reasoningListener: (event: MainGenerationReasoningEvent) => void = () => {}
   const unsubscribe = vi.fn()
-  const invoke = vi.fn(async (channel: string) => channel === 'generation:list' ? [structuredClone(view)] : channel === 'generation:execute' ? { outcome: { status: 'incomplete', finishReason: 'unknown' }, run: structuredClone(view) } : structuredClone(view))
+  const invoke = vi.fn(async (channel: string) => channel === 'generation:list-summaries' ? [structuredClone(view)] : channel === 'generation:execute' ? { outcome: { status: 'incomplete', finishReason: 'unknown' }, run: structuredClone(view) } : structuredClone(view))
   const on = vi.fn((channel, callback) => { if (channel === 'generation:reasoning') reasoningListener = callback; else listener = callback; return unsubscribe })
   vi.stubGlobal('window', { aiNovelAPI: { invoke, on } })
   const capture = vi.fn(() => active)
@@ -56,7 +56,7 @@ it('外项目handle在invoke前拒绝，list冻结显式session', async () => {
   await expect(f.transport.read({ ...handle, projectId: '外项目' })).rejects.toThrow('MISMATCH')
   const mutable = { ...session }; const promise = f.transport.list(mutable); mutable.projectId = '后来项目'
   await promise
-  expect(f.invoke).toHaveBeenCalledExactlyOnceWith('generation:list', session)
+  expect(f.invoke).toHaveBeenCalledExactlyOnceWith('generation:list-summaries', session)
 })
 it('snapshot按完整handle筛选，退订后迟到事件不再投影', () => {
   const f = fixture(); const received = vi.fn(); const stop = f.transport.subscribe(handle, received)

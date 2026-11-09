@@ -245,7 +245,7 @@ describe('explicit editor dirty integration', () => {
         expect(args).toEqual([projectB().path])
         return [character('项目 B 角色')]
       }
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       throw new Error(`unexpected IPC ${channel}`)
     })
 

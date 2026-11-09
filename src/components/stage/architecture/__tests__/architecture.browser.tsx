@@ -108,9 +108,9 @@ beforeEach(() => {
     if (channel === 'fs:read-json') return partial ? { success: true, data: partial } : { success: false, error: 'not found' }
     if (channel === 'db:character-roster-read') return { schemaVersion: 1, revision: 1, migrationState: 'ready', status: rosterStatus, entries: [], renderedMarkdown: '林舟、沈砚', projectionHash: 'p', factHash: 'f' }
     if (channel === 'db:arc-outline-list') return arcRows
-    if (channel === 'db:blueprint-get-all') return []
+    if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
     if (channel === 'db:draft-list-all') return []
-    if (channel === 'generation:list') return []
+    if (channel === 'generation:list' || channel === 'generation:list-summaries') return []
     if (channel === 'generation:read-context' || channel === 'generation:read-visible-composition') return null
     if (channel === 'config:get') return { outlineTargetUnits: 300 }
     if (channel === 'config:set') return { success: true }

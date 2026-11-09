@@ -68,7 +68,7 @@ function stubWorkflowIpc(overrides: Partial<Record<string, unknown>> = {}): Retu
       return Promise.resolve({ premise: longEnough, charactersArch: longEnough, worldbuilding: longEnough, synopsis: longEnough })
     }
     if (channel === 'db:character-get-all') return Promise.resolve([{ name: '林舟' }])
-    if (channel === 'db:blueprint-get-all') return Promise.resolve([{ chapterNumber: 1 }])
+    if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return Promise.resolve([{ chapterNumber: 1 }])
     if (channel === 'db:blueprint-get') {
       return Promise.resolve({
         chapterNumber: 1,

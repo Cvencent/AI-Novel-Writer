@@ -94,7 +94,7 @@ it.each(['history', 'open', 'client-read'])('取消发生%s await返回时禁止
  const args = params()
  const invoke = vi.fn(async (channel: string) => {
   if (channel === 'legacy-roster:read-source') return source
-  if (channel === 'generation:list') { if (point === 'history') args.context.cancelled = true; return [] }
+  if (channel === 'generation:list' || channel === 'generation:list-summaries') { if (point === 'history') args.context.cancelled = true; return [] }
   if (channel === 'legacy-roster:begin') { if (point === 'open') args.context.cancelled = true; return { ...stored, artifact: undefined, attemptCount: 0 } }
   if (channel === 'legacy-roster:read') { if (point === 'client-read') args.context.cancelled = true; return { ...stored, artifact: undefined, attemptCount: 0 } }
   if (channel === 'legacy-roster:cancel') return stored.view

@@ -45,7 +45,7 @@ beforeEach(() => {
     { id: 12, chapterNumber: 3, version: 2, status: 'draft', content: '雨从傍晚开始就没有停过。\n林舟攥着那封没有署名的信。\n他想起母亲说过的话。' },
   ]
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
-    if (channel === 'db:blueprint-get-all') return [{ chapterNumber: 3, title: '雨夜车站' }, { chapterNumber: 4, title: '第三节车厢' }]
+    if (channel === 'db:blueprint-list-summaries' || channel === 'db:blueprint-get-all') return [{ chapterNumber: 3, title: '雨夜车站' }, { chapterNumber: 4, title: '第三节车厢' }]
     if (channel === 'db:draft-list') {
       await listGates.get(args[0] as number)
       return drafts.filter(draft => draft.chapterNumber === args[0]).map(meta)

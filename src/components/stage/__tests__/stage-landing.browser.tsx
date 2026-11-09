@@ -200,7 +200,8 @@ describe('打开作品时流程脊等各稿的审稿与修稿记录', () => {
       switch (channel) {
         case 'db:project-core-get': return { premise: LONG, worldbuilding: LONG, synopsis: LONG }
         case 'db:character-roster-read': return { status: 'ready' }
-        case 'db:blueprint-get-all': return [1, 2, 3, 4].map(chapterNumber => ({ chapterNumber, title: `第${chapterNumber}章` }))
+        case 'db:blueprint-get-all':
+        case 'db:blueprint-list-summaries': return [1, 2, 3, 4].map(chapterNumber => ({ chapterNumber, title: `第${chapterNumber}章` }))
         case 'db:draft-list-all': return drafts
         case 'db:revision-list': return []
         case 'db:review-list':

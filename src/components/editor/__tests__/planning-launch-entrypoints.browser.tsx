@@ -42,12 +42,12 @@ beforeEach(() => {
   invoke = vi.fn(async (channel: string) => {
       if (channel === 'config:get') return { outlineTargetUnits: 650 }
       if (channel === 'config:set') return { success: true }
-      if (channel === 'generation:list' || channel === 'skills:list-user') return []
+      if (channel === 'generation:list' || channel === 'generation:list-summaries' || channel === 'skills:list-user') return []
       if (channel === 'fs:check-exists') return false
       if (channel === 'prompt:load-global') return { templates: [], diagnostics: [] }
       if (channel === 'db:project-core-get') return { premise: '故事前提'.repeat(20), worldbuilding: '世界设定'.repeat(20), synopsis: '', totalChapters: 20 }
       if (channel === 'db:character-roster-read') return { status: 'ready', renderedMarkdown: '角色名单'.repeat(20), entries: [] }
-      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return []
       if (channel === 'fs:read-json') return { success: true, data: {} }
       if (channel === 'generation:begin') throw new Error('PLANNING_ENTRY_BOUNDARY_OBSERVED')
       throw new Error(`Unexpected IPC ${channel}`)

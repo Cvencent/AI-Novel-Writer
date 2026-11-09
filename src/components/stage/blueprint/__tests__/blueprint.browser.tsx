@@ -49,11 +49,11 @@ function project(): ProjectData {
 
 function installIpc() {
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
-    if (channel === 'db:blueprint-get-all') return stored
+    if (channel === 'db:blueprint-get-all' || channel === 'db:blueprint-list-summaries') return stored
     if (channel === 'db:draft-authority-sequence') return {
       status: 'continuous', lastChapterNumber: nextChapter - 1, nextChapterNumber: nextChapter, duplicateChapterNumbers: [], authorityFingerprint: 'a'.repeat(64),
     }
-    if (channel === 'generation:list') return []
+    if (channel === 'generation:list' || channel === 'generation:list-summaries') return []
     if (channel === 'db:consistency-exemption-list') return []
     if (channel === 'db:blueprint-clear-all') {
       stored = []
