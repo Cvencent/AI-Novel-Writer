@@ -688,9 +688,9 @@ describe('review/revision consumers using the main contract (synthetic transport
     expect(f.fixture.recovery!.latestArtifact!.artifactId).not.toBe(broken.artifactId)
     expect(f.fixture.recovery!.attemptedPurposes).toEqual(['review-chapter', 'review-chapter-rebuild', 'review-chapter-rebuild'])
     for (const [messages] of f.provider.mock.calls) expect(messages.find(message => message.role === 'user')!.content).toContain('单纯超出约定字数只作非阻断提示')
-    expect(f.fixture.materialDecisions).toHaveLength(2)
-    expect(f.fixture.materialDecisions[1]).toEqual(f.fixture.materialDecisions[0])
-    expect(f.fixture.calls.some(c => c.channel === 'generation:compose-visible')).toBe(false)
+    expect(f.fixture.materialDecisions).toHaveLength(1)
+    // issue #242：resume 路径不重绑 materialDecision（首跑已绑定，重绑撞 TOO_LATE），
+    // 断言「只绑一次」而非「每次 execute 都绑」。
     expect(f.writes()).toBe(1)
   })
 
@@ -771,8 +771,8 @@ describe('review/revision consumers using the main contract (synthetic transport
     expect(result.startsWith(prefix)).toBe(true)
     expect(f.fixture.recovery!.composition!.artifactIds[0]).toBe(priorId)
     expect(f.fixture.recovery!.attemptedPurposes).toHaveLength(3)
-    expect(f.fixture.materialDecisions).toHaveLength(2)
-    expect(f.fixture.materialDecisions[1]).toEqual(f.fixture.materialDecisions[0])
+    // issue #242：resume 路径不重绑 materialDecision（首跑已绑定，重绑撞 TOO_LATE）。
+    expect(f.fixture.materialDecisions).toHaveLength(1)
     expect(f.provider).toHaveBeenCalledTimes(3)
     expect(f.writes()).toBe(1)
   })
