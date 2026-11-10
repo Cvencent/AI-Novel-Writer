@@ -102,6 +102,49 @@ export interface DeepCheckResult {
   failures: Array<{ key: DeepReviewDimensionKey; error: string }>
 }
 
+/**
+ * 深度检查的**可展示摘要**（issue #245 现场）。
+ *
+ * 现场：审稿 22 秒跑完、深度检查又跑 1 分 49 秒（13 次模型调用全部成功），但作者
+ * 什么都看不见——那一步的 executor 不返回值，`RunCard` 只渲染 `step.result`，
+ * 而 findings 只被写进 `step.logs`（全仓无人渲染）。作者只能靠切页碰运气。
+ *
+ * 这个函数把「跑了哪些维度、几处发现、几维失败」压成一段人话；**不截断 findings
+ * 本身**——正文层发现由 `consistency-preflight` 的文案承载，这里只做计数与失败列举。
+ * 纯函数：与 IPC、时间、随机无关，便于直接断言。
+ */
+export function deepCheckSummary(
+  input: {
+    total: number
+    lines: readonly string[]
+    findings: readonly ConsistencyFinding[]
+    failures: readonly { key: DeepReviewDimensionKey; error: string }[]
+    cancelled: boolean
+  },
+  locale: 'zh-CN' | 'en-US',
+): string {
+  const zh = locale !== 'en-US'
+  const ran = input.lines.length
+  const head = input.cancelled
+    ? (zh ? `深度检查已取消：跑了 ${ran}/${input.total} 维，已得 ${input.findings.length} 处发现。`
+      : `Deep checks cancelled: ${ran}/${input.total} dimensions ran, ${input.findings.length} finding(s) so far.`)
+    : (zh ? `深度检查完成：${ran}/${input.total} 维，${input.findings.length} 处发现。`
+      : `Deep checks finished: ${ran}/${input.total} dimensions, ${input.findings.length} finding(s).`)
+  const failed = input.failures.length > 0
+    ? (zh ? ` ${input.failures.length} 维失败：${input.failures.map(item => dimKeyLabel(item.key, zh)).join('、')}。`
+      : ` ${input.failures.length} dimension(s) failed: ${input.failures.map(item => dimKeyLabel(item.key, zh)).join(', ')}.`)
+    : ''
+  const where = input.findings.length > 0
+    ? (zh ? ' 结果在「AI 检查 · 本章」里，可就地查看或复制。' : ' Results are under “AI review · this chapter”; read or copy them there.')
+    : ''
+  return `${head}${failed}${where}`
+}
+
+function dimKeyLabel(key: DeepReviewDimensionKey, zh: boolean): string {
+  const dimension = DEEP_REVIEW_DIMENSIONS.find(item => item.key === key)
+  return dimension ? (zh ? dimension.zh : dimension.en) : key
+}
+
 /** 读持久化的勾选；没有文件/坏 JSON → 全勾。 */
 export async function readDeepReviewSelection(
   session: ProjectSessionContext,

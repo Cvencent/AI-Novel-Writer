@@ -99,3 +99,48 @@ describe('StageReviewRepository', () => {
   })
 })
 
+
+/**
+ * issue #245 现场：深度检查（随审稿一起跑的正文层核对）原先只把 findings 写进
+ * `WorkflowStep.logs`，而那个字段全仓无人渲染 → 跑完 1 分 49 秒作者一个字都看不见。
+ * 现在它们落在 `chapter` 这个 target 上，与其它三层共用同一张表与同一套处理。
+ */
+describe('StageReviewRepository · deep checks land on the chapter target (issue #245)', () => {
+  it('saves prose-level findings that carry no write-back text', () => {
+    const d = db()
+    const saved = StageReviewRepository.save({ operationId: 'deep-1', runId: 'deep-1', target: 'chapter', selected: [1], sourceHash: 'h', findings: [
+      { targetIndex: 1, category: '物证链断裂', severity: 'warning', problemText: '第 12 段的凭证在后续拍已不在原处。', expectedText: '' },
+    ] }, d)
+    expect(saved.findings).toHaveLength(1)
+    // 正文层发现没有可机械写回的替换文本——界面据此只提供「复制 / 忽略」。
+    expect(saved.findings[0]!.expectedText).toBe('')
+    expect(StageReviewRepository.latestRun('chapter', d)!.target).toBe('chapter')
+    d.close()
+  })
+
+  it('keeps the chapter target independent from the other three layers', () => {
+    const d = db()
+    StageReviewRepository.save({ operationId: 'a', runId: 'ra', target: 'arc', selected: [1], sourceHash: 'h', findings: [] }, d)
+    StageReviewRepository.save({ operationId: 'dp', runId: 'rd', target: 'chapter', selected: [1], sourceHash: 'h', findings: [
+      { targetIndex: 1, category: 'c', severity: 'warning', problemText: 'p', expectedText: '' },
+    ] }, d)
+    expect(StageReviewRepository.latestRun('arc', d)!.runId).toBe('ra')
+    expect(StageReviewRepository.latestRun('chapter', d)!.runId).toBe('rd')
+    // 清掉正文层的记录不该动到粗纲那层的。
+    expect(StageReviewRepository.removeForTarget('chapter', d)).toBeGreaterThan(0)
+    expect(StageReviewRepository.latestRun('chapter', d)).toBeNull()
+    expect(StageReviewRepository.latestRun('arc', d)!.runId).toBe('ra')
+    d.close()
+  })
+
+  it('is idempotent by operation id, so a retried deep-check step cannot duplicate findings', () => {
+    const d = db()
+    const input = { operationId: 'deep-retry', target: 'chapter' as const, selected: [1], sourceHash: 'h', findings: [
+      { targetIndex: 1, category: 'c', severity: 'warning', problemText: 'p', expectedText: '' },
+    ] }
+    StageReviewRepository.save({ ...input, runId: 'deep-retry' }, d)
+    StageReviewRepository.save({ ...input, runId: 'deep-retry' }, d)
+    expect(StageReviewRepository.listByRun('deep-retry', d)).toHaveLength(1)
+    d.close()
+  })
+})

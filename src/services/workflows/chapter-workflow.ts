@@ -510,6 +510,49 @@ export function createReviewOnlyWorkflow(
           for (const failure of result.failures) {
             callbacks.log(localize(uiLocale, `深度检查失败 · ${failure.key}：${failure.error}`, `Deep check failed · ${failure.key}: ${failure.error}`))
           }
+          // issue #245 现场：这一步跑 1 分 49 秒、13 次模型调用全部成功，但结果一个字都看不见——
+          // findings 只被写进 `step.logs`（全仓无人渲染），executor 又不返回值，于是运行卡片那一步
+          // 永远没有可展开内容，作者只能靠切页碰运气。
+          // 落地面：正文层发现写进 `stage_review_*` 的 `chapter` 目标（与粗纲/细纲/蓝图共用同一套
+          // 接受/忽略/清除），供章节页「AI 检查 · 本章」就地查看。
+          // ⚠️ 不并进审稿报告：那份报告的正文被 M03 用 sha256 钉死（`review_content_hash`），
+          // 事后追加会让重建的哈希与落库值不等 → `MIGRATION_VERIFICATION_FAILED`（旧书打不开）。
+          const { deepCheckSummary } = await import('../deep-review-service')
+          const summary = deepCheckSummary({
+            total: keys.length, lines: result.lines, findings: result.findings,
+            failures: result.failures, cancelled: context.cancelled,
+          }, uiLocale)
+          if (result.findings.length > 0) {
+            const stageReviewRunId = `deep-review:${context.runId}`
+            const saved = await ipc.invokeWithProjectSession(session, 'db:stage-review-save', {
+              operationId: stageReviewRunId,
+              runId: stageReviewRunId,
+              target: 'chapter',
+              // 正文层的发现不针对「第几段」，只针对这一章；章号进 targetIndex 便于回显。
+              selected: [frozenParams.chapterNumber],
+              sourceHash: await import('../../shared/source-ref')
+                .then(mod => mod.hashAuthorText(frozenParams.draftContent)),
+              findings: result.findings.map(finding => ({
+                targetIndex: frozenParams.chapterNumber,
+                category: finding.issue.zhCN,
+                severity: 'warning',
+                problemText: uiLocale === 'en-US' ? finding.issue.enUS : finding.issue.zhCN,
+                // 正文层发现没有机械可执行的替换文本：作者读完后自己改（设计如此，见 #229）。
+                expectedText: '',
+              })),
+            }, session.projectPath).catch(() => null)
+            // 落库失败不能吞掉摘要：作者至少还能在运行卡片看到「几处发现」。
+            if (!saved?.success) callbacks.log(localize(uiLocale,
+              '深度检查结果未能写入检查记录，可在运行日志里查看。',
+              'The deep-check results could not be written to the review record; see the run log.'))
+            else callbacks.log(localize(uiLocale,
+              `深度检查结果已记入检查记录（${result.findings.length} 处）。`,
+              `Deep-check results saved to the review record (${result.findings.length}).`))
+          } else {
+            callbacks.log(summary)
+          }
+          // 返回值就是运行卡片那一步的详情：作者不必切页也看得见。
+          return summary
         },
       },
     ],

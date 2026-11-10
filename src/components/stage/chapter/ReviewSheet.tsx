@@ -10,6 +10,7 @@ import { Check } from '../../ui/Check'
 import { Notice } from '../../ui/Notice'
 import { Sheet } from '../../ui/Sheet'
 import { StatGrid } from '../../ui/StatGrid'
+import DeepCheckSection from './DeepCheckSection'
 import EditorialPanelSection from './EditorialPanelSection'
 
 type Checklist = ReturnType<typeof useReviewChecklist>
@@ -162,6 +163,8 @@ export default function ReviewSheet({ checklist, subtitle, reportText, chapterNu
         </div>
       )}
     >
+      {/* 深度检查的正文层发现（issue #245）：原先只写进无人渲染的 step.logs。 */}
+      <DeepCheckSection chapterNumber={chapterNumber} />
       <EditorialPanelSection chapterNumber={chapterNumber} draftId={draftId} draftVersion={draftVersion} checklist={checklist} />
       <StatGrid
         label={text('审稿统计', 'Review summary')}
