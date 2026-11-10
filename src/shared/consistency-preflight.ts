@@ -1286,7 +1286,15 @@ export function findDesignTimelineConflicts(input: DesignTimelineInput): Consist
     const [low, high] = [conflict.durations[0]!, conflict.durations[conflict.durations.length - 1]!]
     const samples = conflict.durations.join(' / ')
     return {
-      stableFactKey: `timeline:design-anchor:${conflict.anchors.join('|')}`,
+      // issue #245 现场：作者按提示改完设定后，这条提醒**又换了个身份弹回来**。
+      // 原因是 key 直接拼了锚点原文（`...:${anchors.join('|')}`），而锚点是文本切片——
+      // 一旦按建议把一句话拆成「事件甲/事件乙」，锚点从「大灾变遗」变成「事件」，
+      // 新 key 无人认领，之前点过的「我已知／确认无误」全部失效。
+      // 越是认真改，越会看见它反复出现。
+      //
+      // 现在 key 只认**结构性身份**：哪几段时间量冲突 × 出现在哪几段。
+      // 措辞怎么改都不变；只有「2/8/80 变成 2/9」这类**数值真的变了**才算新问题。
+      stableFactKey: `timeline:design-anchor:${conflict.durations.join('/')}:${conflict.sources.join('|')}`,
       severity: 'warning' as const,
       sourceChapter: chapter,
       evidence: `设定层里「${conflict.anchors.join('、')}」被配了两个时间：${samples} 年（出现在「${conflict.sources.join('」「')}」）`,

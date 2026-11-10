@@ -79,32 +79,85 @@ function splitSentences(text: string): string[] {
  * 同一句里出现多个时间量时**全部计入**：样本中「二十年来在夜航船帮工……却是
  * 父亲落水那夜的靛蓝短褂」正是靠同句共现才把「落水」和「二十年」连起来。
  */
-export function durationAnchors(text: string): Map<string, Set<number>> {
-  const anchors = new Map<string, Set<number>>()
-  for (const sentence of splitSentences(text)) {
-    const durations = [...sentence.matchAll(new RegExp(DURATION, 'gu'))]
-      .map(match => durationValue(match[1]!))
-      .filter((value): value is number => value !== null)
-    if (durations.length === 0) continue
-    const unique = new Set(durations)
+/**
+ * 一条锚点的时间量观测：**哪个时间量、出自哪一句**。
+ *
+ * 带句子身份是这条判据成立的前提。判据文档写的是「同一个名词片段，是否在
+ * **不同的句子里**被配上了两个不同的时间量」，而旧实现只记时间量、不记句子，
+ * 于是一句长句里同时出现「2 年前」和「沿用 80 年」就把**这句的每一个窗口**
+ * 都标成「同时配了 2 年和 80 年」（实测真库一句 80 字的话污染 201 个片段，
+ * 报出来的锚点是「变遗留的」「的独立事」这类跨标点碎片，读者无法据此定位）。
+ */
+export interface DurationObservation {
+  value: number
+  /** 句子序号（同一篇文本内单调递增）；只有**不同句子**才构成「跨句冲突」。 */
+  sentence: number
+}
+
+/**
+ * 抽取一篇文章里「名词片段 → 时间量观测」的共现。
+ *
+ * 「名词片段」= 连续 CJK 串里长度 2–4 的窗口。取所有窗口而不是只取一个，
+ * 是因为真正的锚点（「落水」「父亲落水」）落在哪个长度上无法预知；
+ * 后面按「冲突的时间量集合」归并，重复的锚点会自然合并成一条。
+ *
+ * 同一句里的多个时间量**仍然全部计入**，但每个时间量只贴给**离它最近的那一段
+ * 名词片段**，而不是撒给这句里的每一个窗口。
+ * （旧实现是「撒」，于是一句同时提到 2 年和 80 年的长句会把这句的每个碎片都标成
+ * 「既 2 年又 80 年」——真库实测一句 80 字的话污染 201 个片段，报出来的锚点是
+ * 「变遗留的」「的独立事」这类跨标点碎片，作者无法据此定位要改哪里。
+ * 而正确写法恰恰就是「其一…80 年…8 年…；其二…2 年…」，作者已经把时间绑在
+ * 各自的事件上，撒给全句等于把这份区分抹掉。）
+ */
+export function durationAnchorsWithSentences(text: string): Map<string, DurationObservation[]> {
+  const anchors = new Map<string, DurationObservation[]>()
+  for (const [sentenceIndex, sentence] of splitSentences(text).entries()) {
+    const matches = [...sentence.matchAll(new RegExp(DURATION, 'gu'))]
+    if (matches.length === 0) continue
+    // 时间量在句中的位置 → 值（同值去重由下游按句子号处理）。
+    const durationSpans = matches.map(match => ({
+      value: durationValue(match[1]!),
+      start: match.index ?? 0,
+      end: (match.index ?? 0) + match[0].length,
+    })).filter((span): span is { value: number; start: number; end: number } => span.value !== null)
+    if (durationSpans.length === 0) continue
     // 锚点必须**先剥掉时间量本身**再取窗口：否则「十年」是「二十年」的子串，
     // 「父亲十年前落水失踪。温珩二十年不换短褂。」会因为锚点「十年」跨句同时
     // 沾上 10 和 20 而报出假冲突——真正冲突的是「同一件事」，不是数字词互为子串。
+    // 剥掉后长度不变（用全角空格占位），所以窗口在句中的偏移可以直接用来算距离。
     const withoutDurations = sentence.replace(new RegExp(DURATION, 'gu'), '　')
-    // 每个偏移都生成 2/3/4 三种长度：只看贪婪的 4 字（或短窗只在序列末尾出现）
-    // 会让「大火」这类锚点在长序列里根本不存在，「那场大火发生在三年前 /
-    // 村落被大火焚毁已有三十年」就找不到共同的锚点。
-    const runs = [...withoutDurations.matchAll(/[\u4e00-\u9fa5]+/gu)].map(match => match[0])
-    for (const run of runs) {
+    const runs = [...withoutDurations.matchAll(/[\u4e00-\u9fa5]+/gu)].map(match => ({ run: match[0], offset: match.index ?? 0 }))
+    for (const { run, offset } of runs) {
       for (const length of [2, 3, 4]) {
         for (let start = 0; start + length <= run.length; start += 1) {
           const token = run.slice(start, start + length)
-          const set = anchors.get(token) ?? new Set<number>()
-          for (const value of unique) set.add(value)
-          anchors.set(token, set)
+          const tokenStart = offset + start
+          const tokenEnd = tokenStart + length
+          // 只贴给最近的那个时间量：距离 = 词与时间量之间的字符间隔（0 表示贴着）。
+          let nearest: { value: number; distance: number } | null = null
+          for (const span of durationSpans) {
+            const distance = tokenEnd <= span.start ? span.start - tokenEnd : Math.max(0, tokenStart - span.end)
+            if (nearest === null || distance < nearest.distance
+              || (distance === nearest.distance && span.value < nearest.value)) {
+              nearest = { value: span.value, distance }
+            }
+          }
+          if (nearest === null) continue
+          const observations = anchors.get(token) ?? []
+          observations.push({ value: nearest.value, sentence: sentenceIndex })
+          anchors.set(token, observations)
         }
       }
     }
+  }
+  return anchors
+}
+
+/** 兼容旧调用方：只要「片段 → 时间量集合」（不带句子身份）。 */
+export function durationAnchors(text: string): Map<string, Set<number>> {
+  const anchors = new Map<string, Set<number>>()
+  for (const [token, observations] of durationAnchorsWithSentences(text)) {
+    anchors.set(token, new Set(observations.map(item => item.value)))
   }
   return anchors
 }
@@ -133,21 +186,50 @@ export function findTimelineAnchorConflicts(
   sections: readonly TimelineSection[],
 ): Array<TimelineAnchorConflict & { sources: string[] }> {
   // 全局累积：同一件事可能分散在不同段里（前提说十年、世界观说二十年）。
-  const merged = new Map<string, { durations: Set<number>; sources: Set<string> }>()
+  // ⚠️ 必须按**句子身份**累积，这是判据原文的要求（「在**不同的句子里**被配上
+  // 两个不同的时间量」）。旧实现把一句里的所有时间量摊给该句的每个窗口，长句
+  // 一被切碎就产出成百上千个碎片锚点（真库实测 201 个，如「变遗留的」「的独立事」），
+  // 报给作者的建议因此无法定位。现在只承认「跨句」的配对。
+  const merged = new Map<string, { observations: DurationObservation[]; sources: Set<string> }>()
+  // 句子号必须**跨段全局唯一**：否则「故事前提」的第 0 句与「世界观」的第 0 句
+  // 会被当成同一句，跨段冲突（本判据的核心形态：前提说十年、世界观说二十年）
+  // 就永远凑不出「两个不同句子」。逐段累加偏移量即可。
+  let sentenceOffset = 0
   for (const section of sections) {
-    for (const [anchor, durations] of durationAnchors(section.text)) {
-      const entry = merged.get(anchor) ?? { durations: new Set<number>(), sources: new Set<string>() }
-      for (const value of durations) entry.durations.add(value)
-      if (durations.size > 0) entry.sources.add(section.label)
+    const anchors = durationAnchorsWithSentences(section.text)
+    // 本段一共几句，决定下一段的起始偏移。
+    const sentenceCount = splitSentences(section.text).length
+    for (const [anchor, observations] of anchors) {
+      const entry = merged.get(anchor) ?? { observations: [], sources: new Set<string>() }
+      for (const observation of observations) {
+        entry.observations.push({ value: observation.value, sentence: observation.sentence + sentenceOffset })
+      }
+      if (observations.length > 0) entry.sources.add(section.label)
       merged.set(anchor, entry)
     }
+    sentenceOffset += sentenceCount
   }
 
   // 按时间量集合归并：同一组冲突的多个锚点（「父亲」「落水」「父亲落水」）算一条。
   const bySignature = new Map<string, { durations: number[]; anchors: string[]; sources: Set<string> }>()
   for (const [anchor, entry] of merged) {
-    if (entry.durations.size < 2) continue
-    const durations = [...entry.durations].sort((left, right) => left - right)
+    // 冲突 = 同一片段在**两个不同句子**里被配上了**不同**的时间量。
+    // 同一句里同时提到两个数字不算冲突（那正是作者在区分两件事的常见写法：
+    // 「手环硬件沿用 80 年，但配发是 2 年前」）。
+    const byValue = new Map<number, Set<number>>()
+    for (const observation of entry.observations) {
+      const sentences = byValue.get(observation.value) ?? new Set<number>()
+      sentences.add(observation.sentence)
+      byValue.set(observation.value, sentences)
+    }
+    if (byValue.size < 2) continue
+    const values = [...byValue.keys()].sort((left, right) => left - right)
+    // 必须存在**两个值来自不同句子**的配对：同一句说了 2 年和 80 年、别处只说 2 年，
+    // 不足以构成「同一件事被写成两个时间」。
+    const crossSentence = values.some(low => values.some(high => high > low
+      && [...byValue.get(low)!].some(sentence => !byValue.get(high)!.has(sentence))))
+    if (!crossSentence) continue
+    const durations = values
     const signature = durations.join('/')
     const bucket = bySignature.get(signature) ?? { durations, anchors: [], sources: new Set<string>() }
     bucket.anchors.push(anchor)

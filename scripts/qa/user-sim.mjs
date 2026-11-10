@@ -159,11 +159,27 @@ function pruneTemp(roots) {
   fs.mkdirSync(roots.temp, { recursive: true })
 }
 
+// 1.5.275 起启动早期可能触发一次渲染进程导航/reload——evaluate 恰好撞上会抛
+// 'Execution context was destroyed (navigation)'。这里给 evaluate 包一层兜底：
+// 撞上导航就等页面 load 稳定后重试一次（第廿六/廿七/廿八轮 deterministic 复现的适配）。
+const evaluateStable = async (page, fn, arg, attempts = 2) => {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await page.evaluate(fn, arg)
+    } catch (error) {
+      const destroyed = String(error).includes('Execution context was destroyed')
+      if (!destroyed || i === attempts - 1) throw error
+      await page.waitForLoadState('load', { timeout: 30_000 }).catch(() => {})
+      await page.waitForTimeout(2_000)
+    }
+  }
+}
+
 const invoke = (page, channel, ...args) =>
-  page.evaluate(({ channel, args }) => window.aiNovelAPI.invoke(channel, ...args), { channel, args })
+  evaluateStable(page, ({ channel, args }) => window.aiNovelAPI.invoke(channel, ...args), { channel, args })
 
 const invokeSession = (page, session, channel, ...args) =>
-  page.evaluate(({ channel, args, session }) => window.aiNovelAPI.invoke(channel, ...args, session), { channel, args, session })
+  evaluateStable(page, ({ channel, args, session }) => window.aiNovelAPI.invoke(channel, ...args, session), { channel, args, session })
 
 async function launch(roots, exe) {
   const env = {
