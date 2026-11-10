@@ -119,6 +119,28 @@ describe('desktop single schema lane', () => {
     expect(db.rows).toEqual(['作者原文'])
   })
 
+  // issue #245：同一次打开里 integrity 已按内容哈希证过的那批字节，允许省掉重复的全页校验；
+  // 但**只有**这一项可省——版本、指纹、外键与领域校验一律照跑，给错版本/错指纹仍必须拒绝。
+  it('skips only the repeated full-page integrity check when the caller proves it just ran', () => {
+    const db = new FixtureDatabase()
+    const registry = createMigrationRegistry(implementations(), identities)
+    expect(probeSchema(db, registry, { skipIntegrityCheck: true })).toEqual({ version: 0, fingerprint: 'fixture-schema-0' })
+    db.integrity = false
+    expect(probeSchema(db, registry, { skipIntegrityCheck: true })).toEqual({ version: 0, fingerprint: 'fixture-schema-0' })
+    // 外键损坏不在可省范围内。
+    db.foreignKeys = false
+    expect(() => probeSchema(db, registry, { skipIntegrityCheck: true })).toThrow('CORRUPT_SCHEMA')
+    db.foreignKeys = true
+    // 版本与指纹不在可省范围内。
+    db.version = 99
+    expect(() => probeSchema(db, registry, { skipIntegrityCheck: true })).toThrow('NEWER_SCHEMA_READ_ONLY')
+    db.version = 0; db.fingerprint = 'unknown-fork'
+    expect(() => probeSchema(db, registry, { skipIntegrityCheck: true })).toThrow('UNRECOGNIZED_SCHEMA')
+    // 默认（不给选项）永远做完整校验。
+    db.fingerprint = 'fixture-schema-0'; db.integrity = false
+    expect(() => probeSchema(db, registry)).toThrow('CORRUPT_SCHEMA')
+  })
+
   it('refuses all missing steps before writing even when the first step is installed', () => {
     const db = new FixtureDatabase()
     expect(() => migrateSchema(db, createMigrationRegistry(implementations().slice(0, 1), identities))).toThrow('MIGRATION_NOT_INSTALLED')

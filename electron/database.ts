@@ -11,6 +11,7 @@ import { initializeLegacyBaselineSchema } from './migrations/baseline-schema'
 import { CURRENT_DESKTOP_SCHEMA_VERSION, getDesktopMigrationRegistry } from './migrations/desktop-registry'
 import { GenerationRunRepository } from './repositories/generation-run-repository'
 import { migrateSchema, verifySchema } from './migrations/runner'
+import { projectSqliteIntegrityWasJustVerified } from './services/sqlite-project-migration'
 import { SqliteSchemaAdapter } from './migrations/sqlite-schema-adapter'
 import { activateCanonicalProjectData, deactivateProjectData, getNewProjectDatabasePath, getProjectDatabasePath, upgradeCanonicalProjectData } from './services/project-data-locator'
 
@@ -53,7 +54,12 @@ export function initProjectDatabase(projectPath: string): void {
     timed('activate-canonical', () => activateCanonicalProjectData(projectPath, verifiedByUpgrade))
     database = timed('sqlite-open', () => new Database(getProjectDatabasePath(projectPath), { fileMustExist: true }))
     const adapter = new SqliteSchemaAdapter(database)
-    timed('verify-schema', () => verifySchema(adapter, getDesktopMigrationRegistry(), CURRENT_DESKTOP_SCHEMA_VERSION))
+    // 全页 integrity 校验在同一个打开里只跑一次：上面那道迁移探针刚按**同一份内容哈希**
+    // 完整校验过这批字节（中间没有任何写入），这里再跑一遍纯属重复（140MB 实测 223ms 热 /
+    // 1132ms 冷）。指纹、版本号与各迁移的领域校验照跑，只省掉重复的全页扫描。
+    const integrityAlreadyProven = projectSqliteIntegrityWasJustVerified(getProjectDatabasePath(projectPath))
+    timed('verify-schema', () => verifySchema(adapter, getDesktopMigrationRegistry(), CURRENT_DESKTOP_SCHEMA_VERSION,
+      integrityAlreadyProven ? { skipIntegrityCheck: true } : {}))
     timed('pragmas-fence', () => {
       database!.pragma('journal_mode = WAL')
       database!.pragma('foreign_keys = ON')

@@ -68,10 +68,92 @@ function sourceFile(file: string): void {
   for (const suffix of ['-wal', '-shm', '-journal']) if (fs.existsSync(file + suffix)) regular(file + suffix)
 }
 const sqliteSuffixes = ['', '-wal', '-shm', '-journal'] as const
-function sourceIdentity(file: string): Record<string, string> {
+
+/** 物理文件集合的廉价身份：只 stat，不读内容。 */
+type SqliteStatIdentity = Record<string, string>
+function statIdentity(file: string): SqliteStatIdentity {
   sourceFile(file)
-  return Object.fromEntries(sqliteSuffixes.filter(suffix => fs.existsSync(file + suffix)).map(suffix =>
+  const identity: SqliteStatIdentity = {}
+  for (const suffix of sqliteSuffixes) {
+    const target = file + suffix
+    if (!fs.existsSync(target)) continue
+    const info = fs.statSync(target, { bigint: true })
+    // mtimeMs 用纳秒时间戳：NTFS 精度足够，且比毫秒字符串更难被同秒写入骗过。
+    identity[suffix] = [info.size, info.mtimeNs, info.ino, info.dev].join(':')
+  }
+  return identity
+}
+/**
+ * 内容哈希，带「stat 没变就复用」的记忆。
+ *
+ * 同一份库在一次打开里要被哈希多次（源一次、副本一次、复制后再核对源一次），
+ * 140MB 的单次 sha256 实测 ~63ms——三次就是 ~190ms，全压在开书路径上。
+ * 这里按 (路径, stat 身份) 记住算过的哈希：文件真被写过（大小/mtime/inode 任一变化）
+ * 就重算，没变就直接复用。**判据没有放松**：拿到的仍是真实内容哈希。
+ */
+const hashMemo = new Map<string, { stat: string; hashes: Record<string, string> }>()
+function sourceIdentity(file: string): Record<string, string> {
+  const stats = statIdentity(file)
+  const memoKey = path.resolve(file)
+  const statKey = JSON.stringify(stats)
+  const memo = hashMemo.get(memoKey)
+  if (memo && memo.stat === statKey) return memo.hashes
+  const hashes = Object.fromEntries(Object.keys(stats).map(suffix =>
     [suffix, createHash('sha256').update(fs.readFileSync(file + suffix)).digest('hex')]))
+  hashMemo.set(memoKey, { stat: statKey, hashes })
+  return hashes
+}
+
+/**
+ * 快照基目录：优先**与库同盘**，否则退回原基目录。
+ *
+ * issue #245：原实现固定用 `%LOCALAPPDATA%\VibeCodingScratch`。用户常用 cmove 之类工具
+ * 把它 junction 到别的盘，实测那台机上它落在 **USB 移动固态**（G:），而库在 NVMe（F:）——
+ * 同样 140MB 的复制：同盘 38ms、复制到 C:（同 NVMe）45ms、复制到 G: **409-618ms**。
+ * 快照只是私有临时副本，放哪都不改变安全语义，但放错盘每次开书要多花 ~0.4-0.6 秒。
+ *
+ * 只在**默认基目录与库不同盘**时才换位置（同盘时行为与原来逐字一致，含 junction 兜底），
+ * 换的位置是库所在卷根下的应用私有目录；卷根不可写就原样退回默认基目录。
+ */
+/**
+ * 与目标库同盘的私有 scratch 目录；不同盘或不可写时返回 null。
+ *
+ * issue #245：快照只是临时副本，放哪都不改变安全语义，但放错盘代价很大。用户常用
+ * cmove 之类工具把 `%LOCALAPPDATA%\VibeCodingScratch` junction 到别的盘——实测那台机上
+ * 它落在 **USB 移动固态**（G:）而库在 NVMe（F:）：同样 140MB 复制 同盘 38ms、
+ * 复制到 C:（同 NVMe）45ms、复制到 G: **409-618ms**。这里把快照放在库所在卷根下的
+ * 应用私有目录，只在确实同盘时才采用；卷根不可写就返回 null 由调用方退回默认基目录。
+ */
+export function prepareSameVolumeScratch(source: string): string | null {
+  const volumeRoot = path.parse(path.resolve(source)).root
+  if (!volumeRoot || path.dirname(volumeRoot) !== volumeRoot) return null
+  const deviceOf = (target: string): string | null => {
+    try { return String(fs.statSync(target, { bigint: true }).dev) } catch { return null }
+  }
+  const sourceDevice = deviceOf(path.dirname(path.resolve(source)))
+  if (sourceDevice === null) return null
+  try {
+    const directory = path.join(volumeRoot, '.ai-novel-writer-scratch')
+    fs.mkdirSync(directory, { recursive: true })
+    // 建在无链接段的链上：sourceFile 的逐级链接检查会拒绝任何链接段。
+    const resolved = fs.realpathSync(directory)
+    if (deviceOf(resolved) !== sourceDevice) return null
+    sweepStaleSnapshots(resolved)
+    return resolved
+  } catch { return null }
+}
+
+/** 常用路径别名，便于测试与调用方共用一套判据。 */
+function prepare(directory: string): string | null {
+  try { fs.mkdirSync(directory, { recursive: true }); return fs.realpathSync(directory) } catch { return null }
+}
+
+function scratchBaseFor(source: string): string {
+  const sameVolume = prepareSameVolumeScratch(source)
+  if (sameVolume) return sameVolume
+  const defaultBase = prepare(path.join(process.env.LOCALAPPDATA || os.tmpdir(), 'VibeCodingScratch', 'ai-novel-writer'))
+  if (defaultBase) return defaultBase
+  throw new Error('PROJECT_MIGRATION_SCRATCH_UNAVAILABLE')
 }
 /** SQLite readonly handles may still write original -shm reader marks. Copy the
  * physical DB/WAL/SHM set using filesystem reads, then connect only this copy.
@@ -120,12 +202,11 @@ function physicalSnapshot(source: string) {
   // 先沿未解析路径把目录建出来（穿过 junction 落到真实盘），再 realpath 成
   // 真实路径——快照副本创建在无任何链接段的链上，对其自身的 identity 校验
   // （sourceFile 逐级拒绝链接）才不会把 app 自己的 scratch 布局判死。
-  const unresolvedBase = path.join(process.env.LOCALAPPDATA || os.tmpdir(), 'VibeCodingScratch', 'ai-novel-writer')
-  fs.mkdirSync(unresolvedBase, { recursive: true })
-  const base = fs.realpathSync(unresolvedBase)
   // issue #104：应用被强杀时 `close()` 不会执行，于是 `sqlite-read-*` 快照目录留在盘上
   // （实测本机残留 7 个）。每个快照自己的 `.vibe-owner.json` 已经声明了 `ttlHours`，
   // 这里就**按那个 TTL 清扫**——只删本应用自己创建、且已过期的目录，不动任何别的东西。
+  // issue #245：基目录优先取与库同盘的那个（见 scratchBaseFor），跨盘快照实测慢 10 倍以上。
+  const base = scratchBaseFor(source)
   sweepStaleSnapshots(base)
   const root = fs.mkdtempSync(path.join(base, 'sqlite-read-')), file = path.join(root, 'snapshot.db')
   const unchanged = () => {
@@ -137,8 +218,18 @@ function physicalSnapshot(source: string) {
       reason: 'Private physical SQLite read snapshot; rebuilt from source, never a recovery authority.',
       cleanupCommand: `Remove-Item -LiteralPath '${root.replaceAll("'", "''")}' -Recurse -Force`,
     }), { flag: 'wx' })
-    for (const suffix of Object.keys(identity)) fs.copyFileSync(source + suffix, file + suffix, fs.constants.COPYFILE_EXCL)
-    if (JSON.stringify(sourceIdentity(file)) !== JSON.stringify(identity)) throw new Error('PROJECT_MIGRATION_SOURCE_CHANGED')
+    // 一次读取同时得到「源内容哈希」与「副本内容」：原来 copyFileSync 读一遍源、
+    // 再两次 readFileSync 做哈希，140MB 上白读两遍（实测每次 ~35ms 读 + ~63ms 哈希）。
+    for (const suffix of Object.keys(identity)) {
+      const bytes = fs.readFileSync(source + suffix)
+      const digest = createHash('sha256').update(bytes).digest('hex')
+      if (digest !== identity[suffix]) throw new Error('PROJECT_MIGRATION_SOURCE_CHANGED')
+      fs.writeFileSync(file + suffix, bytes, { flag: 'wx' })
+      // 写入长度对不上说明副本被截断；内容证明由上面的 digest 给出（同一份字节）。
+      if (fs.statSync(file + suffix, { bigint: true }).size !== BigInt(bytes.length)) {
+        throw new Error('PROJECT_MIGRATION_SOURCE_CHANGED')
+      }
+    }
     unchanged()
     return { file, unchanged, close: () => fs.rmSync(root, { recursive: true, force: true }) }
   } catch (error) { fs.rmSync(root, { recursive: true, force: true }); throw error }
@@ -340,15 +431,66 @@ export function probeProjectSqlite(options: { databasePath: string; registry?: M
     } finally { db.close() }
   } finally { snapshot.close() }
 }
-export function verifyProjectSqlite(options: { databasePath: string; registry?: MigrationRegistry; targetVersion?: number }): ProjectSqliteEvidence {
-  const snapshot = physicalSnapshot(options.databasePath)
+
+/**
+ * 已验证证据的进程内复用（issue #245）。
+ *
+ * 打开一个作品时同一份库会被完整校验两次：`upgradeCanonicalProjectData` 的探针一次，
+ * `initProjectDatabase` 在真正拿到的句柄上再一次（`probeSchema` → `integrity_check` 实测
+ * 223ms 热 / 1132ms 冷）。两次之间库没有被写过（WAL fence 在后来才执行），所以第二次是
+ * 纯重复劳动。
+ *
+ * 键是**内容哈希身份**（`sourceIdentity`，已按 stat 记忆）＋目标版本＋注册表是否默认；
+ * 只要文件真被写过，stat 就变、身份就变、缓存自然失效重算。**判据没有放松**：命中时返回的
+ * 是同一份已被完整校验过的证据，未命中时走的还是原来那条完整校验。
+ */
+const verifiedEvidenceMemo = new Map<string, {
+  identity: string
+  targetVersion: number
+  evidence: ProjectSqliteEvidence
+}>()
+function memoizedVerify(databasePath: string, targetVersion: number, compute: () => ProjectSqliteEvidence): ProjectSqliteEvidence {
+  const memoKey = path.resolve(databasePath)
+  const identity = JSON.stringify(sourceIdentity(databasePath))
+  const memo = verifiedEvidenceMemo.get(memoKey)
+  if (memo && memo.identity === identity && memo.targetVersion === targetVersion) {
+    return structuredClone(memo.evidence)
+  }
+  const evidence = compute()
+  verifiedEvidenceMemo.set(memoKey, { identity, targetVersion, evidence: structuredClone(evidence) })
+  return evidence
+}
+
+/**
+ * 这批字节是否**刚刚**被完整校验过（含 `integrity_check`）。
+ *
+ * 打开作品时 `initProjectDatabase` 会在真正拿到的句柄上再验一次 schema；那批字节
+ * 与迁移探针刚验过的是同一份（中间没有任何写入），全页 B-tree 校验没必要跑第二遍。
+ * 只有按内容哈希身份命中刚才那次完整校验时才返回 true，否则一律 false（照常完整校验）。
+ */
+export function projectSqliteIntegrityWasJustVerified(databasePath: string, targetVersion = CURRENT_DESKTOP_SCHEMA_VERSION): boolean {
   try {
-    const db = new Database(snapshot.file, { readonly: true, fileMustExist: true })
-    db.pragma('foreign_keys = ON')
+    const memo = verifiedEvidenceMemo.get(path.resolve(databasePath))
+    return Boolean(memo)
+      && memo!.identity === JSON.stringify(sourceIdentity(databasePath))
+      && memo!.targetVersion === targetVersion
+  } catch { return false }
+}
+
+export function verifyProjectSqlite(options: { databasePath: string; registry?: MigrationRegistry; targetVersion?: number }): ProjectSqliteEvidence {
+  const targetVersion = options.targetVersion ?? CURRENT_DESKTOP_SCHEMA_VERSION
+  // 只对默认注册表记忆：调用方自带注册表时校验口径不同，不能与默认结果互相命中。
+  const compute = (): ProjectSqliteEvidence => {
+    const snapshot = physicalSnapshot(options.databasePath)
     try {
-      const result = inspect(db, options.registry ?? getDesktopMigrationRegistry(), options.targetVersion ?? CURRENT_DESKTOP_SCHEMA_VERSION); snapshot.unchanged(); return result
-    } finally { db.close() }
-  } finally { snapshot.close() }
+      const db = new Database(snapshot.file, { readonly: true, fileMustExist: true })
+      db.pragma('foreign_keys = ON')
+      try {
+        const result = inspect(db, options.registry ?? getDesktopMigrationRegistry(), targetVersion); snapshot.unchanged(); return result
+      } finally { db.close() }
+    } finally { snapshot.close() }
+  }
+  return options.registry === undefined ? memoizedVerify(options.databasePath, targetVersion, compute) : compute()
 }
 /** Caller has already proved exclusive access and owns an empty staging root.
  * SQLite backup captures committed WAL pages. No business DB/session is exposed.
@@ -406,6 +548,7 @@ export function upgradeProjectSqlite(options: { databasePath: string; registry?:
   // verifying in one isolated snapshot avoids paying the full author-domain
   // hash twice on every open; the upgrade path below still re-probes.
   const snapshot = physicalSnapshot(options.databasePath)
+  const sourcePath = path.resolve(options.databasePath)
   let before: ProjectSqliteEvidence
   let alreadyCurrent = false
   try {
@@ -417,7 +560,15 @@ export function upgradeProjectSqlite(options: { databasePath: string; registry?:
       snapshot.unchanged()
     } finally { db.close() }
   } finally { snapshot.close() }
-  if (alreadyCurrent) return before!
+  if (alreadyCurrent) {
+    // 这份证据就是 initProjectDatabase 紧接着要再验一次的那批字节；登记下来，
+    // 让 admission 省掉重复的全页 integrity 校验（见 projectSqliteIntegrityWasJustVerified）。
+    if (options.registry === undefined) {
+      try { verifiedEvidenceMemo.set(sourcePath, { identity: JSON.stringify(sourceIdentity(options.databasePath)),
+        targetVersion: CURRENT_DESKTOP_SCHEMA_VERSION, evidence: structuredClone(before!) }) } catch { /* 登记失败只意味着少一次优化 */ }
+    }
+    return before!
+  }
   // Every version the registry recognizes below the current one can be upgraded:
   // the probe above already proved the source schema is a known canonical shape.
   if (!Number.isInteger(before!.schemaVersion) || before!.schemaVersion < 1

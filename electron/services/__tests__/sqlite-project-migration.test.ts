@@ -8,7 +8,7 @@ import { initializeLegacyBaselineSchema } from '../../migrations/baseline-schema
 import { ensureBaselineBlueprintTables } from '../../migrations/baseline-blueprint-schema'
 import { CURRENT_DESKTOP_SCHEMA_VERSION } from '../../migrations/desktop-registry'
 import { sqliteSchemaFingerprint } from '../../migrations/sqlite-schema-adapter'
-import { backupProjectSqlite, probeProjectSqlite, verifyProjectSqlite, upgradeProjectSqlite } from '../sqlite-project-migration'
+import { backupProjectSqlite, probeProjectSqlite, verifyProjectSqlite, upgradeProjectSqlite, projectSqliteIntegrityWasJustVerified } from '../sqlite-project-migration'
 import { CharacterRosterRepository } from '../../repositories/character-roster-repository'
 import { ProjectCoreRepository } from '../../repositories/project-core-repository'
 
@@ -436,4 +436,45 @@ it('resolves a trusted system scratch junction before validating its private sna
  process.env.LOCALAPPDATA=link
  try { expect(probeProjectSqlite({databasePath:f.source}).schemaVersion).toBe(0) }
  finally { if(previous===undefined) delete process.env.LOCALAPPDATA;else process.env.LOCALAPPDATA=previous }
+})
+
+// issue #245：开书路径的两处重复劳动——内容哈希按 stat 记忆、已完整校验的证据进程内复用。
+describe('open-path memoization (issue #245)', () => {
+  it('reuses the verified evidence while the bytes are unchanged, and recomputes after a write', async () => {
+    const f = fixture()
+    const first = await backupProjectSqlite({ sourceDatabasePath: f.source, targetDatabasePath: f.target, targetVersion: 1 })
+    expect(verifyProjectSqlite({ databasePath: f.target, targetVersion: 1 })).toEqual(first)
+    // 同一份字节第二次读：命中记忆，仍是同一份证据。
+    expect(verifyProjectSqlite({ databasePath: f.target, targetVersion: 1 })).toEqual(first)
+    // 库真被写过：stat 变了 → 必须重算，并看见新内容。
+    const writer = new Database(f.target); handles.push(writer)
+    writer.prepare('INSERT INTO contents(body) VALUES (?)').run('新增正文')
+    writer.close()
+    const after = verifyProjectSqlite({ databasePath: f.target, targetVersion: 1 })
+    expect(after.domain.tableCounts.contents).toBe((first.domain.tableCounts.contents ?? 0) + 1)
+  })
+
+  it('does not claim a fresh integrity proof for a database that was never verified', () => {
+    const f = fixture()
+    expect(projectSqliteIntegrityWasJustVerified(f.source)).toBe(false)
+  })
+
+  it('records a fresh integrity proof for an already-current database', async () => {
+    const f = fixture()
+    await backupProjectSqlite({ sourceDatabasePath: f.source, targetDatabasePath: f.target })
+    upgradeProjectSqlite({ databasePath: f.target })
+    expect(projectSqliteIntegrityWasJustVerified(f.target)).toBe(true)
+    // 换一个目标版本口径不该命中。
+    expect(projectSqliteIntegrityWasJustVerified(f.target, 1)).toBe(false)
+  })
+
+  it('keeps a corrupt database rejected even when the integrity proof is requested', async () => {
+    const f = fixture()
+    await backupProjectSqlite({ sourceDatabasePath: f.source, targetDatabasePath: f.target })
+    // 破坏物理文件后，跳过标志不得把它放行。
+    const fd = fs.openSync(f.target, 'r+')
+    fs.writeSync(fd, Buffer.from('corrupted-page'), 0, 14, 4096)
+    fs.closeSync(fd)
+    expect(() => verifyProjectSqlite({ databasePath: f.target })).toThrow()
+  })
 })

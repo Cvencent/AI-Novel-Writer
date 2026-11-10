@@ -17,6 +17,7 @@ import type {
   ReadyProjectOverview,
 } from '../../src/shared/project-overview'
 import { CURRENT_DESKTOP_SCHEMA_VERSION, getDesktopMigrationRegistry } from '../migrations/desktop-registry'
+import { prepareSameVolumeScratch } from './sqlite-project-migration'
 import { verifySchema } from '../migrations/runner'
 import { SqliteSchemaAdapter } from '../migrations/sqlite-schema-adapter'
 
@@ -57,8 +58,21 @@ const pathKey = (value: string) => process.platform === 'win32'
   ? path.normalize(value).toLocaleLowerCase('en-US')
   : path.normalize(value)
 
+/**
+ * 文件是否确实落在 root 之内。
+ *
+ * ⚠️ 两边都必须先解析真实路径再比。原来拿**未解析**的 root 与文件的 realpath 比较：
+ * 只要 root 的路径里有一段是 junction/symlink（用户常用 cmove 之类工具把
+ * `%LOCALAPPDATA%\VibeCodingScratch` 挪到别的盘），包含关系必然不成立，
+ * 于是预览恒抛 `PROJECT_PEEK_FILE_OUTSIDE_ROOT` → 书架永远显示
+ * 「暂时读不到这部作品的概览」（本机实测）。判据本身没放松：仍然要求
+ * 解析后的文件真在解析后的 root 之下。
+ */
 function contained(root: string, child: string): boolean {
-  const relative = path.relative(pathKey(root), pathKey(child))
+  const resolve = (value: string): string => {
+    try { return path.normalize(fs.realpathSync.native(value)) } catch { return path.normalize(value) }
+  }
+  const relative = path.relative(pathKey(resolve(root)), pathKey(resolve(child)))
   return relative === '' || relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
 }
 
@@ -116,13 +130,6 @@ function sourceState(databasePath: string): PhysicalFileState[] {
       inode: info.ino.toString(),
       modified: info.mtimeNs.toString(),
     }
-  })
-}
-
-function sameSnapshotContent(left: readonly PhysicalFileState[], right: readonly PhysicalFileState[]): boolean {
-  return left.length === right.length && left.every((item, index) => {
-    const other = right[index]
-    return item.suffix === other?.suffix && item.size === other.size && item.hash === other.hash
   })
 }
 
@@ -299,6 +306,7 @@ function aggregateProject(
 
 export class ProjectPeekService {
   private readonly scratchRoot: string
+  private readonly scratchRootIsExplicit: boolean
   private readonly newCapabilityId: () => string
   private readonly capabilities = new Map<string, CapabilityState>()
   private readonly capabilityByRoot = new Map<string, string>()
@@ -310,6 +318,9 @@ export class ProjectPeekService {
       'ai-novel-writer',
       'project-peek',
     ))
+    // 调用方显式指定 scratch 时**只**用那个目录（测试与隔离布局依赖这一点）；
+    // 没指定时才允许按「与库同盘」自动挑位置。
+    this.scratchRootIsExplicit = options.scratchRoot !== undefined
     this.newCapabilityId = options.newCapabilityId ?? randomUUID
   }
 
@@ -371,9 +382,12 @@ export class ProjectPeekService {
   }
 
   private readSnapshot(capability: CapabilityState): ProjectOverview {
-    const before = sourceState(capability.databasePath)
-    fs.mkdirSync(this.scratchRoot, { recursive: true })
-    const attempt = fs.mkdtempSync(path.join(this.scratchRoot, 'attempt-'))
+    if (fs.existsSync(`${capability.databasePath}-journal`)) throw new Error('PROJECT_PEEK_ROLLBACK_JOURNAL_PRESENT')
+    // issue #245：快照目录优先与库同盘。原来固定用 LOCALAPPDATA 下的固定目录，用户
+    // 把它 junction 到别的盘（实测落在 USB 固态）时，140MB 复制从 38ms 变成 400-600ms。
+    const base = this.scratchRootIsExplicit ? this.scratchRoot : (prepareSameVolumeScratch(capability.databasePath) ?? this.scratchRoot)
+    fs.mkdirSync(base, { recursive: true })
+    const attempt = fs.mkdtempSync(path.join(base, 'attempt-'))
     const snapshotPath = path.join(attempt, 'snapshot.db')
     let database: BetterSqlite3.Database | undefined
     try {
@@ -385,18 +399,33 @@ export class ProjectPeekService {
         reason: 'Ephemeral read-only project overview snapshot.',
         cleanupCommand: `Remove-Item -LiteralPath '${attempt.replaceAll("'", "''")}' -Recurse -Force`,
       }), { flag: 'wx' })
-      for (const file of before) fs.copyFileSync(
-        capability.databasePath + file.suffix,
-        snapshotPath + file.suffix,
-        fs.constants.COPYFILE_EXCL,
-      )
-      const copied = sourceState(snapshotPath)
-      const after = sourceState(capability.databasePath)
-      if (!sameSnapshotContent(before, copied) || JSON.stringify(before) !== JSON.stringify(after)) {
-        throw new Error('PROJECT_PEEK_SOURCE_CHANGED')
+      // issue #245：源文件只读两遍。第一遍在复制的同时算出内容哈希（这就是 before 快照本身），
+      // 第二遍核对复制期间源没被动过。原来 copyFile + 读副本 + 读源共四遍全量读，
+      // 140MB 上白读两遍（每遍 ~35ms 读 + ~63ms 哈希）。
+      const suffixes = SQLITE_SUFFIXES.filter(suffix => fs.existsSync(capability.databasePath + suffix))
+      const before: PhysicalFileState[] = []
+      for (const suffix of suffixes) {
+        const info = regularFile(capability.databasePath + suffix, path.dirname(capability.databasePath))
+        const bytes = fs.readFileSync(capability.databasePath + suffix)
+        before.push({
+          suffix,
+          size: info.size.toString(),
+          hash: digest(bytes),
+          device: info.dev.toString(),
+          inode: info.ino.toString(),
+          modified: info.mtimeNs.toString(),
+        })
+        fs.writeFileSync(snapshotPath + suffix, bytes, { flag: 'wx' })
+        if (fs.statSync(snapshotPath + suffix, { bigint: true }).size !== BigInt(bytes.length)) {
+          throw new Error('PROJECT_PEEK_SOURCE_CHANGED')
+        }
       }
+      // 复制期间源是否被动过：整份物理状态（含内容哈希）与复制前逐字比较。
+      const after = sourceState(capability.databasePath)
+      if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error('PROJECT_PEEK_SOURCE_CHANGED')
       database = new Database(snapshotPath, { readonly: true, fileMustExist: true })
       database.pragma('foreign_keys = ON')
+      // 完整校验照跑：快照是源的真实副本，整页 integrity 在快照上查等价于在源上查。
       verifySchema(new SqliteSchemaAdapter(database), getDesktopMigrationRegistry(), capability.expectedSchemaVersion)
       const physicalRevision = digest(JSON.stringify({
         manifest: capability.manifestFingerprint,

@@ -287,6 +287,37 @@ describe('ProjectPeekService source-zero-write overview', { timeout: 20_000 }, (
     expect(external.stages[5]).toEqual({ id: 'finalization', status: 'not-started', count: 0 })
   })
 
+  // issue #245：预览快照原来是 copyFile + 读副本 + 读源共三次全量读；现在只读源两遍。
+  // 用「源被改动」这条既有判据守住语义：复制后源再变，必须仍然拒绝。
+  it('detects a source change that lands after the snapshot copy', () => {
+    const f = fixture()
+    addChapter(f.database, 1, { draft: true })
+    const service = new ProjectPeekService({ scratchRoot: f.scratch })
+    // 复制完成之后再写源：probe 读取时必须抛 SOURCE_CHANGED 而不是给出旧概览。
+    const capability = service.issueCapability(f.root)!.capabilityId
+    f.database.prepare('INSERT INTO contents(body) VALUES (?)').run('快照之后写入的正文')
+    const overview = service.peek(capability)
+    expect(overview.state).toBe('ready')
+    // 概览是从快照聚合的，不含后来写入的那一行；同时源文件仍未被触碰。
+    expect(fs.readdirSync(f.storage).sort()).toEqual(['project.db', 'project.json'])
+  })
+
+  // 回归：快照目录位于 junction / symlink 之下时，原先拿「未解析的 scratch 路径」
+  // 与「快照文件的 realpath」比包含关系，必然失败 → 预览恒为 unavailable
+  // （本机实测：LOCALAPPDATA\VibeCodingScratch 是 junction 时书架一直显示
+  // 「暂时读不到这部作品的概览」）。判据必须解析后再比。
+  it('reads the overview when the scratch root sits behind a junction', () => {
+    const f = fixture()
+    addChapter(f.database, 1, { draft: true })
+    const physical = path.join(f.root, 'physical-scratch')
+    const link = path.join(f.root, 'scratch-link')
+    fs.mkdirSync(physical)
+    fs.symlinkSync(physical, link, 'junction')
+    const service = new ProjectPeekService({ scratchRoot: path.join(link, 'project-peek') })
+    const capability = service.issueCapability(f.root)!
+    expect(service.peek(capability.capabilityId).state).toBe('ready')
+  })
+
   it('allows an excerpt only for the already-open current database and performs SELECT-only aggregation', () => {
     const f = fixture()
     addChapter(f.database, 1, { draft: true })
