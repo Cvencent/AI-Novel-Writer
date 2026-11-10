@@ -596,7 +596,8 @@ export function createSecureFileSystem(
     })
   /** 常驻不可用时的兜底：与旧行为逐字一致的一次性调用。 */
   const invokePersistentOrFallback = async (request: HelperRequest): Promise<HelperResponse> => {
-    if (!persistent) return invokeBundled(request)
+    // 没有常驻通道时（测试注入 invoke、Darwin、非 win32）走调用方给的那条路。
+    if (!persistent) return invoke(request)
     try {
       return parseResponse((await persistent.request(request)).trim())
     } catch (error) {
