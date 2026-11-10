@@ -67,6 +67,8 @@ const PREFIX_LAYERS: Readonly<Record<string, PreflightLayer>> = Object.freeze({
   // `ability-limit-bypass.ts` 实际发的是 `ability:limit-bypassed`（≈#100）：限制从世界观取，改要回世界观。
   'ability': 'world',
   'timeline': 'world',
+  // entrance-selection-review.ts：角色登场段确认——修在当前章正文。
+  'entrance-selection': 'prose',
   'world': 'world',
   'design': 'world',
   // —— 角色层 ——

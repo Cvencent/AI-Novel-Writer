@@ -62,6 +62,10 @@ const FAMILY_LABELS: Readonly<Record<string, AcknowledgementTitle>> = Object.fre
   'date:conflict': { zhCN: '同一件事的日期不一致', enUS: 'same event, two dates' },
   'deadline:unsettled': { zhCN: '期限宣告了却没结算', enUS: 'deadline never settled' },
   'timeline': { zhCN: '设定层时间锚点冲突', enUS: 'timeline anchor conflict' },
+  'timeline:design-anchor': { zhCN: '设定层同一段时间配了两个时长', enUS: 'two durations for one design period' },
+  // entrance-selection-review.ts：角色登场段需人工确认（模型挑选的段落）。
+  'entrance-selection': { zhCN: '角色登场段需人工确认', enUS: 'entrance paragraph needs confirmation' },
+  'repeated-revocation': { zhCN: '同一设定的撤回反复出现', enUS: 'revocation repeated across chapters' },
   // —— 角色 ——
   'cast': { zhCN: '角色出场/名册问题', enUS: 'cast appearance or roster' },
   'cast:absent': { zhCN: '角色连续多章缺席', enUS: 'cast absent for many chapters' },
