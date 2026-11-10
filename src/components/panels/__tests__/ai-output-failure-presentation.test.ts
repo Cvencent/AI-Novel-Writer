@@ -165,4 +165,30 @@ describe('transport failure is distinguishable on every link (issue #85)', () =>
       { operation: 'chapter-draft', diagnostics: diagnostics({ endReason: 'cancelled' }) })
     expect(presentation.heading).not.toBe('与模型的连接失败')
   })
+
+  /**
+   * issue #245 现场：编辑部评审失败时，运行卡片上只有一句
+   * `SyntaxError: Expected ':' after property name in JSON at position 1102`——
+   * V8 的内部措辞，作者看不出是谁的问题、也不知道该做什么。
+   * 真库取证是模型漏写键名（`"role": "continuity"` 写成 `"continuity"`），
+   * 属**模型输出质量**问题，与作者的正文/设定无关，重试即可。
+   */
+  it('explains a malformed model structure instead of echoing the JS syntax error', () => {
+    const raw = "SyntaxError: Expected ':' after property name in JSON at position 1102 (line 27 column 19)"
+    const zh = presentWorkflowFailure(undefined, raw, 'zh-CN', false)
+    expect(zh.heading).toBe('模型返回的结构不完整')
+    // 必须明确「不是你的东西写错了」，否则作者会去改正文。
+    expect(zh.reason).toContain('不是你的正文或设定')
+    expect(zh.guidance).toContain('重试')
+    // 也不能谎称落库了。
+    expect(zh.persistence).toContain('没有保存任何内容')
+    const en = presentWorkflowFailure(undefined, raw, 'en-US', false)
+    expect(en.heading).toBe('The model returned malformed structured data')
+  })
+
+  it('does not swallow a genuine content-contract failure into the structure message', () => {
+    // 评分越界这类是模型判断的结果问题，重发只会再撞一次——不能被归成「重试即可」。
+    const presentation = presentWorkflowFailure(undefined, 'WRITING_INTELLIGENCE_EDITORIAL_SCORE_INVALID', 'zh-CN', false)
+    expect(presentation.heading).not.toBe('模型返回的结构不完整')
+  })
 })
