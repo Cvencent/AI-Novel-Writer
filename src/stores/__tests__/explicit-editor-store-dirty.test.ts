@@ -157,7 +157,7 @@ beforeEach(() => {
     activeTabId: 'config',
     draftLedgers: {},
   })
-  useProjectStore.setState({ currentProject: project(), fileTree: [], loading: false })
+  useProjectStore.setState({ currentProject: project(), loading: false })
   useCharacterStore.setState({
     characters: [character('主角')],
     selectedName: '主角',
@@ -227,7 +227,8 @@ describe('explicit editor dirty integration', () => {
     expect(getProjectEditorDraft(parseProjectEditorDraftLedger(draftLedgerContent(CONFIG_DRAFT_TAB.id)), original.path)).toBeDefined()
   })
   it('unbinds project A character data before openProject publishes project B and loads B', async () => {
-    const fileTree = deferred<[]>()
+    // 打开仍停在提交之后的尾部刷新上（原来卡的是文件树，那条已下线）。
+    const shelfTail = deferred<[]>()
     invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
       if (channel === 'project:open') {
         return {
@@ -237,10 +238,7 @@ describe('explicit editor dirty integration', () => {
           activeProjectPath: projectB().path,
         }
       }
-      if (channel === 'fs:list-dir') {
-        expect(args[0]).toBe(projectB().path)
-        return fileTree.promise
-      }
+      if (channel === 'project:recent-list') return shelfTail.promise
       if (channel === 'db:character-roster-read') {
         expect(args).toEqual([projectB().path])
         return [character('项目 B 角色')]
@@ -251,11 +249,7 @@ describe('explicit editor dirty integration', () => {
 
     const opening = useProjectStore.getState().openProject(projectB().path)
     await vi.waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith(
-        'fs:list-dir',
-        projectB().path,
-        projectB().path,
-      )
+      expect(invoke).toHaveBeenCalledWith('project:recent-list')
     })
 
     expect(useProjectStore.getState().currentProject?.path).toBe(projectB().path)
@@ -269,7 +263,7 @@ describe('explicit editor dirty integration', () => {
     await expect(useCharacterStore.getState().saveAll(projectB().path))
       .rejects.toThrow(/切换项目/)
 
-    fileTree.resolve([])
+    shelfTail.resolve([])
     await expect(opening).resolves.toBe(true)
     expect(alertError).toHaveBeenCalledWith(
       expect.stringContaining('unexpected IPC'),

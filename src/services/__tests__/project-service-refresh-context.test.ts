@@ -54,8 +54,6 @@ describe('ProjectService REFRESH_RESOURCE project identity', () => {
       .mockResolvedValue()
     const draftLoad = vi.spyOn(useDraftStore.getState(), 'loadAllDrafts')
       .mockResolvedValue()
-    const treeRefresh = vi.spyOn(useProjectStore.getState(), 'refreshFileTree')
-      .mockResolvedValue()
     initProjectService()
 
     globalEventBus.emit('REFRESH_RESOURCE', {
@@ -67,7 +65,6 @@ describe('ProjectService REFRESH_RESOURCE project identity', () => {
 
     expect(characterLoad).not.toHaveBeenCalled()
     expect(draftLoad).not.toHaveBeenCalled()
-    expect(treeRefresh).not.toHaveBeenCalled()
 
     globalEventBus.emit('REFRESH_RESOURCE', {
       resources: ['all'],
@@ -75,7 +72,7 @@ describe('ProjectService REFRESH_RESOURCE project identity', () => {
       projectSession: { projectId: 'B', leaseId: 'lease-B', projectPath: projectBPath },
     })
     await vi.waitFor(() => {
-      expect(treeRefresh).toHaveBeenCalledWith(projectBPath, undefined, {
+      expect(draftLoad).toHaveBeenCalledWith(projectBPath, {
         projectId: 'B', leaseId: 'lease-B', projectPath: projectBPath,
       })
     })
@@ -171,7 +168,6 @@ describe('ProjectService REFRESH_RESOURCE project identity', () => {
   it('settles only the matching immutable snapshot without rereading or replacing editor content', async () => {
     vi.spyOn(useDraftStore.getState(), 'loadChapterDrafts').mockResolvedValue()
     vi.spyOn(useCharacterStore.getState(), 'load').mockResolvedValue()
-    vi.spyOn(useProjectStore.getState(), 'refreshFileTree').mockResolvedValue()
     useEditorStore.setState({
       tabs: [{
         id: 'draft-7',
@@ -225,7 +221,6 @@ describe('ProjectService REFRESH_RESOURCE project identity', () => {
   it('preserves a later editor revision and records a finalization conflict', async () => {
     vi.spyOn(useDraftStore.getState(), 'loadChapterDrafts').mockResolvedValue()
     vi.spyOn(useCharacterStore.getState(), 'load').mockResolvedValue()
-    vi.spyOn(useProjectStore.getState(), 'refreshFileTree').mockResolvedValue()
     useEditorStore.setState({
       tabs: [{
         id: 'draft-7',

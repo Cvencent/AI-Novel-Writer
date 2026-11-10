@@ -181,12 +181,19 @@ async function enterWorkAfterOpening(page) {
   await stage.spine(page).waitFor({ state: 'visible' })
 }
 
-/** 从书房打开灯塔，读文件树卡在主进程门上。 */
-async function openWithSlowFileTree(app, page) {
+/**
+ * 从书房打开灯塔，卡住**提交之后仍在途的窗口**（书架列表读）。
+ *
+ * 原来卡的是打开流程里的文件树刷新；那条刷新已随无消费者的 fileTree 状态一起下线，
+ * 于是改用提交之后第一段仍在途的读——作者看到的「还没读完」窗口没有变化。
+ */
+const OPEN_TAIL_CHANNEL = 'project:recent-list'
+
+async function openWithSlowTail(app, page) {
   await stage.previewBook(page, STAGE_SAMPLE.name)
-  await holdChannel(app, 'fs:list-dir')
+  await holdChannel(app, OPEN_TAIL_CHANNEL)
   await stage.overview(page, STAGE_SAMPLE.name).getByRole('button', { name: `打开《${STAGE_SAMPLE.name}》` }).click()
-  await untilHeld(app, 'fs:list-dir')
+  await untilHeld(app, OPEN_TAIL_CHANNEL)
   await enterWorkAfterOpening(page)
 }
 
@@ -573,32 +580,32 @@ export const X1_SCENARIOS = {
     return after
   } },
 
-  // #403：作者回过一次书房（书房的布局与之后再回书房完全相同），从书房的 Ctrl K 重新打开作品，读完文件树前进作品又回书房，
+  // #403：作者回过一次书房（书房的布局与之后再回书房完全相同），从书房的 Ctrl K 重新打开作品，读完尾部刷新前进作品又回书房，
   // 读完后不被换回作品。落点晚到的版本只比较提交前后的布局，两次都是作者亲手回的书房，比较通过。
   'x1-library-return': { model: false, shell: 'stage', setup: seedStageSample, run: async ({ app, page }) => {
     await stage.backToLibrary(page, STAGE_SAMPLE.name)
-    await holdChannel(app, 'fs:list-dir')
+    await holdChannel(app, OPEN_TAIL_CHANNEL)
     await page.keyboard.press('Control+K')
     await stage.paletteInput(page).fill(STAGE_SAMPLE.name)
     await stage.palette(page).getByRole('option', { name: `打开《${STAGE_SAMPLE.name}》` }).click()
-    await untilHeld(app, 'fs:list-dir')
+    await untilHeld(app, OPEN_TAIL_CHANNEL)
     await enterWorkAfterOpening(page)
     await stage.backToLibrary(page, STAGE_SAMPLE.name)
-    await releaseChannel(app, 'fs:list-dir')
+    await releaseChannel(app, OPEN_TAIL_CHANNEL)
     await page.waitForTimeout(2000)
     const after = { library: await stage.shelf(page).isVisible(), spine: await stage.spine(page).isVisible() }
-    assert.deepEqual(after, { library: true, spine: false }, '读完文件树后仍在书房')
+    assert.deepEqual(after, { library: true, spine: false }, '读完尾部刷新后仍在书房')
     return after
   } },
 
-  // #395：打开作品、读完文件树前打开运行侧页，读完后侧页仍开着。
+  // #395：打开作品、读完尾部刷新前打开运行侧页，读完后侧页仍开着。
   'x1-run-sheet-keep': { model: false, shell: 'stage', setup: context => seedStageSample(context, { open: false }), run: async ({ app, page }) => {
-    await openWithSlowFileTree(app, page)
+    await openWithSlowTail(app, page)
     await runSheet.openFromPalette(page)
-    await releaseChannel(app, 'fs:list-dir')
+    await releaseChannel(app, OPEN_TAIL_CHANNEL)
     await page.waitForTimeout(2000)
     const after = { runSheet: await runSheet.sheet(page).isVisible() }
-    assert.deepEqual(after, { runSheet: true }, '读完文件树后运行侧页仍开着')
+    assert.deepEqual(after, { runSheet: true }, '读完尾部刷新后运行侧页仍开着')
     return after
   } },
 }

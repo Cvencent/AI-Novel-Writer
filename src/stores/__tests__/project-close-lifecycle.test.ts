@@ -100,7 +100,6 @@ beforeEach(() => {
   useLocaleStore.setState({ locale: 'zh-CN' })
   useProjectStore.setState({
     currentProject: project('A'),
-    fileTree: [{ name: 'A', path: 'A', isDir: true }],
     loading: false,
     projectSessionEpoch: 0,
   })
@@ -510,7 +509,6 @@ describe('project close lifecycle', () => {
     await expect(useProjectStore.getState().closeProject()).resolves.toBe(true)
 
     expect(useProjectStore.getState().currentProject).toBeNull()
-    expect(useProjectStore.getState().fileTree).toEqual([])
     expect(mocks.alertError).toHaveBeenCalledWith(
       expect.stringContaining('renderer cleanup failed'),
       expect.objectContaining({ title: '项目已关闭，界面清理未完成' }),
@@ -870,7 +868,6 @@ describe('project close lifecycle', () => {
       await expect(openingB).resolves.toBe(false)
 
       expect(useProjectStore.getState().currentProject).toBeNull()
-      expect(useProjectStore.getState().fileTree).toEqual([])
       expect(useEditorStore.getState().tabs).toHaveLength(1)
       expect(mocks.disableProjectBindingsPreservingDrafts).toHaveBeenCalledWith(project('A').path)
       expect(mocks.onProjectClosed).not.toHaveBeenCalled()
@@ -926,7 +923,6 @@ describe('project close lifecycle', () => {
       await expect(openingB).resolves.toBe(false)
 
       expect(useProjectStore.getState().currentProject).toBeNull()
-      expect(useProjectStore.getState().fileTree).toEqual([])
       expect(useEditorStore.getState().tabs).toHaveLength(1)
       expect(mocks.disableProjectBindingsPreservingDrafts).toHaveBeenCalledWith(project('A').path)
       expect(mocks.onProjectClosed).not.toHaveBeenCalled()
@@ -1249,7 +1245,6 @@ describe('project close lifecycle', () => {
       await expect(creating).resolves.toBe(false)
 
       expect(useProjectStore.getState().currentProject).toBeNull()
-      expect(useProjectStore.getState().fileTree).toEqual([])
       expect(useEditorStore.getState().tabs).toHaveLength(1)
       expect(mocks.disableProjectBindingsPreservingDrafts).toHaveBeenCalledWith(project('A').path)
       expect(mocks.onProjectClosed).not.toHaveBeenCalled()
@@ -1348,7 +1343,6 @@ describe('project close lifecycle', () => {
     })).resolves.toBe(false)
 
     expect(useProjectStore.getState().currentProject).toBeNull()
-    expect(useProjectStore.getState().fileTree).toEqual([])
     expect(useEditorStore.getState().tabs).toHaveLength(1)
     expect(mocks.disableProjectBindingsPreservingDrafts).toHaveBeenCalledWith(project('A').path)
     expect(mocks.onProjectClosed).not.toHaveBeenCalled()
@@ -1377,7 +1371,6 @@ describe('project close lifecycle', () => {
     await expect(useProjectStore.getState().openProject(project('B').path)).resolves.toBe(false)
 
     expect(useProjectStore.getState().currentProject).toBeNull()
-    expect(useProjectStore.getState().fileTree).toEqual([])
     expect(useEditorStore.getState().tabs).toHaveLength(1)
     expect(mocks.disableProjectBindingsPreservingDrafts).toHaveBeenCalledWith(project('A').path)
     expect(mocks.onProjectClosed).not.toHaveBeenCalled()
@@ -1406,9 +1399,6 @@ describe('project close lifecycle', () => {
     await expect(useProjectStore.getState().openProject(project('B').path)).resolves.toBe(false)
 
     expect(useProjectStore.getState().currentProject?.path).toBe(project('A').path)
-    expect(useProjectStore.getState().fileTree).toEqual([
-      { name: 'A', path: 'A', isDir: true },
-    ])
     expect(useEditorStore.getState().tabs).toHaveLength(1)
     expect(mocks.onProjectClosed).not.toHaveBeenCalled()
     expect(mocks.alertError).toHaveBeenCalledWith(
@@ -1441,7 +1431,7 @@ describe('project close lifecycle', () => {
     )
   })
 
-  it('keeps the committed project open and continues Layer 2 when file-tree refresh fails', async () => {
+  it('keeps the committed project open and continues Layer 2 when a degradable refresh fails', async () => {
     mocks.onProjectOpened.mockResolvedValueOnce({ warnings: ['角色卡加载失败'] })
     mocks.invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
       if (channel === 'project:open') {
@@ -1452,17 +1442,16 @@ describe('project close lifecycle', () => {
           activeProjectPath: project('B').path,
         }
       }
-      if (channel === 'fs:list-dir') throw new Error('tree unavailable')
+      if (channel === 'project:recent-list') throw new Error('shelf unavailable')
       throw new Error(`unexpected IPC: ${channel}`)
     })
 
     await expect(useProjectStore.getState().openProject(project('B').path)).resolves.toBe(true)
 
     expect(useProjectStore.getState().currentProject?.path).toBe(project('B').path)
-    expect(useProjectStore.getState().fileTree).toEqual([])
     expect(mocks.onProjectOpened).toHaveBeenCalledOnce()
     expect(mocks.alertError).toHaveBeenCalledWith(
-      expect.stringMatching(/tree unavailable[\s\S]*角色卡加载失败/),
+      expect.stringMatching(/shelf unavailable[\s\S]*角色卡加载失败/),
       expect.objectContaining({ title: '项目已打开，部分数据加载失败' }),
     )
   })
@@ -1478,7 +1467,6 @@ describe('project close lifecycle', () => {
     await expect(useProjectStore.getState().deleteProject(project('A').path)).resolves.toBe(false)
 
     expect(useProjectStore.getState().currentProject).toBeNull()
-    expect(useProjectStore.getState().fileTree).toEqual([])
     expect(mocks.onProjectClosed).toHaveBeenCalledWith(project('A').path)
     expect(useEditorStore.getState().tabs).toEqual([])
     expect(mocks.alertError).toHaveBeenCalledWith(

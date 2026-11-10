@@ -34,7 +34,7 @@ let invoke: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   useLocaleStore.setState({ locale: 'zh-CN', initialized: true })
-  useProjectStore.setState({ currentProject: project, fileTree: [], loading: false })
+  useProjectStore.setState({ currentProject: project, loading: false })
   setActiveProjectSessionContext({ projectId: project.id, leaseId: project.sessionLease!, projectPath: PROJECT_PATH })
   container = document.createElement('div')
   document.body.append(container)
