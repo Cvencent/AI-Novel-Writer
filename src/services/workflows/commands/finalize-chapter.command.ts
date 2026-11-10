@@ -654,7 +654,6 @@ export class FinalizeChapterCommand extends BaseWorkflowCommand<void> {
       `\nChapter ${snapshot.chapterNumber} creation workflow fully completed`,
     ))
     this.assertNotCancelled(context)
-    await useProjectStore.getState().refreshFileTree(project.path, undefined, projectSession)
   }
 
   private async createBatchSnapshot(

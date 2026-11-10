@@ -1506,7 +1506,6 @@ ${dueForeshadowing}`
     context.data.mergedGuidance = mergedGuidance
     context.data.shortSummary = ''
 
-    await useProjectStore.getState().refreshFileTree(expectedProjectPath, undefined, projectSession)
     try {
       const { useDraftStore } = await import('../../../stores/draft-store')
       await useDraftStore.getState().loadAllDrafts(expectedProjectPath, projectSession)

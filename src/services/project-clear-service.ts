@@ -2,7 +2,6 @@ import { ipc } from './ipc-client'
 import { useCharacterStore } from '../stores/character-store'
 import { useDraftStore } from '../stores/draft-store'
 import { useEditorStore, type EditorTab } from '../stores/editor-store'
-import { useProjectStore } from '../stores/project-store'
 import { useWorkflowStore } from '../stores/workflow-store'
 import type { ProjectClearScope, ProjectSessionContext } from '../shared/ipc-channels'
 import {
@@ -163,7 +162,6 @@ export async function clearProjectData(
   }
 
   assertProjectSessionCurrent(projectSession)
-  await useProjectStore.getState().refreshFileTree(projectPath, undefined, projectSession)
   if (!isProjectSessionCurrent(projectSession)) return { cleared: result.cleared ?? scopes }
 
   return { cleared: result.cleared ?? scopes }

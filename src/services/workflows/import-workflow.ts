@@ -19,7 +19,6 @@ import {
   ImportRunOrchestrator,
   type ImportRunOrchestratorDependencies,
 } from './import-run-orchestrator'
-import { refreshImportDerivedFileTreeBestEffort } from './import-derived-refresh'
 import { promptLanguageText } from '../prompt-language'
 import { retryDirectoryCharacterSync } from './directory-character-sync-recovery'
 import type { WritingLanguage } from '../../shared/writing-language'
@@ -383,11 +382,6 @@ function productionDependencies(
     },
     refresh: async run => {
       callbacks.log(textForLocale(run.locale, '正在刷新项目数据...', 'Refreshing project data...'))
-      await refreshImportDerivedFileTreeBestEffort(
-        () => useProjectStore.getState().refreshFileTree(projectPath, undefined, session),
-        callbacks,
-        (zhCNText, enUSText) => textForLocale(run.locale, zhCNText, enUSText),
-      )
       const [{ useCharacterStore }, { useDraftStore }] = await Promise.all([
         import('../../stores/character-store'),
         import('../../stores/draft-store'),
