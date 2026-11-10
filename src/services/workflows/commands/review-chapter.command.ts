@@ -109,6 +109,23 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
       promptLanguageText(language,
         '【硬性 JSON 合同】只输出 {"summary":"...","items":[...]}。items 必须对上述每个 finding 恰好一项，字段仅为 findingId、targetId、resolved、evidenceQuote、reason。evidenceQuote 必须逐字来自合并后正文且只能出现一次；无法确认时仍返回该 finding，并令 resolved=false，说明证据不足。不得输出 Markdown、解释或思考过程。',
         '[Strict JSON contract] Output only {"summary":"...","items":[...]}. Include exactly one item for every finding above, with only findingId, targetId, resolved, evidenceQuote, and reason. evidenceQuote must be verbatim from the merged draft and occur exactly once. If uncertain, still return the finding with resolved=false and explain the lack of evidence. No Markdown, explanation, or reasoning.'),
+      /**
+       * 合同的**形状样本 + 禁用键清单**（issue #245 现场）。
+       *
+       * 现场（`源起` 第 1 章）：上面那句「字段仅为 …」已经在提示词里了，
+       * 模型仍返回了审稿报告的形状（`category/severity/description/quote`）。
+       * `parseRecheckItems` 是「多一个键就整份作废」，于是整份被丢弃、两条 finding
+       * 落成 `unknown`——作者明明改好了，定稿却提示「未核实」。
+       *
+       * 不重发（复核是一次性的，`assertSingleRecheck`；见下方 recheck 分支的说明），
+       * 所以只能把提示词钉得更死：给出**逐字可抄的形状样本**，并把上一轮实际多写的
+       * 键名**点名禁止**。模型照抄样本的代价远低于从一句话反推形状。
+       */
+      promptLanguageText(language,
+        '形状样本（照此逐字排版，只替换值）：\n{"summary":"一句话结论","items":[{"findingId":"原样抄回","targetId":"原样抄回","resolved":false,"evidenceQuote":"合并后正文里逐字出现且唯一的一句","reason":"证据不足：正文未出现该后果"}]}\n'
+          + '**禁止出现** category、severity、description、quote、reviewItemIndex、status、problem、expected 等任何其它键；多一个键整份复核都会被判无效。每个 finding 恰好一项，不要漏项。',
+        'Shape sample (copy this layout verbatim, replacing only the values):\n{"summary":"one-sentence conclusion","items":[{"findingId":"copy back verbatim","targetId":"copy back verbatim","resolved":false,"evidenceQuote":"a phrase that appears exactly once, verbatim, in the merged draft","reason":"insufficient evidence: the consequence is absent"}]}\n'
+          + '**Never emit** category, severity, description, quote, reviewItemIndex, status, problem, expected, or any other key; one extra key invalidates the entire recheck. Exactly one item per finding — never omit one.'),
     ].join('\n\n') : ordinaryReviewPrompt
     const lengthGuidance = promptLanguageText(language,
       '【篇幅提示】单纯超出约定字数只作非阻断提示，不属于必须修复的内容缺陷，不得仅因此要求修稿或记为 error/warning。完整性和作者事实优先；真实冗余复述、事实冲突和缺失事件仍须按原规则举证并报告。',
@@ -142,6 +159,24 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
     }
     if (frozen.recheck) {
       if (this.recovery?.latestArtifact && this.recovery.latestArtifactFinishReason === 'stop') return this.commitReview(prepared, params)
+      /**
+       * ⚠️ 复核**不做**「格式不合规就重发」的替代调用（issue #245 现场复盘）。
+       *
+       * 现场（`源起` 第 1 章）：模型把复核合同的
+       * `findingId/targetId/resolved/evidenceQuote/reason` 写成了审稿报告的
+       * `category/severity/description/quote`，于是 `parseRecheckItems` 整份拒收，
+       * 两条 finding 落成 `unknown`。看上去「重发一次」能救回来。
+       *
+       * 但复核是**一次性**的（`review_cycle.recheck_count ∈ (0,1)`，
+       * `assertSingleRecheck` 把关）：替代调用等于在同一次复核上再花一次模型请求，
+       * 违反那条不变量。`review-revision-runtime.test.ts` 明确断言
+       * 「malformed one-time recheck output persists as unknown **without a
+       * replacement model call**」，所以这条路是故意封掉的。
+       *
+       * 而且那份被拒的输出里 `resolved=false`：若强行采纳，会把本来只作提示的
+       * `unknown` 升级成 `unresolved`（**硬拦定稿**）——作者明明已经改好。
+       * 保持 `unknown` 才是诚实的：复核没给出可采纳的结论，作者按提示自行判断。
+       */
       await generate('review-chapter', reviewPrompt)
       return this.commitReview(prepared, params)
     }

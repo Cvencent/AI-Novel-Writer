@@ -751,6 +751,16 @@ describe('review/revision consumers using the main contract (synthetic transport
     expect(prompt).toContain('已经失去、消耗或承受的具体后果')
     expect(prompt).toContain('后文不得保留相反状态')
     expect(prompt).toContain(historySentinel)
+    // issue #245 现场：合同文案早就在提示词里了，模型照样多写 category/severity/
+    // description/quote，而 parseRecheckItems「多一个键整份作废」→ 两条 finding 全落
+    // unknown。复核是一次性的（不许替代调用），只能把形状钉死：逐字样本 + 点名禁用键。
+    // prompt 是 JSON.stringify 后的字符串，引号带反斜杠。
+    expect(prompt).toContain('\\"evidenceQuote\\":\\"合并后正文里逐字出现且唯一的一句\\"')
+    // 禁用键那句本身（finding 锚点里本来就带 category，所以必须连句子一起断言）。
+    const forbiddenLine = prompt.slice(prompt.indexOf('禁止出现'), prompt.indexOf('禁止出现') + 160)
+    for (const forbidden of ['category', 'severity', 'description', 'quote', 'reviewItemIndex']) {
+      expect(forbiddenLine).toContain(forbidden)
+    }
     expect(prompt).not.toContain('证据锚点硬约束')
     expect(prompt).not.toContain('[Strict evidence-anchor constraint]')
     expect(f.fixture.materialDecisions[0]?.included.map(item => item.sourceId)).toEqual(['author:required', 'finalized:7'])
