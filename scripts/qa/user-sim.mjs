@@ -228,7 +228,29 @@ async function trackSession(app) {
       }
       return result
     })
-  })
+  }, {})
+}
+
+/**
+ * sessionOf 的兜底版（1.5.275+ 主进程可能在运行中自我重置——第三十轮实测：
+ * `electronApplication.evaluate` 抛 Execution context destroyed，__simOpened 随主进程丢失）。
+ * 先试读；读到 null/抛错时**重新打开项目**（走渲染进程 IPC 而非主进程 evaluate），把新会话
+ * 记回主进程供后续步骤使用。重打开失败才上抛。
+ */
+async function sessionOfStable(app, page, bookName, projectsDir) {
+  const projectPath = path.join(projectsDir, bookName)
+  try {
+    const opened = await app.evaluate(() => globalThis.__simOpened)
+    if (opened?.projectId && opened.projectPath === projectPath) return opened
+    if (opened?.projectId) log(`  sessionOf：主进程记录的路径与预期不符（${String(opened.projectPath).slice(0, 60)}）——重开`)
+  } catch (error) {
+    log(`  sessionOf 主进程读取失败（${String(error).slice(0, 60)}）——走重新打开兜底`)
+  }
+  const result = await page.evaluate(path => window.aiNovelAPI.invoke('project:open', path), projectPath)
+  assert.ok(result?.success, `重新打开作品失败：${JSON.stringify(result).slice(0, 200)}`)
+  const reopened = { projectId: result.project.id, projectPath, leaseId: result.project.sessionLease }
+  log(`  重新打开作品成功（projectId=${String(reopened.projectId).slice(0, 8)}）`)
+  return reopened
 }
 
 const sessionOf = app => app.evaluate(() => globalThis.__simOpened)
@@ -475,7 +497,7 @@ async function main() {
       } else {
         await stage.openFromLibrary(page, state.bookName)
       }
-      const session = await sessionOf(app)
+      const session = await sessionOfStable(app, page, state.bookName, roots.projects)
       assert.ok(session?.leaseId, '没拿到项目会话')
       state.projectPath = session.projectPath
       report.projectPath = session.projectPath
@@ -485,7 +507,7 @@ async function main() {
 
     // 设定只在第一次写；之后每轮把总章数抬到「本次要写到哪」之后的余量。
     await step('确保核心设定', async () => {
-      const session = await sessionOf(app)
+      const session = await sessionOfStable(app, page, state.bookName, roots.projects)
       const core = await invokeSession(page, session, 'db:project-core-get', session.projectPath)
       const finalized = await finalizedChapters(page, session)
       const nextChapter = await nextChapterFromAuthority(page, session)
@@ -509,7 +531,7 @@ async function main() {
     })
 
     await step('确保故事前提/世界观/角色', async () => {
-      const session = await sessionOf(app)
+      const session = await sessionOfStable(app, page, state.bookName, roots.projects)
       const core = await invokeSession(page, session, 'db:project-core-get', session.projectPath)
       if (core?.premise && core?.worldbuilding && core?.charactersArch) {
         return { skipped: true, premiseLength: (core.premise ?? '').length }
@@ -528,7 +550,7 @@ async function main() {
     })
 
     await step('确保粗纲覆盖到本次要写的章', async () => {
-      const session = await sessionOf(app)
+      const session = await sessionOfStable(app, page, state.bookName, roots.projects)
       const core = await invokeSession(page, session, 'db:project-core-get', session.projectPath)
       const wanted = Math.max(Number(core?.totalChapters ?? 0) || 0, CHAPTERS + 2, 8)
       const existing = await invokeSession(page, session, 'db:arc-outline-list', session.projectPath)
@@ -556,7 +578,7 @@ async function main() {
     // 每轮要写的范围：从应用的权威「下一章」开始，连写 CHAPTERS 章。
     // 上一轮如果只写了草稿没定稿，下一章不会前进——这是应用的实际语义，
     // harness 必须跟着它走，否则会一直重写同一章。
-    const session0 = await sessionOf(app)
+    const session0 = await sessionOfStable(app, page, state.bookName, roots.projects)
     const finalized0 = await finalizedChapters(page, session0)
     const first = await nextChapterFromAuthority(page, session0)
     assert.ok(Number.isSafeInteger(first) && first >= 1, `拿不到权威下一章：${first}`)
@@ -566,7 +588,7 @@ async function main() {
     log(`本轮写第 ${from}–${to} 章（已定稿 ${finalized0.length} 章）`)
 
     await step(`确保细纲 ${from}–${to}`, async () => {
-      const session = await sessionOf(app)
+      const session = await sessionOfStable(app, page, state.bookName, roots.projects)
       const core = await invokeSession(page, session, 'db:project-core-get', session.projectPath)
       const synopsis = String(core?.synopsis ?? '')
       const hasRange = new RegExp(`^## 第${to}章`, 'mu').test(synopsis)
@@ -592,7 +614,7 @@ async function main() {
     })
 
     await step(`确保蓝图 ${from}–${to}`, async () => {
-      const session = await sessionOf(app)
+      const session = await sessionOfStable(app, page, state.bookName, roots.projects)
       await blueprintPage.open(page)
       // 先判断再点（issue #50）：胶囊只在「有运行且侧页展开」时存在，
       // 直接 click 会等满默认超时（120 秒）并抛错，吞掉后就变成「白等 120 秒却打 ✓」。
@@ -633,7 +655,7 @@ if (currentAsarMtime !== null && report.asarMtimeAtStart !== null && currentAsar
 
 for (let chapter = from; chapter <= to; chapter += 1) {
       await step(`写第 ${chapter} 章正文`, async () => {
-        const session = await sessionOf(app)
+        const session = await sessionOfStable(app, page, state.bookName, roots.projects)
         await stage.stageButton(page, '蓝图').click()
         await blueprintPage.plan(page).waitFor({ state: 'visible', timeout: 60_000 })
         // 同上：按状态判断，不靠超时兜底，也不吞错（issue #50）。
@@ -669,7 +691,7 @@ for (let chapter = from; chapter <= to; chapter += 1) {
 
       // 定稿会触发连续性抽取与角色状态回写——长程一致性的关键一环，必须走。
       await step(`审稿并定稿第 ${chapter} 章`, async () => {
-        const session = await sessionOf(app)
+        const session = await sessionOfStable(app, page, state.bookName, roots.projects)
         const drafts = await invokeSession(page, session, 'db:draft-list', chapter, session.projectPath)
         const latest = [...(drafts ?? [])].reverse()[0]
         if (latest?.status === 'finalized') return { skipped: true }
@@ -745,7 +767,7 @@ for (let chapter = from; chapter <= to; chapter += 1) {
     }
 
     await step('角色状态与账本快照', async () => {
-      const session = await sessionOf(app)
+      const session = await sessionOfStable(app, page, state.bookName, roots.projects)
       const finalized = await finalizedChapters(page, session)
       const nextChapter = await nextChapterFromAuthority(page, session)
       const furthest = finalized.at(-1) ?? 0
