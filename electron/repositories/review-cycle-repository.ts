@@ -747,10 +747,15 @@ export class ReviewCycleRepository {
         WHERE cycle_id=? ORDER BY finding_id`).all(input.sourceCycleId) as Array<Record<string, unknown>>
       const waivedIds = new Set(snapshot.items.filter(item => item.origin === 'ai' && item.findingId !== undefined
         && item.decision === 'waive').map(item => item.findingId as string))
+      // 原稿审稿行的 body（cycle.review_id 指向它；review_content_hash 与
+      // 它对齐——verifyM03 的 gate#7 校验 review 行内容 hash）。
+      const sourceReview = db.prepare(`SELECT c.body FROM reviews r JOIN contents c ON c.id=r.content_id WHERE r.id=?`)
+        .get(source.review_id) as { body: string } | undefined
+      if (!sourceReview) invalid()
       db.prepare(`INSERT INTO review_cycles(cycle_id,root_action_id,review_id,review_content_hash,confirmation_review_id,confirmation_content_hash,source_hash,
         finding_set_hash,comparison_version,revision_status,recheck_count) VALUES(?,?,?,?,?,?,?,?,?,'not-generated',0)`)
-        .run(id, input.rootActionId, snapshot.sourceReviewId, hash(review.body), input.confirmationReviewId,
-          hash(confirmation.body), hash(review.source_content), source.finding_set_hash, source.comparison_version)
+        .run(id, source.root_action_id, source.review_id, hash(sourceReview.body), input.confirmationReviewId,
+          hash(confirmation.body), source.source_hash, source.finding_set_hash, source.comparison_version)
       const insert = db.prepare(`INSERT INTO review_findings(cycle_id,finding_id,source_project_id,source_epoch,
         source_id,source_revision,source_content_hash,span_start,span_end,span_unit,excerpt_hash,occurrence,
         category,target_id,kind,problem_text,expected_text,status,evidence_hash,confirmation_item_index)
@@ -762,7 +767,7 @@ export class ReviewCycleRepository {
         const itemIndex = status === 'author-waived'
           ? snapshot.items.findIndex(item => item.findingId === row.finding_id) : null
         insert.run(id, row.finding_id, row.source_project_id, row.source_epoch, row.source_id, row.source_revision,
-          hash(review.source_content), row.span_start, row.span_end, row.span_unit, row.excerpt_hash, row.occurrence,
+          row.source_content_hash, row.span_start, row.span_end, row.span_unit, row.excerpt_hash, row.occurrence,
           row.category, row.target_id, row.kind, row.problem_text, row.expected_text, status, evidenceHash, itemIndex)
       }
       return { cycleId: id, findingCount: rows.length }

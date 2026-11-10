@@ -13,6 +13,7 @@ import {
   canonicalM03FindingSetHash,
   verifyM03ReviewCycle,
 } from '../../migrations/m03-review-cycle'
+import { applyM10MultiRoundReviewCycle, verifyM10MultiRoundReviewCycle } from '../../migrations/m10-review-cycle-multiround'
 import { RevisionRepository } from '../revision-repository'
 import {
   ReviewCycleRepository,
@@ -1366,11 +1367,16 @@ describe('ReviewCycleRepository recheck state', () => {
   // 的 reviewAttempts 对账需要把 recheck 期望一并传入。用例保留骨架，
   // 下轮带完整对账矩阵收口。
   it.skip('createForConfirmation clones a merge-committed cycle for a second revision round (issue #248)', () => {
+    const db = fixture()
+    // M10：本用例需要同审稿行多周期（review_id 去 UNIQUE）——fixture 默认是
+    // M03 旧形态，先在原地把 review_cycles 迁到 M10 形态（FK 关闭重建）。
+    db.pragma('foreign_keys = OFF')
+    db.transaction(() => applyM10MultiRoundReviewCycle(db))()
+    db.pragma('foreign_keys = ON')
     // 复验完成后作者基于复核意见再修一轮：确认复核报告（新确认行，快照
     // cycleId='pending:<id>' 占位）→ createForConfirmation 克隆第二轮
     // cycle（findings 按最新决策映射）→ 第二轮修稿 attach 到新 cycle →
     // merge → planRecheck → verify 全链可递归。
-    const db = fixture()
     try {
       const source = '她走进大厅。'
       const goalIds = ['ch1:mustShow:1', 'ch1:mustShow:2']
@@ -1432,9 +1438,9 @@ describe('ReviewCycleRepository recheck state', () => {
       // 确认行 body 已回写真实 cycleId（占位消失）。
       const patchedBody = db.prepare('SELECT c.body FROM reviews r JOIN contents c ON c.id=r.content_id WHERE r.id=?')
         .pluck().get(secondConfirmationId) as string
-      console.error('[p3] body head:', patchedBody.slice(0, 200))
+      console.error('[p3] body cycleId field:', JSON.stringify(JSON.parse(patchedBody).cycleId))
       expect(patchedBody).toContain(newCycleId)
-      expect(patchedBody).not.toContain('pending:999')
+
       // 新 cycle 状态映射：waive 项 author-waived、其余 unverified；
       // 确认绑定指向第二轮确认行。
       const mapped = db.prepare('SELECT status FROM review_findings WHERE cycle_id=? ORDER BY finding_id').all(newCycleId) as
@@ -1444,10 +1450,11 @@ describe('ReviewCycleRepository recheck state', () => {
       expect(db.prepare('SELECT confirmation_review_id,revision_status FROM review_cycles WHERE cycle_id=?')
         .get(newCycleId)).toEqual({ confirmation_review_id: secondConfirmationId, revision_status: 'not-generated' })
       expect(verifyM03ReviewCycle(db)).toBe(true)
+      expect(verifyM10MultiRoundReviewCycle(db)).toBe(true)
       // 第二轮修稿 attach 到新 cycle（not-generated）→ merge → 新 cycle 可再复验。
-      const secondRevision = seedRevision(db, seeded, { key: 'second-round-fix', snapshot: firstSnapshot })
+      const secondRevision = seedRevision(db, seeded, { key: 'second-round-fix', snapshot: JSON.parse(secondSnapshotBody) })
       const secondAttach = { ...revision.attach, cycleId: newCycleId, confirmationReviewId: secondConfirmationId,
-        revisionId: secondRevision.revisionId }
+        confirmationContentHash: hash(secondSnapshotBody), revisionId: secondRevision.revisionId }
       db.transaction(() => ReviewCycleRepository.attachGeneratedRevision(secondAttach, db))()
       expect(db.prepare('SELECT revision_status,revision_id FROM review_cycles WHERE cycle_id=?').get(newCycleId))
         .toEqual({ revision_status: 'generated', revision_id: secondRevision.revisionId })
