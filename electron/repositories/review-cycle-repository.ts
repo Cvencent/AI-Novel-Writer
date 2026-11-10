@@ -928,7 +928,11 @@ export class ReviewCycleRepository {
         || receipt.mergedHash !== plan.context.mergedHash || receipt.findingSetHash !== plan.context.findingSetHash
         || !Array.isArray(receipt.findings)) conflict()
       const mappings = receipt.findings.map(value => record(value))
-      if (mappings.some(mapping => mapping?.resolved === true)) conflict()
+      // ⚠️ 这里曾有一条 `mappings.some(m => m?.resolved === true) => conflict()`：v2 政策
+      // 不相信模型的正向判断，写入时一律拒收。issue #245 取消了那条降级——它的终点
+      // 是一个**不存在**的作者核实入口（`resolved` 只能由复验写，作者手上只有「弃修」），
+      // 于是「模型说改好了」这条永远落不了库，定稿提示永远不会消失。
+      // 现在正向判断照常写入；可信度由 `evidenceHash` 的锚定与下面的逐条校验把关。
       const expectedTargets = new Map(plan.context.findings.map(finding => [finding.findingId, finding.targetId]))
       if (mappings.some(mapping => !mapping || expectedTargets.get(String(mapping.findingId)) !== mapping.targetId)) conflict()
       const itemIndexes = new Map<number, number>()

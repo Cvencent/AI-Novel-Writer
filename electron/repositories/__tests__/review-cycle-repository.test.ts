@@ -1498,7 +1498,9 @@ describe('ReviewCycleRepository recheck state', () => {
           findingId: finding.findingId, targetId: goalId, resolved: true,
           evidenceQuote: '钟楼在她眼前倒塌。', reason: '正文展示了倒塌。',
         }] }), mergedContent, plan.context!, 'zh-CN')
-        expect(checked.items[0]).toMatchObject({ severity: 'unknown', quote: '钟楼在她眼前倒塌。' })
+        // issue #245：v2 不再降级模型判的 resolved。这条的引文是**新正文**
+        // （原稿里没有「钟楼在她眼前倒塌」），锚定校验已放行 → 直接算已解决。
+        expect(checked.items[0]).toMatchObject({ severity: 'pass', quote: '钟楼在她眼前倒塌。', resolved: true })
         const oldQuote = buildReviewCycleRecheckReport(JSON.stringify({ summary: '旧句冒充新证据', items: [{
           findingId: finding.findingId, targetId: goalId, resolved: true,
           evidenceQuote: '她走进大厅。', reason: '误用原句。',
@@ -1594,7 +1596,17 @@ describe('ReviewCycleRepository recheck state', () => {
     } finally { db.close() }
   })
 
-  it('rejects a v2 model-positive mapping instead of persisting a false resolved state', () => {
+  /**
+   * issue #245：这条以前叫「rejects a v2 model-positive mapping」，钉的是 v2 政策
+   * **不相信**模型的正向判断。但那条政策的终点是一个不存在的作者核实入口——
+   * 现场（`源起` 第 2 章）作者按 AI 说的改完、合并成功，定稿仍报「还没确定」，
+   * 而且永远不会自己消失。现在正向判断照常落库。
+   *
+   * 可信度由锚定把关：`evidenceHash` 必须与回执映射 <-> 报告条目逐字对应，
+   * 且引文在合并后正文里唯一出现。下面「rejects a tampered evidence hash」
+   * 钉住的是这条闸门仍然有效。
+   */
+  it('persists an anchored model-positive mapping as resolved (issue #245)', () => {
     const db = fixture()
     try {
       const item = mergedFindingCycle(db, 'commit-model-positive', '开场时门闩已修好，主角继续前进。')
@@ -1602,10 +1614,11 @@ describe('ReviewCycleRepository recheck state', () => {
       const finding = context.findings[0]!
       const attempt = seedRecheckAttempt(db, item, context, { key: 'commit-model-positive',
         mappings: [{ findingId: finding.findingId, targetId: finding.targetId, reviewItemIndex: 0, resolved: true }] })
-      expect(() => db.transaction(() => ReviewCycleRepository.commitRecheck(item.cycle.cycleId, attempt.attemptId, db))())
-        .toThrow('REVIEW_CYCLE_CONFLICT')
-      expect(db.prepare('SELECT status,evidence_hash FROM review_findings WHERE finding_id=?').get(finding.findingId))
-        .toEqual({ status: 'unresolved', evidence_hash: null })
+      const result = db.transaction(() => ReviewCycleRepository.commitRecheck(item.cycle.cycleId, attempt.attemptId, db))()
+      expect(result).toMatchObject({ cycleId: item.cycle.cycleId, recheckCount: 1, idempotent: false })
+      expect(db.prepare('SELECT status FROM review_findings WHERE finding_id=?').pluck().get(finding.findingId))
+        .toBe('resolved')
+      // M03 验证器同步放开了 v2 的 resolved=true —— 否则这条会让整本验证失败、书打不开。
       expect(verifyM03ReviewCycle(db)).toBe(true)
     } finally { db.close() }
   })
@@ -1718,9 +1731,16 @@ describe('ReviewCycleRepository recheck state', () => {
       const item = mergedFindingCycle(db, 'recheck-fail-closed', '开场时门闩已修好，主角继续前进。')
       const context = ReviewCycleRepository.planRecheck(item.cycle.cycleId, db).context!
       const finding = context.findings[0]!
-      const wrongRoot = `${item.seeded.call.rootActionId}-wrong`
-      const attempt = seedRecheckAttempt(db, item, context, { key: 'recheck-wrong-root', rootActionId: wrongRoot,
+      // issue #246 起，复验 run 可以落在另一个 root 下（谱系由收据内容证明），
+      // 所以「root 不对」不再是 fail-closed 的理由。这里换成：回执声称 resolved=true，
+      // 但报告里对应条目根本不是 resolved —— 映射与报告不一致时必须拒收。
+      const attempt = seedRecheckAttempt(db, item, context, { key: 'recheck-mapping-mismatch',
         mappings: [{ findingId: finding.findingId, targetId: finding.targetId, reviewItemIndex: 0, resolved: true }] })
+      const raw = JSON.parse(db.prepare('SELECT usage_receipt_json FROM generation_attempts WHERE attempt_id=?')
+        .pluck().get(attempt.attemptId) as string) as { reviewCycleRecheck: { findings: Array<{ resolved: boolean }> } }
+      for (const mapping of raw.reviewCycleRecheck.findings) mapping.resolved = false
+      db.prepare('UPDATE generation_attempts SET usage_receipt_json=? WHERE attempt_id=?')
+        .run(JSON.stringify(raw), attempt.attemptId)
       expect(() => db.transaction(() => ReviewCycleRepository.commitRecheck(item.cycle.cycleId, attempt.attemptId, db))())
         .toThrow('REVIEW_CYCLE_CONFLICT')
       const valid = seedRecheckAttempt(db, item, context, { key: 'recheck-wrong-hash', mappings: [] })

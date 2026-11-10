@@ -508,7 +508,11 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
             const reportItem = integer(item?.reviewItemIndex) ? record(report.items[item.reviewItemIndex as number]) : null
             if (!item || !nonempty(item.findingId) || !nonempty(item.targetId) || !integer(item.reviewItemIndex)
               || item.reviewItemIndex >= report.items.length || typeof item.resolved !== 'boolean'
-              || receipt.version === 2 && item.resolved === true
+              // ⚠️ 这里曾硬禁 `receipt.version === 2 && item.resolved === true`：v2 把模型的
+              // resolved 判断降级成 unknown，回执里就不该出现 true。issue #245 取消了那条
+              // 降级（它等的是一个并不存在的作者核实入口），v2 回执现在可以合法带
+              // resolved=true，所以这条禁令必须一起去掉——否则新回执会让整本验证失败、
+              // 书打不开。历史数据不受影响：它们本来就只有 resolved=false 的行。
               || recheckTargets.get(item.findingId) !== item.targetId || reportItem?.resolved !== item.resolved
               || !HASH.test(String(item.evidenceHash)) || seenReviewItems.has(item.reviewItemIndex)
               || recheckEvidence.has(item.findingId)) return false

@@ -49,7 +49,12 @@ export interface ReviewCycleRecheckFinding {
 }
 
 export interface ReviewCycleRecheckContext {
-  /** v1 trusted a model's positive semantic judgment after quote anchoring; v2 keeps it pending author verification. */
+  /**
+   * 回执/报告的落库版本。⚠️ **不再**用来区分「信不信模型的 resolved 判断」：
+   * v2 曾把 resolved 降级成 `unknown`（等一个并不存在的作者核实入口），已在
+   * issue #245 取消。现在两版语义一致：证据唯一锚定 + 模型判 resolved = 已解决。
+   * 版本号仍保留，因为 M03 校验回执形状时要按它核对字段集。
+   */
   version: 1 | 2
   cycleId: string
   comparisonVersion: number
@@ -171,7 +176,7 @@ function parseRecheckItems(content: string, reportVersion: ReviewReportVersion):
   } catch { return null }
 }
 
-/** Preserves saved parsing by reportVersion; context.version independently governs semantic resolution. */
+/** 入参 reportVersion 只决定怎么解析（v1 认围栏、v2 抽完整对象）；语义裁决两版一致（issue #245）。 */
 export function buildReviewCycleRecheckReport(content: string, merged: string,
   context: ReviewCycleRecheckContext, uiLocale: 'zh-CN' | 'en-US', reportVersion: ReviewReportVersion = 2): ReviewCycleRecheckReport {
   const parsed = parseRecheckItems(content, reportVersion)
@@ -194,15 +199,25 @@ export function buildReviewCycleRecheckReport(content: string, merged: string,
       decisions.push({ findingId: finding.findingId, targetId: finding.targetId, status: 'unknown', reviewItemIndex })
       continue
     }
-    if (context.version === 2 && candidate.resolved) {
-      items.push({ category: finding.category, severity: 'unknown', findingId: finding.findingId,
-        targetId: finding.targetId, description: uiLocale === 'en-US'
-          ? `The model supplied anchored evidence, but semantic resolution still requires author verification. ${candidate.reason}`
-          : `模型提供了可定位的新证据，但是否实质解决仍需作者核实。${candidate.reason}`,
-        quote: candidate.evidenceQuote, resolved: false })
-      decisions.push({ findingId: finding.findingId, targetId: finding.targetId, status: 'unknown', reviewItemIndex })
-      continue
-    }
+    /**
+     * v2 曾经把「模型判了 resolved」一律降级成 `unknown`，等作者核实 —— 但那个
+     * 「核实」**从来没有入口**：`resolved` 只能由复验写，全仓没有第二条写它的路径，
+     * 作者手上只有「弃修」。
+     *
+     * 现场（`源起` 第 2 章，issue #245）：作者点审稿 → 只有 1 条 AI 发现（比喻连接词
+     * 3 处超配额）→ 勾选按它修稿 → 合并成功 → 定稿却仍报「这条还没确定」。
+     * 真库回执里模型写得很清楚：「原句已改为具象动作描写…比喻连接词已降至 2 处，
+     * 满足指标」，`resolved=true`，证据唯一可定位——它**判对了**，却被降级吞掉，
+     * 于是这条提示永远不会消失。作者越照做越窝火。
+     *
+     * 现在的口径：证据锚定（引用逐字且全篇只出现一次，已在上面 `valid` 里校验过）
+     * + 模型判 resolved = 已解决。挑剔模型的语义判断没有接地面，而锚定这一关
+     * 已经挡掉了「瞎编引文」这个主要失效形态：编的句子在合并后正文里找不到，
+     * `evidenceCount !== 1`，走的是上面那条 `unknown` 分支。
+     *
+     * 保留 `unknown` 的两种真实情况不变：**没有**唯一可验证的证据（上一段），
+     * 或整个复核输出不合规（`parsed` 为 null）。
+     */
     items.push({ category: finding.category, severity: candidate.resolved ? 'pass' : 'warning',
       findingId: finding.findingId, targetId: finding.targetId, description: candidate.reason,
       quote: candidate.evidenceQuote, resolved: candidate.resolved })
