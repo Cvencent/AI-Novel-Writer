@@ -764,11 +764,20 @@ describe('review and revision generation through the actual owner and SQLite', (
       const savedRecheck = reopened.commitReview(commit)
       expect(savedRecheck.reviewCycle).toMatchObject({ cycleId: cycle.cycle_id, recheckCount: 1, disposition: 'completed' })
       const parsed = JSON.parse(savedRecheck.content)
+      /**
+       * issue #245：v2 不再把模型判的 resolved 降级成 unknown（那个「作者核实」
+       * 入口并不存在，导致作者按 AI 改完后定稿永远提示「还没确定」）。
+       * 现在两版语义一致：引文唯一锚定 + resolved=true → 直接算已解决。
+       *
+       * ⚠️ 注意 `it.each` 的 `reportVersion` 只决定**事后模拟哪种历史落库行**
+       * （下面 `if (reportVersion === 1)` 那段改写 DB），两次迭代跑的活路径相同，
+       * 所以这条断言不带分支。
+       */
       expect(parsed.summary).toBe('模型认为已经修复。')
-      expect(parsed.items[0]).toMatchObject({ severity: 'unknown', resolved: false,
+      expect(parsed.items[0]).toMatchObject({ severity: 'pass', resolved: true,
         quote: '门闩上的裂纹已用石蜡封住', description: expect.stringContaining('正文出现新证据。') })
+      expect(f.db.prepare('SELECT status FROM review_findings').pluck().get()).toBe('resolved')
       expect(reopened.commitReview(commit)).toEqual(savedRecheck)
-      expect(f.db.prepare('SELECT status FROM review_findings').pluck().get()).toBe('unknown')
       expect(f.db.prepare("SELECT json_extract(usage_receipt_json,'$.reviewCycleRecheck.version') FROM generation_attempts WHERE attempt_id=?")
         .pluck().get(recheckArtifact.attemptId)).toBe(2)
       // ③ 后修稿开新 root；#246 后复核也开新 root：审稿 + 修稿 + 复核 = 3。
@@ -795,6 +804,15 @@ describe('review and revision generation through the actual owner and SQLite', (
         f.db.prepare('UPDATE contents SET body=? WHERE id=(SELECT content_id FROM reviews WHERE id=?)').run(content, savedRecheck.id)
         f.db.prepare('UPDATE generation_attempts SET usage_receipt_json=? WHERE attempt_id=?')
           .run(JSON.stringify(usage), recheckArtifact.attemptId)
+        // 这份「历史行」若真是 v1 严格解析拒收的产物，那么当时的**裁决集是空的**：
+        // 整份复核作废 → 没有 decisions → 回执 findings 为 []、finding 全部 unknown。
+        // 只改报告不改这两处，M03 会看到「回执说 resolved=true、报告说 unknown」，
+        // 校验不过 → readRecheckCycle 抛 REVIEW_CYCLE_CONFLICT。
+        usage.reviewCycleRecheck.findings = []
+        f.db.prepare('UPDATE generation_attempts SET usage_receipt_json=? WHERE attempt_id=?')
+          .run(JSON.stringify(usage), recheckArtifact.attemptId)
+        f.db.prepare("UPDATE review_findings SET status='unknown',evidence_hash=NULL WHERE cycle_id=?")
+          .run(cycle.cycle_id)
         expectedSaved = { ...savedRecheck, content, contentHash: textHash(content) }
       }
       reopened.suspendForProjectClose()
