@@ -70,7 +70,7 @@ describe('FinalizeChapterCommand blueprint character fallback', () => {
           creativeStrategy: 'auto',
         },
       } as never,
-      refreshFileTree: vi.fn().mockResolvedValue(undefined),
+      
     })
   })
 

@@ -25,7 +25,6 @@ const callbacks: StepCallbacks = {
 }
 const originalGenerateStream = useLLMStore.getState().generateStream
 const originalDefaultModelId = useLLMStore.getState().defaultModelId
-const originalRefreshFileTree = useProjectStore.getState().refreshFileTree
 const originalLocale = useLocaleStore.getState().locale
 const CJK_TEXT = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/u
 
@@ -191,7 +190,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   vi.useRealTimers()
-  useProjectStore.setState({ currentProject: null, refreshFileTree: originalRefreshFileTree })
+  useProjectStore.setState({ currentProject: null })
   useLLMStore.setState({
     defaultModelId: originalDefaultModelId,
     generateStream: originalGenerateStream,

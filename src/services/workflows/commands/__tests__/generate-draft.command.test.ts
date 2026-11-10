@@ -594,7 +594,7 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
           protagonistProfile: options.protagonistProfile,
         },
       } as never,
-      refreshFileTree: vi.fn().mockResolvedValue(undefined),
+      
     })
     const context: WorkflowContext = {
       runId: 'draft-generation-runtime',
@@ -3604,19 +3604,22 @@ ${headingPrefix}第3章：潮门
     expectNoDraftPersistence(setupResult.invoke)
   })
 
-  it('preserves the accepted preview after persistence even if a later refresh fails', async () => {
+  it('preserves the accepted preview after persistence even if the later draft-list refresh fails', async () => {
     const terminalDraft = `${'已持久化正文'.repeat(800)}。`
     const runtime = fakeOutcomes(outcome(terminalDraft, 'stop'))
     const setupResult = setup({ runtime })
     const replaceText = vi.fn()
     const callbacks = Object.assign(setupResult.callbacks, { replaceText })
-    useProjectStore.setState({ refreshFileTree: vi.fn().mockRejectedValue(new Error('refresh failed')) })
+    // 落库之后的草稿列表刷新失败（现在是 loadAllDrafts）不得丢掉已接受的预览。
+    const draftStore = await import('../../../../stores/draft-store')
+    vi.spyOn(draftStore.useDraftStore.getState(), 'loadAllDrafts')
+      .mockRejectedValue(new Error('list refresh failed'))
 
     await expect(setupResult.command.execute({
       step: {},
       context: setupResult.context,
       callbacks,
-    })).rejects.toThrow('refresh failed')
+    })).resolves.toBeTruthy()
 
     const persisted = setupResult.invoke.mock.calls.find(([channel]) => channel === 'db:draft-create')
     const persistedText = (persisted?.[1] as { content: string }).content
