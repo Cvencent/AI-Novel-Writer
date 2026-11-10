@@ -266,6 +266,31 @@ function helperFileName(platform: SecureFileSystemPlatform): string {
     : 'darwin-safe-file-system'
 }
 
+/**
+ * Windows 原生助手的文件名（issue #245）。
+ *
+ * 与 PS1 编的是同一个 C# 安全核（core.cs），只是宿主换成原生 exe：
+ * 启动 ~25ms、常驻 13MB、每请求 ~0.04ms（PS1 是 ~183ms 启动 + 210ms 编译 + 84MB）。
+ * 产物缺失时**静默**退回 PS1 —— 它是可选的加速器，不是功能依赖。
+ */
+const NATIVE_WINDOWS_HELPER_FILE = 'windows-safe-file-system.exe'
+
+/** 原生 exe 的路径；没有这个文件就返回 null（调用方退回 PS1）。 */
+function nativeWindowsHelperPath(options: {
+  isPackaged: boolean
+  resourcesPath: string | undefined
+  cwd: string
+}): string | null {
+  if (options.isPackaged) {
+    const packaged = typeof options.resourcesPath === 'string'
+      ? path.join(options.resourcesPath, 'security', NATIVE_WINDOWS_HELPER_FILE)
+      : null
+    return packaged && existsSync(packaged) ? packaged : null
+  }
+  const source = path.resolve(options.cwd, 'electron', 'security', NATIVE_WINDOWS_HELPER_FILE)
+  return existsSync(source) ? source : null
+}
+
 function defaultHelperPath(options: {
   platform: SecureFileSystemPlatform
   isPackaged: boolean
@@ -381,6 +406,60 @@ async function invokeBundledHelper(
       }
     }))
     child.stdin.end(`${input}\n`, 'utf8')
+  })
+}
+
+/**
+ * 一次性调用原生助手（issue #245）：同一个协议、同一份 C#，只是换成原生 exe 宿主。
+ *
+ * 与 PS1 版本的差别只有两点，都是**去掉**开销而非放松判据：
+ * 1. 不必再喂 powershell.exe 的 `-File`（因此也没有 stdout 横幅）；
+ * 2. 没有 210ms 的 Add-Type 现场编译。
+ * 超时/进程错误照旧映射成 HELPER_TIMEOUT / HELPER_UNAVAILABLE，调用方据此退回 PS1。
+ */
+async function invokeNativeHelper(
+  helperPath: string,
+  request: HelperRequest,
+  timeoutMs: number,
+): Promise<HelperResponse> {
+  const input = JSON.stringify(request)
+  if (Buffer.byteLength(input, 'utf8') > MAX_HELPER_RESPONSE_BYTES) {
+    throw secureError('SECURE_FS_REQUEST_TOO_LARGE')
+  }
+  return new Promise<HelperResponse>((resolve, reject) => {
+    const child = spawn(helperPath, [], { windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'pipe'] })
+    let output = ''
+    let settled = false
+    const finish = (callback: () => void) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      callback()
+    }
+    const timeout = setTimeout(() => {
+      child.kill()
+      finish(() => reject(secureError('SECURE_FS_HELPER_TIMEOUT')))
+    }, timeoutMs)
+    child.once('error', () => finish(() => reject(secureError('SECURE_FS_HELPER_UNAVAILABLE'))))
+    child.stdout.on('data', (chunk: Buffer) => {
+      if (settled) return
+      output += chunk.toString('utf8')
+      if (Buffer.byteLength(output, 'utf8') > MAX_HELPER_RESPONSE_BYTES) {
+        child.kill()
+        finish(() => reject(secureError('SECURE_FS_HELPER_INVALID_RESPONSE')))
+      }
+    })
+    // stderr 故意不外传：可能含主机路径或供应商诊断。
+    child.stderr.resume()
+    child.once('close', () => finish(() => {
+      try {
+        resolve(parseResponse(output.trim()))
+      } catch (error) {
+        reject(error)
+      }
+    }))
+    child.stdin.end(`${input}
+`, 'utf8')
   })
 }
 
@@ -569,29 +648,43 @@ export function createSecureFileSystem(
     if (!existsSync(helperPath)) throw secureError('SECURE_FS_HELPER_UNAVAILABLE')
     return helperPath
   }
+  /**
+   * Windows 常驻助手的启动命令：优先原生 exe，没有就退回 PowerShell 脚本。
+   *
+   * 两者编的是同一个 core.cs，协议也一致（--serve + NDJSON），响应逐条比对过。
+   * 用 exe 时**不再需要 powershell.exe**，因此也绕开了 5.1 的编码/横幅问题。
+   */
+  const spawnWindowsServeHelper = () => {
+    const native = helperPath === undefined
+      ? nativeWindowsHelperPath({ isPackaged, resourcesPath, cwd })
+      : null
+    if (native) return { command: native, args: ['--serve'] }
+    return {
+      command: 'powershell.exe',
+      args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', resolveHelperPath(), '--serve'],
+    }
+  }
   const invokeBundled = (request: HelperRequest) => {
     const supportedPlatform = securePlatform()
+    // 一次性模式同样优先 exe（启动 25ms vs 183+210ms）。
+    const native = supportedPlatform === 'win32' && helperPath === undefined
+      ? nativeWindowsHelperPath({ isPackaged, resourcesPath, cwd })
+      : null
+    if (native) return invokeNativeHelper(native, request, timeoutMs)
     return invokeBundledHelper(request, supportedPlatform, resolveHelperPath(), timeoutMs)
   }
   const invoke = options.invoke ?? invokeBundled
 
   /**
    * 常驻助手（issue #245）。每次操作重起 PowerShell + 现场编译 C# 实测 ~500ms，
-   * 而真正干活只要 1-4ms；常驻后每请求 ~1ms。**只在 Windows 且没有测试注入 invoke 时启用**：
-   * 测试注入的 invoke 必须保持原样，Darwin 有自己的原生 helper。
-   * 常驻失败（脚本不支持 --serve、进程起不来）自动退回一次性模式，行为不变。
+   * 而真正干活只要 1-4ms；常驻后每请求 ~1ms（原生 exe 上 ~0.04ms，且只占 13MB）。
+   * **只在 Windows 且没有测试注入 invoke 时启用**：测试注入的 invoke 必须保持原样，
+   * Darwin 有自己的原生 helper。常驻失败（进程起不来、超时）自动退回一次性模式。
    */
   const persistent = usingTestInvoke || platform !== 'win32'
     ? null
     : new PersistentSecureFileHelper({
-      spawnHelper: () => {
-        const supportedPlatform = securePlatform()
-        const helperFile = resolveHelperPath()
-        return supportedPlatform === 'win32'
-          ? { command: 'powershell.exe',
-            args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', helperFile, '--serve'] }
-          : { command: helperFile, args: ['--serve'] }
-      },
+      spawnHelper: () => spawnWindowsServeHelper(),
       timeoutMs,
     })
   /** 常驻不可用时的兜底：与旧行为逐字一致的一次性调用。 */

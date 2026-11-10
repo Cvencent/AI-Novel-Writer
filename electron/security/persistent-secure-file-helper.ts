@@ -13,7 +13,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
  * 只去掉了「每次重新起进程 + 重新编译」。
  *
  * 生命周期：
- * - 首个请求时惰性启动；空闲 `idleTimeoutMs` 后自愿退出（避免长期占着进程）。
+ * - 首个请求时惰性启动；空闲 `idleTimeoutMs` 后自愿退出（原生助手 ~15MB，阈值放到 5 分钟）。
  * - 进程崩溃/退出时把在途请求全部判失败（**绝不放行**），下次请求重新拉起。
  * - `write` 的两阶段提交（prepare → 提交守卫 → commit）在常驻模式下串行化执行：
  *   prepare 期间整个通道被独占，别的请求排队等提交完成，不会插到准备与提交之间。
@@ -38,7 +38,14 @@ interface PendingRequest {
   timer: ReturnType<typeof setTimeout>
 }
 
-const DEFAULT_IDLE_TIMEOUT_MS = 30_000
+/**
+ * 空闲多久自愿退出。
+ *
+ * 原生助手常驻只占 ~15MB（PowerShell 助手要 84MB，那才是当初设 30s 的原因），
+ * 而重起一次要付 ~48ms（PowerShell 是 ~490ms）。5 分钟足够让「偶尔用一下」的
+ * 会话不至于一直挂着进程，也覆盖了正常写作中常见的停顿。
+ */
+const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60_000
 /** 单行响应的上限：与一次性模式的 helper 同量级（正文上限 64MB → base64 + JSON 余量）。 */
 const MAX_RESPONSE_LINE_BYTES = 96 * 1024 * 1024
 

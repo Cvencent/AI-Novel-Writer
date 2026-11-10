@@ -56,6 +56,17 @@
       {
         "from": "electron/security/windows-safe-file-system.ps1",
         "to": "security/windows-safe-file-system.ps1"
+      },
+      {
+        // C# 安全核的唯一源：PS1 与原生 exe 都编译/加载它（PS1 运行时要读）。
+        "from": "electron/security/windows-safe-file-system.core.cs",
+        "to": "security/windows-safe-file-system.core.cs"
+      },
+      {
+        // 原生助手（issue #245）：启动 25ms / 常驻 15MB / 每请求 0.04ms。
+        // 可选加速器——缺了它运行时退回 PS1，功能不变，所以 from 指向构建产物即可。
+        "from": "electron/security/windows-safe-file-system.exe",
+        "to": "security/windows-safe-file-system.exe"
       }
     ]
   },

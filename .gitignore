@@ -69,3 +69,9 @@ tailwind.config.js.bak
 
 # 浏览器测试失败时生成的截图，不入库
 __screenshots__/
+
+# 原生安全文件助手（构建产物，scripts/build-win-helper.mjs 生成；不入库，与 mac 的
+# clang 产物 darwin-safe-file-system 同一处理）
+/electron/security/windows-safe-file-system.exe
+/electron/security/windows-safe-file-system.exe.buildstamp
+/electron/security/windows-safe-file-system.exe.building

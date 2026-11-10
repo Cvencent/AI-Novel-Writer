@@ -483,17 +483,21 @@ describe.runIf(process.platform === 'win32')('Windows handle-bound secure file s
     const fixture = fixtureRoot()
     const selectedRoot = path.join(fixture, 'selected')
     const targetPath = path.join(selectedRoot, 'chapter.txt')
+    // C# 核现在住在 windows-safe-file-system.core.cs（PS1 运行时加载它）。
+    // 制造「不支持 rename-ex」的变体就得替换这个核，而不是 PS1 脚本本身。
     const unsupportedHelper = path.join(fixture, 'windows-safe-file-system-unsupported.ps1')
-    const sourceHelper = path.resolve('electron/security/windows-safe-file-system.ps1')
-    const helperSource = fs.readFileSync(sourceHelper, 'utf8')
-    const unsupportedSource = helperSource.replace(
+    const unsupportedCore = path.join(fixture, 'windows-safe-file-system.core.cs')
+    const coreSource = fs.readFileSync(path.resolve('electron/security/windows-safe-file-system.core.cs'), 'utf8')
+    const unsupportedSource = coreSource.replace(
       'private const int FileRenameInformationEx = 65;',
       'private const int FileRenameInformationEx = 0x7fffffff;',
     )
-    expect(unsupportedSource).not.toBe(helperSource)
+    expect(unsupportedSource).not.toBe(coreSource)
     fs.mkdirSync(selectedRoot)
     fs.writeFileSync(targetPath, 'old content', 'utf8')
-    fs.writeFileSync(unsupportedHelper, unsupportedSource, 'utf8')
+    // 变体 PS1 与变体核放在同一个临时目录：PS1 用 $PSScriptRoot 找核。
+    fs.copyFileSync(path.resolve('electron/security/windows-safe-file-system.ps1'), unsupportedHelper)
+    fs.writeFileSync(unsupportedCore, unsupportedSource, 'utf8')
     const safeFileSystem = createWindowsSafeFileSystem({
       helperPath: unsupportedHelper,
       platform: 'win32',

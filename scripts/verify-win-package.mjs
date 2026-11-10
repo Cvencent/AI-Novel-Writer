@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -53,6 +53,42 @@ export function findWindowsSafeFileSystemHelper(unpackedDir) {
   return existsSync(helper) ? helper : null
 }
 
+/** PS1 运行时读取的 C# 安全核（唯一源；原生 exe 也编译它）。 */
+export function findWindowsSafeFileSystemCore(unpackedDir) {
+  const core = path.join(
+    unpackedDir,
+    'resources',
+    'security',
+    'windows-safe-file-system.core.cs',
+  )
+  return existsSync(core) ? core : null
+}
+
+/**
+ * 原生助手（可选加速器）。
+ *
+ * 与 PS1 核不同，这里**不**硬性要求存在：没有它运行时退回 PS1，功能完整。
+ * 但一旦打包进了一个，就必须是像样的 PE32+ 可执行文件——半个残件比没有更危险
+ * （会以「起不来」的形式把每次 fs 操作拖成超时）。
+ */
+export function findWindowsNativeHelper(unpackedDir) {
+  const helper = path.join(
+    unpackedDir,
+    'resources',
+    'security',
+    'windows-safe-file-system.exe',
+  )
+  if (!existsSync(helper)) return null
+  const header = readFileSync(helper).subarray(0, 2)
+  if (header[0] !== 0x4d || header[1] !== 0x5a) {
+    throw new Error(`Packaged native secure file-system helper is not a PE executable: ${helper}`)
+  }
+  if (statSync(helper).size < 4096) {
+    throw new Error(`Packaged native secure file-system helper is implausibly small: ${helper}`)
+  }
+  return helper
+}
+
 export function verifyWindowsPackage(unpackedDir) {
   const asar = path.join(unpackedDir, 'resources', 'app.asar')
   const executable = path.join(unpackedDir, 'AI小说作家.exe')
@@ -66,8 +102,13 @@ export function verifyWindowsPackage(unpackedDir) {
   if (!betterSqliteBinding) throw new Error('Missing better-sqlite3 Windows native binding')
   const secureFileSystemHelper = findWindowsSafeFileSystemHelper(unpackedDir)
   if (!secureFileSystemHelper) throw new Error('Missing Windows secure file-system helper')
+  const secureFileSystemCore = findWindowsSafeFileSystemCore(unpackedDir)
+  if (!secureFileSystemCore) throw new Error('Missing Windows secure file-system C# core')
+  // 原生助手是可选的：null 表示这份包只有 PS1 后端（运行时自动退回）。
+  const nativeSecureFileSystemHelper = findWindowsNativeHelper(unpackedDir)
 
-  return { asar, executable, nativeBinding, betterSqliteBinding, secureFileSystemHelper }
+  return { asar, executable, nativeBinding, betterSqliteBinding, secureFileSystemHelper,
+    secureFileSystemCore, nativeSecureFileSystemHelper }
 }
 
 export function verifyPackagedLanceLoad(unpackedDir, runner = spawnSync) {
@@ -134,6 +175,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
   console.log(`Verified LanceDB native binding: ${result.nativeBinding}`)
   console.log(`Verified better-sqlite3 native binding: ${result.betterSqliteBinding}`)
   console.log(`Verified Windows secure file-system helper: ${result.secureFileSystemHelper}`)
+  console.log(`Verified Windows secure file-system C# core: ${result.secureFileSystemCore}`)
+  console.log(result.nativeSecureFileSystemHelper
+    ? `Verified Windows native secure file-system helper: ${result.nativeSecureFileSystemHelper}`
+    : 'Windows native secure file-system helper: absent (PowerShell backend only)')
   console.log(`Verified packaged LanceDB load: ${loadMarker}`)
   console.log(`Verified packaged better-sqlite3 load: ${betterSqliteLoadMarker}`)
 }
