@@ -45,6 +45,44 @@ describe('writing intelligence contracts', () => {
     expect(() => parseEditorialPanelResponse(JSON.stringify({ roles: duplicate }))).toThrow()
   })
 
+  /**
+   * issue #245 现场：编辑部评审在运行侧页显示的是**裸的**
+   * `SyntaxError: Expected ':' after property name in JSON at position 1102`。
+   * 真库复现后确认成因是模型漏写键名：把 `"role": "continuity",` 写成了 `"continuity",`。
+   * 这条用例把那份真实响应钉住，确保报错是**领域码**而不是 V8 的内部措辞。
+   */
+  it('reports a malformed model response as a domain error, not a raw SyntaxError', () => {
+    // 真库原始响应片段（`源起` 第 1 章 15:29 那次 failed 的运行）。
+    const malformed = [
+      '```json',
+      '{',
+      '  "summary": "全章叙事脉络基本承接了大纲建置核心。",',
+      '  "roles": [',
+      '    { "role": "plot", "score": 88, "summary": "主线清晰", "findings": [] },',
+      '    {',
+      '      "continuity",',
+      '      "score": 75,',
+      '      "summary": "世界观底层逻辑基本一致"',
+      '    }',
+      '  ]',
+      '}',
+      '```',
+    ].join('\n')
+    let caught: unknown
+    try { parseEditorialPanelResponse(malformed) } catch (error) { caught = error }
+    expect(caught).toBeInstanceOf(Error)
+    const message = (caught as Error).message
+    expect(message).toMatch(/^WRITING_INTELLIGENCE_JSON_INVALID:/u)
+    // 渲染层/重试逻辑据此判定，而不是靠英文语法文案。
+    expect(message).not.toMatch(/^SyntaxError/u)
+  })
+
+  it('still accepts a fenced response whose JSON is valid', () => {
+    const valid = '```json\n' + JSON.stringify({ summary: '整体成立', roles: ['plot', 'continuity', 'character', 'style', 'pacing']
+      .map(role => ({ role, score: 80, summary: 'ok', findings: [] })) }) + '\n```'
+    expect(parseEditorialPanelResponse(valid).roles).toHaveLength(5)
+  })
+
   it('accepts voice evidence only for a known character and unique quotes', () => {
     const profiles = parseVoiceProfilesResponse(JSON.stringify({ profiles: [{
       characterId: 'char-1', characterName: '林岚', summary: '克制但尖锐',

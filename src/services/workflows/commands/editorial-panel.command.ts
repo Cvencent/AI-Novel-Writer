@@ -67,11 +67,61 @@ export class EditorialPanelCommand extends BaseWorkflowCommand<DraftQualityRevie
       { responseFormat: { type: 'json_object' }, purpose: 'editorial-panel-review', reasoningStage: 'review', writingSkillStage: 'review' },
       context,
     )
-    const panel = parseEditorialPanelResponse(completion.content)
+    const panel = await this.parseWithOneRepair(completion, prompt, callbacks, context, language)
     const saved = await ipc.invokeWithProjectSession(session, 'db:writing-intelligence-quality-save', {
       draftId: this.params.draftId, chapterNumber: this.params.chapterNumber, contentHash, panel,
     }, session.projectPath)
     callbacks.log(promptLanguageText(language, `编辑部评分 ${saved.weightedScore.toFixed(1)}，阻断问题 ${saved.blockingCount} 条。`, `Editorial score ${saved.weightedScore.toFixed(1)} with ${saved.blockingCount} blocking findings.`))
     return saved
   }
+
+  /**
+   * 结构不合法时**再要一次**（issue #245 现场）。
+   *
+   * 现场：运行侧页直接显示 `SyntaxError: Expected ':' after property name in JSON at
+   * position 1102`。真库复现后确认是模型漏写键名（把 `"role": "continuity",` 写成
+   * `"continuity",`）——一次采样质量问题，不是正文或设定写错。
+   *
+   * 这种情况下重发同一个提示词通常能换回一份合法结构（模型采样有随机性），
+   * 而失败成本只是一次调用；不重试则整份五角色评审作废、作者白等 16 秒。
+   * **只重试一次**：连续两次坏结构说明这条通道对该模型不稳，再多试只是让作者干等。
+   *
+   * ⚠️ 只对**结构**错误重试，不对内容合同错误重试（评分越界、角色重复等是模型判断
+   * 的结果问题，重发同一个请求只会再撞一次）。
+   */
+  private async parseWithOneRepair(
+    completion: { content: string },
+    prompt: string,
+    callbacks: CommandExecuteParams['callbacks'],
+    context: CommandExecuteParams['context'],
+    language: ReturnType<typeof workflowWritingLanguage>,
+  ) {
+    try {
+      return parseEditorialPanelResponse(completion.content)
+    } catch (error) {
+      if (!isMalformedStructureError(error)) throw error
+      callbacks.log(promptLanguageText(language,
+        '编辑部返回的结构不完整（模型漏写字段），正在重新请求一次…',
+        'The panel returned malformed structure (a missing field); requesting once more…'))
+      const retry = await this.callLLMResult(
+        prompt,
+        promptLanguageText(language, '你是五人编辑部。所有判断必须可追溯到正文证据；不要把风格偏好冒充硬错误。', 'You are a five-person editorial panel. Every judgment must trace to manuscript evidence; never disguise style preferences as hard errors.'),
+        callbacks,
+        { responseFormat: { type: 'json_object' }, purpose: 'editorial-panel-review', reasoningStage: 'review', writingSkillStage: 'review' },
+        context,
+      )
+      return parseEditorialPanelResponse(retry.content)
+    }
+  }
+}
+
+/**
+ * 是不是「JSON 结构本身坏了」（只有这一类值得重发）。
+ *
+ * 导出是为了让测试能钉住判据：**只**重试结构错误，不重试内容合同错误
+ * （评分越界、角色重复等是模型判断的结果问题，重发只会再撞一次）。
+ */
+export function isMalformedStructureError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  return message.startsWith('WRITING_INTELLIGENCE_JSON_INVALID')
 }

@@ -147,7 +147,19 @@ function parseJsonPayload(content: string): unknown {
     }
   } catch { /* fall through to direct parse */ }
   const trimmed = content.trim().replace(/^```(?:json)?\s*/iu, '').replace(/\s*```$/u, '')
-  return JSON.parse(trimmed)
+  try {
+    return JSON.parse(trimmed)
+  } catch (error) {
+    // issue #245 现场：编辑部评审在运行侧页显示的是**裸的**
+    // `SyntaxError: Expected ':' after property name in JSON at position 1102`。
+    // 这是模型漏写键名（真库实测：把 `"role": "continuity",` 写成了 `"continuity",`）。
+    //
+    // 结构错误的详情要能被程序判定（重试/降级），而不是让 V8 的英文语法消息
+    // 直接冒到作者的运行卡片里。这里统一收成领域错误码，并把解析位置留在消息里
+    // 供日志定位——作者看到的是「模型返回的结构不完整」，而不是一句 JS 内部报错。
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new Error(`WRITING_INTELLIGENCE_JSON_INVALID:${detail}`)
+  }
 }
 
 function text(value: unknown, field: string, max: number): string {

@@ -213,6 +213,28 @@ export function presentWorkflowFailure(
         }
   }
 
+  // 模型返回的结构化结果本身坏了（issue #245 现场）：运行卡片原来直接显示
+  // `SyntaxError: Expected ':' after property name in JSON at position 1102`——
+  // 那是 V8 的内部措辞，作者既不知道是谁的问题、也不知道该做什么。
+  // 真库实测成因是模型漏写键名（`"role": "continuity"` 写成 `"continuity"`）。
+  // 这是**模型输出质量问题**，不是正文或设定写错，重试通常就能换回一份合法结构。
+  if (/WRITING_INTELLIGENCE_JSON_INVALID|Unexpected token|Expected ':' after property name/
+    .test(error ?? '')) {
+    return locale === 'zh-CN'
+      ? {
+          heading: '模型返回的结构不完整',
+          reason: '模型这次给出的结构化结果不是合法 JSON（常见于漏写键名或提前收尾），不是你的正文或设定有问题。',
+          persistence: '这一步没有产出结果，也没有保存任何内容；已完成的章节不受影响。',
+          guidance: '直接重试即可；连续两次出现请换一个模型。',
+        }
+      : {
+          heading: 'The model returned malformed structured data',
+          reason: 'This run’s structured result was not valid JSON (usually a missing key name or an early cutoff) — your prose and settings are not the problem.',
+          persistence: 'This step produced no result and saved nothing; finished chapters are unaffected.',
+          guidance: 'Retry directly; if it happens twice in a row, switch models.',
+        }
+  }
+
   return locale === 'zh-CN'
     ? {
         heading: '工作流未完成',
