@@ -11,11 +11,12 @@ import { initializeLegacyBaselineSchema, applyBaselineTables } from './baseline-
 import { addBlueprintExtendedColumns, ensureBaselineBlueprintTables } from './baseline-blueprint-schema'
 import { applyM08WritingIntelligence, verifyM08WritingIntelligence } from './m08-writing-intelligence'
 import { applyM09PreflightAck, verifyM09PreflightAck } from './m09-preflight-ack'
+import { applyM10MultiRoundReviewCycle, verifyM10MultiRoundReviewCycle } from './m10-review-cycle-multiround'
 import { SqliteSchemaAdapter, sqliteSchemaFingerprint } from './sqlite-schema-adapter'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3') as typeof import('better-sqlite3')
-export const CURRENT_DESKTOP_SCHEMA_VERSION = 10
+export const CURRENT_DESKTOP_SCHEMA_VERSION = 11
 let installed: MigrationRegistry | undefined
 
 function installKnownDonorAvatarColumn(db: import('better-sqlite3').Database): void {
@@ -127,11 +128,25 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
         && verifyM08WritingIntelligence(native(db))
         && verifyM02CharacterIdentity(native(db)) && verifyM03ReviewCycle(native(db)),
     }
-    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08, m09], [
+    // M10: 复验后第二轮修稿——review_cycles.review_id 去 UNIQUE（issue #248）。
+    for (const db of references) db.transaction(() => applyM10MultiRoundReviewCycle(db))()
+    const multiRoundSchemas = schemas(11)
+    const multiRoundFingerprints = new Set(multiRoundSchemas.map(item => item.fingerprint))
+    const m10 = {
+      id: 'M10' as const, from: 10, to: 11, owner: 'QA',
+      migrate: (db: SchemaReader) => applyM10MultiRoundReviewCycle(native(db)),
+      verify: (db: SchemaReader) => multiRoundFingerprints.has(sqliteSchemaFingerprint(native(db)))
+        && verifyM10MultiRoundReviewCycle(native(db))
+        && verifyM09PreflightAck(native(db))
+        && verifyM08WritingIntelligence(native(db))
+        && verifyM02CharacterIdentity(native(db)) && verifyM03ReviewCycle(native(db)),
+    }
+    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08, m09, m10], [
       ...sourceSchemas, ...baselineSchemas.map(schema => ({ ...schema, version: 0 })),
       ...baselineSchemas, ...generationSchemas, ...identitySchemas,
       ...reviewCycleSchemas, ...importEffectSchemas, ...characterAssetSchemas, ...mergeSnapshotSchemas,
       ...extendedBlueprintSchemas, ...writingIntelligenceSchemas, ...preflightAckSchemas,
+      ...multiRoundSchemas,
     ])
     return installed
   } finally { reference.close(); donor.close() }
