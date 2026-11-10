@@ -809,9 +809,9 @@ function Write-HelperResponse([object]$response) {
   [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress -Depth 5))
 }
 
+# 单个请求的处理体：成功或失败都写一行 JSON 响应，绝不把异常抛出函数（serve 模式要活下去）。
+function Invoke-HelperRequest([string]$inputLine) {
 try {
-  Add-Type -TypeDefinition $nativeSource -Language CSharp -ErrorAction Stop | Out-Null
-  $inputLine = [Console]::In.ReadLine()
   if ($null -eq $inputLine -or $inputLine.Length -gt 100000000) {
     throw [AiNovelSecureFs.SecureFsException]::new('SECURE_FS_REQUEST_TOO_LARGE')
   }
@@ -902,4 +902,37 @@ try {
     $code = $_.Exception.Message
   }
   Write-HelperResponse ([pscustomobject]@{ ok = $false; code = $code })
+}
+}
+
+# 编译一次 C# 内联源码。一次性模式与常驻模式都要先过这一步（实测 210ms），
+# 常驻模式把这一次成本摊到全部后续请求上（每次从 ~500ms 降到个位数毫秒）。
+try {
+  Add-Type -TypeDefinition $nativeSource -Language CSharp -ErrorAction Stop | Out-Null
+  $compiled = $true
+} catch {
+  $compiled = $false
+}
+
+if (-not $compiled) {
+  Write-HelperResponse ([pscustomobject]@{ ok = $false; code = 'SECURE_FS_HELPER_FAILED' })
+  exit 1
+}
+
+$serveMode = $false
+foreach ($argument in $args) { if ($argument -eq '--serve') { $serveMode = $true } }
+
+if ($serveMode) {
+  # 常驻模式：stdin 每行一个请求（NDJSON），逐行响应。EOF 即退出。
+  # 安全语义与一次性模式完全一致——同一个 C# 实现、同一套 OBJ_DONT_REPARSE 校验，
+  # 只是不再每次重新起进程 + 重新编译。
+  while ($true) {
+    $line = [Console]::In.ReadLine()
+    if ($null -eq $line) { break }
+    if ($line.Length -eq 0) { continue }
+    Invoke-HelperRequest $line
+    [Console]::Out.Flush()
+  }
+} else {
+  Invoke-HelperRequest ([Console]::In.ReadLine())
 }

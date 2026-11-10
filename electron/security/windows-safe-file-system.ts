@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { PersistentSecureFileHelper } from './persistent-secure-file-helper'
 import { existsSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import * as electron from 'electron'
@@ -293,6 +294,19 @@ function electronAppIsPackaged(): boolean {
   }
 }
 
+/**
+ * 通道级故障（起不来/崩了/超时/响应不可解析）——只有这一类才允许退回一次性模式。
+ *
+ * 请求本身的失败（`ok:false`，例如路径越界、目标已存在）不是通道故障，必须原样上抛；
+ * `commitState` 已经是「可能已提交/明确未提交」的判定结果，也不能被兜底掩盖。
+ */
+function isHelperChannelFailure(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  if ('commitState' in error) return false
+  const message = error instanceof Error ? error.message : String(error)
+  return /^SECURE_FS_(HELPER_UNAVAILABLE|HELPER_TIMEOUT|HELPER_FAILED|HELPER_INVALID_RESPONSE)$/u.test(message)
+}
+
 function parseResponse(raw: string): HelperResponse {
   if (raw.length === 0 || raw.length > MAX_HELPER_RESPONSE_BYTES) {
     throw secureError('SECURE_FS_HELPER_INVALID_RESPONSE')
@@ -555,10 +569,43 @@ export function createSecureFileSystem(
     if (!existsSync(helperPath)) throw secureError('SECURE_FS_HELPER_UNAVAILABLE')
     return helperPath
   }
-  const invoke = options.invoke ?? ((request: HelperRequest) => {
+  const invokeBundled = (request: HelperRequest) => {
     const supportedPlatform = securePlatform()
     return invokeBundledHelper(request, supportedPlatform, resolveHelperPath(), timeoutMs)
-  })
+  }
+  const invoke = options.invoke ?? invokeBundled
+
+  /**
+   * 常驻助手（issue #245）。每次操作重起 PowerShell + 现场编译 C# 实测 ~500ms，
+   * 而真正干活只要 1-4ms；常驻后每请求 ~1ms。**只在 Windows 且没有测试注入 invoke 时启用**：
+   * 测试注入的 invoke 必须保持原样，Darwin 有自己的原生 helper。
+   * 常驻失败（脚本不支持 --serve、进程起不来）自动退回一次性模式，行为不变。
+   */
+  const persistent = usingTestInvoke || platform !== 'win32'
+    ? null
+    : new PersistentSecureFileHelper({
+      spawnHelper: () => {
+        const supportedPlatform = securePlatform()
+        const helperFile = resolveHelperPath()
+        return supportedPlatform === 'win32'
+          ? { command: 'powershell.exe',
+            args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', helperFile, '--serve'] }
+          : { command: helperFile, args: ['--serve'] }
+      },
+      timeoutMs,
+    })
+  /** 常驻不可用时的兜底：与旧行为逐字一致的一次性调用。 */
+  const invokePersistentOrFallback = async (request: HelperRequest): Promise<HelperResponse> => {
+    if (!persistent) return invokeBundled(request)
+    try {
+      return parseResponse((await persistent.request(request)).trim())
+    } catch (error) {
+      // 通道级故障（起不来/崩了/超时）→ 用一次性模式重试一次；请求本身无效的
+      // 响应（ok:false）不走这里，它已经由 parseResponse/responseError 表达。
+      if (isHelperChannelFailure(error)) return invokeBundled(request)
+      throw error
+    }
+  }
 
   const run = async (
     operation: HelperOperation,
@@ -567,7 +614,7 @@ export function createSecureFileSystem(
     maxBytes?: number,
   ): Promise<HelperResponse> => {
     const safeCapability = validateCapability(capability)
-    const response = await invoke({
+    const response = await invokePersistentOrFallback({
       operation,
       rootPath: safeCapability.rootPath,
       relativePath: safeCapability.relativePath,
@@ -624,6 +671,18 @@ export function createSecureFileSystem(
         if (!response.ok) responseError(response)
         await beforeReplace?.()
         return
+      }
+      if (persistent) {
+        // 常驻通道：prepare → 主进程提交守卫 → commit 全程在同一个助手进程里。
+        try {
+          const line = await persistent.atomicWrite(request, () => beforeReplace?.())
+          const final = parseResponse(line.trim())
+          if (!final.ok) responseError(final)
+          return
+        } catch (error) {
+          if (!isHelperChannelFailure(error)) throw error
+          // 通道级故障才退回一次性模式；提交状态未知的失败原样上抛。
+        }
       }
       const supportedPlatform = securePlatform()
       const response = await invokeBundledAtomicWrite(
