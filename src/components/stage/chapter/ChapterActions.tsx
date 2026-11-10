@@ -674,7 +674,13 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
         {(() => {
           // issue #230：审稿已经看见、但作者没处理就定稿——那个事实不能静默流失。
           // 现场是审稿报告整个没被确认（E2E 生成后直接定稿），cycle 里的发现从没进过确认清单。
-          const unhandledCount = unhandledReviewFindings(checklist.items, Boolean(checklist.confirmed))
+          //
+          // issue #245 现场（`源起` 第 1 章）：作者勾了 12 条一起修稿、合并成功后，
+          // 定稿仍报「12 条都未确认」。其中 10 条是编辑部评审纳入的**作者侧条目**——
+          // 结构上没有 findingId（不是可定位到正文的 finding），状态永远查不到。
+          // 合并已提交 = 作者勾的内容确实进了正文，据此把作者侧条目算作已处理。
+          const mergeCommitted = checklist.cycle?.revisionStatus === 'merge-committed'
+          const unhandledCount = unhandledReviewFindings(checklist.items, Boolean(checklist.confirmed), mergeCommitted)
           if (unhandledCount <= 0) return null
           return (
             <Notice tone="warn" title={text(`审稿有 ${unhandledCount} 条发现还没处理`, `The review has ${unhandledCount} unhandled ${pluralEn(unhandledCount, 'finding')}`)}>

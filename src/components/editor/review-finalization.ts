@@ -4,6 +4,14 @@ import type { ReviewFindingStatus } from '../../shared/review-cycle'
 export interface FinalizationReviewItem {
   decision: HumanConfirmedReviewDecision
   findingStatus?: ReviewFindingStatus
+  /**
+   * 这条是「AI 审稿发现」还是「作者侧条目」（含编辑部评审纳入的那些）。
+   *
+   * 状态来源不同：AI 发现在 `review_findings` 里有行、状态由 cycle 状态机推进；
+   * 作者侧条目**从来没有 findingId**（它们不是可定位到正文的 finding），
+   * 于是 `findingStatus` 恒为 `undefined`，永不可能被 resolve。
+   */
+  origin?: 'ai' | 'author'
 }
 
 /**
@@ -38,12 +46,39 @@ export function finalizationReviewBlocked(
  */
 const UNHANDLED_STATUSES: ReadonlySet<ReviewFindingStatus> = new Set(['unverified', 'unresolved', 'unknown'])
 
+/**
+ * 作者侧条目（`origin === 'author'`）在**修稿合并成功后**算已处理（issue #245 现场）。
+ *
+ * 现场（`源起` 第 1 章）：作者点了审稿（2 条发现）→ 五角色评审（10 条）→ 勾了全部 12 条
+ * → 按 12 条一起修稿 → 合并成功 → 点定稿，得到「这 12 条都未确认」。
+ *
+ * 那 10 条是 `appendEditorialFindings` 纳入的作者侧条目，**结构上就没有 findingId**：
+ *
+ * ```ts
+ * { id, reviewItemIndex, category, severity, description, quote, decision: 'apply', origin: 'author' }
+ * //                          没有 findingId ↓
+ * ```
+ *
+ * 而状态是从 cycle 里按 findingId 反查的（`review-checklist.ts` 的
+ * `findingStatus: finding?.status`），于是 `findingStatus` 恒 `undefined` →
+ * 无论作者修了几遍、合并多少次，它们**永远**被算作「未处理」。作者越认真改，
+ * 这个提示越顽固。
+ *
+ * 判据只认**已落库的事实**：修稿合并已提交（`mergeCommitted`，由 cycle 的
+ * `revisionStatus === 'merge-committed'` 给出）。那时作者勾选的修稿内容确实进了
+ * 新正文——「处理过」不再是我替作者推断，而是合并这件事本身证明了它。
+ * 未合并（`not-generated` / `generated`）时照旧计入：那时正文还没变。
+ */
 export function unhandledReviewFindings(
   items: readonly FinalizationReviewItem[],
   reviewConfirmed: boolean,
+  mergeCommitted = false,
 ): number {
   if (!reviewConfirmed) return 0
-  return items.filter(item =>
-    item.decision === 'apply' && (item.findingStatus === undefined || UNHANDLED_STATUSES.has(item.findingStatus)),
-  ).length
+  return items.filter(item => {
+    if (item.decision !== 'apply') return false
+    // 作者侧条目没有 findingId 可查状态；合并成功后它们的内容已进正文，算已处理。
+    if (item.origin === 'author') return !mergeCommitted
+    return item.findingStatus === undefined || UNHANDLED_STATUSES.has(item.findingStatus)
+  }).length
 }
