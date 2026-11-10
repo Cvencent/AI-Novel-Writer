@@ -744,12 +744,24 @@ export class GenerationRunRepository {
             // sealed 仍拒：封账 root 的历史不可续写。
             console.error('[activate] cancelled root re-activated by explicit retry:', rootId);
             budget.root.status = 'active';
-            this.db().prepare("UPDATE generation_runs SET status='running' WHERE root_action_id=? AND status='cancelled'").run(rootId);
         }
         if (!['active', 'paused'].includes(budget.root.status)) {
             console.error('[activate] root status not activatable:', budget.root.status);
             fail('GENERATION_DIRECTORY_CONTINUATION_BLOCKED');
         }
+        // issue #245 现场（`run=cancelled` 但 `root=active` 的孤儿，实测在真库里躺了 17 天）：
+        // root 与 run 的终态必须一致，否则这个 root 会**永远**卡住——
+        //   ① 它已经是 active，再不会被「取消/暂停」拉起；
+        //   ② `recoverInterrupted` 与 `reapIdleRuns` 都只扫 `run.status='running'`，选不中它；
+        //   ③ 作者编辑过的 root 还会被 `frozenRoot` 跳过。
+        // 于是它既不占章节（前端 activeRuns 只来自本次会话），也不可续接，纯属账本垃圾。
+        //
+        // 原实现在这一处**只修 root 不改 run**（run 的修复挂在上面那个 `root==='cancelled'`
+        // 分支里），所以 `root=paused` + `run=cancelled` 的组合经这里会变成
+        // `root=active` + `run=cancelled` —— 正是真库里那条的样子。这里把不变式补全：
+        // 只要 root 被置为 active，同一 root 下**非终态语义**的 run 也要跟着活跃起来，
+        // 让账本始终有一行能代表「这个 root 还在进行」。
+        this.db().prepare("UPDATE generation_runs SET status='running' WHERE root_action_id=? AND status='cancelled'").run(rootId);
         // issue #243：上次失败留下的中间态在这里宽容清理——作者已明确要求重试，
         // 这些残留没有任何继续存在的意义；不清则重试永远被 BLOCKED 拒。
         // 1) 孤儿 attempt（reserved/dispatch-marked）：provider 层挂起（通道 429/页面刷新）
@@ -1008,6 +1020,40 @@ export class GenerationRunRepository {
                     }
                 this.pause(id);
             }
+            this.repairStrandedRoots();
+        });
+    }
+    /**
+     * 收掉「root 还是 active、但它名下已经没有任何活跃 run」的孤儿（issue #245 现场）。
+     *
+     * 这种组合是历史 bug 留下的（`activateRootForCommittedStage` 早先只把 root 置 active、
+     * 不修 run）：实测真库里有一条这样躺了 17 天。它既不占章节、也不能续接，纯账本垃圾；
+     * 而 `recoverInterrupted` / `reapIdleRuns` 都只扫 `run.status='running'`，谁也收不到它。
+     *
+     * ⚠️ **只把 root 收成 paused，绝不动 run**：run 已经是终态（cancelled/failed），
+     * 改写它等于篡改历史。也不碰 author-edited 的 root —— 那是作者亲手接管的账本，
+     * 冻结就是它的正确终态（`frozenRoot` 同一口径）。
+     *
+     * 幂等：只命中「active 且名下无 running run」的 root，收完就不再命中。
+     */
+    repairStrandedRoots(): number {
+        return this.transaction(() => {
+            const stranded = this.db().prepare(`SELECT root.root_action_id FROM generation_roots root
+                WHERE json_extract(root.action_json,'$.status')='active'
+                  AND NOT EXISTS (SELECT 1 FROM generation_runs r
+                    WHERE r.root_action_id=root.root_action_id AND r.status='running')`).all() as {
+                root_action_id: string;
+            }[];
+            let repaired = 0;
+            for (const { root_action_id: id } of stranded) {
+                if (this.frozenRoot(id)) continue;
+                // blocked_code 非空的 root 是有明确死因的（预算超限等），保留它可解释的状态。
+                if (this.budget(id).blockedCode) continue;
+                this.pause(id);
+                repaired += 1;
+            }
+            if (repaired > 0) console.error(`[recover] repaired ${repaired} stranded active root(s)`);
+            return repaired;
         });
     }
     private frozenRoot(rootId: string): boolean {

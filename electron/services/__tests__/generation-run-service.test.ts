@@ -70,6 +70,43 @@ describe('single durable generation owner', () => {
     });
     it('atomically shares parent budget across child calls', () => { const f = fixture(), root = f.repository.open(f.open), child = f.repository.open({ ...f.open, uiActionNonce: 'child', parentRootActionId: root.rootActionId }); expect(child.rootActionId).toBe(root.rootActionId); f.repository.reserve(root.runId, 'a', textHash('a'), 200, 100); f.repository.reserve(child.runId, 'b', textHash('b'), 200, 100); expect(() => f.repository.reserve(child.runId, 'c', textHash('c'), 200, 100)).toThrow('ROOT_BUDGET_EXHAUSTED'); });
     it('keeps unknown liability and does not replay the nonce after restart', async () => { const f = fixture(), run = f.repository.open(f.open), request = f.request(run.runId); const hash = request.requestHash; const a = f.repository.reserve(run.runId, 'call', hash, 200, 100); f.repository.markDispatched(a.attempt.attemptId); f.setNow(4000); f.repository.recoverInterrupted(); const dispatch = vi.fn(); const service = createGenerationRunService({ repository: f.repository, dispatch }); const result = await service.execute(request); expect(result.attempt.status).toBe('unknown'); expect(result.budget.activeElapsedMs).toBe(3000); expect(dispatch).not.toHaveBeenCalled(); });
+    // issue #245 现场：真库里躺了 17 天的一条 `root=active` + `run=cancelled` 孤儿。
+    // 成因是 activateRootForCommittedStage 早先**只把 root 置 active、不修 run**
+    // （run 的修复挂在「root 原本是 cancelled」那个窄分支里），于是
+    // `root=paused` + `run=cancelled` 经它会变成 `root=active` + `run=cancelled`。
+    it('keeps run and root statuses in agreement when a root is reactivated', () => {
+        const f = fixture(), run = f.repository.open(f.open)
+        f.repository.pause(run.rootActionId, true)
+        // 造出历史现场的那个组合：root 被置回 paused，但 run 已经是终态 cancelled。
+        f.db.prepare("UPDATE generation_roots SET action_json=json_set(action_json,'$.status','paused') WHERE root_action_id=?").run(run.rootActionId)
+        expect(f.db.prepare('SELECT status FROM generation_runs WHERE run_id=?').pluck().get(run.runId)).toBe('cancelled')
+        f.db.transaction(() => f.repository.activateRootForCommittedStage(run.rootActionId, { projectId: 'project', epoch: 'epoch' }))()
+        // 不变式：root 活跃时，名下必须有一行 running 代表它，否则这个 root 永远卡住——
+        // recoverInterrupted 与 reapIdleRuns 都只扫 run.status='running'，谁也收不到它。
+        expect(f.db.prepare('SELECT status FROM generation_runs WHERE run_id=?').pluck().get(run.runId)).toBe('running')
+        expect(f.repository.budget(run.rootActionId).root.status).toBe('active')
+    });
+    it('repairs a stranded active root whose runs are all terminal, without touching terminal runs or author-edited roots', () => {
+        const f = fixture(), stranded = f.repository.open(f.open), edited = f.repository.open({ ...f.open, uiActionNonce: 'edited', operation: 'generate-plot-outline' })
+        // 孤儿一：root 仍是 active，但 run 已被取消（历史 bug 的产物）。
+        f.repository.pause(stranded.rootActionId, true)
+        f.db.prepare("UPDATE generation_roots SET action_json=json_set(action_json,'$.status','active') WHERE root_action_id=?").run(stranded.rootActionId)
+        // 作者接管过的 root：即使同样是 active 也不许动（冻结就是它的正确终态）。
+        const editedBinding = JSON.parse(String(f.db.prepare('SELECT binding_json FROM generation_runs WHERE run_id=?').pluck().get(edited.runId)) as string) as Record<string, unknown>
+        f.db.prepare('UPDATE generation_runs SET binding_json=? WHERE run_id=?').run(
+            JSON.stringify({ ...editedBinding, $runEffects: { plotOutlineAuthorEdit: { kind: 'author-edit' } } }), edited.runId)
+        f.repository.pause(edited.rootActionId, true)
+        f.db.prepare("UPDATE generation_roots SET action_json=json_set(action_json,'$.status','active') WHERE root_action_id=?").run(edited.rootActionId)
+        const repaired = f.repository.repairStrandedRoots()
+        expect(repaired).toBe(1)
+        // 孤儿被收成 paused：root 与它的 run 重新一致（不再有「active 却无活跃 run」）。
+        expect(f.repository.budget(stranded.rootActionId).root.status).toBe('paused')
+        expect(f.db.prepare('SELECT status FROM generation_runs WHERE run_id=?').pluck().get(stranded.runId)).toBe('paused')
+        // 作者编辑过的那个 root 原样保留。
+        expect(f.repository.budget(edited.rootActionId).root.status).toBe('active')
+        // 幂等：再跑一次没有可收的了。
+        expect(f.repository.repairStrandedRoots()).toBe(0)
+    });
     it('leaves portable historical roots and dispatch attempts byte-for-byte untouched on recovery', () => {
         const f = fixture(), run = f.repository.open(f.open), attempt = f.repository.reserve(run.runId, 'call', textHash('call'), 200, 100)
         f.repository.markDispatched(attempt.attempt.attemptId)
