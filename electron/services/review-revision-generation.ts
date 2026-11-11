@@ -115,12 +115,14 @@ export class ReviewRevisionGeneration {
     const context = this.context(run), { row, artifact } = this.proveArtifact(run, reference)
     if (context.recheck) {
       const attempt = this.attempts(run.runId).find(candidate => candidate.attempt_id === row.attempt_id)
-      let persistedVersion: 1 | 2 | undefined
+      let persistedVersion: 1 | 2 | 3 | undefined
       try {
         const receipt = attempt && JSON.parse(attempt.usage_receipt_json).reviewCycleRecheck
-        if (receipt?.version === 1 || receipt?.version === 2) persistedVersion = receipt.version
+        if (receipt?.version === 1 || receipt?.version === 2 || receipt?.version === 3) persistedVersion = receipt.version
       } catch { /* Invalid persisted receipts fail later proof checks; do not downgrade current policy. */ }
-      const policy = { ...context.recheck, version: persistedVersion ?? 2 } as const
+      // 缺省 3：新回执走「信任锚定后的 resolved」，与 v3 语义一致（issue #245）。
+      // 历史行按 receipt 里落的版本重建，保证 M03 的 hash-pin 仍能对上。
+      const policy = { ...context.recheck, version: persistedVersion ?? 3 } as const
       const built = buildReviewCycleRecheckReport(artifact.text, context.source.content, policy, context.uiLocale, reportVersion)
       return JSON.stringify({ summary: built.summary, items: built.items }, null, 2)
     }
@@ -280,7 +282,8 @@ export class ReviewRevisionGeneration {
       const receipt = this.record(run, request.artifact, { kind: 'review', id: result.id, index: result.reviewIndex, contentHash,
         reportVersion: 2 })
       if (context.recheck) {
-        const policy = { ...context.recheck, version: 2 } as const
+        // v3 = 信任锚定后的正向 resolved（issue #245）。v2 的降级只保留给历史行。
+        const policy = { ...context.recheck, version: 3 } as const
         const built = buildReviewCycleRecheckReport(proof.artifact.text, context.source.content, policy, context.uiLocale)
         const findings = built.decisions.filter(decision => decision.status !== 'unknown').map(decision => {
           const item = built.items[decision.reviewItemIndex]!

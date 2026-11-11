@@ -50,12 +50,22 @@ export interface ReviewCycleRecheckFinding {
 
 export interface ReviewCycleRecheckContext {
   /**
-   * 回执/报告的落库版本。⚠️ **不再**用来区分「信不信模型的 resolved 判断」：
-   * v2 曾把 resolved 降级成 `unknown`（等一个并不存在的作者核实入口），已在
-   * issue #245 取消。现在两版语义一致：证据唯一锚定 + 模型判 resolved = 已解决。
-   * 版本号仍保留，因为 M03 校验回执形状时要按它核对字段集。
+   * 回执/报告的落库版本。**决定「信不信模型的正向 resolved 判断」**：
+   *
+   * - `1`：严格解析（只认纯围栏），且信任锚定后的正向判断。
+   * - `2`：解析更宽松；但把 `resolved: true` 降级成 `unknown`（v2 政策）。
+   * - `3`：**同 v1 语义**，即信任锚定后的 `resolved: true`。
+   *
+   * ⚠️ 为什么要分版本而不是直接改 v2 的行为：M03 的 `proveEffect` 会**重建**
+   * 复核报告再和落库 hash 比（hash-pin）。改一个已落库版本的重建结果 = 所有
+   * 历史行立刻对不上 → `MIGRATION_VERIFICATION_FAILED` → **书打不开**。
+   * 现场教训（issue #245 复现）：直接把 v2 改成信任 resolved，源起当场打不开，
+   * 因为那两条 recheck 行是 v2 写的。所以新语义必须**只对新行生效**。
+   *
+   * `2` 的降级本身仍被视为设计错误（它的终点是一个并不存在的作者核实入口），
+   * 但历史行按历史语义验证，不动。
    */
-  version: 1 | 2
+  version: 1 | 2 | 3
   cycleId: string
   comparisonVersion: number
   mergedHash: string
@@ -200,7 +210,7 @@ export function buildReviewCycleRecheckReport(content: string, merged: string,
       continue
     }
     /**
-     * v2 曾经把「模型判了 resolved」一律降级成 `unknown`，等作者核实 —— 但那个
+     * v2 把「模型判了 resolved」一律降级成 `unknown`，等作者核实 —— 但那个
      * 「核实」**从来没有入口**：`resolved` 只能由复验写，全仓没有第二条写它的路径，
      * 作者手上只有「弃修」。
      *
@@ -210,14 +220,26 @@ export function buildReviewCycleRecheckReport(content: string, merged: string,
      * 满足指标」，`resolved=true`，证据唯一可定位——它**判对了**，却被降级吞掉，
      * 于是这条提示永远不会消失。作者越照做越窝火。
      *
-     * 现在的口径：证据锚定（引用逐字且全篇只出现一次，已在上面 `valid` 里校验过）
-     * + 模型判 resolved = 已解决。挑剔模型的语义判断没有接地面，而锚定这一关
-     * 已经挡掉了「瞎编引文」这个主要失效形态：编的句子在合并后正文里找不到，
-     * `evidenceCount !== 1`，走的是上面那条 `unknown` 分支。
+     * 所以 v3（新回执）口径：证据锚定（引用逐字且全篇只出现一次，已在上面 `valid`
+     * 里校验过）+ 模型判 resolved = 已解决。锚定这一关已经挡掉了「瞎编引文」这个
+     * 主要失效形态：编的句子在合并后正文里找不到，`evidenceCount !== 1`，走的是
+     * 上面那条 `unknown` 分支。
      *
-     * 保留 `unknown` 的两种真实情况不变：**没有**唯一可验证的证据（上一段），
-     * 或整个复核输出不合规（`parsed` 为 null）。
+     * ⚠️ 降级**只对 v2**（`context.version === 2`），v1 与 v3 都信任锚定后的判断。
+     * 这不是「兼容一下」，而是硬约束：M03 的 `proveEffect` 会重建报告再比 hash，
+     * 改任一历史版本的重建结果 = 那些行立刻对不上 → `MIGRATION_VERIFICATION_FAILED`
+     * → **书打不开**。（我第一版写成 `!== 3`，把 v1 也降级了，源起当场打不开。）
+     * v1 从来就是信任的（v2 才引入降级），别把 v1 一起动。
      */
+    if (context.version === 2 && candidate.resolved) {
+      items.push({ category: finding.category, severity: 'unknown', findingId: finding.findingId,
+        targetId: finding.targetId, description: uiLocale === 'en-US'
+          ? `The model supplied anchored evidence, but semantic resolution still requires author verification. ${candidate.reason}`
+          : `模型提供了可定位的新证据，但是否实质解决仍需作者核实。${candidate.reason}`,
+        quote: candidate.evidenceQuote, resolved: false })
+      decisions.push({ findingId: finding.findingId, targetId: finding.targetId, status: 'unknown', reviewItemIndex })
+      continue
+    }
     items.push({ category: finding.category, severity: candidate.resolved ? 'pass' : 'warning',
       findingId: finding.findingId, targetId: finding.targetId, description: candidate.reason,
       quote: candidate.evidenceQuote, resolved: candidate.resolved })

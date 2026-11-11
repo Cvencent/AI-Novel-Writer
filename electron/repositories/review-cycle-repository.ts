@@ -548,7 +548,8 @@ function recheckContext(cycle: RecheckCycleRow, db: Database.Database): ReviewCy
     problemText: row.problem_text, expectedText: row.expected_text,
   }))).filter(finding => classifyFindingEvidenceChange(cycle.source_content!, cycle.merged_body, finding) === 'changed')
   findings.push(...unshown)
-  return { version: 2, cycleId: cycle.cycle_id, comparisonVersion: cycle.comparison_version,
+  // v3：新复核信任锚定后的正向 resolved（issue #245）。历史行按各自 receipt 的版本重建。
+  return { version: 3, cycleId: cycle.cycle_id, comparisonVersion: cycle.comparison_version,
     mergedHash: cycle.merged_hash!, findingSetHash: cycle.finding_set_hash,
     ...(unshown.length ? { sourceContent: cycle.source_content! } : {}), findings }
 }
@@ -932,7 +933,7 @@ export class ReviewCycleRepository {
       // 会挡复验重试）——recheck attempt 不再要求落在 plan.rootActionId 下；
       // 谱系由收据内容（reviewCycleRecheck.cycleId/mergedHash/findingSetHash 全等）证明。
       if (!attempt || !receipt
-        || (receipt.version !== 1 && receipt.version !== 2)
+        || (receipt.version !== 1 && receipt.version !== 2 && receipt.version !== 3)
         || receipt.cycleId !== cycleId || receipt.comparisonVersion !== plan.context.comparisonVersion
         || receipt.mergedHash !== plan.context.mergedHash || receipt.findingSetHash !== plan.context.findingSetHash
         || !Array.isArray(receipt.findings)) conflict()

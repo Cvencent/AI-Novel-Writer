@@ -533,10 +533,10 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
             const reportItem = integer(item?.reviewItemIndex) ? record(report.items[item.reviewItemIndex as number]) : null
             if (!item || !nonempty(item.findingId) || !nonempty(item.targetId) || !integer(item.reviewItemIndex)
               || item.reviewItemIndex >= report.items.length || typeof item.resolved !== 'boolean'
-              // v1/v2 把模型的 resolved 降级成 unknown，回执里就不该出现 true；
-              // v3（issue #245）改为信任锚定后的正向判断，所以只有 v3 允许 resolved=true。
-              // ⚠️ 别把这条按版本判的条件删掉——它同时是历史行的重建不变量。
-              || (receipt.version === 1 || receipt.version === 2) && item.resolved === true
+              // 只有 v2 会把模型的 resolved 降级成 unknown，回执里就不该出现 true；
+              // v1 从来信任、v3（issue #245）也信任锚定后的正向判断。
+              // ⚠️ 别放宽这条——它同时是历史行的重建不变量（放宽 v1 会让 v1 旧行验证失败）。
+              || receipt.version === 2 && item.resolved === true
               || recheckTargets.get(item.findingId) !== item.targetId || reportItem?.resolved !== item.resolved
               || !HASH.test(String(item.evidenceHash)) || seenReviewItems.has(item.reviewItemIndex)
               || recheckEvidence.has(item.findingId))    return false

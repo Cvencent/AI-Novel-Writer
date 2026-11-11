@@ -1562,7 +1562,8 @@ describe('ReviewCycleRepository recheck state', () => {
       const item = mergedFindingCycle(db, 'plan-required', '开场时门闩已修好，主角继续前进。')
       const plan = ReviewCycleRepository.planRecheck(item.cycle.cycleId, db)
       expect(plan.disposition).toBe('required')
-      expect(plan.context).toMatchObject({ version: 2, cycleId: item.cycle.cycleId, mergedHash: item.mergedHash,
+      // version 3 = 新复核信任锚定后的正向 resolved（issue #245）；历史行仍按各自 receipt 版本重建。
+      expect(plan.context).toMatchObject({ version: 3, cycleId: item.cycle.cycleId, mergedHash: item.mergedHash,
         findingSetHash: item.cycle.findingSetHash,
         findings: [{ targetId: 'fact:door-latch', kind: 'objective', category: '确定性一致性预检',
           problem: expect.stringContaining('事实冲突') }] })

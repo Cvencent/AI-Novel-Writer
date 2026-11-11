@@ -28,29 +28,36 @@ describe('recheck report envelopes', () => {
     const report = buildReviewCycleRecheckReport(wrapped, '甲在城外。', context, 'zh-CN')
     expect(report.validModelOutput).toBe(true)
     expect(report.summary).toBe('完整复核结论')
-    /**
-     * issue #245：v2 曾把模型判的 resolved 降级成 unknown，等一个**不存在**的
-     * 作者核实入口（resolved 只能由复验写，作者手上只有「弃修」）。现场是
-     * `源起` 第 2 章唯一一条 AI 发现：作者按它改完、合并成功，定稿仍报「还没确定」。
-     * 现在口径：证据唯一锚定（已在 valid 里校验）+ 模型判 resolved = 已解决。
-     */
-    expect(report.items[0]).toMatchObject({ severity: 'pass', resolved: true, quote: '甲在城外' })
-    expect(report.items[0]).not.toMatchObject({ severity: 'unknown' })
-    expect(report.decisions[0].status).toBe('resolved')
+    // context.version=2：v2 政策把模型判的 resolved 降级成 unknown（历史语义，必须保留）。
+    expect(report.items[0]).toMatchObject({ severity: 'unknown', resolved: false, quote: '甲在城外',
+      description: expect.stringContaining('正文提供了新地点，仍需作者核实。') })
+    expect(report.decisions[0].status).toBe('unknown')
     // 入参 reportVersion 仍只管解析形状：v1 不认「说明+围栏+结尾」这种包裹。
     expect(buildReviewCycleRecheckReport(wrapped, '甲在城外。', context, 'zh-CN', 1).validModelOutput).toBe(false)
   })
 
   /**
-   * 取消降级**不等于**信任一切：模型说 resolved 但引文在合并后正文里找不到
-   * （或者出现不止一次）时，仍是 `unknown` —— 这正是当初 v2 降级想防的
-   * 「模型瞎说」，而现在由锚定校验来挡。
+   * issue #245：v3 才信任锚定后的正向判断。v1 从来到信任，v2 降级，三者互不干扰——
+   * 这是硬约束而不是口味：M03 的 proveEffect 会重建报告再比 hash，改任一历史版本的
+   * 重建结果都会让已落库的行验证失败（源起就是这么被打不开的）。
    */
+  it('v3 trusts an anchored resolved verdict while v1/v2 keep their historical semantics', () => {
+    const v1 = buildReviewCycleRecheckReport(output, '甲在城外。', { ...context, version: 1 }, 'zh-CN')
+    expect(v1.decisions[0].status).toBe('resolved')
+    const v2 = buildReviewCycleRecheckReport(output, '甲在城外。', { ...context, version: 2 }, 'zh-CN')
+    expect(v2.decisions[0].status).toBe('unknown')
+    const v3 = buildReviewCycleRecheckReport(output, '甲在城外。', { ...context, version: 3 }, 'zh-CN')
+    expect(v3.items[0]).toMatchObject({ severity: 'pass', resolved: true, quote: '甲在城外' })
+    expect(v3.decisions[0].status).toBe('resolved')
+  })
+
+  /** 信任**不等于**信任一切：引文在合并后正文里找不到/出现不止一次时，v3 也仍判 unknown。 */
   it('still refuses a resolved verdict whose quote is not uniquely anchored', () => {
-    const missing = buildReviewCycleRecheckReport(output, '正文里没有这句话。', context, 'zh-CN')
+    const v3 = { ...context, version: 3 as const }
+    const missing = buildReviewCycleRecheckReport(output, '正文里没有这句话。', v3, 'zh-CN')
     expect(missing.decisions[0].status).toBe('unknown')
     expect(missing.items[0].severity).toBe('unknown')
-    const duplicated = buildReviewCycleRecheckReport(output, '甲在城外。甲在城外。', context, 'zh-CN')
+    const duplicated = buildReviewCycleRecheckReport(output, '甲在城外。甲在城外。', v3, 'zh-CN')
     expect(duplicated.decisions[0].status).toBe('unknown')
   })
   it.each([`${output}\n${output}`, output.slice(0, -1), `${output}\n{"summary":`, `[${output}]`])(
@@ -220,13 +227,18 @@ describe('S01共享契约（纯合成，不是生产持久化资格）', () => {
       targetId: '事实一', resolved: true, evidenceQuote: '甲在城外', reason: '地点冲突已修正' }] }), '甲在城外。', context, 'zh-CN')
     expect(valid.decisions).toEqual([{ findingId: '意见一', targetId: '事实一', status: 'resolved',
       reviewItemIndex: 0, resolved: true }])
-    // issue #245：v2 不再把模型判的 resolved 降级成 unknown（那个「作者核实」
-    // 入口并不存在）。两版语义一致，只有锚定校验说了算。
+    // v2 政策保留：把模型判的 resolved 降级成 unknown（历史语义，M03 重建不变量）。
     const v2 = buildReviewCycleRecheckReport(JSON.stringify({ summary: '已核对', items: [{ findingId: '意见一',
       targetId: '事实一', resolved: true, evidenceQuote: '甲在城外', reason: '地点冲突已修正' }] }), '甲在城外。',
     { ...context, version: 2 }, 'zh-CN')
-    expect(v2.decisions).toEqual(valid.decisions)
-    expect(v2.items[0]).toMatchObject({ severity: 'pass', quote: '甲在城外', resolved: true })
+    expect(v2.decisions).toEqual([{ findingId: '意见一', targetId: '事实一', status: 'unknown', reviewItemIndex: 0 }])
+    expect(v2.items[0]).toMatchObject({ severity: 'unknown', quote: '甲在城外', resolved: false })
+    // issue #245：v3 信任锚定后的正向判断。
+    const v3 = buildReviewCycleRecheckReport(JSON.stringify({ summary: '已核对', items: [{ findingId: '意见一',
+      targetId: '事实一', resolved: true, evidenceQuote: '甲在城外', reason: '地点冲突已修正' }] }), '甲在城外。',
+    { ...context, version: 3 }, 'zh-CN')
+    expect(v3.decisions).toEqual(valid.decisions)
+    expect(v3.items[0]).toMatchObject({ severity: 'pass', quote: '甲在城外', resolved: true })
     const negative = buildReviewCycleRecheckReport(JSON.stringify({ summary: '仍未解决', items: [{ findingId: '意见一',
       targetId: '事实一', resolved: false, evidenceQuote: '甲在城外', reason: '仍在错误地点' }] }), '甲在城外。',
     { ...context, version: 2 }, 'zh-CN')

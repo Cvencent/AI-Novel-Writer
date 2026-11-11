@@ -742,7 +742,11 @@ describe('review and revision generation through the actual owner and SQLite', (
       targetId: finding.target_id, resolved: true, evidenceQuote: '门闩上的裂纹已用石蜡封住', reason: '正文出现新证据。' }] })}\n\`\`\`\n说明结束`
     const storedBinding = JSON.parse(f.db.prepare('SELECT binding_json FROM generation_runs WHERE run_id=?')
       .pluck().get(recheckView.handle.runId) as string)
-    storedBinding.sourceManifest.reviewRevisionContext.recheck.version = 1
+    // ⚠️ 这里曾经把 binding 的 recheck 版本改成 1 来「模拟历史行」。活路径的复核
+    // 回执现在落 v3（信任锚定后的 resolved，issue #245），而提交时 M03 会核对
+    // binding 与 receipt **同版本**（validRecheckVersionPair），单改 binding 必然
+    // 撞 REVIEW_CYCLE_CONFLICT。历史行的重放在下面 `reportVersion === 1` 那段做——
+    // 那里连 receipt 一起改，才是自洽的模拟。
     const frozenContext = JSON.stringify(storedBinding.sourceManifest.reviewRevisionContext)
     storedBinding.sourceManifest.reviewRevisionContextHash = textHash(frozenContext)
     storedBinding.sourceManifest.authorInputs = [{ id: 'review-revision-context', text: frozenContext }]
@@ -758,7 +762,8 @@ describe('review and revision generation through the actual owner and SQLite', (
       const resumed = await reopened.resume(recheckView.handle)
       const recovery = reopened.readReviewRevisionRecovery(resumed.handle)
       expect(recovery).toMatchObject({ sourceStatus: 'current', canResume: true,
-        context: { recheck: { version: 1, cycleId: cycle.cycle_id } } })
+        // 活路径的复核上下文现在是 v3（issue #245）；binding 不再被改成 1。
+        context: { recheck: { version: 3, cycleId: cycle.cycle_id } } })
       const commit = { contextId: recovery.contextId!, handle: resumed.handle,
         artifact: { artifactId: recheckArtifact.artifactId, revision: recheckArtifact.revision, textHash: recheckArtifact.textHash } }
       const savedRecheck = reopened.commitReview(commit)
@@ -778,8 +783,9 @@ describe('review and revision generation through the actual owner and SQLite', (
         quote: '门闩上的裂纹已用石蜡封住', description: expect.stringContaining('正文出现新证据。') })
       expect(f.db.prepare('SELECT status FROM review_findings').pluck().get()).toBe('resolved')
       expect(reopened.commitReview(commit)).toEqual(savedRecheck)
+      // 活路径的复核回执落 v3（issue #245：信任锚定后的 resolved）。
       expect(f.db.prepare("SELECT json_extract(usage_receipt_json,'$.reviewCycleRecheck.version') FROM generation_attempts WHERE attempt_id=?")
-        .pluck().get(recheckArtifact.attemptId)).toBe(2)
+        .pluck().get(recheckArtifact.attemptId)).toBe(3)
       // ③ 后修稿开新 root；#246 后复核也开新 root：审稿 + 修稿 + 复核 = 3。
     expect(f.db.prepare('SELECT COUNT(DISTINCT root_action_id) FROM generation_runs').pluck().get()).toBe(3)
       expect(f.db.prepare('SELECT COUNT(*) FROM generation_attempts').pluck().get()).toBe(3)

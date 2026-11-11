@@ -68,7 +68,7 @@ export function reviewRevisionRequest(context: ReviewRevisionContext): PrepareRe
  * a reopen. The live lease is attached to the `SourceRef` at the point of use instead.
  */
 export function captureReviewRevisionContext(db: Database.Database, request: PrepareReviewRevisionRequest,
-  projectId: string, frozenRecheckVersion?: 1 | 2): ReviewRevisionContext {
+  projectId: string, frozenRecheckVersion?: 1 | 2 | 3): ReviewRevisionContext {
   if (!request || Object.keys(request).some(key => !['operation', 'draftId', 'expectedDraft', 'reviewSourceId', 'confirmedReviewContent', 'reviewCycleId', 'expectedMergedHash', 'authorInputs', 'uiLocale'].includes(key))
     || !REVIEW_REVISION_OPERATIONS.includes(request.operation) || !Number.isSafeInteger(request.draftId) || request.draftId < 1
     || !['zh-CN', 'en-US'].includes(request.uiLocale) || !request.expectedDraft
