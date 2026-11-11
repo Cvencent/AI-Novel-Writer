@@ -84,9 +84,13 @@ export function verifyM10MultiRoundReviewCycle(db: BetterSqlite3Database): boole
   try {
     const sql = String(db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='review_cycles'")
       .pluck().get() ?? '')
-    require('fs').appendFileSync('.runtime/vg-trace.log', '[m10v] sqlHead=' + sql.slice(0, 80) + ' noUniqueCol=' + !sql.includes('review_id INTEGER NOT NULL UNIQUE') + ' | ')
-    if (!sql.includes('review_id INTEGER NOT NULL REFERENCES reviews(id)')) { require('fs').appendFileSync('.runtime/vg-trace.log', '[m10v] FAIL col-anchor | '); return false }
-    if (sql.includes('review_id INTEGER NOT NULL UNIQUE')) { require('fs').appendFileSync('.runtime/vg-trace.log', '[m10v] FAIL still-unique | '); return false }
+    // ⚠️ 这里曾有 `require('fs').appendFileSync('.runtime/vg-trace.log', ...)` 调试探针，
+    // 写在 try 里、抛错被下面的 catch 吞掉。app 的工作目录（安装目录）没有 .runtime/，
+    // appendFileSync 必抛 ENOENT → **verify 恒为 false** → 打开项目即
+    // MIGRATION_VERIFICATION_FAILED。仓库里恰好有 .runtime/，所以测试全绿、现场全红。
+    // 教训：迁移验证器里不许有任何依赖 cwd 的 I/O；诊断只许在临时脚本里做。
+    if (!sql.includes('review_id INTEGER NOT NULL REFERENCES reviews(id)')) return false
+    if (sql.includes('review_id INTEGER NOT NULL UNIQUE')) return false
     const index = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='review_cycles' AND sql LIKE '%review_id%'").get() as { name: string } | undefined
     if (!index) return false
     return (db.pragma('foreign_key_check') as unknown[]).length === 0
