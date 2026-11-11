@@ -94,3 +94,25 @@ describe('chapter workflow locale', () => {
     ]).join('\n')).not.toMatch(/[\u4e00-\u9fff]/u)
   })
 })
+
+/**
+ * 编辑部评审（五角色）已并入 AI 审稿：点一次「AI 审稿」= 一致性审稿 + 深度检查 +
+ * 五角色一次跑完。此前五角色是审稿侧页里独立一块，要再点一次「运行编辑部」。
+ */
+describe('review workflow carries the editorial panel (issue #245 现场)', () => {
+  it('runs the editorial panel as a step of the review workflow', () => {
+    const workflow = createReviewOnlyWorkflow({
+      projectPath,
+      chapterNumber: 2,
+      chapterTitle: 'A New Term',
+      draftPath: 'ai-novel://draft/2',
+      draftContent: '本章正文。',
+      sourceDraft,
+    }, projectSession)
+    const names = workflow.steps.map(step => step.name)
+    expect(names).toHaveLength(3)
+    expect(names.join('|')).toMatch(/编辑部评审|Editorial panel/)
+    // 五角色是最后一步：前面两步的产出（含深度检查）都进同一份运行卡片。
+    expect(names.at(-1)).toMatch(/编辑部评审|Editorial panel/)
+  })
+})

@@ -169,3 +169,32 @@ describe('core model prompt language contract', () => {
     expect(prompt).toContain('Never reverse established traits.')
   })
 })
+
+/**
+ * issue #245 现场：审稿没抓到「上一章的钩子本章没接」。
+ *
+ * 第 2 章末尾刚埋下「源起-0，固件自检中」并交代「距午夜门禁变更不到 6 小时」，
+ * 第 3 章开篇直接跳到 C-09 筒子楼、门禁已失效——中间的行程与时限推进**一句没交代**。
+ * 原因不是材料没给（绑定记录里第 2 章全文都在上下文里），而是判据形状：
+ * 第 4 条只要「可定位的矛盾或因果断裂」，而「该交代的没交代」被
+ * 【作者设定优先】那条「未提及不证明状态改变」系统性豁免了。
+ *
+ * 这条钉住新判据：第 4 条必须**显式要求**核对「该接没接」，并给出三种可机械核对的情形。
+ */
+describe('review dimension 4 covers dropped hand-offs (issue #245 现场)', () => {
+  it.each(['zh-CN', 'en-US'] as const)('asks for closing-hook, deadline and jump checks in %s', language => {
+    const content = getBuiltinPromptTemplate('consistency_check', language)?.content ?? ''
+    // 三种可核对情形都要在判据里点名
+    expect(content).toMatch(language === 'zh-CN' ? /章末钩子失联/ : /Lost closing hook/)
+    expect(content).toMatch(language === 'zh-CN' ? /时限蒸发/ : /Evaporated deadline/)
+    expect(content).toMatch(language === 'zh-CN' ? /时空跳接无过渡/ : /Untransitioned jump/)
+    // 明确只要 warning，不升级成 error（留白可能是作者有意）
+    expect(content).toMatch(language === 'zh-CN' ? /报 warning/ : /as \*\*warning\*\*/)
+  })
+
+  it('keeps the previous-chapter material requirement visible in the dimension', () => {
+    const content = getBuiltinPromptTemplate('consistency_check', 'zh-CN')?.content ?? ''
+    // 只有上一章确有显性钩子时才报——避免把泛指也报成缺漏
+    expect(content).toContain('只有上一章确有该显性钩子/期限/地点时才报')
+  })
+})

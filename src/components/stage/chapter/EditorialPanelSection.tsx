@@ -65,19 +65,32 @@ export default function EditorialPanelSection({ chapterNumber, draftId, draftVer
     void load(draftId, requestRevision.current)
   }), [draftId, load])
 
-  const run = () => {
+  /**
+   * 自动把面板发现并入修稿清单（幂等，见 `autoMergeEditorialFindings`）。
+   *
+   * 五角色评审已并入 AI 审稿一起跑（审稿工作流的最后一步），所以这块面板不再有
+   * 「运行编辑部」按钮——作者点一次审稿就出分、出发现，且发现**直接进清单**，
+   * 不用再点一次「纳入修稿」。`merged` 记的是本次已并入的键，避免重挂载重复并入。
+   */
+  const autoMerge = useCallback((quality: DraftQualityReview | null) => {
+    if (!checklist || !quality) return
+    checklist.autoMergeEditorialFindings(quality.roles.flatMap(role => {
+      const roleLabel = text(...ROLE_LABELS[role.role])
+      return role.findings.map(finding => ({
+        severity: finding.severity, description: finding.description, evidence: finding.evidence, roleLabel,
+      }))
+    }))
+  }, [checklist, text])
+
+  useEffect(() => { autoMerge(quality) }, [autoMerge, quality])
+
+  /** 手动重跑：作者想换一次评分/发现时用（例如改过稿或想换采样）。 */
+  const rerun = () => {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
     if (!session || draftId === undefined || draftVersion === undefined || starting) return
     setStarting(true)
     const workflow = createEditorialPanelWorkflow({ projectPath: session.projectPath, projectSession: session, chapterNumber, draftId, draftVersion, locale })
     activeRunId.current = workflow.runId ?? null
-    // 不跳到运行侧页：评审就是在这块面板里出分。跳走会把审稿报告（含勾选修稿）
-    // 整个换掉，作者回来只看到运行日志和一步 JSON，还以为没出结果。
-    // issue #103：`.finally()` 是**确定**知道运行结束的那条路径，让它顺手重读一次。
-    // 原来只有 `WORKFLOW_COMPLETE` 会刷新，而那条事件在「项目会话切换/失效」时
-    // 根本不发（workflow-store 只发 WORKFLOW_SETTLED），于是评分已落库、
-    // 面板却停在「还没有编辑部评分」直到重挂载。现在两条路径都指向同一个 load：
-    // 事件是快路径，`.finally` 是兜底路径。
     void useWorkflowStore.getState().startWorkflow(workflow).finally(() => {
       if (!isProjectSessionCurrent(session) || draftId === undefined) return
       setStarting(false)
@@ -91,8 +104,8 @@ export default function EditorialPanelSection({ chapterNumber, draftId, draftVer
   return (
     <section className="stage-editorial-panel" aria-label={text('编辑部评审', 'Editorial panel')}>
       <header className="stage-editorial-head">
-        <div><h3>{text('编辑部评审', 'Editorial panel')}</h3><p>{text('情节、连续性、角色、文风、节奏分别评分。', 'Independent scores for plot, continuity, character, style, and pacing.')}</p></div>
-        <Button variant="secondary" size="sm" disabled={starting || draftVersion === undefined} onClick={run}><Sparkles size={13} aria-hidden />{starting ? text('五位编辑评审中…', 'Reviewing…') : quality ? text('重新评估', 'Re-evaluate') : text('运行编辑部', 'Run panel')}</Button>
+        <div><h3>{text('编辑部评审', 'Editorial panel')}</h3><p>{text('情节、连续性、角色、文风、节奏分别评分；发现已并入上方修稿清单。', 'Independent scores for plot, continuity, character, style, and pacing; findings are already merged into the revision checklist above.')}</p></div>
+        <Button variant="secondary" size="sm" disabled={starting || draftVersion === undefined} onClick={rerun}><Sparkles size={13} aria-hidden />{starting ? text('五位编辑评审中…', 'Reviewing…') : text('重新评估', 'Re-evaluate')}</Button>
       </header>
       {quality ? (
         <>
@@ -111,6 +124,9 @@ export default function EditorialPanelSection({ chapterNumber, draftId, draftVer
                 {role.findings.length > 0 ? (
                   <ul>
                     {role.findings.map((finding, index) => {
+                      // 发现已**自动并入**上方清单（见 autoMerge）。这里只如实显示并入状态；
+                      // 想排除某条，作者直接在清单里取消勾选或删掉它——本面板不再提供第二个入口，
+                      // 两个入口写同一份清单只会互相打架。
                       const included = checklist
                         ? checklist.items.some(item => item.origin === 'author'
                             && (item.description + '|' + (item.quote ?? '')).trim() === (finding.description + '|' + (finding.evidence ?? '')).trim())
@@ -121,11 +137,7 @@ export default function EditorialPanelSection({ chapterNumber, draftId, draftVer
                           {/* issue #154：作者可见 → 剥掉 Markdown 粗体（只在渲染侧）。 */}
                           {stripEmphasis(finding.description)}
                           {finding.evidence && <q>{stripEmphasis(finding.evidence)}</q>}
-                          {checklist && (included
-                            ? <span className="stage-editorial-included">{text('已纳入修稿', 'Included in revision')}</span>
-                            : <Button variant="secondary" size="sm" onClick={() => {
-                                checklist.includeEditorialFinding({ severity: finding.severity, description: finding.description, evidence: finding.evidence, roleLabel })
-                              }}>{text('纳入修稿', 'Include in revision')}</Button>)}
+                          {checklist && included && <span className="stage-editorial-included">{text('已并入清单', 'Merged into checklist')}</span>}
                         </li>
                       )
                     })}
@@ -136,23 +148,10 @@ export default function EditorialPanelSection({ chapterNumber, draftId, draftVer
             })}
           </div>
           {checklist && quality.roles.some(role => role.findings.length > 0) && (
-            <div className="stage-editorial-actions">
-              <Button variant="secondary" size="sm" onClick={() => {
-                // issue #103：一次算完再落库。原来是 `for` 循环里逐条调
-                // `includeEditorialFinding`，每条都基于闭包里的旧 `items`，
-                // 后一次覆盖前一次 → N 条发现只留下最后一条。
-                checklist.includeEditorialFindings(quality.roles.flatMap(role => {
-                  const roleLabel = text(...ROLE_LABELS[role.role])
-                  return role.findings.map(finding => ({
-                    severity: finding.severity, description: finding.description, evidence: finding.evidence, roleLabel,
-                  }))
-                }))
-              }}>{text('全部纳入修稿', 'Include all in revision')}</Button>
-              <span className="stage-editorial-hint">{text('纳入后与普通审稿意见一样：在上方清单勾选，然后「按 N 项意见修稿」。', 'Included notes join the checklist above: tick them, then revise by the selected items.')}</span>
-            </div>
+            <p className="stage-editorial-hint">{text('五角色的发现已自动并入上方修稿清单；要排除某条，直接在清单里取消勾选或删除它。', 'The five editors’ findings are merged into the checklist above; to exclude one, untick or delete it there.')}</p>
           )}
         </>
-      ) : <p className="stage-ch-sheet-note">{text('还没有编辑部评分。运行后会写入这份草稿的质量记录。', 'No editorial score yet. Running it records quality for this draft.')}</p>}
+      ) : <p className="stage-ch-sheet-note">{text('还没有编辑部评分。点上方「AI 审稿」会连同五角色评审一起跑，结果写入这份草稿的质量记录。', 'No editorial score yet. “AI review” above runs the five-editor panel together with the consistency review and records it for this draft.')}</p>}
     </section>
   )
 }

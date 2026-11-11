@@ -365,6 +365,12 @@ export function useReviewChecklist({
     ?? editableItemsFromReview(parsedReport.issues, initialSnapshot, cycle))
   const [authorGuidance, setAuthorGuidance] = useState(() => restoreLedgerDraft()?.authorGuidance
     ?? initialSnapshot?.authorGuidance ?? '')
+  /**
+   * 已自动并入过清单的编辑部评审发现键。用于自动并入的幂等：
+   * 作者删掉某条后发现不能自己回来（详见 `ReviewChecklistDraft.mergedEditorialKeys`）。
+   */
+  const [mergedEditorialKeys, setMergedEditorialKeys] = useState<string[]>(
+    () => restoreLedgerDraft()?.mergedEditorialKeys ?? [])
   const setAuthorGuidancePersisted = (value: string) => {
     setAuthorGuidance(value)
     persistEditingDraft(items, value)
@@ -433,7 +439,8 @@ export function useReviewChecklist({
   }, [chapterDir, cycle, draftPath, initialSnapshot, projectKey, reviewId])
 
 
-  const persistEditingDraft = (nextItems: EditableReviewItem[], nextGuidance: string) => {
+  const persistEditingDraft = (nextItems: EditableReviewItem[], nextGuidance: string,
+    nextMergedKeys: string[] = mergedEditorialKeys) => {
     if (!isReviewId(sourceReviewId) || chapterNumber === undefined) return
     const snapshotNow = confirmed?.snapshot ?? null
     if (snapshotNow && !editingChecklist) return
@@ -442,6 +449,7 @@ export function useReviewChecklist({
       reviewId: sourceReviewId,
       items: nextItems,
       authorGuidance: nextGuidance,
+      mergedEditorialKeys: nextMergedKeys,
       savedAt: '',
     }
     persistReviewChecklistDraft(useEditorStore.getState(), projectKey, record)
@@ -484,6 +492,33 @@ export function useReviewChecklist({
   }
   const includeEditorialFinding = (finding: { severity: string; description: string; evidence?: string; roleLabel: string }): boolean =>
     includeEditorialFindings([finding]) > 0
+
+  /**
+   * 自动并入编辑部评审的发现（编辑部评审并入 AI 审稿之后）。
+   *
+   * 作者点一次「AI 审稿」就同时拿到一致性审稿与五角色的结果，五角色的发现**直接进清单**，
+   * 不用再点一次「纳入修稿」——作者要的是「有问题一起列出来，一起修」。
+   *
+   * 幂等靠 `mergedEditorialKeys`：只并入**没并入过**的键，并把它们记进账本。
+   * 否则作者删掉一条发现后，侧页一重挂载它就会被重新塞回清单，像删不掉。
+   */
+  const autoMergeEditorialFindings = (findings: ReadonlyArray<{ severity: string; description: string; evidence?: string; roleLabel: string }>): number => {
+    const seen = new Set(mergedEditorialKeys)
+    const fresh = findings.filter(finding => !seen.has((finding.description + '|' + (finding.evidence ?? '')).trim()))
+    if (fresh.length === 0) return 0
+    const added = appendEditorialFindings(items, fresh.map(finding => ({
+      ...finding,
+      category: text('编辑部评审', 'Editorial panel') + '·' + finding.roleLabel,
+    })))
+    const nextKeys = [...mergedEditorialKeys, ...fresh.map(finding => (finding.description + '|' + (finding.evidence ?? '')).trim())]
+    if (added.length === 0) { setMergedEditorialKeys(nextKeys); persistEditingDraft(items, authorGuidance, nextKeys); return 0 }
+    const next = [...items, ...added]
+    setItems(next)
+    setMergedEditorialKeys(nextKeys)
+    persistEditingDraft(next, authorGuidance, nextKeys)
+    setEditingChecklist(true)
+    return added.length
+  }
   const addAuthorItem = () => {
     setItems(current => {
       const authorItemCount = current.filter(item => item.origin === 'author').length
@@ -906,7 +941,8 @@ export function useReviewChecklist({
     items, authorGuidance, confirmed, editingChecklist, setEditingChecklist,
     checklistError, setChecklistError, confirming, processing, rechecking, recheckMessage,
     summary, goalReview, canManageChecklist, cycle,
-    updateItem, removeItem, addAuthorItem, includeEditorialFinding, includeEditorialFindings, setAuthorGuidance: setAuthorGuidancePersisted, confirmChecklist, startConfirmedRevision, retryRequiredRecheck,
+    updateItem, removeItem, addAuthorItem, includeEditorialFinding, includeEditorialFindings,
+    autoMergeEditorialFindings, setAuthorGuidance: setAuthorGuidancePersisted, confirmChecklist, startConfirmedRevision, retryRequiredRecheck,
   }
 }
 

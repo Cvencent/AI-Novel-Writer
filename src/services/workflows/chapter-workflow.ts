@@ -555,6 +555,54 @@ export function createReviewOnlyWorkflow(
           return summary
         },
       },
+      {
+        /**
+         * 编辑部评审（五角色）并入 AI 审稿。
+         *
+         * 现场：五角色评审原先是审稿报告侧页里的**独立一块**，作者得再点一次「运行编辑部」
+         * 才跑，跑完还要在面板里逐条/一次「纳入修稿」，才发现两边的问题能一起修。
+         * 现在并成审稿的最后一步——点一次「AI 审稿」，一致性审稿 + 深度检查 + 五角色一次跑完。
+         *
+         * ⚠️ 发现**不写进审稿报告正文**：那份正文被 M03 用 sha256 钉死
+         * （`review_cycles.review_content_hash` 与 `reviews` 的投影一起校验），事后追加
+         * 会让重建哈希与落库值不等 → `MIGRATION_VERIFICATION_FAILED`（旧书打不开）。
+         * 所以这里只把评分与发现落到 `writing_intelligence_quality`（独立表），
+         * 由 `EditorialPanelSection` 读出来展示、并自动并入修稿清单。
+         */
+        name: localize(uiLocale, '编辑部评审', 'Editorial panel'),
+        description: localize(
+          uiLocale,
+          '五位编辑（情节/连续性/角色/文风/节奏）分别评审并打分',
+          'Five editors (plot, continuity, character, style, pacing) score the chapter',
+        ),
+        executor: async (_step, context, callbacks) => {
+          // 已有本稿的评分就不重跑：审稿会重复点（改一稿再点一次），
+          // 每次重跑等于白花一份模型调用；面板里有「重新评估」可显式重跑。
+          const { ipc } = await import('../ipc-client')
+          const session = frozenParams.projectSession ?? workflowProjectSession(frozenParams.projectPath, sourceProjectSession)
+          const existing = await ipc.invokeWithProjectSession(session, 'db:writing-intelligence-quality-get',
+            frozenParams.sourceDraft.id, session.projectPath).catch(() => null) as { contentHash?: string } | null
+          if (existing) {
+            const contentHash = await import('../../shared/source-ref')
+              .then(mod => mod.hashAuthorText(frozenParams.draftContent))
+            if (existing.contentHash === contentHash) {
+              callbacks.log(localize(uiLocale, '编辑部评审：本稿已有评分，跳过重跑（可在审稿报告里点「重新评估」）。',
+                'Editorial panel: this draft already has a score; skipping (use “Re-evaluate” in the review report to rerun).'))
+              return localize(uiLocale, '编辑部评审：沿用已有评分。', 'Editorial panel: reused the existing score.')
+            }
+          }
+          const { EditorialPanelCommand } = await import('./commands/editorial-panel.command')
+          const panel = await new EditorialPanelCommand({
+            chapterNumber: frozenParams.chapterNumber,
+            draftId: frozenParams.sourceDraft.id,
+            draftVersion: frozenParams.sourceDraft.version,
+          }).execute({ step: _step, context, callbacks })
+          const findings = panel.roles.reduce((total, role) => total + role.findings.length, 0)
+          return localize(uiLocale,
+            `编辑部评审完成：加权 ${panel.weightedScore.toFixed(1)} 分，阻断 ${panel.blockingCount} 条，共 ${findings} 处发现。`,
+            `Editorial panel done: weighted ${panel.weightedScore.toFixed(1)}, ${panel.blockingCount} blocking, ${findings} findings.`)
+        },
+      },
     ],
     onComplete: {
       mode: 'open',

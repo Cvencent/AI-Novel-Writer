@@ -16,6 +16,15 @@ export interface ReviewChecklistDraft {
   reviewId: number
   items: EditableReviewItem[]
   authorGuidance: string
+  /**
+   * 已经**自动并入过**清单的编辑部评审发现键（`描述|证据`）。
+   *
+   * 编辑部评审现在并进 AI 审稿一起跑（点一次就出结果），发现自动进修稿清单，
+   * 作者才不用再点一次「纳入修稿」。自动并入必须幂等：否则作者**删掉**某条发现后，
+   * 审稿侧页一重挂载（切标签、重开）就把它又塞回来，看起来像删不掉。
+   * 记下并入过的键，重挂载时跳过，删除才真正生效。
+   */
+  mergedEditorialKeys?: string[]
   savedAt: string
 }
 

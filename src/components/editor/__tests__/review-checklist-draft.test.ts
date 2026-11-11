@@ -47,3 +47,30 @@ describe('review checklist draft ledger', () => {
     expect(parseReviewChecklistDraftLedger('{broken')).toEqual({ version: 1, projects: [] })
   })
 })
+
+/**
+ * 编辑部评审并入 AI 审稿后，五角色发现要**自动**进清单（作者点一次审稿就够）。
+ * 自动并入必须幂等：作者删掉某条发现后，侧页重挂载不能把它塞回来——否则像删不掉。
+ * 幂等靠账本里的 `mergedEditorialKeys`（已并入过的 `描述|证据` 键）。
+ */
+describe('editorial auto-merge ledger (issue #245 现场)', () => {
+  const item = (id: string, description: string) => ({
+    id, reviewItemIndex: 0, category: '编辑部评审·情节', severity: 'warning' as const,
+    description, decision: 'apply' as const, origin: 'author' as const,
+  })
+
+  it('round-trips the merged keys so a removal stays removed', () => {
+    const w = writer()
+    persistReviewChecklistDraft(w, 'C:/p', draft({ mergedEditorialKeys: ['遗漏巡逻队|原文'], items: [item('editorial-1', '遗漏巡逻队')] }))
+    const restored = getReviewChecklistDraft(parseReviewChecklistDraftLedger(w.store[REVIEW_CHECKLIST_DRAFT_TAB_ID]), 'C:/p', 3, 4)
+    expect(restored?.mergedEditorialKeys).toEqual(['遗漏巡逻队|原文'])
+    expect(restored?.items).toHaveLength(1)
+  })
+
+  it('treats the merged keys as optional (older ledgers stay readable)', () => {
+    const w = writer()
+    persistReviewChecklistDraft(w, 'C:/p', draft())
+    const restored = getReviewChecklistDraft(parseReviewChecklistDraftLedger(w.store[REVIEW_CHECKLIST_DRAFT_TAB_ID]), 'C:/p', 3, 4)
+    expect(restored?.mergedEditorialKeys).toBeUndefined()
+  })
+})
