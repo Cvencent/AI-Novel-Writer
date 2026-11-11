@@ -198,3 +198,45 @@ describe('review dimension 4 covers dropped hand-offs (issue #245 现场)', () =
     expect(content).toContain('只有上一章确有该显性钩子/期限/地点时才报')
   })
 })
+
+/**
+ * issue #245 现场（源起 1-3 章）：审稿没报「读者看不懂」和「人物凭空熟识」。
+ *
+ * 现场一：第 1 章「归档分类：废脉」首次出现即当结论用，全文没有一句解释
+ *   废脉是什么；同一概念还以「废脉评级 / 废脉编组 / 废脉班」三种词形出现，无一处
+ *   交代它们是什么关系。「微量工业合成稳定剂」只写「断供→神经剧痛」这个后果，
+ *   没写它是用来做什么的。第 3 章的「管网生」同样首现即当已知身份用。
+ *
+ * 现场二：第 3 章写「是方知白，废脉班坐在最靠墙角落的管网生」——首次登场就
+ *   给出名字+「坐哪个角落」这种只有熟人才知道的细节；而第 1 章当天才被判废脉、
+ *   从未进过废脉班，第 2 章整天在政务大厅，前两章根本没有此人。
+ *
+ * 为什么之前不报：判据里没有这两类维度；第 2 条只管「已有条件冲突」，不管
+ * 「条件压根没建立」；第 3 条又把「看起来像主观感受」的问题按风格偏好豁免掉了。
+ * 这两类其实都能机械核对（首现位置有无解释句 / 人物此前是否出现过）。
+ */
+describe('review covers unexplained terms and unestablished relations (issue #245 现场)', () => {
+  it.each(['zh-CN', 'en-US'] as const)('requires a coined-term explanation check in %s', language => {
+    const content = getBuiltinPromptTemplate('consistency_check', language)?.content ?? ''
+    expect(content).toMatch(language === 'zh-CN' ? /新术语首现无交代/ : /Unexplained first use of a coined term/)
+    expect(content).toMatch(language === 'zh-CN' ? /首现即当结论用/ : /First use as a verdict/)
+    expect(content).toMatch(language === 'zh-CN' ? /称谓漂移且无定义/ : /Drifting labels without a definition/)
+    expect(content).toMatch(language === 'zh-CN' ? /功能物只写后果不写用途/ : /Function object with consequences only/)
+  })
+
+  it.each(['zh-CN', 'en-US'] as const)('requires an established-relation check in %s', language => {
+    const content = getBuiltinPromptTemplate('consistency_check', language)?.content ?? ''
+    expect(content).toMatch(language === 'zh-CN' ? /人物\/关系凭空熟识/ : /Unestablished character familiarity/)
+    expect(content).toMatch(language === 'zh-CN' ? /名字\+内部细节凭空给出/ : /Name plus insider detail out of nowhere/)
+    expect(content).toMatch(language === 'zh-CN' ? /主角行踪越级/ : /Protagonist jumping a level/)
+  })
+
+  it('keeps both new dimensions at warning, never error', () => {
+    const content = getBuiltinPromptTemplate('consistency_check', 'zh-CN')?.content ?? ''
+    // 术语密度与留白是作者风格，只有「完全没交代」才是缺陷 → 只要 warning
+    const termSection = content.slice(content.indexOf('新术语首现无交代'), content.indexOf('人物/关系凭空熟识'))
+    expect(termSection).toContain('报 **warning**')
+    // 允许一句话交代即视为已交代，避免把风格偏好报成缺陷
+    expect(termSection).toContain('即视为已交代，不报')
+  })
+})
