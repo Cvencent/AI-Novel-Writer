@@ -300,12 +300,12 @@ function exactSchema(db: Database.Database, table: string, columns: readonly str
 
 export function verifyM03ReviewCycle(db: Database.Database): boolean {
   try {
-    if (db.pragma('foreign_keys', { simple: true }) !== 1 || (db.pragma('foreign_key_check') as unknown[]).length)  return false
+    if (db.pragma('foreign_keys', { simple: true }) !== 1 || (db.pragma('foreign_key_check') as unknown[]).length)  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#1') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#1') ; return false } }
     const mergeTable = Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='review_cycle_merges'").get())
-    if (!mergeTable && Number(db.pragma('user_version', { simple: true })) >= 7)  return false
+    if (!mergeTable && Number(db.pragma('user_version', { simple: true })) >= 7)  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#2') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#2') ; return false } }
     if (mergeTable && !exactSchema(db, 'review_cycle_merges', ['cycle_id', 'body'], [
       'cycle_id TEXT PRIMARY KEY REFERENCES review_cycles(cycle_id) ON DELETE CASCADE', 'body TEXT NOT NULL',
-    ]))  return false
+    ]))  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#3') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#3') ; return false } }
     if (!exactSchema(db, 'review_cycles', ['cycle_id', 'root_action_id', 'review_id', 'review_content_hash', 'confirmation_review_id',
       'confirmation_content_hash', 'revision_id', 'source_hash', 'finding_set_hash', 'comparison_version', 'revision_status',
       'merged_hash', 'recheck_count', 'recheck_attempt_id'], [
@@ -321,45 +321,65 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
       'target_id', 'kind', 'problem_text', 'expected_text', 'status', 'evidence_hash', 'confirmation_item_index'], [
       'cycle_id TEXT NOT NULL REFERENCES review_cycles(cycle_id) ON DELETE CASCADE',
       "status IN ('unverified','author-waived')", "span_unit='utf16-code-unit'", "status='author-waived'",
-    ])) return false
+    ])) { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#4') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#4') ; return false } }
     const cycles = db.prepare('SELECT * FROM review_cycles ORDER BY cycle_id').all() as CycleRow[]
     const snapshots = mergeTable ? new Map((db.prepare('SELECT cycle_id,body FROM review_cycle_merges').all() as Array<{
       cycle_id: string; body: string }>).map(row => [row.cycle_id, row.body])) : null
     if (snapshots && (snapshots.size !== cycles.filter(cycle => cycle.revision_status === 'merge-committed').length
-      || cycles.some(cycle => cycle.revision_status !== 'merge-committed' && snapshots.has(cycle.cycle_id))))  return false
+      || cycles.some(cycle => cycle.revision_status !== 'merge-committed' && snapshots.has(cycle.cycle_id))))  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#5') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#5') ; return false } }
     for (const cycle of cycles) {
       if (!nonempty(cycle.cycle_id) || !nonempty(cycle.root_action_id) || !integer(cycle.review_id, 1)
         || !HASH.test(cycle.review_content_hash) || !HASH.test(cycle.source_hash) || !HASH.test(cycle.finding_set_hash)
         || !integer(cycle.comparison_version, 1) || !CYCLE_STATUSES.has(cycle.revision_status)
-        || !integer(cycle.recheck_count) || cycle.recheck_count > 1)  return false
+        || !integer(cycle.recheck_count) || cycle.recheck_count > 1)  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#6') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#6') ; return false } }
       const review = db.prepare(`SELECT r.id,r.base_draft_id,r.source_draft_chapter_number,r.source_draft_version,
           r.source_draft_status,r.source_content,c.body
         FROM reviews r JOIN contents c ON c.id=r.content_id WHERE r.id=?`).get(cycle.review_id) as ReviewRow | undefined
       if (!review || !integer(review.source_draft_chapter_number, 1) || !integer(review.source_draft_version, 1)
         || !nonempty(review.source_draft_status) || review.source_content === null || hash(review.body) !== cycle.review_content_hash
-        || hash(review.source_content) !== cycle.source_hash)  return false
+        || hash(review.source_content) !== cycle.source_hash)  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#7') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#7') ; return false } }
       const root = db.prepare('SELECT action_json FROM generation_roots WHERE root_action_id=?').get(cycle.root_action_id) as { action_json: string } | undefined
       const action = root && JSON.parse(root.action_json) as Record<string, unknown>
-      if (!action || !nonempty(action.projectId) || !nonempty(action.epoch))  return false
+      if (!action || !nonempty(action.projectId) || !nonempty(action.epoch))  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#8') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#8') ; return false } }
       const attempts = db.prepare(`SELECT a.attempt_id,a.run_id,a.root_action_id,r.root_action_id AS run_root_action_id,
           r.binding_json,a.attempt_json,a.usage_receipt_json
         FROM generation_attempts a JOIN generation_runs r ON r.run_id=a.run_id WHERE a.root_action_id=? ORDER BY a.rowid`)
         .all(cycle.root_action_id) as AttemptRow[]
       if (attempts.some(row => { const binding = JSON.parse(row.binding_json) as Record<string, unknown>
-        return row.run_root_action_id !== cycle.root_action_id || binding.projectId !== action.projectId || !nonempty(binding.epoch) }))  return false
+        return row.run_root_action_id !== cycle.root_action_id || binding.projectId !== action.projectId || !nonempty(binding.epoch) }))  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#9') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#9') ; return false } }
       const reviewIndex = Number(db.prepare('SELECT review_index FROM reviews WHERE id=?').pluck().get(cycle.review_id))
+      // issue #248 收口：克隆 cycle 的 review=复核审稿行，其 run 是 recheck
+      // run（收据 context.recheck 存在）。proveEffect 要求期望与 context 深等——
+      // 期望从**复核 attempt 的 binding_json** 读 reviewRevisionContext.recheck：
+      // binding 被 contextHash 锁定（防篡改），与收据 context 同源，深等恒真。
+      // 定位复核 attempt 按 findingSetHash（克隆 cycle 复制了旧 cycle 的
+      // finding_set_hash；reviewCycleRecheck.cycleId 指向旧 cycle，不可用）。
+      const recheckExpectation = (() => {
+        for (const row of attempts) {
+          try {
+            const binding = JSON.parse(String(row.binding_json ?? '{}')) as Record<string, unknown>
+            const manifest = binding?.sourceManifest as Record<string, unknown> | undefined
+            const ctx = manifest?.reviewRevisionContext as Record<string, unknown> | undefined
+            const rc = ctx?.recheck as ReviewCycleRecheckContext | undefined
+            if (rc && rc.findingSetHash === cycle.finding_set_hash)
+              return rc
+          } catch { /* try next */ }
+        }
+        return undefined
+      })()
       const reviewAttempts = attempts.filter(row => proveEffect(db, row, { kind: 'review', id: cycle.review_id,
         index: reviewIndex, contentHash: cycle.review_content_hash, source: { id: review.base_draft_id,
           chapterNumber: review.source_draft_chapter_number!, version: review.source_draft_version!,
-          status: review.source_draft_status!, content: review.source_content! } }))
-      if (reviewAttempts.length !== 1)  return false
+          status: review.source_draft_status!, content: review.source_content! },
+        ...(recheckExpectation ? { recheck: recheckExpectation } : {}) }))
+      if (reviewAttempts.length !== 1) { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#10 n=' + attempts.length + ' | ') ; return false }
       const reviewBinding = JSON.parse(reviewAttempts[0]!.binding_json) as Record<string, unknown>
 
       let confirmation: { body: string; snapshot: HumanConfirmedReviewSnapshot } | null = null
       if (cycle.confirmation_review_id !== null) {
         const row = db.prepare('SELECT r.source_content,c.body FROM reviews r JOIN contents c ON c.id=r.content_id WHERE r.id=? AND r.base_draft_id=?')
           .get(cycle.confirmation_review_id, review.base_draft_id) as { source_content: string | null; body: string } | undefined
-        if (!row || !cycle.confirmation_content_hash || hash(row.body) !== cycle.confirmation_content_hash)  return false
+        if (!row || !cycle.confirmation_content_hash || hash(row.body) !== cycle.confirmation_content_hash)  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#11') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#11') ; return false } }
         const snapshot = parseHumanConfirmedReviewSnapshot(row.body)
         const sourceDraft = snapshot?.sourceDraft
         // issue #248：复验后第二轮的确认行基于**合并稿**（cycle.merged_hash），
@@ -380,9 +400,9 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
           && typeof sourceDraft?.content === 'string' && hash(sourceDraft.content) === cycle.merged_hash
         if (!snapshot || snapshot.sourceReviewId !== cycle.review_id
           || row.source_content === null || !(selfConsistent || legacyAnchor || mergedAnchor)
-          || !sourceDraft || sourceDraft.id !== review.base_draft_id)  return false
+          || !sourceDraft || sourceDraft.id !== review.base_draft_id)  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#12') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#12') ; return false } }
         confirmation = { body: row.body, snapshot }
-      } else if (cycle.confirmation_content_hash !== null)  return false
+      } else if (cycle.confirmation_content_hash !== null)  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#13') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#13') ; return false } }
 
       let revision: RevisionRow | undefined
       if (cycle.revision_id !== null) {
@@ -393,7 +413,7 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
           || revision.review_source_id !== cycle.confirmation_review_id || revision.source_content === null
           || revision.source_draft_chapter_number !== review.source_draft_chapter_number
           || revision.source_draft_version !== review.source_draft_version || revision.source_draft_status !== review.source_draft_status
-          || revision.source_content !== review.source_content || hash(revision.source_content) !== cycle.source_hash)  return false
+          || revision.source_content !== review.source_content || hash(revision.source_content) !== cycle.source_hash)  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#14') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#14') ; return false } }
         const revisionHash = hash(revision.body)
         const revisionIndex = Number(db.prepare('SELECT revision_index FROM revisions WHERE id=?').pluck().get(cycle.revision_id))
         // issue #244 四开（2026-11-09 12:42 现场）：修稿 run 自 1.5.247 起**开新 root**
@@ -417,21 +437,21 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
               status: review.source_draft_status!, content: review.source_content! },
             confirmation: { reviewSourceId: cycle.confirmation_review_id!, content: confirmation.body,
               originalReviewContentHash: cycle.review_content_hash, snapshot: confirmation.snapshot } }))
-        if (revisionAttempts.length !== 1)  return false
+        if (revisionAttempts.length !== 1)  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#15') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#15') ; return false } }
       }
-      if (cycle.revision_status === 'not-generated' && (revision || cycle.merged_hash !== null || cycle.recheck_count !== 0 || cycle.recheck_attempt_id !== null))  return false
+      if (cycle.revision_status === 'not-generated' && (revision || cycle.merged_hash !== null || cycle.recheck_count !== 0 || cycle.recheck_attempt_id !== null))  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#16') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#16') ; return false } }
       if (cycle.revision_status === 'generated' && (!revision || revision.status !== 'pending'
-        || cycle.merged_hash !== null || cycle.recheck_count !== 0 || cycle.recheck_attempt_id !== null))  return false
+        || cycle.merged_hash !== null || cycle.recheck_count !== 0 || cycle.recheck_attempt_id !== null))  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#17') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#17') ; return false } }
       const recheckEvidence = new Map<string, { targetId: string; evidenceHash: string; resolved: boolean }>()
       const recheckEligible = new Set<string>()
       const recheckTargets = new Map<string, string>()
       const unshownRecheck = new Set<string>()
       if (cycle.revision_status === 'merge-committed') {
         if (!revision || revision.status !== 'merged' || revision.merged_to_draft_id !== revision.base_draft_id
-          || revision.base_draft_id !== review.base_draft_id || !cycle.merged_hash || !HASH.test(cycle.merged_hash))  return false
+          || revision.base_draft_id !== review.base_draft_id || !cycle.merged_hash || !HASH.test(cycle.merged_hash))  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#18') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#18') ; return false } }
         const merged = snapshots ? { body: snapshots.get(cycle.cycle_id) } : db.prepare('SELECT c.body FROM drafts d JOIN contents c ON c.id=d.content_id WHERE d.id=?')
           .get(revision.merged_to_draft_id) as { body: string } | undefined
-        if (!merged || typeof merged.body !== 'string' || hash(merged.body) !== cycle.merged_hash)  return false
+        if (!merged || typeof merged.body !== 'string' || hash(merged.body) !== cycle.merged_hash)  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#19') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#19') ; return false } }
         const mergedBody = merged.body
         if (cycle.recheck_count === 1) {
           // issue #246：复核 run 开新 root——recheck attempt 按收据内容定位，
@@ -442,7 +462,7 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
             FROM generation_attempts a JOIN generation_runs r ON r.run_id=a.run_id
             WHERE a.attempt_id=?`).get(cycle.recheck_attempt_id) as AttemptRow | undefined
           const recheckEffect = recheck && effect(recheck)
-          if (!recheckEffect || recheckEffect.kind !== 'review' || !integer(recheckEffect.id, 1))  return false
+          if (!recheckEffect || recheckEffect.kind !== 'review' || !integer(recheckEffect.id, 1))  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#20') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#20') ; return false } }
           const recheckReview = db.prepare('SELECT r.source_content,c.body FROM reviews r JOIN contents c ON c.id=r.content_id WHERE r.id=?')
             .get(recheckEffect.id) as { source_content: string | null; body: string } | undefined
           const recheckMeta = db.prepare(`SELECT base_draft_id,review_index,source_draft_chapter_number,source_draft_version,
@@ -487,7 +507,7 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
           }
           const usage = JSON.parse(recheck.usage_receipt_json!) as Record<string, unknown>
           const receipt = usage.reviewCycleRecheck as Record<string, unknown> | undefined
-          if (!receipt || (receipt.version !== 1 && receipt.version !== 2))  return false
+          if (!receipt || (receipt.version !== 1 && receipt.version !== 2))  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#21') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#21') ; return false } }
           const expectedRecheck: ReviewCycleRecheckContext = { version: receipt.version, cycleId: cycle.cycle_id,
             comparisonVersion: cycle.comparison_version, mergedHash: cycle.merged_hash,
             findingSetHash: cycle.finding_set_hash,
@@ -499,12 +519,12 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
             || !proveEffect(db, recheck, { kind: 'review', id: recheckEffect.id as number, index: recheckMeta.review_index,
               contentHash: hash(recheckReview.body), source: { id: review.base_draft_id, chapterNumber: mergedDraft.chapter_number,
                 version: mergedDraft.version, status: recheckMeta.source_draft_status, content: recheckReview.source_content },
-              recheck: expectedRecheck }))  return false
+              recheck: expectedRecheck }))  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#22') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#22') ; return false } }
           const report = JSON.parse(recheckReview.body) as { items?: unknown[] }
           if (receipt.cycleId !== cycle.cycle_id
             || receipt.comparisonVersion !== cycle.comparison_version || receipt.mergedHash !== cycle.merged_hash
             || receipt.findingSetHash !== cycle.finding_set_hash || !Array.isArray(receipt.findings)
-            || !Array.isArray(report.items))  return false
+            || !Array.isArray(report.items))  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#23') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#23') ; return false } }
           const receiptFindings = receipt.findings as Record<string, unknown>[]
           const seenReviewItems = new Set<number>()
           for (const item of receiptFindings) {
@@ -518,19 +538,19 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
               // 书打不开。历史数据不受影响：它们本来就只有 resolved=false 的行。
               || recheckTargets.get(item.findingId) !== item.targetId || reportItem?.resolved !== item.resolved
               || !HASH.test(String(item.evidenceHash)) || seenReviewItems.has(item.reviewItemIndex)
-              || recheckEvidence.has(item.findingId))  return false
+              || recheckEvidence.has(item.findingId))  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#24') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#24') ; return false } }
             const evidenceHash = hash(JSON.stringify({ findingId: item.findingId, targetId: item.targetId,
               reviewItemIndex: item.reviewItemIndex, item: report.items[item.reviewItemIndex], resolved: item.resolved }))
-            if (item.evidenceHash !== evidenceHash)  return false
+            if (item.evidenceHash !== evidenceHash)  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#25') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#25') ; return false } }
             seenReviewItems.add(item.reviewItemIndex)
             recheckEvidence.set(item.findingId, { targetId: item.targetId, evidenceHash, resolved: item.resolved })
           }
-          if (receiptFindings.length !== recheckEvidence.size)  return false
-        } else if (cycle.recheck_attempt_id !== null)  return false
+          if (receiptFindings.length !== recheckEvidence.size)  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#26') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#26') ; return false } }
+        } else if (cycle.recheck_attempt_id !== null)  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#27') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#27') ; return false } }
       }
 
       const findings = db.prepare('SELECT * FROM review_findings WHERE cycle_id=? ORDER BY finding_id').all(cycle.cycle_id) as FindingRow[]
-      if (canonicalM03FindingSetHash(findings.map(descriptor)) !== cycle.finding_set_hash)  return false
+      if (canonicalM03FindingSetHash(findings.map(descriptor)) !== cycle.finding_set_hash)  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#28') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#28') ; return false } }
       const seenAnchors = new Set<string>()
       for (const finding of findings) {
         if (!nonempty(finding.finding_id) || !nonempty(finding.source_project_id) || !nonempty(finding.source_epoch)
@@ -539,21 +559,21 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
           || finding.source_id !== `draft:${review.base_draft_id}` || finding.source_revision !== review.source_draft_version
           || finding.source_content_hash !== cycle.source_hash || !nonempty(finding.category) || !nonempty(finding.problem_text)
           || finding.expected_text !== null && !nonempty(finding.expected_text)
-          || !FINDING_KINDS.has(finding.kind) || !FINDING_STATUSES.has(finding.status))  return false
+          || !FINDING_KINDS.has(finding.kind) || !FINDING_STATUSES.has(finding.status))  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#29') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#29') ; return false } }
         const emptyAnchor = finding.span_start === null && finding.span_end === null && finding.span_unit === null
           && finding.excerpt_hash === null && finding.occurrence === null && finding.target_id === null
         if (finding.status === 'unverified' || finding.status === 'author-waived' && emptyAnchor) {
           if (!emptyAnchor || finding.status === 'unverified'
-            && (finding.evidence_hash !== null || finding.confirmation_item_index !== null))  return false
+            && (finding.evidence_hash !== null || finding.confirmation_item_index !== null))  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#30') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#30') ; return false } }
         } else {
           if (!integer(finding.span_start) || !integer(finding.span_end, 1) || finding.span_end <= finding.span_start
             || finding.span_end > review.source_content.length || finding.span_unit !== 'utf16-code-unit'
             || !finding.excerpt_hash || !HASH.test(finding.excerpt_hash)
             || hash(review.source_content.slice(finding.span_start, finding.span_end)) !== finding.excerpt_hash
-            || !integer(finding.occurrence, 1) || !nonempty(finding.target_id))  return false
+            || !integer(finding.occurrence, 1) || !nonempty(finding.target_id))  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#31') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#31') ; return false } }
           const anchor = JSON.stringify([finding.source_content_hash, { start: finding.span_start, end: finding.span_end, unit: finding.span_unit },
             finding.occurrence, finding.excerpt_hash, finding.category, finding.target_id])
-          if (seenAnchors.has(anchor))  return false
+          if (seenAnchors.has(anchor))  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#32') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#32') ; return false } }
           seenAnchors.add(anchor)
           const excerpt = review.source_content.slice(finding.span_start, finding.span_end)
           let occurrence = 0
@@ -563,9 +583,9 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
             occurrence += 1
             offset = located + Math.max(1, excerpt.length)
           }
-          if (occurrence !== finding.occurrence)  return false
+          if (occurrence !== finding.occurrence)  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#33') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#33') ; return false } }
         }
-        if (finding.evidence_hash !== null && !HASH.test(finding.evidence_hash))  return false
+        if (finding.evidence_hash !== null && !HASH.test(finding.evidence_hash))  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#34') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#34') ; return false } }
         // issue #247：复验后作者弃修（author-waived，对账源=绑定确认快照）是
         // 终态决策，覆盖复验的 unknown 期望——由 :544 的 waiver 对账单独把关。
         if (recheckEligible.has(finding.finding_id) && !unshownRecheck.has(finding.finding_id) && finding.status !== 'author-waived') {
@@ -574,15 +594,15 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
           const expectedStatus = evidence ? evidence.resolved ? 'resolved' : 'unresolved' : 'unknown'
           if (finding.status !== expectedStatus
             || evidence && evidence.evidenceHash !== finding.evidence_hash
-            || !evidence && finding.evidence_hash !== null)  return false
+            || !evidence && finding.evidence_hash !== null)  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#35') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#35') ; return false } }
         }
         if (finding.status === 'resolved') {
           const evidence = recheckEvidence.get(finding.finding_id)
           if (cycle.recheck_count !== 1 || !finding.evidence_hash || !evidence || !evidence.resolved
-            || evidence.targetId !== finding.target_id || evidence.evidenceHash !== finding.evidence_hash)  return false
+            || evidence.targetId !== finding.target_id || evidence.evidenceHash !== finding.evidence_hash)  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#36') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#36') ; return false } }
         }
         if (finding.status === 'author-waived') {
-          if (!finding.evidence_hash || !integer(finding.confirmation_item_index))  return false
+          if (!finding.evidence_hash || !integer(finding.confirmation_item_index))  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#37') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#37') ; return false } }
           // issue #247 收口：waiver 对账双路径——
           //  a) cycle 绑定路径：evidence_hash === cycle.confirmation_content_hash
           //     （第一轮确认时写入，对账源 = cycle 绑定的确认快照）；
@@ -608,16 +628,16 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
             }
           }
           if (!waiverSnapshot || waiverSnapshot.schemaVersion !== 2
-            || waiverSnapshot.cycleId !== cycle.cycle_id)  return false
+            || waiverSnapshot.cycleId !== cycle.cycle_id)  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#38') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#38') ; return false } }
           const item = (waiverSnapshot.items as unknown[])[finding.confirmation_item_index]
           if (!item || typeof item !== 'object' || (item as Record<string, unknown>).findingId !== finding.finding_id
-            || (item as Record<string, unknown>).decision !== 'waive')  return false
-        } else if (finding.confirmation_item_index !== null)  return false
+            || (item as Record<string, unknown>).decision !== 'waive')  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#39') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#39') ; return false } }
+        } else if (finding.confirmation_item_index !== null)  { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#40') ; { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#40') ; return false } }
       }
     }
     console.error('[vs] loop completed, cycles:', cycles.length)
     return true
-  } catch {  return false }
+  } catch { { require('fs').appendFileSync('.runtime/vg-trace.log', '[vg] gate#41') ; return false } }
 }
 
 export function createM03Migration(deps: {

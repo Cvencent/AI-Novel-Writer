@@ -1366,7 +1366,7 @@ describe('ReviewCycleRepository recheck state', () => {
   // 缺 expected.recheck（recheck run 的 context.recheck 存在）——克隆 cycle
   // 的 reviewAttempts 对账需要把 recheck 期望一并传入。用例保留骨架，
   // 下轮带完整对账矩阵收口。
-  it.skip('createForConfirmation clones a merge-committed cycle for a second revision round (issue #248)', () => {
+  it('createForConfirmation clones a merge-committed cycle for a second revision round (issue #248)', () => {
     const db = fixture()
     // M10：本用例需要同审稿行多周期（review_id 去 UNIQUE）——fixture 默认是
     // M03 旧形态，先在原地把 review_cycles 迁到 M10 形态（FK 关闭重建）。
