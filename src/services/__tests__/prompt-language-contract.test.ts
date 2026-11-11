@@ -240,3 +240,25 @@ describe('review covers unexplained terms and unestablished relations (issue #24
     expect(termSection).toContain('即视为已交代，不报')
   })
 })
+
+/**
+ * 源起新第 1 章实测暴露的缺口（issue #245 现场二轮）：
+ * 稳定剂那段补上了用途（「全靠按周领取的微量工业稳定剂压制」）→ 按 9(c) 该 pass；
+ * 但「判定：废脉」仍是首现即当结论用，且三句之后直接「废脉二班」把判定当已知处境。
+ * 原文没交代「为什么 0.000 就等于废脉」，也没交代「被判废脉的人会怎样」——两者都缺。
+ * 原 9(a) 只查「有没有解释这个词」，没点名这条「判定→后果」的链子缺环，故补强。
+ */
+describe('verdict terms must bridge criterion and consequence (issue #245 二轮)', () => {
+  it.each(['zh-CN', 'en-US'] as const)('names the criterion→verdict→consequence chain in %s', language => {
+    const content = getBuiltinPromptTemplate('consistency_check', language)?.content ?? ''
+    expect(content).toMatch(language === 'zh-CN' ? /判定与后果之间有没有桥/ : /bridge between verdict and consequence/)
+    expect(content).toMatch(language === 'zh-CN' ? /为什么该数值就归入这一类/ : /why that figure lands in this category/)
+    expect(content).toMatch(language === 'zh-CN' ? /被判成这一类的人会怎样/ : /what happens to those judged into it/)
+  })
+
+  it('stays a warning and exempts one-sentence consequence statements', () => {
+    const content = getBuiltinPromptTemplate('consistency_check', 'zh-CN')?.content ?? ''
+    expect(content).toMatch(/只要\*\*都缺\*\*，即报 warning/)
+    expect(content).toContain('判为废脉者即失去全部公发配额并编入劳役班')
+  })
+})
