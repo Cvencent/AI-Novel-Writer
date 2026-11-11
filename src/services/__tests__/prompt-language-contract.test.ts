@@ -262,3 +262,26 @@ describe('verdict terms must bridge criterion and consequence (issue #245 二轮
     expect(content).toContain('判为废脉者即失去全部公发配额并编入劳役班')
   })
 })
+
+/**
+ * 源起第 1 章二轮实测（issue #245 现场三轮）：「微量」这个量级词本身没有锚点。
+ *
+ * 「按周领取的微量工业稳定剂」——只有频率（按周），没有数量（几支）、没有规格
+ * （每支多少）、没有消耗速率（一次顶几天）。读者能算出"多久一次"，却算不出
+ * "这点到底顶不顶用"，也就无法感受断供的严重性。原 9(c) 只管「有没有写用途」，
+ * 不覆盖「限定语悬空」这种更细的形状，故新增 9(d)。
+ */
+describe('dangling scale qualifiers (issue #245 三轮)', () => {
+  it.each(['zh-CN', 'en-US'] as const)('names the scale-anchor requirement in %s', language => {
+    const content = getBuiltinPromptTemplate('consistency_check', language)?.content ?? ''
+    expect(content).toMatch(language === 'zh-CN' ? /限定语\/量级词悬空/ : /Dangling scale qualifier/)
+    expect(content).toMatch(language === 'zh-CN' ? /只有频率（「按周领取」）而无数量的，同样算悬空/ : /Frequency alone \("issued weekly"\)/)
+    // 允许替代表达（「一次半管」「三天的量」）建立大小感，避免误报
+    expect(content).toMatch(language === 'zh-CN' ? /让读者建立大小感/ : /conveys magnitude/)
+  })
+
+  it('stays a warning', () => {
+    const content = getBuiltinPromptTemplate('consistency_check', 'zh-CN')?.content ?? ''
+    expect(content).toContain('三项皆无才报，报 warning')
+  })
+})
