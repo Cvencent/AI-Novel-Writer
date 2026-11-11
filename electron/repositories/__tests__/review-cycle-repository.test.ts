@@ -1406,7 +1406,7 @@ describe('ReviewCycleRepository recheck state', () => {
       expect(plan.disposition).toBe('required')
       const recheckRoot = `root-second-round-${cycle.cycleId.slice(0, 8)}`
       const recheckAttempt = seedRecheckAttempt(db, { seeded, cycle, revision, mergedContent, mergedHash }, plan.context!,
-        { key: 'second-round-check', rootActionId: recheckRoot, mappings: [] })
+        { key: 'second-round-check', mappings: [] })
       db.transaction(() => ReviewCycleRepository.commitRecheck(cycle.cycleId, recheckAttempt.attemptId, db))()
       expect(verifyM03ReviewCycle(db)).toBe(true)
 
@@ -1449,6 +1449,7 @@ describe('ReviewCycleRepository recheck state', () => {
       expect(mapped.filter(row => row.status === 'unverified')).toHaveLength(rows.length - 1)
       expect(db.prepare('SELECT confirmation_review_id,revision_status FROM review_cycles WHERE cycle_id=?')
         .get(newCycleId)).toEqual({ confirmation_review_id: secondConfirmationId, revision_status: 'not-generated' })
+      { const dbg = db.prepare("SELECT a.root_action_id, json_extract(a.usage_receipt_json,'$.reviewRevisionEffect.kind') as k, json_extract(a.usage_receipt_json,'$.reviewRevisionEffect.id') as id FROM generation_attempts a WHERE a.root_action_id=?").all(seeded.call.rootActionId); require('fs').appendFileSync('.runtime/vg-trace.log', '[dbg-cycles] rootId=' + seeded.call.rootActionId.slice(0, 12) + ' n=' + dbg.length + ' | ') }
       expect(verifyM03ReviewCycle(db)).toBe(true)
       expect(verifyM10MultiRoundReviewCycle(db)).toBe(true)
       // 第二轮修稿 attach 到新 cycle（not-generated）→ merge → 新 cycle 可再复验。
