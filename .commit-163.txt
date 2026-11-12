@@ -1,0 +1,32 @@
+refactor(consistency): 笔迹特征改由模型判，删掉四张书写质量词表 (issue #163)
+
+issue #163 的第一批迁移。issue 点名的 `handwriting-signature.ts` 里有两类内容词表：
+
+```ts
+const STEADY_QUALITY  = /(稳、匀|稳匀|笔压稳|起笔齐|收笔匀|起笔带锋)/u
+const HURRIED_QUALITY = /(收得急|笔压…慌|压…抖|慌，抖|收得利落)/u
+const HEAVY_QUALITY   = /(起笔重|笔压重|末横压住|压得重)/u
+const LIGHT_QUALITY   = /(起笔轻|力道发虚|笔画软|发虚)/u
+```
+
+加上归属句正则 `X 的（笔|手|字|签押）` / `——X 的，`。它们只对这本书的这几种写法成立
+（「横折收得很涩」「笔锋一转就散」全漏），而「这套字迹是什么样」「这句在说谁的笔迹」
+都是**内容判断**——正是用户 2026-11-05 明令禁止的形态（不许词表、不许短语匹配）。
+
+- 新增 `src/shared/handwriting-review.ts`：`buildHandwritingReviewPrompt`（喂最近 40 章 + 名册，
+  只问「同一个书写者有没有两套不能同时成立的特征」，明确**绝不跨人比较**、**正文自己交代过的变化不算**、
+  **按意思判断不按词表**）、`parseHandwritingReview`（坏 JSON→null；owner 非空；两个章号都在范围内；
+  **两处引文都要在各自那一章逐字可定位**；去重）、`handwritingReviewFindings`
+  （**每个书写者合并一条**，#164 的教训；key `handwriting:conflict:<人>` **不带章号**，#86/#89/#98/#108）。
+- 服务层 `reviewHandwritingTraits`（一次模型调用，作者主动触发）。
+- 界面：第九个「核对笔迹特征」按钮（在「核对…」那一行，#165 的两行结构不变）。
+- **下线旧判据**：`finalized-prose-audit.ts` 与 `review-revision-context.ts` 里的自动调用改为空数组并注明原因
+  （这两处是每次写前/审稿**自动**跑的，不能在那里塞 60 秒级的模型调用——与 #100 的能力限制同一条处置）；
+  删除 `src/shared/handwriting-signature.ts` 与其测试。
+- 基线快照 108 → **103**（真实减少，不是放行）。
+
+验证：`handwriting-review` 16 例（无词表断言、绝不跨人、自交代变化豁免、两处引文校验、
+跨章引文错配丢弃、key 跨章稳定、每书写者合并、两种出路 + 「为什么变」）；
+红验证：删掉「相悖引文必须可定位」→ 当场红；恢复 → 16 全过。
+`preflight-key-stability` 把该族改成喂新判据的产出（仍断言 key 不随章号漂移）。
+typecheck 通过；同批 78 例、浏览器 20 例全过；`no-content-wordlists` 7 例全绿。

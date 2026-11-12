@@ -1,0 +1,17 @@
+feat(preflight): 「修复」按钮 + 差异确认接进写作弹层 (issue #137 第二层)
+
+把 preflight-repair 从「只有单测的组合件」接成真功能：
+
+- services/preflight-repair.ts：proposeLayerRepair（一层一次模型调用，读该层现有全文 +
+  该批提醒原话 → 解析校验 → 算差异）、applyRepairDiffs（走现成写通道）。
+  ⚠️ 只覆盖 blueprint / world 两层：角色层的 db:character-roster-commit 要完整 CAS 载荷
+  （expectedRevision / schemaVersion / operationId / 全量 entries）且改名牵动别名有效期，
+  薄服务半实现会写错账本 —— 角色层仍走「去角色名单改」。
+- PreflightRepairPanel.tsx：按字段展示 改前→改后 + 理由，默认**一处都不勾**，
+  作者勾选后「采纳勾选的 N 处」或「只采纳这一处」，也能「都不改」。
+- WritePreflight：每条可修提醒加「修复」，底部加「全部修复」；差异面板嵌在同一弹层。
+  ⚠️ 「修复」只对 blueprint/world 出现（层闸门），cast/prose 仍只给「去 X 改」。
+- WriteChapterPopover：接上 requestRepair / applyRepair，采纳后重检刷新列表。
+
+验证：preflight-repair 15 例、browser 10 例（新增 4 例含层闸门与「不勾就点不动」）；
+把层闸门去掉后「可修的角色层不给修复」当场红；语料上可修 2 条 → 1 次调用（约 1.4k 字输入）。

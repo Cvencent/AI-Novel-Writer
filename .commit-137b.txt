@@ -1,0 +1,24 @@
+fix(preflight): 可修性还要问「问题章是否已定稿」(issue #137 修正)
+
+第一版只看「层」，于是判据读**已定稿正文**、却被分派到计划层的提醒被标成可修：
+实测那本书 39 条里 30 条 repairable=true，而它们的 sourceChapter 全部早于当前章
+（anchor-unmet:45/49/52/55/57/60/63/69、deadline:1/20/39/42/48、
+chapter-title:duplicate:2/5、handwriting:*、chapter-ending:63）。照那个标记做「一键修复」，
+改的是已定稿的旧章——而旧章只能「新版本 + 重新定稿」，写前这一刻改不动。
+
+- preflightRouteOf 接受可选的 { currentChapter, sourceChapter }：给了就按
+  「源章 >= 当前章」再合取一次，早于当前章的统一 blockedBy='needs-finalized-prose'；
+  不传时保持原行为（只问层），供只关心「去哪一层」的调用方使用。
+- groupPreflightRoutes 每组按可修性分成 ks / blocked 两档并带原因，
+  不再把旧章的键混进「全部修复」那一批。
+- WritePreflight 增加 currentChapter prop（批量对话框不传：那里没有单一当前章），
+  WriteChapterPopover 传 chapterNumber；旧章的提示改成「新版本重定稿」而不是「本章写完后」。
+- 语料：可修条数 30 -> 2（只剩真正落在即将写那一章的两条）。
+
+⚠️ 同时修掉一个**静默失效**的结构守卫：preflight-route.test.ts 里穷举 stableFactKey
+的正则混进了一个不可见控制字符（\x01），于是它永远匹配不到、永远通过——上一轮新增的
+`character-age:*` 键就这样漏登记进 unknown-layer 而无人发现。修好后当场抓出 3 个：
+`character-age:unreconcilable`（真漏）、`ability:limit-bypassed`（ability-limit-bypass.ts
+实际发的键，与 PREFIX_LAYERS 里的 'ability-limit' 不是同一个），以及一条注释假命中
+（正则同时收窄到「含冒号或小写连字符族名」的键形）。两个真漏已登记。
+**守卫生效的证据是它曾经红过，不是它一直绿。**

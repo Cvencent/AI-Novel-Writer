@@ -1,0 +1,19 @@
+feat(preflight): 「全部修复」按层排队，一层一次确认 (issue #137)
+
+缺口：`planRepairCalls` 已把可修提醒按层排好（world → cast → outline → blueprint），
+但界面只取第一批（`calls[0]`）——于是「全部修复」实际只修**一层**，其余层原样留着，
+而按钮上写的是「全部」。这不是判据问题，是排队没做。
+
+- shared/preflight-repair.ts 新增三个可断言的排队规则：
+  advanceRepairQueue（去掉刚处理完的层、不改原数组；done=null 时原地不动）、
+  remainingRepairLayers、shouldContinueRepairChain
+  （**只有真的采纳了改动且还有别的层**才继续）。
+- WriteChapterPopover：修复请求把其余层放进 repairQueue；采纳后先重检、
+  再按队列提出下一层；「都不改」清空整条链（不推进，避免「没有任何改动却被当作已处理」）。
+- PreflightRepairPanel：差异面板上写明「采纳后还会继续提出另外 N 层（每层都要你确认）」。
+
+⚠️ 关键取舍：**一层一次确认**，不连跑三层后一次性丢给作者看——差异必须逐层看过，
+否则作者会面对一堆自己没同意的改动。
+
+验证：preflight-repair 15 → 20 例（排队推进 / 不推进 / 同层不重复 / 剩余层去重 /
+四条组合的继续判定）；browser 10 → 13 例（把剩余层提示去掉即红）。

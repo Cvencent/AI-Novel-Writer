@@ -1,0 +1,19 @@
+fix(preflight): 作者可见文案剥掉 Markdown 粗体 (issue #154)
+
+判据文案在源码里写 **粗体**（为了代码/issue 里好看），界面按纯文本渲染，
+于是作者看到满屏 `**`。实测两本语料：52–53 条提醒里 issue.zhCN 带 `**` 的
+29 条（57%）、suggestion.zhCN 带 `**` 的 40 条（77%），涉及 19 个判据族；
+四条作者可见路径全都原样输出。
+
+- 新增 shared/author-visible-text.ts：stripEmphasis（剥 `**`，落单的 `*` 也清掉 ——
+  半截标记同样是噪音，而实测语料里不存在「真想显示星号」的文案）+ toAuthorVisibleText。
+- 三个作者可见出口改走它：预检弹层（WritePreflight 的正文/建议/来源）、
+  ack 区标题（acknowledgement-title 的 firstSentence，**先剥再截句**——否则截断点
+  可能落在一对 `**` 中间）、编辑台质检条目（mergeConsistencyFindingsIntoReview）。
+  ⚠️ **不发模型的路径保持原样**：起草约束（generate-draft.command.ts）与修复提示
+  （preflight-repair.ts）仍带粗体，那里 Markdown 更清楚。
+
+验证：语料 52 条 → 三个出口（弹层/ack/质检）含 `*` 的字符串 **0 条**，
+而修复提示仍保留粗体；单测 8 例 + browser 13→14 例；
+把弹层两处还原成裸文案后「渲染成纯文本」当场红。
+⚠️ 既有 ack 测试把「带星号的原文」钉成了规格，已改断言（不是改行为）并加 not.toContain('*')。

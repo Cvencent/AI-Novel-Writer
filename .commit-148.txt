@@ -1,0 +1,16 @@
+fix(continuity): 要点行首的 [埋]/[钩] 标记决定事实类别 (issue #148)
+
+生成章节要点的提示词规定用标记写（剧情节点 [触发]/[转折]/[结果]，
+伏笔与钩子 [埋]/[钩]），而 factCategory 只认叙述里的词（「伏笔」「未解」「线索」）。
+两条通道没接上：实测全书 64 条 [埋] + 46 条 [钩] 全落成 plot，
+open-thread 只有 1 条——而那是 12 条名额里**优先级最高**的一档，长期空着，
+等于每一章都按一张残缺的权重表砍内容。
+
+- factCategory 先认**行首标记**（封闭集合：OPEN_THREAD_MARKERS / PLOT_MARKERS），
+  没带标记的仍走原词表兜底（作者手写要点、旧产物都没标记）；
+  ⚠️ 只认集合里的标记，`[备注]` 这类未登记方括号原样落到词表，不当成伏笔；
+- 新增 continuityCategoryBreakWarning：要点里有「伏笔与钩子」一节而非空、
+  落库事实里 open-thread 为 0 时 console.warn 留痕——那条断链在界面上看不见
+  （那一节渲染的是要点原文，不是分类结果）；
+- 语料实测（按 artifact 原文重跑 buildFinalizedContinuityFacts）：open-thread 从 1 条
+  到 7 条；库内旧口径 plot 421 / timeline 15 / character-state 1 / open-thread 1。

@@ -1,0 +1,31 @@
+fix(preflight): 模型判据的结论不再被「挂起任意一条」清空，也不再重复撞 key (issue #170)
+
+现场（1.5.177，那本书第 80 章写前预检）：点「核对文风」得 10 条（60 条），
+再点一条**与此无关**的旧账「我已知」→ 回到 50 条、模型条目 0 条，界面上没有任何提示。
+连点两次同一颗按钮 → 82 条、32 条模型条目，其中 12 组撞同一个 key。
+已 ack 过的 key 重新核对照样回来。
+
+三处同一条链，逐条修（issue 建议 ①③④；建议 ② 的缓存是新机制，本轮不做）：
+
+1. **`acknowledgeFinding` / `saveArrangement` 不再整体重算**（`:693-697` / `:672-676`）。
+   旧实现落库后 `await start(false, saved)` → `start` 重跑 `readConsistencyPreflight` 并
+   **整体替换** preflight；而那个函数不接收模型判据的结果，重算值天然不含它们 ——
+   于是「挂起一条旧账」= 把刚花 1.5 万 tok 核出来的结论全部静默清零。
+   改成与 `unacknowledgeFinding` 同一写法：**只动这一条**（findings 去掉它 / exemptions 或
+   acknowledgements 加上它）。
+2. **合并抽成纯函数 `src/shared/merge-model-findings.ts`**：按 `stableFactKey` 合并
+   （同 key 不新增一条，把新证据并进 `evidence`；同一句证据不拼两遍），
+   并在合并**之前**滤掉已 ack 的 key —— ack 过滤原本只在 `readConsistencyPreflight` 内部做，
+   模型结论直 push 从来没走过那道过滤（#86/#89/#98/#108 的老毛病，这次坏在渲染层）。
+3. **条数变化给一句可见说明**（`:227` 的 `mergeFindings`）：「本次核对新增 N 条；
+   M 条此前已挂起，未再列出」。静默回到原样比报错更糟——它让作者相信一件没做完的事做完了。
+   ⚠️ 提示在 setState 之外落地（用 ref 暂存）：在 updater 里调另一个 setState 会触发告警。
+
+验证：`merge-model-findings` **7 例**（同 key 合并、逐字相同证据不重复拼、ack 过滤、
+已有列表不受影响、key 永不重复）。
+红验证：去掉 ack 过滤 → 2 例当场红；恢复 → 7 全过。
+`typecheck` 通过；浏览器 20 例、单元同批 22 例全过；`no-content-wordlists` 7 例全绿。
+
+⚠️ 仍开着的一半：「结论活过弹层」（建议 ②：按 项目+章号+轴 缓存，正文没变就复用）。
+那是新增一处缓存与失效口径（要判「这一章正文变没变」），本轮不动——先把
+「一 ack 就清零 / 连点撞 key / ack 过又回来」这三个确定的缺陷修掉。

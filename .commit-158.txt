@@ -1,0 +1,19 @@
+fix(review): 审稿单证据行也剥 Markdown，并把「两侧」钉成结构守卫 (issue #158)
+
+#154 说「只要都走单入口就不会忘」，但落地时用的是单函数、三处各调一次，
+`toAuthorVisibleText` 0 个调用点（本轮已删）——保护层没接上，于是审稿单的证据行
+（`ReviewSheet` 的 `<q>{item.quote}</q>`）被漏掉，`ability:limit-bypassed` 那条
+evidence 仍带 `**`（实测 53 条里 1 条，与 issue 一致）。
+
+⚠️ **不能按 issue 建议 1 那样在 `mergeConsistencyFindingsIntoReview` 里剥 quote**：
+那正是 #159 的 P0 回滚点（该函数的产物是落库正文，被 schema 校验当契约）。
+所以剥离统一放在**渲染侧**：`ReviewSheet` 的 description + quote、
+`EditorialPanelSection` 的 description + evidence。
+
+新增结构守卫（正是 issue 建议 2 想要的「单入口」）：
+断言**落库 builder 不含 stripEmphasis 调用**、而**三个渲染出口都含**——
+两侧各自扫一遍，漏一边会红。把 `ReviewSheet` 的 quote 还原成裸值，该守卫当场红。
+⚠️ 守卫只认 `stripEmphasis(` **调用**，不认注释里提到名字（那段注释正是在解释「为什么绝不能剥」）。
+
+验证：真实语料 `ability:limit-bypassed` 的 evidence 原始含 `**`、渲染后不含；
+author-visible-text 8 → 9 例。

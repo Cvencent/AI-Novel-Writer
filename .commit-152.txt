@@ -1,0 +1,32 @@
+fix(run): 渲染进程崩溃后自动恢复一次，恢复不了就告诉作者「那一步没丢」 (issue #152)
+
+现场：审稿并定稿第 25 章，`review-chapter` 撞顶 257 秒 → 救援重建 `review-chapter-rebuild`
+刚启动 → `Page crashed` + `GPU process exited unexpectedly: exit_code=143`。
+两轮实测跨版本（1.5.137 → 1.5.161）、跨安装同形态，不是偶发。
+
+关键事实：**生成运行在主进程**，所以崩溃丢的只有界面——那 400 秒并没有白费。
+但旧实现里 `electron/main.ts` 完全没有 `render-process-gone` 处理：窗口直接死掉，
+既不给原因，也不给「重开去哪接着做」的指引，作者只能自己猜。
+
+- 新增 `electron/services/render-crash-policy.ts`（纯函数，可断言）：
+  `decideRenderCrash` 分四档——退出中/正常退出 → ignore；一次性崩溃 → reload 一次；
+  oom / launch-failed / integrity-failure / 已恢复过一次 → notify；
+  不认识的 reason → **不盲目 reload**，落成 notify（fail closed）。
+  `renderCrashMessage` 给出原因 + 「写作或审稿在后台进程里继续跑，没有丢，重开去运行侧页接着处理」。
+- `electron/main.ts`：挂 `render-process-gone`，按判定 reload / 弹原生对话框 / 只记日志。
+- `electron/controllers/window-controller.ts`：新增 `isWindowQuitRequested`（复用既有的
+  `before-quit` 状态），让崩溃判定知道「应用正在退出」——退出中弹框会挡住关闭。
+
+⚠️ 自动恢复上限 1 次（`RENDER_CRASH_RECOVERY_LIMIT`）：现场这台机器 GPU 会周期性 TDR，
+重载一次通常就回来；第二次还崩说明可复现，再自动重载只会让作者看到「刚回来又崩了」。
+⚠️ oom 不自动重载：内存没释放时 reload 会立刻再崩，把作者困在崩溃循环里。
+
+验证：`render-crash-policy` 11 例（一次性崩溃 reload / 退出中 ignore 优先 / oom 不 reload /
+未知 reason fail closed / 达上限转提示 / 中英文案含「没丢 + 运行侧页」）。
+红验证：删掉「退出优先」那一行 → 对应用例当场红；恢复 → 11 全过。
+electron 全量 173 例全过，typecheck 通过。
+
+没做：issue 建议 A.1（等待期暂停非必要渲染）与 A.3（长任务里的等待提示）——
+A.3 已有 `shared/review-wait.ts` + `RunCard` 的 `ReviewWait`，且救援重建的用途名已收进
+`REVIEW_PURPOSES`（1.5.163/1.5.165 那轮修的）；A.1 需要先量出「哪些持续渲染真的占 GPU」，
+本轮没有可靠的测量手段，不靠猜改。

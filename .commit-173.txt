@@ -1,0 +1,42 @@
+feat(consistency): 存量事实的重新分类通道（纯函数 + 可计数 + 幂等） (issue #173 第一步)
+
+现场（只读副本全量 561 条事实复算）：**148 条分类与当前判据不符** ——
+其中 `plot→open-thread` **109 条**（正是 `[埋]`/`[钩]` 那批伏笔），
+另有 `plot→memory-callback 25`、`timeline→plot 6` 等。
+
+根因：#148 修好的是**判据**（`factCategory` 认得标记了），但分类是**落库那一刻算一次
+并写死的**，之后再没有任何地方重算 → 存量 20 章不自愈。这与 #125 的结论同形：
+「修复已生效」≠「问题不存在」。
+
+`open-thread` 在 `CATEGORY_PRIORITY` 里排**最高档**（占起草前 12 条名额），
+被标成 `plot` 就等于那批伏笔永远抢不到名额。
+
+- 新增 `recategorizeFinalizedFacts(facts)`：对每条 statement 重跑 `factCategory()`，
+  返回「改哪几条 + 从→到 的计数」，供界面**先看差异再决定**。
+- 新增 `applyFactRecategorization(facts, plan)`：**只换 `category`**，
+  `statement` / `evidence` / `sourceChapter` 逐字保留（动了会撞 #159 那类哈希问题）。
+
+## 为什么「重算通道」而不是「读取时算」
+
+issue 建议 ② 是「把分类改成读取时算」（派生数据不入持久层，那是更根本的解法）。
+但我核实 `writing-intelligence-repository.ts:175` **确实直接用落库的 `category`**
+映射成 `kind` 交给下游——改成读取时算会**悄悄改变已有下游数据**，
+那是另一类风险，且不在本条 issue 的范围内。所以先做可计数、可回退的重算通道。
+
+## 本轮**没做完**的一半（如实记）
+
+界面入口（哪个按钮触发、写回哪张表）**还没接**：
+`db:continuity-save-finalized` 现在是关闭的（只抛 `GENERATION_FINALIZATION_ADMISSION_REQUIRED`），
+写回必须新开一条带 admission 的通道。这是本轮时间之外的工作，留作下一步。
+所以：**判据与重算能力就位，但作者现在还点不到它。**
+
+## 顺带更正 issue 的一条判断
+
+issue 建议 ③ 说 `continuityCategoryBreakWarning`「从 1.5.135 起一直在响、长期响的 warn 等于没有 warn」。
+我核了调用点（`finalized-continuity-facts.ts:386`）：它的输入 `kept` 是**本章刚算出的 facts**，
+函数每次只处理一章 —— 所以它**不会**因为其它章的存量而一直响。
+Verdict：这一条描述与代码不符，**不做**（否则会为了一个不存在的现象改判据）。
+
+验证：新增 5 例（`[埋]` 从 plot 改到 open-thread / 幂等 / **只改 category 其余三字段逐字保留** /
+计数按 from→to 分组 / 空 statement 跳过）。红验证：删掉「相同则跳过」→ 幂等那条当场红。
+基线不变（未新增词表）；typecheck 通过；同批 32 例全绿。

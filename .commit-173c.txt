@@ -1,0 +1,20 @@
+feat(ui): 事实账本对话框里加「事实分类（可重算）」入口，先看差异再落库 (issue #173 第三步)
+
+前两步交了纯函数与写回通道，但**作者点不到**。这一步把入口接上。
+
+- `src/components/stage/chapter/ChapterCommitDialog.tsx`（已有的事实账本面板）新增一段折叠区：
+  - 「先看重算结果」→ 调 `db:continuity-recategorize-preview`（**只读**），
+    列出「会改 N 条」以及 `plot→open-thread × 29` 这样的 from→to 计数；
+  - 看到差异后才出现「重算这 N 条」→ 调 `db:continuity-recategorize-chapter` 落库，
+    成功后重新读取账本。
+  - 面板里写明这是**存量问题**的处置：「早先定稿的章按当时判据算；判据后来修好了，
+    这些章不会自动更新。这里可以按当前判据重算一遍，只改分类，不动事实原文与引文。」
+- `electron/controllers/db-controller.ts`：新增 `db:continuity-recategorize-preview`
+  （只读预演，与落库用**同一份** `recategorizeFinalizedFacts`，所以两边数字必然一致）。
+- `src/shared/ipc-channels.ts`：登记两个通道的类型（预览返回 `preview`、落库返回 `receipt`）。
+
+⚠️ 为什么预览与落库分两条通道而不是「先算后写一次完成」：作者要能**先看差异**再决定
+（与 #137 的「改完先给差异」同一条产品原则）。两条通道各自算一遍，所以补了一条测试
+断言「预览的计数 == 落库实际改的条数」——否则作者看到的差异是假的。
+
+验证：`summary-recategorize-173` 6 → **7 例**（新增「预览计数与落库一致」）；`typecheck` 通过。

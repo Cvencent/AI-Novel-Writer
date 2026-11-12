@@ -1,0 +1,26 @@
+fix(character): 本章 0 出场的角色不得直接写入状态 (issue #150)
+
+第 71 章正文「邵广海」出现 0 次，定稿后处理却给他写了 location/physicalState/
+mentalState/recentEvents/keyItems 五个字段，内容全是**柯明远**在本章做的事
+（复核、夹卷宗、定三日内送检）。全书 141 条角色状态更新里 5 条写给了 0 出场的人。
+
+根因：解析器只校验 evidence 能定位、只出现一次、偏移对得上（finalized-continuity.ts:188-212），
+「三日内，随布角送检。」本身没有主语，同一段上一句是「柯明远伸手」——**归属这一维
+从来没被检查过**，合同里也没要求。
+
+- 新增 characterAppearsInProse / charactersAbsentButUpdated（姓名或别名逐字出现才算在场）。
+- 落库侧（summary-repository.ts commitFinalizedCharacterStates）：0 出场 + 有动态字段的更新
+  **降级成待确认候选**（reason='character-absent'），不走 UPDATE、不写 cs_provenance。
+  ⚠️ 只降级不丢弃：托人带话这类可由不在场者发生的事仍可能是对的，让作者在「待确认」里定。
+  ⚠️ 候选的 CAS 基线取**当前真实字段**（不是 0/空串），否则作者点采纳永远对不上。
+- 合同侧（finalize-chapter.command.ts）：要求 evidence 那句要能支撑「是他做的/他经历的」，
+  点名式引文优先；没有这样的句子就不输出该 update。中英两份同步。
+- ⚠️ 前置条件：正文里**至少认出一个在册名字**才判。一个名字都认不出的正文（合成夹具的
+  占位文本）不是「0 出场」而是「不是这个故事的正常叙述」，硬判会让每条更新都被降级
+  （与 #107 整类跳过、#135「判据静默先算条件在真实数据上成立吗」同一条）。
+
+⚠️ issue 附注「只带 updatedAtChapter 能过闸」**实测不成立**（当前实现抛
+FINALIZED_CHARACTER_FIELD_INVALID）；附注另一条「改守卫判过滤后字段数」也已放弃——
+`{keyItems:''}` 在本仓是**设计上的清空语义**，有既有测试钉住，改它会连带禁止清空。
+
+验证：语料上精确拦截 邵广海@ch71 / 放行其余 6 条；单测 38→40（新增 2 例，把闸门置空即红）。

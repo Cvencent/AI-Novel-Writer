@@ -1,0 +1,36 @@
+feat(run): 「多字段合取抛同一个 MISMATCH」抽出具名工具 + 结构守卫 (issue #178)
+
+现场：全仓 `*_MISMATCH` 错误码都是 `a || b || c || …` 共抛一个码，**不说是哪一项**。
+最典型的是 `GENERATION_RUN_IDENTITY_MISMATCH` 在 **5 个模块**里各写一遍、检查项还不同
+（`finalization-generation` / `graph-generation` / `legacy-roster-generation-proof` /
+`main-generation-owner` ×2）。拿到码时既不知道是哪个模块抛的、也不知道哪一项不等 ——
+排查只能「逐项反推 + 消融实验」，而这条路已经在 #174 / `MIGRATION_VERIFICATION_FAILED` /
+#62·#125 上付过三次代价。
+
+三件（issue 建议 ①②③，② 复核后已成立，见下）：
+
+1. **共用工具** `electron/services/named-check.ts`：`firstFailedCheck(code, checks)` →
+   `code:firstFailed[,second…]`，全部通过返回 null。三条纪律：
+   - **前缀保留**（`message.includes('…MISMATCH')` 的既有分支照旧生效）；
+   - **顺序即短路语义**（第一个失败项与原 `a || b || c` 求值顺序一致）；
+   - **报出全部失败项**（`field1,field2`）：调试常需知道「有几项不等」，
+     只报第一个会让人以为只错了这一项。
+   - ⚠️ 名字不合法（含中文/超 40 字）**降级为 `unnamed`**，不把脏字符串拼进码 ——
+     那一层有 IPC 白名单正则，会把整个码判成「不是具名码」落进兜底分支（#179 的教训）。
+2. **首个迁移**：`electron/services/finalization-generation.ts:57` 的四项合取改成检查表
+   （`handleProjectId` / `bindingProjectId` / `rootActionId` / `epoch`），
+   并保留原式「epoch 两项都不等才失败」的语义（不是两项都要相等）。
+3. **结构守卫** `no-conjunctive-mismatch.test.ts`：扫描「一个 throw MISMATCH 的条件里
+   出现 ≥2 个 `||`」的位置，**冻结清单只减不增**（与 `no-content-wordlists` 同机制）。
+   实测存量 **18 处 / 18 个键**（比 issue 列的 12 个码更全：同文件同码的重复也计次）。
+   ⚠️ 守卫带**正反对照**（三种常见写法必须被扫到 / 已改成检查表的不算）——
+   一条「永远不会红」的守卫不是守卫。**我额外验证过它真的会红**：临时加一个匿名探针文件，
+   守卫当场失败，删掉后恢复。
+
+验证：`named-check` **7 例**（前缀保留 / 顺序 / 报全部 / 脏名字降级 / 空清单 / 命名形状 helper）+
+`no-conjunctive-mismatch` **2 例**。typecheck 通过；同批 46 例全绿。
+
+⚠️ **建议 ②（入口拒绝也进运行卡）本轮没做**：`#85` 的「诊断 → `llm_calls.error_message` → 界面」
+那条链是给**模型调用失败**建的，而入口拒绝发生在调用之前、没有 `llm_calls` 行可挂。
+要接它需要新的一条「非模型调用的诊断」通道 —— 属独立议题，且现在有了 `:字段名`，
+主进程日志已经能一眼看出是哪一项。

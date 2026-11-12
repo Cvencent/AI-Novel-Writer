@@ -1,0 +1,17 @@
+refactor(review): 把「续跑走哪条路」抽成纯函数并钉住 (issue #152)
+
+崩溃现场的续跑形态：两次 review-chapter 撞顶 + 一次 review-chapter-rebuild
+未结算（finishReason 读不到）→ 重开后必须直接接着 rebuild，否则作者要再等 400 秒。
+这段判断原来内联在 ReviewChapterCommand.executeWithRuntime 里，夹在材料装配、
+提示词拼接与模型调用之间——正确性全压在一句上，却没有任何断言面。
+
+- 新增 shared/review-resume.ts：reviewResumeRoute（reuse-artifact / review / rebuild）
+  与 canAttemptReviewPurpose（每用途上限 2 次）。⚠️ 抽出时**行为逐条不变**：
+  三条分支与原内联写法一一对应，'stop' 仍走「解析产物、失败则转重建」的原路径。
+- 命令侧改为调用它；`used >= 2` 的闸也换成同一个纯函数（口径只有一处）。
+
+⚠️ 关键语义写进注释与测试：**未结算的 attempt（finishReason=null）既不能当成 'stop'
+去解析一份不存在的产物，也不能当成 'length' 去跳过可复用的完整结果**。
+
+验证：review-resume 7 例（删掉 rebuild 分支后「崩溃后续跑」当场红）；
+review 相关 6 套件合计 100 例全绿。

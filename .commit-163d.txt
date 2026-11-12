@@ -1,0 +1,37 @@
+refactor(consistency): 期限结算改由模型判，删掉四张措辞表 (issue #163 第四批)
+
+`deadline-settlement.ts` 整族是四张题材措辞表：
+
+```ts
+const DEADLINE_TIME   = /(天亮前|日落前|中午前|开航前|逾时|明早|明日|三日内|今夜…)/u
+const DEADLINE_THREAT = /(不许|别想|扣下|停船|作废|摘|卷铺盖|后果|交不出…)/u
+const PERSISTENT_BAN  = /(?:今晚|今夜|现在|明天|此后|从此|今日|当天)起/u
+const SETTLEMENT      = /(期限已过|到期|逾期|误了时辰|已经迟了|来不及|作废…)/u
+```
+
+它们只对这本书的这几种写法成立（「七月十五前」「验完这批再谈」全漏），
+而「这句是不是期限、下一章有没有结算它」是内容判断。
+
+- 新增 `src/shared/deadline-review.ts`：
+  `deadlineDeclarationSentences`（**只按截止时点的形式类**取候选，**故意宽**——
+  旧实现还要求同句出现「后果威胁」，那是拿 20 个词的表判「这句有没有威胁」）、
+  `buildDeadlineReviewPrompt`（喂宣告句 + 章节正文，问「下一章有没有**结算**或**明确延续**」，
+  并要求「按意思判断 / 出现时间词不等于它是期限 / 不确定就不要报」）、
+  `parseDeadlineReview`（坏 JSON→null；章号在样本内；**引文必须逐字可定位**；`deadline` 为空丢弃）、
+  `deadlineReviewFindings`（**key 与旧实现同形** `deadline:unsettled:<章>:<时间点>`，历史 ack 不失效）。
+- 服务层 `reviewDeadlines`（一次模型调用，作者主动触发）。
+- 界面：第 12 个「核对期限结算」按钮。
+- **下线旧判据**：`finalized-prose-audit.ts` 与 `review-revision-context.ts` 里的自动调用改为空数组
+  + 注明原因（写前预检/审稿是自动跑的，不能在那里塞 60 秒级模型调用）；
+  删除 `deadline-settlement.ts` 与其测试。
+- 基线 **101 → 99**：删 4 张题材表、新增 1 张**形式类**（截止时点的时间状语位置/相对日/区间式），
+  净减 3。
+
+⚠️ 顺手修了一个结构问题：取句用 `splitProseSentences`（引号感知）而不是按句号硬切 ——
+中文对白里句号常出现在引号内部，硬切会把「明早签字结案。」与后半句切开（#181 同一教训）。
+
+验证：`deadline-review` **18 例**（取数只按时间形态/纯叙述不进候选/提示词要结算或延续/
+同一章当场兑现不算/引文校验/`deadline` 为空丢弃/**key 与旧实现同形**/同章两条不同期限各自一条）。
+红验证：删掉「`deadline` 为空即丢弃」→ 对应用例当场红；恢复 → 18 全过。
+`preflight-key-stability` 把这一族改成喂新判据的产出（仍断言 key 不随章号漂移）。
+浏览器 20 例（新按钮在「核对…」行内）、单元同批 58 例全绿；守卫 7 例全绿。

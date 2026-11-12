@@ -1,0 +1,16 @@
+fix(preflight): 四个「核对…」按钮挪出动作行，折行不再甩出弹层 (issue #165)
+
+**这是我 1.5.175 引入的回归**：四个模型判据按钮（核对文风/重复写法/感官通道/角色外观）
+**一个都点不到**——它们被渲染到弹层左边界之外，鼠标被下层 `.arch-arc-review-panel` 接管。
+
+根因（issue 的几何实测）：动作行容器 288px，七个按钮合计 658px，
+`.stage-preflight-actions` 是 `justify-content: flex-end` 且**不折行** → 溢出 370px 全往左甩；
+而 `.stage-shell` 是 `overflow: hidden`，横向滚不到。老按钮留在可见区，所以那一排看起来"正常"。
+
+- JSX：把五个「核对…」拆到独立一行 `.stage-preflight-checks`——它们是一次 60 秒级
+  模型调用，与「全部修复／带提醒继续写」这类即时动作不同类（issue 建议 2）。
+- CSS：两行都加 `flex-wrap: wrap`，并把 `justify-content` 从 `flex-end` 改成 `flex-start`
+  （issue 建议 3：溢出时被甩出去的是哪些必须受控）。
+- 守门断言（issue 建议 4）：逐按钮 `getBoundingClientRect()` 必须落在弹层左右边界内。
+  ⚠️ 不用 `scrollWidth <= clientWidth`——溢出被上层裁掉后量的是裁后值（实测 288/288 抓不出）。
+  把 JSX+CSS 一起回退后，该断言当场红（`核对能力限制 左边越界: -421.375`）。

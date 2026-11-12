@@ -33,6 +33,8 @@ export interface WorkflowMainGenerationRuntime extends GenerationRuntime {
   advance(selection: WorkflowMainGenerationSelection): Promise<void>
   /** 主进程运行落账 cancelled（run 行不再永远 running）；已关闭时为空操作。 */
   cancel(): Promise<MainGenerationRunView>
+  /** 失败落账 paused：run 不再 running，同时保留 resume 资格（cancelled 会封死恢复）。 */
+  pause(): Promise<MainGenerationRunView>
 }
 
 /** Each stage freezes its sources; all stages of the author action share main's root. */
@@ -226,6 +228,12 @@ export async function createWorkflowMainGenerationRuntime(request: WorkflowMainG
       if (closed) { await cancelPromise?.catch(() => undefined); return view }
       await cancel()
       if (cancelFailure) throw cancelFailure
+      return view
+    },
+    pause: async () => {
+      if (closed || readOnlyOutline) return view
+      clearReasoning()
+      view = await transport.pause(view.handle)
       return view
     },
     async advance(selection) {

@@ -1,0 +1,17 @@
+fix(editor): 应用为新版本后立刻刷新本章草稿列表 (issue #137 点名缺口)
+
+issue 里点名的第三条：「`applyRevisionAsNewVersion` 前端只调 reload()，
+不刷新章节草稿列表，版本下拉要等 refreshStageWork 才更新」。
+
+核实成立：`reload()` 只重读**当前这一稿**的元数据（`parseDraftMeta(filePath)`），
+而版本下拉（`VersionSwitcher`）读的是 `draftsByChapter[chapterNumber]`。
+于是作者点完「应用为新版本」看不到新版本，要等切页/定稿才出现——
+看起来就像「按钮没生效」。
+
+- draft-store 新增复合动作 `applyRevisionAsNewVersion(revisionId, chapterNumber, path, session)`：
+  落库 + **立刻** `loadChapterDrafts` 刷新这一章的列表。放在 store 而不是调用点，
+  是为了让「落库」与「列表刷新」不可能被拆开。
+- `use-draft-actions` 改走它；`meta` 缺失时明确失败而不是用 chapter 0 兜底
+  （那会往 `draftsByChapter[0]` 写一份假列表）。
+
+验证：store 测试 5 → 7 例；删掉那句 loadChapterDrafts「新版本出现在下拉里」当场红。

@@ -1,0 +1,29 @@
+fix(run): 审稿上下文不匹配时指名是哪一项，不再只抛一个错误码 (issue #174)
+
+现场：第 26 章审稿在发出前就被拒（`GENERATION_REVIEW_CONTEXT_MISMATCH`），
+run 变 cancelled、attempt 停在 unknown、**没有任何 review 落库**，而作者看到的是
+「审稿一直在转」，驱动等满 720 秒才超时。
+
+根因不在某一项判错，而在**11 项合取抛同一个错误码**——主进程日志里只有
+`GENERATION_REVIEW_CONTEXT_MISMATCH`，排查时无从下手（issue 建议 ①）。
+
+`electron/services/review-revision-generation.ts:165`：
+把那一串 `a || b || c || …` 换成**带名字的检查表**，错误码后面接第一个不等的项：
+`GENERATION_REVIEW_CONTEXT_MISMATCH:authorInputs`。
+
+- 判断内容与顺序**逐条保持原样**（含 `parentRootActionId` 那三条合一的语义、
+  以及带注释的 modelId 例外），只是把「合取」换成「第一个失败的具名项」——短路语义一致。
+- 用对照脚本在 11 种 selection 变体上证明布尔结果与旧实现**完全一致**（EQUIVALENT），
+  所以这次改动不会多拦、也不会少拦。
+
+⚠️ issue 建议 ②③（失败冒到界面、不要让作者空等）**复核后不需要改**：
+`presentWorkflowFailure`（`src/components/panels/ai-output-failure-presentation.ts:105`）
+已经会为失败的 run 渲染原因，`run-cancelled` 时界面不会继续显示「审稿中」；
+那 720 秒是**驱动脚本自己的**等待上限，不是产品行为。
+
+验证：`review-revision-generation` 44 → **45 例**；
+新增的那条逐项断言 7 个可触发字段各自指名（operation / chapterNumber / promptKeys /
+skillStages / output / authorInputs / batchId），并断言**合法请求仍然能过**。
+⚠️ `parentRootActionId` 那一项在 `begin` 路径上会先撞 `GENERATION_ROOT_MISSING`（更早的校验），
+所以测试里不断言它，但检查表里保留（对照脚本已证等价）。
+红验证：把错误码改回不带字段名 → 断言当场红；恢复 → 45 全过。

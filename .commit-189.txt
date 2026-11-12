@@ -1,0 +1,32 @@
+fix(run): 具名错误码允许逗号分隔的多个失败项，并加跨模块守卫防复发 (issue #189)
+
+现场：`#178` 的 `firstFailedCheck` 与 `#179` 的 IPC 白名单**各自都对，组合起来破**：
+
+```
+产出:      GENERATION_REVIEW_CONTEXT_MISMATCH:chapterNumber,authorInputs
+IPC 之后:  GENERATION_REQUEST_FAILED:GENERATION_REVIEW_CONTEXT_MISMATCH:chapterNumber,authorInputs
+```
+
+白名单后缀原来只允许 `[A-Za-z]{1,40}`（**不许逗号**），于是**多字段同时不等**时整个码被兜底改写，
+前缀换成 `GENERATION_REQUEST_FAILED` → 所有 `includes('…MISMATCH')` 的分支在**最该一次看全**的情况下失效。
+
+- `electron/controllers/generation-controller.ts`：白名单后缀改为**一个或多个**字段名、逗号分隔
+  （限 8 项 × 31 字，避免长文本透出）。
+- `electron/services/named-check.ts`：`CHECK_NAME` 的**长度上限同步收到 31** ——
+  两边不一致时，32–40 字的合法名字仍会在边界被兜底（这正是本轮红验证验出来的）。
+
+⚠️ **加了一条跨模块守卫** `electron/__tests__/named-error-boundary.test.ts`（issue 建议 ②）：
+把工具在各种形状下的产出（单名 / 多名 / 8 项上限 / 31 字 / 40 字 / 中文）逐个跑一遍，
+**断言它能原样穿过 `generationErrorCode`**；另有反面对照（中文/空格/超长文本仍落兜底，
+白名单没有放开成任意文本）。
+
+这正是本轮缺陷能溜过去的原因：两个提交各自的测试都绿，**没人测「A 的产出能否穿过 B」这一跳**。
+与 `acknowledgement-title.test.ts` 的「穷举全部字面量」同一思路。
+
+验证：`named-error-boundary` **7 例** + `named-check` 7 例（含长度对齐后的语义）。
+红验证：把 `CHECK_NAME` 退回 40 字 → 「31 字合法名穿过边界」当场红；恢复 → 全绿。
+typecheck 通过。
+
+⚠️ issue 建议 ③（还剩 11 个未迁）确认成立：本轮只修「组合破」，**不迁余下那些**——
+它们仍是合取形态、仍不说是哪一项，但至少不会再被边界吞掉（有了逗号支持，
+一旦迁移就直接可用）。迁移仍是逐处的活，且每处都要核对短路语义（epoch 那种「两项都不等」）。

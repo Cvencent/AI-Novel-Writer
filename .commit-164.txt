@@ -1,0 +1,17 @@
+fix(preflight): 同章同轴的模型判据合并成一条，并用 key 唯一性守住出口 (issue #164)
+
+两个新模型判据（`contentReviewFindings` / `styleIssueFindings`）的 key 只含
+`轴/类别 + 章号`，而提示词允许「每轴最多 3 条」→ 同章同轴第 1、2 条**拿到相同 key**：
+React 列表复用错节点、**ack 按 key 精确匹配会把没修的那条一起静默掉**、
+`findingByKey` 只留最后一条（#120 的标题错配）。这是 #153 洞二同一形状的第三次出现。
+
+按 issue 建议 ② 合并（而不是给 key 加 hash）：
+- 同章同轴的多个 quote **汇总进一条 finding 的 evidence**（「2 处：「…」、「…」」），
+  语义也更正确——一条提醒 = 这一章这个轴的判断，ack 它就是把这一章这个轴整个认了；
+- 合并后 key 天然唯一，无需引入 hash（也就不必让正文片段进 key，#120 的老毛病）。
+
+按 issue 建议 ③ 加出口守卫：`auditFinalizedProse` 末尾扫一遍
+**同一批 findings 的 `stableFactKey` 必须唯一**，重复则 `console.warn` 点名。
+⚠️ 刻意**不在这里去重**——去重会静默吞掉一条内容不同的提醒，正确的修法在各自判据侧。
+
+验证：content-review / prose-style 各加合并用例（含「三句合并成一条、key 唯一」）。

@@ -1,0 +1,26 @@
+fix(migration): 还原落库报告字节，剥离只留在渲染侧 (issue #159, P0 回归)
+
+**这是我 1.5.169（ee48c70e）引入的回归**：升级后旧书完全打不开
+（SchemaMigrationError: MIGRATION_VERIFICATION_FAILED），无自救路径。
+
+根因：`mergeConsistencyFindingsIntoReview`（shared/consistency-preflight.ts）的产物
+**不是界面文案，而是落库的报告正文**——`review-revision-generation.ts` 用它算
+`review_content_hash` 落库，`m03-review-cycle.ts:235-242` 的 schema 校验再拿
+**当前代码重建同一份报告**去比那个哈希。我在那里加了 `stripEmphasis`，于是
+「旧库含 `**` / 新代码重建的不含」→ 哈希不等 → MIGRATION_VERIFICATION_FAILED。
+
+- 还原该行（附长注释说明它为何绝不能剥）；删掉随之无用的 import。
+- 剥离挪到**渲染侧**：`ReviewSheet`（description + quote）与
+  `EditorialPanelSection`（description + evidence）——#154 的界面修复因此保住，
+  同时顺手补上 #158 指出的 `quote` 漏剥。
+- 删掉 `toAuthorVisibleText`：它 0 个生产调用点（#158 指出），三个出口都直接用
+  `stripEmphasis`，留着就是死代码。
+- 新增回归哨兵测试：`mergeConsistencyFindingsIntoReview` 的 description/quote
+  必须与判据原文**逐字相同**（含 `**`）。把 stripEmphasis 加回去，该测试当场红。
+
+语料验证：常驻书 20 份落库审稿里 1 份含 `**`（与 issue 一致），
+修复后「落库口径逐字等于判据原文 = true」。
+
+⚠️ 数据本身没坏（issue 已核 integrity_check ok / user_version=10）；
+坏的是「用新代码核对旧数据」这个做法——凡是会改写**落库字节**的展示层处理，
+都必须按「需要数据兼容」对待。

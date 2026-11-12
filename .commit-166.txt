@@ -1,0 +1,14 @@
+fix(consistency): 【时点】的区间写法两端各用各的，不再冤枉下一章 (issue #166)
+
+现场：bp76「第七日深夜**至**第八日清晨（紧接第75章当夜）」、bp77「第八日清晨至午后（紧接第76章）」。
+旧实现只取 `chapterBoundaryHits(anchor)[0]`（区间**首端**），于是 ch76 记第 7 日、ch77 记第 8 日，
+两者不等 + 括注命中 → 报 `anchor-self-contradiction:77`，**让作者去改一张本来正确的蓝图**。
+照改就会把时间轴带偏（那是长篇里唯一能算账的东西）。
+
+- 比较用**首端**（本章从上一章的哪一天接上）、推进 `previousOrdinal` 用**末端**
+  （本章结束在哪一天；否则后面每章都会早一天）——正是 issue 消融里验出的第三种写法。
+- 「本章之内从 A 写到 B」是产品认可的写法：`findUnmetTimeAnchorFindings` 早就为它
+  放开到整章（`anchorSpansWithinChapter`），这条自证矛盾校验当时没同步，现在对上了。
+
+验证：chapter-time-anchor 58 → 62 例；把推进改回首端 → 3 条当场红
+（正是 `anchor-self-contradiction:77`）；真实语料 9 处区间写法、**0 条误报**。

@@ -1,0 +1,38 @@
+fix(consistency): 事实账本整行缺失不再静默——如实报出 + 界面可见 (issue #187)
+
+现场：第 26 章后处理链被崩溃中断在**最后一段** —— `summary_snapshots`（2789 字事实）、
+`finalization_outbox`（published）、`finalized-chapter-notes`（成功）全有，
+唯独 `chapter_commits` **没有行**，而 `last_error` 是**空串**（链是在「没有记录」的情况下断的）。
+界面上它看起来就是「已定稿」，完全静默。
+
+两处真实缺陷：
+
+1. **`#173` 的重算通道会静默跳过**：那段逻辑是 `const commit = SELECT … ; if (commit) {…}`，
+   commit 不存在就什么都不做 —— 于是作者点「重算分类」只改 `summary_snapshots`，
+   **两套账的不一致被原样保留**，而且一个字都不说。
+2. **缺口只有打开「事实账本…」对话框才能看见**（`ChapterCommitDialog` 读了 gaps，
+   但其它入口不知道）。
+
+改动：
+
+- `electron/repositories/summary-repository.ts`：`recategorizeFinalizedContinuityChapter`
+  在 commit 缺失时返回 `commitLedgerMissing: true`（类型加进 `RecategorizeContinuityReceipt`），
+  **如实报告**而不是静默跳过。
+- `src/components/stage/chapter/ChapterCommitDialog.tsx`：重算成功后若带该标记，
+  toast 明说「整行缺失、重算分类修不了它，请用『从当前投影重建』」。
+- `src/components/stage/chapter/ChapterActions.tsx`：打开这一章时读一次缺口清单
+  （`db:writing-intelligence-commit-gaps`），缺行时菜单项直接写成
+  **「事实账本（未落库，可补齐）…」** —— 不必先点进对话框才发现。
+
+⚠️ **没有新造补齐通道**：`WritingIntelligenceRepository.rebuildChapterCommit` 与
+`db:writing-intelligence-commit-rebuild` 已经存在，`#125` 也证明了「outbox + summary 两份就够重建、
+不需要重新生成正文」。缺的只是**可见性与如实报告**。
+
+⚠️ issue 建议 ③（outbox 加「已完成步骤」位图）本轮没做：那是 schema 变更，
+且有了本条的可见性之后，作者能直接看到「哪一章缺账本」，不必再靠位图反推。
+
+验证：`summary-recategorize-173` 7 → **10 例**：缺行时报 `commitLedgerMissing`（且该改的仍然改了）/
+补齐后不再报 / **缺口清单列出这一章且状态是 `rebuildable`**。
+真语料复核（本机只读副本）：11 章缺账本，其中 7 章 summary 也在 → 可重建。
+红验证：删掉 `commitLedgerMissing` → 2 例当场红；恢复 → 10 全过。
+typecheck 通过；同批 22 例全绿。

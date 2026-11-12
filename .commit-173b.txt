@@ -1,0 +1,32 @@
+feat(consistency): 存量事实重新分类的写回通道 + IPC（issue #173 第二步）
+
+第一步（1.5.190）交付了两个纯函数；这一步把它接成**真的能落库**的窄通道。
+
+`electron/repositories/summary-repository.ts`：新增
+`recategorizeFinalizedContinuityChapter({ draftId, chapterNumber })`：
+
+- 读该章最新 `summary_snapshots.continuity_facts` → 用**当前**判据重算 → 只 UPDATE `category`；
+- **两张表一起对齐**：`chapter_commits.facts_json` 是同一批事实的第二份落库，
+  不改它就会变成两套账（所以同一事务内一并重算）；
+- 返回 `{ changed, counts }`（`plot→open-thread: 29` 这样的计数），供界面先给作者看差异；
+- **幂等**：已经是对的章再跑一次返回 `changed: 0`。
+
+三道安全闸（都在同一事务内、都在仓库层，不靠调用方自觉）：
+
+1. **来源校验**：`chapterNumber` 必须与 `draftId` 的定稿源一致（否则抛「来源已失效」）；
+2. **引文必须仍能定位**：每条被改的事实，`evidence` 必须还在绑定定稿正文里 ——
+   否则整笔拒绝（防「正文被替换过、按旧引文改新账本」）；
+3. **只改 category**：`statement` / `evidence` / `sourceChapter` / `entities` 逐字保留
+   （动了会撞 #159 那类哈希问题）。
+
+`electron/controllers/db-controller.ts`：新增 `db:continuity-recategorize-chapter`
+（带 `expectedProjectPath` 校验；返回 `{ success, receipt | error }`，**不静默失败**）。
+
+验证：新增 `summary-recategorize-173` **6 例**：
+`[埋]` 从 plot 改到 open-thread 并给出计数 / **只改 category 其余字段逐字保留** /
+**幂等** / 章号与 draftId 不符被拒 / **引文定位失败整笔拒绝且账本未改** / chapter_commits 一起对齐。
+红验证：把「引文必须定位」那道闸去掉 → 「整笔拒绝」那条当场红（这条测试是我第一次红验证
+**没红**之后补上的：原来 5 例全绿说明那道闸根本没被测到）。
+
+⚠️ **还没做**：界面按钮（哪个面板挂它 + 差异确认面板）。所以现在还**点不到** ——
+写回能力在仓库层与 IPC 层完整，缺的只是 UI 挂载点。评论里如实写明。

@@ -1,0 +1,38 @@
+feat(consistency): 角色卡上的显眼标志「这几章一次没被用到」也要能被指出 (issue #153 第一部分)
+
+现场（只读副本，73 章）：7 张卡上 25 个显眼标志——衣着/随身物被写 379 次，身体特征只有 30 次
+（12.6 倍；把「缺半节小指」摘掉后其余 8 项只剩 17 次）。全叔出场 40 余章「背驼手粗」0 次、
+邵广海金戒指 0 次、周叙「眼窝很深」0 次、掌心茧全书 1 次。读者认人只剩「靛蓝短褂 + 赤脚」。
+
+`appearance` 是全链路唯一被注入起草提示词的外观锚点，而原先只有一条判据——**空不空**
+（`findAppearanceGaps`）。正文用没用上、用没用对，没有任何一层知道：
+- 「用错了」（左手/右手）已在 1.5.173 的 `appearance-consistency` 里由模型判；
+- **「一次没用上」这一轴此前完全空白**（本轮补的就是它）。
+- issue 第三部分（同一枚印的形态方向在章间相反）已由 1.5.184 的 `evidence-shape-review` 覆盖。
+
+改法（与既有模型判据同构，规则只做能断言的）：
+
+- `src/shared/appearance-consistency.ts`：
+  `AppearanceReviewRequest.checkUsage`（**默认 false**，不混进默认核对）、
+  提示词在 `checkUsage` 时追加覆盖统计（「只考虑**这几章确实出场**的角色」——否则每个配角
+  都会被报一遍，与 #149 的「整类跳过」同一条纪律；「换措辞写同一特征也算用上了」）、
+  新增 `parseAppearanceUsage`：**`mark` 必须逐字出现在该角色卡原文里**（模型常把「右小指缺半节」
+  改写成「右手小指缺失」，作者按改写去卡上找会找不到）、`chapters` 只留样本范围内的章号、
+  **与相悖分开解析**（这一轴形状不对不能连累已判定的相悖结论）。
+- `src/services/preflight-repair.ts`：`checkAppearanceAgainstCards(..., checkUsage)`；
+  新增 `appearanceUnusedMarkFindings`——key `character:appearance-unused:<角色>:<标志>`
+  **不带章号**（同一个人只报一条，#160 的教训），文案明确「这一次不写它完全可以」，
+  并给出另一条出路（标志不再有识别力就把它从卡上删掉）。
+- `WriteChapterPopover.tsx`：核对角色外观时**同一次调用**里带上这一轴（同一批章节已在上下文里，
+  再发一次同样的大请求是浪费），两类结果分别计数后一起并入提醒列表。
+- `acknowledgement-title.ts`：登记 `character:appearance-unused` 与
+  `character:appearance-contradiction` 的人话标题（后者是上一轮漏登记的）。
+
+⚠️ 本模块**仍然没有任何词表**：哪些算「显眼标志」由模型从卡上原文挑，规则只把卡上原文
+交给模型并要求它**回引卡上原话**。守卫 `no-content-wordlists` 7 例全绿。
+
+验证：`appearance-consistency` 12 → 22 例（默认不含该轴 / 开启后两种模式文案都在 /
+逐字标志校验 / 改写标志丢弃 / notes 也能取 / 未登场角色丢弃 / 越界章号清空 / 坏 JSON / 去重）；
+新增 `preflight-appearance-usage` 7 例（key 跨章稳定、文案含「完全可以」与「删掉」、中英文案）。
+红验证：删掉「mark 必须逐字在卡上」那一行 → 对应用例当场红；恢复 → 全绿。
+typecheck 通过；浏览器 20 例全过。

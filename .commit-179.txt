@@ -1,0 +1,28 @@
+fix(run): IPC 边界不再吞掉具名错误码，兜底码带上原始 message (issue #179)
+
+现场：`#174` 修好后同一位置换了另一个码 —— `GENERATION_REQUEST_FAILED`（把所有未知错误
+压成一类的兜底码），审稿仍没启动、界面仍空等 720 秒。两轮 run 形态逐字段一致。
+
+根因在 `electron/controllers/generation-controller.ts` 的 catch：
+
+1. 白名单正则 `^…_[A-Z_]+$` **整串匹配** —— `#174` 刚加上的「带字段名」变体
+   `GENERATION_REVIEW_CONTEXT_MISMATCH:authorInputs` **含冒号、不匹配**，
+   于是诊断信息在 IPC 边界**又被吞一次**。这一条是我上一轮引入的回归。
+2. 兜底码把原始 message 彻底丢掉：日志里只有「请求失败」四个字。
+
+两处都改：
+
+- 正则加**可选**的字段名后缀 `(?::[A-Za-z]{1,40})?`（限字母与 40 字，避免把整段中文当码透出去）。
+- 兜底码保留前缀（既有 `includes('GENERATION_REQUEST_FAILED')` 的分支不受影响），
+  后面接截断到 200 字的原始 message：`GENERATION_REQUEST_FAILED:<原 message>`。
+
+同时把这段映射抽成**导出的纯函数** `generationErrorCode`：
+原来它内联在 `ipcMain.handle` 的 catch 里，测试只能自己抄一份正则 ——
+我第一次写的就是抄版，结果**改实现测试不会变红**（假绿）。抽出之后测试断言的是真实现。
+
+验证：`generation-controller` 新增 2 例（具名带字段的码透传 / 中文与超长后缀不许透传 /
+无后缀旧码照旧 / 兜底码带原始 message 且截断 200 字 / 非 Error 退回类型名）。
+红验证：把后缀从正则里退掉 → 「具名带字段的码透传」当场红（这次是真红，不是抄版假绿）。
+⚠️ 该文件另有 **6 个既有环境性失败**（`generation:reasoning` 事件断言），
+我用 `git checkout` 回退到改动前跑过同一套：失败集合逐条一致（6 个、同样名字），
+所以不是本条引入的。

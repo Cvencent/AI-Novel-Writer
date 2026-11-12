@@ -227,14 +227,15 @@ export abstract class BaseWorkflowCommand<TResult = string> {
           this.assertNotCancelled(params.context)
           return await operation()
         } catch (cause) {
-          // 命令最终失败时把主进程运行落账为 cancelled：否则 generation_runs 永远
-          // running，而 idle reaper 只收割 finishReason!==stop 的运行——模型已成功
-          // 返回（stop）后校验才抛错的运行会卡在 running 永无人收（issue #15）。
-          const mainRuntime = runtime as Partial<WorkflowMainGenerationRuntime> & { cancel?: () => Promise<unknown> }
-          if (false && mainRuntime.mainOwned === true && typeof mainRuntime.cancel === 'function'
+          // 命令最终失败时把主进程运行落账为 paused：run 不能永远 running（issue #15），
+          // 但 cancelled 会封死恢复入口——resume 只认 paused（细纲断点续写、重试续接）。
+          // 其余中断路径（recoverInterrupted / idle reaper / open 失败）同样收成 paused；
+          // 作者显式取消走 requestMainGenerationCancellation → cancel，不经过这里。
+          const mainRuntime = runtime as Partial<WorkflowMainGenerationRuntime>
+          if (mainRuntime.mainOwned === true && typeof mainRuntime.pause === 'function'
             && !params.context.cancelled) {
-            await mainRuntime.cancel()
-              .catch(() => { /* the ledger stays as-is if cancellation is refused */ })
+            await mainRuntime.pause()
+              .catch(() => { /* the ledger stays as-is if pausing is refused */ })
           }
           throw cause
         } finally {
