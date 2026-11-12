@@ -36,7 +36,7 @@ it('捕获真实M02原文/genre/语言而不读全局错误库，只有空身份
  expect(()=>captureLegacyRosterContext(f.db)).toThrow('LEGACY_ROSTER_MODEL_SOURCE_REQUIRED')
 })
 it('无模型采用只重建projection+ready，角色/别名/状态/原文原字节保全',()=>{
- const f=fixture(),before=facts(f.db),request=f.request(),receipt=adoptLegacyCards(f.db,request)
+ const f=fixture(),request=f.request(),before=facts(f.db),receipt=adoptLegacyCards(f.db,request)
  expect(receipt).toMatchObject({success:true,activeIds:['角色甲'],snapshot:{status:'ready',migrationState:'ready',legacyMarkdown:legacy}})
  expect(facts(f.db)).toEqual(before)
  expect(f.db.prepare('SELECT legacy_markdown FROM character_roster_meta').pluck().get()).toBe(legacy)

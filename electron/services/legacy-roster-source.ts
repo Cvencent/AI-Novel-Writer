@@ -51,12 +51,15 @@ function readSource(db: Database.Database): LegacyRosterSource {
   const identityRevision = db.prepare("SELECT revision FROM character_identity_meta WHERE id='main'").pluck().get()
   const rawLegacy = db.prepare("SELECT legacy_markdown FROM character_roster_meta WHERE id='main'").pluck().get()
   if (!core || !revision(identityRevision) || typeof rawLegacy !== 'string') throw new Error('LEGACY_ROSTER_SOURCE_INVALID')
+  // issue #225：read() 会持久化补 cs_provenance 缺键；facts 必须在补标之后取，
+  // 否则捕获与采用两次读到的行哈希不一致（补标幂等，第二次读不再变化）。
+  const snapshot = CharacterRosterRepository.read(db)
   const characters = db.prepare('SELECT * FROM characters ORDER BY character_id').all() as { character_id: string; retired: number }[]
   if (characters.some(row => typeof row.character_id !== 'string' || !row.character_id.trim())) throw new Error('LEGACY_ROSTER_ID_INVALID')
   const facts = { characters,
     aliases: db.prepare('SELECT * FROM character_aliases ORDER BY character_id,name,source_key,valid_from').all(),
     relationships: db.prepare('SELECT * FROM character_relationships ORDER BY relationship_id').all() }
-  return { snapshot: CharacterRosterRepository.read(db), rawLegacy, legacyHash: textHash(rawLegacy), identityRevision,
+  return { snapshot, rawLegacy, legacyHash: textHash(rawLegacy), identityRevision,
     activeIds: characters.filter(row => row.retired === 0).map(row => row.character_id), factsHash: textHash(JSON.stringify(facts)),
     genre: core.genre, writingLanguage: resolveWritingLanguage(core.writing_language) }
 }

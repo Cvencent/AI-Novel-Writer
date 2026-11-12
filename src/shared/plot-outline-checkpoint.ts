@@ -1,5 +1,13 @@
 import type { MainGenerationRunHandle } from '../services/generation/generation-runtime'
-import { PLOT_OUTLINE_PROTOCOL, plotOutlineNextChapter } from './plot-outline-contract'
+import {
+  hasVisiblePartialSynopsisMarker,
+  PLOT_OUTLINE_PROTOCOL,
+  plotOutlineNextChapter,
+  SYNOPSIS_INCOMPLETE_LABEL_EN,
+  SYNOPSIS_INCOMPLETE_LABEL_ZH,
+  SYNOPSIS_PARTIAL_LABEL_EN,
+  SYNOPSIS_PARTIAL_LABEL_ZH,
+} from './plot-outline-contract'
 import type { WritingLanguage } from './writing-language'
 
 /** partial_arch.json 里细纲的分批检查点字段。 */
@@ -23,20 +31,7 @@ export interface SynopsisCheckpoint {
 /** 少于该字符数视为无保存价值的零碎输出，不落盘、不提供续写。 */
 export const MIN_SYNOPSIS_PARTIAL_PERSIST_CHARS = 120
 
-/**
- * 未完成/部分覆盖大纲的标记**文本**——写入与读取共用这几个常量。
- *
- * ⚠️ 原先写入时用一整段字面量、读取时又各写一遍 `includes('本大纲未完成')`：
- * 两处措辞一旦改动就会**静默失配**（标记读不出来 → 续写判断失效）。
- * 那是「字面量匹配」最脆的形态（用户 2026-11-05 禁止这一类做法）。
- * 现在标记文本只有一个来源；判断仍是对**自己写入的协议标记**做比对，不是对正文内容做语义判断。
- */
-const SYNOPSIS_INCOMPLETE_LABEL_ZH = '本大纲未完成'
-const SYNOPSIS_INCOMPLETE_LABEL_EN = 'This outline is incomplete'
-const SYNOPSIS_PARTIAL_LABEL_ZH = '本大纲已覆盖至第'
-const SYNOPSIS_PARTIAL_LABEL_EN = 'This outline covers chapters'
-
-/** 落库时追加在未完成大纲末尾的可见标记（帮助用户识别与编辑器提示）。 */
+/** 落库时追加在未完成大纲末尾的可见标记（帮助用户识别与编辑器提示）。标记文本常量在 plot-outline-contract，写入/读取/前缀闸门共用。 */
 const SYNOPSIS_INCOMPLETE_MARKER_ZH = [
   '',
   `> ⚠️ **${SYNOPSIS_INCOMPLETE_LABEL_ZH}**：生成被输出长度中断，以上为已自动保存的已完成部分。`,
@@ -142,20 +137,6 @@ export function assertCheckpointDbMirrorCurrent(
     ))
   }
   return checkpointBody
-}
-
-export function hasVisibleIncompleteSynopsisMarker(dbOutlineText: string): boolean {
-  // 用**同一常量**判断自己写入的标记：写入与读取只有一个来源，改一处两边同时生效。
-  // ⚠️ 这判的是「本模块写进正文的协议标记」，不是对作者正文的内容判断——后者按用户
-  // 2026-11-05 的规则必须交模型。
-  return dbOutlineText.includes(SYNOPSIS_INCOMPLETE_LABEL_ZH)
-    || dbOutlineText.includes(SYNOPSIS_INCOMPLETE_LABEL_EN)
-}
-
-export function hasVisiblePartialSynopsisMarker(dbOutlineText: string): boolean {
-  return hasVisibleIncompleteSynopsisMarker(dbOutlineText)
-    || dbOutlineText.includes(SYNOPSIS_PARTIAL_LABEL_ZH)
-    || dbOutlineText.includes(SYNOPSIS_PARTIAL_LABEL_EN)
 }
 
 export function isUsableSynopsisCheckpoint(

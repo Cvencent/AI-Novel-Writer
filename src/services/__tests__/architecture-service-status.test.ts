@@ -59,8 +59,9 @@ describe('流程脊的架构四节是否已确认：与架构页徽标同一判�
   it('分批写满全书或没有分批检查点：大纲已确认', async () => {
     synopsis = LONG
     expect((await checkArchConfirmed(session)).synopsis).toBe(true)
-    synopsis = renderPlotOutlineSynopsis(body, 24, { totalChapters: 24, writingLanguage: 'zh-CN' })
-    partial = { ...batchCheckpoint, synopsis_covered_to: 24, synopsis_range: { from: 21, to: 24 }, synopsis_db_hash: synopsisFactsFingerprint([synopsis]) }
+    const fullBody = Array.from({ length: 24 }, (_, index) => `## 第${index + 1}章：灯${index + 1}\n守灯人记下第${index + 1}夜的来船。`).join('\n\n')
+    synopsis = renderPlotOutlineSynopsis(fullBody, 24, { totalChapters: 24, writingLanguage: 'zh-CN' })
+    partial = { ...batchCheckpoint, synopsis_result: fullBody, synopsis_covered_to: 24, synopsis_range: { from: 21, to: 24 }, synopsis_db_hash: synopsisFactsFingerprint([synopsis]) }
     expect((await checkArchConfirmed(session)).synopsis).toBe(true)
   })
 

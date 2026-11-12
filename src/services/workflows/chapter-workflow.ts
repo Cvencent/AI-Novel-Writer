@@ -419,7 +419,8 @@ export function createReviewOnlyWorkflow(
         ? `Chapter ${params.chapterNumber} · Recheck revised notes`
         : `Chapter ${params.chapterNumber} · Review`,
     ),
-    steps: [
+    // 复核只裁决刚修过的意见：深度检查与编辑部评审都不该跑（不是重审全章）。
+    steps: ([
       {
         name: localize(uiLocale, params.reviewCycleId ? '复核已修意见' : '审稿',
           params.reviewCycleId ? 'Recheck revised notes' : 'Review chapter'),
@@ -654,7 +655,7 @@ export function createReviewOnlyWorkflow(
           }
         },
       },
-    ],
+    ] as WorkflowDefinition['steps']).slice(0, params.reviewCycleId ? 1 : undefined),
     onComplete: {
       mode: 'open',
       message: localize(

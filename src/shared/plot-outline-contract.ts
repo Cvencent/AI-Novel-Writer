@@ -274,11 +274,40 @@ export function joinPlotOutlineEntries(prefix: string, next: string): string {
   return [prefix.trim(), next.trim()].filter(Boolean).join('\n\n')
 }
 
+/**
+ * 未完成/部分覆盖大纲的标记**文本**——写入、读取与前缀闸门共用这几个常量。
+ *
+ * ⚠️ 原先写入时用一整段字面量、读取时又各写一遍 `includes('本大纲未完成')`：
+ * 两处措辞一旦改动就会**静默失配**（标记读不出来 → 续写判断失效）。
+ * 那是「字面量匹配」最脆的形态（用户 2026-11-05 禁止这一类做法）。
+ * 现在标记文本只有一个来源；判断仍是对**自己写入的协议标记**做比对，不是对正文内容做语义判断。
+ * 放在合同模块：plotOutlineConfirmedPrefix 的 bare-prefix 闸门也要用它，
+ * 而检查点模块已依赖本模块——常量放检查点会形成循环依赖。
+ */
+export const SYNOPSIS_INCOMPLETE_LABEL_ZH = '本大纲未完成'
+export const SYNOPSIS_INCOMPLETE_LABEL_EN = 'This outline is incomplete'
+export const SYNOPSIS_PARTIAL_LABEL_ZH = '本大纲已覆盖至第'
+export const SYNOPSIS_PARTIAL_LABEL_EN = 'This outline covers chapters'
+
+export function hasVisibleIncompleteSynopsisMarker(dbOutlineText: string): boolean {
+  // 用**同一常量**判断自己写入的标记：写入与读取只有一个来源，改一处两边同时生效。
+  // ⚠️ 这判的是「应用写进正文的协议标记」，不是对作者正文的内容判断——后者按用户
+  // 2026-11-05 的规则必须交模型。
+  return dbOutlineText.includes(SYNOPSIS_INCOMPLETE_LABEL_ZH)
+    || dbOutlineText.includes(SYNOPSIS_INCOMPLETE_LABEL_EN)
+}
+
+export function hasVisiblePartialSynopsisMarker(dbOutlineText: string): boolean {
+  return hasVisibleIncompleteSynopsisMarker(dbOutlineText)
+    || dbOutlineText.includes(SYNOPSIS_PARTIAL_LABEL_ZH)
+    || dbOutlineText.includes(SYNOPSIS_PARTIAL_LABEL_EN)
+}
+
 export function renderPlotOutlineSynopsis(body: string, coveredTo: number, expected: Pick<ProjectCoreSynopsisExpected, 'totalChapters' | 'writingLanguage'>): string {
   const english = expected.writingLanguage === 'en-US'
   const tail = coveredTo < expected.totalChapters ? english
-    ? `> This outline covers chapters 1-${coveredTo} of ${expected.totalChapters}; the remaining chapters will be generated in later batches.`
-    : `> 本大纲已覆盖至第 ${coveredTo} 章（全书 ${expected.totalChapters} 章），其余章节将在后续批次继续生成。` : ''
+    ? `> ${SYNOPSIS_PARTIAL_LABEL_EN} 1-${coveredTo} of ${expected.totalChapters}; the remaining chapters will be generated in later batches.`
+    : `> ${SYNOPSIS_PARTIAL_LABEL_ZH} ${coveredTo} 章（全书 ${expected.totalChapters} 章），其余章节将在后续批次继续生成。` : ''
   return `# ${english ? 'Plot Outline' : '细纲'}\n\n${joinPlotOutlineEntries(body, tail)}`.trim()
 }
 
@@ -352,7 +381,12 @@ export function plotOutlineConfirmedPrefix(expected: PlotOutlineRangeSource, ran
   // （#21 当时只修好了「带说明行」那一半）。
   // 能证明「正文就是这批章节」的判据只有一条：按 range.from - 1 渲染（此时不产生说明行）
   // 后与原文逐字相等。
+  // 真正的 bare-prefix 不含任何批次标记。若带有标记却不在规范尾部（上面的 suffix
+  // 分支已先试过），说明正文在分批写入后被改过——例如作者在覆盖说明后补写了文字。
+  // 逐字比对抓不住这种形态：按 totalChapters=range.from-1 渲染不产生说明行，
+  // 旧标记会被当作正文原样通过比对。这里比的是自己写入的协议标记，不是内容判断。
   if (!barePrefix || range.from > expected.totalChapters
+    || hasVisiblePartialSynopsisMarker(expected.synopsis)
     || renderPlotOutlineSynopsis(barePrefix, range.from - 1,
       { ...expected, totalChapters: range.from - 1 }) !== expected.synopsis) {
     throw new Error('GENERATION_PLOT_OUTLINE_PREFIX_INVALID')
