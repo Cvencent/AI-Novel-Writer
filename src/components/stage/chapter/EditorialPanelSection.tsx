@@ -13,6 +13,7 @@ import type { useReviewChecklist } from '../../editor/review-checklist'
 
 type Checklist = ReturnType<typeof useReviewChecklist>
 import { Button } from '../../ui/Button'
+import { Notice } from '../../ui/Notice'
 import { StatGrid } from '../../ui/StatGrid'
 
 const ROLE_LABELS: Record<EditorialRole, [string, string]> = {
@@ -31,21 +32,31 @@ export default function EditorialPanelSection({ chapterNumber, draftId, draftVer
   // Paired with the draft it was read for; a switch shows nothing until the new
   // read lands, so a previous draft's panel never lingers.
   const [loaded, setLoaded] = useState<{ draftId: number; quality: DraftQualityReview | null } | null>(null)
+  /**
+   * 审稿刚跑完、但这一稿**没有评分**时记下这次审稿的 runId。
+   *
+   * 现场（issue #245）：编辑部那一步模型失败，界面上却只显示「还没有编辑部评分」——
+   * 跟「还没跑过」长得一模一样，作者以为没问题。这里用「跑完了却没有分」这个事实
+   * 判定为**失败**，明确说出来，而不是让空状态冒充正常。
+   */
+  const [failedForDraft, setFailedForDraft] = useState<number | null>(null)
   const [starting, setStarting] = useState(false)
   // Bound to this draft so a late response from a previous draft cannot win.
   const requestRevision = useRef(0)
   const activeRunId = useRef<string | null>(null)
   const quality = loaded && loaded.draftId === draftId ? loaded.quality : null
 
-  const load = useCallback(async (boundDraftId: number | undefined, revision: number) => {
-    if (boundDraftId === undefined) return
+  const load = useCallback(async (boundDraftId: number | undefined, revision: number): Promise<DraftQualityReview | null> => {
+    if (boundDraftId === undefined) return null
     const session = captureProjectSession(useProjectStore.getState().currentProject)
-    if (!session) return
+    if (!session) return null
     try {
       const response = await ipc.invokeWithProjectSession(session, 'db:writing-intelligence-quality-get', boundDraftId, session.projectPath)
       if (isProjectSessionCurrent(session) && revision === requestRevision.current) setLoaded({ draftId: boundDraftId, quality: response })
+      return (response as DraftQualityReview | null) ?? null
     } catch {
       if (isProjectSessionCurrent(session) && revision === requestRevision.current) setLoaded({ draftId: boundDraftId, quality: null })
+      return null
     }
   }, [])
 
@@ -56,13 +67,25 @@ export default function EditorialPanelSection({ chapterNumber, draftId, draftVer
     void load(draftId, requestRevision.current)
   }, [draftId, load])
 
-  useEffect(() => globalEventBus.on('WORKFLOW_COMPLETE', ({ runId }) => {
-    if (runId !== activeRunId.current) return
-    activeRunId.current = null
+  /**
+   * 审稿完成后重读评分。
+   *
+   * `AI 审稿` 现在会把编辑部评审作为**工作流的一步**跑（不是这块面板自己启动的），
+   * 所以不能再用 `runId === activeRunId.current` 过滤——那个 ref 只有「重新评估」按钮
+   * 才会赋值，AI 审稿触发的 runId 永远不匹配，于是评分明明已落库、面板却停在
+   * 「还没有编辑部评分」，作者必须切一次页面（重挂载）才看得到。
+   *
+   * 现在只按**当前挂载的稿**重读：`load` 内部有 revision 守卫，
+   * 晚到的旧回应会被丢掉，不会把上一稿的分数盖上来。
+   */
+  useEffect(() => globalEventBus.on('WORKFLOW_COMPLETE', () => {
     if (!captureProjectSession(useProjectStore.getState().currentProject)) return
-    // Re-read against whichever draft is mounted now; the revision guard drops stale replies.
     requestRevision.current += 1
-    void load(draftId, requestRevision.current)
+    void load(draftId, requestRevision.current).then(quality => {
+      // 读回来仍没有评分 → 这一稿的编辑部评审失败了（不是「还没跑过」）。
+      // 只在确实跑完一次审稿之后才这样判定，否则新稿一挂载就会被误报成失败。
+      if (draftId !== undefined) setFailedForDraft(quality ? null : draftId)
+    })
   }), [draftId, load])
 
   /**
@@ -151,7 +174,18 @@ export default function EditorialPanelSection({ chapterNumber, draftId, draftVer
             <p className="stage-editorial-hint">{text('五角色的发现已自动并入上方修稿清单；要排除某条，直接在清单里取消勾选或删除它。', 'The five editors’ findings are merged into the checklist above; to exclude one, untick or delete it there.')}</p>
           )}
         </>
-      ) : <p className="stage-ch-sheet-note">{text('还没有编辑部评分。点上方「AI 审稿」会连同五角色评审一起跑，结果写入这份草稿的质量记录。', 'No editorial score yet. “AI review” above runs the five-editor panel together with the consistency review and records it for this draft.')}</p>}
+      ) : failedForDraft === draftId
+        // 跑完了却没有分 = 失败。空状态不能冒充「一切正常」——那正是作者被误导的地方。
+        ? <Notice tone="warn" title={text('编辑部评审没跑成', 'The editorial panel did not run')}
+            actions={(
+              <Button variant="secondary" size="sm" disabled={starting || draftVersion === undefined} onClick={rerun}>
+                <Sparkles size={13} aria-hidden />{starting ? text('五位编辑评审中…', 'Reviewing…') : text('重试编辑部评审', 'Retry the panel')}
+              </Button>
+            )}>
+            {text('五角色评审这次没有产出评分（模型调用失败或返回不合规）。一致性审稿已经完成并保存，上方清单不受影响。详情见运行侧页里「编辑部评审」那一步。',
+              'This run produced no panel score (the model call failed or returned malformed output). The consistency review finished and is saved, so the checklist above is unaffected. See the “Editorial panel” step in the run sheet for details.')}
+          </Notice>
+        : <p className="stage-ch-sheet-note">{text('还没有编辑部评分。点上方「AI 审稿」会连同五角色评审一起跑，结果写入这份草稿的质量记录。', 'No editorial score yet. “AI review” above runs the five-editor panel together with the consistency review and records it for this draft.')}</p>}
     </section>
   )
 }

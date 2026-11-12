@@ -116,3 +116,49 @@ describe('review workflow carries the editorial panel (issue #245 现场)', () =
     expect(names.at(-1)).toMatch(/编辑部评审|Editorial panel/)
   })
 })
+
+/**
+ * issue #245 现场：编辑部那一步模型失败（`GENERATION_PROVIDER_FAILED`）时，
+ * 前一步的审稿报告**已经成功落库**，但整个工作流却报失败——作者在界面上看到的
+ * 是「审稿失败」，实际上审稿好好的、只是五角色没跑成；更糟的是重试耗尽的失败
+ * 被当成"没问题"，因为面板停在空状态，跟"还没跑过"长得一模一样。
+ *
+ * 修法：这一步瞬时失败按工作流层口径**重试一次**；最终仍失败**不抛**，
+ * 而是把失败写进这一步的返回值（运行卡片可见），由审稿报告侧页显示成
+ * 「编辑部评审没跑成」而不是「还没有评分」。
+ */
+describe('editorial step failure does not sink the review (issue #245 现场)', () => {
+  const build = () => createReviewOnlyWorkflow({
+    projectPath,
+    chapterNumber: 2,
+    chapterTitle: 'A New Term',
+    draftPath: 'ai-novel://draft/2',
+    draftContent: '本章正文。',
+    sourceDraft,
+  }, projectSession)
+
+  it('wraps the panel call in the workflow-layer transient retry', async () => {
+    // 步骤 executor 的源码里必须出现 withTransientRetry —— 裸调用会让一次抖动
+    // 直接判死整个审稿（审稿单次 100+ 秒，作者白等）。
+    const source = await import('node:fs').then(fs => fs.readFileSync(
+      new URL('../chapter-workflow.ts', import.meta.url), 'utf8'))
+    const editorialBlock = source.slice(source.indexOf('编辑部评审（五角色）并入 AI 审稿'))
+    expect(editorialBlock).toContain('withTransientRetry')
+    expect(editorialBlock).toContain('limit: 1')
+  })
+
+  it('catches the failure and returns an explicit failure message instead of throwing', async () => {
+    const source = await import('node:fs').then(fs => fs.readFileSync(
+      new URL('../chapter-workflow.ts', import.meta.url), 'utf8'))
+    const editorialBlock = source.slice(source.indexOf('编辑部评审（五角色）并入 AI 审稿'))
+    // 必须有 catch，且返回值里明确写「失败、未产生评分」——不能静默变 pass
+    expect(editorialBlock).toContain('catch (error)')
+    expect(editorialBlock).toContain('编辑部评审失败')
+    // 取消是作者意图，仍要上抛（否则取消会被记成失败）
+    expect(editorialBlock).toContain('if (context.cancelled) throw error')
+  })
+
+  it('keeps three steps so the panel still runs as part of AI review', () => {
+    expect(build().steps).toHaveLength(3)
+  })
+})

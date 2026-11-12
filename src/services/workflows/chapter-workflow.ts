@@ -592,15 +592,44 @@ export function createReviewOnlyWorkflow(
             }
           }
           const { EditorialPanelCommand } = await import('./commands/editorial-panel.command')
-          const panel = await new EditorialPanelCommand({
-            chapterNumber: frozenParams.chapterNumber,
-            draftId: frozenParams.sourceDraft.id,
-            draftVersion: frozenParams.sourceDraft.version,
-          }).execute({ step: _step, context, callbacks })
-          const findings = panel.roles.reduce((total, role) => total + role.findings.length, 0)
-          return localize(uiLocale,
-            `编辑部评审完成：加权 ${panel.weightedScore.toFixed(1)} 分，阻断 ${panel.blockingCount} 条，共 ${findings} 处发现。`,
-            `Editorial panel done: weighted ${panel.weightedScore.toFixed(1)}, ${panel.blockingCount} blocking, ${findings} findings.`)
+          /**
+           * 重试一次瞬时传输失败，并且**失败不拖垮整个审稿**。
+           *
+           * 现场（issue #245）：编辑部那一步 `GENERATION_PROVIDER_FAILED`，但前一步的
+           * 审稿报告**已经成功落库**了。原来这一步裸抛异常 → 整个工作流报失败，
+           * 作者在界面上看到的是「审稿失败」，可实际上审稿报告好好的、只是五角色没跑成，
+           * 于是既看不到「评审失败」的原因，也以为「审稿没问题」。
+           *
+           * 现在：瞬时失败按工作流层既有口径重试（审稿单次 100+ 秒，这里也只给 1 次）；
+           * 最终仍失败就**把失败写进这一步的返回值**（运行卡片上直接可见），
+           * 但**不再抛**——审稿主结果不该被一个附加评审连坐。
+           */
+          try {
+            const panel = await withTransientRetry(
+              () => new EditorialPanelCommand({
+                chapterNumber: frozenParams.chapterNumber,
+                draftId: frozenParams.sourceDraft.id,
+                draftVersion: frozenParams.sourceDraft.version,
+              }).execute({ step: _step, context, callbacks }),
+              line => callbacks.log(line),
+              { isCancelled: () => context.cancelled, limit: 1 },
+            )
+            const findings = panel.roles.reduce((total, role) => total + role.findings.length, 0)
+            return localize(uiLocale,
+              `编辑部评审完成：加权 ${panel.weightedScore.toFixed(1)} 分，阻断 ${panel.blockingCount} 条，共 ${findings} 处发现。`,
+              `Editorial panel done: weighted ${panel.weightedScore.toFixed(1)}, ${panel.blockingCount} blocking, ${findings} findings.`)
+          } catch (error) {
+            // 取消是作者意图，照旧上抛（工作流会按 cancelled 收尾，不该显示成失败）。
+            if (context.cancelled) throw error
+            const reason = error instanceof Error ? error.message : String(error)
+            callbacks.log(localize(uiLocale,
+              `编辑部评审失败：${reason}（一致性审稿已完成并保存，不受影响）`,
+              `Editorial panel failed: ${reason} (the consistency review finished and is saved; it is unaffected)`))
+            // 返回值即运行卡片那一步的详情：**必须写清失败**，不能静默当成通过。
+            return localize(uiLocale,
+              `编辑部评审失败，未产生评分：${reason}。一致性审稿已完成，可在审稿报告里点「重新评估」重跑编辑部。`,
+              `Editorial panel failed and produced no score: ${reason}. The consistency review is complete; rerun the panel from the review report.`)
+          }
         },
       },
     ],
