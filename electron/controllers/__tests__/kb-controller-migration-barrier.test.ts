@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('electron', () => ({
+  safeStorage: { isEncryptionAvailable: () => false },
   app: { getLocale: () => mocks.locale },
   dialog: { showOpenDialog: vi.fn() },
   ipcMain: {

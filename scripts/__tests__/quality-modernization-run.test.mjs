@@ -543,7 +543,8 @@ test.each([
     assert.throws(() => owner.prepareReviewRevision({ ...refineRequest, reviewSourceId: ignoredRow.id, confirmedReviewContent: ignored }), /CONFIRM|REVIEW/)
     assert.equal(calls, 1 + Number(Boolean(lengthRecovery)), 'invalid confirmations are rejected before dispatch')
     const refine = owner.prepareReviewRevision(refineRequest)
-    assert.equal(refine.parentRootActionId, first.handle.rootActionId)
+    // issue #243③/#244：confirmation 修稿开新 root，不再挂审稿 run 的 root（服务侧同步断言见 review-revision-generation.test.ts）。
+    assert.equal(refine.parentRootActionId, undefined)
     const brief = renderHumanConfirmedReviewBrief(refine.context.confirmation.snapshot, 'zh-CN')
     assert.ok(brief.includes('当章归还借书') && brief.includes('林岚携带一本账册'))
     assert.equal(brief.includes('保持原稿'), false, 'ignored AI item does not enter revision brief')
@@ -555,7 +556,8 @@ test.each([
       assert.equal(countDraftUnits(response), revisionBounds.units)
     }
     const revisionBegin = owner.begin({ ...begin, operation: 'refine-from-review', uiActionNonce: 'refine', promptKeys: ['refine_from_review'], skillStages: ['refinement'],
-      output: 'visible-text', reviewRevisionContextId: refine.contextId, parentRootActionId: refine.parentRootActionId,
+      output: 'visible-text', reviewRevisionContextId: refine.contextId,
+      ...(refine.parentRootActionId ? { parentRootActionId: refine.parentRootActionId } : {}),
       authorInputs: [{ id: 'review-revision-context', text: JSON.stringify(refine.context) }] })
     owner.bindMaterialDecision(revisionBegin.handle, { ...decision,
       capacity: { ...decision.capacity, admittedUnits: Buffer.byteLength(brief) }, coverage: { required: 1, included: 1, complete: true },

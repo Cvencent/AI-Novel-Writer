@@ -1,8 +1,9 @@
-import { app, ipcMain, dialog } from 'electron'
+import { app, ipcMain, dialog, safeStorage } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import path from 'node:path'
 import { readJsonFile, GLOBAL_CONFIG_PATH, DEFAULT_GLOBAL_CONFIG, MODELS_CONFIG_PATH } from '../utils/config-utils'
-import { GlobalConfig, ModelProfile } from '../../src/shared/ipc-channels'
+import { decryptModelProfiles, resolveModelSecretCipher, type StoredModelProfile } from '../services/model-secret-store'
+import { GlobalConfig } from '../../src/shared/ipc-channels'
 import { isProjectSessionContext } from '../../src/shared/project-session-context'
 import type { EmbeddingOptions } from '../../src/shared/embedding-options'
 import { hasRequiredApiKey } from '../../src/shared/provider-presets'
@@ -127,7 +128,7 @@ export function getEmbeddingConfig(): { protocol: 'openai' | 'gemini'; model: { 
   const targetModelId = config.defaultEmbeddingModelId || config.defaultModelId
   if (!targetModelId) return null
 
-  const models = readJsonFile<ModelProfile[]>(MODELS_CONFIG_PATH, [])
+  const models = decryptModelProfiles(readJsonFile<StoredModelProfile[]>(MODELS_CONFIG_PATH, []), resolveModelSecretCipher(safeStorage))
   const model = models.find((m) => m.id === targetModelId)
   if (!model) return null
   // 未配置检索模型时回退到默认生成模型，但只有该模型声明了「嵌入」用途才真的可用：
@@ -158,6 +159,23 @@ function hasUsableEmbeddingConfig(
 function requireProjectPath(expectedProjectPath: string): string {
   assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
   return expectedProjectPath
+}
+
+// IPC 是信任边界：topK 与章号范围必须是安全整数，否则会被拼进 LanceDB 过滤器（注入）。
+function requireSearchTopK(topK: number | undefined): number {
+  if (topK === undefined) return 5
+  if (!Number.isSafeInteger(topK) || topK < 1) {
+    throw new Error(text('检索条数无效', 'The search result count is invalid.'))
+  }
+  return topK
+}
+
+function requireChapterScope(fromChapter: number, toChapter: number): [number, number] {
+  if (!Number.isSafeInteger(fromChapter) || !Number.isSafeInteger(toChapter)
+    || fromChapter < 1 || toChapter < fromChapter) {
+    throw new Error(text('章节范围无效', 'The chapter scope is invalid.'))
+  }
+  return [fromChapter, toChapter]
 }
 
 type KnowledgeBaseHandler<Args extends unknown[] = unknown[]> = (
@@ -335,9 +353,9 @@ export function registerKBController(
 
     return knowledgeBaseLoader.run((kb) => {
       if (embConfig) {
-        return kb.searchKnowledge(query, projectPath, embConfig.protocol, embConfig.model, topK ?? 5)
+        return kb.searchKnowledge(query, projectPath, embConfig.protocol, embConfig.model, requireSearchTopK(topK))
       }
-      return kb.searchKnowledgeFTS(query, projectPath, topK ?? 5)
+      return kb.searchKnowledgeFTS(query, projectPath, requireSearchTopK(topK))
     })
   })
 
@@ -352,12 +370,12 @@ export function registerKBController(
           projectPath,
           embConfig.protocol,
           embConfig.model,
-          topK ?? 5,
+          requireSearchTopK(topK),
           undefined,
           ['reference'],
         )
       }
-      return kb.searchKnowledgeFTS(query, projectPath, topK ?? 5, undefined, ['reference'])
+      return kb.searchKnowledgeFTS(query, projectPath, requireSearchTopK(topK), undefined, ['reference'])
     })
   })
 
@@ -365,12 +383,12 @@ export function registerKBController(
     const projectPath = requireProjectPath(expectedProjectPath)
     const embConfig = getEmbeddingConfig()
 
-    const scope: [number, number] = [fromChapter, toChapter]
+    const scope = requireChapterScope(fromChapter, toChapter)
     return knowledgeBaseLoader.run((kb) => {
       if (embConfig) {
-        return kb.searchKnowledge(query, projectPath, embConfig.protocol, embConfig.model, topK ?? 5, scope)
+        return kb.searchKnowledge(query, projectPath, embConfig.protocol, embConfig.model, requireSearchTopK(topK), scope)
       }
-      return kb.searchKnowledgeFTS(query, projectPath, topK ?? 5, scope)
+      return kb.searchKnowledgeFTS(query, projectPath, requireSearchTopK(topK), scope)
     })
   })
 

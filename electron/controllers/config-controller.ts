@@ -17,6 +17,9 @@ export function registerConfigController() {
   /** 保存全局配置 */
   ipcMain.handle('config:set', async (_event, config: Partial<GlobalConfig>) => {
     try {
+      if (!config || typeof config !== 'object' || Array.isArray(config)) {
+        throw new Error('INVALID_CONFIG_PATCH')
+      }
       const existingRead = tryReadJsonFile<GlobalConfig>(GLOBAL_CONFIG_PATH)
       if (existingRead.status === 'error') {
         throw new Error('全局配置损坏，已拒绝覆盖', { cause: existingRead.error })
@@ -24,7 +27,11 @@ export function registerConfigController() {
       const existing = existingRead.status === 'ok'
         ? existingRead.value
         : { ...DEFAULT_GLOBAL_CONFIG }
-      const updated = { ...existing, ...config }
+      const updated: GlobalConfig = { ...existing, ...config }
+      // proxy 是嵌套对象：浅合并会丢掉未提交的子字段，按子字段深合并保留默认值。
+      if (config.proxy && typeof config.proxy === 'object') {
+        updated.proxy = { ...existing.proxy, ...config.proxy }
+      }
       writeJsonFile(GLOBAL_CONFIG_PATH, updated)
       return { success: true }
     } catch (error) {

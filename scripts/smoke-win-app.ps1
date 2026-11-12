@@ -18,6 +18,10 @@
 )
 
 $ErrorActionPreference = 'Stop'
+# Node 读取本脚本 stdout 按 UTF-8；PS 5.1 默认跟系统 OEM 代码页（中文系统 GBK），
+# 不固定的话中文证据会变乱码。与 windows-safe-file-system.ps1 同一套约定。
+[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
 if (-not ([System.Management.Automation.PSTypeName]'AiNovelSmoke.TopLevelWindowProbe').Type) {
   Add-Type -TypeDefinition @'

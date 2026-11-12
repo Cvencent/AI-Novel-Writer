@@ -351,7 +351,7 @@ catch { [pscustomobject]@{ error = $_.Exception.Message; environmentRestored = $
       expect(rejected.error).toContain(expectedError)
       expect(rejected.environmentRestored).toBe(true)
     }
-    rmSync(archive)
+    rmSync(archive, { maxRetries: 5, retryDelay: 300 })
     const failedRead = parseLastJsonLine(runProbeLibrary(`
 $env:ELECTRON_RUN_AS_NODE = 'before-probe'
 try { Get-AiNovelInstalledVersion -ExePath ${quotePowerShell(executable)} -ExpectedVersion ${quotePowerShell(previewVersion)}; throw 'unexpected success' }

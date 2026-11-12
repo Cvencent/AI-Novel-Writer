@@ -1437,6 +1437,7 @@ async function searchWithScopeInternal(
     let scopeFilter: string | undefined
     if (chapterScope) {
       const [from, to] = chapterScope
+      if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 1 || to < from) throw new Error('INVALID_CHAPTER_SCOPE')
       scopeFilter = `\`chapterNumber\` >= ${from} AND \`chapterNumber\` <= ${to}`
     }
 

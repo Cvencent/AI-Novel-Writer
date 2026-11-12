@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('electron', () => ({
+  safeStorage: { isEncryptionAvailable: () => false },
   BrowserWindow: { fromWebContents: vi.fn() },
   ipcMain: {
     handle: vi.fn((channel: string, handler: IpcHandler) => {

@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('electron', () => ({
+  safeStorage: { isEncryptionAvailable: () => false },
   app: { getLocale: () => 'zh-CN' },
   BrowserWindow: { fromWebContents: vi.fn(() => ({ webContents: { send: mocks.send } })) },
   ipcMain: {

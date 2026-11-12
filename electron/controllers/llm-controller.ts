@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, app } from 'electron'
+import { ipcMain, BrowserWindow, app, safeStorage } from 'electron'
 import {
   readJsonFile,
   tryReadJsonFile,
@@ -21,6 +21,13 @@ import {
   ModelExecutionLeaseRegistry,
 } from '../services/model-execution-lease'
 import { ModelDiscoveryService } from '../services/model-discovery-service'
+import {
+  decryptModelProfiles,
+  encryptModelProfiles,
+  resolveModelSecretCipher,
+  type StoredModelProfile,
+} from '../services/model-secret-store'
+import { redactPersistedError } from '../llm/provider-error-redaction'
 import { isLocalModelEndpoint } from '../../src/shared/provider-presets'
 import { mainT } from '../i18n'
 
@@ -41,16 +48,20 @@ function connectionTestTimeoutMs(model: ModelProfile): number {
 
 const CLOSED_EXECUTION_LEASE_TOMBSTONE_TTL_MS = 5 * 60_000
 
+function modelSecretCipher() {
+  return resolveModelSecretCipher(safeStorage)
+}
+
 function loadModelConfigs(): ModelProfile[] {
-  return readJsonFile<ModelProfile[]>(MODELS_CONFIG_PATH, [])
+  return decryptModelProfiles(readJsonFile<StoredModelProfile[]>(MODELS_CONFIG_PATH, []), modelSecretCipher())
 }
 
 function loadModelConfigsForUpdate(): ModelProfile[] {
-  const result = tryReadJsonFile<ModelProfile[]>(MODELS_CONFIG_PATH)
+  const result = tryReadJsonFile<StoredModelProfile[]>(MODELS_CONFIG_PATH)
   if (result.status === 'error') {
     throw new Error('模型配置损坏，已拒绝覆盖', { cause: result.error })
   }
-  return result.status === 'ok' ? result.value : []
+  return result.status === 'ok' ? decryptModelProfiles(result.value, modelSecretCipher()) : []
 }
 
 function loadGlobalConfigForUpdate(): GlobalConfig {
@@ -62,7 +73,7 @@ function loadGlobalConfigForUpdate(): GlobalConfig {
 }
 
 function saveModelConfigs(models: ModelProfile[]) {
-  writeJsonFile(MODELS_CONFIG_PATH, models)
+  writeJsonFile(MODELS_CONFIG_PATH, encryptModelProfiles(models, modelSecretCipher()))
 }
 
 function getModelConfig(modelId: string): ModelProfile | null {
@@ -115,7 +126,7 @@ function recordProviderOutcome(
       success: outcome.success,
       errorMessage: outcome.finishReason && outcome.finishReason !== 'stop'
         ? `finish:${outcome.finishReason}`
-        : outcome.error,
+        : redactPersistedError(outcome.error, model),
     })
   } catch (error) {
     // Statistics are diagnostic only and must never change generation outcome.
@@ -309,9 +320,9 @@ export function registerLLMController() {
     let originalConfig: GlobalConfig | undefined
     let configChanged = false
     try {
-      const modelsRead = tryReadJsonFile<ModelProfile[]>(MODELS_CONFIG_PATH)
+      const modelsRead = tryReadJsonFile<StoredModelProfile[]>(MODELS_CONFIG_PATH)
       if (modelsRead.status === 'error') throw modelsRead.error
-      const originalModels = modelsRead.status === 'ok' ? modelsRead.value : []
+      const originalModels = modelsRead.status === 'ok' ? decryptModelProfiles(modelsRead.value, modelSecretCipher()) : []
       const configRead = tryReadJsonFile<GlobalConfig>(GLOBAL_CONFIG_PATH)
       if (configRead.status === 'error') throw configRead.error
       originalConfig = configRead.status === 'ok'
