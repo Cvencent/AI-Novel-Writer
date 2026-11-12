@@ -616,7 +616,7 @@ export class SummaryRepository {
     db.transaction(() => {
       const snapshot = readFinalizedSourceFromDb(db, input.draftId)
       if (!snapshot || !sameSource(snapshot.source, input.source) || input.chapterNumber !== snapshot.source.chapterNumber) {
-        throw new Error('连续性投影来源已失效，已拒绝过期结果')
+        throw new Error('FINALIZATION_GENERATION_SOURCE_CHANGED')
       }
       if (normalized.some(fact => !snapshot.content.includes(fact.evidence))) {
         throw new Error('连续性事实引文无法在绑定定稿正文中精确定位')
@@ -641,7 +641,7 @@ export class SummaryRepository {
         SELECT generation FROM continuity_projection_meta WHERE id = 'main'
       `).get() as { generation: number }).generation
       if (input.projectionGeneration !== generation) {
-        throw new Error('连续性投影失效水位已推进，已拒绝过期结果')
+        throw new Error('FINALIZATION_GENERATION_SOURCE_CHANGED')
       }
       const updated = db.prepare(`
         UPDATE summary_snapshots
@@ -762,10 +762,10 @@ export class SummaryRepository {
     db.transaction(() => {
       const snapshot = readFinalizedSourceFromDb(db, input.draftId)
       if (!snapshot || !sameSource(snapshot.source, input.source) || input.chapterNumber !== snapshot.source.chapterNumber) {
-        throw new Error('角色状态候选来源已失效，已拒绝过期结果')
+        throw new Error('FINALIZATION_GENERATION_SOURCE_CHANGED')
       }
       if (input.projectionGeneration !== snapshot.projectionGeneration) {
-        throw new Error('连续性投影失效水位已推进，已拒绝过期结果')
+        throw new Error('FINALIZATION_GENERATION_SOURCE_CHANGED')
       }
       const row = db.prepare(`
         SELECT character_state_candidates AS candidates,

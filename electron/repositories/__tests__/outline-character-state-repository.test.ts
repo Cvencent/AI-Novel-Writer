@@ -131,7 +131,9 @@ describe('OutlineCharacterStateRepository', () => {
       .get() as { recentEvents: string; provenance: string }
     expect(row.recentEvents).toBe('本章计划摘要')
     const provenance = JSON.parse(row.provenance) as Record<string, unknown>
-    expect(provenance.recentEvents).toBeUndefined()
+    // issue #225：refresh 投影时持久化补 legacy（与 read() 同一补标），被写字段
+    // 不再保留作者/派生来源即可——「键缺失」与「显式 legacy」在补标后同形。
+    expect(provenance.recentEvents).toEqual({ kind: 'legacy' })
     // 本次没写的字段，来源保持原样。
     expect(provenance.location).toMatchObject({ kind: 'author', chapterNumber: 1 })
   })

@@ -899,6 +899,8 @@ export function clearLegacyCharacterArchitecture(db: BetterSqlite3.Database): vo
 /** Compatibility prose is derived from ID facts and never acts as an identity write source. */
 export function refreshCharacterIdentityProjection(db: BetterSqlite3.Database): void {
   if (!db.inTransaction || !hasCharacterIdentitySchema(db)) throw new Error('CHARACTER_ID_TRANSACTION_REQUIRED')
+  // issue #225：哈希按补标后的 provenance 计算，否则 read() 的持久化补标会让 fact_hash 漂移成 inconsistent。
+  backfillCharacterStateProvenance(db)
   const entries = identityProjectionEntries(db), writingLanguage = db.prepare("SELECT writing_language FROM project_core WHERE id='main'").pluck().get() === 'en-US' ? 'en-US' : DEFAULT_WRITING_LANGUAGE
   const projection = renderCharacterRosterMarkdown(entries, writingLanguage)
   db.prepare("UPDATE project_core SET characters_arch=? WHERE id='main'").run(projection)
@@ -907,6 +909,8 @@ export function refreshCharacterIdentityProjection(db: BetterSqlite3.Database): 
 /** Dynamic state refreshes invalidate readers without rewriting author/static compatibility prose. */
 export function refreshCharacterStateProjection(db: BetterSqlite3.Database): void {
   if (!db.inTransaction || !hasCharacterIdentitySchema(db)) throw new Error('CHARACTER_ID_TRANSACTION_REQUIRED')
+  // issue #225：哈希按补标后的 provenance 计算，否则 read() 的持久化补标会让 fact_hash 漂移成 inconsistent。
+  backfillCharacterStateProvenance(db)
   db.prepare("UPDATE character_roster_meta SET revision=revision+1,fact_hash=?,updated_at=datetime('now') WHERE id='main'")
     .run(fullFactHash(identityProjectionEntries(db)))
 }

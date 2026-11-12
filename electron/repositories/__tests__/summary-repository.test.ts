@@ -217,7 +217,7 @@ describe('finalized continuity projection', () => {
       characterStateCandidates: [expect.objectContaining({ characterName: '林岚', field: 'keyItems' })],
     })
     expect(() => SummaryRepository.saveFinalizedCharacterStateCandidates(candidateRequest))
-      .toThrow(/失效水位已推进/u)
+      .toThrow(/FINALIZATION_GENERATION_SOURCE_CHANGED/u)
   })
 
   it('rejects cross-chapter continuity facts', () => {
@@ -269,7 +269,7 @@ describe('finalized continuity projection', () => {
         chapterNumber: 1,
         contentHash: '0'.repeat(64),
       },
-    })).toThrow(/来源已失效/u)
+    })).toThrow(/FINALIZATION_GENERATION_SOURCE_CHANGED/u)
   })
 
   it('does not let a continuity projection shadow the latest character-state snapshot', () => {
@@ -353,7 +353,7 @@ describe('finalized continuity projection', () => {
     expect(() => SummaryRepository.saveFinalizedContinuity({
       ...request,
       chapterNotes: '旧在途结果不应复活。',
-    })).toThrow(/失效水位已推进/u)
+    })).toThrow(/FINALIZATION_GENERATION_SOURCE_CHANGED/u)
     expect(SummaryRepository.listFinalizedContinuityBefore(3)[0]).toMatchObject({
       chapterNotes: '派生摘要：铜钥匙未交出。',
       sourceStatus: 'stale',
