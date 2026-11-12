@@ -477,7 +477,9 @@ export class RunFinalizePostProcessCommand extends BaseWorkflowCommand<PostProce
         // issue #59：修复路径（作者显式点「重试失败步骤」）允许为同一槽位新开一次尝试。
         // 旧 run 的尝试已经失败、无法再产出候选，而复用旧 run 会被「源指纹已变」挡死
         // （定稿之后蓝图/细纲通常已经变过）——那正是「重试永远补不回来」的成因。
-        ...(this.params.retryInvalidResult ? { restart: true } : {}),
+        // 有可回放的完成产物时走 retryOf 修复（同一 run 内单次修复调用）；restart 会新开 run，
+        // 让 retryOf 引用的旧 run 产物失效（GENERATION_FINALIZATION_ARTIFACT_INVALID）。只有无产物可回放时才新开。
+        ...(this.params.retryInvalidResult && !retryOf ? { restart: true } : {}),
         cancelled: () => generationContext.cancelled,
         onHandle: handle => { generationContext.mainGenerationRunHandle = Object.freeze({ ...handle }) },
       }),

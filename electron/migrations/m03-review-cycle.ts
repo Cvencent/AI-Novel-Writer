@@ -352,19 +352,23 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
       const reviewIndex = Number(db.prepare('SELECT review_index FROM reviews WHERE id=?').pluck().get(cycle.review_id))
       // issue #248 收口：克隆 cycle 的 review=复核审稿行，其 run 是 recheck
       // run（收据 context.recheck 存在）。proveEffect 要求期望与 context 深等——
-      // 期望从**复核 attempt 的 binding_json** 读 reviewRevisionContext.recheck：
-      // binding 被 contextHash 锁定（防篡改），与收据 context 同源，深等恒真。
-      // 定位复核 attempt 按 findingSetHash（克隆 cycle 复制了旧 cycle 的
-      // finding_set_hash；reviewCycleRecheck.cycleId 指向旧 cycle，不可用）。
+      // 期望从**产出本 cycle.review_id 的那条 attempt 的 binding_json** 读
+      // reviewRevisionContext.recheck：binding 被 contextHash 锁定（防篡改），
+      // 与收据 context 同源，深等恒真。
+      // ⚠️ 必须按 effect.id===cycle.review_id 定位，不能按 findingSetHash 扫全部
+      // attempt：普通 cycle 的 review_id 是原审稿行（context 无 recheck），若把
+      // 同 root 下复核 attempt 的 recheck 期望套到原审稿 attempt 上，proveEffect
+      // 深等失败 → reviewAttempts 归零 → 整本验证失败（issue #245 现场）。
       const recheckExpectation = (() => {
         for (const row of attempts) {
           try {
+            const eff = effect(row)
+            if (!eff || eff.kind !== 'review' || eff.id !== cycle.review_id) continue
             const binding = JSON.parse(String(row.binding_json ?? '{}')) as Record<string, unknown>
             const manifest = binding?.sourceManifest as Record<string, unknown> | undefined
             const ctx = manifest?.reviewRevisionContext as Record<string, unknown> | undefined
             const rc = ctx?.recheck as ReviewCycleRecheckContext | undefined
-            if (rc && rc.findingSetHash === cycle.finding_set_hash)
-              return rc
+            if (rc) return rc
           } catch { /* try next */ }
         }
         return undefined
@@ -636,7 +640,6 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
         } else if (finding.confirmation_item_index !== null)    return false
       }
     }
-    console.error('[vs] loop completed, cycles:', cycles.length)
     return true
   } catch { return false }
 }
