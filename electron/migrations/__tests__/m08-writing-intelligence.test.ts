@@ -30,7 +30,7 @@ describe('M08 writing intelligence schema', () => {
     try {
       const before = db.prepare('SELECT body FROM contents').pluck().get()
       const result = migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry())
-      expect(result.completedSteps).toEqual(['M08', 'M09'])
+      expect(result.completedSteps).toEqual(['M08', 'M09', 'M10'])
       expect(result.version).toBe(CURRENT_DESKTOP_SCHEMA_VERSION)
       for (const table of tables) {
         expect(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table)).toBeTruthy()

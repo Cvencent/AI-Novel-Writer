@@ -245,7 +245,7 @@ describe('blueprint.continuePastPreflight (issue #53)', () => {
 
   it('没有弹层时立即返回 no-dialog（正常章节形态）', async () => {
     const f = fakeWritePage({ dialogVisible: false, hasContinue: true })
-    await expect(blueprintPage.continuePastPreflight(f.page)).resolves.toEqual({ outcome: 'no-dialog' })
+    await expect(blueprintPage.continuePastPreflight(f.page)).resolves.toEqual({ outcome: 'no-dialog', waitedMs: 3000 })
     expect(f.clicks).toEqual([])
   })
 

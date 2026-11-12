@@ -282,15 +282,18 @@ describe('Agent registered IPC, actual SQLite and intercepted provider boundary'
     expect(getProjectDb()!.prepare('SELECT COUNT(*) FROM generation_attempts').pluck().get()).toBe(1)
   })
 
-  it('does not reauthorize a cancelled root or allow its child to commit', async () => {
+  it('blocks a cancelled-root child commit until an explicit resume reauthorizes it', async () => {
     const f = await workflow(), child = await invoke('generation:begin', f.selection)
     await invoke('generation:execute', { handle: child.handle, invocationNonce: 'child-request', task: { purpose: 'generate-core-seed', output: 'visible-text', messages: [{ role: 'user', content: 'Synthetic child' }] } })
     await invoke('generation:cancel', f.recovery.handle)
-    await expect(invoke('agent-generation:resume', { handle: f.recovery.handle })).rejects.toThrow()
+    // While the root stays cancelled the child effect must not write.
     const before = getProjectDb()!.prepare('SELECT premise FROM project_core').pluck().get()
     const saved = await mocks.handlers.get('db:project-core-commit-generated')!({ sender }, { generationRunHandle: child.handle, data: { premise: 'Cancelled child write' } }, session.projectPath, session)
     expect(saved).toMatchObject({ success: false })
     expect(getProjectDb()!.prepare('SELECT premise FROM project_core').pluck().get()).toBe(before)
+    // issue #244: an explicit resume reactivates a cancelled root with a completed
+    // round (author retry intent) and dispatches no new model request.
+    await expect(invoke('agent-generation:resume', { handle: f.recovery.handle })).resolves.toBeTruthy()
     expect(f.fetch).toHaveBeenCalledTimes(2)
   })
 

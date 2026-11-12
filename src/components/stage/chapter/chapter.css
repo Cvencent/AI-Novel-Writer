@@ -416,8 +416,8 @@
 .stage-ch-hunk-fact {
   padding: 1px 8px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--warn, #b8860b) 14%, transparent);
-  color: var(--warn-text, #8a6400);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  color: var(--warn-text);
   font-size: 12px;
   white-space: nowrap;
 }

@@ -32,6 +32,7 @@
   --ok-soft: rgba(47, 107, 79, .1);
   --warn: #B54708;
   --warn-soft: rgba(181, 71, 8, .1);
+  --warn-text: #8A6400;
   --danger: #B42318;
   --danger-ink: #FFFFFF;
   --danger-soft: rgba(180, 35, 24, .08);
@@ -139,6 +140,7 @@
   --ok-soft: rgba(140, 195, 162, .14);
   --warn: #E7A869;
   --warn-soft: rgba(231, 168, 105, .14);
+  --warn-text: #E7A869;
   --danger: #F08A7E;
   --danger-ink: #111113;
   --danger-soft: rgba(240, 138, 126, .14);

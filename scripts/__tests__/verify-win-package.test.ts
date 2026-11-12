@@ -49,6 +49,8 @@ describe('Windows package verification', () => {
     write(root, betterSqliteRelative)
     const helperRelative = 'resources/security/windows-safe-file-system.ps1'
     write(root, helperRelative)
+    const coreRelative = 'resources/security/windows-safe-file-system.core.cs'
+    write(root, coreRelative)
 
     expect(findLanceBinding(root)).toBe(path.join(root, relative))
     expect(findBetterSqliteBinding(root)).toBe(path.join(root, betterSqliteRelative))
@@ -58,6 +60,7 @@ describe('Windows package verification', () => {
       nativeBinding: path.join(root, relative),
       betterSqliteBinding: path.join(root, betterSqliteRelative),
       secureFileSystemHelper: path.join(root, helperRelative),
+      secureFileSystemCore: path.join(root, coreRelative),
     })
   })
 
@@ -84,6 +87,20 @@ describe('Windows package verification', () => {
     write(root, 'resources/app.asar.unpacked/node_modules/better-sqlite3/build/Release/better_sqlite3.node')
 
     expect(() => verifyWindowsPackage(root)).toThrow('Missing Windows secure file-system helper')
+  })
+
+  it('rejects a package missing the Windows secure file-system C# core', () => {
+    const root = fixture()
+    write(root, 'resources/app.asar')
+    write(root, 'AI小说作家.exe')
+    write(
+      root,
+      'resources/app.asar.unpacked/node_modules/@lancedb/lancedb-win32-x64-msvc/lancedb.win32-x64-msvc.node',
+    )
+    write(root, 'resources/app.asar.unpacked/node_modules/better-sqlite3/build/Release/better_sqlite3.node')
+    write(root, 'resources/security/windows-safe-file-system.ps1')
+
+    expect(() => verifyWindowsPackage(root)).toThrow('Missing Windows secure file-system C# core')
   })
 
   it('loads LanceDB with the packaged executable in Electron Node mode', () => {

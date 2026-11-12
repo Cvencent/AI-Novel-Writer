@@ -415,7 +415,7 @@
 }
 
 .stage-bp-label-remove:hover {
-  background: color-mix(in srgb, var(--danger, #d33) 18%, transparent);
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
   color: var(--ink-1);
 }
 
