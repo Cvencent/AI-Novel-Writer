@@ -27,6 +27,10 @@ const originalGenerateStream = useLLMStore.getState().generateStream
 const originalDefaultModelId = useLLMStore.getState().defaultModelId
 const originalLocale = useLocaleStore.getState().locale
 const CJK_TEXT = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/u
+// 蓝图标注是跨语言的机器协议：closingShotOf/stagingOf/timeAnchorOf 只认中文标记，
+// 且 blueprint-semantic-contract.test.ts 明确锚定 en-US 合同含「【收束：类型】」。
+// 它们不是语言泄漏——纯度检查剥掉用户/模型载荷后，再豁免这三个协议标记。
+const BLUEPRINT_PROTOCOL_LABELS = ['【收束：类型】', '【装置：地点＋起手动作】', '【时点: …】']
 
 function stripExactPayloads(request: string, payloads: readonly string[]): string {
   return payloads.reduce(
@@ -264,11 +268,11 @@ describe('InferBlueprintsPerChapterCommand', () => {
     expect(observed[1]?.[1]?.content).toContain('Night Café 夜航')
     const initialBuiltIn = stripExactPayloads(
       observed[0]?.map(message => message.content).join('\n') ?? '',
-      [importedText, 'Night Café 夜航', configSummary],
+      [importedText, 'Night Café 夜航', configSummary, ...BLUEPRINT_PROTOCOL_LABELS],
     )
     const repairBuiltIn = stripExactPayloads(
       observed[1]?.map(message => message.content).join('\n') ?? '',
-      [malformed, importedText, 'Night Café 夜航', configSummary],
+      [malformed, importedText, 'Night Café 夜航', configSummary, ...BLUEPRINT_PROTOCOL_LABELS],
     )
     expect(initialBuiltIn).not.toMatch(CJK_TEXT)
     expect(repairBuiltIn).not.toMatch(CJK_TEXT)

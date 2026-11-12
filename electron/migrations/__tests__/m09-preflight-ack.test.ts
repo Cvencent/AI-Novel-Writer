@@ -59,12 +59,13 @@ describe('ConsistencyAcknowledgementRepository', () => {
 })
 
 describe('M09 lands in the installed registry', () => {
-  it('advances the desktop schema version to 10 and lists M09 in the lane', async () => {
+  it('advances the desktop schema version to 11 and lists M09 in the lane', async () => {
     const { CURRENT_DESKTOP_SCHEMA_VERSION } = await import('../desktop-registry')
     const { MIGRATION_LANE, LATEST_SCHEMA_VERSION } = await import('../registry')
-    expect(CURRENT_DESKTOP_SCHEMA_VERSION).toBe(10)
-    expect(LATEST_SCHEMA_VERSION).toBe(10)
-    expect(MIGRATION_LANE.at(-1)).toMatchObject({ id: 'M09', from: 9, to: 10 })
+    expect(CURRENT_DESKTOP_SCHEMA_VERSION).toBe(11)
+    expect(LATEST_SCHEMA_VERSION).toBe(11)
+    expect(MIGRATION_LANE.at(-1)).toMatchObject({ id: 'M10', from: 10, to: 11 })
+    expect(MIGRATION_LANE.find(item => item.id === 'M09')).toMatchObject({ id: 'M09', from: 9, to: 10 })
   })
 
   it('exposes M09 in the business id catalog', async () => {
