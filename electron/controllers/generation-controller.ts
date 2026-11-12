@@ -162,7 +162,15 @@ export function registerGenerationController(options: {
         snapshot: (snapshot: MainGenerationSnapshot) => {
           const key = snapshot.artifactId
           latestSnapshots.set(key, snapshot)
-          if (snapshot.status !== 'running') { sendSnapshot(key); return }
+          if (snapshot.status !== 'running') {
+            // 终态立即发送；同 attempt 的推理增量也立刻冲刷，否则最后一帧推理
+            // 会留在 100ms 定时器里，晚于终态快照到达渲染层。
+            const timer = pendingReasoning.get(snapshot.attemptId)
+            if (timer) clearTimeout(timer)
+            sendReasoning(snapshot.attemptId)
+            sendSnapshot(key)
+            return
+          }
           if (pendingSnapshots.has(key)) return
           pendingSnapshots.set(key, setTimeout(() => sendSnapshot(key), SNAPSHOT_FRAME_MS))
         },

@@ -136,7 +136,8 @@ describe('generation public IPC with actual project authority and SQLite', () =>
     }
     const prepared = await prepare(operation, confirmation), { run, artifact } = await runStage(operation, prepared)
     if (operation !== 'review-chapter') expect(artifact.text).toBe(revisedBody)
-    if (originalRoot) expect(run.handle.rootActionId).toBe(originalRoot)
+    // 修稿开新 root（issues #243/#246）：lineage 由效果收据证明，不再绑回审稿 root。
+    if (originalRoot) expect(run.handle.rootActionId).not.toBe(originalRoot)
     const reference = { artifactId: artifact.artifactId, revision: artifact.revision, textHash: artifact.textHash }
     if (operation !== 'review-chapter') await ipc.invokeWithProjectSession(session, 'generation:compose-visible', run.handle, [artifact.artifactId], artifact.textHash)
     const save = () => operation === 'review-chapter'
@@ -161,7 +162,7 @@ describe('generation public IPC with actual project authority and SQLite', () =>
     expect(await save()).toEqual(receipt)
     const recovered = await ipc.invokeWithProjectSession(session, 'review-revision:read-recovery', { handle: run.handle })
     expect(recovered).toMatchObject({ sourceStatus: 'conflict', saved: receipt })
-    expect((await invoke('generation:read', run.handle)).ledger?.physicalRequests).toBe(originalRoot ? 2 : 1)
+    expect((await invoke('generation:read', run.handle)).ledger?.physicalRequests).toBe(1)
   })
   it.each(['zh-CN', 'en-US'] as const)('localizes actual prepare source drift for review and refinement in %s', async uiLocale => {
     getProjectDb()!.exec("INSERT INTO contents(id,body) VALUES(1,'作者已保存的新稿'); INSERT INTO drafts(id,chapter_number,version,status,content_id) VALUES(1,1,1,'draft',1)")
