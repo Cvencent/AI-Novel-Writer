@@ -32,7 +32,7 @@ export default function GenerateBlueprintsDialog(props: DirectoryConfigProps) {
   // issue #232：写满总章数时在对话框里**直接说**，并给出真正的出路——
   // 不再让作者对着「改选数量或范围」这两条死路自己想到去设定页。
   const bookFullNotice = props.existingCount >= total && total > 0
-    ? text(`蓝图已覆盖全部 ${total} 章。要继续往后写，先到「设定 → 篇幅」把总章数调大；已定稿的正文不受影响。`, `Blueprints already cover all ${total} chapters. To continue, raise the total under Settings → Length first; finalized chapters are not affected.`)
+    ? text(`蓝图已覆盖全部 ${total} 章。要继续往后写，先到「设定 → 篇幅」把总章数调大；已定稿的正文不受影响。`, `Blueprints already cover all ${total} ${pluralEn(total, 'chapter')}. To continue, raise the total under Settings → Length first; finalized chapters are not affected.`)
     : null
 
   return (
@@ -58,7 +58,7 @@ export default function GenerateBlueprintsDialog(props: DirectoryConfigProps) {
       )}
     >
       <div className="stage-bp-dialog-body">
-        {bookFullNotice && <Notice tone="warn" title={text(`已写满 ${total} / ${total} 章`, `At ${total} / ${total} chapters`)}>{bookFullNotice}</Notice>}
+        {bookFullNotice && <Notice tone="warn" title={text(`已写满 ${total} / ${total} 章`, `At ${total} / ${total} ${pluralEn(total, 'chapter')}`)}>{bookFullNotice}</Notice>}
         {form.progressError && <p className="stage-dialog-error" role="alert">{form.progressError}</p>}
         {form.diagnostics.length > 0 && (
           <Notice tone="warn" title={text('旧的生成记录不能续接', 'Previous generation runs cannot continue')}>

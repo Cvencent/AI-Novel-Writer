@@ -87,7 +87,7 @@ export default function MergeView({ data, versionLabel, recheck, onComplete, onL
           {text(
             `修稿里有原稿没有、而前文已经写过的东西：${factTerms.map(item => `${item.term}（前文 ${item.historyChapters} 章出现过）`).join('、')}。`
             + '这些位置在「用修稿」之前请先核对——措辞优化不会凭空添一件已确立的东西。',
-            `The revision introduces things your draft never had but earlier chapters did: ${factTerms.map(item => `${item.term} (in ${item.historyChapters} earlier chapters)`).join(', ')}. `
+            `The revision introduces things your draft never had but earlier chapters did: ${factTerms.map(item => `${item.term} (in ${item.historyChapters} earlier ${pluralEn(item.historyChapters, 'chapter')})`).join(', ')}. `
             + 'Check these before choosing the revision — a wording polish does not add an established object from nowhere.',
           )}
         </Notice>

@@ -3,6 +3,7 @@ import type { BlueprintCharacterSyncOperation } from '../../../electron/reposito
 import { useProjectStore } from '../../stores/project-store'
 import { toast } from '../ui/Toast'
 import { useLocaleStore } from '../../stores/locale-store'
+import { pluralEn } from '../../shared/plural-en'
 import type { DirectoryGenerationCatalog } from '../../shared/generation-owner-contract'
 import { terminalDirectoryProgress } from '../../services/workflows/directory-workflow'
 import type { DirectoryWorkflowParams } from '../../services/workflows/directory-workflow'
@@ -292,7 +293,7 @@ export function useDirectoryConfigForm({ isOpen, onClose, existingCount, onConfi
       if (rangeMode === 'front' && frozenAppendStart > total) {
         setLaunchError(text(
           `已到全书总章数（${total} 章）：接着生成会从第 ${frozenAppendStart} 章开始，超出全书。要先到「设定 → 篇幅」把总章数调大，蓝图范围才会放开。`,
-          `The book is at its planned total of ${total} chapters, and “Next” would start at chapter ${frozenAppendStart}, past the end. Raise the total under Settings → Length first; the blueprint range follows it.`,
+          `The book is at its planned total of ${total} ${pluralEn(total, 'chapter')}, and “Next” would start at chapter ${frozenAppendStart}, past the end. Raise the total under Settings → Length first; the blueprint range follows it.`,
         ))
         return
       }

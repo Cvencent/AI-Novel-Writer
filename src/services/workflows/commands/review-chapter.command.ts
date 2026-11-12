@@ -70,7 +70,9 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
       .withCharacterStates(frozen.characterStates)
       .withGlobalSummary(admission.admitted.filter(material => material.category === 'finalized-history').map(material => material.text).join('\n\n'))
       .withWorldBuilding(frozen.worldbuilding)
-      .withReviewFocus(frozen.authorInputs.find(input => input.id === 'review-focus')?.text || '')
+      // focus 已由哈希校验的作者材料块承载（普通/复核两路都渲染）；模板可选侧重段再渲染一次
+      // 会把前驱正文重复计入输入容量（81031edd 回归）。置空后该可选段被 pruneEmptyOptionalPromptSections 裁剪。
+      .withReviewFocus('')
     const ordinaryReviewPrompt = [
       builder.build(),
       ...admission.admitted.filter(material => material.category !== 'finalized-history').map(material => material.text),

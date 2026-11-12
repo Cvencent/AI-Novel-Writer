@@ -11,6 +11,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { randomUUID, createHash } from 'node:crypto'
 import { afterEach, describe, expect, it } from 'vitest'
+import { symlinkSupported } from '../../../scripts/symlink-capability.mjs'
 import { authorizeSyntheticProjectMigration, isAdmittedProjectMigration, migrateProjectFormat, type ProjectMigrationDependencies, type ProjectSqliteEvidence } from '../project-format-migration'
 
 const roots: string[] = []
@@ -214,7 +215,7 @@ describe('fixture-only project physical cutover', () => {
     expect(await migrateProjectFormat(options)).toMatchObject({ code: 'PROJECT_MIGRATION_REQUIRED_ASSET_LINK' })
     expect(fs.readFileSync(path.join(outside, 'sentinel'), 'utf8')).toBe('untouched')
   })
-  it('never follows a linked legacy avatar into the scoped snapshot', async () => {
+  it.skipIf(!symlinkSupported())('never follows a linked legacy avatar into the scoped snapshot', async () => {
     const options = fixture(), outside = path.join(options.fixtureRoot, 'outside-avatar')
     put(outside, 'private image bytes')
     fs.mkdirSync(path.join(options.legacy, 'avatars'))

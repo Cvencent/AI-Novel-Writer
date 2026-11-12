@@ -4,6 +4,7 @@ import path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { symlinkSupported } from '../../../scripts/symlink-capability.mjs'
 
 import {
   closeProjectDatabase,
@@ -695,7 +696,7 @@ describe('portable project restore service', { timeout: 20_000 }, () => {
     expect(fs.existsSync(path.join(first.targetRoot, '.ai-novel', 'project.json'))).toBe(false)
   })
 
-  it('fails closed on a damaged or linked install journal without deleting it', async () => {
+  it.skipIf(!symlinkSupported())('fails closed on a damaged or linked install journal without deleting it', async () => {
     const damaged = await exportedFixture()
     const damagedJournal = restoreJournalPath(damaged.targetRoot)
     fs.writeFileSync(damagedJournal, '{')

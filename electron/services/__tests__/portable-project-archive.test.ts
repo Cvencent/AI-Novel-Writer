@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { symlinkSupported } from '../../../scripts/symlink-capability.mjs'
 
 import {
   extractPortableProjectArchive,
@@ -321,7 +322,7 @@ describe('portable project archive', () => {
     expect(fs.readdirSync(sizeParent)).toEqual([])
   })
 
-  it('拒绝共享symlink staging parent与symlink source', async () => {
+  it.skipIf(!symlinkSupported())('拒绝共享symlink staging parent与symlink source', async () => {
     const root = temporaryRoot(), payload = Buffer.from('x')
     const archivePath = writeArchive(root, archiveWith([{ name: 'a.txt', bytes: payload }]))
     const realParent = stagingParent(root), linkedParent = path.join(root, 'linked-parent')

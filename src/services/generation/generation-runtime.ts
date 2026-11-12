@@ -371,11 +371,12 @@ function createDefaultEnvironment(): GenerationRuntimeEnvironment {
           cleanup()
           resolve(completion)
         }
-        const fail = () => {
+        const fail = (error?: unknown) => {
           if (settled) return
           settled = true
           cleanup()
-          reject(new Error('模型租约请求失败'))
+          const detail = typeof error === 'string' ? error : error instanceof Error ? error.message : ''
+          reject(new Error(detail ? `模型租约请求失败：${detail}` : '模型租约请求失败'))
         }
         const cancel = () => {
           if (requestId) llmStore.cancelGeneration(requestId).catch(() => {})

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { RotateCcw } from 'lucide-react'
 import { ipc } from '../../../services/ipc-client'
+import { pluralEn } from '../../../shared/plural-en'
 import { captureProjectSession, isProjectSessionCurrent } from '../../project-session-gate'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
@@ -148,7 +149,7 @@ export default function ChapterCommitDialog({ open, chapterNumber, onClose }: {
             </Button>
             {recategorize && recategorize.changed > 0 ? (
               <Button variant="primary" size="sm" disabled={loading} onClick={() => void applyRecategorize()}>
-                {text(`重算这 ${recategorize.changed} 条`, `Recategorize these ${recategorize.changed}`)}
+                {text(`重算这 ${recategorize.changed} 条`, `Recategorize ${recategorize.changed} ${pluralEn(recategorize.changed, 'entry', 'entries')}`)}
               </Button>
             ) : null}
           </div>

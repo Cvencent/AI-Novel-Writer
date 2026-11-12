@@ -15,13 +15,13 @@ describe('桌面预加载接口', () => {
     const [name, bridge] = electron.contextBridge.exposeInMainWorld.mock.calls[0] as [string, AiNovelAPI]
     expect(name).toBe('aiNovelAPI')
     const listener = vi.fn()
-    const unsubscribe = bridge.on('project:opened', listener)
+    const unsubscribe = bridge.on('llm:stream-chunk', listener)
     const [, handler] = electron.ipcRenderer.on.mock.calls[0] as [string, (...args: unknown[]) => void]
     const privateEvent = { sender: '不应进入渲染进程' }
     handler(privateEvent, { projectId: '项目甲' })
     expect(listener).toHaveBeenCalledWith({ projectId: '项目甲' })
     unsubscribe()
-    expect(electron.ipcRenderer.removeListener).toHaveBeenCalledWith('project:opened', handler)
+    expect(electron.ipcRenderer.removeListener).toHaveBeenCalledWith('llm:stream-chunk', handler)
     electron.ipcRenderer.invoke.mockResolvedValue({ success: true })
     await expect(bridge.invoke('project:open', '合成项目')).resolves.toEqual({ success: true })
     expect(electron.ipcRenderer.invoke).toHaveBeenCalledWith('project:open', '合成项目')

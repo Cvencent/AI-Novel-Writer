@@ -4,6 +4,10 @@ import path from 'node:path'
 import { afterAll, expect, it } from 'vitest'
 
 const windowsIt = process.platform === 'win32' ? it : it.skip
+// Mac fixture seeding shells out to python3; skip gracefully where it is absent
+// (e.g. Windows boxes with only the Microsoft Store alias) instead of failing.
+const python3Ready = spawnSync('python3', ['-c', 'import sqlite3,sys'], { encoding: 'utf8' }).status === 0
+const macFixtureIt = python3Ready ? it : it.skip
 const repository = path.resolve(import.meta.dirname, '../..')
 const driver = path.join(repository, 'scripts/f05-a11-offline-import-journey.mjs')
 const cache = path.join(repository, '.runtime', '.cache')
@@ -29,7 +33,7 @@ windowsIt('admits the installed official Windows mode before checking package by
   expect(result.stderr).not.toContain('Specify clean build tree')
 })
 
-it.each(['v1.0.0', 'v1.1.0'])('preserves Mac official fixture seed for %s', version => {
+macFixtureIt.each(['v1.0.0', 'v1.1.0'])('preserves Mac official fixture seed for %s', version => {
   const fixtureScratch = path.join(scratch, `mac-${version}`)
   const result = spawnSync(process.execPath, [driver, '--mac-fixture-only=1',
     `--mac-version=${version}`, `--scratch-root=${fixtureScratch}`], { cwd: repository, encoding: 'utf8' })

@@ -4,6 +4,7 @@ import path from 'node:path'
 import process from 'node:process'
 import { createHash } from 'node:crypto'
 import { test } from 'vitest'
+import { symlinkSupported } from '../symlink-capability.mjs'
 import Database from 'better-sqlite3'
 import { isVerifiedDirectPersistedDraftEvidence, projectRecoveryCandidateSupplement,
   readVerifiedDirectPersistedDraftEvidence, readVerifiedRecoveryCandidateSupplement,
@@ -291,7 +292,7 @@ test('direct persisted reader requires non-empty receipt and ledger attempt ids'
   }
 })
 
-test('direct persisted reader binds the owned physical project manifest', () => {
+test.skipIf(!symlinkSupported())('direct persisted reader binds the owned physical project manifest', () => {
   const mutations = [
     value => fs.rmSync(value.manifestPath),
     value => fs.writeFileSync(value.manifestPath, JSON.stringify({ kind: 'other', projectId: 'project', rootPath: value.projectPath })),

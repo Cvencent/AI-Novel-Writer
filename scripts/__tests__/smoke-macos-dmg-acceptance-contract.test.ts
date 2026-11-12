@@ -21,6 +21,9 @@ const smokeScriptPath = path.join(repositoryRoot, 'scripts', 'smoke-macos-dmg.sh
 const evidenceScript = path.join(repositoryRoot, 'scripts', 'release-evidence-v2.mjs')
 const fixtures: string[] = []
 const RECEIPT_FINALIZE_TIMEOUT_MS = 15_000
+// Mac fixture seeding shells out to python3; skip gracefully where it is absent
+// (e.g. Windows boxes with only the Microsoft Store alias) instead of failing.
+const macFixtureIt = spawnSync('python3', ['-c', 'import sqlite3,sys'], { encoding: 'utf8' }).status === 0 ? it : it.skip
 
 function readRequired(file: string) {
   expect(existsSync(file), `Missing macOS DMG smoke contract: ${file}`).toBe(true)
@@ -248,7 +251,7 @@ describe('macOS DMG acceptance receipt contract', () => {
     } finally { releaseClose() }
   })
 
-  it.each(['v1.0.0', 'v1.1.0'])('copies official %s old-app author source for Mac import', version => {
+  macFixtureIt.each(['v1.0.0', 'v1.1.0'])('copies official %s old-app author source for Mac import', version => {
     const scratchParent = path.join(repositoryRoot, '.runtime', '.cache')
     mkdirSync(scratchParent, { recursive: true })
     const scratch = mkdtempSync(path.join(scratchParent, 's14c-fixture-'))

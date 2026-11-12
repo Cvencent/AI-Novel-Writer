@@ -239,6 +239,12 @@ export function closeConnection(projectPath: string): void {
   connection?.close()
 }
 
+/** Open a table, run the operation, then release the native handle (same close() convention as the manual sites). */
+async function withTable<T>(db: lancedb.Connection, tableName: string, run: (table: lancedb.Table) => Promise<T>): Promise<T> {
+  const table = await db.openTable(tableName)
+  try { return await run(table) } finally { table.close() }
+}
+
 function canonicalChunkSchema(): ArrowSchema {
   return new ArrowSchema([
     new Field('id', new Utf8()),
@@ -1281,7 +1287,7 @@ async function removeDocumentInternal(projectPath: string, docId: string): Promi
       ...registry.spaces.map(space => space.tableName),
     ])
     for (const tableName of targets) {
-      if (tableNames.includes(tableName)) await (await db.openTable(tableName)).delete(`\`docId\` = '${escapedId}'`)
+      if (tableNames.includes(tableName)) await withTable(db, tableName, table => table.delete(`\`docId\` = '${escapedId}'`))
     }
     // LanceDB cannot atomically delete across physical generations.  A retry is
     // safe only after proving that every registered and orphan generation has
@@ -1294,20 +1300,20 @@ async function removeDocumentInternal(projectPath: string, docId: string): Promi
     ])
     for (const tableName of remainingTargets) {
       if (!remainingTableNames.includes(tableName)) continue
-      const rows = await (await db.openTable(tableName)).query()
+      const rows = await withTable(db, tableName, table => table.query()
         .filter(`\`docId\` = '${escapedId}'`)
         .limit(1)
-        .toArray()
+        .toArray())
       if (rows.length > 0) return false
     }
     if (remainingTableNames.includes(DOCS_TABLE_NAME)) {
-      await (await db.openTable(DOCS_TABLE_NAME)).delete(`id = '${escapedId}'`)
+      await withTable(db, DOCS_TABLE_NAME, table => table.delete(`id = '${escapedId}'`))
     }
     if (remainingTableNames.includes(DOCS_TABLE_NAME)) {
-      const rows = await (await db.openTable(DOCS_TABLE_NAME)).query()
+      const rows = await withTable(db, DOCS_TABLE_NAME, table => table.query()
         .filter(`id = '${escapedId}'`)
         .limit(1)
-        .toArray()
+        .toArray())
       if (rows.length > 0) return false
     }
     fs.rmSync(knowledgeCopyPath(getProjectDataRoot(projectPath), docId), { force: true })
@@ -1930,13 +1936,13 @@ async function getStatsInternal(projectPath: string): Promise<KBStats> {
       return { documentCount: 0, totalChunks: 0, vectorDimension: 0, hasVectors: false }
     }
     const docs = tableNames.includes(DOCS_TABLE_NAME)
-      ? await (await db.openTable(DOCS_TABLE_NAME)).countRows()
+      ? await withTable(db, DOCS_TABLE_NAME, table => table.countRows())
       : 0
     const registry = await loadOrRegisterLegacyRegistry(projectPath, db, tableNames)
     const active = activeSpace(registry)
     return {
       documentCount: docs,
-      totalChunks: await (await db.openTable(TABLE_NAME)).countRows(),
+      totalChunks: await withTable(db, TABLE_NAME, table => table.countRows()),
       vectorDimension: active?.vectorDimension ?? 0,
       hasVectors: active !== undefined,
     }
@@ -1957,7 +1963,7 @@ function backfillSpaceForIdentity(registry: EmbeddingSpaceRegistry, identity?: E
 
 async function vectorisedIdsForSpace(db: lancedb.Connection, space: EmbeddingSpace | undefined): Promise<Set<string>> {
   if (!space) return new Set()
-  const rows = await (await db.openTable(space.tableName)).query().select(['id', 'vector']).toArray()
+  const rows = await withTable(db, space.tableName, table => table.query().select(['id', 'vector']).toArray())
   return new Set(
     rows
       .filter(row => vectorIsUsable((row as { vector?: unknown }).vector, space.vectorDimension))
@@ -1969,7 +1975,7 @@ async function missingCanonicalRows(
   db: lancedb.Connection,
   space: EmbeddingSpace | undefined,
 ): Promise<Array<{ id: string; text: string }>> {
-  const rows = await (await db.openTable(TABLE_NAME)).query().select(['id', 'text']).toArray()
+  const rows = await withTable(db, TABLE_NAME, table => table.query().select(['id', 'text']).toArray())
   const vectorisedIds = await vectorisedIdsForSpace(db, space)
   return rows
     .map(row => ({ id: (row as { id: string }).id, text: (row as { text: string }).text }))
@@ -2041,7 +2047,7 @@ async function updateChunkVectorsInternal(
     db = await getConnection(projectPath)
     const tableNames = await db.tableNames()
     if (!tableNames.includes(TABLE_NAME)) return { success: false, count: 0, error: 'chunks 表不存在' }
-    const canonicalRows = await (await db.openTable(TABLE_NAME)).query().toArray()
+    const canonicalRows = await withTable(db, TABLE_NAME, table => table.query().toArray())
     const updateById = new Map(updates.map(update => [update.id, update.vector]))
     const records = canonicalRows
       .filter(row => updateById.has((row as { id: string }).id))

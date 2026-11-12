@@ -1,4 +1,5 @@
 import { afterEach, test, vi } from 'vitest'
+import { symlinkSupported } from '../symlink-capability.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -612,7 +613,7 @@ test('saved native checks reject cross-case operations and spent or unknown requ
   } finally { fs.rmSync(directory, { recursive: true, force: true }) }
 })
 
-test('saved first-review continuation preserves old files, counts the exact historical request and uses the new closure', async () => {
+test.skipIf(!symlinkSupported())('saved first-review continuation preserves old files, counts the exact historical request and uses the new closure', async () => {
   const directory = fs.mkdtempSync(path.join(ROOT, '.runtime/.cache/novel-quality-modernization/saved-continuation-'))
   const write = (file, value) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n'); return file }
   const ref = file => ({ path: file, sha256: hash(fs.readFileSync(file)) })

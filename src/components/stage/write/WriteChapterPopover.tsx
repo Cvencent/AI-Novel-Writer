@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { ChevronRight, PenLine } from 'lucide-react'
 import type { ConsistencyPreflightResult } from '../../../services/consistency-preflight'
 import { readConsistencyPreflight } from '../../../services/consistency-preflight'
+import { pluralEn } from '../../../shared/plural-en'
 import { createCharacterCardForPreflight } from '../../../services/preflight-character-card'
 import { CONTENT_AXES_FOR_BUTTON } from '../../../shared/content-review'
 import { mergeModelFindings } from '../../../shared/merge-model-findings'
@@ -290,7 +291,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       }
       setMessage(text(
         `这 ${targets.length} 条一条都改不了，原因分三类：${[...reasons].map(([reason, count]) => `${reason} ${count} 条`).join('；')}。`,
-        `None of these ${targets.length} can be fixed here: ${[...reasons].map(([reason, count]) => `${reason} (${count})`).join('; ')}.`,
+        `None of the ${targets.length} ${pluralEn(targets.length, 'finding', 'findings')} can be fixed here: ${[...reasons].map(([reason, count]) => `${reason} (${count})`).join('; ')}.`,
       ))
       return
     }
@@ -416,7 +417,7 @@ export default function WriteChapterPopover({ chapterNumber, blueprint, label, a
       if (outcome.skipped === 'no-callbacks') {
         setMessage(text(
           `这 ${target.length} 章里没有「记得／想起」这类回指句，未发起核对（不是「查过了没问题」）。`,
-          `None of these ${target.length} chapter(s) contains a remembering sentence, so no check was sent — this is not "checked and clean".`))
+          `None of ${pluralEn(target.length, 'this chapter', 'these chapters')} contains a remembering sentence, so no check was sent — this is not "checked and clean".`))
         return
       }
       if (outcome.skipped === 'no-earlier-chapters') {
