@@ -394,7 +394,9 @@ export default function ChapterActions({ sheetSlot, tab, stage, chapterNumber, t
   const unverifiable = recheck?.findings.filter(finding => finding.status === 'unverified').length ?? 0
   const outstanding = recheck ? recheck.findings.length - resolved - unverifiable : 0
   const revisedHint = recheck?.recheckDisposition === 'completed'
-    ? text(`复验完成：${resolved} / ${recheck.findings.length} 项意见已解决`, `Recheck done: ${resolved} of ${recheck.findings.length} ${pluralEn(recheck.findings.length, 'note')} resolved`)
+    // 措辞要说明这是在**复核你刚修的那几条**，不是又审了一遍全章（issue #245 现场）。
+    ? text(`已复核你修过的那 ${recheck.findings.length} 条意见：${resolved} 条确认解决`,
+      `Rechecked the ${recheck.findings.length} ${pluralEn(recheck.findings.length, 'note')} you revised: ${resolved} confirmed resolved`)
     : recheck?.recheckDisposition === 'required'
       ? text('合并后复验还没完成，可在审稿报告里重试', 'The post-merge recheck is incomplete; retry it in the review report')
       : outstanding > 0

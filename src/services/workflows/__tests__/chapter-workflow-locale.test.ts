@@ -162,3 +162,41 @@ describe('editorial step failure does not sink the review (issue #245 现场)', 
     expect(build().steps).toHaveLength(3)
   })
 })
+
+/**
+ * issue #245 现场：作者点完「合并」又看到一次「第 N 章 · 审稿」，以为自己白重审了全章。
+ *
+ * 那其实是**复核（recheck）**——只裁决刚修过的那几条意见，不是整章重审。
+ * 但两者原来共用同一个标题、同一个首步名，界面上完全分不出来。
+ * 现在：带 `reviewCycleId` 的一律显示「复核已修意见」，并且不再重复跑五角色评分。
+ */
+describe('recheck reads as a recheck, not a full review (issue #245 现场)', () => {
+  const build = (over: Record<string, unknown> = {}) => createReviewOnlyWorkflow({
+    projectPath,
+    chapterNumber: 2,
+    chapterTitle: 'A New Term',
+    draftPath: 'ai-novel://draft/2',
+    draftContent: '本章正文。',
+    sourceDraft,
+    ...over,
+  }, projectSession)
+
+  it('titles the recheck run differently from a full review', () => {
+    const full = build()
+    const recheck = build({ reviewCycleId: 'cycle:abc', expectedMergedHash: 'a'.repeat(64) })
+    expect(full.title).toMatch(/审稿|Review/)
+    expect(full.title).not.toMatch(/复核|Recheck/)
+    expect(recheck.title).toMatch(/复核已修意见|Recheck revised notes/)
+    // 首步名也要区分，否则运行卡片里第一行仍然是「审稿」
+    expect(recheck.steps[0].name).toMatch(/复核已修意见|Recheck revised notes/)
+    expect(recheck.steps[0].description).toMatch(/不是重审全章|not a full re-review/)
+  })
+
+  it('does not rescore the editorial panel during a recheck', async () => {
+    const source = await import('node:fs').then(fs => fs.readFileSync(
+      new URL('../chapter-workflow.ts', import.meta.url), 'utf8'))
+    const editorialBlock = source.slice(source.indexOf('编辑部评审（五角色）并入 AI 审稿'))
+    expect(editorialBlock).toContain('frozenParams.reviewCycleId')
+    expect(editorialBlock).toContain('复核不重算评分')
+  })
+})

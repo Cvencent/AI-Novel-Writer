@@ -409,16 +409,28 @@ export function createReviewOnlyWorkflow(
     resourceKeys: [workflowResourceKey('chapter', params.chapterNumber)],
     readResourceKeys: CHAPTER_CONTEXT_READ_RESOURCE_KEYS,
     title: localize(uiLocale,
-      `第 ${params.chapterNumber} 章 · 审稿`,
-      `Chapter ${params.chapterNumber} · Review`,
+      // 复核（合并后的复验）**不是**重审全章：它只裁决那几条作者刚修过的意见。
+      // 原来这里与全章审稿共用同一个标题「第 N 章 · 审稿」和同一个首步名「审稿」，
+      // 作者点完合并看到它，会以为自己白重审了一遍全章（issue #245 现场）。
+      params.reviewCycleId
+        ? `第 ${params.chapterNumber} 章 · 复核已修意见`
+        : `第 ${params.chapterNumber} 章 · 审稿`,
+      params.reviewCycleId
+        ? `Chapter ${params.chapterNumber} · Recheck revised notes`
+        : `Chapter ${params.chapterNumber} · Review`,
     ),
     steps: [
       {
-        name: localize(uiLocale, '审稿', 'Review chapter'),
+        name: localize(uiLocale, params.reviewCycleId ? '复核已修意见' : '审稿',
+          params.reviewCycleId ? 'Recheck revised notes' : 'Review chapter'),
         description: localize(
           uiLocale,
-          '一致性检查（角色/剧情/世界观），生成审稿报告',
-          'Check character, plot, and worldbuilding consistency and generate a review report',
+          params.reviewCycleId
+            ? '只裁决你刚修过的那几条意见是否真的解决（不是重审全章）'
+            : '一致性检查（角色/剧情/世界观），生成审稿报告',
+          params.reviewCycleId
+            ? 'Judge only whether the notes you just revised are genuinely resolved (not a full re-review)'
+            : 'Check character, plot, and worldbuilding consistency and generate a review report',
         ),
         executor: async (step, context, callbacks) => {
           const { ReviewChapterCommand } = await import('./commands/review-chapter.command')
@@ -576,6 +588,16 @@ export function createReviewOnlyWorkflow(
           'Five editors (plot, continuity, character, style, pacing) score the chapter',
         ),
         executor: async (_step, context, callbacks) => {
+          /**
+           * 复核（合并后的复验）**不跑五角色**：它只裁决那几条刚修过的意见，
+           * 不做整章评分；再跑一次等于白花一份模型调用，而且评分还会被这一版
+           * 还没来得及复审的正文影响。作者想要新评分可以显式「重新评估」。
+           */
+          if (frozenParams.reviewCycleId) {
+            callbacks.log(localize(uiLocale, '编辑部评审：这次是复核已修意见，不重复评分。',
+              'Editorial panel: this run only rechecks revised notes, so no new score.'))
+            return localize(uiLocale, '编辑部评审：复核不重算评分。', 'Editorial panel: a recheck does not rescore.')
+          }
           // 已有本稿的评分就不重跑：审稿会重复点（改一稿再点一次），
           // 每次重跑等于白花一份模型调用；面板里有「重新评估」可显式重跑。
           const { ipc } = await import('../ipc-client')
@@ -637,8 +659,12 @@ export function createReviewOnlyWorkflow(
       mode: 'open',
       message: localize(
         uiLocale,
-        `第${params.chapterNumber}章审稿完成`,
-        `Chapter ${params.chapterNumber} review completed`,
+        params.reviewCycleId
+          ? `第${params.chapterNumber}章 · 已修意见复核完成`
+          : `第${params.chapterNumber}章审稿完成`,
+        params.reviewCycleId
+          ? `Chapter ${params.chapterNumber}: revised notes rechecked`
+          : `Chapter ${params.chapterNumber} review completed`,
       ),
     },
   }
