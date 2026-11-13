@@ -279,7 +279,9 @@ describe('单章视图的主按钮随五种状态变化', () => {
     backend.addRecheck(draft, review, ['resolved', 'unresolved', 'resolved'])
     await mount()
     await openDraft(draft.id)
-    await expect.element(page.getByText('复验完成：2 / 3 项意见已解决')).toBeVisible()
+    // issue #245：提示文案改成「已复核你修过的那 N 条意见：M 条确认解决」，
+    // 明确「这是在复核刚修的那几条，不是重审全章」。
+    await expect.element(page.getByText('已复核你修过的那 3 条意见：2 条确认解决')).toBeVisible()
     await click('更多操作')
     await act(async () => page.getByRole('menuitem', { name: '审稿报告' }).click())
     const sheet = page.getByRole('complementary', { name: /审稿/ })

@@ -80,7 +80,7 @@ describe('编辑部评分随审稿自动刷新（issue #245 现场）', () => {
 
     // 审稿跑完、评分落库，然后广播完成事件（runId 与面板记录的任何 ref 都无关）
     quality = panel
-    await act(async () => { globalEventBus.emit('WORKFLOW_COMPLETE', { type: 'chapter_creation', projectPath: session.projectPath, projectSession: session, runId: 'ai-review-run-1' }) })
+    await act(async () => { globalEventBus.emit('WORKFLOW_SETTLED', { type: 'chapter_creation', projectPath: session.projectPath, projectSession: session, runId: 'ai-review-run-1', status: 'completed' }) })
 
     await vi.waitFor(() => expect(host!.textContent).toContain('88.8'))
     expect(host!.textContent).not.toContain('还没有编辑部评分')
@@ -91,7 +91,8 @@ describe('编辑部评分随审稿自动刷新（issue #245 现场）', () => {
     await vi.waitFor(() => expect(host!.textContent).toContain('还没有编辑部评分'))
     // 审稿跑完但这一类没有评分 = 失败
     quality = null
-    await act(async () => { globalEventBus.emit('WORKFLOW_COMPLETE', { type: 'chapter_creation', projectPath: session.projectPath, projectSession: session, runId: 'ai-review-run-1' }) })
+    // 关键：这里用 **failed** 结算——正是「某一步抛错 → 只发 SETTLED」的现场。
+    await act(async () => { globalEventBus.emit('WORKFLOW_SETTLED', { type: 'chapter_creation', projectPath: session.projectPath, projectSession: session, runId: 'ai-review-run-1', status: 'failed' }) })
     await vi.waitFor(() => expect(host!.textContent).toContain('编辑部评审没跑成'))
     expect([...host!.querySelectorAll('button')].map(node => node.textContent)).toContain('重试编辑部评审')
   })

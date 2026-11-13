@@ -77,8 +77,14 @@ export default function EditorialPanelSection({ chapterNumber, draftId, draftVer
    *
    * 现在只按**当前挂载的稿**重读：`load` 内部有 revision 守卫，
    * 晚到的旧回应会被丢掉，不会把上一稿的分数盖上来。
+   *
+   * ⚠️ 必须监听 `WORKFLOW_SETTLED` 而不是 `WORKFLOW_COMPLETE`（issue #245 现场）：
+   * 只有**成功**路径才发 COMPLETE；一旦某一层步骤抛错（比如深度检查失败），
+   * 工作流 catch → break，只发 SETTLED。只听 COMPLETE 的话，失败时面板永远收不到
+   * 刷新信号，评分即使已落库也停在「还没有编辑部评分」——作者只能靠切页重挂载。
+   * SETTLED 的语义正是「这次运行结束了，去看落库结果」，成功失败都发。
    */
-  useEffect(() => globalEventBus.on('WORKFLOW_COMPLETE', () => {
+  useEffect(() => globalEventBus.on('WORKFLOW_SETTLED', () => {
     if (!captureProjectSession(useProjectStore.getState().currentProject)) return
     requestRevision.current += 1
     void load(draftId, requestRevision.current).then(quality => {

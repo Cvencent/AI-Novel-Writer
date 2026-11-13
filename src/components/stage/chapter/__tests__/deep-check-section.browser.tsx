@@ -90,7 +90,7 @@ describe('深度检查发现（issue #245）', () => {
     latest = record([
       { findingId: 'f9', runId: 'deep-review:run-1', targetIndex: 1, category: 'c', severity: 'warning', problemText: '刚跑完的这一处发现。', expectedText: '', status: 'open' },
     ])
-    await act(async () => { globalEventBus.emit('WORKFLOW_COMPLETE', { type: 'chapter_creation', projectPath: session.projectPath, projectSession: session, runId: 'r1' }) })
+    await act(async () => { globalEventBus.emit('WORKFLOW_SETTLED', { type: 'chapter_creation', projectPath: session.projectPath, projectSession: session, runId: 'r1', status: 'completed' }) })
     await vi.waitFor(() => expect(host!.textContent).toContain('刚跑完的这一处发现'))
     expect(invoke.mock.calls.length).toBeGreaterThan(before)
   })

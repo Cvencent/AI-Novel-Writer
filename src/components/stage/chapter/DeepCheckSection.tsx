@@ -44,8 +44,12 @@ export default function DeepCheckSection({ chapterNumber }: { chapterNumber: num
    *
    * 这是「不必切页就能看到」的关键：`use-draft-actions` 的 `WORKFLOW_COMPLETE` 只重读
    * 审稿记录与待合并修稿，深度检查的落地面是另一张表，没人通知就会一直显示旧内容。
+   *
+   * ⚠️ 监听 `WORKFLOW_SETTLED` 而不是 `WORKFLOW_COMPLETE`（issue #245 现场）：
+   * 深度检查失败时工作流只发 SETTLED、不发 COMPLETE，只听 COMPLETE 会让
+   * 「失败」和「还没跑」在界面上长得一模一样——作者以为没问题。
    */
-  useEffect(() => globalEventBus.on('WORKFLOW_COMPLETE', () => { void loadLatest() }), [loadLatest])
+  useEffect(() => globalEventBus.on('WORKFLOW_SETTLED', () => { void loadLatest() }), [loadLatest])
 
   const ignore = useCallback(async (finding: StageReviewFindingRecord) => {
     if (!run) return
