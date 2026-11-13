@@ -285,3 +285,40 @@ describe('dangling scale qualifiers (issue #245 三轮)', () => {
     expect(content).toContain('三项皆无才报，报 warning')
   })
 })
+
+/**
+ * 源起 2→3 章实测（issue #245 四轮）：钩子**接上了但接在 3/4 处**，开头仍是断的。
+ *
+ * 实际发生的：第 2 章末「林澈停住脚步…低头看向手腕…浮现『源起-0，固件自检中』」
+ * ——一个**悬停的瞬间**。第 3 章开头直接「指针滑过午夜 2 点…徒步穿过 3 道隔离铁丝网」，
+ * 6 小时被一句话带过，那个瞬间的后续（他看到什么、什么反应、怎么离开）全没有。
+ * 而钩子直到第 3272 字（3/4 处）才被提起。审稿只在 53/54/55 报了「字符全章未再出现」，
+ * 修稿把字符塞进 3/4 处就算 pass 了 —— 因为原判据 (c) 只要「有位移或时间交代」，
+ * 一句「穿过铁丝网」就满足了。判据太宽。
+ *
+ * 补 (d)(e)：
+ *  (d) 上一章末是「人物停住 + 注视/感受某物」的悬停，本章若时移/换场，
+ *      必须给该瞬间的直接后续，「他后来去了 B」不算接住 → error
+ *  (e) 本章**开头**跨场景只有位移路径、没有主角的判断/情绪/处境 → error
+ *      （中段同类跳跃仍按 (c) warning）
+ */
+describe('opening continuity: suspended moment and empty transition (issue #245 四轮)', () => {
+  it.each(['zh-CN', 'en-US'] as const)('names both new opening checks in %s', language => {
+    const content = getBuiltinPromptTemplate('consistency_check', language)?.content ?? ''
+    expect(content).toMatch(language === 'zh-CN' ? /悬停瞬间被跳过/ : /Suspended moment skipped/)
+    expect(content).toMatch(language === 'zh-CN' ? /过场空转/ : /Empty transition/)
+    // 「他后来去了 B 不算接住」这个反例必须写进去，否则模型会把位移当承接
+    expect(content).toMatch(language === 'zh-CN' ? /只写「他后来去了 B」不算接住/ : /Writing only "later he went to B" does not count/)
+    // (e) 只看开头，别把中段也升级成 error
+    expect(content).toMatch(language === 'zh-CN' ? /只查开头一到两段/ : /Check only the opening one or two paragraphs/)
+  })
+
+  it('grades them error while (a)(b)(c) stay warning', () => {
+    const content = getBuiltinPromptTemplate('consistency_check', 'zh-CN')?.content ?? ''
+    expect(content).toMatch(/五种\*\*可机械核对\*\*/)
+    expect(content).toContain('(a)(b)(c) 报 warning')
+    expect(content).toContain('(d)(e) 报 **error**')
+    // 开头断裂不是留白，是读者第一眼撞上的断裂——这条理由要写清楚
+    expect(content).toContain('读者第一眼就撞上的断裂')
+  })
+})
