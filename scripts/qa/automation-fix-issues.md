@@ -276,6 +276,13 @@ pnpm run prepare:native-node       # 关键：切回 Node ABI，否则下次 vit
      每个被锁文件重试 30 次×等 30 秒 → **看起来像卡死十几分钟**。修法：覆盖前先按
      `ExecutablePath` 精确清掉安装目录实例（用 node 调 PowerShell 取 JSON 后过滤，绝不在
      bash 里内联中文 exe 名），并给 robocopy 加 `/R:1 /W:1`（失败快报，不要 30 次长等）。
+- ⚠️ **打包后必须验 asar 顶层含 `dist`（2026-11-13：1.5.300 首次构建同样缺 dist，复发）**：
+  1.5.295/296 踩过的坑在 1.5.300 又出现——`clean:build` 之后如果只跑 `tsc`/漏了 `vite build`（或 vite
+  只产出 preload），electron-builder 仍会**成功打出安装包**，但 asar 顶层没有 `dist`，装上就是白屏/打不开。
+  修法：打包完必验一次——
+  `npx asar list release/<ver>/win-unpacked/resources/app.asar | node -e "…split(/\\\\r?\\n/).map(l=>l.replace(/^\\\\+/,'').split('\\\\')[0])…"`
+  确认顶层含 `dist`、`dist-electron`、`package.json`（asar list 输出每行有**前导反斜杠**，直接 grep `^dist` 永远 0 条，
+  会误判「缺 dist」；strip 前导 `\` 再判）。缺了就重跑 `npx vite build` 再 builder。
 - ⚠️ **覆盖安装必须验证「真的装上了」**（2026-11-06：rc 假 0 导致安装目录仍是旧版，差点当成功收尾）：
   安装后用 node 读安装目录的 `app.asar`，在 buffer 里找**本轮新增的一句独有文案**（一个新提示词约束、
   一条新按钮文案都行）——找到才算装上；同时看 mtime 是否是刚才的时间。只信 robocopy 退出码不算数。
