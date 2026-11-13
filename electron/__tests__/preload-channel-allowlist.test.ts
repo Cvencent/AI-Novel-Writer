@@ -74,7 +74,18 @@ describe('every renderer-used channel is allowlisted (issue #245 现场)', () =>
           walk(fp)
         } else if (/\.(ts|tsx)$/.test(e.name) && !/\.test\./.test(e.name) && !/\.browser\./.test(e.name)) {
           const text = fs.readFileSync(fp, 'utf8')
-          for (const re of [/ipc\.invoke(?:WithProjectSession)?\(\s*'([^']+)'/g, /ipc\.on\(\s*'([^']+)'/g, /ipc\.send\(\s*'([^']+)'/g]) {
+          /**
+           * ⚠️ `invokeWithProjectSession` 的通道是**第二个参数**（第一个是项目会话），
+           * 写成 `ipc.invokeWithProjectSession(session, 'review-revision:prepare', ...)`。
+           * 只匹配 `invoke('channel'` 会把这一整类漏掉——正是 review-revision:prepare
+           * 没被发现的原因。所以要分别匹配两种形状。
+           */
+          for (const re of [
+            /ipc\.invokeWithProjectSession\(\s*[^,]+,\s*'([^']+)'/g,
+            /ipc\.invoke\(\s*'([^']+)'/g,
+            /ipc\.on\(\s*'([^']+)'/g,
+            /ipc\.send\(\s*'([^']+)'/g,
+          ]) {
             let m: RegExpExecArray | null
             while ((m = re.exec(text))) if (isChannel(m[1])) {
               if (!used.has(m[1])) used.set(m[1], [])
@@ -89,5 +100,47 @@ describe('every renderer-used channel is allowlisted (issue #245 现场)', () =>
     expect(missing, `这些渲染层通道不在白名单里，preload 会拒绝、界面会静默失效：\n`
       + missing.map(c => `  ${c} ← ${used.get(c)!.slice(0, 2).join(', ')}`).join('\n')
       + `\n请运行 node scripts/generate-ipc-channel-registry.mjs 重新生成。`).toEqual([])
+  })
+})
+
+
+/**
+ * 反向也要查：主进程注册的通道必须全在白名单里。
+ *
+ * 生成脚本靠扫源码，而注册写法有好几种（`ipcMain.handle`、`deps.ipc.handle`、
+ * 控制器内部的 `register('channel', 1, fn)` 助手）。少扫一种，白名单就少一批通道，
+ * 渲染层调用时当场 `IPC channel not allowed`——现场是 `review-revision:prepare`
+ * 漏登记，作者一点 AI 审稿就报错。
+ */
+describe('every main-registered channel is allowlisted (issue #245 现场)', () => {
+  it('has no registered channel missing from the allowlist', async () => {
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const { IPC_CHANNEL_ALLOWLIST } = await import('../../src/shared/ipc-channel-registry')
+    const isChannel = (s: string) => /^[a-z][a-z0-9-]*(:[a-z0-9-]+)+$/.test(s)
+    const found = new Map<string, string[]>()
+    const walk = (dir: string) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const fp = path.join(dir, e.name)
+        if (e.isDirectory()) {
+          if (['__tests__', 'node_modules'].includes(e.name)) continue
+          walk(fp)
+        } else if (e.name.endsWith('.ts') && !/\.test\.ts$/.test(e.name)) {
+          const t = fs.readFileSync(fp, 'utf8')
+          for (const re of [/(?:ipcMain|\.ipc)\.(?:handle|handleOnce|on)\(\s*'([^']+)'/g, /register\(\s*'([^']+)'/g]) {
+            let m: RegExpExecArray | null
+            while ((m = re.exec(t))) if (isChannel(m[1])) {
+              if (!found.has(m[1])) found.set(m[1], [])
+              found.get(m[1])!.push(path.relative(process.cwd(), fp))
+            }
+          }
+        }
+      }
+    }
+    walk(path.join(process.cwd(), 'electron'))
+    const missing = [...found.keys()].filter(c => !IPC_CHANNEL_ALLOWLIST.has(c)).sort()
+    expect(missing, '这些主进程注册的通道不在白名单里，渲染层调用会被 preload 拒绝：\n'
+      + missing.map(c => `  ${c} ← ${found.get(c)!.slice(0, 2).join(', ')}`).join('\n')
+      + '\n请运行 node scripts/generate-ipc-channel-registry.mjs 重新生成。').toEqual([])
   })
 })

@@ -48,9 +48,19 @@ export function collectIpcChannels(root) {
          * 改成匹配「<任意>.ipc.handle/on(」以及裸 `ipcMain.handle/on`。
          */
         const regRe = /(?:\bipcMain|\.ipc)\.(?:handle|handleOnce|on)\(\s*'([^']+)'/g
+        /**
+         * ⚠️ 还有一类完全不同的注册方式：控制器内部定义一个 `register(name, version, fn)`
+         * 本地助手，通道名是它的**第一个参数**（如 generation-controller 的
+         * `register('review-revision:prepare', 1, ...)`）。它不是 `ipcMain.` 也不是
+         * `.ipc.`，上面两条都抓不到——漏掉的后果是 `review-revision:prepare` 不在白名单，
+         * 作者一点 AI 审稿就报 `IPC channel not allowed`（issue #245 现场）。
+         * 用「本文件里出现过 `register(` 定义」来判断这一类，避免误伤同名函数。
+         */
+        const helperRe = /\bregister\(\s*'([^']+)'/g
         const sendRe = /\.send\(\s*'([^']+)'/g
         let r
         while ((r = regRe.exec(text))) if (isChannel(r[1])) channels.add(r[1])
+        while ((r = helperRe.exec(text))) if (isChannel(r[1])) channels.add(r[1])
         while ((r = sendRe.exec(text))) if (isChannel(r[1])) channels.add(r[1])
       }
     }
