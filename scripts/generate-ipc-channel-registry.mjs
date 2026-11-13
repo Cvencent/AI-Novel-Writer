@@ -15,6 +15,22 @@ export function collectIpcChannels(root) {
   while ((m = keyRe.exec(ipcFile))) {
     if (isChannel(m[1])) channels.add(m[1])
   }
+  /**
+   * 另有一类通道只在**类型契约**里声明、由主进程按名注册（如 `startup-contract.ts` 的
+   * `StartupChannels`：'startup:get-state' / 'startup:appearance-ack'）。它们不写成
+   * `ipcMain.handle('...')` 字面量，上面的调用扫描同样抓不到——startup:get-state 一漏，
+   * 渲染层连"主进程就绪"都问不到，整个工作台卡在启动页。
+   * 这里把 shared 下的 `*contract*.ts` / `ipc-channels.ts` 里的通道键一并纳入。
+   */
+  const sharedDir = path.join(root, 'src/shared')
+  for (const entry of fs.readdirSync(sharedDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith('.ts')) continue
+    if (!/contract|ipc-channels/.test(entry.name) || /\.test\.ts$/.test(entry.name)) continue
+    const text = fs.readFileSync(path.join(sharedDir, entry.name), 'utf8')
+    const re = /'([a-z][a-z0-9-]*(?::[a-z0-9-]+)+)'\s*:/g
+    let r
+    while ((r = re.exec(text))) if (isChannel(r[1])) channels.add(r[1])
+  }
   const walk = (dir) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const fp = path.join(dir, entry.name)
@@ -23,7 +39,15 @@ export function collectIpcChannels(root) {
         walk(fp)
       } else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts')) {
         const text = fs.readFileSync(fp, 'utf8')
-        const regRe = /ipcMain\.(?:handle|handleOnce|on)\(\s*'([^']+)'/g
+        /**
+         * ⚠️ 注册调用**不一定**写成 `ipcMain.handle(...)`。控制器常把 ipc 依赖注入进来，
+         * 于是写成 `deps.ipc.handle('cloud-backup:backup', ...)` 或
+         * `options.ipc.handle('startup:get-state', ...)`。原正则只认字面 `ipcMain.`，
+         * 这两类全部漏掉 → 白名单缺通道 → preload 直接拒绝 → 渲染层卡在启动页
+         * （issue #245 现场：startup:get-state 漏登记，整个工作台打不开）。
+         * 改成匹配「<任意>.ipc.handle/on(」以及裸 `ipcMain.handle/on`。
+         */
+        const regRe = /(?:\bipcMain|\.ipc)\.(?:handle|handleOnce|on)\(\s*'([^']+)'/g
         const sendRe = /\.send\(\s*'([^']+)'/g
         let r
         while ((r = regRe.exec(text))) if (isChannel(r[1])) channels.add(r[1])
